@@ -154,27 +154,58 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
 
           // Process line diffs
           const diffElements: React.ReactNode[] = [];
-          lineDiffs.forEach((part, partIndex) => {
+          for (let i = 0; i < lineDiffs.length; i++) {
+            const part = lineDiffs[i];
             const lines = part.value.split("\n");
             // diffLines might return a trailing empty string if the content ends with a newline
             if (lines[lines.length - 1] === "") {
               lines.pop();
             }
 
-            if (part.added) {
-              lines.forEach((line, lineIndex) => {
-                diffElements.push(
-                  renderLine(
-                    null,
-                    newLineNum++,
-                    "+",
-                    line,
-                    "green",
-                    `add-${changeIndex}-${partIndex}-${lineIndex}`,
-                  ),
-                );
-              });
-            } else if (part.removed) {
+            if (part.removed) {
+              // Look ahead for an added block
+              if (i + 1 < lineDiffs.length && lineDiffs[i + 1].added) {
+                const nextPart = lineDiffs[i + 1];
+                const addedLines = nextPart.value.split("\n");
+                if (addedLines[addedLines.length - 1] === "") {
+                  addedLines.pop();
+                }
+
+                if (lines.length === addedLines.length) {
+                  // Word-level diffing
+                  lines.forEach((line, lineIndex) => {
+                    const { removedParts, addedParts } = renderWordLevelDiff(
+                      line,
+                      addedLines[lineIndex],
+                      `word-${changeIndex}-${i}-${lineIndex}`,
+                    );
+                    diffElements.push(
+                      renderLine(
+                        oldLineNum++,
+                        null,
+                        "-",
+                        removedParts,
+                        "red",
+                        `remove-${changeIndex}-${i}-${lineIndex}`,
+                      ),
+                    );
+                    diffElements.push(
+                      renderLine(
+                        null,
+                        newLineNum++,
+                        "+",
+                        addedParts,
+                        "green",
+                        `add-${changeIndex}-${i}-${lineIndex}`,
+                      ),
+                    );
+                  });
+                  i++; // Skip the added block
+                  continue;
+                }
+              }
+
+              // Fallback to standard removed rendering
               lines.forEach((line, lineIndex) => {
                 diffElements.push(
                   renderLine(
@@ -183,14 +214,27 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
                     "-",
                     line,
                     "red",
-                    `remove-${changeIndex}-${partIndex}-${lineIndex}`,
+                    `remove-${changeIndex}-${i}-${lineIndex}`,
+                  ),
+                );
+              });
+            } else if (part.added) {
+              lines.forEach((line, lineIndex) => {
+                diffElements.push(
+                  renderLine(
+                    null,
+                    newLineNum++,
+                    "+",
+                    line,
+                    "green",
+                    `add-${changeIndex}-${i}-${lineIndex}`,
                   ),
                 );
               });
             } else {
               // Context lines - show unchanged content
-              const isFirstBlock = partIndex === 0;
-              const isLastBlock = partIndex === lineDiffs.length - 1;
+              const isFirstBlock = i === 0;
+              const isLastBlock = i === lineDiffs.length - 1;
 
               let linesToDisplay = lines;
               let showEllipsisTop = false;
@@ -221,7 +265,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
 
               if (showEllipsisTop) {
                 diffElements.push(
-                  <Box key={`ellipsis-top-${changeIndex}-${partIndex}`}>
+                  <Box key={`ellipsis-top-${changeIndex}-${i}`}>
                     <Text color="gray">{" ".repeat(maxDigits * 2 + 2)}...</Text>
                   </Box>,
                 );
@@ -239,7 +283,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
                   oldLineNum += skipCount;
                   newLineNum += skipCount;
                   diffElements.push(
-                    <Box key={`ellipsis-mid-${changeIndex}-${partIndex}`}>
+                    <Box key={`ellipsis-mid-${changeIndex}-${i}`}>
                       <Text color="gray">
                         {" ".repeat(maxDigits * 2 + 2)}...
                       </Text>
@@ -254,7 +298,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
                     " ",
                     line,
                     "white",
-                    `context-${changeIndex}-${partIndex}-${lineIndex}`,
+                    `context-${changeIndex}-${i}-${lineIndex}`,
                   ),
                 );
               });
@@ -266,62 +310,14 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
                 oldLineNum += skipCount;
                 newLineNum += skipCount;
                 diffElements.push(
-                  <Box key={`ellipsis-bottom-${changeIndex}-${partIndex}`}>
+                  <Box key={`ellipsis-bottom-${changeIndex}-${i}`}>
                     <Text color="gray">{" ".repeat(maxDigits * 2 + 2)}...</Text>
                   </Box>,
                 );
               }
             }
-          });
-
-          // If it's a single line change (one removed, one added), use word-level diff
-          if (
-            diffElements.length === 2 &&
-            React.isValidElement(diffElements[0]) &&
-            React.isValidElement(diffElements[1]) &&
-            typeof diffElements[0].key === "string" &&
-            diffElements[0].key.includes("remove-") &&
-            typeof diffElements[1].key === "string" &&
-            diffElements[1].key.includes("add-")
-          ) {
-            const removedText = extractTextFromElement(diffElements[0]);
-            const addedText = extractTextFromElement(diffElements[1]);
-            const oldLineNumVal = extractOldLineNumFromElement(diffElements[0]);
-            const newLineNumVal = extractNewLineNumFromElement(diffElements[1]);
-
-            if (removedText && addedText) {
-              const { removedParts, addedParts } = renderWordLevelDiff(
-                removedText,
-                addedText,
-                `word-${changeIndex}`,
-              );
-
-              allElements.push(
-                renderLine(
-                  oldLineNumVal,
-                  null,
-                  "-",
-                  removedParts,
-                  "red",
-                  `word-diff-removed-${changeIndex}`,
-                ),
-              );
-              allElements.push(
-                renderLine(
-                  null,
-                  newLineNumVal,
-                  "+",
-                  addedParts,
-                  "green",
-                  `word-diff-added-${changeIndex}`,
-                ),
-              );
-            } else {
-              allElements.push(...diffElements);
-            }
-          } else {
-            allElements.push(...diffElements);
           }
+          allElements.push(...diffElements);
         } catch (error) {
           console.warn(
             `Error rendering diff for change ${changeIndex}:`,
@@ -360,72 +356,4 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
       </Box>
     </Box>
   );
-};
-
-// Helper function to extract text content from a React element
-const extractTextFromElement = (element: React.ReactNode): string | null => {
-  if (!React.isValidElement(element)) return null;
-
-  // Navigate through Box -> Text structure
-  // Our new structure is: Box -> Text (old), Text (new), Text (|), Text (prefix), Text (content)
-  const children = (
-    element.props as unknown as { children?: React.ReactNode[] }
-  ).children;
-  if (Array.isArray(children) && children.length >= 5) {
-    const textElement = children[4]; // Fifth child should be the Text with content
-    if (React.isValidElement(textElement)) {
-      const textChildren = (textElement.props as Record<string, unknown>)
-        .children;
-      return Array.isArray(textChildren)
-        ? textChildren.join("")
-        : String(textChildren || "");
-    }
-  }
-  return null;
-};
-
-const extractOldLineNumFromElement = (
-  element: React.ReactNode,
-): number | null => {
-  if (!React.isValidElement(element)) return null;
-  const children = (
-    element.props as unknown as { children?: React.ReactNode[] }
-  ).children;
-  if (Array.isArray(children) && children.length >= 1) {
-    const textElement = children[0];
-    if (React.isValidElement(textElement)) {
-      const textChildren = (textElement.props as Record<string, unknown>)
-        .children;
-      const val = (
-        Array.isArray(textChildren)
-          ? textChildren.join("")
-          : String(textChildren || "")
-      ).trim();
-      return val ? parseInt(val, 10) : null;
-    }
-  }
-  return null;
-};
-
-const extractNewLineNumFromElement = (
-  element: React.ReactNode,
-): number | null => {
-  if (!React.isValidElement(element)) return null;
-  const children = (
-    element.props as unknown as { children?: React.ReactNode[] }
-  ).children;
-  if (Array.isArray(children) && children.length >= 2) {
-    const textElement = children[1];
-    if (React.isValidElement(textElement)) {
-      const textChildren = (textElement.props as Record<string, unknown>)
-        .children;
-      const val = (
-        Array.isArray(textChildren)
-          ? textChildren.join("")
-          : String(textChildren || "")
-      ).trim();
-      return val ? parseInt(val, 10) : null;
-    }
-  }
-  return null;
 };
