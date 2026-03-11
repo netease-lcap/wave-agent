@@ -1,4 +1,7 @@
 import { spawn, type ChildProcess } from "child_process";
+import * as os from "os";
+import * as fs from "fs";
+import * as path from "path";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { logger } from "../utils/globalLogger.js";
@@ -64,6 +67,10 @@ export class BackgroundTaskManager {
       },
     });
 
+    // Create log file
+    const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
+    const logStream = fs.createWriteStream(logPath, { flags: "a" });
+
     const shell: BackgroundShell = {
       id,
       type: "shell",
@@ -73,8 +80,10 @@ export class BackgroundTaskManager {
       status: "running",
       stdout: "",
       stderr: "",
+      outputPath: logPath,
       onStop: () => {
         try {
+          logStream.end();
           if (child.pid) {
             process.kill(-child.pid, "SIGTERM");
             setTimeout(() => {
@@ -109,18 +118,29 @@ export class BackgroundTaskManager {
     }
 
     const onStdout = (data: Buffer | string) => {
-      shell.stdout += stripAnsiColors(data.toString());
+      const stripped = stripAnsiColors(data.toString());
+      shell.stdout += stripped;
+      if (logStream.writable) {
+        logStream.write(stripped);
+      }
       this.notifyTasksChange();
     };
 
     const onStderr = (data: Buffer | string) => {
-      shell.stderr += stripAnsiColors(data.toString());
+      const stripped = stripAnsiColors(data.toString());
+      shell.stderr += stripped;
+      if (logStream.writable) {
+        logStream.write(stripped);
+      }
       this.notifyTasksChange();
     };
 
     const onExit = (code: number | null) => {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
+      }
+      if (logStream.writable) {
+        logStream.end();
       }
       shell.status = code === 0 ? "completed" : "failed";
       shell.exitCode = code ?? 0;
@@ -133,8 +153,13 @@ export class BackgroundTaskManager {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
       }
+      const stripped = `\nProcess error: ${stripAnsiColors(error.message)}`;
       shell.status = "failed";
-      shell.stderr += `\nProcess error: ${stripAnsiColors(error.message)}`;
+      shell.stderr += stripped;
+      if (logStream.writable) {
+        logStream.write(stripped);
+        logStream.end();
+      }
       shell.exitCode = 1;
       shell.endTime = Date.now();
       shell.runtime = shell.endTime - startTime;
@@ -154,6 +179,7 @@ export class BackgroundTaskManager {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
       }
+      logStream.end();
       this.tasks.delete(id);
       this.notifyTasksChange();
     };
@@ -170,6 +196,18 @@ export class BackgroundTaskManager {
     const id = this.generateId();
     const startTime = Date.now();
 
+    // Create log file
+    const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
+    const logStream = fs.createWriteStream(logPath, { flags: "a" });
+
+    // Write initial output to log file
+    if (initialStdout) {
+      logStream.write(stripAnsiColors(initialStdout));
+    }
+    if (initialStderr) {
+      logStream.write(stripAnsiColors(initialStderr));
+    }
+
     const shell: BackgroundShell = {
       id,
       type: "shell",
@@ -179,8 +217,10 @@ export class BackgroundTaskManager {
       status: "running",
       stdout: initialStdout,
       stderr: initialStderr,
+      outputPath: logPath,
       onStop: () => {
         try {
+          logStream.end();
           if (child.pid) {
             process.kill(-child.pid, "SIGTERM");
             setTimeout(() => {
@@ -205,16 +245,27 @@ export class BackgroundTaskManager {
     this.notifyTasksChange();
 
     child.stdout?.on("data", (data) => {
-      shell.stdout += stripAnsiColors(data.toString());
+      const stripped = stripAnsiColors(data.toString());
+      shell.stdout += stripped;
+      if (logStream.writable) {
+        logStream.write(stripped);
+      }
       this.notifyTasksChange();
     });
 
     child.stderr?.on("data", (data) => {
-      shell.stderr += stripAnsiColors(data.toString());
+      const stripped = stripAnsiColors(data.toString());
+      shell.stderr += stripped;
+      if (logStream.writable) {
+        logStream.write(stripped);
+      }
       this.notifyTasksChange();
     });
 
     child.on("exit", (code) => {
+      if (logStream.writable) {
+        logStream.end();
+      }
       shell.status = code === 0 ? "completed" : "failed";
       shell.exitCode = code ?? 0;
       shell.endTime = Date.now();
@@ -223,8 +274,13 @@ export class BackgroundTaskManager {
     });
 
     child.on("error", (error) => {
+      const stripped = `\nProcess error: ${stripAnsiColors(error.message)}`;
       shell.status = "failed";
-      shell.stderr += `\nProcess error: ${stripAnsiColors(error.message)}`;
+      shell.stderr += stripped;
+      if (logStream.writable) {
+        logStream.write(stripped);
+        logStream.end();
+      }
       shell.exitCode = 1;
       shell.endTime = Date.now();
       shell.runtime = shell.endTime - startTime;

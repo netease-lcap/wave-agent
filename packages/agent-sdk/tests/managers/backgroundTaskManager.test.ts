@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import * as fs from "fs";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { BackgroundTask, BackgroundShell } from "../../src/types/processes.js";
 import { Container } from "../../src/utils/container.js";
@@ -181,5 +182,28 @@ describe("BackgroundTaskManager", () => {
     expect(result).toBe(true);
 
     process.kill = originalKill;
+  });
+
+  it("should create a log file and write output to it", async () => {
+    const { id } = manager.startShell("echo hello");
+    const task = manager.getTask(id) as BackgroundShell;
+    expect(task.outputPath).toBeDefined();
+
+    await vi.waitFor(() => expect(fs.existsSync(task.outputPath!)).toBe(true));
+
+    // Manually trigger stdout event
+    task.process.stdout?.emit("data", Buffer.from("hello world\n"));
+
+    // Wait for file write
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const content = fs.readFileSync(task.outputPath!, "utf8");
+    expect(content).toContain("hello world");
+
+    // Cleanup
+    manager.stopTask(id);
+    if (task.outputPath && fs.existsSync(task.outputPath)) {
+      fs.unlinkSync(task.outputPath);
+    }
   });
 });

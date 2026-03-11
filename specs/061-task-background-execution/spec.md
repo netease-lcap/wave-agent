@@ -16,8 +16,9 @@ As a user, I want to be able to run complex or long-running tasks in the backgro
 
 **Acceptance Scenarios**:
 
-1. **Given** a task that takes significant time, **When** I execute it with `run_in_background: true`, **Then** I should receive a unique task ID immediately and the agent should be ready for the next command.
+1. **Given** a task that takes significant time, **When** I execute it with `run_in_background: true`, **Then** I should receive a unique task ID and a path to a real-time output log file immediately, and the agent should be ready for the next command.
 2. **Given** a background task is running, **When** I check the system status, **Then** I should see the task listed as active.
+3. **Given** a background task is running, **When** I read the provided log file path, **Then** I should see the real-time output of the task.
 
 ---
 
@@ -25,14 +26,15 @@ As a user, I want to be able to run complex or long-running tasks in the backgro
 
 As a user, I want to retrieve the output of a background task (either while it's running or after it's finished) so that I can see the results of my requested operations.
 
-**Why this priority**: Background tasks are useless if their results cannot be inspected. This provides the necessary visibility into background operations.
+**Why this priority**: Background tasks are useless if their results cannot be inspected. This provides the necessary visibility into background operations. Real-time monitoring via log files provides an even better experience for long-running tasks.
 
-**Independent Test**: Can be tested by using the `TaskOutput` tool with a valid task ID and verifying that the output (logs, results, etc.) is returned.
+**Independent Test**: Can be tested by using the `TaskOutput` tool with a valid task ID and verifying that the output (logs, results, etc.) is returned, or by reading the `outputPath` provided when the task started.
 
 **Acceptance Scenarios**:
 
 1. **Given** a running background task, **When** I use `TaskOutput` with `block: true`, **Then** the tool should wait for the task to complete and then return the full output.
 2. **Given** a running background task, **When** I use `TaskOutput` with `block: false`, **Then** the tool should immediately return the output generated so far without waiting for completion.
+3. **Given** a background task started, **When** I access the `outputPath` file, **Then** I should see the same output as `TaskOutput` but in real-time.
 
 ---
 
@@ -77,7 +79,7 @@ As a user, I want to use a `/tasks` command in the CLI to list and manage all ba
 ### Functional Requirements
 
 - **FR-001**: The `Task` tool MUST support a `run_in_background` boolean parameter.
-- **FR-002**: When `run_in_background` is true, the system MUST initiate the task asynchronously and return a unique `task_id` immediately.
+- **FR-002**: When `run_in_background` is true, the system MUST initiate the task asynchronously and return a unique `task_id` and an `outputPath` to a real-time log file immediately.
 - **FR-003**: The system MUST provide a `TaskOutput` tool to retrieve output from background tasks.
 - **FR-004**: `TaskOutput` MUST support a `task_id` parameter.
 - **FR-005**: `TaskOutput` MUST support a `block` parameter (defaulting to true) to determine whether to wait for task completion.
@@ -88,11 +90,13 @@ As a user, I want to use a `/tasks` command in the CLI to list and manage all ba
 - **FR-010**: `TaskOutput` MUST work for both background shell tasks and async agent tasks.
 - **FR-011**: Background tasks MUST NOT update their `shortResult` while running to prevent unnecessary message updates and "unknown" tool blocks in the UI.
 - **FR-012**: The CLI MUST implement a `/tasks` command to list all active and recently completed tasks.
-- **FR-012**: The CLI MUST implement a `/tasks` command to list all active and recently completed tasks.
 - **FR-013**: The legacy `/bashes` command MUST be removed from the CLI.
 - **FR-014**: The `/tasks` command output MUST include task IDs, status, and task type.
+- **FR-015**: For background shell tasks, the system MUST pipe `stdout` and `stderr` to the `outputPath` log file in real-time.
+- **FR-016**: For background subagent tasks, the system MUST log tool execution details (tool name and compact parameters) to the `outputPath` log file in real-time.
+- **FR-017**: The `outputPath` log file MUST be properly closed when the task completes or is stopped.
 
 ### Key Entities *(include if feature involves data)*
 
 - **Task**: Represents an execution unit (shell command or agent subtask).
-    - Attributes: `task_id` (unique identifier), `status` (pending, running, completed, failed, stopped), `output` (accumulated logs/results), `type` (shell, agent).
+    - Attributes: `task_id` (unique identifier), `status` (pending, running, completed, failed, stopped), `output` (accumulated logs/results), `type` (shell, agent), `outputPath` (optional path to real-time log file).

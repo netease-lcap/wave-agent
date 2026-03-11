@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as fs from "fs";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
@@ -220,5 +221,51 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       "chunk",
       "accumulated",
     );
+  });
+
+  it("should create a log file and log tool execution for background subagent", async () => {
+    const instance = await subagentManager.createInstance(testConfig, {
+      description: "d",
+      prompt: "p",
+      subagent_type: "t",
+    });
+
+    await subagentManager.backgroundInstance(instance.subagentId);
+
+    expect(mockBackgroundTaskManager.addTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outputPath: expect.stringContaining("wave-subagent-task_123.log"),
+      }),
+    );
+
+    const addTaskMock = vi.mocked(mockBackgroundTaskManager.addTask);
+    const outputPath = addTaskMock.mock.calls[0][0].outputPath!;
+    await vi.waitFor(() => expect(fs.existsSync(outputPath)).toBe(true));
+
+    // Capture callbacks passed to MessageManager
+    const MessageManagerMock = vi.mocked(MessageManager);
+    const lastCall =
+      MessageManagerMock.mock.calls[MessageManagerMock.mock.calls.length - 1];
+    const passedCallbacks = lastCall[1].callbacks;
+
+    // Trigger tool block update
+    passedCallbacks.onToolBlockUpdated?.({
+      id: "tool_123",
+      stage: "running",
+      name: "Read",
+      parameters: JSON.stringify({ file_path: "test.txt" }),
+    });
+
+    // Wait for file write
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const content = fs.readFileSync(outputPath, "utf8");
+    expect(content).toContain("Running tool: Read");
+    expect(content).toContain("test.txt");
+
+    // Cleanup
+    if (fs.existsSync(outputPath)) {
+      fs.unlinkSync(outputPath);
+    }
   });
 });

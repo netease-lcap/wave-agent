@@ -31,9 +31,10 @@ As an AI agent, I want to run long-running commands in the background and retrie
 
 **Acceptance Scenarios**:
 
-1. **Given** `run_in_background` is true, **When** `Bash` is called, **Then** it MUST return a `bash_id` immediately.
-2. **Given** a valid `bash_id`, **When** `BashOutput` is called, **Then** it MUST return the accumulated output.
-3. **Given** a running background process, **When** `KillBash` is called with its ID, **Then** the process MUST be terminated.
+1. **Given** `run_in_background` is true, **When** `Bash` is called, **Then** it MUST return a `bash_id` and an `outputPath` to a real-time log file immediately.
+2. **Given** a valid `bash_id`, **When** `TaskOutput` (formerly `BashOutput`) is called, **Then** it MUST return the accumulated output.
+3. **Given** a running background process, **When** `TaskStop` (formerly `KillBash`) is called with its ID, **Then** the process MUST be terminated.
+4. **Given** a background process started, **When** I read the provided `outputPath` file, **Then** I should see the real-time output of the process.
 
 ---
 
@@ -51,13 +52,15 @@ As an AI agent, I want to run long-running commands in the background and retrie
 - **FR-001**: System MUST provide a `Bash` tool for executing shell commands.
 - **FR-002**: `Bash` tool MUST support an optional `timeout` parameter (default 120s for foreground).
 - **FR-003**: `Bash` tool MUST support a `run_in_background` parameter.
-- **FR-004**: System MUST provide a `BashOutput` tool to retrieve output from background processes using a `bash_id`.
-- **FR-005**: `BashOutput` tool SHOULD support filtering output lines using a regular expression.
-- **FR-006**: System MUST provide a `KillBash` tool to terminate background processes.
+- **FR-004**: System MUST provide a `TaskOutput` (formerly `BashOutput`) tool to retrieve output from background processes using a `bash_id`.
+- **FR-005**: `TaskOutput` tool SHOULD support filtering output lines using a regular expression.
+- **FR-006**: System MUST provide a `TaskStop` (formerly `KillBash`) tool to terminate background processes.
 - **FR-007**: All bash output MUST have ANSI color codes stripped.
 - **FR-008**: Foreground bash output MUST be truncated if it exceeds 30,000 characters.
 - **FR-009**: Background bash tasks MUST NOT update their `shortResult` while running to prevent unnecessary message updates and "unknown" tool blocks in the UI.
 - **FR-010**: The system MUST maintain environment variables across sequential `Bash` calls (persistent session behavior).
+- **FR-011**: When `run_in_background` is true, the system MUST return an `outputPath` to a real-time log file.
+- **FR-012**: The system MUST pipe `stdout` and `stderr` to the `outputPath` log file in real-time.
 
 ### Key Entities *(include if feature involves data)*
 

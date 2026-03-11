@@ -34,6 +34,10 @@ export interface BackgroundTaskBase {
    * Used for cleanup when the task is stopped.
    */
   subagentId?: string;
+  /**
+   * Optional path to the real-time output log file.
+   */
+  outputPath?: string;
 }
 
 export interface BackgroundShell extends BackgroundTaskBase {

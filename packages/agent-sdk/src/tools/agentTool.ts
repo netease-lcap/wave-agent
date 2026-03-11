@@ -182,10 +182,14 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
               id: instance.subagentId,
               backgroundHandler: async () => {
                 isBackgrounded = true;
-                await subagentManager.backgroundInstance(instance.subagentId);
+                const taskId = await subagentManager.backgroundInstance(
+                  instance.subagentId,
+                );
+                const task = context.backgroundTaskManager?.getTask(taskId);
+                const outputPath = task?.outputPath;
                 resolve({
                   success: true,
-                  content: "Agent backgrounded",
+                  content: `Agent backgrounded with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
                   shortResult: "Agent backgrounded",
                   isManuallyBackgrounded: true,
                 });
@@ -206,9 +210,11 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
             }
 
             if (run_in_background) {
+              const task = context.backgroundTaskManager?.getTask(result);
+              const outputPath = task?.outputPath;
               resolve({
                 success: true,
-                content: `Agent started in background with ID: ${result}`,
+                content: `Agent started in background with ID: ${result}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
                 shortResult: `Agent started in background: ${result}`,
               });
               return;
