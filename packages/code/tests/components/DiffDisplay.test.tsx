@@ -54,7 +54,7 @@ describe("DiffDisplay", () => {
     expect(frame).toContain("brown fox");
   });
 
-  it("should not use word-level diff for multi-line changes", () => {
+  it("should use word-level diff for multi-line changes with matching line counts", () => {
     const params = JSON.stringify({
       old_string: "line 1\nline 2",
       new_string: "line 1 modified\nline 2 modified",
@@ -63,15 +63,21 @@ describe("DiffDisplay", () => {
     const { lastFrame } = render(
       <DiffDisplay toolName={EDIT_TOOL_NAME} parameters={params} />,
     );
-    const frame = lastFrame();
-    // In multi-line, it should just show the lines with +/-
+    const frame = lastFrame() || "";
+    // In multi-line with matching line counts, it should show alternating lines
     expect(frame).toContain("-line 1");
-    expect(frame).toContain("-line 2");
     expect(frame).toContain("+line 1 modified");
+    expect(frame).toContain("-line 2");
     expect(frame).toContain("+line 2 modified");
-    // It should NOT have the word-level highlighting (which uses background colors)
-    // Since we can't easily check background colors in the text output here,
-    // we just verify the basic structure is correct.
+
+    const minusLine1Index = frame.indexOf("-line 1");
+    const plusLine1Index = frame.indexOf("+line 1 modified");
+    const minusLine2Index = frame.indexOf("-line 2");
+    const plusLine2Index = frame.indexOf("+line 2 modified");
+
+    expect(minusLine1Index).toBeLessThan(plusLine1Index);
+    expect(plusLine1Index).toBeLessThan(minusLine2Index);
+    expect(minusLine2Index).toBeLessThan(plusLine2Index);
   });
 
   it("should not truncate long diffs", () => {

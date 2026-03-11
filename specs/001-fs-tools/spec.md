@@ -34,6 +34,7 @@ As an AI agent, I want to modify files using exact string replacements so that I
 
 1. **Given** a file has been read, **When** the agent calls `Edit` with a unique `old_string`, **Then** the file MUST be updated with `new_string`.
 3. **Given** the `old_string` is not unique, **When** the agent calls `Edit` without `replace_all`, **Then** the operation MUST fail.
+4. **Given** an `Edit` tool call, **When** the diff is displayed, **Then** it MUST show word-level highlights for changed parts when the number of removed and added lines match.
 
 ---
 
@@ -73,6 +74,7 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 - **FR-009**: System MUST provide a `Glob` tool for fast pattern matching. It MUST NOT respect `.gitignore` (but MUST always ignore the `.git` directory) and limit results to 100.
 - **FR-010**: System MUST provide a `Grep` tool based on ripgrep for powerful text searching. It MUST respect `.gitignore` and common ignore patterns.
 - **FR-011**: All tools MUST integrate with the `PermissionManager` for authorization.
+- **FR-012**: System MUST provide a visual diff display with word-level highlights for line-by-line changes.
 
 ### Key Entities *(include if feature involves data)*
 
