@@ -177,9 +177,11 @@ Usage notes:
       }
 
       const { id: taskId } = backgroundTaskManager.startShell(command, timeout);
+      const task = backgroundTaskManager.getTask(taskId);
+      const outputPath = task?.outputPath;
       return {
         success: true,
-        content: `Command started in background with ID: ${taskId}. Use TaskOutput tool with task_id="${taskId}" to monitor output.`,
+        content: `Command started in background with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ` Use TaskOutput tool with task_id="${taskId}" to monitor output.`}`,
         shortResult: `Background process ${taskId} started`,
       };
     }
@@ -220,9 +222,11 @@ Usage notes:
                 outputBuffer,
                 errorBuffer,
               );
+              const task = backgroundTaskManager.getTask(taskId);
+              const outputPath = task?.outputPath;
               resolve({
                 success: true,
-                content: `Command moved to background with ID: ${taskId}.`,
+                content: `Command moved to background with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
                 shortResult: `Process ${taskId} backgrounded`,
                 isManuallyBackgrounded: true,
               });

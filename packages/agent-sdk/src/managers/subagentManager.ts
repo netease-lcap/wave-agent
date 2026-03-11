@@ -1,4 +1,7 @@
 import { randomUUID } from "crypto";
+import * as os from "os";
+import * as fs from "fs";
+import * as path from "path";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Message, Usage } from "../types/index.js";
 import { AIManager } from "./aiManager.js";
@@ -70,6 +73,7 @@ export interface SubagentInstance {
   backgroundTaskId?: string; // ID of the background task if transitioned
   onUpdate?: () => void; // Optional callback for real-time updates
   model?: string; // Optional model override
+  logStream?: fs.WriteStream; // Optional log stream for background tasks
 }
 
 export interface SubagentManagerOptions {
@@ -274,6 +278,11 @@ export class SubagentManager {
         const taskId = backgroundTaskManager.generateId();
         const startTime = Date.now();
 
+        // Create log file
+        const logPath = path.join(os.tmpdir(), `wave-subagent-${taskId}.log`);
+        const logStream = fs.createWriteStream(logPath, { flags: "a" });
+        instance.logStream = logStream;
+
         backgroundTaskManager.addTask({
           id: taskId,
           type: "subagent",
@@ -282,8 +291,10 @@ export class SubagentManager {
           description: instance.description,
           stdout: "",
           stderr: "",
+          outputPath: logPath,
           subagentId: instance.subagentId,
           onStop: () => {
+            instance.logStream?.end();
             instance.aiManager.abortAIMessage();
             this.cleanupInstance(instance.subagentId);
           },
@@ -345,6 +356,11 @@ export class SubagentManager {
     const taskId = backgroundTaskManager.generateId();
     const startTime = Date.now();
 
+    // Create log file
+    const logPath = path.join(os.tmpdir(), `wave-subagent-${taskId}.log`);
+    const logStream = fs.createWriteStream(logPath, { flags: "a" });
+    instance.logStream = logStream;
+
     backgroundTaskManager.addTask({
       id: taskId,
       type: "subagent",
@@ -353,8 +369,10 @@ export class SubagentManager {
       description: instance.description,
       stdout: "",
       stderr: "",
+      outputPath: logPath,
       subagentId: instance.subagentId,
       onStop: () => {
+        instance.logStream?.end();
         instance.aiManager.abortAIMessage();
         this.cleanupInstance(instance.subagentId);
       },
@@ -446,6 +464,7 @@ export class SubagentManager {
 
       // If this was transitioned to background, update the background task
       if (instance.backgroundTaskId && backgroundTaskManager) {
+        instance.logStream?.end();
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
           task.status = "completed";
@@ -465,6 +484,7 @@ export class SubagentManager {
 
       // If this was transitioned to background, update the background task with error
       if (instance.backgroundTaskId && backgroundTaskManager) {
+        instance.logStream?.end();
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
           task.status = "failed";
@@ -599,6 +619,17 @@ export class SubagentManager {
               instance.lastTools.shift();
             }
             instance.onUpdate?.();
+
+            // Log tool execution to file
+            if (instance.logStream) {
+              const compactParams = (params.parameters || "{}").substring(
+                0,
+                100,
+              );
+              instance.logStream.write(
+                `[${new Date().toISOString()}] Running tool: ${params.name} with params: ${compactParams}${compactParams.length >= 100 ? "..." : ""}\n`,
+              );
+            }
           }
         }
 

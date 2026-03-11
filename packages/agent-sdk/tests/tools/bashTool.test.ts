@@ -116,7 +116,6 @@ describe("bashTool", () => {
       expect(result.content).toMatch(
         /Command started in background with ID: task_\d+/,
       );
-      expect(result.content).toContain("task_id=");
     });
 
     it("should validate command parameter", async () => {
@@ -353,6 +352,7 @@ describe("bashTool", () => {
       };
       const mockBackgroundTaskManager = {
         adoptProcess: vi.fn().mockReturnValue("task_adopted"),
+        getTask: vi.fn().mockReturnValue({ outputPath: "/tmp/test.log" }),
       };
 
       const testContext = {
