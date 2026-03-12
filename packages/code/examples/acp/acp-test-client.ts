@@ -15,8 +15,7 @@ async function runTest() {
     "tsx",
     "--tsconfig",
     "tsconfig.dev.json",
-    "src/index.ts",
-    "--acp",
+    "src/acp-cli.ts",
   ];
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-test-"));
   console.log(`Using temporary directory: ${tmpDir}`);
