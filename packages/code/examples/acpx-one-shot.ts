@@ -1,13 +1,18 @@
 import { execSync } from "node:child_process";
+import os from "node:os";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * One-shot command using acpx and wave --acp
  */
 async function runOneShot() {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "acpx-one-shot-"));
+  console.log(`Using temporary directory: ${tmpDir}`);
   console.log("--- Running acpx one-shot: list files ---");
   try {
     const output = execSync(
-      'acpx --agent "wave --acp" --approve-all exec "list files in the current directory"',
+      `acpx --cwd ${tmpDir} --agent "wave --acp" --approve-all exec "list files in the current directory"`,
       { encoding: "utf8" },
     );
     console.log(output);

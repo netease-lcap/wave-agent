@@ -8,11 +8,16 @@ import {
 } from "@agentclientprotocol/sdk";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
+import fs from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const agentPath = path.resolve(__dirname, "../bin/wave-code.js");
 
 async function runTest() {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-test-"));
+  console.log(`Using temporary directory: ${tmpDir}`);
+
   console.log("Starting agent process...");
   const agentProcess = spawn("node", [agentPath, "--acp"], {
     stdio: ["pipe", "pipe", "inherit"],
@@ -79,7 +84,7 @@ async function runTest() {
     // B. Session Management
     console.log("Creating new session...");
     const { sessionId } = await connection.newSession({
-      cwd: process.cwd(),
+      cwd: tmpDir,
       mcpServers: [],
     });
     console.log("New session ID:", sessionId);
@@ -115,7 +120,7 @@ async function runTest() {
     console.log("Loading session...");
     await connection.loadSession({
       sessionId,
-      cwd: process.cwd(),
+      cwd: tmpDir,
       mcpServers: [],
     });
 

@@ -1,13 +1,18 @@
 import { execSync } from "node:child_process";
+import os from "node:os";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * Simple hello world using acpx and wave --acp
  */
 async function runHello() {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "acpx-hello-"));
+  console.log(`Using temporary directory: ${tmpDir}`);
   console.log("--- Running acpx hello ---");
   try {
     const output = execSync(
-      'acpx --agent "wave --acp" --approve-all exec "hello"',
+      `acpx --cwd ${tmpDir} --agent "wave --acp" --approve-all exec "hello"`,
       { encoding: "utf8" },
     );
     console.log(output);
