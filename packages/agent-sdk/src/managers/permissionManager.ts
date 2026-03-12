@@ -36,6 +36,11 @@ import { ConfigurationService } from "../services/configurationService.js";
 
 const SAFE_COMMANDS = ["cd", "ls", "pwd", "true", "false"];
 
+const FORBIDDEN_COMMAND_MESSAGES: Record<string, string> = {
+  find: "use glob tool instead",
+  sed: "use read or edit tool instead",
+};
+
 const DEFAULT_ALLOWED_RULES = [
   "Bash(git status*)",
   "Bash(git diff*)",
@@ -323,6 +328,32 @@ export class PermissionManager {
   async checkPermission(
     context: ToolPermissionContext,
   ): Promise<PermissionDecision> {
+    // 0. Check for forbidden commands in Bash tool
+    if (context.toolName === BASH_TOOL_NAME && context.toolInput?.command) {
+      const command = String(context.toolInput.command);
+      const parts = splitBashCommand(command);
+
+      for (const part of parts) {
+        let stripped = stripRedirections(stripEnvVars(part));
+
+        // Handle sudo
+        if (stripped.startsWith("sudo ")) {
+          stripped = stripped.substring(5).trim();
+        }
+
+        const tokens = stripped.split(/\s+/);
+        const exe = tokens[0];
+
+        const forbiddenMessage = FORBIDDEN_COMMAND_MESSAGES[exe];
+        if (forbiddenMessage) {
+          return {
+            behavior: "deny",
+            message: forbiddenMessage,
+          };
+        }
+      }
+    }
+
     // 0. Check denied rules first - Deny always takes precedence
     for (const rule of this.deniedRules) {
       if (this.matchesRule(context, rule)) {

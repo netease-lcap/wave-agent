@@ -38,6 +38,7 @@ As a user, when I run a command that is considered dangerous or moves outside th
 - **FR-004**: The system MUST ensure that permissions for these "dangerous" or "out-of-bounds" commands are never persisted to the `permissions.allow` configuration.
 - **FR-005**: The system MUST detect write redirections (`>`, `>>`, `&>`, `2>`, `>|`) in bash commands and treat them as dangerous, hiding the "Don't ask again" option.
 - **FR-006**: The system MUST ensure that bash commands with write redirections are not automatically allowed by default rules (e.g., `Bash(echo*)`).
+- **FR-007**: The system MUST include `find` and `sed` in the list of dangerous commands that should never be permanently authorized, and MUST return a specific denial message suggesting the use of specialized tools (`Glob`, `Grep`, `Read`, `Edit`).
 
 ### Key Entities _(include if feature involves data)_
 
