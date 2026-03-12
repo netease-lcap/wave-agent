@@ -243,8 +243,18 @@ export class SkillManager {
       const entries = await readdir(skillsPath, { withFileTypes: true });
 
       for (const entry of entries) {
+        const fullPath = join(skillsPath, entry.name);
         if (entry.isDirectory()) {
-          directories.push(join(skillsPath, entry.name));
+          directories.push(fullPath);
+        } else if (entry.isSymbolicLink()) {
+          try {
+            const s = await stat(fullPath);
+            if (s.isDirectory()) {
+              directories.push(fullPath);
+            }
+          } catch {
+            // Ignore broken symlinks or other errors
+          }
         }
       }
     } catch {
