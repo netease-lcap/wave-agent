@@ -16,7 +16,9 @@
       "Bash(gh pr view*)",
       "Bash(gh pr checks*)",
       "Bash(gh pr diff*)",
-      "Bash(node packages/code/dist/index.js *)"
+      "Bash(node packages/code/dist/index.js *)",
+      "Bash(wave *)",
+      "Bash(acpx *)"
     ],
     "additionalDirectories": [
       "../wave-plugins-official",
