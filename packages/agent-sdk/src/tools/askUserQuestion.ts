@@ -106,6 +106,15 @@ Plan mode note: In plan mode, use this tool to clarify requirements or choose be
       metadata,
     } = args as unknown as AskUserQuestionInput;
 
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return {
+        success: false,
+        content: "",
+        error:
+          "The 'questions' parameter is missing or empty. Please use the correct schema: { questions: [{ question, header, options, multiSelect? }] }",
+      };
+    }
+
     if (!context.permissionManager) {
       throw new Error(
         `Permission manager is required for ${ASK_USER_QUESTION_TOOL_NAME} tool`,

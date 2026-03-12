@@ -127,4 +127,26 @@ describe("AskUserQuestion Tool", () => {
       },
     });
   });
+
+  it("should return error when questions parameter is missing or empty", async () => {
+    const context = {
+      permissionManager: {},
+    } as unknown as ToolContext;
+
+    const args = {
+      question: "What is your name?",
+      header: "Name",
+      options: [{ label: "Alice" }, { label: "Bob" }],
+    };
+
+    const result = await askUserQuestionTool.execute(
+      args as unknown as Record<string, unknown>,
+      context,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(
+      "The 'questions' parameter is missing or empty. Please use the correct schema: { questions: [{ question, header, options, multiSelect? }] }",
+    );
+  });
 });
