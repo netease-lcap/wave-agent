@@ -1569,4 +1569,28 @@ describe("PermissionManager", () => {
       expect(rules).toEqual(["Bash(echo hi > file.txt)"]);
     });
   });
+
+  describe("Default Allowed Rules", () => {
+    it("should allow 'wc -l *' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "wc -l *" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'wc -l file.txt' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "wc -l file.txt" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+  });
 });
