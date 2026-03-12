@@ -1,4 +1,9 @@
-import { Agent as WaveAgent, AgentOptions } from "wave-agent-sdk";
+import {
+  Agent as WaveAgent,
+  AgentOptions,
+  PermissionDecision,
+  ToolPermissionContext,
+} from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import type {
   Agent as AcpAgent,
@@ -15,6 +20,7 @@ import type {
   SessionId as AcpSessionId,
   ToolCallStatus,
   StopReason,
+  PermissionOption,
 } from "@agentclientprotocol/sdk";
 
 export class WaveAcpAgent implements AcpAgent {
@@ -43,12 +49,25 @@ export class WaveAcpAgent implements AcpAgent {
     // No authentication required for now
   }
 
-  async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
-    const { cwd } = params;
-    logger.info(`Creating new session in ${cwd}`);
+  private async createAgent(
+    sessionId: string | undefined,
+    cwd: string,
+  ): Promise<WaveAgent> {
     const callbacks: AgentOptions["callbacks"] = {};
+    const agentRef: { instance?: WaveAgent } = {};
+
     const agent = await WaveAgent.create({
       workdir: cwd,
+      restoreSessionId: sessionId,
+      canUseTool: (context) => {
+        if (!agentRef.instance) {
+          throw new Error("Agent instance not yet initialized");
+        }
+        return this.handlePermissionRequest(
+          agentRef.instance.sessionId,
+          context,
+        );
+      },
       callbacks: {
         onAssistantContentUpdated: (chunk: string) =>
           callbacks.onAssistantContentUpdated?.(chunk, ""),
@@ -69,50 +88,29 @@ export class WaveAcpAgent implements AcpAgent {
       },
     });
 
-    const sessionId = agent.sessionId;
-    logger.info(`New session created: ${sessionId}`);
-    this.agents.set(sessionId, agent);
+    agentRef.instance = agent;
+    const actualSessionId = agent.sessionId;
+    this.agents.set(actualSessionId, agent);
 
     // Update the callbacks object with the correct sessionId
-    Object.assign(callbacks, this.createCallbacks(sessionId));
+    Object.assign(callbacks, this.createCallbacks(actualSessionId));
 
+    return agent;
+  }
+
+  async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
+    const { cwd } = params;
+    logger.info(`Creating new session in ${cwd}`);
+    const agent = await this.createAgent(undefined, cwd);
     return {
-      sessionId: sessionId as AcpSessionId,
+      sessionId: agent.sessionId as AcpSessionId,
     };
   }
 
   async loadSession(params: LoadSessionRequest): Promise<LoadSessionResponse> {
-    const { sessionId } = params;
-    logger.info(`Loading session: ${sessionId}`);
-    const callbacks: AgentOptions["callbacks"] = {};
-    const agent = await WaveAgent.create({
-      restoreSessionId: sessionId,
-      callbacks: {
-        onAssistantContentUpdated: (chunk: string) =>
-          callbacks.onAssistantContentUpdated?.(chunk, ""),
-        onAssistantReasoningUpdated: (chunk: string) =>
-          callbacks.onAssistantReasoningUpdated?.(chunk, ""),
-        onToolBlockUpdated: (params: unknown) => {
-          const cb = callbacks.onToolBlockUpdated as
-            | ((params: unknown) => void)
-            | undefined;
-          cb?.(params);
-        },
-        onTasksChange: (tasks: unknown[]) => {
-          const cb = callbacks.onTasksChange as
-            | ((tasks: unknown[]) => void)
-            | undefined;
-          cb?.(tasks);
-        },
-      },
-    });
-
-    this.agents.set(sessionId, agent);
-    logger.info(`Session loaded: ${sessionId}`);
-
-    // Update the callbacks object with the correct sessionId
-    Object.assign(callbacks, this.createCallbacks(sessionId));
-
+    const { sessionId, cwd } = params;
+    logger.info(`Loading session: ${sessionId} in ${cwd}`);
+    await this.createAgent(sessionId, cwd);
     return {};
   }
 
@@ -177,6 +175,84 @@ export class WaveAcpAgent implements AcpAgent {
     const agent = this.agents.get(sessionId);
     if (agent) {
       agent.abortMessage();
+    }
+  }
+
+  private async handlePermissionRequest(
+    sessionId: string,
+    context: ToolPermissionContext,
+  ): Promise<PermissionDecision> {
+    logger.info(
+      `Handling permission request for ${context.toolName} in session ${sessionId}`,
+    );
+
+    const options: PermissionOption[] = [
+      {
+        optionId: "allow_once",
+        name: "Allow Once",
+        kind: "allow_once",
+      },
+      {
+        optionId: "allow_always",
+        name: "Allow Always",
+        kind: "allow_always",
+      },
+      {
+        optionId: "reject_once",
+        name: "Reject Once",
+        kind: "reject_once",
+      },
+      {
+        optionId: "reject_always",
+        name: "Reject Always",
+        kind: "reject_always",
+      },
+    ];
+
+    try {
+      const response = await this.connection.requestPermission({
+        sessionId: sessionId as AcpSessionId,
+        toolCall: {
+          toolCallId: "perm-" + Math.random().toString(36).substring(2, 9),
+          title: `Permission for ${context.toolName}`,
+          status: "pending",
+          rawInput: context.toolInput,
+        },
+        options,
+      });
+
+      if (response.outcome.outcome === "cancelled") {
+        return { behavior: "deny", message: "Cancelled by user" };
+      }
+
+      const selectedOptionId = response.outcome.optionId;
+      logger.info(`User selected permission option: ${selectedOptionId}`);
+
+      switch (selectedOptionId) {
+        case "allow_once":
+          return { behavior: "allow" };
+        case "allow_always":
+          return {
+            behavior: "allow",
+            newPermissionRule: `${context.toolName}(*)`,
+          };
+        case "reject_once":
+          return { behavior: "deny", message: "Rejected by user" };
+        case "reject_always":
+          return {
+            behavior: "deny",
+            message: "Rejected by user",
+            newPermissionRule: `!${context.toolName}(*)`,
+          };
+        default:
+          return { behavior: "deny", message: "Unknown option selected" };
+      }
+    } catch (error) {
+      logger.error("Error requesting permission via ACP:", error);
+      return {
+        behavior: "deny",
+        message: `Error requesting permission: ${error instanceof Error ? error.message : String(error)}`,
+      };
     }
   }
 
