@@ -69,6 +69,7 @@ const DEFAULT_ALLOWED_RULES = [
   "Bash(whoami*)",
   "Bash(date*)",
   "Bash(uptime*)",
+  "Bash(wc -l*)",
 ];
 
 import { logger } from "../utils/globalLogger.js";

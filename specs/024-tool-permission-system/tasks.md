@@ -37,3 +37,6 @@
 - [x] T022 Comprehensive unit tests for all matching logic.
 - [x] T023 Integration tests for Agent permission flows.
 - [x] T024 Documentation and Quickstart updates.
+
+## Phase 7: Additional Built-in Rules
+- [x] T025 Add `wc -l *` to the built-in allow permission rules.
