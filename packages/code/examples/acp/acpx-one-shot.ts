@@ -7,12 +7,13 @@ import path from "node:path";
  * One-shot command using acpx and wave --acp
  */
 async function runOneShot() {
+  const agentCommand = "tsx --tsconfig tsconfig.dev.json src/index.ts --acp";
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "acpx-one-shot-"));
   console.log(`Using temporary directory: ${tmpDir}`);
   console.log("--- Running acpx one-shot: list files ---");
   try {
     const output = execSync(
-      `acpx --cwd ${tmpDir} --agent "wave --acp" --approve-all exec "list files in the current directory"`,
+      `acpx --cwd ${tmpDir} --agent "${agentCommand}" --approve-all exec "list files in the current directory"`,
       { encoding: "utf8" },
     );
     console.log(output);

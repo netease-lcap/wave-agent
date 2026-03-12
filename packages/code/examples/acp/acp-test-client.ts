@@ -7,19 +7,22 @@ import {
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import os from "node:os";
 import fs from "node:fs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const agentPath = path.resolve(__dirname, "../bin/wave-code.js");
-
 async function runTest() {
+  const agentCommand = [
+    "tsx",
+    "--tsconfig",
+    "tsconfig.dev.json",
+    "src/index.ts",
+    "--acp",
+  ];
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-test-"));
   console.log(`Using temporary directory: ${tmpDir}`);
 
   console.log("Starting agent process...");
-  const agentProcess = spawn("node", [agentPath, "--acp"], {
+  const agentProcess = spawn(agentCommand[0], [...agentCommand.slice(1)], {
     stdio: ["pipe", "pipe", "inherit"],
     env: { ...process.env, NODE_ENV: "integration-test" },
   });
