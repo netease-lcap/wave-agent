@@ -40,3 +40,11 @@
 ## Decision: Sequential Confirmation Architecture
 **What was chosen**: Queue-based approach for handling multiple tool calls that require sequential confirmation prompts.
 **Why chosen**: Provides clear state management and maintains user control for each individual tool call.
+
+## Decision: Split Chained Commands on Save
+**What was chosen**: When a user selects "Don't ask again" for a chained command, the system splits it into individual simple commands and saves only the non-safe ones to `permissions.allow`.
+**Why chosen**: Ensures that users don't clutter their permissions list with safe commands while still getting the benefit of auto-allowing the dangerous parts of a chain.
+
+## Decision: Hide Persistent Option for Dangerous Commands
+**What was chosen**: Commands that are dangerous, out-of-bounds, or contain write redirections will have the "Don't ask again" option hidden in the confirmation dialog.
+**Why chosen**: Prevents accidental permanent authorization of risky operations and encourages the use of specialized tools for file writes.

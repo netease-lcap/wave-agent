@@ -13,6 +13,8 @@ Comprehensive tool permission system for Wave, featuring:
 - **Deny Rules**: Explicit `permissions.deny` support with precedence over allow rules.
 - **Path-based Rules**: Fine-grained access control for file system tools (Read, Write, etc.).
 - **Built-in Safety**: Automatic permission for safe commands (cd, ls, pwd) within the CWD.
+- **Split Chained Commands**: Splitting chained commands on "Don't ask again" and saving only non-safe parts.
+- **Bash Confirmation Safety**: Hiding "Don't ask again" for dangerous, out-of-bounds, or write-redirection commands.
 
 ## Technical Context
 
