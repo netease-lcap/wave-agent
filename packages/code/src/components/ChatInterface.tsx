@@ -72,7 +72,7 @@ export const ChatInterface: React.FC = () => {
 
     const terminalHeight = stdout?.rows || 24;
     const totalHeight = detailsHeight + selectorHeight + dynamicBlocksHeight;
-    if (totalHeight > terminalHeight) {
+    if (totalHeight > terminalHeight - 3) {
       setIsConfirmationTooTall(true);
     }
   }, [
