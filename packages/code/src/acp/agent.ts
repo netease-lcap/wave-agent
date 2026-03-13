@@ -277,7 +277,7 @@ export class WaveAcpAgent implements AcpAgent {
           toolCallId: "perm-" + Math.random().toString(36).substring(2, 9),
           title: `Permission for ${context.toolName}`,
           status: "pending",
-          rawInput: context.toolInput,
+          rawInput: JSON.stringify(context.toolInput),
         },
         options,
       });
