@@ -5,22 +5,26 @@ import {
   ToolPermissionContext,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
-import type {
-  Agent as AcpAgent,
-  AgentSideConnection,
-  InitializeResponse,
-  NewSessionRequest,
-  NewSessionResponse,
-  LoadSessionRequest,
-  LoadSessionResponse,
-  PromptRequest,
-  PromptResponse,
-  CancelNotification,
-  AuthenticateResponse,
-  SessionId as AcpSessionId,
-  ToolCallStatus,
-  StopReason,
-  PermissionOption,
+import {
+  type Agent as AcpAgent,
+  type AgentSideConnection,
+  type InitializeResponse,
+  type NewSessionRequest,
+  type NewSessionResponse,
+  type LoadSessionRequest,
+  type LoadSessionResponse,
+  type ListSessionsRequest,
+  type ListSessionsResponse,
+  type PromptRequest,
+  type PromptResponse,
+  type CancelNotification,
+  type AuthenticateResponse,
+  type SessionId as AcpSessionId,
+  type ToolCallStatus,
+  type StopReason,
+  type PermissionOption,
+  type SessionInfo,
+  AGENT_METHODS,
 } from "@agentclientprotocol/sdk";
 
 export class WaveAcpAgent implements AcpAgent {
@@ -29,6 +33,16 @@ export class WaveAcpAgent implements AcpAgent {
 
   constructor(connection: AgentSideConnection) {
     this.connection = connection;
+    this.connection.closed.then(() => this.cleanupAllAgents());
+  }
+
+  private async cleanupAllAgents() {
+    logger.info("Cleaning up all active agents due to connection closure");
+    const destroyPromises = Array.from(this.agents.values()).map((agent) =>
+      agent.destroy(),
+    );
+    await Promise.all(destroyPromises);
+    this.agents.clear();
   }
 
   async initialize(): Promise<InitializeResponse> {
@@ -41,6 +55,10 @@ export class WaveAcpAgent implements AcpAgent {
       },
       agentCapabilities: {
         loadSession: true,
+        sessionCapabilities: {
+          list: {},
+          stop: {},
+        },
       },
     };
   }
@@ -112,6 +130,49 @@ export class WaveAcpAgent implements AcpAgent {
     logger.info(`Loading session: ${sessionId} in ${cwd}`);
     await this.createAgent(sessionId, cwd);
     return {};
+  }
+
+  async unstable_listSessions(
+    params: ListSessionsRequest,
+  ): Promise<ListSessionsResponse> {
+    void params;
+    logger.info("Listing active sessions");
+    const sessions: SessionInfo[] = Array.from(this.agents.values()).map(
+      (agent) => {
+        const lastMessage = agent.messages[agent.messages.length - 1] as
+          | { timestamp?: string }
+          | undefined;
+        const updatedAt = lastMessage?.timestamp
+          ? new Date(lastMessage.timestamp).toISOString()
+          : new Date().toISOString();
+
+        return {
+          sessionId: agent.sessionId as AcpSessionId,
+          cwd: agent.workingDirectory,
+          updatedAt,
+        };
+      },
+    );
+    return {
+      sessions,
+    };
+  }
+
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    if (method === AGENT_METHODS.session_stop) {
+      const sessionId = params.sessionId as string;
+      logger.info(`Stopping session ${sessionId}`);
+      const agent = this.agents.get(sessionId);
+      if (agent) {
+        await agent.destroy();
+        this.agents.delete(sessionId);
+      }
+      return {};
+    }
+    throw new Error(`Method ${method} not implemented`);
   }
 
   async prompt(params: PromptRequest): Promise<PromptResponse> {
