@@ -154,6 +154,7 @@ describe("WaveAcpAgent", () => {
 
     // Re-instantiate to use the new closed promise
     agent = new WaveAcpAgent(mockConnection as unknown as AgentSideConnection);
+    await agent.initialize();
 
     const mockWaveAgent = {
       sessionId: "session-1",
