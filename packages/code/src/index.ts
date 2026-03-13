@@ -1,7 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import { Scope, generateRandomName } from "wave-agent-sdk";
+import { Scope, generateRandomName, PermissionMode } from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
 import { readFileSync } from "fs";
@@ -56,7 +56,7 @@ export async function main() {
       .option("permission-mode", {
         description: "Set permission mode",
         type: "string",
-        choices: ["bypassPermissions"],
+        choices: ["default", "bypassPermissions", "acceptEdits", "plan"],
         global: false,
       })
       .option("plugin-dir", {
@@ -228,6 +228,10 @@ export async function main() {
 
     const tools = parseTools(argv.tools as string | undefined);
 
+    const permissionMode =
+      (argv.permissionMode as PermissionMode | undefined) ||
+      (argv.dangerouslySkipPermissions ? "bypassPermissions" : undefined);
+
     const bypassPermissions =
       (argv.dangerouslySkipPermissions as boolean) ||
       argv.permissionMode === "bypassPermissions";
@@ -274,6 +278,7 @@ export async function main() {
       return startCli({
         restoreSessionId: selectedSessionId,
         bypassPermissions,
+        permissionMode,
         pluginDirs,
         tools,
         worktreeSession,
@@ -292,6 +297,7 @@ export async function main() {
         message: argv.print,
         showStats: argv.showStats as boolean | undefined,
         bypassPermissions,
+        permissionMode,
         pluginDirs,
         tools,
         worktreeSession,
@@ -305,6 +311,7 @@ export async function main() {
       restoreSessionId: argv.restore as string | undefined,
       continueLastSession: argv.continue as boolean | undefined,
       bypassPermissions,
+      permissionMode,
       pluginDirs,
       tools,
       worktreeSession,

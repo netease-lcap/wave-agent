@@ -38,6 +38,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     message,
     showStats = false,
     bypassPermissions,
+    permissionMode,
     pluginDirs,
     tools,
     worktreeSession,
@@ -144,7 +145,8 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       callbacks,
       restoreSessionId,
       continueLastSession,
-      permissionMode: bypassPermissions ? "bypassPermissions" : undefined,
+      permissionMode:
+        permissionMode || (bypassPermissions ? "bypassPermissions" : undefined),
       plugins: pluginDirs?.map((path) => ({ type: "local", path })),
       tools,
       workdir,

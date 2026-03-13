@@ -15,6 +15,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     restoreSessionId,
     continueLastSession,
     bypassPermissions,
+    permissionMode,
     pluginDirs,
     tools,
     worktreeSession,
@@ -37,6 +38,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       restoreSessionId={restoreSessionId}
       continueLastSession={continueLastSession}
       bypassPermissions={bypassPermissions}
+      permissionMode={permissionMode}
       pluginDirs={pluginDirs}
       tools={tools}
       worktreeSession={worktreeSession}

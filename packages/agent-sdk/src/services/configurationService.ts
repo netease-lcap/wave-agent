@@ -465,8 +465,43 @@ export class ConfigurationService {
       model: resolvedAgentModel,
       fastModel: resolvedFastModel,
       maxTokens: resolvedMaxTokens,
-      permissionMode: permissionMode ?? this.options.permissionMode,
+      permissionMode: permissionMode ?? this.resolveDefaultPermissionMode(),
     };
+  }
+
+  /**
+   * Resolves default permission mode with fallbacks
+   * Resolution priority: override > options > settings.json > default
+   * @param constructorMode - Permission mode override (optional)
+   * @returns Resolved permission mode
+   */
+  resolveDefaultPermissionMode(
+    constructorMode?: PermissionMode,
+  ): PermissionMode {
+    // 1. Override (highest priority)
+    if (constructorMode !== undefined) {
+      return constructorMode;
+    }
+
+    // 2. Agent options
+    if (this.options.permissionMode !== undefined) {
+      return this.options.permissionMode;
+    }
+
+    // 3. settings.json (merged)
+    if (this.currentConfiguration?.permissions?.defaultMode) {
+      return this.currentConfiguration.permissions.defaultMode;
+    }
+
+    return "default";
+  }
+
+  /**
+   * Resolves additional directories for Safe Zone
+   * @returns Array of additional directory paths
+   */
+  resolveAdditionalDirectories(): string[] {
+    return this.currentConfiguration?.permissions?.additionalDirectories || [];
   }
 
   /**

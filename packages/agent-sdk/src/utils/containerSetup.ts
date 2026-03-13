@@ -130,7 +130,11 @@ export function setupAgentContainer(
   const lspManager = options.lspManager || new LspManager(container);
   container.register("LspManager", lspManager);
 
-  const permissionManager = new PermissionManager(container, { workdir });
+  const permissionManager = new PermissionManager(container, {
+    workdir,
+    configuredDefaultMode: configurationService.resolveDefaultPermissionMode(),
+    additionalDirectories: configurationService.resolveAdditionalDirectories(),
+  });
   if (configurationService.resolveAutoMemoryEnabled()) {
     const autoMemoryDir = memoryService.getAutoMemoryDirectory(workdir);
     permissionManager.addSystemAdditionalDirectory(autoMemoryDir);
