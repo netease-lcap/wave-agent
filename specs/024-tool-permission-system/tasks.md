@@ -40,3 +40,15 @@
 
 ## Phase 7: Additional Built-in Rules
 - [x] T025 Add `wc -l *` to the built-in allow permission rules.
+
+## Phase 8: Split Chained Commands (from 036)
+- [x] T026 Implement `expandBashRule` in `PermissionManager` to split commands and filter safe ones.
+- [x] T027 Update `addPermissionRule` in `Agent` to use `expandBashRule`.
+- [x] T028 Add unit and integration tests for command splitting and filtering.
+
+## Phase 9: Bash Confirmation Safety (from 038)
+- [x] T029 Add `hidePersistentOption` to `ToolPermissionContext`.
+- [x] T030 Extract `DANGEROUS_COMMANDS` blacklist and implement `hasWriteRedirections`.
+- [x] T031 Implement detection logic in `PermissionManager.createContext` to set `hidePersistentOption` for dangerous/out-of-bounds commands.
+- [x] T032 Update `Confirmation` component to hide "Don't ask again" when `hidePersistentOption` is true.
+- [x] T033 Update `PermissionManager.isAllowedByRule` to skip default rules for commands with write redirections.

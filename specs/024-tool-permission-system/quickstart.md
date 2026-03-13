@@ -53,6 +53,17 @@ When Wave prompts for a bash command (e.g., `npm install lodash`), you can selec
 
 This will save a wildcard pattern to your settings, allowing future similar commands (like `npm install express`) to execute without prompting.
 
+### Chained Commands
+When you select "Don't ask again" for a chained command (e.g., `mkdir test && cd test`), Wave will split the chain and only save the non-safe parts (e.g., `Bash(mkdir test)`) to your allowed permissions list.
+
+## Dangerous Command Safety
+For security reasons, some commands will NOT show the "Don't ask again" option:
+- **Dangerous Commands**: `rm`, `sudo`, `chmod`, `chown`, `mv`, `find`, `sed`.
+- **Out-of-bounds Access**: Any command attempting to access paths outside the project root (e.g., `cd ..`, `ls /etc`).
+- **Write Redirections**: Commands containing write redirections (e.g., `echo hi > file.txt`).
+
+These operations must be authorized on a case-by-case basis.
+
 ## Secure Pipeline Validation
 Wave automatically decomposes complex bash commands (using `&&`, `|`, `;`, etc.) and validates every individual command against your permission rules. If any part of the pipeline is not permitted, the entire command will require manual approval.
 

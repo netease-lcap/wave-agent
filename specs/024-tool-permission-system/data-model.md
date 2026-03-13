@@ -28,6 +28,7 @@
 **Fields**:
 - `behavior`: "allow" | "deny"
 - `message?`: `string` (Required when behavior is "deny")
+- `hidePersistentOption?`: `boolean` (When true, "Don't ask again" is hidden in UI)
 
 ### ConfirmationState
 **Description**: UI state for the permission confirmation dialog.
@@ -70,3 +71,5 @@ PermissionManager.checkPermission(context)
 3. **Pipeline Decomposition**: Complex bash commands are split into `SimpleCommand` entities before matching.
 4. **Smart Wildcard**: Heuristic-based pattern generation for common commands (e.g., `npm install *`).
 5. **Path Restrictions**: Built-in safe commands (`cd`, `ls`, `pwd`) are restricted to the CWD and its subdirectories.
+d command, it is split into simple commands, and only non-safe ones are saved.
+7. **Dangerous Command Safety**: Commands that are dangerous (e.g., `rm`, `sudo`), out-of-bounds, or contain write redirections will have `hidePersistentOption` set to true.

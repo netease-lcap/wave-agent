@@ -84,17 +84,22 @@ As a user, I want common safe commands (like `cd`) to be automatically permitted
 - **FR-004**: Confirmation component MUST support "Yes", "Yes, and don't ask again", and alternative instructions via text input.
 - **FR-005**: System MUST support a `canUseTool` callback in the Agent SDK for custom permission logic.
 - **FR-006**: System MUST support cycling through permission modes (default -> acceptEdits -> plan) via `Shift+Tab`.
+- **FR-021**: System MUST hide the "Don't ask again" option for commands identified as dangerous or out-of-bounds.
+- **FR-022**: System MUST detect write redirections (`>`, `>>`, etc.) in bash commands and treat them as dangerous, hiding the "Don't ask again" option.
 
 #### Matching Logic & Wildcards
 - **FR-007**: System MUST support exact string matching and `*` wildcard matching for rules in `permissions.allow` and `permissions.deny`.
 - **FR-008**: Wildcards (`*`) MUST be supported at any position in the pattern.
 - **FR-009**: System MUST implement a "smart wildcard" heuristic to suggest patterns for bash commands (e.g., `npm install *`).
 - **FR-010**: System MUST NOT allow wildcard matching for highly sensitive commands (e.g., `rm`, `sudo`, `chmod`). These always require exact matches or manual approval.
+- **FR-023**: System MUST split chained commands into individual simple commands when the user selects "Don't ask again".
+- **FR-024**: System MUST NOT save builtin safe commands to the `permissions.allow` array when splitting a chain.
 
 #### Secure Pipeline Validation
 - **FR-011**: System MUST parse complex bash commands and identify all individual "simple commands" joined by operators (`&&`, `||`, `;`, `|`).
 - **FR-012**: A complex command MUST be automatically permitted ONLY IF every constituent simple command matches a permitted rule.
 - **FR-013**: System MUST strip inline environment variable assignments (e.g., `VAR=val cmd`) before matching.
+- **FR-025**: System MUST ensure that bash commands with write redirections are not automatically allowed by default rules (e.g., `Bash(echo*)`).
 
 #### Deny Rules & Path-based Permissions
 - **FR-014**: System MUST support a `permissions.deny` field in settings.
@@ -110,6 +115,17 @@ As a user, I want common safe commands (like `cd`) to be automatically permitted
 ## Key Entities
 
 - **Permission Mode**: Configuration determining the level of user intervention required.
+- **Permission Rule**: A string defining a permitted or denied action (e.g., `Bash(git *)`, `Read(**/*.env)`).
+- **Simple Command**: A single executable command with its arguments, extracted from a pipeline.
+- **Smart Wildcard**: A heuristic-generated pattern that replaces dynamic arguments with `*`.
+
+## Edge Cases
+
+- **Nested Operators**: Pipelines like `cmd1 && (cmd2 | cmd3)` must be recursively decomposed.
+- **Precedence**: Deny rules always win over allow rules.
+- **Sensitive Commands**: Commands like `rm` are blacklisted from smart wildcard suggestions to prevent accidental broad permissions.
+- **Escaped Characters**: `echo "&&"` must be treated as a single command, not split.
+uration determining the level of user intervention required.
 - **Permission Rule**: A string defining a permitted or denied action (e.g., `Bash(git *)`, `Read(**/*.env)`).
 - **Simple Command**: A single executable command with its arguments, extracted from a pipeline.
 - **Smart Wildcard**: A heuristic-generated pattern that replaces dynamic arguments with `*`.
