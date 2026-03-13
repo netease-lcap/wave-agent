@@ -161,6 +161,24 @@ describe("bashParser", () => {
     it("should detect write redirections on subshells", () => {
       expect(hasWriteRedirections("(echo hi) > file")).toBe(true);
     });
+
+    it("should ignore redirections to /dev/null", () => {
+      expect(hasWriteRedirections("ls > /dev/null")).toBe(false);
+      expect(hasWriteRedirections("ls 2> /dev/null")).toBe(false);
+      expect(hasWriteRedirections("ls >> /dev/null")).toBe(false);
+      expect(hasWriteRedirections("ls &> /dev/null")).toBe(false);
+      expect(hasWriteRedirections("ls >| /dev/null")).toBe(false);
+      expect(hasWriteRedirections("ls >/dev/null")).toBe(false);
+      expect(hasWriteRedirections("ls 2>/dev/null")).toBe(false);
+      expect(hasWriteRedirections('ls > "/dev/null"')).toBe(false);
+      expect(hasWriteRedirections("ls > '/dev/null'")).toBe(false);
+    });
+
+    it("should still detect other write redirections when /dev/null is present", () => {
+      expect(hasWriteRedirections("ls > /dev/null > file")).toBe(true);
+      expect(hasWriteRedirections("ls > file 2> /dev/null")).toBe(true);
+      expect(hasWriteRedirections("ls > /dev/null 2>&1")).toBe(true); // 2>&1 is still considered a write redirection
+    });
   });
 
   describe("getSmartPrefix", () => {

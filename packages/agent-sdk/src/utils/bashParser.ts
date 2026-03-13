@@ -327,6 +327,60 @@ export function hasWriteRedirections(command: string): boolean {
     }
 
     if (char === ">") {
+      // Check if this is a redirection to /dev/null
+      let j = i + 1;
+      // Handle >> or >|
+      if (j < command.length && (command[j] === ">" || command[j] === "|")) {
+        j++;
+      }
+
+      // Skip whitespace after operator
+      while (j < command.length && /\s/.test(command[j])) {
+        j++;
+      }
+
+      // Extract the target word, handling quotes and escapes
+      let target = "";
+      let targetEscaped = false;
+      let targetInSingleQuote = false;
+      let targetInDoubleQuote = false;
+      let k = j;
+      while (k < command.length) {
+        const c = command[k];
+        if (targetEscaped) {
+          targetEscaped = false;
+          target += c;
+          k++;
+          continue;
+        }
+        if (c === "\\") {
+          targetEscaped = true;
+          k++;
+          continue;
+        }
+        if (c === "'" && !targetInDoubleQuote) {
+          targetInSingleQuote = !targetInSingleQuote;
+          k++;
+          continue;
+        }
+        if (c === '"' && !targetInSingleQuote) {
+          targetInDoubleQuote = !targetInDoubleQuote;
+          k++;
+          continue;
+        }
+        if (!targetInSingleQuote && !targetInDoubleQuote && /\s/.test(c)) {
+          break;
+        }
+        target += c;
+        k++;
+      }
+
+      // If the target is exactly /dev/null, we ignore this redirection
+      if (target === "/dev/null") {
+        i = k - 1; // Move the main loop index to the end of the target
+        continue;
+      }
+
       return true;
     }
   }
