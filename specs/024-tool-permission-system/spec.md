@@ -110,7 +110,6 @@ As a user, I want common safe commands (like `cd`) to be automatically permitted
 #### Built-in Safe Commands
 - **FR-018**: System MUST maintain a built-in list of safe commands (`cd`, `ls`, `pwd`) that are permitted if they operate within the CWD or its subdirectories.
 - **FR-019**: Built-in safe commands attempting to access paths outside the CWD (e.g., `cd ..`, `ls /etc`) MUST require explicit permission.
-- **FR-020**: System MUST NOT allow the use of `find` and `sed` commands in the `Bash` tool, and MUST return a specific denial message suggesting the use of specialized tools (`Glob`, `Grep`, `Read`, `Edit`).
 
 ## Key Entities
 

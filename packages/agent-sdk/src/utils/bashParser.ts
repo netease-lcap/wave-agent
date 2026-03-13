@@ -405,8 +405,6 @@ export const DANGEROUS_COMMANDS = [
   "apt-get",
   "yum",
   "dnf",
-  "find",
-  "sed",
 ];
 
 /**
