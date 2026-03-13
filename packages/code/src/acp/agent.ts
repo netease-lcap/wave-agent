@@ -33,7 +33,6 @@ export class WaveAcpAgent implements AcpAgent {
 
   constructor(connection: AgentSideConnection) {
     this.connection = connection;
-    this.connection.closed.then(() => this.cleanupAllAgents());
   }
 
   private async cleanupAllAgents() {
@@ -47,6 +46,8 @@ export class WaveAcpAgent implements AcpAgent {
 
   async initialize(): Promise<InitializeResponse> {
     logger.info("Initializing WaveAcpAgent");
+    // Setup cleanup on connection closure
+    this.connection.closed.then(() => this.cleanupAllAgents());
     return {
       protocolVersion: 1,
       agentInfo: {
