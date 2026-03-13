@@ -230,6 +230,47 @@ describe("main", () => {
     });
   });
 
+  it("should handle --permission-mode bypassPermissions argument", async () => {
+    process.argv = [
+      "node",
+      "index.js",
+      "--permission-mode",
+      "bypassPermissions",
+    ];
+    await main();
+    expect(cli.startCli).toHaveBeenCalledWith({
+      restoreSessionId: undefined,
+      continueLastSession: undefined,
+      bypassPermissions: true,
+      pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
+      version: expect.any(String),
+    });
+  });
+
+  it("should handle both --dangerously-skip-permissions and --permission-mode bypassPermissions", async () => {
+    process.argv = [
+      "node",
+      "index.js",
+      "--dangerously-skip-permissions",
+      "--permission-mode",
+      "bypassPermissions",
+    ];
+    await main();
+    expect(cli.startCli).toHaveBeenCalledWith({
+      restoreSessionId: undefined,
+      continueLastSession: undefined,
+      bypassPermissions: true,
+      pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
+      version: expect.any(String),
+    });
+  });
+
   it("should handle --plugin-dir argument", async () => {
     process.argv = ["node", "index.js", "--plugin-dir", "/tmp/plugins"];
     await main();

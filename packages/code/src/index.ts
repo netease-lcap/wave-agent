@@ -53,6 +53,12 @@ export async function main() {
         default: false,
         global: false,
       })
+      .option("permission-mode", {
+        description: "Set permission mode",
+        type: "string",
+        choices: ["bypassPermissions"],
+        global: false,
+      })
       .option("plugin-dir", {
         description: "Load a plugin from a specific directory",
         type: "array",
@@ -222,6 +228,10 @@ export async function main() {
 
     const tools = parseTools(argv.tools as string | undefined);
 
+    const bypassPermissions =
+      (argv.dangerouslySkipPermissions as boolean) ||
+      argv.permissionMode === "bypassPermissions";
+
     // Resolve plugin directories to absolute paths before any worktree logic
     const pluginDirs = (argv.pluginDir as string[] | undefined)?.map((dir) =>
       path.resolve(originalCwd, dir),
@@ -263,7 +273,7 @@ export async function main() {
       // Continue with the selected session
       return startCli({
         restoreSessionId: selectedSessionId,
-        bypassPermissions: argv.dangerouslySkipPermissions,
+        bypassPermissions,
         pluginDirs,
         tools,
         worktreeSession,
@@ -281,9 +291,7 @@ export async function main() {
         continueLastSession: argv.continue as boolean | undefined,
         message: argv.print,
         showStats: argv.showStats as boolean | undefined,
-        bypassPermissions: argv.dangerouslySkipPermissions as
-          | boolean
-          | undefined,
+        bypassPermissions,
         pluginDirs,
         tools,
         worktreeSession,
@@ -296,7 +304,7 @@ export async function main() {
     await startCli({
       restoreSessionId: argv.restore as string | undefined,
       continueLastSession: argv.continue as boolean | undefined,
-      bypassPermissions: argv.dangerouslySkipPermissions as boolean | undefined,
+      bypassPermissions,
       pluginDirs,
       tools,
       worktreeSession,
