@@ -61,7 +61,6 @@ As an AI agent, I want to run long-running commands in the background and retrie
 - **FR-010**: The system MUST maintain environment variables across sequential `Bash` calls (persistent session behavior).
 - **FR-011**: When `run_in_background` is true, the system MUST return an `outputPath` to a real-time log file.
 - **FR-012**: The system MUST pipe `stdout` and `stderr` to the `outputPath` log file in real-time.
-- **FR-013**: The system MUST NOT allow the use of `find` and `sed` commands in the `Bash` tool, and MUST return a specific denial message suggesting the use of specialized tools (`Glob`, `Grep`, `Read`, `Edit`).
 
 ### Key Entities *(include if feature involves data)*
 
