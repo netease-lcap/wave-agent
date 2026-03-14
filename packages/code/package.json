@@ -20,8 +20,7 @@
   "type": "module",
   "bin": {
     "wave-code": "bin/wave-code.js",
-    "wave": "bin/wave-code.js",
-    "wave-acp": "bin/wave-acp.js"
+    "wave": "bin/wave-code.js"
   },
   "files": [
     "dist",
@@ -31,7 +30,6 @@
   ],
   "scripts": {
     "wave": "tsx --tsconfig tsconfig.dev.json src/index.ts",
-    "wave-acp": "tsx --tsconfig tsconfig.dev.json src/acp-cli.ts",
     "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "type-check": "tsc --noEmit --incremental",
     "watch": "tsc -p tsconfig.build.json --watch & tsc-alias -p tsconfig.build.json --watch",
