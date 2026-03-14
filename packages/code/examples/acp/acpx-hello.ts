@@ -7,7 +7,7 @@ import path from "node:path";
  * Simple hello world using acpx and wave --acp
  */
 async function runHello() {
-  const agentCommand = "tsx --tsconfig tsconfig.dev.json src/index.ts --acp";
+  const agentCommand = `tsx --tsconfig ${path.join(process.cwd(), "tsconfig.dev.json")} ${path.join(process.cwd(), "src/index.ts")} --acp`;
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "acpx-hello-"));
   console.log(`Using temporary directory: ${tmpDir}`);
   console.log("--- Running acpx hello ---");

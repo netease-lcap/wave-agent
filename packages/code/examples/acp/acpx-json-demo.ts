@@ -7,7 +7,7 @@ import path from "node:path";
  * Example of getting JSON output from acpx to interact with wave --acp
  */
 async function runAcpxJsonExample() {
-  const agentCommand = "tsx --tsconfig tsconfig.dev.json src/index.ts --acp";
+  const agentCommand = `tsx --tsconfig ${path.join(process.cwd(), "tsconfig.dev.json")} ${path.join(process.cwd(), "src/index.ts")} --acp`;
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "acpx-json-"));
   console.log(`Using temporary directory: ${tmpDir}`);
   console.log("--- Running acpx with JSON output ---");
