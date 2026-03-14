@@ -16,7 +16,8 @@ async function runSessionLifecycleExample() {
     "tsx",
     "--tsconfig",
     "tsconfig.dev.json",
-    "src/acp-cli.ts",
+    "src/index.ts",
+    "--acp",
   ];
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-lifecycle-"));
   console.log(`Using temporary directory: ${tmpDir}`);
