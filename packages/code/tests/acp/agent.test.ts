@@ -1075,4 +1075,138 @@ describe("WaveAcpAgent", () => {
       "Method unknown not implemented",
     );
   });
+
+  it("should format tool call title with compactParams", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    // Test with compactParams
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      name: "Read",
+      stage: "start",
+      compactParams: "package.json",
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "1",
+          title: "Read: package.json",
+        }),
+      }),
+    );
+
+    // Test update with compactParams
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      name: "Read",
+      stage: "end",
+      success: true,
+      compactParams: "package.json",
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "1",
+          title: "Read: package.json",
+        }),
+      }),
+    );
+
+    // Test fallback when compactParams is missing
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "2",
+      name: "Read",
+      stage: "start",
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "2",
+          title: "Read",
+        }),
+      }),
+    );
+  });
+
+  it("should remember tool name and compactParams across updates", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    // 1. Start with name only
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      name: "Read",
+      stage: "start",
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          title: "Read",
+        }),
+      }),
+    );
+
+    // 2. Update with compactParams in running stage
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      stage: "running",
+      compactParams: "file.txt",
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call_update",
+          title: "Read: file.txt",
+        }),
+      }),
+    );
+
+    // 3. Update in end stage with missing name and compactParams
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      stage: "end",
+      success: true,
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call_update",
+          title: "Read: file.txt",
+        }),
+      }),
+    );
+  });
 });
