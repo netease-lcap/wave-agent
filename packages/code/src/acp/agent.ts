@@ -468,7 +468,8 @@ export class WaveAcpAgent implements AcpAgent {
     if (name === "Write") {
       let oldText: string | null = null;
       try {
-        const filePath = parameters.file_path as string;
+        const filePath = (parameters.file_path ||
+          parameters.filePath) as string;
         const fullPath = path.isAbsolute(filePath)
           ? filePath
           : path.join(workdir, filePath);
@@ -479,7 +480,7 @@ export class WaveAcpAgent implements AcpAgent {
       return [
         {
           type: "diff",
-          path: parameters.file_path as string,
+          path: (parameters.file_path || parameters.filePath) as string,
           oldText,
           newText: parameters.content as string,
         },
@@ -489,7 +490,8 @@ export class WaveAcpAgent implements AcpAgent {
       let oldText: string | null = null;
       let newText: string | null = null;
       try {
-        const filePath = parameters.file_path as string;
+        const filePath = (parameters.file_path ||
+          parameters.filePath) as string;
         const fullPath = path.isAbsolute(filePath)
           ? filePath
           : path.join(workdir, filePath);
@@ -514,7 +516,7 @@ export class WaveAcpAgent implements AcpAgent {
         return [
           {
             type: "diff",
-            path: parameters.file_path as string,
+            path: (parameters.file_path || parameters.filePath) as string,
             oldText,
             newText,
           },
@@ -525,7 +527,7 @@ export class WaveAcpAgent implements AcpAgent {
       return [
         {
           type: "diff",
-          path: parameters.file_path as string,
+          path: (parameters.file_path || parameters.filePath) as string,
           oldText: parameters.old_string as string,
           newText: parameters.new_string as string,
         },
@@ -544,14 +546,14 @@ export class WaveAcpAgent implements AcpAgent {
       if (name === "Write") {
         contents.push({
           type: "diff",
-          path: parameters.file_path as string,
+          path: (parameters.file_path || parameters.filePath) as string,
           oldText: null,
           newText: parameters.content as string,
         });
       } else if (name === "Edit") {
         contents.push({
           type: "diff",
-          path: parameters.file_path as string,
+          path: (parameters.file_path || parameters.filePath) as string,
           oldText: parameters.old_string as string,
           newText: parameters.new_string as string,
         });
@@ -574,15 +576,34 @@ export class WaveAcpAgent implements AcpAgent {
   private getToolLocations(
     name: string,
     parameters: Record<string, unknown> | undefined,
+    extraStartLineNumber?: number,
   ): ToolCallLocation[] | undefined {
     if (!parameters) return undefined;
-    if (name === "Write" || name === "Edit" || name === "Read") {
-      return [
-        {
-          path: parameters.file_path as string,
-          line: parameters.offset as number,
-        },
-      ];
+    if (
+      name === "Write" ||
+      name === "Edit" ||
+      name === "Read" ||
+      name === "LSP"
+    ) {
+      const filePath = (parameters.file_path || parameters.filePath) as string;
+      let line =
+        extraStartLineNumber ??
+        (parameters.startLineNumber as number) ??
+        (parameters.line as number) ??
+        (parameters.offset as number);
+
+      if (name === "Write" && line === undefined) {
+        line = 1;
+      }
+
+      if (filePath) {
+        return [
+          {
+            path: filePath,
+            line: line,
+          },
+        ];
+      }
     }
     return undefined;
   }
@@ -610,7 +631,12 @@ export class WaveAcpAgent implements AcpAgent {
     const getAgent = () => this.agents.get(sessionId);
     const toolStates = new Map<
       string,
-      { name?: string; compactParams?: string; shortResult?: string }
+      {
+        name?: string;
+        compactParams?: string;
+        shortResult?: string;
+        startLineNumber?: number;
+      }
     >();
     return {
       onAssistantContentUpdated: (chunk: string) => {
@@ -648,6 +674,7 @@ export class WaveAcpAgent implements AcpAgent {
           parameters,
           compactParams,
           shortResult,
+          startLineNumber,
         } = params;
 
         let state = toolStates.get(id);
@@ -658,10 +685,16 @@ export class WaveAcpAgent implements AcpAgent {
         if (name) state.name = name;
         if (compactParams) state.compactParams = compactParams;
         if (shortResult) state.shortResult = shortResult;
+        if (startLineNumber !== undefined)
+          state.startLineNumber = startLineNumber;
 
         const effectiveName = state.name || name;
         const effectiveCompactParams = state.compactParams || compactParams;
         const effectiveShortResult = state.shortResult || shortResult;
+        const effectiveStartLineNumber =
+          state.startLineNumber !== undefined
+            ? state.startLineNumber
+            : startLineNumber;
 
         const displayTitle =
           effectiveName && effectiveCompactParams
@@ -687,7 +720,11 @@ export class WaveAcpAgent implements AcpAgent {
             : undefined;
         const locations =
           effectiveName && parsedParameters
-            ? this.getToolLocations(effectiveName, parsedParameters)
+            ? this.getToolLocations(
+                effectiveName,
+                parsedParameters,
+                effectiveStartLineNumber,
+              )
             : undefined;
         const kind = effectiveName
           ? this.getToolKind(effectiveName)
