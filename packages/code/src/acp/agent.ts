@@ -605,6 +605,10 @@ export class WaveAcpAgent implements AcpAgent {
 
   private createCallbacks(sessionId: string): AgentOptions["callbacks"] {
     const getAgent = () => this.agents.get(sessionId);
+    const toolStates = new Map<
+      string,
+      { name?: string; compactParams?: string }
+    >();
     return {
       onAssistantContentUpdated: (chunk: string) => {
         this.connection.sessionUpdate({
@@ -631,7 +635,32 @@ export class WaveAcpAgent implements AcpAgent {
         });
       },
       onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
-        const { id, name, stage, success, error, result, parameters } = params;
+        const {
+          id,
+          name,
+          stage,
+          success,
+          error,
+          result,
+          parameters,
+          compactParams,
+        } = params;
+
+        let state = toolStates.get(id);
+        if (!state) {
+          state = {};
+          toolStates.set(id, state);
+        }
+        if (name) state.name = name;
+        if (compactParams) state.compactParams = compactParams;
+
+        const effectiveName = state.name || name;
+        const effectiveCompactParams = state.compactParams || compactParams;
+
+        const displayTitle =
+          effectiveName && effectiveCompactParams
+            ? `${effectiveName}: ${effectiveCompactParams}`
+            : effectiveName || "Tool Call";
 
         let parsedParameters: Record<string, unknown> | undefined = undefined;
         if (parameters) {
@@ -643,14 +672,16 @@ export class WaveAcpAgent implements AcpAgent {
         }
 
         const content =
-          name && parsedParameters
-            ? this.getToolContent(name, parsedParameters)
+          effectiveName && parsedParameters
+            ? this.getToolContent(effectiveName, parsedParameters)
             : undefined;
         const locations =
-          name && parsedParameters
-            ? this.getToolLocations(name, parsedParameters)
+          effectiveName && parsedParameters
+            ? this.getToolLocations(effectiveName, parsedParameters)
             : undefined;
-        const kind = name ? this.getToolKind(name) : undefined;
+        const kind = effectiveName
+          ? this.getToolKind(effectiveName)
+          : undefined;
 
         if (stage === "start") {
           this.connection.sessionUpdate({
@@ -658,7 +689,7 @@ export class WaveAcpAgent implements AcpAgent {
             update: {
               sessionUpdate: "tool_call",
               toolCallId: id,
-              title: name || "Tool Call",
+              title: displayTitle,
               status: "pending",
               content,
               locations,
@@ -689,7 +720,7 @@ export class WaveAcpAgent implements AcpAgent {
             sessionUpdate: "tool_call_update",
             toolCallId: id,
             status,
-            title: name || "Tool Call",
+            title: displayTitle,
             rawOutput: result || error,
             content,
             locations,
@@ -697,6 +728,10 @@ export class WaveAcpAgent implements AcpAgent {
             rawInput: parsedParameters,
           },
         });
+
+        if (stage === "end") {
+          toolStates.delete(id);
+        }
       },
       onTasksChange: (tasks) => {
         this.connection.sessionUpdate({
