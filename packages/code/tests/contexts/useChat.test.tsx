@@ -204,12 +204,6 @@ describe("ChatProvider", () => {
     // Test onPermissionModeChange
     callbacks.onPermissionModeChange!("bypassPermissions");
 
-    // Test onSlashCommandsChange
-    const newCommands = [
-      { id: "cmd", description: "desc", name: "cmd", handler: vi.fn() },
-    ];
-    callbacks.onSlashCommandsChange!(newCommands);
-
     await vi.waitFor(() => {
       expect(lastValue?.messages).toEqual(newMessages);
       expect(lastValue?.mcpServers).toEqual(newServers);
@@ -219,7 +213,6 @@ describe("ChatProvider", () => {
       expect(lastValue?.backgroundTasks).toEqual(newTasks);
       expect(lastValue?.subagentMessages["sub1"]).toHaveLength(1);
       expect(lastValue?.permissionMode).toBe("bypassPermissions");
-      expect(lastValue?.slashCommands).toEqual(newCommands);
     });
   });
 
