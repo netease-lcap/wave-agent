@@ -124,6 +124,93 @@ describe("WaveAcpAgent", () => {
     });
   });
 
+  it("should include diff content for Write and Edit tools", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    // Write tool
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      name: "Write",
+      stage: "start",
+      parameters: JSON.stringify({
+        file_path: "/test/file.txt",
+        content: "new content",
+      }),
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "1",
+          kind: "edit",
+          content: [
+            {
+              type: "diff",
+              path: "/test/file.txt",
+              oldText: null,
+              newText: "new content",
+            },
+          ],
+          locations: [
+            {
+              path: "/test/file.txt",
+              line: undefined,
+            },
+          ],
+        }),
+      }),
+    );
+
+    // Edit tool
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "2",
+      name: "Edit",
+      stage: "end",
+      success: true,
+      parameters: JSON.stringify({
+        file_path: "/test/file.txt",
+        old_string: "old",
+        new_string: "new",
+      }),
+      result: "Text replaced successfully",
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "2",
+          status: "completed",
+          kind: "edit",
+          content: [
+            {
+              type: "diff",
+              path: "/test/file.txt",
+              oldText: "old",
+              newText: "new",
+            },
+          ],
+          locations: [
+            {
+              path: "/test/file.txt",
+              line: undefined,
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
   it("should stop a session via extMethod", async () => {
     const mockWaveAgent = {
       sessionId: "session-to-stop",
@@ -230,9 +317,16 @@ describe("WaveAcpAgent", () => {
       toolName: "test-tool",
       toolInput: {},
       permissionMode: "default",
+      toolCallId: "test-tool-id",
     });
     expect(decision.behavior).toBe("allow");
-    expect(mockConnection.requestPermission).toHaveBeenCalled();
+    expect(mockConnection.requestPermission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCall: expect.objectContaining({
+          toolCallId: "test-tool-id",
+        }),
+      }),
+    );
   });
 
   it("should handle permission rejection", async () => {

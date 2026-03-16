@@ -145,6 +145,7 @@ Usage notes:
             timeout,
             workdir: context.workdir,
           },
+          context.toolCallId,
         );
         const permissionResult =
           await context.permissionManager.checkPermission(permissionContext);

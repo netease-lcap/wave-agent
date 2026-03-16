@@ -126,6 +126,7 @@ Plan mode note: In plan mode, use this tool to clarify requirements or choose be
       context.permissionMode || "default",
       context.canUseToolCallback,
       { questions, answers: existingAnswers, metadata },
+      context.toolCallId,
     );
     permissionContext.hidePersistentOption = true; // Always hide persistent option for questions
 

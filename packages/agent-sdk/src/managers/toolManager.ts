@@ -195,6 +195,7 @@ class ToolManager {
         ? this.container.get<SkillManager>("SkillManager")
         : undefined,
       sessionId: context.sessionId,
+      toolCallId: context.toolCallId,
     };
 
     logger?.debug("Executing tool with enhanced context", {

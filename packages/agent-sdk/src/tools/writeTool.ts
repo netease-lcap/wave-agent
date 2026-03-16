@@ -115,6 +115,7 @@ Usage:
             context.permissionMode || "default",
             context.canUseToolCallback,
             { file_path: filePath, content },
+            context.toolCallId,
           );
           const permissionResult =
             await context.permissionManager.checkPermission(permissionContext);

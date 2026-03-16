@@ -687,6 +687,7 @@ export class AIManager {
                 workdir: this.workdir,
                 messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
                 sessionId: this.messageManager.getSessionId(),
+                toolCallId: toolId,
                 taskManager: this.taskManager,
                 onShortResultUpdate: (shortResult: string) => {
                   this.messageManager.updateToolBlock({

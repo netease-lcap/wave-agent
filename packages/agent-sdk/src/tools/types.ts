@@ -79,6 +79,8 @@ export interface ToolContext {
   skillManager?: import("../managers/skillManager.js").SkillManager;
   /** Current session ID */
   sessionId?: string;
+  /** The ID of the current tool call */
+  toolCallId?: string;
   /** Callback to update the short result of the current tool block */
   onShortResultUpdate?: (shortResult: string) => void;
 }
