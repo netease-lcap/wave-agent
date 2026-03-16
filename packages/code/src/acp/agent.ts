@@ -5,6 +5,8 @@ import {
   ToolPermissionContext,
   AgentToolBlockUpdateParams,
   Task,
+  listSessions as listWaveSessions,
+  deleteSession as deleteWaveSession,
 } from "wave-agent-sdk";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -231,27 +233,19 @@ export class WaveAcpAgent implements AcpAgent {
   async listSessions(
     params: ListSessionsRequest,
   ): Promise<ListSessionsResponse> {
-    void params;
-    logger.info("Listing active sessions");
-    const sessions: SessionInfo[] = Array.from(this.agents.values()).map(
-      (agent) => {
-        const lastMessage = agent.messages[agent.messages.length - 1] as
-          | { timestamp?: string }
-          | undefined;
-        const updatedAt = lastMessage?.timestamp
-          ? new Date(lastMessage.timestamp).toISOString()
-          : new Date().toISOString();
+    const { cwd } = params;
+    if (!cwd) {
+      return { sessions: [] };
+    }
 
-        return {
-          sessionId: agent.sessionId as AcpSessionId,
-          cwd: agent.workingDirectory,
-          updatedAt,
-        };
-      },
-    );
-    return {
-      sessions,
-    };
+    logger.info(`Listing sessions for ${cwd}`);
+    const waveSessions = await listWaveSessions(cwd);
+    const sessions: SessionInfo[] = waveSessions.map((meta) => ({
+      sessionId: meta.id as AcpSessionId,
+      cwd: meta.workdir,
+      updatedAt: meta.lastActiveAt.toISOString(),
+    }));
+    return { sessions };
   }
 
   async unstable_closeSession(
@@ -261,8 +255,11 @@ export class WaveAcpAgent implements AcpAgent {
     logger.info(`Stopping session ${sessionId}`);
     const agent = this.agents.get(sessionId);
     if (agent) {
+      const workdir = agent.workingDirectory;
       await agent.destroy();
       this.agents.delete(sessionId);
+      // Delete the session file so it doesn't show up in listSessions
+      await deleteWaveSession(sessionId, workdir);
     }
     return {};
   }
@@ -337,12 +334,6 @@ export class WaveAcpAgent implements AcpAgent {
         textContent,
         images.length > 0 ? images : undefined,
       );
-      // Force save session so it can be loaded later
-      await (
-        agent as unknown as {
-          messageManager: { saveSession: () => Promise<void> };
-        }
-      ).messageManager.saveSession();
       logger.info(`Message sent successfully for session ${sessionId}`);
       return {
         stopReason: "end_turn" as StopReason,

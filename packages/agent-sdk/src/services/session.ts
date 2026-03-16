@@ -799,6 +799,47 @@ export async function getFirstMessageContent(
 }
 
 /**
+ * Delete a session
+ * @param sessionId - UUID session identifier
+ * @param workdir - Working directory for the session
+ * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ */
+export async function deleteSession(
+  sessionId: string,
+  workdir: string,
+  sessionType: "main" | "subagent" = "main",
+): Promise<void> {
+  const filePath = await generateSessionFilePath(
+    sessionId,
+    workdir,
+    sessionType,
+  );
+  try {
+    await fs.unlink(filePath);
+  } catch (error) {
+    // Ignore if file doesn't exist
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  // Also remove from index
+  try {
+    const encoder = new PathEncoder();
+    const projectDir = await encoder.getProjectDirectory(workdir, SESSION_DIR);
+    const indexPath = join(projectDir.encodedPath, SESSION_INDEX_FILENAME);
+    const indexContent = await fs.readFile(indexPath, "utf8");
+    const index = JSON.parse(indexContent) as SessionIndex;
+    if (index.sessions[sessionId]) {
+      delete index.sessions[sessionId];
+      await fs.writeFile(indexPath, JSON.stringify(index, null, 2), "utf8");
+    }
+  } catch {
+    // Ignore index errors
+  }
+}
+
+/**
  * Truncate content to a maximum length, adding ellipsis if truncated
  * @param content - The content to truncate
  * @param maxLength - Maximum length before truncation (default: 30)

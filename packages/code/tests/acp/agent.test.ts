@@ -17,6 +17,7 @@ vi.mock("wave-agent-sdk", () => ({
     create: vi.fn(),
   },
   listSessions: vi.fn(),
+  deleteSession: vi.fn(),
 }));
 
 // Mock logger
@@ -67,6 +68,7 @@ describe("WaveAcpAgent", () => {
       sessionId: "test-session-id",
       sendMessage: vi.fn(),
       destroy: vi.fn(),
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -110,6 +112,7 @@ describe("WaveAcpAgent", () => {
       sessionId: "existing-session-id",
       sendMessage: vi.fn(),
       destroy: vi.fn(),
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -149,11 +152,12 @@ describe("WaveAcpAgent", () => {
     });
   });
 
-  it("should list active sessions", async () => {
+  it("should return empty list when cwd is not provided", async () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       workingDirectory: "/cwd/1",
       messages: [{ timestamp: "2023-01-01T00:00:00Z" }],
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -170,11 +174,31 @@ describe("WaveAcpAgent", () => {
     await agent.newSession({ cwd: "/cwd/1", mcpServers: [] });
 
     const response = await agent.listSessions({} as ListSessionsRequest);
+    expect(response.sessions).toHaveLength(0);
+  });
+
+  it("should list sessions from wave-agent-sdk when cwd is provided", async () => {
+    const { listSessions: listWaveSessions } = await import("wave-agent-sdk");
+    vi.mocked(listWaveSessions).mockResolvedValue([
+      {
+        id: "session-sdk-1",
+        workdir: "/cwd/sdk",
+        lastActiveAt: new Date("2023-02-01T00:00:00Z"),
+        sessionType: "main",
+        latestTotalTokens: 100,
+      },
+    ]);
+
+    const response = await agent.listSessions({
+      cwd: "/cwd/sdk",
+    } as ListSessionsRequest);
+
+    expect(listWaveSessions).toHaveBeenCalledWith("/cwd/sdk");
     expect(response.sessions).toHaveLength(1);
     expect(response.sessions[0]).toEqual({
-      sessionId: "session-1",
-      cwd: "/cwd/1",
-      updatedAt: "2023-01-01T00:00:00.000Z",
+      sessionId: "session-sdk-1",
+      cwd: "/cwd/sdk",
+      updatedAt: "2023-02-01T00:00:00.000Z",
     });
   });
 
@@ -182,6 +206,7 @@ describe("WaveAcpAgent", () => {
     let capturedCallbacks: AgentOptions["callbacks"];
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -278,6 +303,7 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-to-stop",
       destroy: vi.fn().mockResolvedValue(undefined),
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -316,6 +342,7 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       destroy: vi.fn().mockResolvedValue(undefined),
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -344,9 +371,7 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       sendMessage: vi.fn().mockResolvedValue(undefined),
-      messageManager: {
-        saveSession: vi.fn().mockResolvedValue(undefined),
-      },
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -375,6 +400,7 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       abortMessage: vi.fn(),
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -398,6 +424,7 @@ describe("WaveAcpAgent", () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -439,6 +466,7 @@ describe("WaveAcpAgent", () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -472,6 +500,7 @@ describe("WaveAcpAgent", () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -506,6 +535,7 @@ describe("WaveAcpAgent", () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -540,6 +570,7 @@ describe("WaveAcpAgent", () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -574,6 +605,7 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       setPermissionMode: vi.fn(),
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -601,6 +633,7 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       setPermissionMode: vi.fn(),
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -631,6 +664,7 @@ describe("WaveAcpAgent", () => {
     let capturedCallbacks: AgentOptions["callbacks"];
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -795,9 +829,7 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       sendMessage: vi.fn().mockResolvedValue(undefined),
-      messageManager: {
-        saveSession: vi.fn().mockResolvedValue(undefined),
-      },
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -830,6 +862,7 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       sendMessage: vi.fn().mockRejectedValue(new Error("failed")),
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -857,6 +890,7 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       sendMessage: vi.fn().mockRejectedValue(new Error("abort")),
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -890,6 +924,7 @@ describe("WaveAcpAgent", () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -924,6 +959,7 @@ describe("WaveAcpAgent", () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
@@ -958,6 +994,7 @@ describe("WaveAcpAgent", () => {
     let capturedCallbacks: AgentOptions["callbacks"];
     const mockWaveAgent = {
       sessionId: "session-1",
+      saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getSlashCommands: vi.fn().mockReturnValue([
         {
