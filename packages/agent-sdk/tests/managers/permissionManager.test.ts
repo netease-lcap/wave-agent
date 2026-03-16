@@ -1008,7 +1008,7 @@ describe("PermissionManager", () => {
         expect(context.hidePersistentOption).toBe(true);
       });
 
-      it("should set hidePersistentOption for out-of-bounds ls", () => {
+      it("should NOT set hidePersistentOption for out-of-bounds ls", () => {
         vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
           if (p.toString() === "/etc") return "/etc";
           return "/home/user/project";
@@ -1024,7 +1024,7 @@ describe("PermissionManager", () => {
           },
         );
 
-        expect(context.hidePersistentOption).toBe(true);
+        expect(context.hidePersistentOption).toBeFalsy();
       });
 
       it("should NOT set hidePersistentOption for safe commands", () => {
@@ -1457,7 +1457,7 @@ describe("PermissionManager", () => {
       expect(rules).toEqual(["Bash(npm install > out.txt)"]);
     });
 
-    it("should identify unsafe paths in cd/ls as non-safe and filter them out", () => {
+    it("should identify unsafe paths in cd as non-safe and filter them out", () => {
       const command = "cd /etc && ls ..";
       const rules = permissionManager.expandBashRule(command, workdir);
       expect(rules).toEqual([]);
