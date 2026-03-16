@@ -51,7 +51,7 @@
     "react-dom": "19.2.4",
     "wave-agent-sdk": "workspace:*",
     "yargs": "^17.7.2",
-    "@agentclientprotocol/sdk": "0.15.0",
+    "@agentclientprotocol/sdk": "0.16.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {

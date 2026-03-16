@@ -5,7 +5,6 @@ import {
   ndJsonStream,
   type Client,
   type SessionNotification,
-  AGENT_METHODS,
 } from "@agentclientprotocol/sdk";
 import path from "node:path";
 import os from "node:os";
@@ -77,7 +76,7 @@ async function runSessionLifecycleExample() {
 
     // 2. List sessions
     console.log("Listing active sessions...");
-    const listResult = await connection.unstable_listSessions({});
+    const listResult = await connection.listSessions({});
     console.log(
       "Active sessions:",
       JSON.stringify(listResult.sessions, null, 2),
@@ -91,12 +90,12 @@ async function runSessionLifecycleExample() {
 
     // 3. Stop a session
     console.log(`Stopping session 1 (${id1})...`);
-    await connection.extMethod(AGENT_METHODS.session_stop, { sessionId: id1 });
+    await connection.unstable_closeSession({ sessionId: id1 });
     console.log("Session 1 stopped.");
 
     // 4. List sessions again to verify
     console.log("Listing active sessions after stop...");
-    const listResultAfter = await connection.unstable_listSessions({});
+    const listResultAfter = await connection.listSessions({});
     console.log(
       "Active sessions:",
       JSON.stringify(listResultAfter.sessions, null, 2),
