@@ -401,14 +401,14 @@ export class WaveAcpAgent implements AcpAgent {
 
     const options: PermissionOption[] = [
       {
-        optionId: "allow_always",
-        name: "Allow Always",
-        kind: "allow_always",
-      },
-      {
         optionId: "allow_once",
         name: "Allow Once",
         kind: "allow_once",
+      },
+      {
+        optionId: "allow_always",
+        name: "Allow Always",
+        kind: "allow_always",
       },
       {
         optionId: "reject_once",
