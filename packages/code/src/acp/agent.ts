@@ -170,19 +170,11 @@ export class WaveAcpAgent implements AcpAgent {
     // Update the callbacks object with the correct sessionId
     Object.assign(callbacks, this.createCallbacks(actualSessionId));
 
-    return agent;
-  }
-
-  async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
-    const { cwd } = params;
-    logger.info(`Creating new session in ${cwd}`);
-    const agent = await this.createAgent(undefined, cwd);
-    logger.info(`New session created with ID: ${agent.sessionId}`);
-
     // Send initial available commands after agent creation
+    // Use setImmediate to ensure the client receives the session response before the update
     setImmediate(() => {
       this.connection.sessionUpdate({
-        sessionId: agent.sessionId as AcpSessionId,
+        sessionId: actualSessionId as AcpSessionId,
         update: {
           sessionUpdate: "available_commands_update",
           availableCommands: agent.getSlashCommands().map((cmd) => ({
@@ -195,6 +187,15 @@ export class WaveAcpAgent implements AcpAgent {
         },
       });
     });
+
+    return agent;
+  }
+
+  async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
+    const { cwd } = params;
+    logger.info(`Creating new session in ${cwd}`);
+    const agent = await this.createAgent(undefined, cwd);
+    logger.info(`New session created with ID: ${agent.sessionId}`);
 
     return {
       sessionId: agent.sessionId as AcpSessionId,
@@ -207,23 +208,6 @@ export class WaveAcpAgent implements AcpAgent {
     const { sessionId, cwd } = params;
     logger.info(`Loading session: ${sessionId} in ${cwd}`);
     const agent = await this.createAgent(sessionId, cwd);
-
-    // Send initial available commands after agent creation
-    setImmediate(() => {
-      this.connection.sessionUpdate({
-        sessionId: agent.sessionId as AcpSessionId,
-        update: {
-          sessionUpdate: "available_commands_update",
-          availableCommands: agent.getSlashCommands().map((cmd) => ({
-            name: cmd.name,
-            description: cmd.description,
-            input: {
-              hint: "Enter arguments...",
-            },
-          })),
-        },
-      });
-    });
 
     return {
       modes: this.getSessionModeState(agent),
