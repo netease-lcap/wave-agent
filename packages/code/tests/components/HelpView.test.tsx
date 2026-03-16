@@ -53,7 +53,7 @@ describe("HelpView", () => {
 
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
-      expect(output).toContain("/clear");
+      expect(output).toContain("/tasks");
       expect(output).not.toContain("Reference files");
     });
 
@@ -63,7 +63,7 @@ describe("HelpView", () => {
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
       expect(output).toContain("Reference files");
-      expect(output).not.toContain("/clear");
+      expect(output).not.toContain("/tasks");
     });
   });
 
@@ -88,7 +88,7 @@ describe("HelpView", () => {
     // Press Tab to switch to Commands tab
     stdin.write("\t");
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("/clear");
+      expect(stripAnsiColors(lastFrame() || "")).toContain("/tasks");
     });
 
     // Press Tab again to switch to Custom Commands tab

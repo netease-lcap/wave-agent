@@ -248,7 +248,7 @@ describe("WaveAcpAgent", () => {
           locations: [
             {
               path: "/test/file.txt",
-              line: undefined,
+              line: 1,
             },
           ],
         }),
@@ -1256,6 +1256,77 @@ describe("WaveAcpAgent", () => {
                 type: "text",
                 text: "Found 3 matches",
               },
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("should include locations for LSP tool and prioritize startLineNumber", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    // LSP tool
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      name: "LSP",
+      stage: "start",
+      parameters: JSON.stringify({
+        filePath: "/test/file.ts",
+        line: 10,
+        character: 5,
+      }),
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "1",
+          locations: [
+            {
+              path: "/test/file.ts",
+              line: 10,
+            },
+          ],
+        }),
+      }),
+    );
+
+    // Edit tool with startLineNumber
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "2",
+      name: "Edit",
+      stage: "end",
+      success: true,
+      parameters: JSON.stringify({
+        file_path: "/test/file.txt",
+        old_string: "old",
+        new_string: "new",
+      }),
+      startLineNumber: 42,
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "2",
+          locations: [
+            {
+              path: "/test/file.txt",
+              line: 42,
             },
           ],
         }),
