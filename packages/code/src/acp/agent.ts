@@ -177,6 +177,7 @@ export class WaveAcpAgent implements AcpAgent {
     const { cwd } = params;
     logger.info(`Creating new session in ${cwd}`);
     const agent = await this.createAgent(undefined, cwd);
+    logger.info(`New session created with ID: ${agent.sessionId}`);
 
     // Send initial available commands after agent creation
     setImmediate(() => {
@@ -234,12 +235,15 @@ export class WaveAcpAgent implements AcpAgent {
     params: ListSessionsRequest,
   ): Promise<ListSessionsResponse> {
     const { cwd } = params;
+    logger.info(`listSessions called with params: ${JSON.stringify(params)}`);
     if (!cwd) {
+      logger.warn("listSessions called without cwd, returning empty list");
       return { sessions: [] };
     }
 
     logger.info(`Listing sessions for ${cwd}`);
     const waveSessions = await listWaveSessions(cwd);
+    logger.info(`Found ${waveSessions.length} sessions for ${cwd}`);
     const sessions: SessionInfo[] = waveSessions.map((meta) => ({
       sessionId: meta.id as AcpSessionId,
       cwd: meta.workdir,
