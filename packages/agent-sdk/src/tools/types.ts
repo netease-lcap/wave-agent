@@ -50,4 +50,6 @@ export interface ToolContext {
   mcpManager?: import("../managers/mcpManager.js").McpManager;
   /** LSP manager instance for code intelligence */
   lspManager?: import("../types/lsp.js").ILspManager;
+  /** AIManager for tools that need message access (e.g. PrepareWrite) */
+  aiManager?: import("../managers/aiManager.js").AIManager;
 }

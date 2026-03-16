@@ -655,6 +655,7 @@ export class AIManager {
                 abortSignal: toolAbortController.signal,
                 backgroundBashManager: this.backgroundBashManager,
                 workdir: this.workdir,
+                aiManager: this,
               };
 
               // Execute tool
