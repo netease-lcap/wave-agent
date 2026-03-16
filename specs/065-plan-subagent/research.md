@@ -158,6 +158,6 @@ Users need a specialized agent for designing implementation plans that can explo
 ## References
 
 - Existing Explore built-in subagent implementation
-- Plan mode workflow specification (specs/050-support-plan-mode/)
+- Plan mode workflow specification (specs/050-plan-mode/)
 - Built-in subagent support specification (specs/025-builtin-subagent/)
 - Reference implementation in plan.tmp.js
