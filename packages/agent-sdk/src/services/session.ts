@@ -423,11 +423,17 @@ export async function listSessionsFromJsonl(
 
     // Try to read from index first
     const indexPath = join(projectDir.encodedPath, SESSION_INDEX_FILENAME);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
     try {
       const indexContent = await fs.readFile(indexPath, "utf8");
       const index = JSON.parse(indexContent) as SessionIndex;
       const sessions: SessionMetadata[] = Object.entries(index.sessions)
-        .filter(([, meta]) => meta.sessionType === "main")
+        .filter(([, meta]) => {
+          const lastActiveAt = new Date(meta.lastActiveAt);
+          return meta.sessionType === "main" && lastActiveAt >= sevenDaysAgo;
+        })
         .map(([id, meta]) => ({
           id,
           ...meta,
@@ -492,6 +498,10 @@ export async function listSessionsFromJsonl(
           lastActiveAt = stats.mtime;
         }
 
+        if (lastActiveAt < sevenDaysAgo) {
+          continue;
+        }
+
         // Return inline object for performance (no interface instantiation overhead)
         const sessionMeta: SessionMetadata = {
           id: sessionId,
@@ -547,6 +557,68 @@ export async function listSessionsFromJsonl(
     return sortedSessions;
   } catch (error) {
     throw new Error(`Failed to list sessions: ${error}`);
+  }
+}
+
+/**
+ * List all sessions across all project directories
+ *
+ * @returns Promise that resolves to array of session metadata objects
+ */
+export async function listAllSessions(): Promise<SessionMetadata[]> {
+  try {
+    const baseDir = SESSION_DIR;
+    let projectDirs: string[];
+    try {
+      projectDirs = await fs.readdir(baseDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
+
+    const allSessions: SessionMetadata[] = [];
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    for (const projectDirName of projectDirs) {
+      const projectPath = join(baseDir, projectDirName);
+      try {
+        const stat = await fs.stat(projectPath);
+        if (!stat.isDirectory()) {
+          continue;
+        }
+
+        // Try to read from index first
+        const indexPath = join(projectPath, SESSION_INDEX_FILENAME);
+        try {
+          const indexContent = await fs.readFile(indexPath, "utf8");
+          const index = JSON.parse(indexContent) as SessionIndex;
+          for (const [id, meta] of Object.entries(index.sessions)) {
+            const lastActiveAt = new Date(meta.lastActiveAt);
+            if (meta.sessionType === "main" && lastActiveAt >= sevenDaysAgo) {
+              allSessions.push({
+                id,
+                ...meta,
+                lastActiveAt,
+              });
+            }
+          }
+        } catch {
+          // If index fails, we skip this project directory
+          // In the future, we could scan for .jsonl files here
+        }
+      } catch {
+        // Skip if stat fails
+      }
+    }
+
+    return allSessions.sort(
+      (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
+    );
+  } catch (error) {
+    throw new Error(`Failed to list all sessions: ${error}`);
   }
 }
 
@@ -840,19 +912,23 @@ export async function deleteSession(
 }
 
 /**
- * Truncate content to a maximum length, adding ellipsis if truncated
+ * Truncate content to a maximum length, adding ellipsis if truncated.
+ * Also replaces real newlines with the literal string "\n".
  * @param content - The content to truncate
- * @param maxLength - Maximum length before truncation (default: 30)
+ * @param maxLength - Maximum length before truncation (default: 100)
  * @returns Truncated content with ellipsis if needed
  */
 export function truncateContent(
   content: string,
-  maxLength: number = 30,
+  maxLength: number = 100,
 ): string {
-  if (content.length <= maxLength) {
-    return content;
+  // Replace real newlines with literal "\n"
+  const singleLineContent = content.replace(/\n/g, "\\n");
+
+  if (singleLineContent.length <= maxLength) {
+    return singleLineContent;
   }
-  return content.substring(0, maxLength) + "...";
+  return singleLineContent.substring(0, maxLength) + "...";
 }
 
 /**
