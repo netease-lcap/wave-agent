@@ -1,5 +1,6 @@
 export {
   listSessions,
+  listAllSessions,
   truncateContent,
   loadSessionFromJsonl,
   loadFullMessageThread,

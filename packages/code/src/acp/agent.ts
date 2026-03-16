@@ -6,7 +6,9 @@ import {
   AgentToolBlockUpdateParams,
   Task,
   listSessions as listWaveSessions,
+  listAllSessions as listAllWaveSessions,
   deleteSession as deleteWaveSession,
+  truncateContent,
 } from "wave-agent-sdk";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -220,17 +222,21 @@ export class WaveAcpAgent implements AcpAgent {
   ): Promise<ListSessionsResponse> {
     const { cwd } = params;
     logger.info(`listSessions called with params: ${JSON.stringify(params)}`);
+
+    let waveSessions;
     if (!cwd) {
-      logger.warn("listSessions called without cwd, returning empty list");
-      return { sessions: [] };
+      logger.info("listSessions called without cwd, listing all sessions");
+      waveSessions = await listAllWaveSessions();
+    } else {
+      logger.info(`Listing sessions for ${cwd}`);
+      waveSessions = await listWaveSessions(cwd);
     }
 
-    logger.info(`Listing sessions for ${cwd}`);
-    const waveSessions = await listWaveSessions(cwd);
-    logger.info(`Found ${waveSessions.length} sessions for ${cwd}`);
+    logger.info(`Found ${waveSessions.length} sessions`);
     const sessions: SessionInfo[] = waveSessions.map((meta) => ({
       sessionId: meta.id as AcpSessionId,
       cwd: meta.workdir,
+      title: meta.firstMessage ? truncateContent(meta.firstMessage) : undefined,
       updatedAt: meta.lastActiveAt.toISOString(),
     }));
     return { sessions };

@@ -16,8 +16,10 @@ vi.mock("wave-agent-sdk", () => ({
   Agent: {
     create: vi.fn(),
   },
-  listSessions: vi.fn(),
+  listSessions: vi.fn().mockResolvedValue([]),
+  listAllSessions: vi.fn().mockResolvedValue([]),
   deleteSession: vi.fn(),
+  truncateContent: vi.fn((s) => s),
 }));
 
 // Mock logger
@@ -150,32 +152,42 @@ describe("WaveAcpAgent", () => {
     });
   });
 
-  it("should return empty list when cwd is not provided", async () => {
-    const mockWaveAgent = {
-      sessionId: "session-1",
-      workingDirectory: "/cwd/1",
-      messages: [{ timestamp: "2023-01-01T00:00:00Z" }],
-      getPermissionMode: vi.fn().mockReturnValue("default"),
-      getSlashCommands: vi.fn().mockReturnValue([
-        {
-          id: "test-cmd",
-          name: "test-cmd",
-          description: "Test command",
-          handler: vi.fn(),
-        },
-      ]),
-    };
-    vi.mocked(WaveAgent.create).mockResolvedValue(
-      mockWaveAgent as unknown as WaveAgent,
+  it("should list all sessions when cwd is not provided", async () => {
+    const {
+      listAllSessions: listAllWaveSessions,
+      truncateContent: truncateWaveContent,
+    } = await import("wave-agent-sdk");
+    vi.mocked(listAllWaveSessions).mockResolvedValue([
+      {
+        id: "session-all-1",
+        workdir: "/cwd/all",
+        lastActiveAt: new Date("2023-03-01T00:00:00Z"),
+        sessionType: "main",
+        latestTotalTokens: 200,
+        firstMessage: "Hello\nworld",
+      },
+    ]);
+    vi.mocked(truncateWaveContent).mockImplementation((s) =>
+      s.replace(/\n/g, "\\n"),
     );
-    await agent.newSession({ cwd: "/cwd/1", mcpServers: [] });
 
     const response = await agent.listSessions({} as ListSessionsRequest);
-    expect(response.sessions).toHaveLength(0);
+    expect(listAllWaveSessions).toHaveBeenCalled();
+    expect(truncateWaveContent).toHaveBeenCalledWith("Hello\nworld");
+    expect(response.sessions).toHaveLength(1);
+    expect(response.sessions[0]).toEqual({
+      sessionId: "session-all-1",
+      cwd: "/cwd/all",
+      title: "Hello\\nworld",
+      updatedAt: "2023-03-01T00:00:00.000Z",
+    });
   });
 
   it("should list sessions from wave-agent-sdk when cwd is provided", async () => {
-    const { listSessions: listWaveSessions } = await import("wave-agent-sdk");
+    const {
+      listSessions: listWaveSessions,
+      truncateContent: truncateWaveContent,
+    } = await import("wave-agent-sdk");
     vi.mocked(listWaveSessions).mockResolvedValue([
       {
         id: "session-sdk-1",
@@ -183,18 +195,22 @@ describe("WaveAcpAgent", () => {
         lastActiveAt: new Date("2023-02-01T00:00:00Z"),
         sessionType: "main",
         latestTotalTokens: 100,
+        firstMessage: "SDK session",
       },
     ]);
+    vi.mocked(truncateWaveContent).mockImplementation((s) => s);
 
     const response = await agent.listSessions({
       cwd: "/cwd/sdk",
     } as ListSessionsRequest);
 
     expect(listWaveSessions).toHaveBeenCalledWith("/cwd/sdk");
+    expect(truncateWaveContent).toHaveBeenCalledWith("SDK session");
     expect(response.sessions).toHaveLength(1);
     expect(response.sessions[0]).toEqual({
       sessionId: "session-sdk-1",
       cwd: "/cwd/sdk",
+      title: "SDK session",
       updatedAt: "2023-02-01T00:00:00.000Z",
     });
   });
@@ -318,6 +334,11 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-to-stop",
     });
     expect(mockWaveAgent.destroy).toHaveBeenCalled();
+
+    const { listAllSessions: listAllWaveSessions } = await import(
+      "wave-agent-sdk"
+    );
+    vi.mocked(listAllWaveSessions).mockResolvedValue([]);
 
     const listResponse = await agent.listSessions({} as ListSessionsRequest);
     expect(listResponse.sessions).toHaveLength(0);
