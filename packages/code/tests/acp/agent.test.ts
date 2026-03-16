@@ -457,7 +457,25 @@ describe("WaveAcpAgent", () => {
       expect.objectContaining({
         toolCall: expect.objectContaining({
           toolCallId: "test-tool-id",
+          title: "test-tool",
         }),
+        options: [
+          {
+            optionId: "allow_always",
+            name: "Allow Always",
+            kind: "allow_always",
+          },
+          {
+            optionId: "allow_once",
+            name: "Allow Once",
+            kind: "allow_once",
+          },
+          {
+            optionId: "reject_once",
+            name: "Reject Once",
+            kind: "reject_once",
+          },
+        ],
       }),
     );
   });
@@ -529,41 +547,6 @@ describe("WaveAcpAgent", () => {
     });
     expect(decision.behavior).toBe("allow");
     expect(decision.newPermissionRule).toBe("test-tool(*)");
-  });
-
-  it("should handle permission reject always", async () => {
-    let canUseToolCallback: PermissionCallback;
-    const mockWaveAgent = {
-      sessionId: "session-1",
-      saveSession: vi.fn().mockResolvedValue(undefined),
-      getPermissionMode: vi.fn().mockReturnValue("default"),
-      getSlashCommands: vi.fn().mockReturnValue([
-        {
-          id: "test-cmd",
-          name: "test-cmd",
-          description: "Test command",
-          handler: vi.fn(),
-        },
-      ]),
-    };
-    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
-      canUseToolCallback = options.canUseTool as PermissionCallback;
-      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
-    });
-
-    await agent.newSession({ cwd: "/test", mcpServers: [] });
-
-    vi.mocked(mockConnection.requestPermission).mockResolvedValue({
-      outcome: { outcome: "selected", optionId: "reject_always" },
-    } as unknown as RequestPermissionResponse);
-
-    const decision = await canUseToolCallback!({
-      toolName: "test-tool",
-      toolInput: {},
-      permissionMode: "default",
-    });
-    expect(decision.behavior).toBe("deny");
-    expect(decision.newPermissionRule).toBe("!test-tool(*)");
   });
 
   it("should handle permission cancellation", async () => {
@@ -1204,6 +1187,51 @@ describe("WaveAcpAgent", () => {
       expect.objectContaining({
         update: expect.objectContaining({
           sessionUpdate: "tool_call_update",
+          title: "Read: file.txt",
+        }),
+      }),
+    );
+
+    // 4. Verify permission request uses the remembered title
+    let capturedCanUseTool: PermissionCallback;
+    vi.mocked(WaveAgent.create).mockImplementationOnce(
+      (options: AgentOptions) => {
+        capturedCanUseTool = options.canUseTool as PermissionCallback;
+        const agent = {
+          ...mockWaveAgent,
+          messages: [
+            {
+              blocks: [
+                {
+                  type: "tool",
+                  id: "1",
+                  name: "Read",
+                  compactParams: "file.txt",
+                },
+              ],
+            },
+          ],
+        };
+        return Promise.resolve(agent as unknown as WaveAgent);
+      },
+    );
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.requestPermission).mockResolvedValue({
+      outcome: { outcome: "selected", optionId: "allow_once" },
+    } as unknown as RequestPermissionResponse);
+
+    await capturedCanUseTool!({
+      toolName: "Read",
+      toolInput: {},
+      permissionMode: "default",
+      toolCallId: "1",
+    });
+
+    expect(mockConnection.requestPermission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCall: expect.objectContaining({
+          toolCallId: "1",
           title: "Read: file.txt",
         }),
       }),

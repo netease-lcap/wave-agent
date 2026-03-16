@@ -378,26 +378,42 @@ export class WaveAcpAgent implements AcpAgent {
       context.toolCallId ||
       "perm-" + Math.random().toString(36).substring(2, 9);
 
+    let effectiveName = context.toolName;
+    let effectiveCompactParams: string | undefined = undefined;
+
+    if (agent?.messages && context.toolCallId) {
+      const toolBlock = agent.messages
+        .flatMap((m) => m.blocks)
+        .find((b) => b.type === "tool" && b.id === context.toolCallId) as
+        | import("wave-agent-sdk").ToolBlock
+        | undefined;
+      if (toolBlock) {
+        effectiveName = toolBlock.name || effectiveName;
+        effectiveCompactParams =
+          toolBlock.compactParams || effectiveCompactParams;
+      }
+    }
+
+    const displayTitle =
+      effectiveName && effectiveCompactParams
+        ? `${effectiveName}: ${effectiveCompactParams}`
+        : effectiveName || "Tool Call";
+
     const options: PermissionOption[] = [
-      {
-        optionId: "allow_once",
-        name: "Allow Once",
-        kind: "allow_once",
-      },
       {
         optionId: "allow_always",
         name: "Allow Always",
         kind: "allow_always",
       },
       {
+        optionId: "allow_once",
+        name: "Allow Once",
+        kind: "allow_once",
+      },
+      {
         optionId: "reject_once",
         name: "Reject Once",
         kind: "reject_once",
-      },
-      {
-        optionId: "reject_always",
-        name: "Reject Always",
-        kind: "reject_always",
       },
     ];
 
@@ -420,7 +436,7 @@ export class WaveAcpAgent implements AcpAgent {
         sessionId: sessionId as AcpSessionId,
         toolCall: {
           toolCallId,
-          title: `Permission for ${context.toolName}`,
+          title: displayTitle,
           status: "pending",
           rawInput: context.toolInput,
           content,
@@ -438,21 +454,15 @@ export class WaveAcpAgent implements AcpAgent {
       logger.info(`User selected permission option: ${selectedOptionId}`);
 
       switch (selectedOptionId) {
-        case "allow_once":
-          return { behavior: "allow" };
         case "allow_always":
           return {
             behavior: "allow",
             newPermissionRule: `${context.toolName}(*)`,
           };
+        case "allow_once":
+          return { behavior: "allow" };
         case "reject_once":
           return { behavior: "deny", message: "Rejected by user" };
-        case "reject_always":
-          return {
-            behavior: "deny",
-            message: "Rejected by user",
-            newPermissionRule: `!${context.toolName}(*)`,
-          };
         default:
           return { behavior: "deny", message: "Unknown option selected" };
       }
