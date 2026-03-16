@@ -547,35 +547,44 @@ export class WaveAcpAgent implements AcpAgent {
         },
       ];
     }
-    return this.getToolContent(name, parameters);
+    return this.getToolContent(name, parameters, undefined);
   }
 
   private getToolContent(
     name: string,
     parameters: Record<string, unknown> | undefined,
+    shortResult: string | undefined,
   ): ToolCallContent[] | undefined {
-    if (!parameters) return undefined;
-    if (name === "Write") {
-      return [
-        {
+    const contents: ToolCallContent[] = [];
+    if (parameters) {
+      if (name === "Write") {
+        contents.push({
           type: "diff",
           path: parameters.file_path as string,
           oldText: null,
           newText: parameters.content as string,
-        },
-      ];
-    }
-    if (name === "Edit") {
-      return [
-        {
+        });
+      } else if (name === "Edit") {
+        contents.push({
           type: "diff",
           path: parameters.file_path as string,
           oldText: parameters.old_string as string,
           newText: parameters.new_string as string,
-        },
-      ];
+        });
+      }
     }
-    return undefined;
+
+    if (shortResult) {
+      contents.push({
+        type: "content",
+        content: {
+          type: "text",
+          text: shortResult,
+        },
+      });
+    }
+
+    return contents.length > 0 ? contents : undefined;
   }
 
   private getToolLocations(
@@ -617,7 +626,7 @@ export class WaveAcpAgent implements AcpAgent {
     const getAgent = () => this.agents.get(sessionId);
     const toolStates = new Map<
       string,
-      { name?: string; compactParams?: string }
+      { name?: string; compactParams?: string; shortResult?: string }
     >();
     return {
       onAssistantContentUpdated: (chunk: string) => {
@@ -654,6 +663,7 @@ export class WaveAcpAgent implements AcpAgent {
           result,
           parameters,
           compactParams,
+          shortResult,
         } = params;
 
         let state = toolStates.get(id);
@@ -663,9 +673,11 @@ export class WaveAcpAgent implements AcpAgent {
         }
         if (name) state.name = name;
         if (compactParams) state.compactParams = compactParams;
+        if (shortResult) state.shortResult = shortResult;
 
         const effectiveName = state.name || name;
         const effectiveCompactParams = state.compactParams || compactParams;
+        const effectiveShortResult = state.shortResult || shortResult;
 
         const displayTitle =
           effectiveName && effectiveCompactParams
@@ -682,8 +694,12 @@ export class WaveAcpAgent implements AcpAgent {
         }
 
         const content =
-          effectiveName && parsedParameters
-            ? this.getToolContent(effectiveName, parsedParameters)
+          effectiveName && (parsedParameters || effectiveShortResult)
+            ? this.getToolContent(
+                effectiveName,
+                parsedParameters,
+                effectiveShortResult,
+              )
             : undefined;
         const locations =
           effectiveName && parsedParameters
