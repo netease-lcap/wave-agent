@@ -88,8 +88,8 @@ importers:
   packages/code:
     dependencies:
       '@agentclientprotocol/sdk':
-        specifier: 0.15.0
-        version: 0.15.0(zod@3.25.76)
+        specifier: 0.16.1
+        version: 0.16.1(zod@3.25.76)
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -163,8 +163,8 @@ packages:
   '@acemir/cssom@0.9.31':
     resolution: {integrity: sha512-ZnR3GSaH+/vJ0YlHau21FjfLYjMpYVIzTD8M8vIEQvIGxeOXyXdzCI140rrCY862p/C/BbzWsjc1dgnM9mkoTA==}
 
-  '@agentclientprotocol/sdk@0.15.0':
-    resolution: {integrity: sha512-TH4utu23Ix8ec34srBHmDD4p3HI0cYleS1jN9lghRczPfhFlMBNrQgZWeBBe12DWy27L11eIrtciY2MXFSEiDg==}
+  '@agentclientprotocol/sdk@0.16.1':
+    resolution: {integrity: sha512-1ad+Sc/0sCtZGHthxxvgEUo5Wsbw16I+aF+YwdiLnPwkZG8KAGUEAPK6LM6Pf69lCyJPt1Aomk1d+8oE3C4ZEw==}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
@@ -2772,7 +2772,7 @@ snapshots:
   '@acemir/cssom@0.9.31':
     optional: true
 
-  '@agentclientprotocol/sdk@0.15.0(zod@3.25.76)':
+  '@agentclientprotocol/sdk@0.16.1(zod@3.25.76)':
     dependencies:
       zod: 3.25.76
 

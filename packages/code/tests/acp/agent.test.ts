@@ -6,7 +6,6 @@ import {
   type PermissionCallback,
 } from "wave-agent-sdk";
 import {
-  AGENT_METHODS,
   type AgentSideConnection,
   type ListSessionsRequest,
   type RequestPermissionResponse,
@@ -58,7 +57,9 @@ describe("WaveAcpAgent", () => {
         ?.availableCommands,
     ).toBeUndefined();
     expect(response.agentCapabilities?.sessionCapabilities?.list).toBeDefined();
-    expect(response.agentCapabilities?.sessionCapabilities?.stop).toBeDefined();
+    expect(
+      response.agentCapabilities?.sessionCapabilities?.close,
+    ).toBeDefined();
   });
 
   it("should create a new session", async () => {
@@ -168,9 +169,7 @@ describe("WaveAcpAgent", () => {
     );
     await agent.newSession({ cwd: "/cwd/1", mcpServers: [] });
 
-    const response = await agent.unstable_listSessions(
-      {} as ListSessionsRequest,
-    );
+    const response = await agent.listSessions({} as ListSessionsRequest);
     expect(response.sessions).toHaveLength(1);
     expect(response.sessions[0]).toEqual({
       sessionId: "session-1",
@@ -275,7 +274,7 @@ describe("WaveAcpAgent", () => {
     );
   });
 
-  it("should stop a session via extMethod", async () => {
+  it("should stop a session via unstable_closeSession", async () => {
     const mockWaveAgent = {
       sessionId: "session-to-stop",
       destroy: vi.fn().mockResolvedValue(undefined),
@@ -294,14 +293,12 @@ describe("WaveAcpAgent", () => {
     );
     await agent.newSession({ cwd: "/test", mcpServers: [] });
 
-    await agent.extMethod(AGENT_METHODS.session_stop, {
+    await agent.unstable_closeSession({
       sessionId: "session-to-stop",
     });
     expect(mockWaveAgent.destroy).toHaveBeenCalled();
 
-    const listResponse = await agent.unstable_listSessions(
-      {} as ListSessionsRequest,
-    );
+    const listResponse = await agent.listSessions({} as ListSessionsRequest);
     expect(listResponse.sessions).toHaveLength(0);
   });
 
@@ -1027,12 +1024,18 @@ describe("WaveAcpAgent", () => {
     ).rejects.toThrow("Session non-existent not found");
   });
 
-  it("should throw error if stop is called with non-existent session", async () => {
-    // stop is implemented via extMethod
+  it("should handle closeSession with non-existent session", async () => {
+    // stop is implemented via unstable_closeSession
     await expect(
-      agent.extMethod(AGENT_METHODS.session_stop, {
+      agent.unstable_closeSession({
         sessionId: "non-existent",
       }),
     ).resolves.toEqual({});
+  });
+
+  it("should handle unknown extMethod", async () => {
+    await expect(agent.extMethod("unknown", {})).rejects.toThrow(
+      "Method unknown not implemented",
+    );
   });
 });

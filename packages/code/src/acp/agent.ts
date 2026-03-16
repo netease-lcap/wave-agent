@@ -115,7 +115,7 @@ export class WaveAcpAgent implements AcpAgent {
         loadSession: true,
         sessionCapabilities: {
           list: {},
-          stop: {},
+          close: {},
         },
       },
     };
@@ -228,7 +228,7 @@ export class WaveAcpAgent implements AcpAgent {
     };
   }
 
-  async unstable_listSessions(
+  async listSessions(
     params: ListSessionsRequest,
   ): Promise<ListSessionsResponse> {
     void params;
@@ -254,19 +254,25 @@ export class WaveAcpAgent implements AcpAgent {
     };
   }
 
+  async unstable_closeSession(
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const sessionId = params.sessionId as string;
+    logger.info(`Stopping session ${sessionId}`);
+    const agent = this.agents.get(sessionId);
+    if (agent) {
+      await agent.destroy();
+      this.agents.delete(sessionId);
+    }
+    return {};
+  }
+
   async extMethod(
     method: string,
     params: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    if (method === AGENT_METHODS.session_stop) {
-      const sessionId = params.sessionId as string;
-      logger.info(`Stopping session ${sessionId}`);
-      const agent = this.agents.get(sessionId);
-      if (agent) {
-        await agent.destroy();
-        this.agents.delete(sessionId);
-      }
-      return {};
+    if (method === AGENT_METHODS.session_close) {
+      return this.unstable_closeSession(params);
     }
     throw new Error(`Method ${method} not implemented`);
   }
