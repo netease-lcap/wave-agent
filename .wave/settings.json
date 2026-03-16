@@ -16,6 +16,8 @@
       "Bash(gh pr view*)",
       "Bash(gh pr checks*)",
       "Bash(gh pr diff*)",
+      "Bash(gh issue view*)",
+      "Bash(gh issue list*)",
       "Bash(node packages/code/dist/index.js *)",
       "Bash(wave *)",
       "Bash(acpx *)"

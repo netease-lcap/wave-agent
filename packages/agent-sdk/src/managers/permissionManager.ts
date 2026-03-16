@@ -513,8 +513,8 @@ export class PermissionManager {
             return true;
           }
 
-          // Check out-of-bounds for cd and ls
-          if (cmd === "cd" || cmd === "ls") {
+          // Check out-of-bounds for cd
+          if (cmd === "cd") {
             const pathArgs =
               (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
                 (arg) => !arg.startsWith("-"),
@@ -643,19 +643,24 @@ export class PermissionManager {
               const args = commandMatch[2]?.trim() || "";
 
               if (SAFE_COMMANDS.includes(cmd)) {
-                if (cmd === "pwd" || cmd === "true" || cmd === "false") {
+                if (
+                  cmd === "pwd" ||
+                  cmd === "true" ||
+                  cmd === "false" ||
+                  cmd === "ls"
+                ) {
                   return true;
                 }
 
                 if (workdir) {
-                  // For cd and ls, check paths
+                  // For cd, check paths
                   const pathArgs =
                     (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
                       (arg) => !arg.startsWith("-"),
                     ) || [];
 
                   if (pathArgs.length === 0) {
-                    // cd or ls without arguments operates on current dir (workdir)
+                    // cd without arguments operates on current dir (workdir)
                     return true;
                   }
 
@@ -740,10 +745,15 @@ export class PermissionManager {
         const args = commandMatch[2]?.trim() || "";
 
         if (SAFE_COMMANDS.includes(cmd)) {
-          if (cmd === "pwd" || cmd === "true" || cmd === "false") {
+          if (
+            cmd === "pwd" ||
+            cmd === "true" ||
+            cmd === "false" ||
+            cmd === "ls"
+          ) {
             isSafe = true;
           } else {
-            // For cd and ls, check paths
+            // For cd, check paths
             const pathArgs =
               (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
                 (arg) => !arg.startsWith("-"),
@@ -776,7 +786,7 @@ export class PermissionManager {
             continue;
           }
 
-          if (cmd === "cd" || cmd === "ls") {
+          if (cmd === "cd") {
             const pathArgs =
               (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
                 (arg) => !arg.startsWith("-"),

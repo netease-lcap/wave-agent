@@ -133,7 +133,7 @@ describe("PermissionManager Safe Zone", () => {
       expect(context.hidePersistentOption).toBeFalsy();
     });
 
-    it("should set hidePersistentOption for 'ls' outside Safe Zone", () => {
+    it("should NOT set hidePersistentOption for 'ls' outside Safe Zone", () => {
       const context = permissionManager.createContext(
         "Bash",
         "default",
@@ -144,7 +144,7 @@ describe("PermissionManager Safe Zone", () => {
         },
       );
 
-      expect(context.hidePersistentOption).toBe(true);
+      expect(context.hidePersistentOption).toBeFalsy();
     });
 
     it("should allow 'cd' into additionalDirectory", () => {
