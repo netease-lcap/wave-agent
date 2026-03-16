@@ -76,7 +76,7 @@ async function runSessionLifecycleExample() {
 
     // 2. List sessions
     console.log("Listing active sessions...");
-    const listResult = await connection.listSessions({});
+    const listResult = await connection.listSessions({ cwd: tmpDir });
     console.log(
       "Active sessions:",
       JSON.stringify(listResult.sessions, null, 2),
@@ -95,7 +95,7 @@ async function runSessionLifecycleExample() {
 
     // 4. List sessions again to verify
     console.log("Listing active sessions after stop...");
-    const listResultAfter = await connection.listSessions({});
+    const listResultAfter = await connection.listSessions({ cwd: tmpDir });
     console.log(
       "Active sessions:",
       JSON.stringify(listResultAfter.sessions, null, 2),
