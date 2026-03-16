@@ -12,7 +12,7 @@ import {
   type AgentToolBlockUpdateParams,
   generateMessageId,
 } from "../utils/messageOperations.js";
-import type { Message, Usage, SlashCommand } from "../types/index.js";
+import type { Message, Usage } from "../types/index.js";
 import { join } from "path";
 import {
   appendMessages,
@@ -55,7 +55,6 @@ export interface MessageManagerCallbacks {
   onAddBangMessage?: (command: string) => void;
   onUpdateBangMessage?: (command: string, output: string) => void;
   onCompleteBangMessage?: (command: string, exitCode: number) => void;
-  onSlashCommandsChange?: (commands: SlashCommand[]) => void;
   onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
   onShowRewind?: () => void;
@@ -295,13 +294,6 @@ export class MessageManager {
    */
   public triggerShowRewind(): void {
     this.callbacks.onShowRewind?.();
-  }
-
-  /**
-   * Trigger slash commands change callback
-   */
-  public triggerSlashCommandsChange(commands: SlashCommand[]): void {
-    this.callbacks.onSlashCommandsChange?.(commands);
   }
 
   // Initialize state from session data

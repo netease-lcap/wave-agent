@@ -277,7 +277,6 @@ export class SlashCommandManager {
    */
   public registerCommand(command: SlashCommand): void {
     this.commands.set(command.id, command);
-    this.messageManager.triggerSlashCommandsChange(this.getCommands());
   }
 
   /**

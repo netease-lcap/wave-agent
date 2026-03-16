@@ -295,9 +295,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
         },
-        onSlashCommandsChange: (commands) => {
-          setSlashCommands([...commands]);
-        },
       };
 
       try {

@@ -4,6 +4,7 @@ import {
   PermissionDecision,
   ToolPermissionContext,
   AgentToolBlockUpdateParams,
+  Task,
 } from "wave-agent-sdk";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -30,6 +31,10 @@ import {
   type ToolCallContent,
   type ToolCallLocation,
   type ToolKind,
+  type SessionConfigOption,
+  type SetSessionModeRequest,
+  type SetSessionConfigOptionRequest,
+  type SetSessionConfigOptionResponse,
   AGENT_METHODS,
 } from "@agentclientprotocol/sdk";
 
@@ -39,6 +44,52 @@ export class WaveAcpAgent implements AcpAgent {
 
   constructor(connection: AgentSideConnection) {
     this.connection = connection;
+  }
+
+  private getSessionModeState(agent: WaveAgent) {
+    return {
+      currentModeId: agent.getPermissionMode(),
+      availableModes: [
+        {
+          id: "default",
+          name: "Default",
+          description: "Ask for permission for restricted tools",
+        },
+        {
+          id: "acceptEdits",
+          name: "Accept Edits",
+          description: "Automatically accept file edits",
+        },
+        {
+          id: "plan",
+          name: "Plan",
+          description: "Plan mode for complex tasks",
+        },
+        {
+          id: "bypassPermissions",
+          name: "Bypass Permissions",
+          description: "Automatically accept all tool calls",
+        },
+      ],
+    };
+  }
+
+  private getSessionConfigOptions(agent: WaveAgent): SessionConfigOption[] {
+    return [
+      {
+        id: "permission_mode",
+        name: "Permission Mode",
+        type: "select",
+        category: "mode",
+        currentValue: agent.getPermissionMode(),
+        options: [
+          { value: "default", name: "Default" },
+          { value: "acceptEdits", name: "Accept Edits" },
+          { value: "plan", name: "Plan" },
+          { value: "bypassPermissions", name: "Bypass Permissions" },
+        ],
+      },
+    ];
   }
 
   private async cleanupAllAgents() {
@@ -104,12 +155,9 @@ export class WaveAcpAgent implements AcpAgent {
             | undefined;
           cb?.(params);
         },
-        onTasksChange: (tasks: unknown[]) => {
-          const cb = callbacks.onTasksChange as
-            | ((tasks: unknown[]) => void)
-            | undefined;
-          cb?.(tasks);
-        },
+        onTasksChange: (tasks) => callbacks.onTasksChange?.(tasks as Task[]),
+        onPermissionModeChange: (mode) =>
+          callbacks.onPermissionModeChange?.(mode),
       },
     });
 
@@ -127,16 +175,57 @@ export class WaveAcpAgent implements AcpAgent {
     const { cwd } = params;
     logger.info(`Creating new session in ${cwd}`);
     const agent = await this.createAgent(undefined, cwd);
+
+    // Send initial available commands after agent creation
+    setImmediate(() => {
+      this.connection.sessionUpdate({
+        sessionId: agent.sessionId as AcpSessionId,
+        update: {
+          sessionUpdate: "available_commands_update",
+          availableCommands: agent.getSlashCommands().map((cmd) => ({
+            name: cmd.name,
+            description: cmd.description,
+            input: {
+              hint: "Enter arguments...",
+            },
+          })),
+        },
+      });
+    });
+
     return {
       sessionId: agent.sessionId as AcpSessionId,
+      modes: this.getSessionModeState(agent),
+      configOptions: this.getSessionConfigOptions(agent),
     };
   }
 
   async loadSession(params: LoadSessionRequest): Promise<LoadSessionResponse> {
     const { sessionId, cwd } = params;
     logger.info(`Loading session: ${sessionId} in ${cwd}`);
-    await this.createAgent(sessionId, cwd);
-    return {};
+    const agent = await this.createAgent(sessionId, cwd);
+
+    // Send initial available commands after agent creation
+    setImmediate(() => {
+      this.connection.sessionUpdate({
+        sessionId: agent.sessionId as AcpSessionId,
+        update: {
+          sessionUpdate: "available_commands_update",
+          availableCommands: agent.getSlashCommands().map((cmd) => ({
+            name: cmd.name,
+            description: cmd.description,
+            input: {
+              hint: "Enter arguments...",
+            },
+          })),
+        },
+      });
+    });
+
+    return {
+      modes: this.getSessionModeState(agent),
+      configOptions: this.getSessionConfigOptions(agent),
+    };
   }
 
   async unstable_listSessions(
@@ -180,6 +269,33 @@ export class WaveAcpAgent implements AcpAgent {
       return {};
     }
     throw new Error(`Method ${method} not implemented`);
+  }
+
+  async setSessionMode(params: SetSessionModeRequest): Promise<void> {
+    const { sessionId, modeId } = params;
+    const agent = this.agents.get(sessionId);
+    if (!agent) throw new Error(`Session ${sessionId} not found`);
+    agent.setPermissionMode(
+      modeId as "default" | "acceptEdits" | "plan" | "bypassPermissions",
+    );
+  }
+
+  async setSessionConfigOption(
+    params: SetSessionConfigOptionRequest,
+  ): Promise<SetSessionConfigOptionResponse> {
+    const { sessionId, configId, value } = params;
+    const agent = this.agents.get(sessionId);
+    if (!agent) throw new Error(`Session ${sessionId} not found`);
+
+    if (configId === "permission_mode") {
+      agent.setPermissionMode(
+        value as "default" | "acceptEdits" | "plan" | "bypassPermissions",
+      );
+    }
+
+    return {
+      configOptions: this.getSessionConfigOptions(agent),
+    };
   }
 
   async prompt(params: PromptRequest): Promise<PromptResponse> {
@@ -487,6 +603,7 @@ export class WaveAcpAgent implements AcpAgent {
   }
 
   private createCallbacks(sessionId: string): AgentOptions["callbacks"] {
+    const getAgent = () => this.agents.get(sessionId);
     return {
       onAssistantContentUpdated: (chunk: string) => {
         this.connection.sessionUpdate({
@@ -597,6 +714,25 @@ export class WaveAcpAgent implements AcpAgent {
             })),
           },
         });
+      },
+      onPermissionModeChange: (mode) => {
+        this.connection.sessionUpdate({
+          sessionId: sessionId as AcpSessionId,
+          update: {
+            sessionUpdate: "current_mode_update",
+            currentModeId: mode,
+          },
+        });
+        const agent = getAgent();
+        if (agent) {
+          this.connection.sessionUpdate({
+            sessionId: sessionId as AcpSessionId,
+            update: {
+              sessionUpdate: "config_option_update",
+              configOptions: this.getSessionConfigOptions(agent),
+            },
+          });
+        }
       },
     };
   }
