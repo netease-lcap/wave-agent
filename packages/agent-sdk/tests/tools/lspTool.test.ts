@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as fs from "fs";
 import { lspTool, MAX_RESULTS, MAX_FILES } from "../../src/tools/lspTool.js";
+
+vi.mock("fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("fs")>();
+  return {
+    ...actual,
+    readFileSync: vi.fn(),
+  };
+});
 import { TaskManager } from "../../src/services/taskManager.js";
 import { ToolContext } from "../../src/tools/types.js";
 import { Container } from "../../src/utils/container.js";
@@ -869,5 +878,34 @@ describe("lspTool", () => {
       );
       expect(result.content).toContain("... and 10 more in this file");
     });
+  });
+
+  it("should provide improved error message when no results are found", async () => {
+    const mockLineContent = "  const x = 1;";
+    vi.mocked(fs.readFileSync).mockReturnValue(mockLineContent);
+
+    mockLspManager.execute.mockResolvedValue({
+      success: true,
+      content: JSON.stringify(null),
+    });
+
+    const result = await lspTool.execute(
+      {
+        operation: "goToDefinition",
+        filePath: "src/main.ts",
+        line: 1,
+        character: 3,
+      },
+      context,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("No definition found");
+    expect(result.content).toContain("Context at src/main.ts:1:3:");
+    expect(result.content).toContain(mockLineContent);
+    expect(result.content).toContain("  ^");
+    expect(result.content).toContain(
+      "Please check if the character offset is correct",
+    );
   });
 });

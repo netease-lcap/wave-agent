@@ -1,5 +1,6 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
-import { relative } from "path";
+import { relative, join, isAbsolute } from "path";
+import * as fs from "fs";
 import { logger } from "../utils/globalLogger.js";
 import { getDisplayPath } from "../utils/path.js";
 import { LSP_TOOL_NAME } from "../constants/tools.js";
@@ -48,6 +49,43 @@ function formatUri(uri: string, workdir?: string): string {
     }
   }
   return path;
+}
+
+/**
+ * Formats an error message when no results are found, including context from the file
+ */
+function formatNoResultError(
+  message: string,
+  filePath: string,
+  line: number,
+  character: number,
+  workdir?: string,
+): string {
+  let absolutePath = filePath;
+  if (!isAbsolute(filePath) && workdir) {
+    absolutePath = join(workdir, filePath);
+  }
+
+  let lineContent = "";
+  try {
+    const content = fs.readFileSync(absolutePath, "utf-8");
+    const lines = content.split("\n");
+    if (line > 0 && line <= lines.length) {
+      lineContent = lines[line - 1];
+    }
+  } catch {
+    // Ignore file read errors
+  }
+
+  const displayPath = getDisplayPath(filePath, workdir || "");
+  const baseMessage = `${message}\n\nPlease check if the character offset is correct and points to a valid symbol.`;
+
+  if (lineContent) {
+    const pointer = " ".repeat(Math.max(0, character - 1)) + "^";
+    return `${message}\n\nContext at ${displayPath}:${line}:${character}:\n${lineContent}\n${pointer}\n\nPlease check if the character offset is correct and points to a valid symbol.`;
+  }
+
+  return baseMessage;
 }
 
 /**
@@ -109,10 +147,19 @@ function isLocationLink(loc: Location | LocationLink): loc is LocationLink {
  */
 function formatGoToDefinitionResult(
   result: Location | Location[] | LocationLink | LocationLink[] | null,
+  filePath: string,
+  line: number,
+  character: number,
+  operation: string,
   workdir?: string,
 ): string {
+  const message =
+    operation === "goToImplementation"
+      ? "No implementation found. This may occur if the cursor is not on a symbol, or if the implementation is in an external library not indexed by the LSP server."
+      : "No definition found. This may occur if the cursor is not on a symbol, or if the definition is in an external library not indexed by the LSP server.";
+
   if (!result) {
-    return "No definition found. This may occur if the cursor is not on a symbol, or if the definition is in an external library not indexed by the LSP server.";
+    return formatNoResultError(message, filePath, line, character, workdir);
   }
 
   if (Array.isArray(result)) {
@@ -122,7 +169,7 @@ function formatGoToDefinitionResult(
     const validLocations = locations.filter((loc) => loc && loc.uri);
 
     if (validLocations.length === 0) {
-      return "No definition found. This may occur if the cursor is not on a symbol, or if the definition is in an external library not indexed by the LSP server.";
+      return formatNoResultError(message, filePath, line, character, workdir);
     }
 
     if (validLocations.length === 1) {
@@ -150,15 +197,21 @@ function formatGoToDefinitionResult(
  */
 function formatFindReferencesResult(
   result: Location[] | null,
+  filePath: string,
+  line: number,
+  character: number,
   workdir?: string,
 ): string {
+  const message =
+    "No references found. This may occur if the symbol has no usages, or if the LSP server has not fully indexed the workspace.";
+
   if (!result || result.length === 0) {
-    return "No references found. This may occur if the symbol has no usages, or if the LSP server has not fully indexed the workspace.";
+    return formatNoResultError(message, filePath, line, character, workdir);
   }
 
   const validLocations = result.filter((loc) => loc && loc.uri);
   if (validLocations.length === 0) {
-    return "No references found. This may occur if the symbol has no usages, or if the LSP server has not fully indexed the workspace.";
+    return formatNoResultError(message, filePath, line, character, workdir);
   }
 
   if (validLocations.length === 1) {
@@ -224,9 +277,21 @@ function formatHoverContents(contents: Hover["contents"]): string {
 /**
  * Formats the result of a hover operation
  */
-function formatHoverResult(result: Hover | null): string {
+function formatHoverResult(
+  result: Hover | null,
+  filePath: string,
+  line: number,
+  character: number,
+  workdir?: string,
+): string {
   if (!result) {
-    return "No hover information available. This may occur if the cursor is not on a symbol, or if the LSP server has not fully indexed the file.";
+    return formatNoResultError(
+      "No hover information available. This may occur if the cursor is not on a symbol, or if the LSP server has not fully indexed the file.",
+      filePath,
+      line,
+      character,
+      workdir,
+    );
   }
 
   const contents = formatHoverContents(result.contents);
@@ -428,10 +493,19 @@ function formatCallHierarchyItem(
  */
 function formatPrepareCallHierarchyResult(
   result: CallHierarchyItem[] | null,
+  filePath: string,
+  line: number,
+  character: number,
   workdir?: string,
 ): string {
   if (!result || result.length === 0) {
-    return "No call hierarchy item found at this position";
+    return formatNoResultError(
+      "No call hierarchy item found at this position",
+      filePath,
+      line,
+      character,
+      workdir,
+    );
   }
 
   if (result.length === 1) {
@@ -719,17 +793,30 @@ Note: LSP servers must be configured for the file type. If no server is availabl
               | LocationLink
               | LocationLink[]
               | null,
+            filePath,
+            line,
+            character,
+            operation,
             context.workdir,
           );
           break;
         case "findReferences":
           formattedContent = formatFindReferencesResult(
             rawResult as Location[] | null,
+            filePath,
+            line,
+            character,
             context.workdir,
           );
           break;
         case "hover":
-          formattedContent = formatHoverResult(rawResult as Hover | null);
+          formattedContent = formatHoverResult(
+            rawResult as Hover | null,
+            filePath,
+            line,
+            character,
+            context.workdir,
+          );
           break;
         case "documentSymbol":
           formattedContent = formatDocumentSymbolResult(
@@ -746,6 +833,9 @@ Note: LSP servers must be configured for the file type. If no server is availabl
         case "prepareCallHierarchy":
           formattedContent = formatPrepareCallHierarchyResult(
             rawResult as CallHierarchyItem[] | null,
+            filePath,
+            line,
+            character,
             context.workdir,
           );
           break;
