@@ -56,6 +56,8 @@ export interface ToolPermissionContext {
   suggestedPrefix?: string;
   /** Whether to hide the persistent permission option (e.g., "Don't ask again") in the UI */
   hidePersistentOption?: boolean;
+  /** The ID of the tool call that triggered this permission request */
+  toolCallId?: string;
 }
 
 /** List of tools that require permission checks in default mode */

@@ -3,7 +3,10 @@ import {
   AgentOptions,
   PermissionDecision,
   ToolPermissionContext,
+  AgentToolBlockUpdateParams,
 } from "wave-agent-sdk";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { logger } from "../utils/logger.js";
 import {
   type Agent as AcpAgent,
@@ -24,6 +27,9 @@ import {
   type StopReason,
   type PermissionOption,
   type SessionInfo,
+  type ToolCallContent,
+  type ToolCallLocation,
+  type ToolKind,
   AGENT_METHODS,
 } from "@agentclientprotocol/sdk";
 
@@ -248,6 +254,13 @@ export class WaveAcpAgent implements AcpAgent {
       `Handling permission request for ${context.toolName} in session ${sessionId}`,
     );
 
+    const agent = this.agents.get(sessionId);
+    const workdir = agent?.workingDirectory || process.cwd();
+
+    const toolCallId =
+      context.toolCallId ||
+      "perm-" + Math.random().toString(36).substring(2, 9);
+
     const options: PermissionOption[] = [
       {
         optionId: "allow_once",
@@ -271,14 +284,31 @@ export class WaveAcpAgent implements AcpAgent {
       },
     ];
 
+    const content = context.toolName
+      ? await this.getToolContentAsync(
+          context.toolName,
+          context.toolInput,
+          workdir,
+        )
+      : undefined;
+    const locations = context.toolName
+      ? this.getToolLocations(context.toolName, context.toolInput)
+      : undefined;
+    const kind = context.toolName
+      ? this.getToolKind(context.toolName)
+      : undefined;
+
     try {
       const response = await this.connection.requestPermission({
         sessionId: sessionId as AcpSessionId,
         toolCall: {
-          toolCallId: "perm-" + Math.random().toString(36).substring(2, 9),
+          toolCallId,
           title: `Permission for ${context.toolName}`,
           status: "pending",
-          rawInput: JSON.stringify(context.toolInput),
+          rawInput: context.toolInput,
+          content,
+          locations,
+          kind,
         },
         options,
       });
@@ -318,6 +348,144 @@ export class WaveAcpAgent implements AcpAgent {
     }
   }
 
+  private async getToolContentAsync(
+    name: string,
+    parameters: Record<string, unknown> | undefined,
+    workdir: string,
+  ): Promise<ToolCallContent[] | undefined> {
+    if (!parameters) return undefined;
+    if (name === "Write") {
+      let oldText: string | null = null;
+      try {
+        const filePath = parameters.file_path as string;
+        const fullPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.join(workdir, filePath);
+        oldText = await fs.readFile(fullPath, "utf-8");
+      } catch {
+        // File might not exist, which is fine for Write
+      }
+      return [
+        {
+          type: "diff",
+          path: parameters.file_path as string,
+          oldText,
+          newText: parameters.content as string,
+        },
+      ];
+    }
+    if (name === "Edit") {
+      let oldText: string | null = null;
+      let newText: string | null = null;
+      try {
+        const filePath = parameters.file_path as string;
+        const fullPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.join(workdir, filePath);
+        oldText = await fs.readFile(fullPath, "utf-8");
+        if (oldText) {
+          if (parameters.replace_all) {
+            newText = oldText
+              .split(parameters.old_string as string)
+              .join(parameters.new_string as string);
+          } else {
+            newText = oldText.replace(
+              parameters.old_string as string,
+              parameters.new_string as string,
+            );
+          }
+        }
+      } catch {
+        logger.error("Failed to read file for Edit diff");
+      }
+
+      if (oldText && newText) {
+        return [
+          {
+            type: "diff",
+            path: parameters.file_path as string,
+            oldText,
+            newText,
+          },
+        ];
+      }
+
+      // Fallback to snippets if file reading fails
+      return [
+        {
+          type: "diff",
+          path: parameters.file_path as string,
+          oldText: parameters.old_string as string,
+          newText: parameters.new_string as string,
+        },
+      ];
+    }
+    return this.getToolContent(name, parameters);
+  }
+
+  private getToolContent(
+    name: string,
+    parameters: Record<string, unknown> | undefined,
+  ): ToolCallContent[] | undefined {
+    if (!parameters) return undefined;
+    if (name === "Write") {
+      return [
+        {
+          type: "diff",
+          path: parameters.file_path as string,
+          oldText: null,
+          newText: parameters.content as string,
+        },
+      ];
+    }
+    if (name === "Edit") {
+      return [
+        {
+          type: "diff",
+          path: parameters.file_path as string,
+          oldText: parameters.old_string as string,
+          newText: parameters.new_string as string,
+        },
+      ];
+    }
+    return undefined;
+  }
+
+  private getToolLocations(
+    name: string,
+    parameters: Record<string, unknown> | undefined,
+  ): ToolCallLocation[] | undefined {
+    if (!parameters) return undefined;
+    if (name === "Write" || name === "Edit" || name === "Read") {
+      return [
+        {
+          path: parameters.file_path as string,
+          line: parameters.offset as number,
+        },
+      ];
+    }
+    return undefined;
+  }
+
+  private getToolKind(name: string): ToolKind {
+    switch (name) {
+      case "Read":
+      case "Glob":
+      case "Grep":
+      case "LSP":
+        return "read";
+      case "Write":
+      case "Edit":
+        return "edit";
+      case "Bash":
+        return "execute";
+      case "Agent":
+        return "other";
+      default:
+        return "other";
+    }
+  }
+
   private createCallbacks(sessionId: string): AgentOptions["callbacks"] {
     return {
       onAssistantContentUpdated: (chunk: string) => {
@@ -344,8 +512,27 @@ export class WaveAcpAgent implements AcpAgent {
           },
         });
       },
-      onToolBlockUpdated: (params) => {
-        const { id, name, stage, success, error, result } = params;
+      onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
+        const { id, name, stage, success, error, result, parameters } = params;
+
+        let parsedParameters: Record<string, unknown> | undefined = undefined;
+        if (parameters) {
+          try {
+            parsedParameters = JSON.parse(parameters);
+          } catch {
+            // Ignore parse errors during streaming
+          }
+        }
+
+        const content =
+          name && parsedParameters
+            ? this.getToolContent(name, parsedParameters)
+            : undefined;
+        const locations =
+          name && parsedParameters
+            ? this.getToolLocations(name, parsedParameters)
+            : undefined;
+        const kind = name ? this.getToolKind(name) : undefined;
 
         if (stage === "start") {
           this.connection.sessionUpdate({
@@ -355,6 +542,10 @@ export class WaveAcpAgent implements AcpAgent {
               toolCallId: id,
               title: name || "Tool Call",
               status: "pending",
+              content,
+              locations,
+              kind,
+              rawInput: parsedParameters,
             },
           });
           return;
@@ -382,6 +573,10 @@ export class WaveAcpAgent implements AcpAgent {
             status,
             title: name || "Tool Call",
             rawOutput: result || error,
+            content,
+            locations,
+            kind,
+            rawInput: parsedParameters,
           },
         });
       },

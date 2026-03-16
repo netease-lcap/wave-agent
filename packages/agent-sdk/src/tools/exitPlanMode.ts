@@ -86,6 +86,7 @@ Ensure your plan is complete and unambiguous:
         context.permissionMode || "plan",
         context.canUseToolCallback,
         { plan_content: planContent },
+        context.toolCallId,
       );
 
       const permissionResult =

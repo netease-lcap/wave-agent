@@ -174,6 +174,7 @@ Usage:
               replace_all: replaceAll,
               startLineNumber,
             },
+            context.toolCallId,
           );
           const permissionResult =
             await context.permissionManager.checkPermission(permissionContext);
