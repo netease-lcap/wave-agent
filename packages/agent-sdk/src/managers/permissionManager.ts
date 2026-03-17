@@ -34,7 +34,19 @@ import {
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
 
-const SAFE_COMMANDS = ["cd", "ls", "pwd", "true", "false"];
+const SAFE_COMMANDS = [
+  "cd",
+  "ls",
+  "pwd",
+  "true",
+  "false",
+  "grep",
+  "rg",
+  "cat",
+  "head",
+  "tail",
+  "wc",
+];
 
 const DEFAULT_ALLOWED_RULES = [
   "Bash(git status*)",
@@ -69,7 +81,12 @@ const DEFAULT_ALLOWED_RULES = [
   "Bash(whoami*)",
   "Bash(date*)",
   "Bash(uptime*)",
-  "Bash(wc -l*)",
+  "Bash(grep*)",
+  "Bash(rg*)",
+  "Bash(cat*)",
+  "Bash(head*)",
+  "Bash(tail*)",
+  "Bash(wc*)",
 ];
 
 import { logger } from "../utils/globalLogger.js";
@@ -649,7 +666,13 @@ export class PermissionManager {
                   cmd === "pwd" ||
                   cmd === "true" ||
                   cmd === "false" ||
-                  cmd === "ls"
+                  cmd === "ls" ||
+                  cmd === "grep" ||
+                  cmd === "rg" ||
+                  cmd === "cat" ||
+                  cmd === "head" ||
+                  cmd === "tail" ||
+                  cmd === "wc"
                 ) {
                   return true;
                 }
@@ -751,7 +774,13 @@ export class PermissionManager {
             cmd === "pwd" ||
             cmd === "true" ||
             cmd === "false" ||
-            cmd === "ls"
+            cmd === "ls" ||
+            cmd === "grep" ||
+            cmd === "rg" ||
+            cmd === "cat" ||
+            cmd === "head" ||
+            cmd === "tail" ||
+            cmd === "wc"
           ) {
             isSafe = true;
           } else {
