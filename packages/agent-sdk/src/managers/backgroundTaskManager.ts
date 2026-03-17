@@ -293,7 +293,14 @@ export class BackgroundTaskManager {
   public getOutput(
     id: string,
     filter?: string,
-  ): { stdout: string; stderr: string; status: string } | null {
+  ): {
+    stdout: string;
+    stderr: string;
+    status: string;
+    outputPath?: string;
+    type: string;
+    exitCode?: number;
+  } | null {
     const task = this.tasks.get(id);
     if (!task) {
       return null;
@@ -323,6 +330,9 @@ export class BackgroundTaskManager {
       stdout,
       stderr,
       status: task.status,
+      outputPath: task.outputPath,
+      type: task.type,
+      exitCode: task.exitCode,
     };
   }
 

@@ -49,6 +49,8 @@ export interface ToolResult {
   }>;
   // Whether the tool was manually backgrounded by the user (e.g. via Ctrl-B)
   isManuallyBackgrounded?: boolean;
+  // Optional metadata for the tool result
+  metadata?: Record<string, unknown>;
 }
 
 export interface ToolContext {

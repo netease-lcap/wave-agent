@@ -82,16 +82,35 @@ export const taskOutputTool: ToolPlugin = {
       }
 
       const finalContent = content || "No output available";
-      const processedContent =
-        finalContent.length > MAX_OUTPUT_LENGTH
-          ? finalContent.substring(0, MAX_OUTPUT_LENGTH) +
-            "\n\n... (output truncated)"
-          : finalContent;
+      let processedContent = finalContent;
+      let isTruncated = false;
+
+      if (finalContent.length > MAX_OUTPUT_LENGTH) {
+        processedContent =
+          finalContent.substring(0, MAX_OUTPUT_LENGTH) +
+          "\n\n... (output truncated)";
+        isTruncated = true;
+      }
+
+      if (isTruncated && output.outputPath) {
+        processedContent += `\n\nFull output available at: ${output.outputPath}`;
+      }
+
+      let shortResult = `${taskId}: ${output.status}`;
+      if (output.status === "failed" && output.exitCode !== undefined) {
+        shortResult += ` (exit code: ${output.exitCode})`;
+      }
 
       return {
         success: true,
         content: processedContent,
-        shortResult: `${taskId}: ${output.status}`,
+        shortResult,
+        metadata: {
+          outputPath: output.outputPath,
+          status: output.status,
+          type: output.type,
+          exitCode: output.exitCode,
+        },
       };
     };
 
