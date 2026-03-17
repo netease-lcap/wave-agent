@@ -324,13 +324,35 @@ export class WaveAcpAgent implements AcpAgent {
       logger.info(
         `Sending message to agent: ${textContent.substring(0, 50)}...`,
       );
-      await agent.sendMessage(
+      const rawStopReason = await agent.sendMessage(
         textContent,
         images.length > 0 ? images : undefined,
       );
       logger.info(`Message sent successfully for session ${sessionId}`);
+
+      // Map stop reason
+      let stopReason: StopReason = "end_turn";
+      if (rawStopReason === "stop") {
+        stopReason = "end_turn";
+      } else if (rawStopReason === "content_filter") {
+        stopReason = "refusal";
+      } else if (rawStopReason === "cancelled") {
+        stopReason = "cancelled";
+      } else if (rawStopReason === "length") {
+        stopReason = "max_tokens";
+      }
+
+      // Dispatch sessionUpdate
+      this.connection.sessionUpdate({
+        sessionId: sessionId as AcpSessionId,
+        update: {
+          sessionUpdate: "agent_message_complete",
+          stopReason,
+        },
+      });
+
       return {
-        stopReason: "end_turn" as StopReason,
+        stopReason,
       };
     } catch (error) {
       if (error instanceof Error && error.message.includes("abort")) {
