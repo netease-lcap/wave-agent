@@ -492,12 +492,12 @@ export class Agent {
    * @param images - Optional array of images to include with the message
    * @param images[].path - File path to the image or base64 encoded image data
    * @param images[].mimeType - MIME type of the image (e.g., 'image/png', 'image/jpeg')
-   * @returns Promise that resolves when the message has been processed
+   * @returns Promise that resolves when the message has been processed, returning the stop reason
    *
    * @example
    * ```typescript
    * // Send a text message
-   * await agent.sendMessage("Hello, how are you?");
+   * const stopReason = await agent.sendMessage("Hello, how are you?");
    *
    * // Send a message with images using file paths
    * await agent.sendMessage("What do you see in these images?", [
@@ -514,8 +514,8 @@ export class Agent {
   public async sendMessage(
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
-  ): Promise<void> {
-    await InteractionService.sendMessage(
+  ): Promise<string | null> {
+    return await InteractionService.sendMessage(
       {
         messageManager: this.messageManager,
         slashCommandManager: this.slashCommandManager,
