@@ -67,12 +67,24 @@ async function runSessionLifecycleExample() {
     });
     console.log("Session 1 ID:", id1);
 
+    console.log('Sending "hi" to session 1...');
+    await connection.prompt({
+      sessionId: id1,
+      prompt: [{ type: "text", text: "hi" }],
+    });
+
     console.log("Creating session 2...");
     const { sessionId: id2 } = await connection.newSession({
       cwd: tmpDir,
       mcpServers: [],
     });
     console.log("Session 2 ID:", id2);
+
+    console.log('Sending "hi" to session 2...');
+    await connection.prompt({
+      sessionId: id2,
+      prompt: [{ type: "text", text: "hi" }],
+    });
 
     // 2. List sessions
     console.log("Listing active sessions...");
