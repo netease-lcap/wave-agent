@@ -22,6 +22,8 @@ wave code -w
 ```
 This will generate a unique name (e.g., `gentle-swift-breeze`) and create the worktree at `.wave/worktrees/gentle-swift-breeze`.
 
+**Note**: If you run `wave -w` from within an existing worktree, the new worktree will be created relative to the **main repository root**, not nested inside the current worktree.
+
 ## Exiting a Worktree Session
 
 When you exit the Wave CLI (e.g., by pressing `Ctrl+C`), the system will check for any uncommitted changes or new commits in the worktree.

@@ -114,7 +114,7 @@ As a developer, I want the CLI to automatically clean up the worktree if I haven
 
 - **FR-001**: System MUST support `-w` and `--worktree [feat-name]` command-line arguments.
 - **FR-002**: System MUST generate a unique feature name (e.g., `adjective-adjective-noun`) if `<feat-name>` is not provided.
-- **FR-003**: System MUST create a git worktree at `.wave/worktrees/<feat-name>` (absolute path) branching from the default remote branch (identified via `git symbolic-ref refs/remotes/origin/HEAD`).
+- **FR-003**: System MUST create a git worktree at `.wave/worktrees/<feat-name>` (absolute path) relative to the **main repository root** (even if run from within a worktree), branching from the default remote branch (identified via `git symbolic-ref refs/remotes/origin/HEAD`).
 - **FR-004**: System MUST name the worktree branch `worktree-<feat-name>`.
 - **FR-005**: System MUST call `process.chdir()` to the worktree path to ensure the process's working directory matches the worktree, facilitating tmux and other window-copying features.
 - **FR-006**: System MUST detect uncommitted changes (staged or unstaged, identified via `git status --porcelain`) in the worktree upon exit.

@@ -48,6 +48,7 @@
 - [x] T020 Run full integration tests for the worktree flow
 - [x] T021 [P] Run `pnpm run type-check`, `pnpm run lint`, and `pnpm test:coverage`
 - [x] T022 Implement `WorktreeCreate` hook event support in `agent-sdk` and `code` packages.
+- [x] T023 Support creating worktrees relative to the main repository root when run from within a worktree.
 
 ## Dependency Graph
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { execSync } from "node:child_process";
 import {
   getGitRepoRoot,
+  getGitMainRepoRoot,
   getDefaultRemoteBranch,
   hasUncommittedChanges,
   hasNewCommits,
@@ -33,6 +34,47 @@ describe("gitUtils", () => {
         throw new Error("Not a git repo");
       });
       expect(getGitRepoRoot("/some/path")).toBe("/some/path");
+    });
+  });
+
+  describe("getGitMainRepoRoot", () => {
+    it("should return the main repo root from git worktree list", () => {
+      vi.mocked(execSync).mockReturnValue(
+        "worktree /repo/main\nHEAD 123\nbranch refs/heads/main\n\nworktree /repo/worktree1\nHEAD 456\nbranch refs/heads/wt1\n" as unknown as ReturnType<
+          typeof execSync
+        >,
+      );
+      expect(getGitMainRepoRoot("/repo/worktree1")).toBe("/repo/main");
+      expect(execSync).toHaveBeenCalledWith(
+        "git worktree list --porcelain",
+        expect.any(Object),
+      );
+    });
+
+    it("should fallback to getGitRepoRoot if git worktree list fails", () => {
+      vi.mocked(execSync).mockImplementation((cmd) => {
+        if (cmd === "git worktree list --porcelain") {
+          throw new Error("Command failed");
+        }
+        if (cmd === "git rev-parse --show-toplevel") {
+          return "/repo/root\n" as unknown as ReturnType<typeof execSync>;
+        }
+        throw new Error("Command failed");
+      });
+      expect(getGitMainRepoRoot("/some/path")).toBe("/repo/root");
+    });
+
+    it("should fallback to getGitRepoRoot if output is unexpected", () => {
+      vi.mocked(execSync).mockImplementation((cmd) => {
+        if (cmd === "git worktree list --porcelain") {
+          return "unexpected output" as unknown as ReturnType<typeof execSync>;
+        }
+        if (cmd === "git rev-parse --show-toplevel") {
+          return "/repo/root\n" as unknown as ReturnType<typeof execSync>;
+        }
+        throw new Error("Command failed");
+      });
+      expect(getGitMainRepoRoot("/some/path")).toBe("/repo/root");
     });
   });
 
