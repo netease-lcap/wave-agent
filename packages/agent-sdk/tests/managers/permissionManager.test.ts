@@ -843,16 +843,16 @@ describe("PermissionManager", () => {
       });
 
       it("should treat question marks as literal characters", async () => {
-        permissionManager.updateAllowedRules(["Bash(cat file?.txt)"]);
+        permissionManager.updateAllowedRules(["Bash(mkdir file?.txt)"]);
         const context1: ToolPermissionContext = {
           toolName: "Bash",
           permissionMode: "default",
-          toolInput: { command: "cat fileA.txt" },
+          toolInput: { command: "mkdir fileA.txt" },
         };
         const context2: ToolPermissionContext = {
           toolName: "Bash",
           permissionMode: "default",
-          toolInput: { command: "cat file?.txt" },
+          toolInput: { command: "mkdir file?.txt" },
         };
         expect(
           (await permissionManager.checkPermission(context1)).behavior,
@@ -1411,6 +1411,83 @@ describe("PermissionManager", () => {
       const result = await permissionManager.checkPermission(context);
       expect(result.behavior).toBe("deny");
     });
+
+    it("should allow 'grep pattern file' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "grep pattern file" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'rg pattern' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "rg pattern" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'cat file' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cat file" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'head file' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "head file" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'tail file' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "tail file" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'wc file' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "wc file" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should deny 'grep pattern file > output' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "grep pattern file > output" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
   });
 
   describe("expandBashRule method", () => {
@@ -1434,9 +1511,9 @@ describe("PermissionManager", () => {
     });
 
     it("should handle multiple non-safe commands", () => {
-      const command = "npm install | grep error";
+      const command = "npm install | sed 's/a/b/'";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(npm install*)", "Bash(grep error)"]);
+      expect(rules).toEqual(["Bash(npm install*)", "Bash(sed 's/a/b/')"]);
     });
 
     it("should return empty array for only safe commands", () => {

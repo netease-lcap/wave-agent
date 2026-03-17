@@ -77,10 +77,10 @@ Usage notes:
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
   - If the output exceeds ${MAX_OUTPUT_LENGTH} characters, output will be truncated before being returned to you.
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${BASH_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
-  - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
+  - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
-    - Content search: Use ${GREP_TOOL_NAME} (NOT grep or rg)
-    - Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
+    - Content search: Use ${GREP_TOOL_NAME}
+    - Read files: Use ${READ_TOOL_NAME}
     - Edit files: Use ${EDIT_TOOL_NAME} (NOT sed/awk)
     - Write files: Use ${WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)
     - Communication: Output text directly (NOT echo/printf)
