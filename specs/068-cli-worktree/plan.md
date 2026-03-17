@@ -11,7 +11,7 @@ The goal is to add support for git worktrees in the Wave CLI. This allows users 
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: `yargs` (CLI parsing), `ink` (CLI UI), `git` (system dependency)
-**Storage**: Filesystem (git worktrees at `.wave/worktrees/`)
+**Storage**: Filesystem (git worktrees at `.wave/worktrees/` relative to the main repository root)
 **Testing**: Vitest
 **Target Platform**: Linux/macOS
 **Project Type**: Monorepo (agent-sdk + code)

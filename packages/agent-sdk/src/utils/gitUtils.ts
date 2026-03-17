@@ -60,6 +60,28 @@ export function getGitCommonDir(cwd: string): string {
 }
 
 /**
+ * Get the main repository root directory (the first worktree in the list)
+ * @param cwd Working directory
+ * @returns Main repository root path
+ */
+export function getGitMainRepoRoot(cwd: string): string {
+  try {
+    const output = execSync("git worktree list --porcelain", {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const lines = output.split("\n");
+    if (lines.length > 0 && lines[0].startsWith("worktree ")) {
+      return lines[0].substring("worktree ".length).trim();
+    }
+    return getGitRepoRoot(cwd);
+  } catch {
+    return getGitRepoRoot(cwd);
+  }
+}
+
+/**
  * Get the default remote branch (e.g., origin/main)
  * @param cwd Working directory
  * @returns Default remote branch name

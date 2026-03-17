@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
-import { getGitRepoRoot, getDefaultRemoteBranch } from "wave-agent-sdk";
+import { getDefaultRemoteBranch, getGitMainRepoRoot } from "wave-agent-sdk";
 
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock("node:fs", () => ({
 }));
 
 vi.mock("wave-agent-sdk", () => ({
-  getGitRepoRoot: vi.fn(),
+  getGitMainRepoRoot: vi.fn(),
   getDefaultRemoteBranch: vi.fn(),
 }));
 
@@ -26,7 +26,7 @@ describe("worktree utils", () => {
 
   describe("createWorktree", () => {
     it("should create a new worktree", () => {
-      vi.mocked(getGitRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
       vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
@@ -46,7 +46,7 @@ describe("worktree utils", () => {
     });
 
     it("should reuse an existing worktree", () => {
-      vi.mocked(getGitRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
       vi.mocked(fs.existsSync).mockReturnValue(true);
 
       const session = createWorktree("my-feat", "/repo/root");
@@ -57,7 +57,7 @@ describe("worktree utils", () => {
     });
 
     it("should handle branch already exists error by adding worktree without -b", () => {
-      vi.mocked(getGitRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
       vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
@@ -86,7 +86,7 @@ describe("worktree utils", () => {
     });
 
     it("should throw error if worktree creation fails with other error", () => {
-      vi.mocked(getGitRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const error = new Error("Some other error");
@@ -100,7 +100,7 @@ describe("worktree utils", () => {
     });
 
     it("should throw error if adding existing branch fails", () => {
-      vi.mocked(getGitRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const error = new Error("Command failed");

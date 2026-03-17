@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { getGitRepoRoot, getDefaultRemoteBranch } from "wave-agent-sdk";
+import { getDefaultRemoteBranch, getGitMainRepoRoot } from "wave-agent-sdk";
 
 export interface WorktreeSession {
   name: string;
@@ -22,7 +22,7 @@ export const WORKTREE_DIR = ".wave/worktrees";
  * @returns Worktree session details
  */
 export function createWorktree(name: string, cwd: string): WorktreeSession {
-  const repoRoot = getGitRepoRoot(cwd);
+  const repoRoot = getGitMainRepoRoot(cwd);
   const worktreePath = path.join(repoRoot, WORKTREE_DIR, name);
   const branchName = `worktree-${name}`;
   const baseBranch = getDefaultRemoteBranch(cwd);
