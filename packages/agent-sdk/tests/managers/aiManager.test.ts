@@ -5,7 +5,11 @@ import { AIManager } from "../../src/managers/aiManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
-import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
+import type {
+  GatewayConfig,
+  ModelConfig,
+  Message,
+} from "../../src/types/index.js";
 import * as aiService from "../../src/services/aiService.js";
 import { logger } from "../../src/utils/globalLogger.js";
 
@@ -720,6 +724,149 @@ describe("AIManager", () => {
           systemPrompt: expect.stringContaining("Is directory a git repo: No"),
         }),
       );
+    });
+  });
+
+  describe("Tool Call Deduplication", () => {
+    it("should deduplicate identical tool calls in the same turn", async () => {
+      vi.mocked(aiService.callAgent).mockResolvedValueOnce({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [
+          {
+            type: "function" as const,
+            id: "call-1",
+            function: { name: "test-tool", arguments: '{"arg1": "val1"}' },
+          },
+          {
+            type: "function" as const,
+            id: "call-2",
+            function: { name: "test-tool", arguments: '{"arg1": "val1"}' },
+          },
+        ],
+      });
+
+      await aiManager.sendAIMessage();
+
+      // Verify only one tool execution was attempted
+      expect(mockToolManager.execute).toHaveBeenCalledTimes(1);
+
+      // Verify the second tool call was marked as failed with duplicate error
+      expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "call-2",
+          success: false,
+          error: expect.stringContaining("Duplicate tool call"),
+        }),
+      );
+    });
+
+    it("should deduplicate tool calls across turns in the same session", async () => {
+      // Mock previous successful tool call in message history
+      vi.mocked(mockMessageManager.getMessages).mockReturnValue([
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool",
+              id: "prev-call",
+              name: "test-tool",
+              parameters: '{"arg1": "val1"}',
+              success: true,
+              stage: "end",
+            },
+          ],
+        },
+      ] as unknown as Message[]);
+
+      vi.mocked(aiService.callAgent).mockResolvedValueOnce({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [
+          {
+            type: "function" as const,
+            id: "new-call",
+            function: { name: "test-tool", arguments: '{"arg1": "val1"}' },
+          },
+        ],
+      });
+
+      await aiManager.sendAIMessage();
+
+      // Verify no tool execution was attempted
+      expect(mockToolManager.execute).not.toHaveBeenCalled();
+
+      // Verify the new tool call was marked as failed with duplicate error
+      expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "new-call",
+          success: false,
+          error: expect.stringContaining("Duplicate tool call"),
+        }),
+      );
+    });
+
+    it("should ignore 'description' argument when comparing for duplicates", async () => {
+      vi.mocked(aiService.callAgent).mockResolvedValueOnce({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [
+          {
+            type: "function" as const,
+            id: "call-1",
+            function: {
+              name: "test-tool",
+              arguments: '{"arg1": "val1", "description": "desc 1"}',
+            },
+          },
+          {
+            type: "function" as const,
+            id: "call-2",
+            function: {
+              name: "test-tool",
+              arguments: '{"arg1": "val1", "description": "desc 2"}',
+            },
+          },
+        ],
+      });
+
+      await aiManager.sendAIMessage();
+
+      // Verify only one tool execution was attempted
+      expect(mockToolManager.execute).toHaveBeenCalledTimes(1);
+
+      // Verify the second tool call was marked as failed with duplicate error
+      expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "call-2",
+          success: false,
+          error: expect.stringContaining("Duplicate tool call"),
+        }),
+      );
+    });
+
+    it("should NOT deduplicate tool calls with different functional arguments", async () => {
+      vi.mocked(aiService.callAgent).mockResolvedValueOnce({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [
+          {
+            type: "function" as const,
+            id: "call-1",
+            function: { name: "test-tool", arguments: '{"arg1": "val1"}' },
+          },
+          {
+            type: "function" as const,
+            id: "call-2",
+            function: { name: "test-tool", arguments: '{"arg1": "val2"}' },
+          },
+        ],
+      });
+
+      await aiManager.sendAIMessage();
+
+      // Verify both tool executions were attempted
+      expect(mockToolManager.execute).toHaveBeenCalledTimes(2);
     });
   });
 });

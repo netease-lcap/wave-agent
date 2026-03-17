@@ -230,6 +230,27 @@ export class AIManager {
     return "";
   }
 
+  // Private method to consistently stringify tool arguments by removing the description field, sorting keys, and removing whitespace
+  private normalizeFunctionalArguments(args: Record<string, unknown>): string {
+    const functionalArgs = { ...args };
+    delete functionalArgs.description;
+    // Sort keys to ensure consistent stringification
+    const sortedKeys = Object.keys(functionalArgs).sort();
+    const sortedArgs: Record<string, unknown> = {};
+    for (const key of sortedKeys) {
+      sortedArgs[key] = functionalArgs[key];
+    }
+    return JSON.stringify(sortedArgs);
+  }
+
+  // Private method to generate a unique key for a tool call based on its name and functional arguments (excluding description)
+  private getFunctionalArgsKey(
+    name: string,
+    args: Record<string, unknown>,
+  ): string {
+    return `${name}:${this.normalizeFunctionalArguments(args)}`;
+  }
+
   // Private method to handle token statistics and message compression
   private async handleTokenUsageAndCompression(
     usage: Usage | undefined,
@@ -603,6 +624,25 @@ export class AIManager {
       }
 
       if (toolCalls.length > 0) {
+        // Identify previous successful tool calls in the current session
+        const previousSuccessfulToolCalls = new Set<string>();
+        for (const message of this.messageManager.getMessages()) {
+          for (const block of message.blocks) {
+            if (block.type === "tool" && block.success) {
+              try {
+                const args = JSON.parse(block.parameters || "{}");
+                previousSuccessfulToolCalls.add(
+                  this.getFunctionalArgsKey(block.name || "", args),
+                );
+              } catch {
+                // Ignore parsing errors for previous calls
+              }
+            }
+          }
+        }
+
+        const seenInCurrentTurn = new Set<string>();
+
         // Execute all tools in parallel using Promise.all
         const toolExecutionPromises = toolCalls.map(
           async (functionToolCall) => {
@@ -648,6 +688,32 @@ export class AIManager {
                 return;
               }
             }
+
+            // Deduplication check
+            const functionalArgsKey = this.getFunctionalArgsKey(
+              toolName,
+              toolArgs,
+            );
+            if (
+              previousSuccessfulToolCalls.has(functionalArgsKey) ||
+              seenInCurrentTurn.has(functionalArgsKey)
+            ) {
+              logger?.info(
+                `Duplicate tool call detected: ${toolName}. Skipping execution.`,
+              );
+              this.messageManager.updateToolBlock({
+                id: toolId,
+                parameters: argsString,
+                success: false,
+                error:
+                  "Duplicate tool call: this tool has already been executed successfully with these arguments in this session.",
+                stage: "end",
+                name: toolName,
+                compactParams: this.generateCompactParams(toolName, toolArgs),
+              });
+              return;
+            }
+            seenInCurrentTurn.add(functionalArgsKey);
 
             const compactParams = this.generateCompactParams(
               toolName,
