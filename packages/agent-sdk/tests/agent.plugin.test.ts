@@ -143,7 +143,7 @@ describe("Agent Plugin Integration", () => {
     const aiManager = vi.mocked(AIManager).mock.instances[0];
     const sendAIMessageSpy = vi
       .spyOn(aiManager, "sendAIMessage")
-      .mockResolvedValue("stop");
+      .mockResolvedValue(undefined);
 
     // Execute the plugin command
     await agent.sendMessage("/test-plugin:hello");
@@ -192,7 +192,7 @@ describe("Agent Plugin Integration", () => {
     });
 
     const aiManager = vi.mocked(AIManager).mock.instances[0];
-    vi.spyOn(aiManager, "sendAIMessage").mockResolvedValue("stop");
+    vi.spyOn(aiManager, "sendAIMessage").mockResolvedValue(undefined);
 
     await agent.sendMessage("/test-plugin:greet World");
 
