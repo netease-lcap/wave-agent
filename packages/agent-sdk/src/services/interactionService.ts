@@ -27,7 +27,7 @@ export class InteractionService {
     context: InteractionContext,
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
-  ): Promise<string | null> {
+  ): Promise<void> {
     const {
       messageManager,
       slashCommandManager,
@@ -42,7 +42,7 @@ export class InteractionService {
       // Handle slash command - check if it's a slash command (starts with /)
       if (content.startsWith("/")) {
         const command = content.trim();
-        if (!command || command === "/") return null;
+        if (!command || command === "/") return;
 
         // Parse and validate slash command
         const { isValid, commandId, args } =
@@ -52,7 +52,7 @@ export class InteractionService {
           // Execute valid slash command
           await slashCommandManager.executeCommand(commandId, args);
 
-          return "stop";
+          return;
         }
 
         // If command doesn't exist, continue as normal message processing
@@ -100,7 +100,7 @@ export class InteractionService {
               "UserPromptSubmit hook blocked prompt processing with error:",
               processResult.errorMessage,
             );
-            return "stop"; // Don't send to AI
+            return; // Don't send to AI
           }
         } catch (error) {
           logger?.warn("UserPromptSubmit hooks execution failed:", error);
@@ -109,11 +109,10 @@ export class InteractionService {
       }
 
       // Send AI message
-      return await aiManager.sendAIMessage();
+      await aiManager.sendAIMessage();
     } catch (error) {
       console.error("Failed to add user message:", error);
       // Loading state will be automatically updated by the useEffect that watches messages
-      return null;
     }
   }
 

@@ -340,7 +340,7 @@ export class AIManager {
       tools?: string[];
       maxTokens?: number;
     } = {},
-  ): Promise<string | null> {
+  ): Promise<void> {
     const {
       recursionDepth = 0,
       model,
@@ -351,7 +351,7 @@ export class AIManager {
 
     // Only check isLoading for the initial call (recursionDepth === 0)
     if (recursionDepth === 0 && this.isLoading) {
-      return null;
+      return;
     }
 
     // Save session in each recursion to ensure message persistence
@@ -388,7 +388,6 @@ export class AIManager {
       this.messageManager.getMessages(),
     );
 
-    let stopReasonFromHooks: string | null = null;
     try {
       // Get combined memory content
       const combinedMemory = await this.messageManager.getCombinedMemory();
@@ -804,7 +803,7 @@ export class AIManager {
           }
 
           // Recursively call AI service, increment recursion depth, and pass same configuration
-          return await this.sendAIMessage({
+          await this.sendAIMessage({
             recursionDepth: recursionDepth + 1,
             model,
             allowedRules,
@@ -813,22 +812,10 @@ export class AIManager {
           });
         }
       }
-
-      // If we reached here, it means no recursion happened
-      // Check interruption status
-      const isCurrentlyAborted =
-        abortController.signal.aborted || toolAbortController.signal.aborted;
-
-      if (isCurrentlyAborted) {
-        return "cancelled";
-      }
-
-      return result.finish_reason || null;
     } catch (error) {
       this.messageManager.addErrorBlock(
         error instanceof Error ? error.message : "Unknown error occurred",
       );
-      return null;
     } finally {
       // Only execute cleanup and hooks for the initial call
       if (recursionDepth === 0) {
@@ -869,7 +856,7 @@ export class AIManager {
 
             // Restart the conversation to let AI fix the issues
             // Use recursionDepth = 0 to set loading false again for continuation
-            stopReasonFromHooks = await this.sendAIMessage({
+            await this.sendAIMessage({
               recursionDepth: 0,
               model,
               allowedRules,
@@ -880,8 +867,6 @@ export class AIManager {
         }
       }
     }
-
-    return stopReasonFromHooks;
   }
 
   /**
