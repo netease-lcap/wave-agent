@@ -223,6 +223,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [wasLastDetailsTooTall, setWasLastDetailsTooTall] = useState(0);
 
   const agentRef = useRef<Agent | null>(null);
+  const taskUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const debouncedSetTasks = useCallback(
+    (newTasks: Task[]) => {
+      if (taskUpdateTimerRef.current) {
+        clearTimeout(taskUpdateTimerRef.current);
+      }
+      taskUpdateTimerRef.current = setTimeout(() => {
+        setTasks([...newTasks]);
+        taskUpdateTimerRef.current = null;
+      }, 100);
+    },
+    [setTasks],
+  );
 
   // Permission confirmation methods with queue support
   const showConfirmation = useCallback(
@@ -274,7 +288,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setBackgroundTasks([...tasks]);
         },
         onTasksChange: (tasks) => {
-          setTasks([...tasks]);
+          debouncedSetTasks(tasks);
         },
         onSubagentMessagesChange: (subagentId: string, messages: Message[]) => {
           logger.debug("onSubagentMessagesChange", subagentId, messages.length);
@@ -371,11 +385,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workdir,
     worktreeSession,
     model,
+    debouncedSetTasks,
   ]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (taskUpdateTimerRef.current) {
+        clearTimeout(taskUpdateTimerRef.current);
+      }
+
       if (agentRef.current) {
         try {
           // Display usage summary before cleanup
