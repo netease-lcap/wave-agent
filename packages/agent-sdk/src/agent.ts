@@ -235,7 +235,14 @@ export class Agent {
   public getBackgroundShellOutput(
     id: string,
     filter?: string,
-  ): { stdout: string; stderr: string; status: string } | null {
+  ): {
+    stdout: string;
+    stderr: string;
+    status: string;
+    outputPath?: string;
+    type: string;
+    exitCode?: number;
+  } | null {
     return this.backgroundTaskManager.getOutput(id, filter);
   }
 
@@ -248,7 +255,14 @@ export class Agent {
   public getBackgroundTaskOutput(
     id: string,
     filter?: string,
-  ): { stdout: string; stderr: string; status: string } | null {
+  ): {
+    stdout: string;
+    stderr: string;
+    status: string;
+    outputPath?: string;
+    type: string;
+    exitCode?: number;
+  } | null {
     return this.backgroundTaskManager.getOutput(id, filter);
   }
 
