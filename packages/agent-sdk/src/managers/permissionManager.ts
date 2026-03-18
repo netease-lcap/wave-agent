@@ -421,6 +421,17 @@ export class PermissionManager {
       return { behavior: "allow" };
     }
 
+    // 2.1 If dontAsk mode, auto-deny restricted tools that were not allowed by rules above
+    if (context.permissionMode === "dontAsk") {
+      logger?.info("Restricted tool automatically denied in dontAsk mode", {
+        toolName: context.toolName,
+      });
+      return {
+        behavior: "deny",
+        message: `Tool '${context.toolName}' was automatically denied because 'dontAsk' permission mode is active and no pre-approved rule matches this call.`,
+      };
+    }
+
     // 3. If custom callback provided, call it and return result
     if (context.canUseToolCallback) {
       try {

@@ -457,6 +457,7 @@ export class AIManager {
             isSubagent: !!this.subagentType,
             planMode: planModeOptions,
             autoMemory: autoMemoryOptions,
+            permissionMode: currentMode,
           },
         ), // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override

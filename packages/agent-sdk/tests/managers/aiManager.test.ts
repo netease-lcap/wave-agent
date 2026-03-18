@@ -236,6 +236,56 @@ describe("AIManager", () => {
       );
     });
 
+    it("should inject dontAsk permission mode prompt when mode is dontAsk", async () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+        resolveLanguage: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("dontAsk"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+      } as unknown as Record<string, unknown>);
+
+      const aiManagerWithDontAsk = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      await aiManagerWithDontAsk.sendAIMessage();
+
+      expect(aiService.callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.stringContaining("# Permission Mode"),
+        }),
+      );
+      expect(aiService.callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.stringContaining(
+            "The user has selected the 'dontAsk' permission mode.",
+          ),
+        }),
+      );
+    });
+
     it("should preserve technical terms instruction in language prompt", async () => {
       const taskManager = {
         on: vi.fn(),

@@ -23,7 +23,7 @@ import {
   handleNormalInput,
   handleInput,
 } from "../../src/managers/inputHandlers.js";
-import { PromptHistoryManager } from "wave-agent-sdk";
+import { PromptHistoryManager, PermissionMode } from "wave-agent-sdk";
 import { readClipboardImage } from "../../src/utils/clipboard.js";
 import { Key } from "ink";
 
@@ -248,6 +248,18 @@ describe("inputHandlers", () => {
       });
 
       cyclePermissionMode("plan", dispatch, callbacks);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_PERMISSION_MODE",
+        payload: "default",
+      });
+    });
+
+    it("should cycle to default if current mode is dontAsk", () => {
+      cyclePermissionMode(
+        "dontAsk" as unknown as PermissionMode,
+        dispatch,
+        callbacks,
+      );
       expect(dispatch).toHaveBeenCalledWith({
         type: "SET_PERMISSION_MODE",
         payload: "default",
