@@ -40,7 +40,7 @@ Goal: Implement the `settings` skill content and ensure it can read/write settin
 - [x] T012 [US1] Implement the logic in `SKILL.md` to update settings using `Write` and `Bash` tools
 - [x] T013 [US1] Add integration tests to verify the `settings` skill can read and update settings in `packages/agent-sdk/tests/services/configurationService.test.ts`
 
-**Independent Test**: Run `/skill settings` and verify it displays current settings and can update a simple setting like `language`.
+**Independent Test**: Run `/settings` and verify it displays current settings and can update a simple setting like `language`.
 
 ## Phase 4: User Story 2 - Guidance on Writing settings.json (Priority: P2)
 
