@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as fs from "fs";
 import { bashTool } from "../../src/tools/bashTool.js";
 import { taskOutputTool } from "../../src/tools/taskOutputTool.js";
 import { taskStopTool } from "../../src/tools/taskStopTool.js";
@@ -10,6 +11,23 @@ import { Container } from "../../src/utils/container.js";
 
 // Mock child_process
 vi.mock("child_process");
+
+// Mock fs and os
+vi.mock("fs", async () => {
+  const actual = await vi.importActual("fs");
+  return {
+    ...actual,
+    writeFileSync: vi.fn(),
+  };
+});
+
+vi.mock("os", async () => {
+  const actual = await vi.importActual("os");
+  return {
+    ...actual,
+    tmpdir: vi.fn().mockReturnValue("/tmp"),
+  };
+});
 
 // Mock logger
 vi.mock("../../utils/logger", () => ({
@@ -179,15 +197,18 @@ describe("bashTool", () => {
       expect(result.error).toBe("Command failed with exit code: 1");
     });
 
-    it("should handle abort signal", async () => {
+    it("should handle abort signal and persist large output", async () => {
+      const largeOutput = "a".repeat(30001);
       const mockProcess = {
         pid: 1234,
         stdout: {
-          on: vi.fn(),
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from(largeOutput)), 10);
+            }
+          }),
         },
-        stderr: {
-          on: vi.fn(),
-        },
+        stderr: { on: vi.fn() },
         on: vi.fn(),
         kill: vi.fn(),
         killed: false,
@@ -211,13 +232,23 @@ describe("bashTool", () => {
         testContext,
       );
 
-      // Abort immediately
+      // Wait for some output to accumulate
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // Abort
       abortController.abort();
 
       const result = await promise;
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Command execution was aborted");
+      expect(result.content).toContain("... (output truncated)");
+      expect(result.content).toContain("Full output persisted to:");
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        expect.stringContaining("/tmp/bash_output_"),
+        largeOutput,
+        "utf8",
+      );
     });
 
     it("should format compact params correctly", () => {
@@ -262,7 +293,7 @@ describe("bashTool", () => {
       vi.useRealTimers();
     });
 
-    it("should handle large output truncation", async () => {
+    it("should handle large output truncation and persistence", async () => {
       const largeOutput = "a".repeat(30001);
       const mockProcess = {
         pid: 1234,
@@ -290,8 +321,13 @@ describe("bashTool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.content.length).toBeLessThanOrEqual(30000 + 24); // 30000 + "\n\n... (output truncated)".length
       expect(result.content).toContain("... (output truncated)");
+      expect(result.content).toContain("Full output persisted to:");
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        expect.stringContaining("/tmp/bash_output_"),
+        largeOutput,
+        "utf8",
+      );
     });
 
     it("should handle permission denial", async () => {
