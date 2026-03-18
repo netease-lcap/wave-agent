@@ -256,6 +256,7 @@ Usage notes:
 - Avoid listing every component or file structure that can be easily discovered.
 - Don't include generic development practices.
 - If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (in .github/copilot-instructions.md), make sure to include the important parts.
+- Do NOT include rules from .wave/rules/ as they are automatically loaded by the system.
 - If there is a README.md, make sure to include the important parts.
 - Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
 - Be sure to prefix the file with the following text:

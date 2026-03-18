@@ -20,7 +20,7 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [X] T001 [P] Define `INIT_PROMPT` constant in `packages/agent-sdk/src/constants/prompts.ts`
+- [X] T001 [P] Define `INIT_PROMPT` constant in `packages/agent-sdk/src/prompts/index.ts`
 - [X] T002 [P] Add `init` to `SlashCommand` type or enum if applicable in `packages/agent-sdk/src/types/index.ts`
 
 ---
@@ -87,6 +87,7 @@
 - [X] T013 Code cleanup and refactoring in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 - [X] T014 Run `pnpm run type-check` and `pnpm lint` in `packages/agent-sdk/`
 - [X] T015 [P] Run quickstart.md validation
+- [X] T016 [US1] Update `INIT_PROMPT` to exclude `.wave/rules/` in `packages/agent-sdk/src/prompts/index.ts`
 
 ---
 

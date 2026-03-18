@@ -14,5 +14,5 @@
 
 ### `INIT_PROMPT`
 - **Type**: `string`
-- **Location**: `packages/agent-sdk/src/constants/prompts.ts`
+- **Location**: `packages/agent-sdk/src/prompts/index.ts`
 - **Content**: Instructions for the agent to analyze the repo and generate `AGENTS.md`.

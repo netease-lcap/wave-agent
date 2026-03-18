@@ -15,4 +15,5 @@ The `/init` command helps you set up your repository for AI agents by generating
 - Identifies build, test, and lint commands.
 - Extracts high-level architecture details.
 - Incorporates rules from `.cursorrules` or `.github/copilot-instructions.md`.
+- Excludes rules from `.wave/rules/` as they are automatically loaded by the system.
 - Ensures the mandatory `AGENTS.md` prefix is present.
