@@ -65,6 +65,8 @@ export interface AgentOptions {
   worktreeName?: string;
   /**Whether this is a newly created worktree */
   isNewWorktree?: boolean;
+  /**Whether to watch for skill changes - defaults to true */
+  watchSkills?: boolean;
 }
 
 export interface AgentCallbacks

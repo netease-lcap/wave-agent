@@ -150,6 +150,9 @@
 - [x] T044 [P] [US8] Create unit tests for new flags in packages/agent-sdk/tests/utils/skillParser_flags.test.ts, packages/agent-sdk/tests/tools/skillTool_flags.test.ts, and packages/agent-sdk/tests/managers/slashCommandManager_flags.test.ts
 - [x] T045 [US5] Implement automatic argument appending when no placeholders are present in skills and slash commands
 - [x] T046 [US5] Implement `${WAVE_SKILL_DIR}` placeholder substitution in skills
+- [x] T047 [US4] Implement real-time skill discovery using FileWatcherService in packages/agent-sdk/src/managers/skillManager.ts
+- [x] T048 [US4] Update SlashCommandManager to refresh commands on skill changes in packages/agent-sdk/src/managers/slashCommandManager.ts
+- [x] T049 [US4] Add unit tests for real-time skill discovery and slash command refresh
 
 ---
 
