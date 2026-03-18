@@ -23,6 +23,7 @@ interface AppWithProvidersProps extends BaseAppProps {
 
 const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   bypassPermissions,
+  permissionMode,
   pluginDirs,
   tools,
   worktreeSession,
@@ -94,6 +95,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   return (
     <ChatProvider
       bypassPermissions={bypassPermissions}
+      permissionMode={permissionMode}
       pluginDirs={pluginDirs}
       tools={tools}
       workdir={workdir}
@@ -157,6 +159,7 @@ export const App: React.FC<AppProps> = ({
   restoreSessionId,
   continueLastSession,
   bypassPermissions,
+  permissionMode,
   pluginDirs,
   tools,
   worktreeSession,
@@ -172,6 +175,7 @@ export const App: React.FC<AppProps> = ({
     >
       <AppWithProviders
         bypassPermissions={bypassPermissions}
+        permissionMode={permissionMode}
         pluginDirs={pluginDirs}
         tools={tools}
         worktreeSession={worktreeSession}
