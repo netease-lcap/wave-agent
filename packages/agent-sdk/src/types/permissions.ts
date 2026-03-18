@@ -21,7 +21,8 @@ export type PermissionMode =
   | "default"
   | "bypassPermissions"
   | "acceptEdits"
-  | "plan";
+  | "plan"
+  | "dontAsk";
 
 /** Result of a permission check */
 export interface PermissionDecision {

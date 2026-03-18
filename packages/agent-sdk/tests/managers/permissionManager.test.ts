@@ -378,6 +378,72 @@ describe("PermissionManager", () => {
       });
     });
 
+    describe("dontAsk mode", () => {
+      it("should allow restricted tools if they match an allowed rule", async () => {
+        permissionManager.updateAllowedRules(["Bash(ls)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "dontAsk",
+          toolInput: { command: "ls" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow restricted tools if they match a temporary rule", async () => {
+        permissionManager.addTemporaryRules(["Edit"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Edit",
+          permissionMode: "dontAsk",
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should auto-deny restricted tools if they do NOT match any rule", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "dontAsk",
+          toolInput: { command: "rm -rf /" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain("automatically denied");
+        expect(result.message).toContain("dontAsk");
+      });
+
+      it("should allow unrestricted tools in dontAsk mode", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "dontAsk",
+          toolInput: { file_path: "test.txt" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should NOT call the permission callback in dontAsk mode for unapproved tools", async () => {
+        const mockCallback = vi.fn().mockResolvedValue({ behavior: "allow" });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "dontAsk",
+          toolInput: { command: "rm -rf /" },
+          canUseToolCallback: mockCallback,
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+        expect(mockCallback).not.toHaveBeenCalled();
+      });
+    });
+
     describe("persistent rules (permissions.allow)", () => {
       it("should allow Bash command if it matches an allowed rule", async () => {
         permissionManager.updateAllowedRules(["Bash(ls -la)"]);
