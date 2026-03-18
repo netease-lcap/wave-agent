@@ -7,7 +7,7 @@ The `settings` skill helps you manage your Wave configuration and provides guida
 To use the `settings` skill, simply ask the agent to help you with your settings:
 
 ```text
-/skill settings
+/settings
 ```
 
 Or ask specific questions:

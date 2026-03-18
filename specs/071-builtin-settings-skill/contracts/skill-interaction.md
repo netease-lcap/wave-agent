@@ -10,7 +10,7 @@ The `settings` skill is a builtin skill that helps users manage their Wave confi
 ## Interaction Flow
 
 1.  **Discovery**: The agent discovers the `settings` skill during initialization.
-2.  **Invocation**: The user invokes the skill via `/skill settings` or by asking about settings.
+2.  **Invocation**: The user invokes the skill via `/settings` or by asking about settings.
 3.  **Guidance**: The skill provides a clear explanation of `settings.json` structure and available fields.
 4.  **Exploration**: The skill helps the user explore their current settings in different scopes.
 5.  **Modification**: The skill guides the user through updating settings in the appropriate scope.
