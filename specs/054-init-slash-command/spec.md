@@ -51,7 +51,7 @@ As a user of the Wave Agent CLI, I want to see `/init` as an available command s
 - **FR-003**: The system MUST analyze the current repository to identify build/test/lint commands and high-level architecture.
 - **FR-004**: The system MUST create or update a file named `AGENTS.md` in the repository root.
 - **FR-005**: The system MUST ensure `AGENTS.md` starts with the mandatory prefix specified in `init-prompt.md`.
-- **FR-006**: The system MUST NOT include generic development practices or redundant instructions as specified in the prompt guidelines.
+- **FR-006**: The system MUST NOT include generic development practices, redundant instructions, or rules from `.wave/rules/` as specified in the prompt guidelines.
 - **FR-007**: The system MUST incorporate existing rules from `.cursor/rules/`, `.cursorrules`, or `.github/copilot-instructions.md` if they exist.
 
 ### Key Entities

@@ -54,8 +54,8 @@ specs/054-init-slash-command/
 packages/agent-sdk/src/
 ├── managers/
 │   └── slashCommandManager.ts  # Register /init command
-└── constants/
-    └── prompts.ts              # Add INIT_PROMPT
+└── prompts/
+    └── index.ts                # Add INIT_PROMPT
 ```
 
 **Structure Decision**: Single project (monorepo package `agent-sdk`).

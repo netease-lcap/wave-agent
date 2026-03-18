@@ -9,7 +9,7 @@
   - `prefix`: A mandatory header section.
   - `commands`: Common development commands (build, test, lint).
   - `architecture`: High-level code structure description.
-  - `rules`: Important parts of existing rule files (.cursorrules, etc.).
+  - `rules`: Important parts of existing rule files (.cursorrules, etc.). Note: Rules from `.wave/rules/` are excluded as they are automatically loaded by the system.
 
 ### SlashCommand
 - **Description**: Represents the `/init` command in the system.

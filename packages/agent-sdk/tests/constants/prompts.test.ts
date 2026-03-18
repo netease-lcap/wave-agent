@@ -22,4 +22,8 @@ describe("INIT_PROMPT", () => {
     expect(INIT_PROMPT).toContain(".cursorrules");
     expect(INIT_PROMPT).toContain(".github/copilot-instructions.md");
   });
+
+  it("should instruct NOT to include .wave/rules/", () => {
+    expect(INIT_PROMPT).toContain("Do NOT include rules from .wave/rules/");
+  });
 });
