@@ -1,4 +1,7 @@
 import { spawn, ChildProcess } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import { logger } from "../utils/globalLogger.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
@@ -14,6 +17,33 @@ import {
 
 const MAX_OUTPUT_LENGTH = 30000;
 const BASH_DEFAULT_TIMEOUT_MS = 120000;
+
+/**
+ * Helper function to handle large output by truncation and persistence to a temporary file.
+ */
+function processOutput(output: string): string {
+  if (output.length <= MAX_OUTPUT_LENGTH) {
+    return output;
+  }
+
+  try {
+    const tempDir = os.tmpdir();
+    const fileName = `bash_output_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.txt`;
+    const filePath = path.join(tempDir, fileName);
+    fs.writeFileSync(filePath, output, "utf8");
+
+    return (
+      output.substring(0, MAX_OUTPUT_LENGTH) +
+      `\n\n... (output truncated)\nFull output persisted to: ${filePath}`
+    );
+  } catch (error) {
+    logger.error("Failed to persist large bash output:", error);
+    return (
+      output.substring(0, MAX_OUTPUT_LENGTH) +
+      "\n\n... (output truncated, failed to persist full output)"
+    );
+  }
+}
 
 /**
  * Bash command execution tool - supports both foreground and background execution
@@ -75,7 +105,7 @@ Usage notes:
   - The command argument is required.
   - You can specify an optional timeout in milliseconds (up to ${BASH_DEFAULT_TIMEOUT_MS}ms / ${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes). If not specified, commands will timeout after ${BASH_DEFAULT_TIMEOUT_MS}ms (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes).
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
-  - If the output exceeds ${MAX_OUTPUT_LENGTH} characters, output will be truncated before being returned to you.
+  - If the output exceeds ${MAX_OUTPUT_LENGTH} characters, output will be truncated and the full output will be persisted to a temporary file.
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${BASH_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
   - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
@@ -292,7 +322,9 @@ Usage notes:
 
           resolve({
             success: false,
-            content: outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
+            content: processOutput(
+              outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
+            ),
             error: reason,
           });
         }
@@ -340,14 +372,10 @@ Usage notes:
           const combinedOutput =
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 
-          // Handle large output by truncation if needed
+          // Handle large output by truncation and persistence if needed
           const finalOutput =
             combinedOutput || `Command executed with exit code: ${exitCode}`;
-          const content =
-            finalOutput.length > MAX_OUTPUT_LENGTH
-              ? finalOutput.substring(0, MAX_OUTPUT_LENGTH) +
-                "\n\n... (output truncated)"
-              : finalOutput;
+          const content = processOutput(finalOutput);
 
           const shortResult = combinedOutput
             .trim()
