@@ -525,6 +525,13 @@ test("startPrintCli does not display stats by default", async () => {
   expect(mockExit).toHaveBeenCalledWith(0);
 });
 
+test("startPrintCli handles non-string message gracefully", async () => {
+  await startPrintCli({ message: true as unknown as string });
+
+  // Verify error message and exit code
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
+
 afterEach(() => {
   vi.clearAllMocks();
   mockExit.mockClear();
