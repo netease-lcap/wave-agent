@@ -50,6 +50,7 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 
 1. **Given** a search pattern, **When** the agent calls `Grep`, **Then** it MUST receive matching lines or file paths, respecting `.gitignore` and common ignore patterns.
 2. **Given** a glob pattern like `**/*.ts`, **When** the agent calls `Glob`, **Then** it MUST receive a list of matching TypeScript files, including those ignored by `.gitignore` (but excluding the `.git` directory), up to a maximum of 100 results.
+3. **Given** a search pattern with no matches, **When** the agent calls `Grep`, **Then** it MUST receive a message suggesting to specify the `path` field to search in ignored or other directories.
 
 ---
 
@@ -75,6 +76,7 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 - **FR-010**: System MUST provide a `Grep` tool based on ripgrep for powerful text searching. It MUST respect `.gitignore` and common ignore patterns.
 - **FR-011**: All tools MUST integrate with the `PermissionManager` for authorization.
 - **FR-012**: System MUST provide a visual diff display with word-level highlights for line-by-line changes.
+- **FR-013**: If the `Grep` tool finds no matches, the output MUST include a suggestion to specify the `path` field. This is because the default search path is the current working directory and respects `.gitignore`, and specifying a path (e.g., `node_modules`) can allow searching in ignored or specific directories.
 
 ### Key Entities *(include if feature involves data)*
 

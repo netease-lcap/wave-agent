@@ -415,7 +415,8 @@ src/index.ts-3-  return new Application();
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toBe("No matches found");
+    expect(result.content).toContain("No matches found");
+    expect(result.content).toContain("Suggestion: specify the 'path' field");
     expect(result.shortResult).toBe("No matches found");
   });
 

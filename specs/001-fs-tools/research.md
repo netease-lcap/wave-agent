@@ -16,6 +16,6 @@
 **Decision**: Implement `offset` and `limit` in the `Read` tool, and truncate long lines.
 **Rationale**: LLMs have context window limits. Reading entire large files or extremely long lines can exhaust tokens or cause performance issues.
 
-## Multimodal Support
-**Decision**: Integrate image reading into the `Read` tool.
-**Rationale**: Allows the agent to "see" screenshots or other relevant images in the project directory when using a multimodal model.
+## Search Feedback
+**Decision**: Suggest specifying the `path` field when `Grep` returns no matches.
+**Rationale**: The default search path is the current working directory and respects `.gitignore`. If no matches are found, it's often because the target files are in ignored directories (like `node_modules`) or outside the current directory. Providing this suggestion helps the agent understand how to expand its search.

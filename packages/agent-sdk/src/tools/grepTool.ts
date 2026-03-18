@@ -212,7 +212,8 @@ export const grepTool: ToolPlugin = {
       if (!output) {
         return {
           success: true,
-          content: "No matches found",
+          content:
+            "No matches found. Suggestion: specify the 'path' field to search in ignored or other directories (e.g., 'node_modules'), as the default search path is the current working directory and respects .gitignore.",
           shortResult: "No matches found",
         };
       }
