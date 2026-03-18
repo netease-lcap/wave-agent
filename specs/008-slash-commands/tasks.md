@@ -27,7 +27,7 @@
 - [X] T017 Update `executeCustomCommandInMainAgent` in `SlashCommandManager` to pass `config.allowedTools` to `aiManager.sendAIMessage` in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 - [X] T018 Implement `finally` block logic in `sendAIMessage` to call `permissionManager.clearTemporaryRules` when `recursionDepth === 0` in `packages/agent-sdk/src/managers/aiManager.ts`
 
-## Phase 3: Automatic Argument Appending
+## Phase 4: Real-time Skill Refresh
 
-- [X] T034 Implement automatic argument appending when no placeholders are present in slash commands and skills in `packages/agent-sdk/src/managers/slashCommandManager.ts`
+- [X] T035 Update `SlashCommandManager` to listen for `refreshed` events from `SkillManager` and update available commands in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 

@@ -74,6 +74,7 @@ export interface SkillManagerOptions {
   personalSkillsPath?: string;
   scanTimeout?: number;
   workdir?: string;
+  watch?: boolean;
 }
 
 export interface ParsedSkillFile {

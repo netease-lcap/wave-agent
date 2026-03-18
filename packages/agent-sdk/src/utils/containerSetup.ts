@@ -147,7 +147,10 @@ export function setupAgentContainer(
   const hookManager = new HookManager(container, workdir);
   container.register("HookManager", hookManager);
 
-  const skillManager = new SkillManager(container, { workdir });
+  const skillManager = new SkillManager(container, {
+    workdir,
+    watch: options.watchSkills ?? true,
+  });
   container.register("SkillManager", skillManager);
 
   container.register(

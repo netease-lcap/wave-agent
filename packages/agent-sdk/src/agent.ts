@@ -470,6 +470,8 @@ export class Agent {
     }
     // Cleanup subagent manager
     this.subagentManager.cleanup();
+    // Cleanup skill manager
+    await this.skillManager.destroy();
     // Cleanup live configuration reload
     try {
       await this.liveConfigManager.shutdown();
