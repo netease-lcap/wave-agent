@@ -17,6 +17,7 @@ import {
   replaceBashCommandsWithOutput,
   executeBashCommands,
 } from "../utils/markdownParser.js";
+import { getBuiltinSkillsDir } from "../utils/configPaths.js";
 
 import { Container } from "../utils/container.js";
 import { logger } from "../utils/globalLogger.js";
@@ -57,6 +58,9 @@ export class SkillManager {
       const discovery = await this.discoverSkills();
 
       // Store discovered skill metadata
+      discovery.builtinSkills.forEach((skill, name) => {
+        this.skillMetadata.set(name, skill);
+      });
       discovery.personalSkills.forEach((skill, name) => {
         this.skillMetadata.set(name, skill);
       });
@@ -132,9 +136,14 @@ export class SkillManager {
   }
 
   /**
-   * Discover skills in both personal and project directories
+   * Discover skills in builtin, personal and project directories
    */
   private async discoverSkills(): Promise<SkillDiscoveryResult> {
+    const builtinCollection = await this.discoverSkillCollection(
+      getBuiltinSkillsDir(),
+      "builtin",
+    );
+
     const personalCollection = await this.discoverSkillCollection(
       this.personalSkillsPath,
       "personal",
@@ -146,9 +155,14 @@ export class SkillManager {
     );
 
     return {
+      builtinSkills: builtinCollection.skills,
       personalSkills: personalCollection.skills,
       projectSkills: projectCollection.skills,
-      errors: [...personalCollection.errors, ...projectCollection.errors],
+      errors: [
+        ...builtinCollection.errors,
+        ...personalCollection.errors,
+        ...projectCollection.errors,
+      ],
     };
   }
 
@@ -157,7 +171,7 @@ export class SkillManager {
    */
   private async discoverSkillCollection(
     basePath: string,
-    type: "personal" | "project",
+    type: "personal" | "project" | "builtin",
   ): Promise<SkillCollection> {
     const collection: SkillCollection = {
       type,
@@ -166,8 +180,14 @@ export class SkillManager {
       errors: [],
     };
 
-    const skillsPath =
-      type === "personal" ? basePath : join(basePath, ".wave", "skills");
+    let skillsPath: string;
+    if (type === "personal") {
+      skillsPath = basePath;
+    } else if (type === "builtin") {
+      skillsPath = basePath;
+    } else {
+      skillsPath = join(basePath, ".wave", "skills");
+    }
 
     try {
       const skillDirs = await this.findSkillDirectories(skillsPath);

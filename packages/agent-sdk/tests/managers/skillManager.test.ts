@@ -9,6 +9,14 @@ import type {
 import { readdir, stat } from "fs/promises";
 import { logger } from "../../src/utils/globalLogger.js";
 
+vi.mock("../../src/utils/configPaths.js", async () => {
+  const actual = await vi.importActual("../../src/utils/configPaths.js");
+  return {
+    ...actual,
+    getBuiltinSkillsDir: vi.fn().mockReturnValue("/test/builtin-skills"),
+  };
+});
+
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
     debug: vi.fn(),
@@ -63,9 +71,15 @@ describe("SkillManager", () => {
   });
 
   describe("initialize", () => {
-    it("should discover personal and project skills successfully", async () => {
+    it("should discover builtin, personal and project skills successfully", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
-        if (path.toString().includes(".wave/skills")) {
+        const p = path.toString();
+        if (p.includes("builtin-skills")) {
+          return [
+            { name: "builtin1", isDirectory: () => true },
+          ] as unknown as Awaited<ReturnType<typeof readdir>>;
+        }
+        if (p.includes(".wave/skills")) {
           return [
             { name: "skill1", isDirectory: () => true },
           ] as unknown as Awaited<ReturnType<typeof readdir>>;
@@ -76,27 +90,33 @@ describe("SkillManager", () => {
       vi.mocked(stat).mockResolvedValue(
         {} as unknown as Awaited<ReturnType<typeof stat>>,
       );
-      vi.mocked(parseSkillFile).mockReturnValue({
-        isValid: true,
-        skillMetadata: {
-          name: "skill1",
-          description: "desc1",
-          type: "personal",
-          skillPath: "/path/to/skill1",
-        },
-        content: "---\nname: skill1\n---\ncontent1",
-        frontmatter: { name: "skill1" },
-        validationErrors: [],
-      } as unknown as ReturnType<typeof parseSkillFile>);
+      vi.mocked(parseSkillFile).mockImplementation((filePath) => {
+        const path = filePath as string;
+        const name = path.includes("builtin1") ? "builtin1" : "skill1";
+        const type = path.includes("builtin1") ? "builtin" : "personal";
+        return {
+          isValid: true,
+          skillMetadata: {
+            name,
+            description: "desc",
+            type,
+            skillPath: path,
+          },
+          content: `---\nname: ${name}\n---\ncontent`,
+          frontmatter: { name },
+          validationErrors: [],
+        } as unknown as ReturnType<typeof parseSkillFile>;
+      });
 
       await skillManager.initialize();
 
       expect(skillManager.isInitialized()).toBe(true);
       const skills = skillManager.getAvailableSkills();
-      expect(skills).toHaveLength(1);
-      expect(skills[0].name).toBe("skill1");
+      expect(skills).toHaveLength(2);
+      expect(skills.find((s) => s.name === "builtin1")).toBeDefined();
+      expect(skills.find((s) => s.name === "skill1")).toBeDefined();
       expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("SkillManager initialized with 1 skills"),
+        expect.stringContaining("SkillManager initialized with 2 skills"),
       );
     });
 
@@ -139,7 +159,8 @@ describe("SkillManager", () => {
 
     it("should handle discovery errors and log warnings", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
-        if (path.toString().includes(".wave/skills")) {
+        const p = path.toString();
+        if (p.includes(".wave/skills") || p.includes("builtin-skills")) {
           return [
             { name: "invalid-skill", isDirectory: () => true },
           ] as unknown as Awaited<ReturnType<typeof readdir>>;
@@ -158,7 +179,7 @@ describe("SkillManager", () => {
       await skillManager.initialize();
 
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Found 2 skill discovery errors"),
+        expect.stringContaining("Found 3 skill discovery errors"),
       );
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Skill error in"),
@@ -230,9 +251,15 @@ describe("SkillManager", () => {
     });
 
     it("should handle invalid skill files", async () => {
-      vi.mocked(readdir).mockResolvedValue([
-        { name: "bad-skill", isDirectory: () => true },
-      ] as unknown as Awaited<ReturnType<typeof readdir>>);
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        const p = path.toString();
+        if (p.includes(".wave/skills") || p.includes("builtin-skills")) {
+          return [
+            { name: "bad-skill", isDirectory: () => true },
+          ] as unknown as Awaited<ReturnType<typeof readdir>>;
+        }
+        return [] as unknown as Awaited<ReturnType<typeof readdir>>;
+      });
       vi.mocked(stat).mockResolvedValue(
         {} as unknown as Awaited<ReturnType<typeof stat>>,
       );
@@ -243,7 +270,7 @@ describe("SkillManager", () => {
       await skillManager.initialize();
 
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Found 2 skill discovery errors"),
+        expect.stringContaining("Found 3 skill discovery errors"),
       );
     });
   });

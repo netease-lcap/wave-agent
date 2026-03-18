@@ -91,6 +91,8 @@ export interface ConfigurationPaths {
   userPaths: string[];
   /** Project-specific configuration file paths in priority order */
   projectPaths: string[];
+  /** Builtin configuration file paths */
+  builtinPaths: string[];
   /** All configuration paths combined */
   allPaths: string[];
   /** Only the paths that actually exist on the filesystem */

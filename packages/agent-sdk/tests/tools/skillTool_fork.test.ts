@@ -17,9 +17,13 @@ vi.mock("os", () => ({
 }));
 
 // Mock path module
-vi.mock("path", () => ({
-  join: vi.fn((...args) => args.join("/")),
-}));
+vi.mock("path", async () => {
+  const actual = await vi.importActual<typeof import("path")>("path");
+  return {
+    ...actual,
+    join: vi.fn((...args) => args.join("/")),
+  };
+});
 
 // Mock skill parser
 vi.mock("../../src/utils/skillParser.js", () => ({

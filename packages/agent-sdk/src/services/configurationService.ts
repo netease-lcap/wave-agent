@@ -588,6 +588,7 @@ export class ConfigurationService {
     return {
       userPaths: allPaths.userPaths,
       projectPaths: allPaths.projectPaths,
+      builtinPaths: allPaths.builtinPaths,
       allPaths: allPaths.allPaths,
       existingPaths: existingPaths.existingPaths,
     };
