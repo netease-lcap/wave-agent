@@ -653,7 +653,7 @@ describe("readTool", () => {
   });
 
   describe("Edge Cases", () => {
-    it("should handle very large files with content truncation", async () => {
+    it("should handle very large files without content truncation at 100KB", async () => {
       const largeContent = "a".repeat(150 * 1024); // 150KB
       mockReadFile.mockResolvedValue(largeContent);
 
@@ -663,10 +663,36 @@ describe("readTool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.content).toContain("Content truncated at 102400 bytes");
-      expect(result.content).toContain(
-        "... content truncated due to size limit (102400 bytes)",
+      expect(result.content).not.toContain("Content truncated at 102400 bytes");
+      // It should still truncate the line itself if it's too long
+      expect(result.content).toContain("...");
+    });
+
+    it("should be able to read lines beyond the first 100KB", async () => {
+      // Create a content that is larger than 100KB
+      // Each line is approx 50 chars. 3000 lines * 50 chars = 150,000 chars (~150KB)
+      const lines = Array.from(
+        { length: 3000 },
+        (_, i) => `Line ${i + 1} ${"x".repeat(40)}`,
       );
+      const content = lines.join("\n");
+
+      mockReadFile.mockResolvedValue(content);
+
+      const filePath = "/test/workdir/large_json.json";
+
+      // Try to read line 2600
+      const result = await readTool.execute(
+        {
+          file_path: filePath,
+          offset: 2600,
+          limit: 10,
+        },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("  2600\tLine 2600");
     });
 
     it("should handle non-Error objects in catch block", async () => {

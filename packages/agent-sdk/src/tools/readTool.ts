@@ -243,31 +243,19 @@ Usage:
         };
       }
 
-      // Check content size limit (100KB)
-      const MAX_CONTENT_SIZE = 100 * 1024; // 100KB
-      let contentToProcess = fileContent;
-      let contentTruncated = false;
-
-      if (fileContent.length > MAX_CONTENT_SIZE) {
-        contentToProcess = fileContent.substring(0, MAX_CONTENT_SIZE);
-        contentTruncated = true;
-      }
-
-      const lines = contentToProcess.split("\n");
-      const totalLines = lines.length;
-      const originalTotalLines = fileContent.split("\n").length;
+      const allLines = fileContent.split("\n");
+      const totalLines = allLines.length;
 
       // Handle offset and limit
       let startLine = 1;
-      let endLine = Math.min(totalLines, 2000); // Default maximum read 2000 lines
-
       if (typeof offset === "number") {
         startLine = Math.max(1, offset);
       }
 
-      if (typeof limit === "number") {
-        endLine = Math.min(totalLines, startLine + limit - 1);
-      }
+      let endLine = Math.min(
+        totalLines,
+        startLine + (typeof limit === "number" ? limit : 2000) - 1,
+      );
 
       // If no offset and limit specified, read entire file (maximum 2000 lines)
       if (typeof offset !== "number" && typeof limit !== "number") {
@@ -285,7 +273,7 @@ Usage:
       }
 
       // Extract specified line range
-      const selectedLines = lines.slice(startLine - 1, endLine);
+      const selectedLines = allLines.slice(startLine - 1, endLine);
 
       // Format output (cat -n format, with line numbers)
       const formattedContent = selectedLines
@@ -300,10 +288,7 @@ Usage:
 
       // Add file information header
       let content = `File: ${filePath}\n`;
-      if (contentTruncated) {
-        content += `Content truncated at ${MAX_CONTENT_SIZE} bytes\n`;
-        content += `Lines ${startLine}-${endLine} of ${totalLines} (original file: ${originalTotalLines} lines)\n`;
-      } else if (startLine > 1 || endLine < totalLines) {
+      if (startLine > 1 || endLine < totalLines) {
         content += `Lines ${startLine}-${endLine} of ${totalLines}\n`;
       } else {
         content += `Total lines: ${totalLines}\n`;
@@ -312,22 +297,15 @@ Usage:
       content += formattedContent;
 
       // If only showing partial content, add prompt
-      if (endLine < totalLines || contentTruncated) {
+      if (endLine < totalLines) {
         content += `\n${"─".repeat(50)}\n`;
-        if (contentTruncated) {
-          content += `... content truncated due to size limit (${MAX_CONTENT_SIZE} bytes)`;
-          if (endLine < totalLines) {
-            content += ` and ${totalLines - endLine} more lines not shown`;
-          }
-        } else {
-          content += `... ${totalLines - endLine} more lines not shown`;
-        }
+        content += `... ${totalLines - endLine} more lines not shown`;
       }
 
       return {
         success: true,
         content,
-        shortResult: `Read ${selectedLines.length} lines${totalLines > 2000 || contentTruncated ? " (truncated)" : ""}`,
+        shortResult: `Read ${selectedLines.length} lines${totalLines > 2000 ? " (truncated)" : ""}`,
       };
     } catch (error) {
       return {
