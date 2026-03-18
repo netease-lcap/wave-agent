@@ -47,7 +47,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   } = options;
 
   if (
-    (!message || message.trim() === "") &&
+    (typeof message !== "string" || message.trim() === "") &&
     !continueLastSession &&
     !restoreSessionId
   ) {
@@ -155,7 +155,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     });
 
     // Send message if provided and not empty
-    if (message && message.trim() !== "") {
+    if (typeof message === "string" && message.trim() !== "") {
       await agent.sendMessage(message);
     }
 
