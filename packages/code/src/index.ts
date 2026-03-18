@@ -1,7 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import { Scope, generateRandomName } from "wave-agent-sdk";
+import { Scope, generateRandomName, type PermissionMode } from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
 import { readFileSync } from "fs";
@@ -51,6 +51,18 @@ export async function main() {
         description: "Skip all permission checks (dangerous)",
         type: "boolean",
         default: false,
+        global: false,
+      })
+      .option("permission-mode", {
+        description: "Permission mode to use for the session",
+        choices: [
+          "acceptEdits",
+          "bypassPermissions",
+          "default",
+          "dontAsk",
+          "plan",
+        ],
+        type: "string",
         global: false,
       })
       .option("plugin-dir", {
@@ -274,7 +286,8 @@ export async function main() {
       // Continue with the selected session
       return startCli({
         restoreSessionId: selectedSessionId,
-        bypassPermissions: argv.dangerouslySkipPermissions,
+        bypassPermissions: argv.dangerouslySkipPermissions as boolean,
+        permissionMode: argv.permissionMode as PermissionMode | undefined,
         pluginDirs,
         tools,
         worktreeSession,
@@ -295,6 +308,7 @@ export async function main() {
         bypassPermissions: argv.dangerouslySkipPermissions as
           | boolean
           | undefined,
+        permissionMode: argv.permissionMode as PermissionMode | undefined,
         pluginDirs,
         tools,
         worktreeSession,
@@ -308,6 +322,7 @@ export async function main() {
       restoreSessionId: argv.restore as string | undefined,
       continueLastSession: argv.continue as boolean | undefined,
       bypassPermissions: argv.dangerouslySkipPermissions as boolean | undefined,
+      permissionMode: argv.permissionMode as PermissionMode | undefined,
       pluginDirs,
       tools,
       worktreeSession,

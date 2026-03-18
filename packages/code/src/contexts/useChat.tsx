@@ -125,6 +125,7 @@ export interface ChatProviderProps extends BaseAppProps {
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   bypassPermissions,
+  permissionMode: initialPermissionMode,
   pluginDirs,
   tools,
   workdir,
@@ -180,8 +181,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   >({});
 
   // Permission state
-  const [permissionMode, setPermissionModeState] =
-    useState<PermissionMode>("default");
+  const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
+    initialPermissionMode ||
+      (bypassPermissions ? "bypassPermissions" : "default"),
+  );
 
   // Confirmation state with queue-based architecture
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
@@ -339,7 +342,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           restoreSessionId,
           continueLastSession,
           logger,
-          permissionMode: bypassPermissions ? "bypassPermissions" : undefined,
+          permissionMode:
+            initialPermissionMode ||
+            (bypassPermissions ? "bypassPermissions" : undefined),
           canUseTool: permissionCallback,
           stream: false, // 关闭流式模式
           plugins: pluginDirs?.map((path) => ({ type: "local", path })),
@@ -386,6 +391,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     worktreeSession,
     model,
     debouncedSetTasks,
+    initialPermissionMode,
   ]);
 
   // Cleanup on unmount
