@@ -42,6 +42,14 @@ export class SlashCommandManager {
   public initialize(): void {
     this.initializeBuiltinCommands();
     this.loadCustomCommands();
+
+    // Listen for skill refreshes and update skill commands
+    const skillManager = this.container.get<SkillManager>("SkillManager");
+    if (skillManager) {
+      skillManager.on("refreshed", (skills: SkillMetadata[]) => {
+        this.registerSkillCommands(skills);
+      });
+    }
   }
 
   private get messageManager(): MessageManager {

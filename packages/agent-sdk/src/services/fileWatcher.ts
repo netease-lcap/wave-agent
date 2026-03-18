@@ -95,7 +95,7 @@ export class FileWatcherService extends EventEmitter {
       await this.initializeWatcher(entry);
     } catch (error) {
       this.logger?.error(
-        `Live Config: Failed to watch file ${path}: ${(error as Error).message}`,
+        `FileWatcher: Failed to watch file ${path}: ${(error as Error).message}`,
       );
       throw error;
     }
@@ -117,7 +117,7 @@ export class FileWatcherService extends EventEmitter {
       this.watchers.delete(path);
     } catch (error) {
       this.logger?.warn(
-        `Live Config: Error unwatching file ${path}: ${(error as Error).message}`,
+        `FileWatcher: Error unwatching file ${path}: ${(error as Error).message}`,
       );
     }
   }
@@ -204,7 +204,7 @@ export class FileWatcherService extends EventEmitter {
       entry.lastError = (error as Error).message;
 
       this.logger?.error(
-        `Live Config: Failed to initialize watcher for ${entry.path}: ${(error as Error).message}`,
+        `FileWatcher: Failed to initialize watcher for ${entry.path}: ${(error as Error).message}`,
       );
 
       // Try fallback polling if not already using it
@@ -241,9 +241,17 @@ export class FileWatcherService extends EventEmitter {
       this.handleFileEvent("delete", filePath);
     });
 
+    this.globalWatcher.on("addDir", (dirPath: string) => {
+      this.handleFileEvent("create", dirPath);
+    });
+
+    this.globalWatcher.on("unlinkDir", (dirPath: string) => {
+      this.handleFileEvent("delete", dirPath);
+    });
+
     this.globalWatcher.on("error", (err: unknown) => {
       const error = err instanceof Error ? err : new Error(String(err));
-      this.logger?.error(`Live Config: File watcher error: ${error.message}`);
+      this.logger?.error(`FileWatcher: File watcher error: ${error.message}`);
       this.emit("watcherError", error);
     });
   }
@@ -253,9 +261,6 @@ export class FileWatcherService extends EventEmitter {
     filePath: string,
     stats?: { size?: number },
   ): void {
-    const entry = this.watchers.get(filePath);
-    if (!entry) return;
-
     const event: FileWatchEvent = {
       type,
       path: filePath,
@@ -263,16 +268,27 @@ export class FileWatcherService extends EventEmitter {
       size: stats?.size,
     };
 
-    entry.lastEvent = event.timestamp;
+    // Notify all watchers that match the path or are parents of the path
+    for (const [watchedPath, entry] of this.watchers.entries()) {
+      if (
+        filePath === watchedPath ||
+        filePath.startsWith(watchedPath + "/") ||
+        // Handle cases where the watched path might be a file and we get an event for it
+        // (already covered by filePath === watchedPath)
+        false
+      ) {
+        entry.lastEvent = event.timestamp;
 
-    // Notify all callbacks for this file
-    for (const callback of entry.callbacks) {
-      try {
-        callback(event);
-      } catch (error) {
-        this.logger?.error(
-          `Live Config: Error in file watch callback for ${filePath}: ${(error as Error).message}`,
-        );
+        // Notify all callbacks for this watcher
+        for (const callback of entry.callbacks) {
+          try {
+            callback(event);
+          } catch (error) {
+            this.logger?.error(
+              `FileWatcher: Error in file watch callback for ${watchedPath} (event on ${filePath}): ${(error as Error).message}`,
+            );
+          }
+        }
       }
     }
   }

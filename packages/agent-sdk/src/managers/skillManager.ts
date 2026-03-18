@@ -1,6 +1,8 @@
 import { readdir, stat } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
+import { EventEmitter } from "events";
+import { FileWatcherService } from "../services/fileWatcher.js";
 import type {
   SkillManagerOptions,
   SkillMetadata,
@@ -24,7 +26,7 @@ import { logger } from "../utils/globalLogger.js";
 /**
  * Manages skill discovery and loading
  */
-export class SkillManager {
+export class SkillManager extends EventEmitter {
   private personalSkillsPath: string;
   private scanTimeout: number;
   private workdir: string;
@@ -32,15 +34,19 @@ export class SkillManager {
   private skillMetadata = new Map<string, SkillMetadata>();
   private skillContent = new Map<string, Skill>();
   private initialized = false;
+  private fileWatcher: FileWatcherService | null = null;
+  private watchEnabled: boolean;
 
   constructor(
     private container: Container,
     options: SkillManagerOptions = {},
   ) {
+    super();
     this.personalSkillsPath =
       options.personalSkillsPath || join(homedir(), ".wave", "skills");
     this.scanTimeout = options.scanTimeout || 5000;
     this.workdir = options.workdir || process.cwd();
+    this.watchEnabled = options.watch ?? false;
   }
 
   /**
@@ -50,26 +56,10 @@ export class SkillManager {
     logger?.debug("Initializing SkillManager...");
 
     try {
-      // Clear existing data before discovery
-      this.skillMetadata.clear();
-      this.skillContent.clear();
+      await this.refreshSkills();
 
-      const discovery = await this.discoverSkills();
-
-      // Store discovered skill metadata
-      discovery.personalSkills.forEach((skill, name) => {
-        this.skillMetadata.set(name, skill);
-      });
-      discovery.projectSkills.forEach((skill, name) => {
-        this.skillMetadata.set(name, skill);
-      });
-
-      // Log any discovery errors
-      if (discovery.errors.length > 0) {
-        logger?.warn(`Found ${discovery.errors.length} skill discovery errors`);
-        discovery.errors.forEach((error) => {
-          logger?.warn(`Skill error in ${error.skillPath}: ${error.message}`);
-        });
+      if (this.watchEnabled && !this.fileWatcher) {
+        await this.setupWatcher();
       }
 
       this.initialized = true;
@@ -79,6 +69,82 @@ export class SkillManager {
     } catch (error) {
       logger?.error("Failed to initialize SkillManager:", error);
       throw error;
+    }
+  }
+
+  /**
+   * Refresh skills by re-discovering them
+   */
+  private async refreshSkills(): Promise<void> {
+    // Clear existing data before discovery
+    this.skillMetadata.clear();
+    this.skillContent.clear();
+
+    const discovery = await this.discoverSkills();
+
+    // Store discovered skill metadata
+    discovery.personalSkills.forEach((skill, name) => {
+      this.skillMetadata.set(name, skill);
+    });
+    discovery.projectSkills.forEach((skill, name) => {
+      this.skillMetadata.set(name, skill);
+    });
+
+    // Log any discovery errors
+    if (discovery.errors.length > 0) {
+      logger?.warn(`Found ${discovery.errors.length} skill discovery errors`);
+      discovery.errors.forEach((error) => {
+        logger?.warn(`Skill error in ${error.skillPath}: ${error.message}`);
+      });
+    }
+
+    this.emit("refreshed", Array.from(this.skillMetadata.values()));
+  }
+
+  /**
+   * Setup file watcher for skill directories
+   */
+  private async setupWatcher(): Promise<void> {
+    if (this.fileWatcher) {
+      await this.fileWatcher.cleanup();
+    }
+
+    this.fileWatcher = new FileWatcherService(logger);
+
+    const pathsToWatch = [
+      this.personalSkillsPath,
+      join(this.workdir, ".wave", "skills"),
+    ];
+
+    logger?.debug(`Setting up skill watcher for: ${pathsToWatch.join(", ")}`);
+
+    for (const pathToWatch of pathsToWatch) {
+      await this.fileWatcher.watchFile(pathToWatch, async (event) => {
+        if (
+          event.path.endsWith("SKILL.md") ||
+          event.type === "delete" ||
+          event.type === "create"
+        ) {
+          logger?.debug(
+            `Skill change detected (${event.type}): ${event.path}. Refreshing skills...`,
+          );
+          try {
+            await this.refreshSkills();
+          } catch (error) {
+            logger?.error("Failed to refresh skills after change:", error);
+          }
+        }
+      });
+    }
+  }
+
+  /**
+   * Cleanup resources
+   */
+  async destroy(): Promise<void> {
+    if (this.fileWatcher) {
+      await this.fileWatcher.cleanup();
+      this.fileWatcher = null;
     }
   }
 

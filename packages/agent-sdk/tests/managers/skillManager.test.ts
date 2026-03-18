@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
+import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { Container } from "../../src/utils/container.js";
 import type {
   SkillManagerOptions,
@@ -8,6 +9,7 @@ import type {
 } from "../../src/types/index.js";
 import { readdir, stat } from "fs/promises";
 import { logger } from "../../src/utils/globalLogger.js";
+import { FileWatcherService } from "../../src/services/fileWatcher.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
@@ -24,6 +26,7 @@ import {
 } from "../../src/utils/skillParser.js";
 
 vi.mock("fs/promises");
+vi.mock("../../src/services/fileWatcher.js");
 vi.mock("../../src/utils/skillParser.js", async () => {
   const actual = await vi.importActual("../../src/utils/skillParser.js");
   return {
@@ -36,14 +39,34 @@ vi.mock("../../src/utils/skillParser.js", async () => {
 describe("SkillManager", () => {
   let skillManager: SkillManager;
   let container: Container;
+  let mockFileWatcher: {
+    watchFile: ReturnType<typeof vi.fn>;
+    cleanup: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockFileWatcher = {
+      watchFile: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(FileWatcherService).mockImplementation(function () {
+      return mockFileWatcher;
+    } as unknown as typeof FileWatcherService);
 
     container = new Container();
     skillManager = new SkillManager(container, {
       workdir: "/test/workdir",
     });
+  });
+
+  afterEach(async () => {
+    if (skillManager) {
+      await skillManager.destroy();
+    }
   });
 
   describe("constructor", () => {
@@ -696,6 +719,113 @@ describe("SkillManager", () => {
 
       expect(result.content).toContain("• No skills available");
       expect(result.content).toContain("Wave Skills documentation");
+    });
+  });
+
+  describe("Watcher", () => {
+    it("should initialize watcher when watch option is true", async () => {
+      const manager = new SkillManager(container, {
+        workdir: "/test/workdir",
+        watch: true,
+      });
+      vi.mocked(readdir).mockResolvedValue([]);
+
+      await manager.initialize();
+
+      expect(FileWatcherService).toHaveBeenCalled();
+      expect(mockFileWatcher.watchFile).toHaveBeenCalledWith(
+        expect.stringContaining(".wave/skills"),
+        expect.any(Function),
+      );
+      expect(mockFileWatcher.watchFile).toHaveBeenCalledWith(
+        expect.stringContaining("/test/workdir/.wave/skills"),
+        expect.any(Function),
+      );
+    });
+
+    it("should not initialize watcher when watch option is false", async () => {
+      const manager = new SkillManager(container, {
+        workdir: "/test/workdir",
+        watch: false,
+      });
+      vi.mocked(readdir).mockResolvedValue([]);
+
+      await manager.initialize();
+
+      expect(FileWatcherService).not.toHaveBeenCalled();
+    });
+
+    it("should refresh skills and update slash commands when a change is detected", async () => {
+      const manager = new SkillManager(container, {
+        workdir: "/test/workdir",
+        watch: true,
+      });
+      container.register("SkillManager", manager);
+
+      const slashCommandManager = new SlashCommandManager(container, {
+        workdir: "/test/workdir",
+      });
+      slashCommandManager.initialize();
+
+      vi.mocked(readdir).mockResolvedValue([]);
+      await manager.initialize();
+
+      // Get the callback passed to watchFile
+      const onEventCallback = mockFileWatcher.watchFile.mock.calls[0][1];
+
+      // Mock readdir to return a new skill after refresh
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        if (path.toString().includes(".wave/skills")) {
+          return [
+            { name: "new-skill", isDirectory: () => true },
+          ] as unknown as Awaited<ReturnType<typeof readdir>>;
+        }
+        return [] as unknown as Awaited<ReturnType<typeof readdir>>;
+      });
+      vi.mocked(stat).mockResolvedValue(
+        {} as unknown as Awaited<ReturnType<typeof stat>>,
+      );
+      vi.mocked(parseSkillFile).mockReturnValue({
+        isValid: true,
+        skillMetadata: {
+          name: "new-skill",
+          description: "new desc",
+          type: "personal",
+          skillPath: "/path/to/new-skill",
+        },
+        content: "content",
+        frontmatter: { name: "new-skill" },
+        validationErrors: [],
+      } as unknown as ReturnType<typeof parseSkillFile>);
+
+      // Trigger the callback
+      await onEventCallback({
+        type: "change",
+        path: "/test/workdir/.wave/skills/new-skill/SKILL.md",
+        timestamp: Date.now(),
+      });
+
+      // Check if skills were refreshed
+      const skills = manager.getAvailableSkills();
+      expect(skills).toHaveLength(1);
+      expect(skills[0].name).toBe("new-skill");
+
+      // Check if slash commands were updated
+      const commands = slashCommandManager.getCommands();
+      expect(commands.find((c) => c.id === "new-skill")).toBeDefined();
+    });
+
+    it("should cleanup watcher when destroyed", async () => {
+      const manager = new SkillManager(container, {
+        workdir: "/test/workdir",
+        watch: true,
+      });
+      vi.mocked(readdir).mockResolvedValue([]);
+      await manager.initialize();
+
+      await manager.destroy();
+
+      expect(mockFileWatcher.cleanup).toHaveBeenCalled();
     });
   });
 });
