@@ -10,9 +10,29 @@
  * - Project configs override user configs (existing behavior)
  */
 
-import { join } from "path";
+import { join, dirname } from "path";
 import { homedir } from "os";
 import { existsSync } from "fs";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+/**
+ * Get the builtin skills directory path
+ */
+export function getBuiltinSkillsDir(): string {
+  // In development, it's in src/builtin-skills
+  // In production (dist), it should be in dist/builtin-skills
+  // We'll look for it relative to this file
+  const devPath = join(__dirname, "..", "builtin-skills");
+  const prodPath = join(__dirname, "builtin-skills");
+
+  if (existsSync(devPath)) {
+    return devPath;
+  }
+  return prodPath;
+}
 
 /**
  * Get the user-specific configuration file path (legacy function)
@@ -62,15 +82,18 @@ export function getProjectConfigPaths(workdir: string): string[] {
 export function getAllConfigPaths(workdir: string): {
   userPaths: string[];
   projectPaths: string[];
+  builtinPaths: string[];
   allPaths: string[];
 } {
   const userPaths = getUserConfigPaths();
   const projectPaths = getProjectConfigPaths(workdir);
+  const builtinPaths = [join(getBuiltinSkillsDir(), "settings", "SKILL.md")];
 
   return {
     userPaths,
     projectPaths,
-    allPaths: [...userPaths, ...projectPaths],
+    builtinPaths,
+    allPaths: [...userPaths, ...projectPaths, ...builtinPaths],
   };
 }
 
@@ -81,17 +104,20 @@ export function getAllConfigPaths(workdir: string): {
 export function getExistingConfigPaths(workdir: string): {
   userPaths: string[];
   projectPaths: string[];
+  builtinPaths: string[];
   existingPaths: string[];
 } {
   const allPaths = getAllConfigPaths(workdir);
 
   const existingUserPaths = allPaths.userPaths.filter(existsSync);
   const existingProjectPaths = allPaths.projectPaths.filter(existsSync);
+  const existingBuiltinPaths = allPaths.builtinPaths.filter(existsSync);
   const allExistingPaths = allPaths.allPaths.filter(existsSync);
 
   return {
     userPaths: existingUserPaths,
     projectPaths: existingProjectPaths,
+    builtinPaths: existingBuiltinPaths,
     existingPaths: allExistingPaths,
   };
 }

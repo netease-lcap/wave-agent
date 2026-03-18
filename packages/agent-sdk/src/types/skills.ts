@@ -6,7 +6,7 @@
 export interface SkillMetadata {
   name: string;
   description: string;
-  type: "personal" | "project";
+  type: "personal" | "project" | "builtin";
   skillPath: string;
   allowedTools?: string[];
   context?: "fork";
@@ -37,7 +37,7 @@ export interface SkillFrontmatter {
 }
 
 export interface SkillCollection {
-  type: "personal" | "project";
+  type: "personal" | "project" | "builtin";
   basePath: string;
   skills: Map<string, SkillMetadata>;
   errors: SkillError[];
@@ -57,6 +57,7 @@ export interface SkillValidationResult {
 export interface SkillDiscoveryResult {
   personalSkills: Map<string, SkillMetadata>;
   projectSkills: Map<string, SkillMetadata>;
+  builtinSkills: Map<string, SkillMetadata>;
   errors: SkillError[];
 }
 
