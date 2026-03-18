@@ -49,6 +49,14 @@ function nodeToAnsi(node: Node): string {
 
     for (const className of classes) {
       if (theme[className]) {
+        // If content has newlines, split it and apply style to each line
+        // to ensure ANSI codes are correctly applied when splitting the final string by lines.
+        if (content.includes("\n")) {
+          return content
+            .split("\n")
+            .map((line) => theme[className](line))
+            .join("\n");
+        }
         return theme[className](content);
       }
     }
