@@ -44,5 +44,5 @@ const result = await grepTool.execute({
 ```
 
 ## Key Implementation Details
-- **Ripgrep Integration**: The `Grep` tool spawns the `rg` binary from `@vscode/ripgrep` for high-performance searching.
+- **Ripgrep Integration**: The `Grep` tool spawns the `rg` binary from `@vscode/ripgrep` for high-performance searching. If no matches are found, it suggests specifying the `path` field to search in ignored or other directories.
 - **Image Support**: `Read` tool detects image extensions and returns base64 data.

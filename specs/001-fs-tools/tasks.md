@@ -10,3 +10,4 @@
 - [x] T009 Integrate all FS tools with `PermissionManager`
 - [x] T010 Add image reading support to `Read` tool
 - [x] T011 Add Jupyter notebook support to `Read` tool
+- [x] T012 Update `Grep` tool to suggest `path` field when no matches are found
