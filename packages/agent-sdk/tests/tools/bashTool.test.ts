@@ -461,9 +461,7 @@ describe("bashTool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.shortResult).toBe(
-        "line1\nline2\nline3\n... +2 lines (ctrl+o to expand)",
-      );
+      expect(result.shortResult).toBe("line1\nline2\nline3\n... +2 lines");
     });
   });
 
