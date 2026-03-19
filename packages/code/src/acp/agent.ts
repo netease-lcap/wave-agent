@@ -77,6 +77,12 @@ export class WaveAcpAgent implements AcpAgent {
           name: "Bypass Permissions",
           description: "Automatically accept all tool calls",
         },
+        {
+          id: "dontAsk",
+          name: "Don't Ask",
+          description:
+            "Automatically deny restricted tools unless pre-approved",
+        },
       ],
     };
   }
@@ -94,6 +100,7 @@ export class WaveAcpAgent implements AcpAgent {
           { value: "acceptEdits", name: "Accept Edits" },
           { value: "plan", name: "Plan" },
           { value: "bypassPermissions", name: "Bypass Permissions" },
+          { value: "dontAsk", name: "Don't Ask" },
         ],
       },
     ];
@@ -277,7 +284,12 @@ export class WaveAcpAgent implements AcpAgent {
     const agent = this.agents.get(sessionId);
     if (!agent) throw new Error(`Session ${sessionId} not found`);
     agent.setPermissionMode(
-      modeId as "default" | "acceptEdits" | "plan" | "bypassPermissions",
+      modeId as
+        | "default"
+        | "acceptEdits"
+        | "plan"
+        | "bypassPermissions"
+        | "dontAsk",
     );
   }
 
@@ -290,7 +302,12 @@ export class WaveAcpAgent implements AcpAgent {
 
     if (configId === "permission_mode") {
       agent.setPermissionMode(
-        value as "default" | "acceptEdits" | "plan" | "bypassPermissions",
+        value as
+          | "default"
+          | "acceptEdits"
+          | "plan"
+          | "bypassPermissions"
+          | "dontAsk",
       );
     }
 
