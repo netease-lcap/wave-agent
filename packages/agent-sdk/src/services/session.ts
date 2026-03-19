@@ -46,11 +46,27 @@ export interface SessionMetadata {
 }
 
 /**
+ * Format date to YYYYMMDD-HHmm-ssSS (SS = milliseconds with last digit discarded)
+ * @param date - Date to format (defaults to now)
+ * @returns Formatted string e.g. 20250319-1430-2512
+ */
+export function generateSessionTimestamp(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const h = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  const s = String(date.getSeconds()).padStart(2, "0");
+  const ms = String(date.getMilliseconds()).padStart(3, "0").slice(0, 2);
+  return `${y}${m}${d}-${h}${min}-${s}${ms}`;
+}
+
+/**
  * Generate a new session ID using Node.js native crypto.randomUUID()
  * @returns UUID string for session identification
  */
 export function generateSessionId(): string {
-  return randomUUID();
+  return generateSessionTimestamp() + randomUUID().slice(18);
 }
 
 /**
