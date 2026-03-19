@@ -93,8 +93,12 @@ describe("WaveAcpAgent", () => {
       mcpServers: [],
     });
     expect(response.sessionId).toBe("test-session-id");
-    expect(response.modes).toBeDefined();
-    expect(response.configOptions).toBeDefined();
+    expect(response.modes?.availableModes).toContainEqual(
+      expect.objectContaining({ id: "dontAsk" }),
+    );
+    expect(
+      (response.configOptions?.[0] as { options: { value: string }[] }).options,
+    ).toContainEqual(expect.objectContaining({ value: "dontAsk" }));
     expect(WaveAgent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         workdir: "/test/cwd",
@@ -623,8 +627,13 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-1",
       modeId: "plan",
     });
-
     expect(mockWaveAgent.setPermissionMode).toHaveBeenCalledWith("plan");
+
+    await agent.setSessionMode({
+      sessionId: "session-1",
+      modeId: "dontAsk",
+    });
+    expect(mockWaveAgent.setPermissionMode).toHaveBeenCalledWith("dontAsk");
   });
 
   it("should handle setSessionConfigOption", async () => {
@@ -656,6 +665,14 @@ describe("WaveAcpAgent", () => {
     expect(mockWaveAgent.setPermissionMode).toHaveBeenCalledWith(
       "bypassPermissions",
     );
+
+    await agent.setSessionConfigOption({
+      sessionId: "session-1",
+      configId: "permission_mode",
+      value: "dontAsk",
+    });
+
+    expect(mockWaveAgent.setPermissionMode).toHaveBeenCalledWith("dontAsk");
   });
 
   it("should handle callbacks", async () => {
