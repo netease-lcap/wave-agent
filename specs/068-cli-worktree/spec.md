@@ -132,6 +132,9 @@ As a developer, I want the CLI to automatically clean up the worktree if I haven
 - **FR-018**: System MUST trigger a `WorktreeCreate` hook event when a new worktree is created.
 - **FR-019**: The `WorktreeCreate` hook MUST provide a JSON input via stdin containing a `name` field. The hook MUST execute in the newly created worktree directory.
 - **FR-020**: The `WorktreeCreate` hook MUST NOT be triggered when reusing an existing worktree.
+- **FR-021**: System MUST automatically deny `Write` and `Edit` tool operations that attempt to modify files in the main repository (outside the current worktree) during a worktree session.
+- **FR-022**: The auto-deny mechanism MUST provide a descriptive error message explaining that modifications to the main repository are restricted while in a worktree session.
+- **FR-023**: The auto-deny mechanism MUST NOT restrict modifications to the current plan file, even if it is located outside the worktree.
 
 ### Key Entities
 
