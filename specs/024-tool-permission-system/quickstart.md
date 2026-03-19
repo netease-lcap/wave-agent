@@ -42,6 +42,17 @@ Add rules to `permissions.deny` to explicitly forbid actions. **Deny rules alway
 }
 ```
 
+### MCP Tool Permissions
+MCP tools (prefixed with `mcp__`) are subject to the same permission checks as built-in restricted tools. When you select "Yes, and don't ask again" for an MCP tool, Wave will save a persistent rule in the format `mcp__server__tool`.
+
+```json
+"permissions": {
+  "allow": [
+    "mcp__github__get_issue"
+  ]
+}
+```
+
 ### Rule Formats
 1. **Tool Name**: `Bash`, `Write`, `Read` (Allows all uses of the tool)
 2. **Bash Command**: `Bash(ls -la)`, `Bash(git *)` (Supports `*` wildcards)
