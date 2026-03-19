@@ -377,11 +377,12 @@ Usage notes:
             combinedOutput || `Command executed with exit code: ${exitCode}`;
           const content = processOutput(finalOutput);
 
-          const shortResult = combinedOutput
-            .trim()
-            .split("\n")
-            .slice(-3)
-            .join("\n");
+          const lines = combinedOutput.trim().split("\n");
+          const shortResult =
+            lines.length <= 3
+              ? lines.join("\n")
+              : lines.slice(0, 3).join("\n") +
+                `\n... +${lines.length - 3} lines (ctrl+o to expand)`;
 
           resolve({
             success: exitCode === 0,
