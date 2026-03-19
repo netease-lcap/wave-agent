@@ -12,3 +12,6 @@
 - [x] Add unit tests for MCP tool execution
 - [x] Create example usage of MCP
 - [x] Implement `McpManager` UI component for CLI
+- [x] Integrate MCP tools into the permission system
+    - [x] Ensure MCP tools trigger permission requests
+    - [x] Support persistent "Allow always" rules for MCP tools

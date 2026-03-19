@@ -55,6 +55,8 @@ As a user, I want to manually connect or disconnect MCP servers and check their 
 - **FR-005**: `McpManager` MUST track the status of each server (connected, disconnected, error).
 - **FR-006**: `Agent` class MUST provide methods to get server status and manually manage connections.
 - **FR-007**: MCP tool execution results MUST support text, images, and resources.
+- **FR-008**: MCP tools MUST trigger permission requests before execution, consistent with built-in restricted tools.
+- **FR-009**: System MUST support persistent "Allow always" rules for MCP tools, stored in the format `mcp__[serverName]__[toolName]`.
 
 ### Key Entities *(include if feature involves data)*
 
