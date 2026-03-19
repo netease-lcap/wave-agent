@@ -9,6 +9,9 @@ import {
   listAllSessions as listAllWaveSessions,
   deleteSession as deleteWaveSession,
   truncateContent,
+  BASH_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  WRITE_TOOL_NAME,
 } from "wave-agent-sdk";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -446,9 +449,28 @@ export class WaveAcpAgent implements AcpAgent {
 
       switch (selectedOptionId) {
         case "allow_always":
+          if (context.toolName === BASH_TOOL_NAME) {
+            const command = (context.toolInput?.command as string) || "";
+            const rule = context.suggestedPrefix
+              ? `${context.suggestedPrefix}*`
+              : command;
+            return {
+              behavior: "allow",
+              newPermissionRule: `${BASH_TOOL_NAME}(${rule})`,
+            };
+          }
+          if (
+            context.toolName === EDIT_TOOL_NAME ||
+            context.toolName === WRITE_TOOL_NAME
+          ) {
+            return {
+              behavior: "allow",
+              newPermissionMode: "acceptEdits",
+            };
+          }
           return {
             behavior: "allow",
-            newPermissionRule: `${context.toolName}(*)`,
+            newPermissionRule: context.toolName,
           };
         case "allow_once":
           return { behavior: "allow" };

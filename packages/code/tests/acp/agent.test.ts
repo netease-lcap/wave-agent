@@ -12,15 +12,19 @@ import {
 } from "@agentclientprotocol/sdk";
 
 // Mock wave-agent-sdk
-vi.mock("wave-agent-sdk", () => ({
-  Agent: {
-    create: vi.fn(),
-  },
-  listSessions: vi.fn().mockResolvedValue([]),
-  listAllSessions: vi.fn().mockResolvedValue([]),
-  deleteSession: vi.fn(),
-  truncateContent: vi.fn((s) => s),
-}));
+vi.mock("wave-agent-sdk", async () => {
+  const actual = await vi.importActual("wave-agent-sdk");
+  return {
+    ...actual,
+    Agent: {
+      create: vi.fn(),
+    },
+    listSessions: vi.fn().mockResolvedValue([]),
+    listAllSessions: vi.fn().mockResolvedValue([]),
+    deleteSession: vi.fn(),
+    truncateContent: vi.fn((s) => s),
+  };
+});
 
 // Mock logger
 vi.mock("../utils/logger.js", () => ({
@@ -558,7 +562,7 @@ describe("WaveAcpAgent", () => {
       permissionMode: "default",
     });
     expect(decision.behavior).toBe("allow");
-    expect(decision.newPermissionRule).toBe("test-tool(*)");
+    expect(decision.newPermissionRule).toBe("test-tool");
   });
 
   it("should handle permission cancellation", async () => {
