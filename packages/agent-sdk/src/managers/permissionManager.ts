@@ -117,6 +117,8 @@ export class PermissionManager {
   private systemAdditionalDirectories: string[] = [];
   private workdir?: string;
   private planFilePath?: string;
+  private worktreeName?: string;
+  private mainRepoRoot?: string;
   private onConfiguredDefaultModeChange?: (mode: PermissionMode) => void;
   private _logger?: Logger;
 
@@ -131,6 +133,9 @@ export class PermissionManager {
     this.planFilePath = options.planFilePath;
     this._logger = options.logger;
     this.updateAdditionalDirectories(options.additionalDirectories || []);
+
+    this.worktreeName = this.container.get<string>("WorktreeName");
+    this.mainRepoRoot = this.container.get<string>("MainRepoRoot");
   }
 
   /**
@@ -340,6 +345,40 @@ export class PermissionManager {
   async checkPermission(
     context: ToolPermissionContext,
   ): Promise<PermissionDecision> {
+    // 0. Check worktree safety for Write and Edit tools
+    if (
+      this.worktreeName &&
+      this.mainRepoRoot &&
+      this.workdir &&
+      (context.toolName === WRITE_TOOL_NAME ||
+        context.toolName === EDIT_TOOL_NAME)
+    ) {
+      const targetPath = context.toolInput?.file_path as string | undefined;
+      if (targetPath) {
+        const absoluteTargetPath = path.resolve(this.workdir, targetPath);
+        const isInsideMainRepo = isPathInside(
+          absoluteTargetPath,
+          this.mainRepoRoot,
+        );
+        const isInsideWorktree = isPathInside(absoluteTargetPath, this.workdir);
+
+        // If it's inside the main repo but NOT inside the current worktree
+        if (isInsideMainRepo && !isInsideWorktree) {
+          logger?.warn("Worktree safety violation", {
+            toolName: context.toolName,
+            targetPath,
+            worktreeName: this.worktreeName,
+            mainRepoRoot: this.mainRepoRoot,
+            workdir: this.workdir,
+          });
+          return {
+            behavior: "deny",
+            message: `Access denied: You are currently in a worktree session ("${this.worktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${this.workdir}`,
+          };
+        }
+      }
+    }
+
     // 0. Check denied rules first - Deny always takes precedence
     for (const rule of this.deniedRules) {
       if (this.matchesRule(context, rule)) {
