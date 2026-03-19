@@ -308,9 +308,18 @@ export class AIManager {
 
       const notUser = role !== "user";
 
-      const isRead = (blocks as ToolBlock[])
-        .filter((current) => current.type === "tool")
-        .every((current) => current.name === "Read");
+      const toolsBlocks = (blocks as ToolBlock[]).filter(
+        (current) => current.type === "tool",
+      );
+
+      const isRead =
+        toolsBlocks.length &&
+        toolsBlocks.every((current) => {
+          const isRead = current.name === "Read";
+          const isSkill = current?.parameters?.includes?.("/skills/");
+
+          return isRead && !isSkill;
+        });
 
       return notUser && isRead;
     });
