@@ -73,6 +73,15 @@ As a user, I want common safe commands (like `cd`) to be automatically permitted
 1. **Given** the CWD is `/home/user/project`, **When** the user executes `cd src`, **Then** the system SHOULD automatically permit it.
 2. **Given** the CWD is `/home/user/project`, **When** the user executes `cd /etc`, **Then** the system MUST NOT automatically permit it.
 
+### User Story 9 - MCP Tool Permissions (Priority: P1)
+
+As a user, I want MCP tools to be subject to the same permission checks as built-in restricted tools, so that I can control which external tools the agent can execute.
+
+**Acceptance Scenarios**:
+1. **Given** an MCP tool (prefixed with `mcp__`) is called, **When** no matching permission rule exists, **Then** the system MUST prompt for confirmation.
+2. **Given** a confirmation prompt for an MCP tool, **When** the user selects "Yes, and don't ask again", **Then** the system MUST save a persistent rule in the format `mcp__server__tool`.
+3. **Given** a persistent rule `mcp__server__tool` exists, **When** the agent calls that specific MCP tool, **Then** it MUST execute immediately without prompting.
+
 ## Requirements
 
 ### Functional Requirements
@@ -86,6 +95,12 @@ As a user, I want common safe commands (like `cd`) to be automatically permitted
 - **FR-006**: System MUST support cycling through permission modes (default -> acceptEdits -> plan) via `Shift+Tab`.
 - **FR-021**: System MUST hide the "Don't ask again" option for commands identified as dangerous or out-of-bounds.
 - **FR-022**: System MUST detect write redirections (`>`, `>>`, etc.) in bash commands and treat them as dangerous, hiding the "Don't ask again" option.
+
+#### MCP Tool Permissions
+- **FR-026**: System MUST treat any tool name starting with `mcp__` as a restricted tool.
+- **FR-027**: System MUST trigger a permission check before executing any MCP tool.
+- **FR-028**: System MUST support persistent permission rules for MCP tools in the format `mcp__server__tool`.
+- **FR-029**: System MUST propagate the `ToolContext` to MCP tool execution functions to enable permission enforcement.
 
 #### Matching Logic & Wildcards
 - **FR-007**: System MUST support exact string matching and `*` wildcard matching for rules in `permissions.allow` and `permissions.deny`.

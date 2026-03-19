@@ -14,6 +14,8 @@
 3. **Path-based**: `Read(**/*.env)`, `Write(/etc/**)`
    - Format: `ToolName(glob_pattern)`
    - Supported tools: `Read`, `Write`, `Edit`, `Delete`, `LS`
+4. **MCP Tool**: `mcp__server__tool`
+   - Format: `mcp__<server_name>__<tool_name>`
 
 ### WaveConfiguration
 **Description**: The configuration object loaded from `settings.json`.
