@@ -432,6 +432,39 @@ describe("bashTool", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Failed to execute command: spawn failed");
     });
+
+    it("should format shortResult with first 3 lines and summary for long output", async () => {
+      const longOutput = "line1\nline2\nline3\nline4\nline5";
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from(longOutput)), 10);
+            }
+          }),
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(0), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const result = await bashTool.execute(
+        { command: "long-output" },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.shortResult).toBe(
+        "line1\nline2\nline3\n... +2 lines (ctrl+o to expand)",
+      );
+    });
   });
 
   describe("TaskOutput tool", () => {
