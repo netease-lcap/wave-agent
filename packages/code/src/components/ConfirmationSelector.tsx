@@ -105,6 +105,9 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       }
       return "Yes, and don't ask again for this command in this workdir";
     }
+    if (toolName.startsWith("mcp__")) {
+      return `Yes, and don't ask again for: ${toolName}`;
+    }
     return "Yes, and auto-accept edits";
   };
 
@@ -367,6 +370,8 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
             ? `Bash(${suggestedPrefix}*)`
             : `Bash(${toolInput?.command})`;
           onDecision({ behavior: "allow", newPermissionRule: rule });
+        } else if (toolName.startsWith("mcp__")) {
+          onDecision({ behavior: "allow", newPermissionRule: toolName });
         } else {
           onDecision({ behavior: "allow", newPermissionMode: "acceptEdits" });
         }

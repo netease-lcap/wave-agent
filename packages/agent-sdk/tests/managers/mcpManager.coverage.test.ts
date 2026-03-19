@@ -278,7 +278,11 @@ describe("McpManager Coverage", () => {
         {} as unknown as Parameters<McpManager["executeMcpToolByRegistry"]>[2],
       );
       expect(result.success).toBe(true);
-      expect(mockExecute).toHaveBeenCalledWith("mcp__s1__t1", { arg: 1 });
+      expect(mockExecute).toHaveBeenCalledWith(
+        "mcp__s1__t1",
+        { arg: 1 },
+        expect.anything(),
+      );
     });
   });
 });

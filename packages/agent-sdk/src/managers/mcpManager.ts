@@ -347,6 +347,7 @@ export class McpManager {
   async executeMcpTool(
     toolName: string,
     args: Record<string, unknown>,
+    context?: ToolContext,
   ): Promise<{
     success: boolean;
     content: string;
@@ -358,6 +359,23 @@ export class McpManager {
       throw new Error(
         `Invalid MCP tool name: ${toolName}. Must start with 'mcp__'`,
       );
+    }
+
+    // Permission check
+    if (context?.permissionManager) {
+      const permissionContext = context.permissionManager.createContext(
+        toolName,
+        context.permissionMode || "default",
+        context.canUseToolCallback,
+        args,
+        context.toolCallId,
+      );
+
+      const decision =
+        await context.permissionManager.checkPermission(permissionContext);
+      if (decision.behavior === "deny") {
+        throw new Error(decision.message || "Permission denied");
+      }
     }
 
     const parts = toolName.split("__");
@@ -479,8 +497,11 @@ export class McpManager {
         const plugin = createMcpToolPlugin(
           tool,
           server.name,
-          (name: string, args: Record<string, unknown>) =>
-            this.executeMcpTool(name, args),
+          (
+            name: string,
+            args: Record<string, unknown>,
+            context?: ToolContext,
+          ) => this.executeMcpTool(name, args, context),
         );
         mcpTools.set(plugin.name, plugin);
       }

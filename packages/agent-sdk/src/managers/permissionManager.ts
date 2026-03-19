@@ -475,7 +475,10 @@ export class PermissionManager {
    * Determine if a tool requires permission checks based on its name
    */
   isRestrictedTool(toolName: string): boolean {
-    return (RESTRICTED_TOOLS as readonly string[]).includes(toolName);
+    return (
+      (RESTRICTED_TOOLS as readonly string[]).includes(toolName) ||
+      toolName.startsWith("mcp__")
+    );
   }
 
   /**
@@ -497,6 +500,8 @@ export class PermissionManager {
         const processedPart = stripRedirections(stripEnvVars(parts[0]));
         suggestedPrefix = getSmartPrefix(processedPart) ?? undefined;
       }
+    } else if (toolName.startsWith("mcp__")) {
+      suggestedPrefix = toolName;
     }
 
     const context: ToolPermissionContext = {
