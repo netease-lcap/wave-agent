@@ -382,7 +382,7 @@ Usage notes:
             lines.length <= 3
               ? lines.join("\n")
               : lines.slice(0, 3).join("\n") +
-                `\n... +${lines.length - 3} lines (ctrl+o to expand)`;
+                `\n... +${lines.length - 3} lines`;
 
           resolve({
             success: exitCode === 0,
