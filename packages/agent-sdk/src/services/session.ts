@@ -294,14 +294,21 @@ export async function loadSessionFromJsonl(
       sessionType,
     );
 
-    const messages = await jsonlHandler.read(filePath);
-
-    if (messages.length === 0) {
-      return null;
+    // Check if file exists
+    try {
+      await fs.access(filePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return null;
+      }
+      throw error;
     }
 
+    const messages = await jsonlHandler.read(filePath);
+
     // Extract metadata from messages
-    const lastMessage = messages[messages.length - 1];
+    const lastMessage =
+      messages.length > 0 ? messages[messages.length - 1] : null;
 
     // Try to get rootSessionId and parentSessionId from index
     let rootSessionId: string | undefined;
@@ -333,8 +340,10 @@ export async function loadSessionFromJsonl(
       }),
       metadata: {
         workdir,
-        lastActiveAt: lastMessage.timestamp,
-        latestTotalTokens: lastMessage.usage
+        lastActiveAt: lastMessage
+          ? lastMessage.timestamp
+          : new Date().toISOString(),
+        latestTotalTokens: lastMessage?.usage
           ? extractLatestTotalTokens([lastMessage])
           : 0,
       },
@@ -963,15 +972,13 @@ export async function handleSessionRestoration(
       // Use only JSONL format - no legacy support
       sessionToRestore = await loadSessionFromJsonl(restoreSessionId, workdir);
       if (!sessionToRestore) {
-        console.error(`Session not found: ${restoreSessionId}`);
-        process.exit(1);
+        throw new Error(`Session not found: ${restoreSessionId}`);
       }
     } else if (continueLastSession) {
       // Use only JSONL format - no legacy support
       sessionToRestore = await getLatestSessionFromJsonl(workdir);
       if (!sessionToRestore) {
-        console.error(`No previous session found for workdir: ${workdir}`);
-        process.exit(1);
+        throw new Error(`No previous session found for workdir: ${workdir}`);
       }
     }
 
@@ -984,7 +991,7 @@ export async function handleSessionRestoration(
     }
   } catch (error) {
     console.error("Failed to restore session:", error);
-    process.exit(1);
+    throw error;
   }
 }
 
