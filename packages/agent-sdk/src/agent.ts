@@ -42,17 +42,17 @@ import { setupAgentContainer } from "./utils/containerSetup.js";
 
 export class Agent {
   private messageManager: MessageManager;
-  private aiManager: AIManager;
+  public aiManager: AIManager;
 
   private bangManager: BangManager | null = null;
   private backgroundTaskManager: BackgroundTaskManager;
   private logger?: Logger; // Add optional logger property
-  private toolManager: ToolManager; // Add tool registry instance
+  public toolManager: ToolManager; // Add tool registry instance
   private mcpManager: McpManager; // Add MCP manager instance
   private lspManager: ILspManager; // Add LSP manager instance
   private permissionManager: PermissionManager; // Add permission manager instance
   private planManager: PlanManager; // Add plan manager instance
-  private subagentManager: SubagentManager; // Add subagent manager instance
+  public subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
@@ -484,6 +484,9 @@ export class Agent {
     // Cleanup memory store
   }
 
+  /**
+   * Get the subagent manager instance
+   */
   /**
    * Get a subagent instance by its ID
    * @param subagentId - The ID of the subagent instance

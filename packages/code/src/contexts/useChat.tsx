@@ -106,6 +106,11 @@ export interface ChatContextType {
   workingDirectory: string;
   version?: string;
   workdir?: string;
+  // btwAgent functionality
+  isBtwModeActive: boolean;
+  btwAgentMessages: Message[];
+  btwAgentIsLoading: boolean;
+  dismissBtwAgent: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -179,6 +184,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [subagentLatestTokens, setSubagentLatestTokens] = useState<
     Record<string, number>
   >({});
+
+  // btwAgent state
+  const [isBtwModeActive, setIsBtwModeActive] = useState(false);
+  const btwAgentIdRef = useRef<string | null>(null);
+  const btwAgentAbortControllerRef = useRef<AbortController | null>(null);
+  const [btwAgentMessages, setBtwAgentMessages] = useState<Message[]>([]);
+  const [btwAgentIsLoading, setBtwAgentIsLoading] = useState(false);
 
   // Permission state
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
@@ -299,6 +311,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             ...prev,
             [subagentId]: [...messages],
           }));
+
+          // Update btwAgent messages if this is the btwAgent
+          if (btwAgentIdRef.current === subagentId) {
+            setBtwAgentMessages([...messages]);
+            // If the last message is from assistant and it's not loading anymore, set loading to false
+            const lastMessage = messages[messages.length - 1];
+            if (lastMessage?.role === "assistant") {
+              setBtwAgentIsLoading(false);
+            }
+          }
         },
         onSubagentLatestTotalTokensChange: (
           subagentId: string,
@@ -427,6 +449,79 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       const hasImageAttachments = images && images.length > 0;
 
       if (!hasTextContent && !hasImageAttachments) return;
+
+      // Handle /btw command - MUST bypass queue
+      if (content.startsWith("/btw ") || content === "/btw") {
+        const query = content.substring(4).trim();
+        if (!query) return;
+
+        setIsBtwModeActive(true);
+        setBtwAgentIsLoading(true);
+
+        const agent = agentRef.current;
+        if (!agent) return;
+
+        const systemPrompt = agent.aiManager.getSystemPrompt();
+        const tools = agent.toolManager.list().map((t) => t.name);
+        const modelConfig = agent.getModelConfig();
+
+        const prompt = `<system-reminder>
+You are currently in "BTW" mode. The user is asking a quick side question.
+- Provide a concise, one-off response.
+- Do NOT use any tools.
+- Do NOT ask follow-up questions.
+- Focus only on answering the user's immediate query.
+</system-reminder>
+
+${query}`;
+
+        const instance = await agent.subagentManager.createInstance(
+          {
+            name: "btw",
+            description: "BTW Agent",
+            systemPrompt: systemPrompt || "",
+            tools,
+            model: modelConfig.model,
+            filePath: "",
+            scope: "builtin",
+            priority: 0,
+          },
+          {
+            description: `BTW: ${query}`,
+            prompt,
+            subagent_type: "btw",
+          },
+        );
+
+        btwAgentIdRef.current = instance.subagentId;
+        setBtwAgentIsLoading(true);
+
+        // Inherit messages from main agent
+        instance.messageManager.setMessages([...agent.messages]);
+
+        // Create abort controller for btwAgent
+        const abortController = new AbortController();
+        btwAgentAbortControllerRef.current = abortController;
+
+        // Execute the btwAgent
+        agent.subagentManager
+          .executeAgent(instance, prompt, abortController.signal)
+          .then(() => {
+            setBtwAgentIsLoading(false);
+            btwAgentAbortControllerRef.current = null;
+          })
+          .catch((err: unknown) => {
+            if (err instanceof Error && err.name === "AbortError") {
+              console.log("[DEBUG] btwAgent execution aborted");
+            } else {
+              console.error("[DEBUG] btwAgent execution error:", err);
+            }
+            setBtwAgentIsLoading(false);
+            btwAgentAbortControllerRef.current = null;
+          });
+
+        return;
+      }
 
       if (isLoading || isCommandRunning) {
         setQueuedMessages((prev) => [...prev, { content, images }]);
@@ -648,6 +743,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
   });
 
+  const dismissBtwAgent = useCallback(() => {
+    if (btwAgentAbortControllerRef.current) {
+      btwAgentAbortControllerRef.current.abort();
+      btwAgentAbortControllerRef.current = null;
+    }
+    setIsBtwModeActive(false);
+    btwAgentIdRef.current = null;
+    setBtwAgentMessages([]);
+    setBtwAgentIsLoading(false);
+  }, []);
+
   const contextValue: ChatContextType = {
     messages,
     isLoading,
@@ -692,6 +798,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workingDirectory,
     version,
     workdir,
+    isBtwModeActive,
+    btwAgentMessages,
+    btwAgentIsLoading,
+    dismissBtwAgent,
   };
 
   return (

@@ -49,7 +49,7 @@ export class AIManager {
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
   private stream: boolean; // Streaming mode flag
-  private modelOverride?: string;
+  public modelOverride?: string;
 
   // Service overrides
   constructor(
@@ -129,17 +129,27 @@ export class AIManager {
     if (this.modelOverride) {
       if (this.modelOverride === "fastModel") {
         modelToUse = parentModelConfig.fastModel;
-      } else if (this.modelOverride !== "inherit") {
+      } else if (this.modelOverride === "inherit") {
+        modelToUse = parentModelConfig.model;
+      } else {
         modelToUse = this.modelOverride;
       }
     }
 
-    return this.configurationService.resolveModelConfig(
+    const resolvedConfig = this.configurationService.resolveModelConfig(
       modelToUse,
       undefined,
       undefined,
       permissionMode,
     );
+
+    // If model was "inherit", we want to ensure we use the parent's model
+    // even if the configuration service would have picked a different default.
+    if (this.modelOverride === "inherit") {
+      resolvedConfig.model = parentModelConfig.model;
+    }
+
+    return resolvedConfig;
   }
 
   public getMaxInputTokens(): number {
@@ -152,6 +162,10 @@ export class AIManager {
 
   public getAutoMemoryEnabled(): boolean {
     return this.configurationService.resolveAutoMemoryEnabled();
+  }
+
+  public getSystemPrompt(): string | undefined {
+    return this.systemPrompt;
   }
 
   private isCompressing: boolean = false;
