@@ -172,16 +172,23 @@ export class SubagentManager {
     // Create a child container for the subagent to isolate its managers
     const subagentContainer = this.container.createChild();
 
+    // Create a new ConfigurationService for the subagent to ensure isolation
+    const subagentConfigurationService = new ConfigurationService();
+    subagentContainer.register(
+      "ConfigurationService",
+      subagentConfigurationService,
+    );
+
     // Ensure the child container's ConfigurationService has the same environment variables as the parent
     const parentConfigurationService = this.container.get<ConfigurationService>(
       "ConfigurationService",
     );
-    const subagentConfigurationService =
-      subagentContainer.get<ConfigurationService>("ConfigurationService");
     if (parentConfigurationService && subagentConfigurationService) {
-      subagentConfigurationService.setEnvironmentVars(
-        parentConfigurationService.getEnvironmentVars(),
-      );
+      if (typeof parentConfigurationService.getEnvironmentVars === "function") {
+        subagentConfigurationService.setEnvironmentVars(
+          parentConfigurationService.getEnvironmentVars(),
+        );
+      }
       // Also copy options to ensure consistency (e.g. model, apiKey, etc.)
       subagentConfigurationService.setOptions({
         ...(parentConfigurationService as unknown as { options: AgentOptions })
@@ -244,33 +251,6 @@ export class SubagentManager {
       },
     });
     subagentContainer.register("AIManager", aiManager);
-
-    // If model is "inherit", we need to ensure the subagent's AIManager
-    // uses the parent's resolved model.
-    if (aiManager.modelOverride === "inherit") {
-      const parentAIManager = this.container.get<AIManager>("AIManager");
-      if (parentAIManager && subagentConfigurationService) {
-        const parentModel = parentAIManager.getModelConfig().model;
-        subagentConfigurationService.setOptions({
-          ...(
-            subagentConfigurationService as unknown as {
-              options: AgentOptions;
-            }
-          ).options,
-          model: parentModel,
-        });
-      }
-    } else if (aiManager.modelOverride && subagentConfigurationService) {
-      // If a specific model is provided, set it in the subagent's configuration service
-      subagentConfigurationService.setOptions({
-        ...(
-          subagentConfigurationService as unknown as {
-            options: AgentOptions;
-          }
-        ).options,
-        model: aiManager.modelOverride,
-      });
-    }
 
     const instance: SubagentInstance = {
       subagentId,

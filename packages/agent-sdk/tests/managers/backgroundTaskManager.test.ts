@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { BackgroundTask, BackgroundShell } from "../../src/types/processes.js";
@@ -17,6 +17,19 @@ describe("BackgroundTaskManager", () => {
       callbacks: mockCallbacks,
       workdir: process.cwd(),
     });
+  });
+
+  afterEach(() => {
+    manager.getAllTasks().forEach((task) => {
+      if (task.outputPath && fs.existsSync(task.outputPath)) {
+        try {
+          fs.unlinkSync(task.outputPath);
+        } catch {
+          // Ignore
+        }
+      }
+    });
+    manager.cleanup();
   });
 
   it("should generate unique task IDs", () => {
@@ -185,7 +198,7 @@ describe("BackgroundTaskManager", () => {
   });
 
   it("should create a log file and write output to it", async () => {
-    const { id } = manager.startShell("echo hello");
+    const { id } = manager.startShell("sleep 10");
     const task = manager.getTask(id) as BackgroundShell;
     expect(task.outputPath).toBeDefined();
 

@@ -42,17 +42,17 @@ import { setupAgentContainer } from "./utils/containerSetup.js";
 
 export class Agent {
   private messageManager: MessageManager;
-  public aiManager: AIManager;
+  private _aiManager: AIManager;
 
   private bangManager: BangManager | null = null;
   private backgroundTaskManager: BackgroundTaskManager;
   private logger?: Logger; // Add optional logger property
-  public toolManager: ToolManager; // Add tool registry instance
+  private _toolManager: ToolManager; // Add tool registry instance
   private mcpManager: McpManager; // Add MCP manager instance
   private lspManager: ILspManager; // Add LSP manager instance
   private permissionManager: PermissionManager; // Add permission manager instance
   private planManager: PlanManager; // Add plan manager instance
-  public subagentManager: SubagentManager; // Add subagent manager instance
+  private _subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
@@ -161,10 +161,10 @@ export class Agent {
     this.hookManager = this.container.get("HookManager")!;
     this.skillManager = this.container.get("SkillManager")!;
     this.reversionManager = this.container.get("ReversionManager")!;
-    this.toolManager = this.container.get("ToolManager")!;
+    this._toolManager = this.container.get("ToolManager")!;
     this.liveConfigManager = this.container.get("LiveConfigManager")!;
-    this.subagentManager = this.container.get("SubagentManager")!;
-    this.aiManager = this.container.get("AIManager")!;
+    this._subagentManager = this.container.get("SubagentManager")!;
+    this._aiManager = this.container.get("AIManager")!;
     this.slashCommandManager = this.container.get("SlashCommandManager")!;
     this.pluginManager = this.container.get("PluginManager")!;
     this.bangManager = this.container.get("BangManager")!;
@@ -218,12 +218,12 @@ export class Agent {
 
   /** Get AI loading status */
   public get isLoading(): boolean {
-    return this.aiManager.isLoading;
+    return this._aiManager.isLoading;
   }
 
   /** Get message compression status */
   public get isCompressing(): boolean {
-    return this.aiManager.getIsCompressing();
+    return this._aiManager.getIsCompressing();
   }
 
   /** Get bash command execution status */
@@ -351,9 +351,9 @@ export class Agent {
     await InitializationService.initialize(
       {
         skillManager: this.skillManager,
-        subagentManager: this.subagentManager,
+        subagentManager: this._subagentManager,
         container: this.container,
-        toolManager: this.toolManager,
+        toolManager: this._toolManager,
         pluginManager: this.pluginManager,
         options: this.options,
         slashCommandManager: this.slashCommandManager,
@@ -392,8 +392,8 @@ export class Agent {
         workdir: this.workdir,
         configurationService: this.configurationService,
         logger: this.logger,
-        aiManager: this.aiManager,
-        subagentManager: this.subagentManager,
+        aiManager: this._aiManager,
+        subagentManager: this._subagentManager,
         taskManager: this.taskManager,
         options: this.options,
         abortMessage: () => this.abortMessage(),
@@ -403,7 +403,7 @@ export class Agent {
   }
 
   public abortAIMessage(): void {
-    this.aiManager.abortAIMessage();
+    this._aiManager.abortAIMessage();
   }
 
   /** Execute bash command */
@@ -469,7 +469,7 @@ export class Agent {
       await this.lspManager.cleanup();
     }
     // Cleanup subagent manager
-    this.subagentManager.cleanup();
+    this._subagentManager.cleanup();
     // Cleanup skill manager
     await this.skillManager.destroy();
     // Cleanup live configuration reload
@@ -487,6 +487,36 @@ export class Agent {
   /**
    * Get the subagent manager instance
    */
+  public get subagentManager(): SubagentManager {
+    return this._subagentManager;
+  }
+
+  public set subagentManager(value: SubagentManager) {
+    this._subagentManager = value;
+  }
+
+  /**
+   * Get the AI manager instance
+   */
+  public get aiManager(): AIManager {
+    return this._aiManager;
+  }
+
+  public set aiManager(value: AIManager) {
+    this._aiManager = value;
+  }
+
+  /**
+   * Get the tool manager instance
+   */
+  public get toolManager(): ToolManager {
+    return this._toolManager;
+  }
+
+  public set toolManager(value: ToolManager) {
+    this._toolManager = value;
+  }
+
   /**
    * Get a subagent instance by its ID
    * @param subagentId - The ID of the subagent instance
@@ -494,7 +524,7 @@ export class Agent {
   public getSubagentInstance(
     subagentId: string,
   ): import("./managers/subagentManager.js").SubagentInstance | null {
-    return this.subagentManager.getInstance(subagentId);
+    return this._subagentManager.getInstance(subagentId);
   }
 
   /**
@@ -542,8 +572,8 @@ export class Agent {
         workdir: this.workdir,
         configurationService: this.configurationService,
         logger: this.logger,
-        aiManager: this.aiManager,
-        subagentManager: this.subagentManager,
+        aiManager: this._aiManager,
+        subagentManager: this._subagentManager,
         taskManager: this.taskManager,
         options: this.options,
         abortMessage: () => this.abortMessage(),
@@ -612,7 +642,7 @@ export class Agent {
    * Get the current permission mode
    */
   public getPermissionMode(): PermissionMode {
-    return this.toolManager.getPermissionMode();
+    return this._toolManager.getPermissionMode();
   }
 
   /**
@@ -621,7 +651,7 @@ export class Agent {
    */
   public setPermissionMode(mode: PermissionMode): void {
     this.logger?.debug("Setting permission mode", { mode });
-    this.toolManager.setPermissionMode(mode);
+    this._toolManager.setPermissionMode(mode);
 
     this.planManager.handlePlanModeTransition(mode);
 
