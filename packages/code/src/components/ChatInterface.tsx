@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useLayoutEffect } from "react";
-import { Box, useStdout } from "ink";
+import { Box, useStdout, Text, useInput } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
@@ -41,7 +41,19 @@ export const ChatInterface: React.FC = () => {
     version,
     workdir,
     getModelConfig,
+    isBtwModeActive,
+    btwAgentMessages,
+    btwAgentIsLoading,
+    dismissBtwAgent,
   } = useChat();
+
+  useInput((input, key) => {
+    if (isBtwModeActive) {
+      if (key.escape || key.return || input === " ") {
+        dismissBtwAgent();
+      }
+    }
+  });
 
   const model = getModelConfig().model;
 
@@ -116,7 +128,7 @@ export const ChatInterface: React.FC = () => {
   return (
     <Box flexDirection="column">
       <MessageList
-        messages={messages}
+        messages={isBtwModeActive ? btwAgentMessages : messages}
         isExpanded={isExpanded}
         forceStatic={isConfirmationVisible && isConfirmationTooTall}
         version={version}
@@ -160,7 +172,7 @@ export const ChatInterface: React.FC = () => {
         </>
       )}
 
-      {!isConfirmationVisible && !isExpanded && (
+      {!isConfirmationVisible && !isExpanded && !isBtwModeActive && (
         <>
           <QueuedMessageList />
           <InputBox
@@ -175,6 +187,34 @@ export const ChatInterface: React.FC = () => {
             hasSlashCommand={hasSlashCommand}
           />
         </>
+      )}
+
+      {isBtwModeActive && (
+        <Box flexDirection="column" marginY={1}>
+          {btwAgentIsLoading && btwAgentMessages.length <= 1 && (
+            <Box marginBottom={1}>
+              <Text color="gray">Thinking...</Text>
+            </Box>
+          )}
+
+          <Box marginTop={1}>
+            <Text color="gray">
+              Press{" "}
+              <Text bold color="white">
+                Space
+              </Text>
+              ,{" "}
+              <Text bold color="white">
+                Enter
+              </Text>
+              , or{" "}
+              <Text bold color="white">
+                Esc
+              </Text>{" "}
+              to dismiss
+            </Text>
+          </Box>
+        </Box>
       )}
     </Box>
   );
