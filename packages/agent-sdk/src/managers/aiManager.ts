@@ -330,34 +330,6 @@ export class AIManager {
     return this.container.get<SkillManager>("SkillManager");
   }
 
-  private isDuplicateToolCall(
-    toolName: string,
-    argsString: string,
-    toolId: string,
-  ): boolean {
-    const messages = this.messageManager.getMessages();
-    const normalizedArgs = argsString.trim();
-
-    for (const message of messages) {
-      for (const block of message.blocks) {
-        if (block.type === "tool") {
-          // If we reached the current tool call, stop searching
-          if (block.id === toolId) {
-            return false;
-          }
-
-          if (
-            block.name === toolName &&
-            (block.parameters?.trim() || "") === normalizedArgs
-          ) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
   public async sendAIMessage(
     options: {
       recursionDepth?: number;
@@ -682,21 +654,6 @@ export class AIManager {
               toolName,
               toolArgs,
             );
-
-            if (this.isDuplicateToolCall(toolName, argsString || "", toolId)) {
-              const errorMessage = `This tool call is already in the messages array with the same arguments. To avoid redundant operations, it has been blocked. If you truly need to run it again, please explain why or change the parameters.`;
-              this.messageManager.updateToolBlock({
-                id: toolId,
-                parameters: argsString,
-                result: errorMessage,
-                success: false,
-                error: errorMessage,
-                stage: "end",
-                name: toolName,
-                compactParams,
-              });
-              return;
-            }
 
             // Emit running stage for non-streaming tool calls (tool execution about to start)
             this.messageManager.updateToolBlock({
