@@ -11,12 +11,12 @@
 ```typescript
 const skillTool: ToolPlugin = {
   name: "Skill",
-  description: "Invoke skills based on available skill metadata. Skills: {dynamicSkillList}",
+  description: "Execute a skill within the main conversation. When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge. Skills: {dynamicSkillList}",
   config: {
     type: "function",
     function: {
       name: "Skill",
-      description: "Invoke a skill to apply specialized expertise and capabilities",
+      description: "Execute a skill within the main conversation. When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.",
       parameters: {
         type: "object",
         properties: {

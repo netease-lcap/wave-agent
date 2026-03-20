@@ -205,11 +205,17 @@ describe("skillTool", () => {
     expect(prompt).toContain("Available skills:");
     expect(prompt).toContain("test-skill");
     expect(prompt).toContain("another-skill");
+    expect(prompt).toContain(
+      "Do not invoke the same skill repeatedly if it has already been called with the same arguments.",
+    );
   });
 
   it("should handle empty skills list in prompt", async () => {
     const prompt = skillTool.prompt?.({ availableSkills: [] });
 
     expect(prompt).toContain("No skills are currently available");
+    expect(prompt).toContain(
+      "Execute a skill within the main conversation. When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.",
+    );
   });
 });

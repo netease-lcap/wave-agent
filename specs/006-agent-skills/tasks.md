@@ -153,6 +153,7 @@
 - [x] T047 [US4] Implement real-time skill discovery using FileWatcherService in packages/agent-sdk/src/managers/skillManager.ts
 - [x] T048 [US4] Update SlashCommandManager to refresh commands on skill changes in packages/agent-sdk/src/managers/slashCommandManager.ts
 - [x] T049 [US4] Add unit tests for real-time skill discovery and slash command refresh
+- [x] T050 [US3] Modify skill tool prompt to include repetitive invocation warning and use shared description constant
 
 ---
 

@@ -11,14 +11,16 @@ import {
 /**
  * Skill tool plugin for invoking Wave skills
  */
+const SKILL_TOOL_DESCRIPTION =
+  "Execute a skill within the main conversation. When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.";
+
 export const skillTool: ToolPlugin = {
   name: SKILL_TOOL_NAME,
   config: {
     type: "function" as const,
     function: {
       name: SKILL_TOOL_NAME,
-      description:
-        "Invoke a Wave skill by name. Skills are user-defined automation templates that can be personal or project-specific.",
+      description: SKILL_TOOL_DESCRIPTION,
       parameters: {
         type: "object",
         properties: {
@@ -41,7 +43,7 @@ export const skillTool: ToolPlugin = {
       (skill) => !skill.disableModelInvocation,
     );
     if (!availableSkills || availableSkills.length === 0) {
-      return "Invoke a Wave skill by name. Skills are user-defined automation templates that can be personal or project-specific. No skills are currently available.";
+      return `${SKILL_TOOL_DESCRIPTION} No skills are currently available.`;
     }
 
     const skillList = availableSkills
@@ -50,7 +52,7 @@ export const skillTool: ToolPlugin = {
       )
       .join("\n");
 
-    return `Invoke a Wave skill by name. Skills are user-defined automation templates that can be personal or project-specific.\n\nAvailable skills:\n${skillList}`;
+    return `${SKILL_TOOL_DESCRIPTION} Do not invoke the same skill repeatedly if it has already been called with the same arguments.\n\nAvailable skills:\n${skillList}`;
   },
 
   execute: async (
