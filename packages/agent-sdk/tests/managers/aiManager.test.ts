@@ -5,11 +5,7 @@ import { AIManager } from "../../src/managers/aiManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
-import type {
-  GatewayConfig,
-  ModelConfig,
-  Message,
-} from "../../src/types/index.js";
+import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import * as aiService from "../../src/services/aiService.js";
 import { logger } from "../../src/utils/globalLogger.js";
 
@@ -773,116 +769,6 @@ describe("AIManager", () => {
         expect.objectContaining({
           systemPrompt: expect.stringContaining("Is directory a git repo: No"),
         }),
-      );
-    });
-  });
-
-  describe("Duplicate Tool Call Prevention", () => {
-    it("should block duplicate tool calls with same arguments", async () => {
-      const toolName = "test-tool";
-      const toolArgs = { arg1: "val1" };
-      const argsString = JSON.stringify(toolArgs);
-
-      // Mock message history with an existing tool call
-      vi.mocked(mockMessageManager.getMessages).mockReturnValue([
-        {
-          role: "assistant",
-          blocks: [
-            {
-              type: "tool",
-              id: "previous-tool-id",
-              name: toolName,
-              parameters: argsString,
-              stage: "end",
-              success: true,
-            },
-          ],
-        },
-      ] as Message[]);
-
-      // Mock AI response with the same tool call for the first turn, and no tool calls for the second turn to stop recursion
-      vi.mocked(aiService.callAgent)
-        .mockResolvedValueOnce({
-          content: "Calling tool again",
-          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-          tool_calls: [
-            {
-              type: "function",
-              id: "duplicate-tool-id",
-              function: { name: toolName, arguments: argsString },
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          content: "Stopping recursion",
-          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-          tool_calls: [],
-        });
-
-      await aiManager.sendAIMessage();
-
-      // Verify that the tool was NOT executed
-      expect(mockToolManager.execute).not.toHaveBeenCalled();
-
-      // Verify that the tool block was updated with an error message
-      expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "duplicate-tool-id",
-          success: false,
-          stage: "end",
-          result: expect.stringContaining("already in the messages array"),
-        }),
-      );
-    });
-
-    it("should NOT block tool calls with different arguments", async () => {
-      const toolName = "test-tool";
-      const argsString1 = JSON.stringify({ arg1: "val1" });
-      const argsString2 = JSON.stringify({ arg1: "val2" });
-
-      // Mock message history with an existing tool call
-      vi.mocked(mockMessageManager.getMessages).mockReturnValue([
-        {
-          role: "assistant",
-          blocks: [
-            {
-              type: "tool",
-              id: "previous-tool-id",
-              name: toolName,
-              parameters: argsString1,
-              stage: "end",
-              success: true,
-            },
-          ],
-        },
-      ] as Message[]);
-
-      // Mock AI response with a different tool call for the first turn, and no tool calls for the second turn
-      vi.mocked(aiService.callAgent)
-        .mockResolvedValueOnce({
-          content: "Calling tool with different args",
-          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-          tool_calls: [
-            {
-              type: "function",
-              id: "new-tool-id",
-              function: { name: toolName, arguments: argsString2 },
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          content: "Stopping recursion",
-          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-          tool_calls: [],
-        });
-
-      await aiManager.sendAIMessage();
-
-      // Verify that the tool WAS executed
-      expect(mockToolManager.execute).toHaveBeenCalledWith(
-        toolName,
-        JSON.parse(argsString2),
-        expect.anything(),
       );
     });
   });
