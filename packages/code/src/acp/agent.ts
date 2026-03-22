@@ -149,7 +149,7 @@ export class WaveAcpAgent implements AcpAgent {
     const agent = await WaveAgent.create({
       workdir: cwd,
       restoreSessionId: sessionId,
-      stream: false,
+      stream: true,
       canUseTool: (context) => {
         if (!agentRef.instance) {
           throw new Error("Agent instance not yet initialized");
