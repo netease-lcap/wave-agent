@@ -143,6 +143,21 @@ As a developer, I want to run long-running tasks like tests or background analys
 
 ---
 
+### User Story 10 - Permission Request Hook (Priority: P2)
+
+As a developer, I want to run hooks when Wave requests permission to use a tool, so that I can automate permission granting or perform additional checks before I manually approve.
+
+**Why this priority**: Enables automation of the permission flow and provides hooks with full context of the tool call being authorized.
+
+**Independent Test**: Can be tested by configuring a PermissionRequest hook, triggering a tool that requires permission, and verifying the hook receives tool_name and tool_input.
+
+**Acceptance Scenarios**:
+
+1. **Given** a PermissionRequest hook is configured, **When** Wave needs permission to use a tool, **Then** the hook receives JSON containing session context, hook_event_name "PermissionRequest", tool_name, and tool_input.
+2. **Given** a PermissionRequest hook that analyzes tool input, **When** it runs, **Then** it can use the provided tool_input to decide on further actions.
+
+---
+
 ### Edge Cases
 
 - What happens when a hook command fails or times out?
@@ -162,15 +177,20 @@ As a developer, I want to run long-running tasks like tests or background analys
 - **FR-003**: System MUST support PostToolUse hooks that execute after successful tool completion
 - **FR-004**: System MUST support UserPromptSubmit hooks that execute when users submit prompts
 - **FR-005**: System MUST support Stop hooks that execute when Wave finishes its response cycle (no more tool calls to generate)
+- **FR-025**: System MUST support PermissionRequest hooks that execute when Wave requests permission to use a tool
+- **FR-026**: System MUST support SubagentStop hooks that execute when a subagent finishes its response cycle
+- **FR-027**: System MUST support WorktreeCreate hooks that execute when a new worktree is created
 - **FR-006**: System MUST support tool name pattern matching including exact strings, regex patterns, and wildcard (*) matching
 - **FR-007**: System MUST provide WAVE_PROJECT_DIR environment variable to hook commands for project-relative script execution
 - **FR-008**: System MUST execute multiple hooks for the same event in the configured order
 - **FR-009**: System MUST log hook execution results and errors without interrupting main tool operations
 - **FR-010**: System MUST support command-type hooks with configurable bash commands
 - **FR-011**: System MUST provide JSON data to hook processes via stdin containing session_id, transcript_path, cwd, and hook_event_name fields for all hook events
-- **FR-012**: System MUST include tool_name and tool_input fields in JSON data for PreToolUse and PostToolUse events
+- **FR-012**: System MUST include tool_name and tool_input fields in JSON data for PreToolUse, PostToolUse, and PermissionRequest events
 - **FR-013**: System MUST include tool_response field in JSON data for PostToolUse events containing the tool's execution result
 - **FR-014**: System MUST include prompt field in JSON data for UserPromptSubmit events containing the user's submitted text
+- **FR-028**: System MUST include subagent_type field in JSON data when a hook is executed by a subagent
+- **FR-029**: System MUST include name field in JSON data for WorktreeCreate events
 - **FR-015**: System MUST set transcript_path to the actual file path where session data is stored (format: ~/.wave/sessions/session_[shortId].json)
 - **FR-016**: System MUST set cwd to the current working directory when the hook is invoked
 - **FR-017**: System MUST ensure JSON data is properly formatted and valid before sending to hook processes
@@ -185,7 +205,7 @@ As a developer, I want to run long-running tasks like tests or background analys
 ### Key Entities
 
 - **Hook Configuration**: Settings structure containing event mappings, matchers, and command definitions
-- **Hook Event**: Specific trigger points in Wave's execution cycle (PreToolUse, PostToolUse, UserPromptSubmit, Stop)
+- **Hook Event**: Specific trigger points in Wave's execution cycle (PreToolUse, PostToolUse, UserPromptSubmit, Stop, PermissionRequest, SubagentStop, WorktreeCreate)
 - **Hook Matcher**: Pattern matching system for determining which hooks apply to specific tool operations (located in utils/hookMatcher.ts)
 - **Hook Executor**: Function-based service for executing hook commands (located in services/hook.ts)
 - **Hook Settings**: Service for loading and merging hook configurations (located in services/hook.ts)

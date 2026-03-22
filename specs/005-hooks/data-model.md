@@ -66,6 +66,9 @@
 - `PostToolUse` - Triggered after successful tool completion
 - `UserPromptSubmit` - Triggered when user submits a prompt  
 - `Stop` - Triggered when AI response cycle completes
+- `PermissionRequest` - Triggered when Wave requests permission to use a tool
+- `SubagentStop` - Triggered when a subagent finishes its response cycle
+- `WorktreeCreate` - Triggered when a new worktree is created
 
 **Validation Rules**: Must be one of the four defined values
 
@@ -119,10 +122,12 @@
 - `transcript_path: string` - Absolute path to session file
 - `cwd: string` - Current working directory
 - `hook_event_name: HookEvent` - The triggering event
-- `tool_name?: string` - Name of tool (Pre/PostToolUse)
-- `tool_input?: unknown` - Tool input parameters (Pre/PostToolUse)
+- `tool_name?: string` - Name of tool (Pre/PostToolUse, PermissionRequest)
+- `tool_input?: unknown` - Tool input parameters (Pre/PostToolUse, PermissionRequest)
 - `tool_response?: unknown` - Tool execution result (PostToolUse)
 - `prompt?: string` - User prompt text (UserPromptSubmit)
+- `subagent_type?: string` - Subagent type when hook is executed by a subagent
+- `name?: string` - Worktree name (WorktreeCreate)
 
 **Validation Rules**:
 - session_id must be non-empty
@@ -144,13 +149,30 @@ interface HookJsonInput {
   session_id: string;           // Unique session identifier
   transcript_path: string;      // Absolute path to session file
   cwd: string;                 // Current working directory  
-  hook_event_name: HookEvent;  // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop"
+  hook_event_name: HookEvent;  // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "PermissionRequest" | "SubagentStop" | "WorktreeCreate"
   
   // Event-specific fields (optional, based on event type)
   tool_name?: string;
   tool_input?: unknown;
   tool_response?: unknown;
   prompt?: string;
+  subagent_type?: string;
+  name?: string;
+}
+```
+
+#### PermissionRequest Event
+```json
+{
+  "session_id": "wave_session_abc123_xyz789",
+  "transcript_path": "/home/user/.wave/sessions/session_xyz789.json",
+  "cwd": "/home/user/project",
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/home/user/project/src/index.ts",
+    "content": "console.log('Hello World');"
+  }
 }
 ```
 
