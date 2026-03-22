@@ -21,7 +21,7 @@ Retrieves output from a background task.
 **Parameters:**
 - `task_id` (string, required): The ID of the task.
 - `block` (boolean, optional, default: true): Wait for completion.
-- `timeout` (number, optional, default: 30000): Max wait time in ms.
+- `timeout` (number, optional, default: 5000): Max wait time in ms.
 
 **Returns:**
 - `stdout` (string): Accumulated output.

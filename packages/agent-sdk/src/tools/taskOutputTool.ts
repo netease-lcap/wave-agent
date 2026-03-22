@@ -27,7 +27,7 @@ export const taskOutputTool: ToolPlugin = {
             type: "number",
             minimum: 0,
             maximum: 600000,
-            default: 30000,
+            default: 5000,
             description: "Max wait time in ms",
           },
         },
@@ -50,7 +50,7 @@ export const taskOutputTool: ToolPlugin = {
     const taskId = args.task_id as string;
     const filter = args.filter as string | undefined;
     const block = (args.block as boolean | undefined) ?? true;
-    const timeout = (args.timeout as number | undefined) ?? 30000;
+    const timeout = (args.timeout as number | undefined) ?? 5000;
 
     if (!taskId || typeof taskId !== "string") {
       return {
