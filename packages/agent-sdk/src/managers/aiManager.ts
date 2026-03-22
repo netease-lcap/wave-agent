@@ -655,7 +655,18 @@ export class AIManager {
               toolArgs,
             );
 
-            // Emit running stage for non-streaming tool calls (tool execution about to start)
+            // Emit start stage for non-streaming tool calls
+            if (!this.stream) {
+              this.messageManager.updateToolBlock({
+                id: toolId,
+                stage: "start",
+                name: toolName,
+                compactParams,
+                parameters: argsString,
+              });
+            }
+
+            // Emit running stage (tool execution about to start)
             this.messageManager.updateToolBlock({
               id: toolId,
               stage: "running",
