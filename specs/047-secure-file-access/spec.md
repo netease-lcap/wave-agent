@@ -49,7 +49,7 @@ As a user, I want the system to ask for my explicit permission before modifying 
 ### Functional Requirements
 
 - **FR-001**: System MUST identify the "Safe Zone" as the union of the current working directory and all paths listed in `permissions.additionalDirectories`.
-- **FR-002**: System MUST intercept all file modification operations (Write, Edit, Delete).
+- **FR-002**: System MUST intercept all file modification operations (Write, Edit, Delete, and `mkdir` via Bash).
 - **FR-003**: System MUST verify if the target file path of a modification operation is within the Safe Zone.
 - **FR-004**: System MUST display a confirmation prompt for any modification operation targeting a file outside the Safe Zone, regardless of the `acceptEdits` setting.
 - **FR-005**: System MUST display a confirmation prompt for modification operations within the Safe Zone if `acceptEdits` mode is disabled.

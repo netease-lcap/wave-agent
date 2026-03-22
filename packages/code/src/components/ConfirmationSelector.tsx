@@ -100,6 +100,10 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       return "Yes, auto-accept edits";
     }
     if (toolName === BASH_TOOL_NAME) {
+      const command = (toolInput?.command as string) || "";
+      if (command.trim().startsWith("mkdir")) {
+        return "Yes, and auto-accept edits";
+      }
       if (suggestedPrefix) {
         return `Yes, and don't ask again for: ${suggestedPrefix}`;
       }
@@ -366,10 +370,15 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
         }
       } else if (state.selectedOption === "auto") {
         if (toolName === BASH_TOOL_NAME) {
-          const rule = suggestedPrefix
-            ? `Bash(${suggestedPrefix}*)`
-            : `Bash(${toolInput?.command})`;
-          onDecision({ behavior: "allow", newPermissionRule: rule });
+          const command = (toolInput?.command as string) || "";
+          if (command.trim().startsWith("mkdir")) {
+            onDecision({ behavior: "allow", newPermissionMode: "acceptEdits" });
+          } else {
+            const rule = suggestedPrefix
+              ? `Bash(${suggestedPrefix}*)`
+              : `Bash(${toolInput?.command})`;
+            onDecision({ behavior: "allow", newPermissionRule: rule });
+          }
         } else if (toolName.startsWith("mcp__")) {
           onDecision({ behavior: "allow", newPermissionRule: toolName });
         } else {
