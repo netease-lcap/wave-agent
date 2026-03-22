@@ -118,8 +118,18 @@ const ChatInterfaceWithRemount: React.FC = () => {
     isBtwModeActive,
   } = useChat();
 
+  const [btwRemountTrigger, setBtwRemountTrigger] = useState(0);
+  const prevIsBtwModeActive = useRef(isBtwModeActive);
+
+  useEffect(() => {
+    if (prevIsBtwModeActive.current && !isBtwModeActive) {
+      setBtwRemountTrigger((prev) => prev + 1);
+    }
+    prevIsBtwModeActive.current = isBtwModeActive;
+  }, [isBtwModeActive]);
+
   const [remountKey, setRemountKey] = useState(
-    String(isExpanded) + rewindId + wasLastDetailsTooTall + isBtwModeActive,
+    String(isExpanded) + rewindId + wasLastDetailsTooTall + btwRemountTrigger,
   );
 
   const prevSessionId = useRef(sessionId);
@@ -129,7 +139,7 @@ const ChatInterfaceWithRemount: React.FC = () => {
       String(isExpanded) +
       rewindId +
       wasLastDetailsTooTall +
-      isBtwModeActive +
+      btwRemountTrigger +
       (prevSessionId.current && sessionId && prevSessionId.current !== sessionId
         ? sessionId
         : "");
@@ -155,7 +165,7 @@ const ChatInterfaceWithRemount: React.FC = () => {
     rewindId,
     wasLastDetailsTooTall,
     sessionId,
-    isBtwModeActive,
+    btwRemountTrigger,
     remountKey,
     stdout,
   ]);

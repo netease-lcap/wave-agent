@@ -84,7 +84,7 @@ As a user, I want to easily return to my main conversation after getting an answ
 - **FR-009**: When the `btwAgent` is active, the UI MUST display "Press Space, Enter, or Escape to dismiss" at the bottom of the screen.
 - **FR-010**: When the `btwAgent` is active, the message list MUST display ONLY the messages from the `btwAgent`'s isolated `MessageManager`, hiding the main conversation history. The welcome message (WAVE version and working directory) SHOULD still be displayed at the top of the message list.
 - **FR-011**: The system MUST dismiss the `btwAgent` and return to the main agent state when the user presses `Space`, `Enter`, or `Escape`.
-- **FR-018**: When the `btwAgent` state changes (activated or dismissed), the system MUST trigger a remount of the `ChatInterface` by updating the `remountKey` in `App.tsx`. This ensures the terminal is cleared and the `MessageList` is fresh, consistent with how session switching and history rewinding are handled.
+- **FR-018**: When the `btwAgent` state changes from active to inactive (dismissed), the system MUST trigger a remount of the `ChatInterface` by updating the `remountKey` in `App.tsx`. This ensures the terminal is cleared and the `MessageList` is fresh, consistent with how session switching and history rewinding are handled. When the state changes from inactive to active, the system MUST NOT trigger a remount.
 
 ### Key Entities
 
