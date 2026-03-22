@@ -448,17 +448,15 @@ export class ConfigurationService {
     // Resolve agent model: override > options > env (settings.json) > process.env > default
     let resolvedAgentModel = model || this.options.model || this.env.WAVE_MODEL;
 
-    if (!resolvedAgentModel) {
-      resolvedAgentModel = process.env.WAVE_MODEL || DEFAULT_AGENT_MODEL;
-    }
+    resolvedAgentModel =
+      resolvedAgentModel || process.env.WAVE_MODEL || DEFAULT_AGENT_MODEL;
 
     // Resolve fast model: override > options > env (settings.json) > process.env > default
     let resolvedFastModel =
       fastModel || this.options.fastModel || this.env.WAVE_FAST_MODEL;
 
-    if (!resolvedFastModel) {
-      resolvedFastModel = process.env.WAVE_FAST_MODEL || DEFAULT_FAST_MODEL;
-    }
+    resolvedFastModel =
+      resolvedFastModel || process.env.WAVE_FAST_MODEL || DEFAULT_FAST_MODEL;
 
     // Resolve max output tokens
     const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);

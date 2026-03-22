@@ -3,7 +3,7 @@ import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
-import type { Message, Usage, AgentOptions } from "../types/index.js";
+import type { Message, Usage } from "../types/index.js";
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
@@ -171,30 +171,6 @@ export class SubagentManager {
 
     // Create a child container for the subagent to isolate its managers
     const subagentContainer = this.container.createChild();
-
-    // Create a new ConfigurationService for the subagent to ensure isolation
-    const subagentConfigurationService = new ConfigurationService();
-    subagentContainer.register(
-      "ConfigurationService",
-      subagentConfigurationService,
-    );
-
-    // Ensure the child container's ConfigurationService has the same environment variables as the parent
-    const parentConfigurationService = this.container.get<ConfigurationService>(
-      "ConfigurationService",
-    );
-    if (parentConfigurationService && subagentConfigurationService) {
-      if (typeof parentConfigurationService.getEnvironmentVars === "function") {
-        subagentConfigurationService.setEnvironmentVars(
-          parentConfigurationService.getEnvironmentVars(),
-        );
-      }
-      // Also copy options to ensure consistency (e.g. model, apiKey, etc.)
-      subagentConfigurationService.setOptions({
-        ...(parentConfigurationService as unknown as { options: AgentOptions })
-          .options,
-      });
-    }
 
     // Create isolated PermissionManager for the subagent
     const { PermissionManager } = await import("./permissionManager.js");

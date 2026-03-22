@@ -12,7 +12,6 @@ export interface MessageListProps {
   workdir?: string;
   model?: string;
   onDynamicBlocksHeightMeasured?: (height: number) => void;
-  hideWelcome?: boolean;
 }
 
 export const MessageList = React.memo(
@@ -24,7 +23,6 @@ export const MessageList = React.memo(
     workdir,
     model,
     onDynamicBlocksHeightMeasured,
-    hideWelcome = false,
   }: MessageListProps) => {
     const welcomeMessage = (
       <Box flexDirection="column" paddingTop={1}>
@@ -88,16 +86,7 @@ export const MessageList = React.memo(
     }, [dynamicBlocks, isExpanded, onDynamicBlocksHeightMeasured]);
 
     const staticItems = [
-      ...(hideWelcome
-        ? []
-        : [
-            {
-              isWelcome: true,
-              key: "welcome",
-              block: undefined,
-              message: undefined,
-            },
-          ]),
+      { isWelcome: true, key: "welcome", block: undefined, message: undefined },
       ...staticBlocks.map((b) => ({ ...b, isWelcome: false })),
     ];
 
