@@ -313,7 +313,7 @@ describe("HookManager Coverage", () => {
       );
     });
 
-    it("should handle Notification blocking error (exit code 2)", () => {
+    it("should handle PermissionRequest blocking error (exit code 2)", () => {
       const results = [
         {
           success: false,
@@ -324,7 +324,7 @@ describe("HookManager Coverage", () => {
         },
       ];
       const res = manager.processHookResults(
-        "Notification",
+        "PermissionRequest",
         results,
         mockMessageManager as unknown as MessageManager,
       );

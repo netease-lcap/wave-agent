@@ -11,7 +11,7 @@
 ```typescript
 // types/hooks.ts
 // Hook event types
-type HookEvent = 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit' | 'Stop';
+type HookEvent = 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit' | 'Stop' | 'PermissionRequest' | 'SubagentStop' | 'WorktreeCreate';
 
 // Individual hook command
 interface HookCommand {
@@ -68,6 +68,8 @@ interface HookJsonInput {
   tool_input?: unknown;
   tool_response?: unknown;
   prompt?: string;
+  subagent_type?: string;
+  name?: string;
 }
 
 // Result of hook execution

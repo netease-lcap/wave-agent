@@ -19,7 +19,7 @@ export type HookEvent =
   | "UserPromptSubmit"
   | "Stop"
   | "SubagentStop"
-  | "Notification"
+  | "PermissionRequest"
   | "WorktreeCreate";
 
 // Individual hook command configuration
@@ -100,7 +100,7 @@ export function isValidHookEvent(event: string): event is HookEvent {
     "UserPromptSubmit",
     "Stop",
     "SubagentStop",
-    "Notification",
+    "PermissionRequest",
     "WorktreeCreate",
   ].includes(event);
 }
@@ -154,16 +154,14 @@ export interface HookJsonInput {
   session_id: string; // Format: "wave_session_{uuid}_{shortId}"
   transcript_path: string; // Format: "~/.wave/sessions/session_{shortId}.json"
   cwd: string; // Absolute path to current working directory
-  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop" | "Notification"
+  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop" | "PermissionRequest" | "WorktreeCreate"
 
   // Optional fields based on event type
-  tool_name?: string; // Present for PreToolUse, PostToolUse
-  tool_input?: unknown; // Present for PreToolUse, PostToolUse
+  tool_name?: string; // Present for PreToolUse, PostToolUse, PermissionRequest
+  tool_input?: unknown; // Present for PreToolUse, PostToolUse, PermissionRequest
   tool_response?: unknown; // Present for PostToolUse only
   user_prompt?: string; // Present for UserPromptSubmit only
   subagent_type?: string; // Present when hook is executed by a subagent
-  message?: string; // Present for Notification events
-  notification_type?: string; // Present for Notification events
   name?: string; // Present for WorktreeCreate events
 }
 
@@ -177,8 +175,6 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   env?: Record<string, string>; // Additional environment variables (from configuration)
   userPrompt?: string; // User prompt text (UserPromptSubmit only)
   subagentType?: string; // Subagent type when hook is executed by a subagent
-  message?: string; // Notification message (Notification only)
-  notificationType?: string; // Notification type (Notification only)
   worktreeName?: string; // Worktree name (WorktreeCreate only)
 }
 

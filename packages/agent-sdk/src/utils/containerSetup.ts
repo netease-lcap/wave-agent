@@ -166,23 +166,22 @@ export function setupAgentContainer(
   const reversionManager = new ReversionManager(container);
   container.register("ReversionManager", reversionManager);
 
-  const canUseToolWithNotification = options.canUseTool
+  const canUseToolWithPermissionRequest = options.canUseTool
     ? async (context: ToolPermissionContext) => {
         try {
-          const notificationMessage = `Claude needs your permission to use ${context.toolName}`;
-          await hookManager.executeHooks("Notification", {
-            event: "Notification",
+          await hookManager.executeHooks("PermissionRequest", {
+            event: "PermissionRequest",
             projectDir: workdir,
             timestamp: new Date(),
             sessionId: messageManager.getSessionId(),
             transcriptPath: messageManager.getTranscriptPath(),
             cwd: workdir,
-            message: notificationMessage,
-            notificationType: "permission_prompt",
+            toolName: context.toolName,
+            toolInput: context.toolInput,
             env: configurationService.getEnvironmentVars(),
           });
         } catch (error) {
-          logger.warn("Failed to execute notification hooks", {
+          logger.warn("Failed to execute permission request hooks", {
             toolName: context.toolName,
             error: error instanceof Error ? error.message : String(error),
           });
@@ -221,9 +220,9 @@ export function setupAgentContainer(
 
   container.register("PermissionMode", options.permissionMode);
   logger.info("Registering CanUseToolCallback", {
-    hasCallback: !!canUseToolWithNotification,
+    hasCallback: !!canUseToolWithPermissionRequest,
   });
-  container.register("CanUseToolCallback", canUseToolWithNotification);
+  container.register("CanUseToolCallback", canUseToolWithPermissionRequest);
 
   const liveConfigManager = new LiveConfigManager(container, { workdir });
   container.register("LiveConfigManager", liveConfigManager);

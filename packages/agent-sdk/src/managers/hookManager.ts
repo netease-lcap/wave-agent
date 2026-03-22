@@ -338,8 +338,8 @@ export class HookManager {
         });
         return { shouldBlock: true, errorMessage };
 
-      case "Notification":
-        // For notification hooks with exit code 2, only show stderr in error block
+      case "PermissionRequest":
+        // For permission request hooks with exit code 2, only show stderr in error block
         messageManager.addErrorBlock(errorMessage);
         return { shouldBlock: false };
 
@@ -544,7 +544,11 @@ export class HookManager {
     }
 
     // Validate tool-specific requirements
-    if (event === "PreToolUse" || event === "PostToolUse") {
+    if (
+      event === "PreToolUse" ||
+      event === "PostToolUse" ||
+      event === "PermissionRequest"
+    ) {
       if (!context.toolName || typeof context.toolName !== "string") {
         errors.push(`${event} event requires a valid toolName in context`);
       }
@@ -554,7 +558,6 @@ export class HookManager {
     if (
       (event === "UserPromptSubmit" ||
         event === "Stop" ||
-        event === "Notification" ||
         event === "SubagentStop" ||
         event === "WorktreeCreate") &&
       context.toolName !== undefined
@@ -631,7 +634,6 @@ export class HookManager {
     if (
       event === "UserPromptSubmit" ||
       event === "Stop" ||
-      event === "Notification" ||
       event === "SubagentStop" ||
       event === "WorktreeCreate"
     ) {
@@ -639,7 +641,11 @@ export class HookManager {
     }
 
     // For tool-based events, check matcher if present
-    if (event === "PreToolUse" || event === "PostToolUse") {
+    if (
+      event === "PreToolUse" ||
+      event === "PostToolUse" ||
+      event === "PermissionRequest"
+    ) {
       if (!config.matcher) {
         // No matcher means applies to all tools
         return true;
@@ -673,7 +679,12 @@ export class HookManager {
     }
 
     // Validate matcher requirements
-    if ((event === "PreToolUse" || event === "PostToolUse") && config.matcher) {
+    if (
+      (event === "PreToolUse" ||
+        event === "PostToolUse" ||
+        event === "PermissionRequest") &&
+      config.matcher
+    ) {
       if (!this.matcher.isValidPattern(config.matcher)) {
         errors.push(`${prefix}: Invalid matcher pattern: ${config.matcher}`);
       }
@@ -683,7 +694,6 @@ export class HookManager {
     if (
       (event === "UserPromptSubmit" ||
         event === "Stop" ||
-        event === "Notification" ||
         event === "SubagentStop" ||
         event === "WorktreeCreate") &&
       config.matcher
@@ -723,7 +733,7 @@ export class HookManager {
           UserPromptSubmit: 0,
           Stop: 0,
           SubagentStop: 0,
-          Notification: 0,
+          PermissionRequest: 0,
           WorktreeCreate: 0,
         },
       };
@@ -735,7 +745,7 @@ export class HookManager {
       UserPromptSubmit: 0,
       Stop: 0,
       SubagentStop: 0,
-      Notification: 0,
+      PermissionRequest: 0,
       WorktreeCreate: 0,
     };
 

@@ -48,7 +48,11 @@ async function buildHookJsonInput(
   };
 
   // Add optional fields based on event type
-  if (context.event === "PreToolUse" || context.event === "PostToolUse") {
+  if (
+    context.event === "PreToolUse" ||
+    context.event === "PostToolUse" ||
+    context.event === "PermissionRequest"
+  ) {
     if (context.toolName) {
       jsonInput.tool_name = context.toolName;
     }
@@ -71,16 +75,6 @@ async function buildHookJsonInput(
   // Add subagent_type if present
   if (context.subagentType !== undefined) {
     jsonInput.subagent_type = context.subagentType;
-  }
-
-  // Add notification fields for Notification events
-  if (context.event === "Notification") {
-    if (context.message !== undefined) {
-      jsonInput.message = context.message;
-    }
-    if (context.notificationType !== undefined) {
-      jsonInput.notification_type = context.notificationType;
-    }
   }
 
   // Add name field for WorktreeCreate events
