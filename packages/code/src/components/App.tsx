@@ -110,26 +110,10 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
 
 const ChatInterfaceWithRemount: React.FC = () => {
   const { stdout } = useStdout();
-  const {
-    isExpanded,
-    rewindId,
-    wasLastDetailsTooTall,
-    sessionId,
-    isBtwModeActive,
-  } = useChat();
-
-  const [btwRemountTrigger, setBtwRemountTrigger] = useState(0);
-  const prevIsBtwModeActive = useRef(isBtwModeActive);
-
-  useEffect(() => {
-    if (prevIsBtwModeActive.current && !isBtwModeActive) {
-      setBtwRemountTrigger((prev) => prev + 1);
-    }
-    prevIsBtwModeActive.current = isBtwModeActive;
-  }, [isBtwModeActive]);
+  const { isExpanded, rewindId, wasLastDetailsTooTall, sessionId } = useChat();
 
   const [remountKey, setRemountKey] = useState(
-    String(isExpanded) + rewindId + wasLastDetailsTooTall + btwRemountTrigger,
+    String(isExpanded) + rewindId + wasLastDetailsTooTall,
   );
 
   const prevSessionId = useRef(sessionId);
@@ -139,7 +123,6 @@ const ChatInterfaceWithRemount: React.FC = () => {
       String(isExpanded) +
       rewindId +
       wasLastDetailsTooTall +
-      btwRemountTrigger +
       (prevSessionId.current && sessionId && prevSessionId.current !== sessionId
         ? sessionId
         : "");
@@ -165,7 +148,6 @@ const ChatInterfaceWithRemount: React.FC = () => {
     rewindId,
     wasLastDetailsTooTall,
     sessionId,
-    btwRemountTrigger,
     remountKey,
     stdout,
   ]);

@@ -52,7 +52,6 @@ describe("Subagent Dynamic Configuration Tests", () => {
     delete process.env.WAVE_MODEL;
     delete process.env.WAVE_FAST_MODEL;
     delete process.env.WAVE_MAX_INPUT_TOKENS;
-
     // Reset and setup loadMergedWaveConfig mock
     vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
     // Mock config paths to return empty arrays

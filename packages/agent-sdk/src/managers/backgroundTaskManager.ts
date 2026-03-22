@@ -68,10 +68,7 @@ export class BackgroundTaskManager {
     });
 
     // Create log file
-    const logPath = path.join(
-      os.tmpdir(),
-      `wave-task-${id}-${Math.random().toString(36).substring(7)}.log`,
-    );
+    const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
     const shell: BackgroundShell = {
@@ -200,10 +197,7 @@ export class BackgroundTaskManager {
     const startTime = Date.now();
 
     // Create log file
-    const logPath = path.join(
-      os.tmpdir(),
-      `wave-task-${id}-${Math.random().toString(36).substring(7)}.log`,
-    );
+    const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
     // Write initial output to log file

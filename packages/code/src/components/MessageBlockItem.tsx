@@ -21,28 +21,6 @@ export const MessageBlockItem = ({
   isExpanded,
   paddingTop = 0,
 }: MessageBlockItemProps) => {
-  const renderContent = (content: string) => {
-    // Hide <system-reminder> XML block
-    const reminderEnd = content.indexOf("</system-reminder>");
-    const displayContent =
-      reminderEnd !== -1
-        ? content.substring(reminderEnd + "</system-reminder>".length).trim()
-        : content;
-
-    if (!displayContent) return null;
-
-    return message.role === "user" || isExpanded ? (
-      <Text
-        backgroundColor={message.role === "user" ? "gray" : undefined}
-        color="white"
-      >
-        {displayContent}
-      </Text>
-    ) : (
-      <Markdown>{displayContent}</Markdown>
-    );
-  };
-
   return (
     <Box flexDirection="column" paddingTop={paddingTop}>
       {block.type === "text" && block.content.trim() && (
@@ -57,7 +35,16 @@ export const MessageBlockItem = ({
               ~{" "}
             </Text>
           )}
-          {renderContent(block.content)}
+          {message.role === "user" || isExpanded ? (
+            <Text
+              backgroundColor={message.role === "user" ? "gray" : undefined}
+              color="white"
+            >
+              {block.content}
+            </Text>
+          ) : (
+            <Markdown>{block.content}</Markdown>
+          )}
         </Box>
       )}
 
