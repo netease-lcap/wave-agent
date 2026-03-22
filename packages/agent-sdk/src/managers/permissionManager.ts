@@ -398,7 +398,7 @@ export class PermissionManager {
       return { behavior: "allow" };
     }
 
-    // 1.1 If acceptEdits mode, allow Edit, Write
+    // 1.1 If acceptEdits mode, allow Edit, Write, and mkdir in safe zone
     if (context.permissionMode === "acceptEdits") {
       const autoAcceptedTools = [EDIT_TOOL_NAME, WRITE_TOOL_NAME];
       if (autoAcceptedTools.includes(context.toolName)) {
@@ -423,6 +423,40 @@ export class PermissionManager {
             // Fall through to normal permission check flow to trigger confirmation prompt
           } else {
             return { behavior: "allow" };
+          }
+        }
+      }
+
+      // Special case for mkdir in Bash tool
+      if (context.toolName === BASH_TOOL_NAME && context.toolInput?.command) {
+        const command = String(context.toolInput.command).trim();
+        if (command.startsWith("mkdir ")) {
+          const parts = splitBashCommand(command);
+          // Check if it's a simple mkdir command (first part is mkdir)
+          if (parts.length === 1) {
+            const processedPart = stripEnvVars(parts[0]);
+            if (processedPart.startsWith("mkdir ")) {
+              const args = processedPart.slice(6).trim();
+              const pathArgs =
+                (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
+                  (arg) => !arg.startsWith("-"),
+                ) || [];
+
+              if (pathArgs.length > 0) {
+                const allPathsSafe = pathArgs.every((pathArg) => {
+                  const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
+                  const { isInside } = this.isInsideSafeZone(
+                    cleanPath,
+                    context.toolInput?.workdir as string | undefined,
+                  );
+                  return isInside;
+                });
+
+                if (allPathsSafe) {
+                  return { behavior: "allow" };
+                }
+              }
+            }
           }
         }
       }

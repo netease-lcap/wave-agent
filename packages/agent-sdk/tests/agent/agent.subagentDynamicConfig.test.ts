@@ -9,6 +9,20 @@ import { Agent } from "../../src/agent.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import { loadMergedWaveConfig } from "../../src/services/configurationService.js";
+import {
+  getUserConfigPaths,
+  getProjectConfigPaths,
+} from "../../src/utils/configPaths.js";
+
+// Mock configPaths to return empty arrays so we don't load actual settings.json
+vi.mock("../../src/utils/configPaths.js", async () => {
+  const actual = await vi.importActual("../../src/utils/configPaths.js");
+  return {
+    ...actual,
+    getUserConfigPaths: vi.fn(),
+    getProjectConfigPaths: vi.fn(),
+  };
+});
 
 // Mock loadMergedWaveConfig
 vi.mock("../../src/services/configurationService.js", async () => {
@@ -40,6 +54,9 @@ describe("Subagent Dynamic Configuration Tests", () => {
     delete process.env.WAVE_MAX_INPUT_TOKENS;
     // Reset and setup loadMergedWaveConfig mock
     vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
+    // Mock config paths to return empty arrays
+    vi.mocked(getUserConfigPaths).mockReturnValue([]);
+    vi.mocked(getProjectConfigPaths).mockReturnValue([]);
   });
 
   afterEach(async () => {

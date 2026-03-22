@@ -8,17 +8,17 @@
 
 ### User Story 1 - Auto-accept File Edits from Prompt (Priority: P1)
 
-As a user, when I am prompted to confirm a file edit, I want to be able to choose to auto-accept all future edits in the current session, so that I don't have to confirm each one individually.
+As a user, when I am prompted to confirm a file edit or directory creation, I want to be able to choose to auto-accept all future edits in the current session, so that I don't have to confirm each one individually.
 
 **Why this priority**: This provides a convenient way to switch to `acceptEdits` mode without needing to know keyboard shortcuts or manually modifying settings.
 
-**Independent Test**: Can be tested by triggering a file edit tool (e.g., `Write`), selecting the new "Yes, and auto-accept edits" option, and then verifying that subsequent file edits are accepted automatically.
+**Independent Test**: Can be tested by triggering a file edit tool (e.g., `Write`) or `mkdir`, selecting the new "Yes, and auto-accept edits" option, and then verifying that subsequent file edits or `mkdir` operations are accepted automatically.
 
 **Acceptance Scenarios**:
 
-1. **Given** the agent is in `default` mode, **When** the agent attempts a `Write` operation, **Then** the confirmation prompt shows three options: "1. Yes, proceed", "2. Yes, and auto-accept edits", and "3. [Alternative/Feedback]".
-2. **Given** the confirmation prompt for a `Write` operation is shown, **When** the user selects "Yes, and auto-accept edits", **Then** the current operation is executed, and the agent's permission mode is set to `acceptEdits`.
-3. **Given** the agent's permission mode was set to `acceptEdits` via the prompt, **When** the agent attempts a subsequent `Edit` operation, **Then** it is executed without a prompt.
+1. **Given** the agent is in `default` mode, **When** the agent attempts a `Write` or `mkdir` operation, **Then** the confirmation prompt shows three options: "1. Yes, proceed", "2. Yes, and auto-accept edits", and "3. [Alternative/Feedback]".
+2. **Given** the confirmation prompt for a `Write` or `mkdir` operation is shown, **When** the user selects "Yes, and auto-accept edits", **Then** the current operation is executed, and the agent's permission mode is set to `acceptEdits`.
+3. **Given** the agent's permission mode was set to `acceptEdits` via the prompt, **When** the agent attempts a subsequent `Edit` or `mkdir` operation, **Then** it is executed without a prompt.
 
 ---
 
@@ -65,7 +65,7 @@ As a user, I want my allowed command rules to be respected whether they are defi
 
 ### Functional Requirements
 
-- **FR-001**: The confirmation prompt for file system tools (`Write`, `Edit`, `Delete`) MUST include a second option: "Yes, and auto-accept edits".
+- **FR-001**: The confirmation prompt for file system tools (`Write`, `Edit`, `Delete`, `mkdir`) MUST include a second option: "Yes, and auto-accept edits".
 - **FR-002**: Selecting "Yes, and auto-accept edits" MUST set the current session's permission mode to `acceptEdits`.
 - **FR-003**: The confirmation prompt for the `Bash` tool MUST include a second option: "Yes, and don't ask again for this command in this workdir".
 - **FR-004**: Selecting the persistent Bash option MUST save the rule `Bash([command])` to the `permissions.allow` array in `.wave/settings.local.json`.

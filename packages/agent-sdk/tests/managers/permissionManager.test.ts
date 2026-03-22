@@ -327,6 +327,17 @@ describe("PermissionManager", () => {
         }
       });
 
+      it("should allow mkdir in bypassPermissions mode", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "bypassPermissions",
+          toolInput: { command: "mkdir /etc/new_dir" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
       it("should allow unrestricted tools in bypassPermissions mode", async () => {
         const unrestrictedTools = ["Read", "Grep", "LS", "Glob"];
 
@@ -369,12 +380,328 @@ describe("PermissionManager", () => {
         const context: ToolPermissionContext = {
           toolName: "Bash",
           permissionMode: "acceptEdits",
+          toolInput: { command: "rm -rf /" },
         };
 
         const result = await permissionManager.checkPermission(context);
 
         expect(result.behavior).toBe("deny");
         expect(result.message).toContain("requires permission approval");
+      });
+
+      it("should allow mkdir in acceptEdits mode inside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir new_dir", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir with multiple paths in acceptEdits mode inside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir dir1 dir2 'dir 3'", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir -p in acceptEdits mode inside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir -p nested/dir", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir --parents in acceptEdits mode inside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir --parents nested/dir", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir with multiple flags in acceptEdits mode inside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir -p -v dir1 dir2", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir with quoted paths in acceptEdits mode inside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: {
+            command: "mkdir \"dir with spaces\" 'another dir'",
+            workdir,
+          },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir with mixed quoted and unquoted paths in acceptEdits mode inside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: 'mkdir dir1 "dir 2" dir3', workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir with flags and mixed quoted/unquoted paths in acceptEdits mode inside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir -p -v \"dir 1\" dir2 'dir 3'", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir with flags, quoted paths and .. in acceptEdits mode inside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir -p \"src/../dir 1\" 'dir 2'", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should deny mkdir in acceptEdits mode outside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir /etc/new_dir", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should allow mkdir in acceptEdits mode inside additionalDirectories", async () => {
+        const workdir = "/home/user/project";
+        const additionalDir = "/home/user/additional";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+          additionalDirectories: [additionalDir],
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: `mkdir ${additionalDir}/new_dir`, workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir in acceptEdits mode inside systemAdditionalDirectories", async () => {
+        const workdir = "/home/user/project";
+        const systemDir = "/home/user/system";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+        manager.addSystemAdditionalDirectory(systemDir);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: `mkdir ${systemDir}/new_dir`, workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir in acceptEdits mode inside autoMemoryDir", async () => {
+        const workdir = "/home/user/project";
+        const autoMemoryDir = "/home/user/.wave/projects/encoded/memory";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+          additionalDirectories: [autoMemoryDir],
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: `mkdir ${autoMemoryDir}/new_dir`, workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir in acceptEdits mode inside workdir", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: `mkdir ${workdir}/new_dir`, workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir in acceptEdits mode inside workdir with relative path", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir new_dir", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow mkdir in acceptEdits mode inside workdir with .. path", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir src/../new_dir", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should deny mkdir in acceptEdits mode outside workdir with .. path", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir ../new_dir", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should deny mkdir in acceptEdits mode if any path is outside Safe Zone", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+          toolInput: { command: "mkdir safe_dir /etc/unsafe_dir", workdir },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
       });
     });
 
@@ -570,6 +897,30 @@ describe("PermissionManager", () => {
 
         const result = await permissionManager.checkPermission(context);
         expect(result.behavior).toBe("deny");
+      });
+
+      it("should deny mkdir in default mode without rule", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "mkdir new_dir" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should allow mkdir in default mode with rule", async () => {
+        permissionManager.updateAllowedRules(["Bash(mkdir *)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "mkdir new_dir" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
       });
 
       it("should no longer support :* as a special suffix", async () => {

@@ -12,13 +12,14 @@ As a user, I want the agent to automatically apply file edits without asking for
 
 **Why this priority**: This is the core value of the feature, enabling a "hands-off" editing experience for the most common operations.
 
-**Independent Test**: Can be tested by setting the permission mode to `acceptEdits` and observing that the agent performs `Edit`, `Delete`, and `Write` operations without prompting for confirmation, while still prompting for `Bash`.
+**Independent Test**: Can be tested by setting the permission mode to `acceptEdits` and observing that the agent performs `Edit`, `Delete`, `Write`, and `mkdir` (within safe zone) operations without prompting for confirmation, while still prompting for other `Bash` commands.
 
 **Acceptance Scenarios**:
 
 1. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use `Edit`, `Delete`, or `Write` tools, **Then** the operation is applied immediately without a permission prompt.
-2. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use the `Bash` tool, **Then** the user is prompted for permission.
-3. **Given** the agent is in `default` mode, **When** the agent attempts to use any restricted tool (`Edit`, `Delete`, `Bash`, `Write`), **Then** the user is prompted for permission.
+2. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use `mkdir` via the `Bash` tool within the safe zone, **Then** the operation is applied immediately without a permission prompt.
+3. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use other `Bash` commands, **Then** the user is prompted for permission.
+4. **Given** the agent is in `default` mode, **When** the agent attempts to use any restricted tool (`Edit`, `Delete`, `Bash`, `Write`), **Then** the user is prompted for permission.
 4. **Given** the agent is in `bypassPermissions` mode, **When** the agent attempts to use any restricted tool, **Then** the operation is applied immediately without a prompt.
 
 ---

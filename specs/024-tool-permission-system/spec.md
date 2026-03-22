@@ -123,7 +123,7 @@ As a user, I want MCP tools to be subject to the same permission checks as built
 - **FR-017**: If a request matches any rule in `permissions.deny`, it MUST be denied immediately.
 
 #### Built-in Safe Commands
-- **FR-018**: System MUST maintain a built-in list of safe commands (`cd`, `ls`, `pwd`) that are permitted if they operate within the CWD or its subdirectories.
+- **FR-018**: System MUST maintain a built-in list of safe commands (`cd`, `ls`, `pwd`, `mkdir`) that are permitted if they operate within the CWD or its subdirectories.
 - **FR-019**: Built-in safe commands attempting to access paths outside the CWD (e.g., `cd ..`, `ls /etc`) MUST require explicit permission.
 
 ## Key Entities

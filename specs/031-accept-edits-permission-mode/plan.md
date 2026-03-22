@@ -13,7 +13,7 @@ This document outlines the technical strategy for implementing the `acceptEdits`
 
 ### Target State
 - `PermissionMode` includes `acceptEdits`.
-- `PermissionManager` supports `acceptEdits` logic (auto-accept `Edit`, ``, `Delete`, `Write`).
+- `PermissionManager` supports `acceptEdits` logic (auto-accept `Edit`, `Delete`, `Write`, and `mkdir` within safe zone).
 - `Agent` and SDK provide methods to get/set permission mode.
 - CLI `InputBox` (via `InputManager`) handles `Shift+Tab` to cycle modes.
 - CLI UI displays the current permission mode.
