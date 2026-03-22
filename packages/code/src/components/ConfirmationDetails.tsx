@@ -97,7 +97,11 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   );
 
   if (isStatic) {
-    return <Static items={[1]}>{() => content}</Static>;
+    return (
+      <Static items={[1]}>
+        {(item) => <React.Fragment key={item}>{content}</React.Fragment>}
+      </Static>
+    );
   }
 
   return content;
