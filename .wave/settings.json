@@ -1,4 +1,7 @@
 {
+  "env": {
+    "WAVE_MAX_INPUT_TOKENS": "200000"
+  },
   "permissions": {
     "defaultMode": "default",
     "allow": [
