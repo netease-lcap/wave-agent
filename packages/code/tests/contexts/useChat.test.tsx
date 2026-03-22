@@ -69,6 +69,8 @@ describe("ChatProvider", () => {
     getPermissionMode: vi.fn(() => "default"),
     getMcpServers: vi.fn(() => []),
     getSlashCommands: vi.fn(() => []),
+    getFullMessageThread: vi.fn(),
+    getGatewayConfig: vi.fn(),
     sendMessage: vi.fn(),
     executeBashCommand: vi.fn(),
     abortMessage: vi.fn(),
@@ -81,6 +83,17 @@ describe("ChatProvider", () => {
     backgroundCurrentTask: vi.fn(),
     destroy: vi.fn(),
     setPermissionMode: vi.fn(),
+    aiManager: {
+      getSystemPrompt: vi.fn(() => "system prompt"),
+    },
+    toolManager: {
+      list: vi.fn(() => []),
+    },
+    getModelConfig: vi.fn(() => ({ model: "test-model" })),
+    subagentManager: {
+      createInstance: vi.fn(),
+      executeAgent: vi.fn(),
+    },
     usages: [],
     sessionFilePath: "test-path",
   };
@@ -1034,5 +1047,347 @@ describe("ChatProvider", () => {
     // Cleanup
     resolveSendMessage!();
     await firstSendMessage;
+  });
+
+  it("handles /btw command in sendMessage", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const mockInstance = {
+      subagentId: "btw-1",
+      messageManager: {
+        setMessages: vi.fn(),
+      },
+    };
+    mockAgent.subagentManager.createInstance.mockResolvedValue(mockInstance);
+    mockAgent.subagentManager.executeAgent.mockResolvedValue(undefined);
+
+    await lastValue?.sendMessage("/btw what is this?");
+
+    await vi.waitFor(() => {
+      expect(mockAgent.subagentManager.createInstance).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "btw" }),
+        expect.objectContaining({ subagent_type: "btw" }),
+      );
+      expect(mockInstance.messageManager.setMessages).toHaveBeenCalled();
+      expect(mockAgent.subagentManager.executeAgent).toHaveBeenCalled();
+      expect(lastValue?.isBtwModeActive).toBe(true);
+    });
+  });
+
+  it("handles /btw command with empty query", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    await lastValue?.sendMessage("/btw ");
+    expect(mockAgent.subagentManager.createInstance).not.toHaveBeenCalled();
+  });
+
+  it("handles dismissBtwAgent", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    // First activate it
+    const mockInstance = {
+      subagentId: "btw-1",
+      messageManager: {
+        setMessages: vi.fn(),
+      },
+    };
+    mockAgent.subagentManager.createInstance.mockResolvedValue(mockInstance);
+    mockAgent.subagentManager.executeAgent.mockResolvedValue(undefined);
+
+    await lastValue?.sendMessage("/btw test");
+    await vi.waitFor(() => {
+      expect(lastValue?.isBtwModeActive).toBe(true);
+    });
+
+    // Then dismiss it
+    lastValue?.dismissBtwAgent();
+    await vi.waitFor(() => {
+      expect(lastValue?.isBtwModeActive).toBe(false);
+      expect(lastValue?.btwAgentMessages).toEqual([]);
+    });
+  });
+
+  it("toggles isTaskListVisible with Ctrl+T", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    // Get the useInput callback
+    const useInputMock = vi.mocked(useInput);
+    const inputCallback =
+      useInputMock.mock.calls[useInputMock.mock.calls.length - 1][0];
+
+    const initialVisible = lastValue?.isTaskListVisible;
+
+    // Simulate Ctrl+T
+    inputCallback("t", { ctrl: true } as Parameters<typeof inputCallback>[1]);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isTaskListVisible).toBe(!initialVisible);
+    });
+  });
+
+  it("handles collapsing expanded view with Ctrl+O", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    // Get the useInput callback
+    const useInputMock = vi.mocked(useInput);
+    const inputCallback =
+      useInputMock.mock.calls[useInputMock.mock.calls.length - 1][0];
+
+    // Expand first
+    inputCallback("o", { ctrl: true } as Parameters<typeof inputCallback>[1]);
+    await vi.waitFor(() => {
+      expect(lastValue?.isExpanded).toBe(true);
+    });
+
+    // Then collapse
+    inputCallback("o", { ctrl: true } as Parameters<typeof inputCallback>[1]);
+    await vi.waitFor(() => {
+      expect(lastValue?.isExpanded).toBe(false);
+      expect(mockAgent.messages).toBeDefined();
+    });
+  });
+
+  it("handles getFullMessageThread", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const mockThread = { messages: [], sessionIds: ["test"] };
+    mockAgent.getFullMessageThread = vi.fn().mockResolvedValue(mockThread);
+
+    const thread = await lastValue?.getFullMessageThread();
+    expect(thread).toEqual(mockThread);
+  });
+
+  it("handles getGatewayConfig", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const mockConfig = { baseURL: "http://test" };
+    mockAgent.getGatewayConfig = vi.fn().mockReturnValue(mockConfig);
+
+    const config = lastValue?.getGatewayConfig();
+    expect(config).toEqual(mockConfig);
+  });
+
+  it("handles getModelConfig", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const mockConfig = { model: "test", fastModel: "fast-test" };
+    mockAgent.getModelConfig = vi.fn().mockReturnValue(mockConfig);
+
+    const config = lastValue?.getModelConfig();
+    expect(config).toEqual(mockConfig);
+  });
+
+  it("handles getters when agent is not initialized", async () => {
+    vi.mocked(Agent.create).mockReturnValue(new Promise(() => {})); // Never resolves
+
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    expect(await lastValue?.getFullMessageThread()).toEqual({
+      messages: [],
+      sessionIds: [],
+    });
+    expect(lastValue?.getGatewayConfig()).toEqual({ baseURL: "" });
+    expect(lastValue?.getModelConfig()).toEqual({ model: "", fastModel: "" });
+  });
+
+  it("aborts btwAgent in dismissBtwAgent if running", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const mockInstance = {
+      subagentId: "btw-1",
+      messageManager: {
+        setMessages: vi.fn(),
+      },
+    };
+    mockAgent.subagentManager.createInstance.mockResolvedValue(mockInstance);
+
+    // Mock executeAgent to not resolve immediately so it stays "running"
+    let resolveExecute: (value: void | PromiseLike<void>) => void;
+    const executePromise = new Promise<void>((resolve) => {
+      resolveExecute = resolve;
+    });
+    mockAgent.subagentManager.executeAgent.mockReturnValue(executePromise);
+
+    await lastValue?.sendMessage("/btw test");
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isBtwModeActive).toBe(true);
+    });
+
+    // Now dismiss while it's "running"
+    lastValue?.dismissBtwAgent();
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isBtwModeActive).toBe(false);
+    });
+
+    // Cleanup
+    resolveExecute!();
+    await executePromise;
+  });
+
+  it("handles btwAgent execution error", async () => {
+    const consoleSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(function () {});
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const mockInstance = {
+      subagentId: "btw-1",
+      messageManager: {
+        setMessages: vi.fn(),
+      },
+    };
+    mockAgent.subagentManager.createInstance.mockResolvedValue(mockInstance);
+    mockAgent.subagentManager.executeAgent.mockRejectedValue(
+      new Error("Execution failed"),
+    );
+
+    await lastValue?.sendMessage("/btw test");
+
+    await vi.waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[DEBUG] btwAgent execution error:",
+        expect.any(Error),
+      );
+      expect(lastValue?.btwAgentIsLoading).toBe(false);
+    });
+    consoleSpy.mockRestore();
+  });
+
+  it("handles btwAgent execution abort", async () => {
+    const consoleSpy = vi
+      .spyOn(console, "log")
+      .mockImplementation(function () {});
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const mockInstance = {
+      subagentId: "btw-1",
+      messageManager: {
+        setMessages: vi.fn(),
+      },
+    };
+    mockAgent.subagentManager.createInstance.mockResolvedValue(mockInstance);
+    const abortError = new Error("Aborted");
+    abortError.name = "AbortError";
+    mockAgent.subagentManager.executeAgent.mockRejectedValue(abortError);
+
+    await lastValue?.sendMessage("/btw test");
+
+    await vi.waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[DEBUG] btwAgent execution aborted",
+      );
+      expect(lastValue?.btwAgentIsLoading).toBe(false);
+    });
+    consoleSpy.mockRestore();
   });
 });

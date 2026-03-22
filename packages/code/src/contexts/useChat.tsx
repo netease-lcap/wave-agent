@@ -462,7 +462,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         if (!agent) return;
 
         const systemPrompt = agent.aiManager.getSystemPrompt();
-        const tools = agent.toolManager.list().map((t) => t.name);
+        const tools = agent.toolManager
+          .list()
+          .map((t: { name: string }) => t.name);
         const modelConfig = agent.getModelConfig();
 
         const prompt = `<system-reminder>
