@@ -174,7 +174,7 @@ export function setupAgentContainer(
   const canUseToolWithPermissionRequest = options.canUseTool
     ? async (context: ToolPermissionContext) => {
         try {
-          await hookManager.executeHooks("PermissionRequest", {
+          const results = await hookManager.executeHooks("PermissionRequest", {
             event: "PermissionRequest",
             projectDir: workdir,
             timestamp: new Date(),
@@ -185,6 +185,31 @@ export function setupAgentContainer(
             toolInput: context.toolInput,
             env: configurationService.getEnvironmentVars(),
           });
+
+          if (results.length > 0) {
+            const processResult = hookManager.processHookResults(
+              "PermissionRequest",
+              results,
+              messageManager,
+            );
+
+            if (processResult.shouldBlock) {
+              return {
+                behavior: "deny",
+                message:
+                  processResult.errorMessage ||
+                  "Permission denied by hook execution",
+              };
+            }
+
+            if (
+              processResult.hookSpecificOutput?.hookEventName ===
+                "PermissionRequest" &&
+              processResult.hookSpecificOutput.decision
+            ) {
+              return processResult.hookSpecificOutput.decision;
+            }
+          }
         } catch (error) {
           logger.warn("Failed to execute permission request hooks", {
             toolName: context.toolName,
