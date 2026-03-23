@@ -382,9 +382,13 @@ export class WaveAcpAgent implements AcpAgent {
         return "Yes, and auto-accept edits";
       }
       if (context.suggestedPrefix) {
-        return `Yes, and don't ask again for: ${context.suggestedPrefix}`;
+        const prefix =
+          context.suggestedPrefix.length > 12
+            ? context.suggestedPrefix.substring(0, 9) + "..."
+            : context.suggestedPrefix;
+        return `Yes, always allow ${prefix}`;
       }
-      return "Yes, and don't ask again for this command in this workdir";
+      return "Yes, always allow this command";
     }
     if (
       context.toolName === EDIT_TOOL_NAME ||

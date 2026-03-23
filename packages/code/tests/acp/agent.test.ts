@@ -537,7 +537,7 @@ describe("WaveAcpAgent", () => {
           },
           {
             optionId: "allow_always",
-            name: "Yes, and don't ask again for this command in this workdir",
+            name: "Yes, always allow this command",
             kind: "allow_always",
           },
         ],
@@ -558,7 +558,7 @@ describe("WaveAcpAgent", () => {
         options: expect.arrayContaining([
           expect.objectContaining({
             optionId: "allow_always",
-            name: "Yes, and don't ask again for: git",
+            name: "Yes, always allow git",
           }),
         ]),
       }),
