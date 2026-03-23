@@ -10,8 +10,8 @@ Modify `packages/agent-sdk/src/managers/aiManager.ts`:
     - Retrieve the message history from `MessageManager`.
     - Find the most recent assistant message (before the current one) that contains tool blocks.
     - Compare the current turn's tool calls (name and arguments) with the tool calls in that previous assistant message.
-    - If any tool call is identical (same name and same arguments), add a user message as a reminder:
-      `"You just called these tools with the same arguments in the previous turn: [ToolName]. Please ensure you are not in a loop and consider if you need to change your approach."`
+    - If any tool call is identical (same name and same arguments), append a reminder to the tool result:
+      `"\n\nNote: You just called this tool with the same arguments in the previous turn. Please ensure you are not in a loop and consider if you need to change your approach."`
 
 ### 2. Test Updates
 - **`packages/agent-sdk/tests/managers/aiManager_finishReason.test.ts`**:
