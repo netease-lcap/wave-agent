@@ -176,4 +176,25 @@ describe("exitPlanModeTool", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("Unexpected error");
   });
+
+  it("should use plan_path argument if provided", async () => {
+    const planContent = "My custom plan";
+    const customPlanPath = "/test/custom-plan.md";
+    vi.mocked(readFile).mockResolvedValue(planContent);
+    mockPermissionManager.createContext.mockReturnValue({
+      toolName: "ExitPlanMode",
+    });
+    mockPermissionManager.checkPermission.mockResolvedValue({
+      behavior: "allow",
+    });
+
+    const result = await exitPlanModeTool.execute(
+      { plan_path: customPlanPath },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(vi.mocked(readFile)).toHaveBeenCalledWith(customPlanPath, "utf-8");
+    expect(mockPermissionManager.getPlanFilePath).not.toHaveBeenCalled();
+  });
 });

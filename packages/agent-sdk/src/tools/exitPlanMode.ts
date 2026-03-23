@@ -3,6 +3,7 @@ import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "../constants/tools.js";
 import { OPERATION_CANCELLED_BY_USER } from "../types/permissions.js";
+import type { ExitPlanModeParameters } from "../types/tools.js";
 
 /**
  * Exit Plan Mode Tool Plugin
@@ -16,7 +17,13 @@ export const exitPlanModeTool: ToolPlugin = {
       description: "Prompts the user to exit plan mode and start coding",
       parameters: {
         type: "object",
-        properties: {},
+        properties: {
+          plan_path: {
+            type: "string",
+            description:
+              "The path to the plan file to be reviewed. If not provided, the default plan file will be used.",
+          },
+        },
         required: [],
         additionalProperties: false,
       },
@@ -26,10 +33,10 @@ export const exitPlanModeTool: ToolPlugin = {
     () => `Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
 
 ## How This Tool Works
-- You should have already written your plan to the plan file specified in the plan mode system message
-- This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
-- This tool simply signals that you're done planning and ready for the user to review and approve
-- The user will see the contents of your plan file when they review it
+- You should have already written your plan to the plan file specified in the plan mode system message, or provide the path via the \`plan_path\` argument.
+- This tool does NOT take the plan content as a parameter - it will read the plan from the file.
+- This tool simply signals that you're done planning and ready for the user to review and approve.
+- The user will see the contents of your plan file when they review it.
 
 ## When to Use This Tool
 IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.
@@ -48,10 +55,12 @@ Ensure your plan is complete and unambiguous:
 3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
 `,
   execute: async (
-    _args: Record<string, unknown>,
+    args: Record<string, unknown>,
     context: ToolContext,
   ): Promise<ToolResult> => {
     try {
+      const { plan_path } = args as unknown as ExitPlanModeParameters;
+
       if (!context.permissionManager) {
         return {
           success: false,
@@ -60,7 +69,8 @@ Ensure your plan is complete and unambiguous:
         };
       }
 
-      const planFilePath = context.permissionManager.getPlanFilePath();
+      const planFilePath =
+        plan_path || context.permissionManager.getPlanFilePath();
       if (!planFilePath) {
         return {
           success: false,

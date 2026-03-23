@@ -42,3 +42,10 @@ export interface EditToolParameters {
   new_string: string;
   replace_all?: boolean;
 }
+
+/**
+ * Parameters for the ExitPlanMode tool
+ */
+export interface ExitPlanModeParameters {
+  plan_path?: string;
+}
