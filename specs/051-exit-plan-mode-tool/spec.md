@@ -16,7 +16,7 @@ As an agent in plan mode, I want to use the `ExitPlanMode` tool after I have fin
 
 **Acceptance Scenarios**:
 
-1. **Given** the agent is in plan mode and has written a plan to a file, **When** the agent calls `ExitPlanMode` (optionally with `plan_path`), **Then** the user is shown the contents of the plan file and prompted to confirm via the standard `canUseTool` mechanism with three options (navigable via arrow keys).
+1. **Given** the agent is in plan mode and has written a plan to the designated file, **When** the agent calls `ExitPlanMode`, **Then** the user is shown the contents of the plan file and prompted to confirm via the standard `canUseTool` mechanism with three options (navigable via arrow keys).
 2. **Given** the user is reviewing the plan from the file, **When** the user selects "Default", **Then** the tool succeeds and the agent exits plan mode into the default execution state.
 3. **Given** the user is reviewing the plan from the file, **When** the user selects "Accept Edits", **Then** the tool succeeds and the agent exits plan mode into a state where subsequent edits are automatically accepted.
 4. **Given** the user is reviewing the plan from the file, **When** the user chooses to "Tell agent what to do", **Then** the user provides feedback, the tool returns this feedback to the agent, and the agent remains in plan mode to refine the plan.
@@ -34,8 +34,7 @@ As an agent in plan mode, I want to use the `ExitPlanMode` tool after I have fin
 
 - **FR-001**: System MUST provide a tool named `ExitPlanMode`.
 - **FR-001.1**: The tool description MUST include: "Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval."
-- **FR-001.2**: The tool documentation MUST explain that the agent should have already written the plan to the file specified in the system message, or provide the path via the `plan_path` argument, and that the tool does not take plan content as a parameter.
-- **FR-001.3**: The tool MUST support an optional `plan_path` argument to specify the path to the plan file.
+- **FR-001.2**: The tool documentation MUST explain that the agent should have already written the plan to the file specified in the system message, and that the tool does not take plan content as a parameter.
 - **FR-002**: `ExitPlanMode` tool MUST trigger a confirmation request to the user that offers three specific choices:
     - **Option 1: Default**: Exit plan mode and proceed with standard execution.
     - **Option 2: Accept Edits**: Exit plan mode and proceed in a mode where edits are automatically accepted.
