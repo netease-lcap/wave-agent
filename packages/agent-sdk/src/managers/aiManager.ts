@@ -8,6 +8,7 @@ import type {
   ModelConfig,
   Usage,
   PermissionMode,
+  Message,
 } from "../types/index.js";
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
@@ -812,6 +813,55 @@ export class AIManager {
               content:
                 "Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off.",
             });
+          }
+
+          // Duplicate Tool Call Detection
+          if (toolCalls.length > 0) {
+            const messages = this.messageManager.getMessages();
+            // Find the most recent assistant message BEFORE the current one that has tool blocks
+            // The current assistant message is messages[messages.length - 1]
+            let previousAssistantWithTools: Message | undefined;
+            for (let i = messages.length - 2; i >= 0; i--) {
+              const msg = messages[i];
+              if (
+                msg.role === "assistant" &&
+                msg.blocks.some((b) => b.type === "tool")
+              ) {
+                previousAssistantWithTools = msg;
+                break;
+              }
+            }
+
+            if (previousAssistantWithTools) {
+              const previousToolBlocks =
+                previousAssistantWithTools.blocks.filter(
+                  (b): b is import("../types/messaging.js").ToolBlock =>
+                    b.type === "tool",
+                );
+              const duplicateToolNames: string[] = [];
+
+              for (const currentToolCall of toolCalls) {
+                const currentName = currentToolCall.function?.name;
+                const currentArgs = currentToolCall.function?.arguments;
+
+                const isDuplicate = previousToolBlocks.some(
+                  (prevBlock) =>
+                    prevBlock.name === currentName &&
+                    prevBlock.parameters === currentArgs,
+                );
+
+                if (isDuplicate && currentName) {
+                  duplicateToolNames.push(currentName);
+                }
+              }
+
+              if (duplicateToolNames.length > 0) {
+                const uniqueDuplicateNames = [...new Set(duplicateToolNames)];
+                this.messageManager.addUserMessage({
+                  content: `You just called these tools with the same arguments in the previous turn: [${uniqueDuplicateNames.join(", ")}]. Please ensure you are not in a loop and consider if you need to change your approach.`,
+                });
+              }
+            }
           }
 
           // Recursively call AI service, increment recursion depth, and pass same configuration
