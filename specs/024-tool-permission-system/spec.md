@@ -141,6 +141,7 @@ As a developer using the SDK or a user on the CLI, I want to provide temporary p
 - **FR-032**: Rules provided via SDK or CLI MUST be instance-specific or session-specific and MUST NOT be persisted to `settings.json` automatically.
 - **FR-033**: `tools` and the permission rules MUST operate independently: `tools` filters available tool definitions (visibility), while `allowedTools`/`disallowedTools` define execution permissions.
 - **FR-034**: `disallowedTools` MUST take precedence over `allowedTools` if a tool call matches both.
+- **FR-035**: If `disallowedTools` or `permissions.deny` contains rules that consist only of a tool name (e.g., `"Bash"`, `"Write"`), the system MUST filter out these tools from the available tools list provided to the AI, effectively combining visibility and execution control.
 
 ## Key Entities
 

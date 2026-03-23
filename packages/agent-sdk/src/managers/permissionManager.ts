@@ -591,6 +591,23 @@ export class PermissionManager {
   }
 
   /**
+   * Check if a tool is completely denied by name in instance or global rules
+   */
+  public isToolDenied(toolName: string): boolean {
+    // Check instance-specific denied rules
+    if (this.instanceDeniedRules.includes(toolName)) {
+      return true;
+    }
+
+    // Check global denied rules
+    if (this.deniedRules.includes(toolName)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Helper method to create a permission context for CLI integration
    */
   createContext(
