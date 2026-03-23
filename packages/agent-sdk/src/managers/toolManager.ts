@@ -124,9 +124,17 @@ class ToolManager {
   }
 
   /**
-   * Check if a tool should be enabled based on tools configuration
+   * Check if a tool should be enabled based on tools configuration and permission rules
    */
   private shouldEnableTool(name: string): boolean {
+    const permissionManager =
+      this.container.get<PermissionManager>("PermissionManager");
+
+    // If tool is explicitly denied by name in permission rules, filter it out
+    if (permissionManager?.isToolDenied(name)) {
+      return false;
+    }
+
     if (!this.tools) {
       return true;
     }
@@ -241,8 +249,14 @@ class ToolManager {
   }
 
   list(): ToolPlugin[] {
-    const builtInTools = Array.from(this.toolsRegistry.values());
-    const mcpTools = this.mcpManager.getMcpToolPlugins();
+    const permissionManager =
+      this.container.get<PermissionManager>("PermissionManager");
+    const builtInTools = Array.from(this.toolsRegistry.values()).filter(
+      (tool) => !permissionManager?.isToolDenied(tool.name),
+    );
+    const mcpTools = this.mcpManager
+      .getMcpToolPlugins()
+      .filter((tool) => !permissionManager?.isToolDenied(tool.name));
     return [...builtInTools, ...mcpTools];
   }
 
@@ -251,9 +265,15 @@ class ToolManager {
     availableSkills?: SkillMetadata[];
     workdir?: string;
   }): ChatCompletionFunctionTool[] {
+    const permissionManager =
+      this.container.get<PermissionManager>("PermissionManager");
     const effectivePermissionMode = this.getPermissionMode();
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
+        // If tool is explicitly denied by name in permission rules, filter it out
+        if (permissionManager?.isToolDenied(tool.name)) {
+          return false;
+        }
         if (effectivePermissionMode === "bypassPermissions") {
           if (tool.name === "ExitPlanMode" || tool.name === "AskUserQuestion") {
             return false;
@@ -278,7 +298,9 @@ class ToolManager {
         }
         return config;
       });
-    const mcpToolsConfig = this.mcpManager.getMcpToolsConfig();
+    const mcpToolsConfig = this.mcpManager
+      .getMcpToolsConfig()
+      .filter((tool) => !permissionManager?.isToolDenied(tool.function.name));
     return [...builtInToolsConfig, ...mcpToolsConfig];
   }
 

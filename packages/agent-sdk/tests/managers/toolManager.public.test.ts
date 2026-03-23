@@ -39,6 +39,7 @@ describe("ToolManager.initializeBuiltInTools", () => {
     } as unknown as SkillManager;
 
     const mockPermissionManager = {
+      isToolDenied: vi.fn().mockReturnValue(false),
       getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
     } as unknown as PermissionManager;
 
@@ -124,6 +125,7 @@ describe("ToolManager bypassPermissions mode", () => {
     } as unknown as McpManager;
 
     const mockPermissionManager = {
+      isToolDenied: vi.fn().mockReturnValue(false),
       getCurrentEffectiveMode: vi.fn().mockReturnValue("bypassPermissions"),
     } as unknown as PermissionManager;
 
@@ -161,6 +163,7 @@ describe("ToolManager bypassPermissions mode", () => {
     } as unknown as McpManager;
 
     const mockPermissionManager = {
+      isToolDenied: vi.fn().mockReturnValue(false),
       getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
     } as unknown as PermissionManager;
 
@@ -196,6 +199,7 @@ describe("ToolManager bypassPermissions mode", () => {
     } as unknown as McpManager;
 
     const mockPermissionManager = {
+      isToolDenied: vi.fn().mockReturnValue(false),
       getCurrentEffectiveMode: vi.fn().mockReturnValue("plan"),
     } as unknown as PermissionManager;
 

@@ -8,16 +8,16 @@ describe("ToolManager tool filtering", () => {
     isMcpTool: vi.fn().mockReturnValue(false),
     executeMcpToolByRegistry: vi.fn(),
     getAllConnectedTools: vi.fn().mockReturnValue([]),
-    getToolsConfig: vi.fn().mockReturnValue([]),
+    getMcpToolsConfig: vi.fn().mockReturnValue([]),
     getMcpToolPlugins: vi.fn().mockReturnValue([]),
   } as unknown as McpManager;
 
   const createContainer = () => {
     const container = new Container();
-    container.register(
-      "PermissionManager",
-      {} as unknown as Record<string, unknown>,
-    );
+    container.register("PermissionManager", {
+      isToolDenied: vi.fn().mockReturnValue(false),
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+    });
     container.register("TaskManager", {} as unknown as Record<string, unknown>);
     container.register(
       "ReversionManager",
@@ -79,5 +79,30 @@ describe("ToolManager tool filtering", () => {
     toolManager.initializeBuiltInTools();
     const tools = toolManager.list().map((t) => t.name);
     expect(tools).toHaveLength(0);
+  });
+
+  it("should filter out tools that are explicitly denied by name in PermissionManager", () => {
+    const container = createContainer();
+    const mockPermissionManager = {
+      isToolDenied: vi.fn().mockImplementation((name) => name === "Bash"),
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+    };
+    container.register("PermissionManager", mockPermissionManager);
+
+    const toolManager = new ToolManager({
+      container,
+    });
+    toolManager.initializeBuiltInTools();
+
+    const tools = toolManager.list().map((t) => t.name);
+    expect(tools).not.toContain("Bash");
+    expect(tools).toContain("Read");
+    expect(tools).toContain("Write");
+
+    const toolsConfig = toolManager.getToolsConfig();
+    const toolNames = toolsConfig.map((t) => t.function.name);
+    expect(toolNames).not.toContain("Bash");
+    expect(toolNames).toContain("Read");
+    expect(toolNames).toContain("Write");
   });
 });

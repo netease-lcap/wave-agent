@@ -15,10 +15,10 @@ describe("ToolManager tool filtering - US2 & US3", () => {
   const createContainer = () => {
     const container = new Container();
     container.register("McpManager", mockMcpManager);
-    container.register(
-      "PermissionManager",
-      {} as unknown as Record<string, unknown>,
-    );
+    container.register("PermissionManager", {
+      isToolDenied: vi.fn().mockReturnValue(false),
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+    });
     container.register("TaskManager", {} as unknown as Record<string, unknown>);
     container.register(
       "ReversionManager",

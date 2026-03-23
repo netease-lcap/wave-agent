@@ -21,6 +21,7 @@ describe("ToolManager - Additional Coverage", () => {
     container = new Container();
     container.register("McpManager", mockMcpManager);
     container.register("PermissionManager", {
+      isToolDenied: vi.fn().mockReturnValue(false),
       getCurrentEffectiveMode: vi
         .fn()
         .mockImplementation((mode) => mode || "default"),
