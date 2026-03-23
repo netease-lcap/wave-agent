@@ -82,4 +82,5 @@ export interface AgentCallbacks
     tokens: number,
   ) => void;
   onBackgroundCurrentTask?: () => void;
+  onSideAgentUpdated?: (messages: Message[] | null) => void;
 }

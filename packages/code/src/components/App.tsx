@@ -110,10 +110,16 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
 
 const ChatInterfaceWithRemount: React.FC = () => {
   const { stdout } = useStdout();
-  const { isExpanded, rewindId, wasLastDetailsTooTall, sessionId } = useChat();
+  const {
+    isExpanded,
+    rewindId,
+    wasLastDetailsTooTall,
+    sessionId,
+    sideMessages,
+  } = useChat();
 
   const [remountKey, setRemountKey] = useState(
-    String(isExpanded) + rewindId + wasLastDetailsTooTall,
+    String(isExpanded) + rewindId + wasLastDetailsTooTall + !!sideMessages,
   );
 
   const prevSessionId = useRef(sessionId);
@@ -123,6 +129,7 @@ const ChatInterfaceWithRemount: React.FC = () => {
       String(isExpanded) +
       rewindId +
       wasLastDetailsTooTall +
+      !!sideMessages +
       (prevSessionId.current && sessionId && prevSessionId.current !== sessionId
         ? sessionId
         : "");
@@ -150,6 +157,7 @@ const ChatInterfaceWithRemount: React.FC = () => {
     sessionId,
     remountKey,
     stdout,
+    sideMessages,
   ]);
 
   return <ChatInterface key={remountKey} />;

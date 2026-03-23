@@ -119,6 +119,7 @@ describe("SubagentManager - Callback Integration", () => {
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
       callbacks,
+      stream: false,
     });
 
     await subagentManager.initialize();
@@ -491,6 +492,7 @@ describe("SubagentManager - Callback Integration", () => {
       const errorSubagentManager = new SubagentManager(container, {
         workdir: "/tmp/test",
         callbacks: errorCallbacks,
+        stream: false,
       });
 
       await errorSubagentManager.initialize();
@@ -530,6 +532,7 @@ describe("SubagentManager - Callback Integration", () => {
     it("should work when parent callbacks are not provided", async () => {
       const noCallbackManager = new SubagentManager(container, {
         workdir: "/tmp/test",
+        stream: false,
         // No callbacks provided
       });
 
@@ -646,6 +649,7 @@ describe("SubagentManager - Callback Integration", () => {
 
       const bgSubagentManager = new SubagentManager(container, {
         workdir: "/tmp/test",
+        stream: false,
       });
 
       const mockConfig: SubagentConfiguration = {

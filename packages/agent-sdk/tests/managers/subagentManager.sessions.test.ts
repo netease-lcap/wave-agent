@@ -131,6 +131,7 @@ describe("SubagentManager - Session Functionality", () => {
     // Create SubagentManager
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
+      stream: false,
     });
 
     await subagentManager.initialize();

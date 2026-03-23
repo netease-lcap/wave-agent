@@ -47,6 +47,7 @@ describe("Subagent Permission Integration", () => {
 
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
+      stream: false,
     });
 
     await subagentManager.initialize();

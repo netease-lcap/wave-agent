@@ -80,6 +80,7 @@ export interface SubagentManagerOptions {
   workdir: string;
   callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
   onUsageAdded?: (usage: Usage) => void;
+  stream: boolean;
 }
 
 export class SubagentManager {
@@ -90,12 +91,14 @@ export class SubagentManager {
   private callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
   private onUsageAdded?: (usage: Usage) => void;
   private container: Container;
+  private stream: boolean;
 
   constructor(container: Container, options: SubagentManagerOptions) {
     this.container = container;
     this.workdir = options.workdir;
     this.callbacks = options.callbacks; // Store SubagentManagerCallbacks
     this.onUsageAdded = options.onUsageAdded;
+    this.stream = options.stream;
   }
 
   private get configurationService(): ConfigurationService {
@@ -155,6 +158,7 @@ export class SubagentManager {
       subagent_type: string;
       allowedTools?: string[];
       model?: string;
+      stream?: boolean;
     },
     runInBackground?: boolean,
     onUpdate?: () => void,
@@ -222,6 +226,7 @@ export class SubagentManager {
       systemPrompt: configuration.systemPrompt,
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
       modelOverride: parameters.model || configuration.model, // Pass model override
+      stream: parameters.stream ?? this.stream, // Pass streaming mode flag
       callbacks: {
         onUsageAdded: this.onUsageAdded,
       },
