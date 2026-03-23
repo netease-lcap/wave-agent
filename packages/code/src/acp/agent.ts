@@ -375,6 +375,29 @@ export class WaveAcpAgent implements AcpAgent {
     }
   }
 
+  private getAllowAlwaysName(context: ToolPermissionContext): string {
+    if (context.toolName === BASH_TOOL_NAME) {
+      const command = (context.toolInput?.command as string) || "";
+      if (command.startsWith("mkdir")) {
+        return "Yes, and auto-accept edits";
+      }
+      if (context.suggestedPrefix) {
+        return `Yes, and don't ask again for: ${context.suggestedPrefix}`;
+      }
+      return "Yes, and don't ask again for this command in this workdir";
+    }
+    if (
+      context.toolName === EDIT_TOOL_NAME ||
+      context.toolName === WRITE_TOOL_NAME
+    ) {
+      return "Yes, and auto-accept edits";
+    }
+    if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+      return "Yes, auto-accept edits";
+    }
+    return "Allow Always";
+  }
+
   private async handlePermissionRequest(
     sessionId: string,
     context: ToolPermissionContext,
@@ -429,17 +452,34 @@ export class WaveAcpAgent implements AcpAgent {
       },
     ];
 
-    if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+    if (
+      context.toolName === BASH_TOOL_NAME ||
+      context.toolName === EDIT_TOOL_NAME ||
+      context.toolName === WRITE_TOOL_NAME
+    ) {
       options = [
         {
           optionId: "allow_once",
-          name: "Approve Plan",
+          name: "Yes, proceed",
           kind: "allow_once",
         },
         {
-          optionId: "reject_once",
-          name: "Reject Plan",
-          kind: "reject_once",
+          optionId: "allow_always",
+          name: this.getAllowAlwaysName(context),
+          kind: "allow_always",
+        },
+      ];
+    } else if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+      options = [
+        {
+          optionId: "allow_once",
+          name: "Yes, manually approve edits",
+          kind: "allow_once",
+        },
+        {
+          optionId: "allow_always",
+          name: "Yes, auto-accept edits",
+          kind: "allow_always",
         },
       ];
     }

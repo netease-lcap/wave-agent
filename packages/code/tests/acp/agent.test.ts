@@ -502,6 +502,131 @@ describe("WaveAcpAgent", () => {
     );
   });
 
+  it("should handle Bash permission request specially", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.requestPermission).mockResolvedValue({
+      outcome: { outcome: "selected", optionId: "allow_once" },
+    } as unknown as RequestPermissionResponse);
+
+    await canUseToolCallback!({
+      toolName: "Bash",
+      toolInput: { command: "ls" },
+      permissionMode: "default",
+      toolCallId: "bash-id",
+    });
+
+    expect(mockConnection.requestPermission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: [
+          {
+            optionId: "allow_once",
+            name: "Yes, proceed",
+            kind: "allow_once",
+          },
+          {
+            optionId: "allow_always",
+            name: "Yes, and don't ask again for this command in this workdir",
+            kind: "allow_always",
+          },
+        ],
+      }),
+    );
+
+    // Test with suggestedPrefix
+    await canUseToolCallback!({
+      toolName: "Bash",
+      toolInput: { command: "git status" },
+      permissionMode: "default",
+      toolCallId: "bash-prefix-id",
+      suggestedPrefix: "git",
+    });
+
+    expect(mockConnection.requestPermission).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        options: expect.arrayContaining([
+          expect.objectContaining({
+            optionId: "allow_always",
+            name: "Yes, and don't ask again for: git",
+          }),
+        ]),
+      }),
+    );
+
+    // Test with mkdir
+    await canUseToolCallback!({
+      toolName: "Bash",
+      toolInput: { command: "mkdir foo" },
+      permissionMode: "default",
+      toolCallId: "bash-mkdir-id",
+    });
+
+    expect(mockConnection.requestPermission).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        options: expect.arrayContaining([
+          expect.objectContaining({
+            optionId: "allow_always",
+            name: "Yes, and auto-accept edits",
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it("should handle Edit/Write permission request specially", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.requestPermission).mockResolvedValue({
+      outcome: { outcome: "selected", optionId: "allow_once" },
+    } as unknown as RequestPermissionResponse);
+
+    await canUseToolCallback!({
+      toolName: "Edit",
+      toolInput: { file_path: "foo.txt" },
+      permissionMode: "default",
+      toolCallId: "edit-id",
+    });
+
+    expect(mockConnection.requestPermission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: [
+          {
+            optionId: "allow_once",
+            name: "Yes, proceed",
+            kind: "allow_once",
+          },
+          {
+            optionId: "allow_always",
+            name: "Yes, and auto-accept edits",
+            kind: "allow_always",
+          },
+        ],
+      }),
+    );
+  });
+
   it("should handle ExitPlanMode permission request specially", async () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
@@ -547,13 +672,13 @@ describe("WaveAcpAgent", () => {
         options: [
           {
             optionId: "allow_once",
-            name: "Approve Plan",
+            name: "Yes, manually approve edits",
             kind: "allow_once",
           },
           {
-            optionId: "reject_once",
-            name: "Reject Plan",
-            kind: "reject_once",
+            optionId: "allow_always",
+            name: "Yes, auto-accept edits",
+            kind: "allow_always",
           },
         ],
       }),
