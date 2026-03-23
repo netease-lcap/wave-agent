@@ -17,6 +17,13 @@
 4. **MCP Tool**: `mcp__server__tool`
    - Format: `mcp__<server_name>__<tool_name>`
 
+### AgentOptions (Extended)
+**Description**: Configuration options for initializing an Agent instance.
+**Fields**:
+- `allowedTools?`: `string[]` (Instance-specific allowed rules, maps to `permissions.allow`)
+- `disallowedTools?`: `string[]` (Instance-specific denied rules, maps to `permissions.deny`)
+- `tools?`: `string[]` (Available tools list for filtering/visibility)
+
 ### WaveConfiguration
 **Description**: The configuration object loaded from `settings.json`.
 **Fields**:
@@ -57,13 +64,17 @@ WaveConfiguration
 
 Agent
     ├── permissionMode: PermissionMode
-    └── canUseTool: PermissionCallback
+    ├── canUseTool: PermissionCallback
+    ├── allowedTools: PermissionRule[] (Instance-specific)
+    └── disallowedTools: PermissionRule[] (Instance-specific)
 
 PermissionManager.checkPermission(context)
-    ├── 1. Check permissions.deny (Precedence)
-    ├── 2. Check permissions.allow (Exact or Wildcard)
-    ├── 3. Check built-in safe commands (with path restrictions)
-    └── 4. If not allowed, trigger Confirmation UI
+    ├── 1. Check disallowedTools (Instance-specific, Precedence)
+    ├── 2. Check permissions.deny (Global, Precedence)
+    ├── 3. Check allowedTools (Instance-specific)
+    ├── 4. Check permissions.allow (Global, Exact or Wildcard)
+    ├── 5. Check built-in safe commands (with path restrictions)
+    └── 6. If not allowed, trigger Confirmation UI
 ```
 
 ## Implementation Notes
@@ -73,5 +84,5 @@ PermissionManager.checkPermission(context)
 3. **Pipeline Decomposition**: Complex bash commands are split into `SimpleCommand` entities before matching.
 4. **Smart Wildcard**: Heuristic-based pattern generation for common commands (e.g., `npm install *`).
 5. **Path Restrictions**: Built-in safe commands (`cd`, `ls`, `pwd`) are restricted to the CWD and its subdirectories.
-d command, it is split into simple commands, and only non-safe ones are saved.
+6. **Chained Command Splitting**: When the user selects "Don't ask again" for a chained command, it is split into simple commands, and only non-safe ones are saved.
 7. **Dangerous Command Safety**: Commands that are dangerous (e.g., `rm`, `sudo`), out-of-bounds, or contain write redirections will have `hidePersistentOption` set to true.

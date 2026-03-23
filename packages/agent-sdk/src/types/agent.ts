@@ -67,6 +67,16 @@ export interface AgentOptions {
   isNewWorktree?: boolean;
   /**Whether to watch for skill changes - defaults to true */
   watchSkills?: boolean;
+  /**
+   * Optional list of tool names to always allow.
+   * These rules follow the standard permission rule syntax: `ToolName` or `ToolName(pattern)`.
+   */
+  allowedTools?: string[];
+  /**
+   * Optional list of tool names to always disallow.
+   * These rules follow the standard permission rule syntax: `ToolName` or `ToolName(pattern)`.
+   */
+  disallowedTools?: string[];
 }
 
 export interface AgentCallbacks

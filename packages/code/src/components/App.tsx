@@ -26,6 +26,8 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   permissionMode,
   pluginDirs,
   tools,
+  allowedTools,
+  disallowedTools,
   worktreeSession,
   workdir,
   version,
@@ -98,6 +100,8 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       permissionMode={permissionMode}
       pluginDirs={pluginDirs}
       tools={tools}
+      allowedTools={allowedTools}
+      disallowedTools={disallowedTools}
       workdir={workdir}
       worktreeSession={worktreeSession}
       version={version}
@@ -170,6 +174,8 @@ export const App: React.FC<AppProps> = ({
   permissionMode,
   pluginDirs,
   tools,
+  allowedTools,
+  disallowedTools,
   worktreeSession,
   workdir,
   version,
@@ -186,6 +192,8 @@ export const App: React.FC<AppProps> = ({
         permissionMode={permissionMode}
         pluginDirs={pluginDirs}
         tools={tools}
+        allowedTools={allowedTools}
+        disallowedTools={disallowedTools}
         worktreeSession={worktreeSession}
         workdir={workdir}
         version={version}

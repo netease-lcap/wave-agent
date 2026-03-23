@@ -98,6 +98,10 @@ export interface PermissionManagerOptions {
   allowedRules?: string[];
   /** Denied rules from settings */
   deniedRules?: string[];
+  /** Instance-specific allowed rules (from AgentOptions) */
+  instanceAllowedRules?: string[];
+  /** Instance-specific denied rules (from AgentOptions) */
+  instanceDeniedRules?: string[];
   /** Additional directories considered part of the Safe Zone */
   additionalDirectories?: string[];
   /** The main working directory */
@@ -112,6 +116,8 @@ export class PermissionManager {
   private configuredDefaultMode?: PermissionMode;
   private allowedRules: string[] = [];
   private deniedRules: string[] = [];
+  private instanceAllowedRules: string[] = [];
+  private instanceDeniedRules: string[] = [];
   private temporaryRules: string[] = [];
   private additionalDirectories: string[] = [];
   private systemAdditionalDirectories: string[] = [];
@@ -129,6 +135,8 @@ export class PermissionManager {
     this.configuredDefaultMode = options.configuredDefaultMode;
     this.allowedRules = options.allowedRules || [];
     this.deniedRules = options.deniedRules || [];
+    this.instanceAllowedRules = options.instanceAllowedRules || [];
+    this.instanceDeniedRules = options.instanceDeniedRules || [];
     this.workdir = options.workdir;
     this.planFilePath = options.planFilePath;
     this._logger = options.logger;
@@ -183,6 +191,20 @@ export class PermissionManager {
    */
   public getDeniedRules(): string[] {
     return [...this.deniedRules];
+  }
+
+  /**
+   * Get all instance-specific allowed rules
+   */
+  public getInstanceAllowedRules(): string[] {
+    return [...this.instanceAllowedRules];
+  }
+
+  /**
+   * Get all instance-specific denied rules
+   */
+  public getInstanceDeniedRules(): string[] {
+    return [...this.instanceDeniedRules];
   }
 
   /**
@@ -345,6 +367,20 @@ export class PermissionManager {
   async checkPermission(
     context: ToolPermissionContext,
   ): Promise<PermissionDecision> {
+    // 0. Check instance-specific denied rules first - Deny always takes precedence
+    for (const rule of this.instanceDeniedRules) {
+      if (this.matchesRule(context, rule)) {
+        logger?.warn("Permission denied by instance rule", {
+          toolName: context.toolName,
+          rule,
+        });
+        return {
+          behavior: "deny",
+          message: `Access to tool '${context.toolName}' is explicitly denied by instance rule: ${rule}`,
+        };
+      }
+    }
+
     // 0. Check worktree safety for Write and Edit tools
     if (
       this.worktreeName &&
@@ -820,7 +856,12 @@ export class PermissionManager {
       return rules.some((rule) => this.matchesRule(ctx, rule));
     };
 
-    // Check temporary rules first
+    // Check instance-specific allowed rules first
+    if (isAllowedByRuleList(context, this.instanceAllowedRules)) {
+      return true;
+    }
+
+    // Check temporary rules
     if (isAllowedByRuleList(context, this.temporaryRules)) {
       return true;
     }

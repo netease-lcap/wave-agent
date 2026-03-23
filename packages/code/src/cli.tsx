@@ -18,6 +18,8 @@ export async function startCli(options: CliOptions): Promise<void> {
     permissionMode,
     pluginDirs,
     tools,
+    allowedTools,
+    disallowedTools,
     worktreeSession,
     workdir,
     version,
@@ -41,6 +43,8 @@ export async function startCli(options: CliOptions): Promise<void> {
       permissionMode={permissionMode}
       pluginDirs={pluginDirs}
       tools={tools}
+      allowedTools={allowedTools}
+      disallowedTools={disallowedTools}
       worktreeSession={worktreeSession}
       workdir={workdir}
       version={version}

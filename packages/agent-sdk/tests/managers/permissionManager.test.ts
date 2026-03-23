@@ -102,6 +102,102 @@ describe("PermissionManager", () => {
       });
     });
 
+    describe("instance-specific rules (allowedTools and disallowedTools)", () => {
+      it("should deny tool if it is in instanceDeniedRules", async () => {
+        const manager = new PermissionManager(container, {
+          instanceDeniedRules: ["Bash"],
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls" },
+        };
+
+        const result = await manager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain(
+          "explicitly denied by instance rule: Bash",
+        );
+      });
+
+      it("should allow tool if it is in instanceAllowedRules", async () => {
+        const manager = new PermissionManager(container, {
+          instanceAllowedRules: ["Bash(ls)"],
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls" },
+        };
+
+        const result = await manager.checkPermission(context);
+
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should give precedence to instanceDeniedRules over instanceAllowedRules", async () => {
+        const manager = new PermissionManager(container, {
+          instanceAllowedRules: ["Bash"],
+          instanceDeniedRules: ["Bash(rm *)"],
+        });
+
+        const contextAllow: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls" },
+        };
+        const contextDeny: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "rm -rf /" },
+        };
+
+        expect((await manager.checkPermission(contextAllow)).behavior).toBe(
+          "allow",
+        );
+        expect((await manager.checkPermission(contextDeny)).behavior).toBe(
+          "deny",
+        );
+      });
+
+      it("should give precedence to instanceAllowedRules over global allowedRules", async () => {
+        // Global allowedRules usually require confirmation if not matched,
+        // but here we test that instanceAllowedRules auto-approve.
+        const manager = new PermissionManager(container, {
+          instanceAllowedRules: ["Bash(ls)"],
+          allowedRules: [], // No global rules
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls" },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should give precedence to instanceDeniedRules over global allowedRules", async () => {
+        const manager = new PermissionManager(container, {
+          instanceDeniedRules: ["Bash"],
+          allowedRules: ["Bash"],
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls" },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+    });
+
     describe("explicit denial (permissions.deny)", () => {
       it("should deny tool if it is in deniedRules", async () => {
         permissionManager.updateDeniedRules(["Bash"]);

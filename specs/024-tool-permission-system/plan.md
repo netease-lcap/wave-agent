@@ -15,6 +15,7 @@ Comprehensive tool permission system for Wave, featuring:
 - **Built-in Safety**: Automatic permission for safe commands (cd, ls, pwd) within the CWD.
 - **Split Chained Commands**: Splitting chained commands on "Don't ask again" and saving only non-safe parts.
 - **Bash Confirmation Safety**: Hiding "Don't ask again" for dangerous, out-of-bounds, or write-redirection commands.
+- **Programmatic and Session-specific Permissions**: `allowedTools` and `disallowedTools` in SDK and CLI.
 
 ## Technical Context
 
@@ -58,3 +59,4 @@ packages/
 3. **Pipeline Security**: Command decomposition and validation.
 4. **Granular Control**: Deny rules and path-based permissions.
 5. **Safe Defaults**: Built-in command list with path restrictions.
+6. **Programmatic and Session-specific Permissions**: `allowedTools` and `disallowedTools` in SDK and CLI.
