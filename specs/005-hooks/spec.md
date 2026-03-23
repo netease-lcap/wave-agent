@@ -201,6 +201,7 @@ As a developer, I want to run hooks when Wave requests permission to use a tool,
 - **FR-022**: System MUST support `async` field in hook configuration to allow background execution.
 - **FR-023**: System MUST support `timeout` field (in seconds) in hook configuration to override the default 10-minute timeout.
 - **FR-024**: System MUST NOT deliver stdout/stderr from async hooks to the conversation to prevent unexpected message injections from background tasks.
+- **FR-030**: System MUST parse stdout of PermissionRequest hooks when they exit with code 0. If the stdout is valid JSON matching the schema `{"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow" | "deny"}}}`, the system MUST use the provided decision to grant or deny the permission.
 
 ### Key Entities
 
