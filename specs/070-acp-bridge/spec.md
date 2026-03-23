@@ -75,6 +75,8 @@ As a user, I want to see the agent's current task list and plan in my external c
     - `available_commands_update`: Notification of available slash commands.
 - **FR-008**: System MUST support setting session modes (e.g., `default`, `acceptEdits`, `plan`, `bypassPermissions`) via `setSessionMode` or `setSessionConfigOption`.
 - **FR-009**: System MUST provide diffs for `Write` and `Edit` tool calls in the `tool_call` content when possible.
+- **FR-010**: System MUST handle `ExitPlanMode` tool calls specially by restricting permission options to "Approve Plan" and "Reject Plan", and automatically transitioning to `default` mode upon approval.
+- **FR-011**: System MUST include `plan_content` in the `tool_call` content for `ExitPlanMode` tool calls.
 
 ### Key Entities
 
