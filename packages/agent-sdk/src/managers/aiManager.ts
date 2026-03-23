@@ -838,7 +838,6 @@ export class AIManager {
                   (b): b is import("../types/messaging.js").ToolBlock =>
                     b.type === "tool",
                 );
-              const duplicateToolNames: string[] = [];
 
               for (const currentToolCall of toolCalls) {
                 const currentName = currentToolCall.function?.name;
@@ -851,15 +850,21 @@ export class AIManager {
                 );
 
                 if (isDuplicate && currentName) {
-                  duplicateToolNames.push(currentName);
+                  const toolId = currentToolCall.id;
+                  const lastMessage = messages[messages.length - 1];
+                  const toolBlock = lastMessage.blocks.find(
+                    (b): b is import("../types/messaging.js").ToolBlock =>
+                      b.type === "tool" && b.id === toolId,
+                  );
+                  if (toolBlock) {
+                    const warning = `\n\nNote: You just called this tool with the same arguments in the previous turn. Please ensure you are not in a loop and consider if you need to change your approach.`;
+                    this.messageManager.updateToolBlock({
+                      id: toolId,
+                      result: (toolBlock.result || "") + warning,
+                      stage: "end",
+                    });
+                  }
                 }
-              }
-
-              if (duplicateToolNames.length > 0) {
-                const uniqueDuplicateNames = [...new Set(duplicateToolNames)];
-                this.messageManager.addUserMessage({
-                  content: `You just called these tools with the same arguments in the previous turn: [${uniqueDuplicateNames.join(", ")}]. Please ensure you are not in a loop and consider if you need to change your approach.`,
-                });
               }
             }
           }

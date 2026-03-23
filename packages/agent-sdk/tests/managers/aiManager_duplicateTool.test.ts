@@ -97,12 +97,23 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
       ],
     };
 
+    const currentAssistantMessage: Message = {
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool",
+          id: "call_1",
+          name: "test_tool",
+          parameters: '{"arg": "val"}',
+          result: "test result",
+          stage: "end",
+        },
+      ],
+    };
+
     vi.mocked(mockMessageManager.getMessages).mockReturnValue([
       previousAssistantMessage,
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "result" }],
-      } as unknown as Message, // Tool result message
+      currentAssistantMessage,
     ]);
 
     vi.mocked(aiService.callAgent)
@@ -124,10 +135,11 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
 
     await aiManager.sendAIMessage();
 
-    expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith(
+    expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining(
-          "You just called these tools with the same arguments in the previous turn: [test_tool]",
+        id: "call_1",
+        result: expect.stringContaining(
+          "Note: You just called this tool with the same arguments in the previous turn.",
         ),
       }),
     );
@@ -146,12 +158,23 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
       ],
     };
 
+    const currentAssistantMessage: Message = {
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool",
+          id: "call_1",
+          name: "test_tool",
+          parameters: '{"arg": "val2"}',
+          result: "test result",
+          stage: "end",
+        },
+      ],
+    };
+
     vi.mocked(mockMessageManager.getMessages).mockReturnValue([
       previousAssistantMessage,
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "result" }],
-      } as unknown as Message,
+      currentAssistantMessage,
     ]);
 
     vi.mocked(aiService.callAgent)
@@ -173,10 +196,10 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
 
     await aiManager.sendAIMessage();
 
-    expect(mockMessageManager.addUserMessage).not.toHaveBeenCalledWith(
+    expect(mockMessageManager.updateToolBlock).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining(
-          "You just called these tools with the same arguments",
+        result: expect.stringContaining(
+          "Note: You just called this tool with the same arguments",
         ),
       }),
     );
@@ -195,12 +218,23 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
       ],
     };
 
+    const currentAssistantMessage: Message = {
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool",
+          id: "call_1",
+          name: "test_tool_2",
+          parameters: '{"arg": "val"}',
+          result: "test result",
+          stage: "end",
+        },
+      ],
+    };
+
     vi.mocked(mockMessageManager.getMessages).mockReturnValue([
       previousAssistantMessage,
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "result" }],
-      } as unknown as Message,
+      currentAssistantMessage,
     ]);
 
     vi.mocked(aiService.callAgent)
@@ -222,16 +256,16 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
 
     await aiManager.sendAIMessage();
 
-    expect(mockMessageManager.addUserMessage).not.toHaveBeenCalledWith(
+    expect(mockMessageManager.updateToolBlock).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining(
-          "You just called these tools with the same arguments",
+        result: expect.stringContaining(
+          "Note: You just called this tool with the same arguments",
         ),
       }),
     );
   });
 
-  it("should include all duplicate tool names in the reminder", async () => {
+  it("should include reminders for all duplicate tool calls", async () => {
     const previousAssistantMessage: Message = {
       role: "assistant",
       blocks: [
@@ -250,12 +284,31 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
       ],
     };
 
+    const currentAssistantMessage: Message = {
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool",
+          id: "call_1",
+          name: "tool1",
+          parameters: '{"a": 1}',
+          result: "result 1",
+          stage: "end",
+        },
+        {
+          type: "tool",
+          id: "call_2",
+          name: "tool2",
+          parameters: '{"b": 2}',
+          result: "result 2",
+          stage: "end",
+        },
+      ],
+    };
+
     vi.mocked(mockMessageManager.getMessages).mockReturnValue([
       previousAssistantMessage,
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "result" }],
-      } as unknown as Message,
+      currentAssistantMessage,
     ]);
 
     vi.mocked(aiService.callAgent)
@@ -282,9 +335,20 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
 
     await aiManager.sendAIMessage();
 
-    expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith(
+    expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining("[tool1, tool2]"),
+        id: "call_1",
+        result: expect.stringContaining(
+          "Note: You just called this tool with the same arguments",
+        ),
+      }),
+    );
+    expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "call_2",
+        result: expect.stringContaining(
+          "Note: You just called this tool with the same arguments",
+        ),
       }),
     );
   });
