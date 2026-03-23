@@ -186,6 +186,9 @@ export class SubagentManager {
         parentPermissionManager?.getConfiguredDefaultMode(),
       allowedRules: parentPermissionManager?.getAllowedRules(),
       deniedRules: parentPermissionManager?.getDeniedRules(),
+      instanceAllowedRules:
+        parentPermissionManager?.getInstanceAllowedRules?.(),
+      instanceDeniedRules: parentPermissionManager?.getInstanceDeniedRules?.(),
       additionalDirectories:
         parentPermissionManager?.getAdditionalDirectories(),
       planFilePath: parentPermissionManager?.getPlanFilePath(),

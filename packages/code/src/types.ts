@@ -6,6 +6,8 @@ export interface BaseAppProps {
   permissionMode?: PermissionMode;
   pluginDirs?: string[];
   tools?: string[];
+  allowedTools?: string[];
+  disallowedTools?: string[];
   worktreeSession?: WorktreeSession;
   workdir?: string;
   version?: string;

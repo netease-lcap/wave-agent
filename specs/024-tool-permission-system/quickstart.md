@@ -85,6 +85,42 @@ The following commands are automatically permitted if they operate within the cu
 
 Any attempt to access paths outside the CWD (e.g., `cd ..`, `ls /etc`) will trigger a permission prompt.
 
+## Programmatic and Session-specific Permissions
+
+### CLI Session Permissions
+You can provide temporary permission rules for a single `wave` session using the `--allowed-tools` and `--disallowed-tools` flags. These rules are not saved to your `settings.json`.
+
+```bash
+# Allow git status but disallow git push for this session
+wave --allowed-tools "Bash(git status)" --disallowed-tools "Bash(git push*)"
+```
+
+### SDK Instance Permissions
+When creating an `Agent` instance via the SDK, you can provide instance-specific permission rules.
+
+```typescript
+import { Agent } from 'wave-agent-sdk';
+
+const agent = await Agent.create({
+  // Allow specific patterns
+  allowedTools: ["Bash(ls *)", "Read(src/**)"],
+  // Explicitly block dangerous patterns
+  disallowedTools: ["Bash(rm *)", "Write(.env)"]
+});
+```
+
+### Tool Filtering vs. Permissions
+The `tools` option is used for **filtering** (controlling which tools are available to the AI), while `allowedTools` and `disallowedTools` are used for **permissions** (controlling execution).
+
+```typescript
+const agent = await Agent.create({
+  // Only Bash and Read are available to the AI
+  tools: ["Bash", "Read"],
+  // Within the available tools, restrict specific patterns
+  disallowedTools: ["Bash(rm *)"]
+});
+```
+
 ## Agent SDK Integration
 
 ### Custom Permission Logic

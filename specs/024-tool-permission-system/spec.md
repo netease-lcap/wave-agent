@@ -82,6 +82,15 @@ As a user, I want MCP tools to be subject to the same permission checks as built
 2. **Given** a confirmation prompt for an MCP tool, **When** the user selects "Yes, and don't ask again", **Then** the system MUST save a persistent rule in the format `mcp__server__tool`.
 3. **Given** a persistent rule `mcp__server__tool` exists, **When** the agent calls that specific MCP tool, **Then** it MUST execute immediately without prompting.
 
+### User Story 10 - Programmatic and Session-specific Permissions (Priority: P1)
+
+As a developer using the SDK or a user on the CLI, I want to provide temporary permission rules (both allowed and disallowed) that apply only to the current agent instance or session. This allows for fine-grained security control without modifying global settings.
+
+**Acceptance Scenarios**:
+1. **Given** an Agent created via SDK with `disallowedTools: ["Bash(rm *)"]`, **When** the AI attempts to run `rm -rf /`, **Then** the operation is denied even if `Bash` is otherwise allowed.
+2. **Given** the CLI is started with `--allowedTools "Bash(git status)"`, **When** the agent runs `git status`, **Then** it is auto-approved for that session only.
+3. **Given** an agent configured with `tools: ["Bash"]` (filtering) and `disallowedTools: ["Bash(rm *)"]` (permissions), **When** the AI attempts `ls`, **Then** it is allowed; **When** it attempts `rm`, **Then** it is denied.
+
 ## Requirements
 
 ### Functional Requirements
@@ -126,20 +135,16 @@ As a user, I want MCP tools to be subject to the same permission checks as built
 - **FR-018**: System MUST maintain a built-in list of safe commands (`cd`, `ls`, `pwd`, `mkdir`) that are permitted if they operate within the CWD or its subdirectories.
 - **FR-019**: Built-in safe commands attempting to access paths outside the CWD (e.g., `cd ..`, `ls /etc`) MUST require explicit permission.
 
+#### Programmatic and Session-specific Permissions
+- **FR-030**: The `AgentOptions` interface in the SDK MUST include optional `allowedTools` and `disallowedTools` properties of type `string[]`.
+- **FR-031**: The CLI MUST support `--allowedTools` and `--disallowedTools` flags that accept comma-separated strings of rules.
+- **FR-032**: Rules provided via SDK or CLI MUST be instance-specific or session-specific and MUST NOT be persisted to `settings.json` automatically.
+- **FR-033**: `tools` and the permission rules MUST operate independently: `tools` filters available tool definitions (visibility), while `allowedTools`/`disallowedTools` define execution permissions.
+- **FR-034**: `disallowedTools` MUST take precedence over `allowedTools` if a tool call matches both.
+
 ## Key Entities
 
 - **Permission Mode**: Configuration determining the level of user intervention required.
-- **Permission Rule**: A string defining a permitted or denied action (e.g., `Bash(git *)`, `Read(**/*.env)`).
-- **Simple Command**: A single executable command with its arguments, extracted from a pipeline.
-- **Smart Wildcard**: A heuristic-generated pattern that replaces dynamic arguments with `*`.
-
-## Edge Cases
-
-- **Nested Operators**: Pipelines like `cmd1 && (cmd2 | cmd3)` must be recursively decomposed.
-- **Precedence**: Deny rules always win over allow rules.
-- **Sensitive Commands**: Commands like `rm` are blacklisted from smart wildcard suggestions to prevent accidental broad permissions.
-- **Escaped Characters**: `echo "&&"` must be treated as a single command, not split.
-uration determining the level of user intervention required.
 - **Permission Rule**: A string defining a permitted or denied action (e.g., `Bash(git *)`, `Read(**/*.env)`).
 - **Simple Command**: A single executable command with its arguments, extracted from a pipeline.
 - **Smart Wildcard**: A heuristic-generated pattern that replaces dynamic arguments with `*`.

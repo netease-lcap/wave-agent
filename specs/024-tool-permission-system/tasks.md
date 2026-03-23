@@ -51,9 +51,9 @@
 - [x] T030 Extract `DANGEROUS_COMMANDS` blacklist and implement `hasWriteRedirections`.
 - [x] T031 Implement detection logic in `PermissionManager.createContext` to set `hidePersistentOption` for dangerous/out-of-bounds commands.
 - [x] T032 Update `Confirmation` component to hide "Don't ask again" when `hidePersistentOption` is true.
-## Phase 10: MCP Tool Permissions
-- [x] T034 Treat any tool name starting with `mcp__` as a restricted tool in `PermissionManager`.
-- [x] T035 Implement permission check in `McpManager.executeMcpTool` before execution.
-- [x] T036 Update `ConfirmationSelector` to suggest persistent rules for MCP tools in the format `mcp__server__tool`.
-- [x] T037 Propagate `ToolContext` to MCP tool execution functions.
-- [x] T038 Add unit tests for MCP tool permission logic.
+## Phase 11: Programmatic and Session-specific Permissions
+- [x] T039 Add `allowedTools` and `disallowedTools` to `AgentOptions` in SDK.
+- [x] T040 Implement `--allowed-tools` and `--disallowed-tools` flags in CLI.
+- [x] T041 Update `PermissionManager` to handle instance-specific `allowedTools` and `disallowedTools`.
+- [x] T042 Ensure `disallowedTools` (deny) takes precedence over `allowedTools` (allow).
+- [x] T043 Add unit and integration tests for programmatic and session-specific permissions.

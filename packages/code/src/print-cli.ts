@@ -41,6 +41,8 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     permissionMode,
     pluginDirs,
     tools,
+    allowedTools,
+    disallowedTools,
     worktreeSession,
     workdir,
     model,
@@ -149,6 +151,8 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         permissionMode || (bypassPermissions ? "bypassPermissions" : undefined),
       plugins: pluginDirs?.map((path) => ({ type: "local", path })),
       tools,
+      allowedTools,
+      disallowedTools,
       workdir,
       model,
       // 保持流式模式以获得更好的命令行用户体验

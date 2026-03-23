@@ -77,6 +77,18 @@ export async function main() {
         type: "string",
         global: false,
       })
+      .option("allowed-tools", {
+        description:
+          "Specify a comma-separated list of tools to always allow (e.g., 'Bash(ls),Read')",
+        type: "string",
+        global: false,
+      })
+      .option("disallowed-tools", {
+        description:
+          "Specify a comma-separated list of tools to always disallow (e.g., 'Bash(rm *),Write')",
+        type: "string",
+        global: false,
+      })
       .option("model", {
         description: "Specify the AI model to use",
         type: "string",
@@ -234,10 +246,34 @@ export async function main() {
     const parseTools = (tools: string | undefined): string[] | undefined => {
       if (tools === undefined || tools === "default") return undefined;
       if (tools === "") return [];
-      return tools.split(",").map((t) => t.trim());
+
+      // Improved parsing to handle commas inside parentheses
+      const result: string[] = [];
+      let current = "";
+      let depth = 0;
+      for (let i = 0; i < tools.length; i++) {
+        const char = tools[i];
+        if (char === "(") depth++;
+        else if (char === ")") depth--;
+
+        if (char === "," && depth === 0) {
+          result.push(current.trim());
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+      if (current.trim()) {
+        result.push(current.trim());
+      }
+      return result;
     };
 
     const tools = parseTools(argv.tools as string | undefined);
+    const allowedTools = parseTools(argv.allowedTools as string | undefined);
+    const disallowedTools = parseTools(
+      argv.disallowedTools as string | undefined,
+    );
 
     // Resolve plugin directories to absolute paths before any worktree logic
     const pluginDirs = (argv.pluginDir as string[] | undefined)?.map((dir) =>
@@ -290,6 +326,8 @@ export async function main() {
         permissionMode: argv.permissionMode as PermissionMode | undefined,
         pluginDirs,
         tools,
+        allowedTools,
+        disallowedTools,
         worktreeSession,
         workdir,
         version,
@@ -311,6 +349,8 @@ export async function main() {
         permissionMode: argv.permissionMode as PermissionMode | undefined,
         pluginDirs,
         tools,
+        allowedTools,
+        disallowedTools,
         worktreeSession,
         workdir,
         version,
@@ -325,6 +365,8 @@ export async function main() {
       permissionMode: argv.permissionMode as PermissionMode | undefined,
       pluginDirs,
       tools,
+      allowedTools,
+      disallowedTools,
       worktreeSession,
       workdir,
       version,
