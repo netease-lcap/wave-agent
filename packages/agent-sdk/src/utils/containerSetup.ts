@@ -201,14 +201,6 @@ export function setupAgentContainer(
                   "Permission denied by hook execution",
               };
             }
-
-            if (
-              processResult.hookSpecificOutput?.hookEventName ===
-                "PermissionRequest" &&
-              processResult.hookSpecificOutput.decision
-            ) {
-              return processResult.hookSpecificOutput.decision;
-            }
           }
         } catch (error) {
           logger.warn("Failed to execute permission request hooks", {

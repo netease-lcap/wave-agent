@@ -165,16 +165,6 @@ export interface HookJsonInput {
   name?: string; // Present for WorktreeCreate events
 }
 
-// JSON structure returned by hooks via stdout
-export interface HookJsonOutput {
-  hookSpecificOutput?: {
-    hookEventName: HookEvent;
-    decision?: {
-      behavior: "allow" | "deny";
-    };
-  };
-}
-
 // Extended context interface for passing additional data to hook executor
 export interface ExtendedHookExecutionContext extends HookExecutionContext {
   sessionId?: string; // Session identifier for JSON construction

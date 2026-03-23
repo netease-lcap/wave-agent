@@ -12,7 +12,6 @@ import {
   type ExtendedHookExecutionContext,
   type HookExecutionResult,
   type HookValidationResult,
-  type HookJsonOutput,
   HookConfigurationError,
   isValidHookEvent,
   isValidHookEventConfig,
@@ -227,7 +226,6 @@ export class HookManager {
   ): {
     shouldBlock: boolean;
     errorMessage?: string;
-    hookSpecificOutput?: HookJsonOutput["hookSpecificOutput"];
   } {
     if (!messageManager || results.length === 0) {
       return { shouldBlock: false };
@@ -238,17 +236,19 @@ export class HookManager {
     for (const result of results) {
       if (result.exitCode === 2) {
         // Handle blocking error immediately and return
-        return this.handleBlockingError(
+        const blockingResult = this.handleBlockingError(
           event,
           result,
           messageManager,
           toolId,
           toolParameters,
         );
+        return {
+          shouldBlock: blockingResult.shouldBlock,
+          errorMessage: blockingResult.errorMessage,
+        };
       }
     }
-
-    let hookSpecificOutput: HookJsonOutput["hookSpecificOutput"] | undefined;
 
     // Second pass: Process all non-blocking results
     for (const result of results) {
@@ -259,17 +259,14 @@ export class HookManager {
       // Handle exit code interpretation
       if (result.exitCode === 0) {
         // Success case - handle stdout based on hook type
-        const output = this.handleHookSuccess(event, result, messageManager);
-        if (output) {
-          hookSpecificOutput = output;
-        }
+        this.handleHookSuccess(event, result, messageManager);
       } else {
         // Non-blocking error case (any exit code except 0 and 2)
         this.handleNonBlockingError(result, messageManager);
       }
     }
 
-    return { shouldBlock: false, hookSpecificOutput };
+    return { shouldBlock: false };
   }
 
   /**
@@ -279,7 +276,7 @@ export class HookManager {
     event: HookEvent,
     result: HookExecutionResult,
     messageManager: MessageManager,
-  ): HookJsonOutput["hookSpecificOutput"] | undefined {
+  ): void {
     if (event === "UserPromptSubmit" && result.stdout?.trim()) {
       // Inject stdout as user message context for UserPromptSubmit
       messageManager.addUserMessage({
@@ -287,24 +284,7 @@ export class HookManager {
         source: MessageSource.HOOK,
       });
     }
-
-    if (event === "PermissionRequest" && result.stdout?.trim()) {
-      try {
-        const output = JSON.parse(result.stdout.trim()) as HookJsonOutput;
-        if (
-          output.hookSpecificOutput?.hookEventName === "PermissionRequest" &&
-          output.hookSpecificOutput.decision
-        ) {
-          return output.hookSpecificOutput;
-        }
-      } catch {
-        logger?.warn(
-          `[HookManager] Failed to parse PermissionRequest hook stdout as JSON: ${result.stdout}`,
-        );
-      }
-    }
-    // For other hook types (PreToolUse, PostToolUse, Stop), ignore stdout
-    return undefined;
+    // For other hook types (PreToolUse, PostToolUse, Stop, PermissionRequest), ignore stdout
   }
 
   /**
@@ -319,7 +299,6 @@ export class HookManager {
   ): {
     shouldBlock: boolean;
     errorMessage?: string;
-    hookSpecificOutput?: HookJsonOutput["hookSpecificOutput"];
   } {
     const errorMessage = result.stderr?.trim() || "Hook execution failed";
 
