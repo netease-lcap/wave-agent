@@ -41,9 +41,12 @@ export const ChatInterface: React.FC = () => {
     version,
     workdir,
     getModelConfig,
+    sideMessages,
   } = useChat();
 
   const model = getModelConfig().model;
+
+  const displayMessages = sideMessages || messages;
 
   const handleDetailsHeightMeasured = useCallback((height: number) => {
     setDetailsHeight(height);
@@ -116,7 +119,7 @@ export const ChatInterface: React.FC = () => {
   return (
     <Box flexDirection="column">
       <MessageList
-        messages={messages}
+        messages={displayMessages}
         isExpanded={isExpanded}
         forceStatic={isConfirmationVisible && isConfirmationTooTall}
         version={version}
@@ -133,6 +136,7 @@ export const ChatInterface: React.FC = () => {
             isCommandRunning={isCommandRunning}
             isCompressing={isCompressing}
             latestTotalTokens={latestTotalTokens}
+            isSideAgentActive={!!sideMessages}
           />
         )}
       {!isConfirmationVisible && !isExpanded && <TaskList />}

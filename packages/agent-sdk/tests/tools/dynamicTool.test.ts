@@ -55,6 +55,7 @@ describe("Dynamic Tool Definitions", () => {
 
       const subagentManager = new SubagentManager(container, {
         workdir: "/test/workdir",
+        stream: false,
       });
 
       // Mock initialization

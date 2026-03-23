@@ -96,6 +96,7 @@ describe("SubagentManager - Recent Changes Coverage", () => {
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
       callbacks,
+      stream: false,
     });
 
     await subagentManager.initialize();

@@ -86,6 +86,7 @@ describe("SubagentManager Consistency", () => {
     // Create SubagentManager with mocks
     subagentManager = new SubagentManager(container, {
       workdir: "/test",
+      stream: false,
     });
 
     // Mock configurations

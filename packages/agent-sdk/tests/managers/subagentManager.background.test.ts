@@ -88,12 +88,14 @@ describe("SubagentManager - Backgrounding Coverage", () => {
 
     subagentManager = new SubagentManager(container, {
       workdir: "/test",
+      stream: false,
     });
   });
 
   it("should handle backgroundInstance error when backgroundTaskManager is missing", async () => {
     const managerNoBG = new SubagentManager(container, {
       workdir: "/test",
+      stream: false,
     });
     // Remove BackgroundTaskManager from container for this test
     (
@@ -196,6 +198,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
 
     const manager = new SubagentManager(container, {
       workdir: "/test",
+      stream: false,
       callbacks: { onSubagentAssistantReasoningUpdated },
     });
 

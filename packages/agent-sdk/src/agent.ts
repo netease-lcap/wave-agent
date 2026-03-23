@@ -3,6 +3,7 @@ import { MessageManager } from "./managers/messageManager.js";
 import { AIManager } from "./managers/aiManager.js";
 import { ToolManager } from "./managers/toolManager.js";
 import { SubagentManager } from "./managers/subagentManager.js";
+import { BtwManager } from "./managers/btwManager.js";
 import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BangManager } from "./managers/bangManager.js";
@@ -53,6 +54,7 @@ export class Agent {
   private permissionManager: PermissionManager; // Add permission manager instance
   private planManager: PlanManager; // Add plan manager instance
   private subagentManager: SubagentManager; // Add subagent manager instance
+  private btwManager: BtwManager; // Add btw manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
@@ -164,6 +166,7 @@ export class Agent {
     this.toolManager = this.container.get("ToolManager")!;
     this.liveConfigManager = this.container.get("LiveConfigManager")!;
     this.subagentManager = this.container.get("SubagentManager")!;
+    this.btwManager = this.container.get("BtwManager")!;
     this.aiManager = this.container.get("AIManager")!;
     this.slashCommandManager = this.container.get("SlashCommandManager")!;
     this.pluginManager = this.container.get("PluginManager")!;
@@ -485,13 +488,20 @@ export class Agent {
   }
 
   /**
-   * Get a subagent instance by its ID
-   * @param subagentId - The ID of the subagent instance
+   * Ask a side question without blocking the main task
+   * @param question - The user's question
+   * @returns Promise that resolves to the side agent's instance ID
    */
-  public getSubagentInstance(
-    subagentId: string,
-  ): import("./managers/subagentManager.js").SubagentInstance | null {
-    return this.subagentManager.getInstance(subagentId);
+  public async btw(question: string): Promise<string> {
+    return await this.btwManager.btw(question);
+  }
+
+  /**
+   * Dismiss the current side agent
+   */
+  public dismissSideAgent(): void {
+    this.btwManager.dismiss();
+    this.options.callbacks?.onSideAgentUpdated?.(null);
   }
 
   /**
@@ -686,6 +696,17 @@ export class Agent {
    */
   public async addPermissionRule(rule: string): Promise<void> {
     await this.permissionManager.addPermissionRule(rule);
+  }
+
+  /**
+   * Get subagent instance by ID
+   * @param subagentId - The ID of the subagent instance
+   * @returns The subagent instance or null if not found
+   */
+  public getSubagentInstance(
+    subagentId: string,
+  ): import("./managers/subagentManager.js").SubagentInstance | null {
+    return this.subagentManager.getInstance(subagentId);
   }
 
   /**

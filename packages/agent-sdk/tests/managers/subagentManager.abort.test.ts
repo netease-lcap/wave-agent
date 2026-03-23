@@ -90,6 +90,7 @@ describe("SubagentManager - Abort Logic", () => {
 
     subagentManager = new SubagentManager(container, {
       workdir: "/test",
+      stream: false,
     });
   });
 

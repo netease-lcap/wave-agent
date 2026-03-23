@@ -139,6 +139,7 @@ describe("Subagent Plan Mode Integration", () => {
 
     subagentManager = new SubagentManager(container, {
       workdir: "/test/project",
+      stream: false,
     });
 
     // Mock createInstance to return our mockMessageManager
