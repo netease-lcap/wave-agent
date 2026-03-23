@@ -31,8 +31,8 @@ As a user interacting with the agent through an external client, I want to be pr
 **Acceptance Scenarios**:
 
 1. **Given** the agent wants to use a restricted tool (e.g., `Write`), **When** the agent is in `default` mode, **Then** it sends a `requestPermission` request to the client via ACP.
-2. **Given** a `requestPermission` request is sent, **When** the user selects "Allow Once" in the client, **Then** the agent proceeds with the tool execution.
-3. **Given** a `requestPermission` request is sent, **When** the user selects "Reject Once" in the client, **Then** the agent receives a "denied" response and handles it accordingly.
+2. **Given** a `requestPermission` request is sent, **When** the user selects "Yes, proceed" in the client, **Then** the agent proceeds with the tool execution.
+3. **Given** a `requestPermission` request is sent, **When** the user selects "Cancel" (with reason) in the client, **Then** the agent receives a "denied" response and handles it accordingly.
 
 ---
 
