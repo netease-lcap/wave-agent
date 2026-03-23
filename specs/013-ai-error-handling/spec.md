@@ -81,6 +81,7 @@ As a user, I want the agent to handle cases where the AI provides malformed JSON
 - **FR-006**: The system MUST save debug data (messages, error details) to a temporary directory when a 400 error occurs.
 - **FR-007**: The system MUST handle JSON parsing errors for tool arguments. If the response was truncated, the error message MUST include: `"(output truncated, please reduce your output)"`.
 - **FR-008**: The system MUST respect abort signals and backgrounded tools, stopping recursion even if a truncation occurred.
+- **FR-009**: The system MUST detect if a new tool call is identical to a tool call in the previous turn (same tool name and arguments). If so, it MUST add a user message reminding the agent to avoid loops and consider changing its approach.
 
 ### Key Entities *(include if feature involves data)*
 
