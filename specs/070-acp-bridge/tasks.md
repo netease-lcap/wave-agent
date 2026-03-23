@@ -22,3 +22,8 @@
 - [x] **Task 12**: Implement permission mode management (`setSessionMode`, `setSessionConfigOption`).
 - [x] **Task 13**: Implement `available_commands_update` for slash command discovery.
 - [x] **Task 14**: Implement cleanup of all active agents on connection closure.
+
+## Phase 4: Refinements (Completed)
+
+- [x] **Task 15**: Implement special handling for `ExitPlanMode` tool calls in ACP bridge.
+- [x] **Task 16**: Include `plan_content` in `ExitPlanMode` tool call content for ACP clients.

@@ -12,6 +12,7 @@ import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
 } from "wave-agent-sdk";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -410,7 +411,7 @@ export class WaveAcpAgent implements AcpAgent {
         ? `${effectiveName}: ${effectiveCompactParams}`
         : effectiveName || "Tool Call";
 
-    const options: PermissionOption[] = [
+    let options: PermissionOption[] = [
       {
         optionId: "allow_once",
         name: "Allow Once",
@@ -427,6 +428,21 @@ export class WaveAcpAgent implements AcpAgent {
         kind: "reject_once",
       },
     ];
+
+    if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+      options = [
+        {
+          optionId: "allow_once",
+          name: "Approve Plan",
+          kind: "allow_once",
+        },
+        {
+          optionId: "reject_once",
+          name: "Reject Plan",
+          kind: "reject_once",
+        },
+      ];
+    }
 
     const content = context.toolName
       ? await this.getToolContentAsync(
@@ -490,6 +506,9 @@ export class WaveAcpAgent implements AcpAgent {
             newPermissionRule: context.toolName,
           };
         case "allow_once":
+          if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+            return { behavior: "allow", newPermissionMode: "default" };
+          }
           return { behavior: "allow" };
         case "reject_once":
           return { behavior: "deny", message: "Rejected by user" };
@@ -602,6 +621,14 @@ export class WaveAcpAgent implements AcpAgent {
           path: (parameters.file_path || parameters.filePath) as string,
           oldText: parameters.old_string as string,
           newText: parameters.new_string as string,
+        });
+      } else if (name === EXIT_PLAN_MODE_TOOL_NAME) {
+        contents.push({
+          type: "content",
+          content: {
+            type: "text",
+            text: parameters.plan_content as string,
+          },
         });
       }
     }

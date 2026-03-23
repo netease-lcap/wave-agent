@@ -502,6 +502,64 @@ describe("WaveAcpAgent", () => {
     );
   });
 
+  it("should handle ExitPlanMode permission request specially", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("plan"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.requestPermission).mockResolvedValue({
+      outcome: { outcome: "selected", optionId: "allow_once" },
+    } as unknown as RequestPermissionResponse);
+
+    const decision = await canUseToolCallback!({
+      toolName: "ExitPlanMode",
+      toolInput: { plan_content: "My Plan" },
+      permissionMode: "plan",
+      toolCallId: "exit-plan-id",
+    });
+
+    expect(decision.behavior).toBe("allow");
+    expect(decision.newPermissionMode).toBe("default");
+    expect(mockConnection.requestPermission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCall: expect.objectContaining({
+          toolCallId: "exit-plan-id",
+          title: "ExitPlanMode",
+          content: [
+            {
+              type: "content",
+              content: {
+                type: "text",
+                text: "My Plan",
+              },
+            },
+          ],
+        }),
+        options: [
+          {
+            optionId: "allow_once",
+            name: "Approve Plan",
+            kind: "allow_once",
+          },
+          {
+            optionId: "reject_once",
+            name: "Reject Plan",
+            kind: "reject_once",
+          },
+        ],
+      }),
+    );
+  });
+
   it("should handle permission rejection", async () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {

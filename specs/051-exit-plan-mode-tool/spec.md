@@ -46,6 +46,7 @@ As an agent in plan mode, I want to use the `ExitPlanMode` tool after I have fin
 - **FR-006**: `ExitPlanMode` MUST ONLY be included in the available tools list when the agent is in "plan mode".
 - **FR-007**: If the agent is NOT in "plan mode", the `ExitPlanMode` tool MUST NOT be exposed to the LLM.
 - **FR-008**: `ExitPlanMode` MUST NOT be available when `permissionMode` is set to `bypassPermissions`.
+- **FR-009**: When used via the ACP bridge, `ExitPlanMode` MAY provide a simplified approval process (e.g., "Approve Plan" and "Reject Plan") and automatically transition to `default` mode upon approval.
 
 ### Key Entities *(include if feature involves data)*
 
