@@ -328,7 +328,7 @@ describe("HookManager Coverage", () => {
         results,
         mockMessageManager as unknown as MessageManager,
       );
-      expect(res.shouldBlock).toBe(false);
+      expect(res.shouldBlock).toBe(true);
       expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
         "Notify Error",
       );
