@@ -53,9 +53,11 @@ As a user, I want the side agent to be able to explore the codebase and support 
 - **FR-005**: The side agent MUST have access to exploration tools (e.g., Grep, Glob, Read, LSP, Bash).
 - **FR-006**: System MUST ensure the side agent inherits all messages from the main agent's current conversation history to provide context for the answer.
 - **FR-007**: System MUST switch the message list view to show the side agent's messages when a `/btw` command is issued.
-- **FR-008**: System MUST display "Side agent is thinking... | Esc to dismiss" when the side agent is active and thinking.
-- **FR-009**: System MUST switch the message list view back to the main agent's messages when the user presses the Escape key.
-- **FR-010**: System MUST support multi-turn follow-up questions within the side agent view.
+- **FR-008**: System MUST display "Side agent is thinking..." when the side agent is active and thinking.
+- **FR-009**: System MUST display a dismissal tip "Press Space, Enter, or Esc to dismiss" when the side agent is active.
+- **FR-010**: System MUST switch the message list view back to the main agent's messages when the user presses Space, Enter, or Escape.
+- **FR-011**: System MUST hide all main agent loading indicators (AI thinking, command running, compressing) when the side agent is active.
+- **FR-012**: System MUST support multi-turn follow-up questions within the side agent view.
 
 ### Key Entities
 
