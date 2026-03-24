@@ -327,20 +327,24 @@ export class WaveAcpAgent implements AcpAgent {
     }
 
     // Map ACP prompt to Wave Agent sendMessage
-    const textContent = prompt
-      .filter((block) => block.type === "text")
-      .map((block) => (block as { text: string }).text)
-      .join("\n");
+    const textBlocks: string[] = [];
+    const images: { path: string; mimeType: string }[] = [];
 
-    const images = prompt
-      .filter((block) => block.type === "image")
-      .map((block) => {
+    for (const block of prompt) {
+      if (block.type === "text") {
+        textBlocks.push((block as { text: string }).text);
+      } else if (block.type === "resource") {
+        textBlocks.push((block as { resource: { uri: string } }).resource.uri);
+      } else if (block.type === "image") {
         const img = block as { data: string; mimeType: string };
-        return {
+        images.push({
           path: `data:${img.mimeType};base64,${img.data}`,
           mimeType: img.mimeType,
-        };
-      });
+        });
+      }
+    }
+
+    const textContent = textBlocks.join("\n");
 
     try {
       logger.info(

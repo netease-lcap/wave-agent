@@ -1558,4 +1558,67 @@ describe("WaveAcpAgent", () => {
       }),
     );
   });
+
+  it("should handle prompt with embedded resources", async () => {
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      saveSession: vi.fn().mockResolvedValue(undefined),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    await agent.prompt({
+      sessionId: "session-1",
+      prompt: [
+        { type: "text", text: "check this resource:" },
+        {
+          type: "resource",
+          resource: { uri: "file:///test/file.txt", text: "file content" },
+        },
+      ],
+    });
+
+    expect(mockWaveAgent.sendMessage).toHaveBeenCalledWith(
+      "check this resource:\nfile:///test/file.txt",
+      undefined,
+    );
+  });
+
+  it("should handle prompt with mixed content", async () => {
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      saveSession: vi.fn().mockResolvedValue(undefined),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    await agent.prompt({
+      sessionId: "session-1",
+      prompt: [
+        { type: "text", text: "text 1" },
+        { type: "image", data: "img1", mimeType: "image/png" },
+        { type: "resource", resource: { uri: "uri1", text: "res1" } },
+        { type: "text", text: "text 2" },
+        { type: "image", data: "img2", mimeType: "image/jpeg" },
+      ],
+    });
+
+    expect(mockWaveAgent.sendMessage).toHaveBeenCalledWith(
+      "text 1\nuri1\ntext 2",
+      [
+        { path: "data:image/png;base64,img1", mimeType: "image/png" },
+        { path: "data:image/jpeg;base64,img2", mimeType: "image/jpeg" },
+      ],
+    );
+  });
 });
