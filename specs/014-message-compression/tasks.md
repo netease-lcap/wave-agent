@@ -18,8 +18,7 @@
 
 - [X] T001 Research existing compression logic in `agent-sdk` and `code`
 - [X] T002 Document history compression mechanism in `spec.md`
-- [X] T003 Document input compression mechanism in `spec.md`
-- [X] T004 Define data models for `compress` blocks and `longTextMap` in `data-model.md`
+- [X] T004 Define data models for `compress` blocks in `data-model.md`
 
 ---
 
@@ -28,7 +27,6 @@
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
 - [X] T005 [P] Create unit test file for compression logic in `packages/agent-sdk/tests/agent/agent.compression.test.ts`
-- [ ] T006 [P] Create unit test file for `InputManager` paste handling in `packages/code/tests/managers/InputManager.test.ts`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -55,30 +53,9 @@
 
 ---
 
-## Phase 4: User Story 2 - Long Input Placeholder (Priority: P2)
-
-**Goal**: Replace long pasted text with placeholders in the UI.
-
-**Independent Test**: Paste long text and verify placeholder appearance and expansion.
-
-### Tests for User Story 2 (REQUIRED) ⚠️
-
-- [ ] T012 [US2] Write failing tests for paste detection and placeholder generation
-- [ ] T013 [US2] Write failing tests for placeholder expansion on submission
-
-### Implementation for User Story 2
-
-- [X] T014 [US2] Implement paste detection and placeholder replacement in `packages/code/src/managers/InputManager.ts`
-- [X] T015 [US2] Implement placeholder expansion in `packages/code/src/managers/InputManager.ts`
-
-**Checkpoint**: User Stories 1 and 2 work independently.
-
----
-
-## Phase 5: Polish & Cross-Cutting Concerns
+## Phase 4: Polish & Cross-Cutting Concerns
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T016 [P] Make input compression threshold configurable
 - [ ] T017 [P] Investigate if image metadata should be preserved in summaries
 - [ ] T018 [P] Final type-check and linting
