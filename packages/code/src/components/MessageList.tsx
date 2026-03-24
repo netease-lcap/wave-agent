@@ -38,18 +38,17 @@ export const MessageList = React.memo(
       </Box>
     );
 
-    // Limit messages when expanded to prevent long rendering times
-    const maxExpandedMessages = 20;
-    const shouldLimitMessages =
-      isExpanded && messages.length > maxExpandedMessages;
+    // Limit messages to prevent long rendering times
+    const maxMessages = 10;
+    const shouldLimitMessages = messages.length > maxMessages;
     const displayMessages = shouldLimitMessages
-      ? messages.slice(-maxExpandedMessages)
+      ? messages.slice(-maxMessages)
       : messages;
 
     // Flatten messages into blocks with metadata
     const allBlocks = displayMessages.flatMap((message, index) => {
       const messageIndex = shouldLimitMessages
-        ? messages.length - maxExpandedMessages + index
+        ? messages.length - maxMessages + index
         : index;
       return message.blocks.map((block, blockIndex) => ({
         block,
