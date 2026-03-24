@@ -7,7 +7,7 @@
 
 ## Summary
 
-Implement subagent support system that allows Wave Agent to delegate specialized tasks to configured AI personalities. Subagents operate with isolated context windows, have configurable tool access, and display as expandable message blocks in the UI. The system includes a Task tool for intelligent delegation, isolated aiManager and messageManager instances per subagent, and React components for subagent visualization.
+Implement subagent support system that allows Wave Agent to delegate specialized tasks to configured AI personalities. Subagents operate with isolated context windows, have configurable tool access, and display as expandable message blocks in the UI. The system includes an Agent tool for intelligent delegation, isolated aiManager and messageManager instances per subagent, and React components for subagent visualization.
 
 ## Technical Context
 
@@ -35,13 +35,13 @@ Implement subagent support system that allows Wave Agent to delegate specialized
 
 *GATE: Re-evaluated after Phase 1 design completion.*
 
-✅ **I. Package-First Architecture**: Design maintains clear package boundaries. SubagentManager and Task tool in agent-sdk, UI components in code package. No circular dependencies introduced. Each subagent gets isolated aiManager/messageManager instances.
+✅ **I. Package-First Architecture**: Design maintains clear package boundaries. SubagentManager and Agent tool in agent-sdk, UI components in code package. No circular dependencies introduced. Each subagent gets isolated aiManager/messageManager instances.
 
-✅ **II. TypeScript Excellence**: All new interfaces fully typed (SubagentConfiguration, SubagentInstance, SubagentBlock, TaskDelegation). No `any` types in design. Tool schema matches existing patterns with strict typing.
+✅ **II. TypeScript Excellence**: All new interfaces fully typed (SubagentConfiguration, SubagentInstance, SubagentBlock, AgentDelegation). No `any` types in design. Tool schema matches existing patterns with strict typing.
 
 ✅ **III. Test Alignment**: Test structure follows existing patterns. Unit tests in packages/*/tests, integration tests use temporary directories for .wave/agents/ testing. HookTester planned for React components.
 
-✅ **IV. Build Dependencies**: Design requires agent-sdk build before code package testing. Task tool and types must be built first, then UI components can import and use them.
+✅ **IV. Build Dependencies**: Design requires agent-sdk build before code package testing. Agent tool and types must be built first, then UI components can import and use them.
 
 ✅ **V. Documentation Minimalism**: Created only implementation documentation (research.md, data-model.md, contracts/, quickstart.md) as required by speckit workflow. No additional user-facing docs.
 
@@ -79,7 +79,7 @@ packages/
 ├── agent-sdk/
 │   ├── src/
 │   │   ├── tools/
-│   │   │   ├── taskTool.ts                    # NEW: Task delegation tool
+│   │   │   ├── agentTool.ts                   # NEW: Agent delegation tool
 │   │   │   └── types.ts                       # EXTEND: Add subagent types
 │   │   ├── managers/
 │   │   │   ├── messageManager.ts              # EXTEND: Add subagent callbacks
@@ -90,7 +90,7 @@ packages/
 │   │   └── types.ts                           # EXTEND: Add subagent message types
 │   └── tests/
 │       ├── tools/
-│       │   └── taskTool.test.ts               # NEW: Task tool tests
+│       │   └── agentTool.test.ts              # NEW: Agent tool tests
 │       ├── managers/
 │       │   └── subagentManager.test.ts        # NEW: Subagent manager tests
 │       └── utils/

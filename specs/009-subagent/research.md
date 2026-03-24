@@ -1,8 +1,8 @@
 # Research Phase: Subagent Support
 
-## Task Tool Implementation
+## Agent Tool Implementation
 
-**Decision**: Implement Task tool following existing ToolPlugin interface pattern
+**Decision**: Implement Agent tool following existing ToolPlugin interface pattern
 
 **Rationale**: 
 - Consistent with existing tool architecture (readTool, editTool, etc.)
@@ -61,12 +61,13 @@
 
 ## Subagent Selection Algorithm
 
-**Decision**: Implement explicit tool-based subagent selection with exact name matching only
+**Decision**: Automatic selection via Agent tool with exact name matching in SDK
 
 **Rationale**:
-- Uses explicit `Task` tool invocation with `subagent_type` parameter
-- Exact name matching only via `findSubagentByName()` function
-- No fuzzy matching or fallback mechanisms - requires precise subagent names
+- Uses explicit `Agent` tool invocation with `subagent_type` parameter
+- The LLM is responsible for choosing the correct `subagent_type` based on descriptions provided in the tool prompt.
+- Exact name matching only via `findSubagentByName()` function in SDK
+- No fallback to `findBestMatch` or fuzzy matching - requires precise subagent names
 - Clear error messages listing available subagents when no match found
 - Simplifies implementation and prevents unexpected subagent selection
 

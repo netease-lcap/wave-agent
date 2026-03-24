@@ -26,7 +26,7 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [X] T002 Create TaskDelegation interface in packages/agent-sdk/src/tools/types.ts
+- [X] T002 Create AgentDelegation interface in packages/agent-sdk/src/tools/types.ts
 - [X] T003 [P] Create SubagentConfiguration interface in packages/agent-sdk/src/utils/subagentParser.ts
 - [X] T004 [P] Create SubagentInstance interface in packages/agent-sdk/src/managers/subagentManager.ts
 - [X] T005 [P] Create SubagentBlock interface in packages/agent-sdk/src/types.ts
@@ -63,23 +63,23 @@
 
 **Independent Test**: Configure subagents with clear expertise descriptions and issue tasks that match those descriptions, then verify automatic delegation occurs
 
-**Note**: This implementation also handles explicit subagent invocation (User Story 3) automatically through the Task tool's subagent selection logic
+**Note**: This implementation also handles explicit subagent invocation (User Story 3) automatically through the Agent tool's subagent selection logic
 
 ### Implementation for User Story 2
 
-- [X] T015 [P] [US2] Create Task tool plugin structure in packages/agent-sdk/src/tools/taskTool.ts
-- [X] T016 [P] [US2] Implement task description matching algorithm in packages/agent-sdk/src/managers/subagentManager.ts
-- [X] T017 [US2] Implement subagent selection logic with specificity scoring and explicit name matching in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T015 [P] [US2] Create Agent tool plugin structure in packages/agent-sdk/src/tools/agentTool.ts
+- [X] T016 [P] [US2] Implement subagent lookup by name in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T017 [US2] Implement subagent selection logic with exact name matching in packages/agent-sdk/src/managers/subagentManager.ts
 - [X] T018 [US2] Create SubagentInstance creation logic in packages/agent-sdk/src/managers/subagentManager.ts
 - [X] T019 [US2] Implement isolated aiManager and messageManager per instance in packages/agent-sdk/src/managers/subagentManager.ts
-- [X] T020 [US2] Implement Task tool execute method with delegation workflow in packages/agent-sdk/src/tools/taskTool.ts
-- [X] T021 [US2] Add Task tool to tool registry in packages/agent-sdk/src/tools/index.ts
+- [X] T020 [US2] Implement Agent tool execute method with delegation workflow in packages/agent-sdk/src/tools/agentTool.ts
+- [X] T021 [US2] Add Agent tool to tool registry in packages/agent-sdk/src/tools/index.ts
 - [X] T022 [US2] Implement tool access restriction based on subagent configuration in packages/agent-sdk/src/managers/subagentManager.ts
 - [X] T023 [US2] Implement model configuration per subagent in packages/agent-sdk/src/managers/subagentManager.ts
-- [X] T024 [US2] Implement clear feedback about which subagent is handling a task in packages/agent-sdk/src/tools/taskTool.ts
-- [X] T025 [US2] Add error handling for nonexistent subagents with available subagents listing in packages/agent-sdk/src/tools/taskTool.ts
+- [X] T024 [US2] Implement clear feedback about which subagent is handling a task in packages/agent-sdk/src/tools/agentTool.ts
+- [X] T025 [US2] Add error handling for nonexistent subagents with available subagents listing in packages/agent-sdk/src/tools/agentTool.ts
 
-**Checkpoint**: At this point, User Stories 1, 2, and 3 (explicit invocation) should all work through the Task tool mechanism
+**Checkpoint**: At this point, User Stories 1, 2, and 3 (explicit invocation) should all work through the Agent tool mechanism
 
 ---
 
@@ -98,7 +98,7 @@
 - [X] T030 [P] [US5] Implement subagent name/icon header with status indicators in packages/code/src/components/SubagentBlock.tsx
 - [X] T031 [US5] Add SubagentBlock rendering to MessageList in packages/code/src/components/MessageList.tsx
 - [X] T032 [US5] Integrate SubagentBlock with existing isExpanded prop pattern in packages/code/src/components/MessageList.tsx
-- [X] T033 [US5] Add SubagentBlock message creation in Task tool result processing in packages/agent-sdk/src/tools/taskTool.ts
+- [X] T033 [US5] Add SubagentBlock message creation in Agent tool result processing in packages/agent-sdk/src/tools/agentTool.ts
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -110,7 +110,7 @@
 
 - [X] T034 [P] [EH] Implement invalid YAML frontmatter error handling in packages/agent-sdk/src/utils/subagentParser.ts
 - [X] T035 [P] [EH] Implement tool validation for subagent configurations in packages/agent-sdk/src/managers/subagentManager.ts  
-- [X] T036 [P] [EH] Implement fallback to main agent when no subagent matches in packages/agent-sdk/src/tools/taskTool.ts
+- [X] T036 [P] [EH] Implement fallback to main agent when no subagent matches in packages/agent-sdk/src/tools/agentTool.ts
 - [X] T037 [P] [EH] Add handling for missing required fields in subagent configs in packages/agent-sdk/src/utils/subagentParser.ts
 - [X] T038 [EH] Add handling for unavailable or invalid model specifications in packages/agent-sdk/src/managers/subagentManager.ts
 
@@ -145,7 +145,7 @@
 
 - **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories
 - **User Story 2 (P2)**: Can start after Foundational (Phase 2) - Depends on US1 configuration loading
-- **User Story 3 (P3)**: ✅ **HANDLED AUTOMATICALLY** by User Story 2 Task tool implementation
+- **User Story 3 (P3)**: ✅ **HANDLED AUTOMATICALLY** by User Story 2 Agent tool implementation
 - **User Story 4 (P2)**: ✅ **HANDLED BY T019** - Isolated aiManager and messageManager per instance provides context isolation
 - **User Story 5 (P2)**: Can start after US2 completion - Adds UI layer for subagent display
 
@@ -173,8 +173,8 @@
 
 ```bash
 # Launch foundational interfaces together:
-Task: "Create Task tool plugin structure in packages/agent-sdk/src/tools/taskTool.ts"
-Task: "Implement task description matching algorithm in packages/agent-sdk/src/managers/subagentManager.ts"
+Task: "Create Agent tool plugin structure in packages/agent-sdk/src/tools/agentTool.ts"
+Task: "Implement subagent lookup by name in packages/agent-sdk/src/managers/subagentManager.ts"
 ```
 
 ---
@@ -222,5 +222,5 @@ With multiple developers:
 - Build packages/agent-sdk before packages/code due to dependency
 - Follow existing tool plugin patterns and React component patterns
 - YAML parsing reuses existing infrastructure from skills and custom slash commands
-- User Story 3 (explicit invocation) handled automatically by Task tool mechanism - no separate implementation needed
+- User Story 3 (explicit invocation) handled automatically by Agent tool mechanism - no separate implementation needed
 - User Story 4 (context isolation) handled by T019 isolated aiManager/messageManager - no additional tasks needed

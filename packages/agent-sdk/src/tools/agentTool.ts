@@ -67,7 +67,7 @@ The Agent tool launches specialized agents (subprocesses) that autonomously hand
 Available agent types and the tools they have access to:
 ${subagentList || "No agents configured"}
 
-When using the Agent tool, you must specify a subagent_type parameter to select which agent type to use.
+When using the Agent tool, you must specify a subagent_type parameter to select which agent type to use from the list above. Choose the agent whose description best matches the task you want to delegate.
 
 - When doing file search, prefer to use the ${AGENT_TOOL_NAME} tool in order to reduce context usage.
 - You should proactively use the ${AGENT_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description.

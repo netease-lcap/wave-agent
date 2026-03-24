@@ -124,8 +124,8 @@ As a user, I want subagent conversations to be displayed as expandable blocks wi
 - **FR-021**: SDK MUST NOT provide subagent creation functionality - users create configurations manually using their preferred text editors
 - **FR-003**: System MUST prioritize project-level subagents over user-level subagents when names conflict
 - **FR-004**: System MUST validate subagent configuration files and provide clear error messages for invalid configurations
-- **FR-005**: System MUST automatically match user tasks to appropriate subagents based on task description and subagent description fields, selecting the subagent with the most specific description match when multiple candidates exist
-- **FR-006**: System MUST support explicit subagent invocation when users mention subagent names in their requests
+- **FR-005**: System MUST automatically match user tasks to appropriate subagents via the Agent tool, where the LLM selects the most appropriate subagent based on the provided list of subagent names and descriptions.
+- **FR-006**: System MUST support explicit subagent invocation via the Agent tool when users mention subagent names in their requests
 - **FR-007**: System MUST isolate each subagent's context window from the main conversation and other subagents
 - **FR-008**: System MUST restrict subagents to only the tools specified in their configuration, or inherit all tools if none specified
 - **FR-009**: System MUST support configurable models per subagent, with fallback to system default if not specified
@@ -134,9 +134,9 @@ As a user, I want subagent conversations to be displayed as expandable blocks wi
 - **FR-017**: System MUST show up to 2 most recent subagent tool executions when the subagent block is collapsed and active
 - **FR-022**: System MUST show the final text result rendered with markdown when the subagent block is completed, and hide tool executions
 - **FR-018**: System MUST show all subagent messages when the subagent block is expanded
-- **FR-020**: System MUST display subagent message blocks with distinctive borders and subagent name/icon headers to differentiate from regular messages
+- **FR-020**: System MUST display Agent tool message blocks with distinctive borders and subagent name/icon headers to differentiate from regular messages
 - **FR-011**: System MUST handle subagent task completion and return results to the main conversation context
-- **FR-019**: System MUST implement subagents as tool calls that return either successful content or error messages to the main agent
+- **FR-019**: System MUST implement subagents as Agent tool calls that return either successful content or error messages to the main agent
 - **FR-012**: System MUST prevent infinite delegation loops between agents
 - **FR-013**: System MUST support markdown content in subagent configuration files as system prompts
 - **FR-014**: System MUST validate that specified tools in subagent configurations exist and are available
@@ -146,7 +146,7 @@ As a user, I want subagent conversations to be displayed as expandable blocks wi
 
 - **Subagent Configuration**: Represents a user-created subagent with required name and description fields in YAML frontmatter, optional tools list, optional model specification, and markdown system prompt content
 - **Subagent Instance**: An active subagent handling a specific task with its own context window and tool access
-- **Task Delegation**: The process of matching user requests to appropriate subagents based on expertise and availability
+- **Agent Delegation**: The process of matching user requests to appropriate subagents via the Agent tool based on expertise and availability
 - **Agent Context**: Isolated conversation context maintained separately for each subagent and the main agent
 
 ## Clarifications
