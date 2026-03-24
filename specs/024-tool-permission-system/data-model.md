@@ -4,7 +4,7 @@
 
 ### PermissionMode
 **Description**: Configuration setting that determines tool execution behavior.
-**Values**: "default" | "acceptEdits" | "plan" | "bypassPermissions"
+**Values**: "default" | "acceptEdits" | "plan" | "bypassPermissions" | "dontAsk"
 
 ### PermissionRule
 **Description**: A string defining a permitted or denied action.
@@ -38,12 +38,14 @@
 - `behavior`: "allow" | "deny"
 - `message?`: `string` (Required when behavior is "deny")
 - `hidePersistentOption?`: `boolean` (When true, "Don't ask again" is hidden in UI)
+- `newPermissionMode?`: `PermissionMode` (Signal to change the session's permission mode)
+- `newPermissionRule?`: `string` (Signal to persist a new allowed rule)
 
 ### ConfirmationState
 **Description**: UI state for the permission confirmation dialog.
 **Fields**:
 - `isVisible`: `boolean`
-- `selectedOption`: "allow" | "alternative" | "smartWildcard"
+- `selectedOption`: "allow" | "alternative" | "smartWildcard" | "autoAcceptEdits" | "dontAskAgain"
 - `alternativeText`: `string`
 - `suggestedPattern?`: `string` (The smart wildcard pattern)
 
@@ -60,7 +62,8 @@
 WaveConfiguration
     └── permissions
         ├── allow: PermissionRule[]
-        └── deny: PermissionRule[]
+        ├── deny: PermissionRule[]
+        └── permissionMode: PermissionMode
 
 Agent
     ├── permissionMode: PermissionMode
@@ -77,6 +80,28 @@ PermissionManager.checkPermission(context)
     └── 6. If not allowed, trigger Confirmation UI
 ```
 
+## Configuration Hierarchy
+
+### Settings Resolution Order
+1. **Command-line flags** (highest precedence)
+   - `--dangerously-skip-permissions` → "bypassPermissions"
+   - No flags → use configuration `permissionMode`
+   
+2. **settings.local.json** (project-level override)
+   - Local project-specific overrides
+   - Typically gitignored, developer-specific
+   
+3. **settings.json (project-level)**
+   - Project-wide defaults
+   - Committed to repository
+   
+4. **settings.json (user-level)**  
+   - User's global preferences
+   - Stored in user config directory
+
+5. **System default** (fallback)
+   - "default" mode when no configuration present
+
 ## Implementation Notes
 
 1. **Precedence**: `permissions.deny` always takes precedence over `permissions.allow`.
@@ -86,3 +111,6 @@ PermissionManager.checkPermission(context)
 5. **Path Restrictions**: Built-in safe commands (`cd`, `ls`, `pwd`) are restricted to the CWD and its subdirectories.
 6. **Chained Command Splitting**: When the user selects "Don't ask again" for a chained command, it is split into simple commands, and only non-safe ones are saved.
 7. **Dangerous Command Safety**: Commands that are dangerous (e.g., `rm`, `sudo`), out-of-bounds, or contain write redirections will have `hidePersistentOption` set to true.
+8. **Interactive Trust**: Selecting "Yes, and auto-accept edits" sets `newPermissionMode` to `acceptEdits`. Selecting "Yes, and don't ask again..." sets `newPermissionRule`.
+9. **Rule Addition**: Triggered when `PermissionDecision` contains `newPermissionRule`. Results in updating `.wave/settings.local.json`.
+10. **dontAsk Mode**: Auto-denies restricted tools not in allow list. Injects message into system prompt.

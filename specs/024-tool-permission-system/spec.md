@@ -1,11 +1,11 @@
 # Feature Specification: Tool Permission System
 
 **Feature Branch**: `024-tool-permission-system`  
-**Input**: Comprehensive merge of tool permission features including basic modes, wildcard matching, secure pipeline validation, and deny rules.
+**Input**: Comprehensive merge of tool permission features including basic modes, wildcard matching, secure pipeline validation, deny rules, persistent configuration, interactive trust, acceptEdits mode, and dontAsk mode.
 
 ## Overview
 
-The Tool Permission System provides a robust security layer for the Wave agent, ensuring that potentially destructive or sensitive operations are authorized by the user. It supports multiple permission modes, fine-grained rule matching with wildcards, secure decomposition of shell pipelines, and explicit denial of specific tools or paths.
+The Tool Permission System provides a robust security layer for the Wave agent, ensuring that potentially destructive or sensitive operations are authorized by the user. It supports multiple permission modes, fine-grained rule matching with wildcards, secure decomposition of shell pipelines, explicit denial of specific tools or paths, persistent configuration across user and project scopes, and interactive trust mechanisms.
 
 ## User Scenarios & Testing
 
@@ -91,19 +91,94 @@ As a developer using the SDK or a user on the CLI, I want to provide temporary p
 2. **Given** the CLI is started with `--allowedTools "Bash(git status)"`, **When** the agent runs `git status`, **Then** it is auto-approved for that session only.
 3. **Given** an agent configured with `tools: ["Bash"]` (filtering) and `disallowedTools: ["Bash(rm *)"]` (permissions), **When** the AI attempts `ls`, **Then** it is allowed; **When** it attempts `rm`, **Then** it is denied.
 
+### User Story 11 - Configure Permission Mode (Priority: P1)
+
+A developer who frequently needs to bypass permissions for their development workflow wants to avoid typing `--dangerously-skip-permissions` every time. They want to set a persistent configuration that makes bypassing permissions the default behavior for their project.
+
+**Acceptance Scenarios**:
+1. **Given** a project with no `permissionMode` setting, **When** user runs agent commands, **Then** default permission mode behavior applies (requires confirmation for restricted tools).
+2. **Given** `settings.json` contains `"permissions": {"permissionMode": "bypassPermissions"}`, **When** user runs agent commands, **Then** permissions are bypassed without prompting.
+3. **Given** `settings.json` contains `"permissions": {"permissionMode": "default"}`, **When** user runs agent commands, **Then** user is prompted for confirmation on restricted tools.
+4. **Given** `settings.json` contains an invalid `permissionMode` value, **When** agent starts, **Then** system falls back to default permission behavior and logs a warning.
+
+### User Story 12 - Auto-accept File Edits from Prompt (Priority: P1)
+
+As a user, when I am prompted to confirm a file edit or directory creation, I want to be able to choose to auto-accept all future edits in the current session, so that I don't have to confirm each one individually.
+
+**Acceptance Scenarios**:
+1. **Given** the agent is in `default` mode, **When** the agent attempts a `Write` or `mkdir` operation, **Then** the confirmation prompt shows an option: "Yes, and auto-accept edits".
+2. **Given** the confirmation prompt for a `Write` or `mkdir` operation is shown, **When** the user selects "Yes, and auto-accept edits", **Then** the current operation is executed, and the agent's permission mode is set to `acceptEdits`.
+3. **Given** the agent's permission mode was set to `acceptEdits` via the prompt, **When** the agent attempts a subsequent `Edit` or `mkdir` operation, **Then** it is executed without a prompt.
+
+### User Story 13 - Persistent Bash Command Permission (Priority: P1)
+
+As a user, when I am prompted to confirm a Bash command, I want to be able to allow that specific command to run without asking again in the current project, so that I can automate repetitive tasks safely.
+
+**Acceptance Scenarios**:
+1. **Given** the agent is in `default` mode, **When** the agent attempts a `Bash` operation with command `ls`, **Then** the confirmation prompt shows an option: "Yes, and don't ask again for this command in this workdir".
+2. **Given** the confirmation prompt for `Bash` command `ls` is shown, **When** the user selects "Yes, and don't ask again...", **Then** the command is executed, and `Bash(ls)` is added to the `permissions.allow` array in `.wave/settings.local.json`.
+3. **Given** `Bash(ls)` is in the `permissions.allow` array of the local project settings, **When** the agent attempts a `Bash` operation with command `ls`, **Then** it is executed without a prompt.
+
+### User Story 14 - Automatic File Edits (Priority: P1)
+
+As a user, I want the agent to automatically apply file edits without asking for my permission every time, so that I can work more efficiently when I trust the agent's changes.
+
+**Acceptance Scenarios**:
+1. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use `Edit`, `Delete`, or `Write` tools, **Then** the operation is applied immediately without a permission prompt.
+2. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use `mkdir` via the `Bash` tool within the safe zone, **Then** the operation is applied immediately without a permission prompt.
+
+### User Story 15 - CLI Mode Cycling (Priority: P2)
+
+As a CLI user, I want to quickly switch between permission modes during a session using a keyboard shortcut, so that I can easily toggle between manual control, automatic edits, and full bypass.
+
+**Acceptance Scenarios**:
+1. **Given** a CLI session is active and in `default` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to `acceptEdits`.
+2. **Given** the CLI is in `acceptEdits` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to `bypassPermissions`.
+3. **Given** the CLI is in `bypassPermissions` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to `default`.
+
+### User Story 16 - Auto-deny unapproved tools (Priority: P1)
+
+As a user, I want tools that are not pre-approved to be automatically denied when I am in `dontAsk` mode, so that I am not interrupted by permission requests for tools I haven't explicitly allowed.
+
+**Acceptance Scenarios**:
+1. **Given** the permission mode is set to `dontAsk` and `Bash` is NOT in `permissions.allow`, **When** the agent calls `Bash`, **Then** the tool call is denied immediately and the agent receives a "permission denied" error without the user being prompted.
+
+### User Story 17 - Configure dontAsk mode (Priority: P2)
+
+As a user, I want to be able to set the permission mode to `dontAsk` in my configuration so that I can enforce this behavior across sessions.
+
+**Acceptance Scenarios**:
+1. **Given** the configuration file has `permissionMode: "dontAsk"`, **When** the agent starts, **Then** the effective permission mode is `dontAsk`.
+
 ## Requirements
 
 ### Functional Requirements
 
 #### Permission Modes & UI
-- **FR-001**: Agent MUST support `permissionMode` values: "default", "bypassPermissions", "acceptEdits", "plan".
+- **FR-001**: Agent MUST support `permissionMode` values: "default", "bypassPermissions", "acceptEdits", "plan", "dontAsk".
 - **FR-002**: Wave CLI MUST support `--dangerously-skip-permissions` to set mode to "bypassPermissions".
 - **FR-003**: CLI MUST provide a confirmation component for restricted tools in "default" mode.
-- **FR-004**: Confirmation component MUST support "Yes", "Yes, and don't ask again", and alternative instructions via text input.
+- **FR-004**: Confirmation component MUST support "Yes", "Yes, and don't ask again", "Yes, and auto-accept edits" (for FS tools), and alternative instructions via text input.
 - **FR-005**: System MUST support a `canUseTool` callback in the Agent SDK for custom permission logic.
-- **FR-006**: System MUST support cycling through permission modes (default -> acceptEdits -> plan) via `Shift+Tab`.
+- **FR-006**: System MUST support cycling through permission modes (default -> acceptEdits -> bypassPermissions) via `Shift+Tab`.
 - **FR-021**: System MUST hide the "Don't ask again" option for commands identified as dangerous or out-of-bounds.
 - **FR-022**: System MUST detect write redirections (`>`, `>>`, etc.) in bash commands and treat them as dangerous, hiding the "Don't ask again" option.
+- **FR-036**: Selecting "Yes, and auto-accept edits" MUST set the current session's permission mode to `acceptEdits`.
+- **FR-037**: Selecting "Yes, and don't ask again for this command in this workdir" MUST save the rule `Bash([command])` to the `permissions.allow` array in `.wave/settings.local.json`.
+- **FR-045**: In `acceptEdits` mode, the system MUST automatically grant permission for `Edit`, `Delete`, and `Write` operations.
+- **FR-046**: In `dontAsk` mode, the system MUST auto-deny any restricted tool call that does not match a rule in `permissions.allow` or `temporaryRules`.
+- **FR-047**: In `dontAsk` mode, the system MUST NOT invoke the `canUseToolCallback` (which typically triggers user prompts) for unapproved restricted tools.
+- **FR-048**: The `dontAsk` mode MUST NOT be included in the cycle of permission modes triggered by the "Shift+Tab" shortcut.
+- **FR-049**: When `dontAsk` mode is active, the system MUST inject a message into the agent's system prompt stating: "Tools are executed in a 'user-selected permission mode'. Permissions can be configured via settings.json and settings.local.json."
+
+#### Configuration & Persistence
+- **FR-038**: System MUST support a `permissionMode` setting in `permissions` object in `settings.json`.
+- **FR-039**: System MUST apply the configured `permissionMode` as the default permission behavior when no command-line permission flags are provided.
+- **FR-040**: Command-line permission flags MUST override any configured `permissionMode` setting for that specific execution.
+- **FR-041**: System MUST validate `permissionMode` values and fall back to standard default behavior for invalid configurations.
+- **FR-042**: The `permissionMode` setting MUST work at user-level, project-level, and local project settings files, with precedence: `settings.local.json` > `settings.json` (project) > `settings.json` (user).
+- **FR-043**: On startup, the system MUST load `permissions.allow` from all applicable `settings.json` files.
+- **FR-044**: The system MUST create the `.wave` directory and `settings.local.json` file if they do not exist when saving a local permission rule.
 
 #### MCP Tool Permissions
 - **FR-026**: System MUST treat any tool name starting with `mcp__` as a restricted tool.
@@ -149,6 +224,7 @@ As a developer using the SDK or a user on the CLI, I want to provide temporary p
 - **Permission Rule**: A string defining a permitted or denied action (e.g., `Bash(git *)`, `Read(**/*.env)`).
 - **Simple Command**: A single executable command with its arguments, extracted from a pipeline.
 - **Smart Wildcard**: A heuristic-generated pattern that replaces dynamic arguments with `*`.
+- **PermissionDecision**: The result of a permission check, extended to include optional `newPermissionMode` and `newPermissionRule` to signal the system to update its state.
 
 ## Edge Cases
 
@@ -156,3 +232,7 @@ As a developer using the SDK or a user on the CLI, I want to provide temporary p
 - **Precedence**: Deny rules always win over allow rules.
 - **Sensitive Commands**: Commands like `rm` are blacklisted from smart wildcard suggestions to prevent accidental broad permissions.
 - **Escaped Characters**: `echo "&&"` must be treated as a single command, not split.
+- **Missing `.wave` directory**: If the user selects the persistent Bash option and `.wave` doesn't exist, the system should create it.
+- **Malformed `settings.json`**: If the settings file is malformed, the system should handle it gracefully.
+- **Duplicate rules**: If the rule already exists, selecting the option again should not create a duplicate.
+- **Restricted vs Unrestricted Tools**: Unrestricted tools (those not in `RESTRICTED_TOOLS`) should still be allowed automatically, even in `dontAsk` mode.

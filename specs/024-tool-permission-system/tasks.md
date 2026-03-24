@@ -51,9 +51,37 @@
 - [x] T030 Extract `DANGEROUS_COMMANDS` blacklist and implement `hasWriteRedirections`.
 - [x] T031 Implement detection logic in `PermissionManager.createContext` to set `hidePersistentOption` for dangerous/out-of-bounds commands.
 - [x] T032 Update `Confirmation` component to hide "Don't ask again" when `hidePersistentOption` is true.
-## Phase 11: Programmatic and Session-specific Permissions
+
+## Phase 10: Programmatic and Session-specific Permissions
 - [x] T039 Add `allowedTools` and `disallowedTools` to `AgentOptions` in SDK.
 - [x] T040 Implement `--allowed-tools` and `--disallowed-tools` flags in CLI.
 - [x] T041 Update `PermissionManager` to handle instance-specific `allowedTools` and `disallowedTools`.
 - [x] T042 Ensure `disallowedTools` (deny) takes precedence over `allowedTools` (allow).
 - [x] T043 Add unit and integration tests for programmatic and session-specific permissions.
+
+## Phase 11: Persistent Configuration (from 026)
+- [x] T044 Extend `WaveConfiguration` interface with optional `permissionMode` field.
+- [x] T045 Add `permissionMode` validation logic to `ConfigurationWatcher`.
+- [x] T046 Update `PermissionManager` constructor to accept `configuredPermissionMode` parameter.
+- [x] T047 Implement `permissionMode` resolution logic in `PermissionManager` with CLI override precedence.
+- [x] T048 Implement settings hierarchy resolution (`settings.local.json` > `settings.json` > user settings).
+
+## Phase 12: Interactive Permission Trust (from 032)
+- [x] T049 Update `PermissionDecision` interface to include `newPermissionMode` and `newPermissionRule`.
+- [x] T050 Implement `permissions.allow` merging in `loadMergedWaveConfig`.
+- [x] T051 Update `Confirmation` component to support "Yes, and auto-accept edits" and "Yes, and don't ask again...".
+- [x] T052 Implement `persistPermissionRule` method in `Agent` class.
+- [x] T053 Update `Agent` to handle `newPermissionMode` and `newPermissionRule` from `PermissionDecision`.
+- [x] T054 Add integration tests for `acceptEdits` mode transition and Bash rule persistence.
+
+## Phase 13: AcceptEdits Permission Mode (from 031)
+- [x] T055 Update `PermissionMode` type to include `"acceptEdits"`.
+- [x] T056 Implement tool-specific authorization logic for `acceptEdits` mode.
+- [x] [P] T057 Update `InputManager` to handle `Shift+Tab` for mode cycling.
+- [x] [P] T058 Update CLI UI to display current permission mode.
+
+## Phase 14: dontAsk Permission Mode (from 072)
+- [x] T059 Implement `dontAsk` mode in `PermissionManager` to auto-deny unapproved restricted tools.
+- [x] T060 Update `buildSystemPrompt` to inject message when `dontAsk` mode is active.
+- [x] T061 Ensure `dontAsk` mode is excluded from `Shift+Tab` cycling.
+- [x] T062 Verify `permissionMode: "dontAsk"` in configuration correctly sets the mode.
