@@ -62,9 +62,12 @@ export interface ChatContextType {
   backgroundTasks: BackgroundTask[];
   // Tasks
   tasks: Task[];
-  getBackgroundTaskOutput: (
-    taskId: string,
-  ) => { stdout: string; stderr: string; status: string } | null;
+  getBackgroundTaskOutput: (taskId: string) => {
+    stdout: string;
+    stderr: string;
+    status: string;
+    outputPath?: string;
+  } | null;
   stopBackgroundTask: (taskId: string) => boolean;
   // Slash Command functionality
   slashCommands: SlashCommand[];

@@ -10,6 +10,7 @@ interface Task {
   startTime: number;
   exitCode?: number;
   runtime?: number;
+  outputPath?: string;
 }
 
 export interface BackgroundTaskManagerProps {
@@ -30,6 +31,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     stdout: string;
     stderr: string;
     status: string;
+    outputPath?: string;
   } | null>(null);
 
   // Convert backgroundTasks to local Task format
@@ -43,6 +45,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
         startTime: task.startTime,
         exitCode: task.exitCode,
         runtime: task.runtime,
+        outputPath: task.outputPath,
       })),
     );
   }, [backgroundTasks]);
@@ -189,6 +192,13 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
               )}
             </Text>
           </Box>
+          {task.outputPath && (
+            <Box>
+              <Text>
+                <Text color="blue">Log File:</Text> {task.outputPath}
+              </Text>
+            </Box>
+          )}
         </Box>
 
         {detailOutput.stdout && (
@@ -313,7 +323,13 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
               {isSelected && (
                 <Box marginLeft={4} flexDirection="column">
                   <Text color="gray" dimColor>
-                    Started: {formatTime(task.startTime)}
+                    {task.outputPath ? (
+                      <Text>
+                        <Text color="blue">Log File:</Text> {task.outputPath}
+                      </Text>
+                    ) : (
+                      `Started: ${formatTime(task.startTime)}`
+                    )}
                     {task.runtime !== undefined &&
                       ` | Runtime: ${formatDuration(task.runtime)}`}
                     {task.exitCode !== undefined && ` | Exit: ${task.exitCode}`}
