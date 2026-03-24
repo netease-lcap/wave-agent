@@ -6,8 +6,8 @@
 
 ## Phase 1: Setup
 
-- [x] T001 Create system reminder prompt file in `packages/agent-sdk/src/prompts/btw-side-question.md`
-- [x] T002 Export `BTW_SIDE_QUESTION_SYSTEM_PROMPT` in `packages/agent-sdk/src/prompts/index.ts`
+- [x] T001 Add `BTW_SUBAGENT_SYSTEM_PROMPT` to `packages/agent-sdk/src/prompts/index.ts`
+- [x] T002 Export `BTW_SUBAGENT_SYSTEM_PROMPT` in `packages/agent-sdk/src/prompts/index.ts`
 - [x] T003 Add `btw` command definition to `AVAILABLE_COMMANDS` in `packages/code/src/constants/commands.ts`
 
 ## Phase 2: Foundational
@@ -22,25 +22,16 @@
 **Independent Test**: Start a long-running task, type `/btw <question>`, verify side agent responds in a new view, and main agent continues.
 
 - [x] T007 [P] [US1] Implement UI switching logic in `packages/code/src/components/ChatInterface.tsx` to show side agent messages
-- [x] T008 [P] [US1] Update `LoadingIndicator.tsx` to show "Side agent is thinking" and "Esc to dismiss"
-- [x] T009 [US1] Implement Escape key listener in `useChat.tsx` to call `dismissSideAgent()`
-- [x] T010 [US1] Integrate `/btw` command in `useChat.tsx` to trigger the side agent flow
-- [x] T011 [US1] Ensure UI remounts on side agent activation/dismissal in `App.tsx`
-
-## Phase 4: User Story 2 - Side agent constraints and follow-up (Priority: P2)
-
-**Goal**: Ensure side agent uses Explore configuration and supports multi-turn follow-ups.
-**Independent Test**: Ask a follow-up question in the side view and verify the side agent responds with context.
-
-- [x] T012 [US2] Update `BtwManager` to use `Explore` subagent configuration
-- [x] T013 [US2] Implement follow-up message handling in `useChat.tsx` when `sideMessages` is present
-- [x] T014 [US2] Ensure subagents inherit `stream` configuration from main agent in `SubagentManager.ts`
-
-## Phase 5: Polish & Cross-cutting Concerns
-
-- [x] T015 Ensure `<system-reminder>` is hidden from the user in `packages/code/src/components/MessageList.tsx`
-- [x] T016 Run `pnpm build` to validate the implementation
-- [x] T017 Verify `/btw` works as expected in the CLI
+- [x] T008 [P] [US1] Update `LoadingIndicator.tsx` to show "Side agent is thinking" and hide other loading indicators when side agent is active
+- [x] T009 [US1] Implement Space, Enter, and Escape key listeners in `SideAgentTip.tsx` to call `dismissSideAgent()`
+- [x] T010 [US1] Integrate `/btw` command in `useChat.tsx` to trigger the side agent flow and track `isSideAgentThinking`
+- [x] T011 [US1] Create `SideAgentTip.tsx` to show dismissal instructions
+- [x] T012 [US1] Add `isSideAgentActive` derived state to `useChat` context
+- [x] T013 [US2] Update `BtwManager` to use isolated `MessageManager` and `AIManager` with no tools
+- [x] T014 [US2] Implement follow-up message handling in `useChat.tsx` when `sideMessages` is present
+- [x] T015 [US2] Ensure side agent inherits `stream` configuration from main agent via `AIManager` method
+- [x] T017 Run `pnpm build` to validate the implementation
+- [x] T018 Verify `/btw` works as expected in the CLI
 
 ## Dependencies
 

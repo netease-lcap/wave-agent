@@ -6,6 +6,7 @@ export interface LoadingIndicatorProps {
   isCommandRunning?: boolean;
   isCompressing?: boolean;
   latestTotalTokens?: number;
+  isSideAgentThinking?: boolean;
   isSideAgentActive?: boolean;
 }
 
@@ -14,16 +15,25 @@ export const LoadingIndicator = ({
   isCommandRunning = false,
   isCompressing = false,
   latestTotalTokens = 0,
+  isSideAgentThinking = false,
   isSideAgentActive = false,
 }: LoadingIndicatorProps) => {
+  if (isSideAgentActive) {
+    return (
+      <Box flexDirection="column">
+        {isSideAgentThinking && (
+          <Text color="yellow">✻ Side agent is thinking... </Text>
+        )}
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column">
       {isLoading && !isCompressing && (
         <Box>
-          <Text color="yellow">
-            ✻ {isSideAgentActive ? "Side agent" : "AI"} is thinking...{" "}
-          </Text>
-          {latestTotalTokens > 0 && !isSideAgentActive && (
+          <Text color="yellow">✻ AI is thinking... </Text>
+          {latestTotalTokens > 0 && (
             <>
               <Text color="gray" dimColor>
                 |{" "}
@@ -45,7 +55,7 @@ export const LoadingIndicator = ({
           </Text>
           <Text color="gray" dimColor>
             {" "}
-            to {isSideAgentActive ? "dismiss" : "abort"}
+            to abort
           </Text>
         </Box>
       )}

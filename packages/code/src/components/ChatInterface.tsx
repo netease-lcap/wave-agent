@@ -7,6 +7,7 @@ import { TaskList } from "./TaskList.js";
 import { QueuedMessageList } from "./QueuedMessageList.js";
 import { ConfirmationDetails } from "./ConfirmationDetails.js";
 import { ConfirmationSelector } from "./ConfirmationSelector.js";
+import { SideAgentTip } from "./SideAgentTip.js";
 
 import { useChat } from "../contexts/useChat.js";
 import type { PermissionDecision } from "wave-agent-sdk";
@@ -42,6 +43,9 @@ export const ChatInterface: React.FC = () => {
     workdir,
     getModelConfig,
     sideMessages,
+    isSideAgentThinking,
+    isSideAgentActive,
+    dismissSideAgent,
   } = useChat();
 
   const model = getModelConfig().model;
@@ -128,7 +132,7 @@ export const ChatInterface: React.FC = () => {
         onDynamicBlocksHeightMeasured={handleDynamicBlocksHeightMeasured}
       />
 
-      {(isLoading || isCommandRunning || isCompressing) &&
+      {(isLoading || isCommandRunning || isCompressing || isSideAgentActive) &&
         !isConfirmationVisible &&
         !isExpanded && (
           <LoadingIndicator
@@ -136,10 +140,17 @@ export const ChatInterface: React.FC = () => {
             isCommandRunning={isCommandRunning}
             isCompressing={isCompressing}
             latestTotalTokens={latestTotalTokens}
-            isSideAgentActive={!!sideMessages}
+            isSideAgentThinking={isSideAgentThinking}
+            isSideAgentActive={isSideAgentActive}
           />
         )}
-      {!isConfirmationVisible && !isExpanded && <TaskList />}
+      {!isConfirmationVisible && !isExpanded && !isSideAgentActive && (
+        <TaskList />
+      )}
+
+      {sideMessages && !isConfirmationVisible && !isExpanded && (
+        <SideAgentTip onDismiss={dismissSideAgent} />
+      )}
 
       {isConfirmationVisible && (
         <>
@@ -164,7 +175,7 @@ export const ChatInterface: React.FC = () => {
         </>
       )}
 
-      {!isConfirmationVisible && !isExpanded && (
+      {!isConfirmationVisible && !isExpanded && !isSideAgentActive && (
         <>
           <QueuedMessageList />
           <InputBox

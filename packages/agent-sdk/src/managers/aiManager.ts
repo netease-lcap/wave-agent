@@ -174,12 +174,12 @@ export class AIManager {
       workdir: this.workdir,
     });
 
-    // If no tools specified, return all tools
-    if (!tools || tools.length === 0) {
+    // If tools is undefined, return all tools
+    if (tools === undefined) {
       return allTools;
     }
 
-    // Filter tools
+    // Filter tools (will return [] if tools is [])
     return allTools.filter((tool) => tools.includes(tool.function.name));
   }
 

@@ -70,7 +70,10 @@ export interface ChatContextType {
   subagentMessages: Record<string, Message[]>;
   subagentLatestTokens: Record<string, number>;
   sideMessages: Message[] | null;
+  isSideAgentThinking: boolean;
+  isSideAgentActive: boolean;
   btw: (question: string) => Promise<void>;
+  dismissSideAgent: () => void;
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -185,6 +188,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   >({});
 
   const [sideMessages, setSideMessages] = useState<Message[] | null>(null);
+  const [isSideAgentThinking, setIsSideAgentThinking] = useState(false);
 
   // Permission state
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
@@ -320,6 +324,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onSideAgentUpdated: (messages) => {
           setSideMessages(messages ? [...messages] : null);
+          if (messages) {
+            setIsSideAgentThinking(false);
+          }
         },
       };
 
@@ -451,24 +458,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       if (content.startsWith("/btw")) {
         const question = content.substring(4).trim();
         if (question) {
-          setIsLoading(true);
+          setIsSideAgentThinking(true);
           try {
             await btw(question);
           } finally {
-            setIsLoading(agentRef.current?.isLoading ?? false);
+            setIsSideAgentThinking(false);
           }
           return;
         }
-      }
-
-      if (sideMessages) {
-        setIsLoading(true);
-        try {
-          await btw(content);
-        } finally {
-          setIsLoading(agentRef.current?.isLoading ?? false);
-        }
-        return;
       }
 
       if (isLoading || isCommandRunning) {
@@ -504,7 +501,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         // Loading state will be automatically updated by the useEffect that watches messages
       }
     },
-    [isLoading, isCommandRunning, sideMessages, btw],
+    [isLoading, isCommandRunning, btw],
   );
 
   // Process queued messages when idle
@@ -679,10 +676,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       if (isConfirmationVisible) {
         handleConfirmationCancel();
       } else if (sideMessages) {
-        agentRef.current?.dismissSideAgent();
+        dismissSideAgent();
       }
     }
   });
+
+  const dismissSideAgent = useCallback(() => {
+    agentRef.current?.dismissSideAgent();
+    setIsSideAgentThinking(false);
+  }, []);
 
   const contextValue: ChatContextType = {
     messages,
@@ -710,7 +712,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     subagentMessages,
     subagentLatestTokens,
     sideMessages,
+    isSideAgentThinking,
+    isSideAgentActive: !!sideMessages || isSideAgentThinking,
     btw,
+    dismissSideAgent,
     permissionMode,
     setPermissionMode,
     isConfirmationVisible,

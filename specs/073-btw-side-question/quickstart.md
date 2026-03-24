@@ -17,13 +17,12 @@ The `/btw` command allows you to ask quick, side questions without interrupting 
 
 - **Non-blocking**: The main agent's execution is never paused or interrupted.
 - **Isolated Context**: Side questions have their own message history and do not clutter your main conversation.
-- **Codebase Exploration**: Side agents use the `Explore` configuration, allowing them to search and read code to answer your questions.
+- **Tool-less Assistant**: Side agents are focused on answering questions and providing explanations based on the conversation context and their internal knowledge. They do not have access to tools.
 - **Multi-turn Support**: You can have a full conversation with the side agent before returning to your main task.
 - **Easy Dismissal**: A simple press of the **Escape** key brings you back to your main task.
 
 ## Example Scenarios
 
-- **Codebase Exploration**: `/btw where is the authentication logic?`
-- **Documentation Check**: `/btw what are the arguments for the LSP tool?`
 - **Clarification**: `/btw what did we decide about the data model earlier?`
-- **Follow-up**: After asking about authentication, you can ask `/btw which file handles the JWT token?` without leaving the side view.
+- **Explanation**: `/btw how does the MessageManager handle session IDs?`
+- **Follow-up**: After asking about the data model, you can ask `/btw which file defines the SideAgentInstance?` without leaving the side view.

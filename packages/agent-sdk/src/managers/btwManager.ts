@@ -1,15 +1,19 @@
 import { Container } from "../utils/container.js";
-import { SubagentManager, SubagentInstance } from "./subagentManager.js";
 import { MessageManager } from "./messageManager.js";
+import { AIManager } from "./aiManager.js";
+import { BTW_SUBAGENT_SYSTEM_PROMPT } from "../prompts/index.js";
+import { randomUUID } from "node:crypto";
+import { AgentOptions } from "../types/index.js";
 
 export class BtwManager {
   private sideAgentId: string | null = null;
+  private messageManager: MessageManager | null = null;
+  private aiManager: AIManager | null = null;
 
-  constructor(private container: Container) {}
-
-  private get subagentManager(): SubagentManager {
-    return this.container.get<SubagentManager>("SubagentManager")!;
-  }
+  constructor(
+    private container: Container,
+    private workdir: string,
+  ) {}
 
   private get mainMessageManager(): MessageManager {
     return this.container.get<MessageManager>("MessageManager")!;
@@ -21,49 +25,54 @@ export class BtwManager {
    * @returns Promise that resolves to the side agent's instance ID
    */
   public async btw(question: string): Promise<string> {
-    let instance: SubagentInstance | null = null;
+    if (!this.aiManager || !this.messageManager) {
+      const subagentContainer = this.container.createChild();
+      const agentOptions = this.container.get<AgentOptions>("AgentOptions");
 
-    if (this.sideAgentId) {
-      instance = this.subagentManager.getInstance(this.sideAgentId);
-      // If instance is errored or aborted, we'll create a new one
-      if (
-        instance &&
-        (instance.status === "error" || instance.status === "aborted")
-      ) {
-        instance = null;
-        this.sideAgentId = null;
-      }
-    }
-
-    if (!instance) {
-      const configurations = await this.subagentManager.loadConfigurations();
-      const exploreConfig = configurations.find((c) => c.name === "Explore");
-      if (!exploreConfig) {
-        throw new Error("Explore subagent configuration not found");
-      }
-
-      instance = await this.subagentManager.createInstance(exploreConfig, {
-        description: "Side agent for /btw questions",
-        prompt: question,
-        subagent_type: "btw",
+      this.messageManager = new MessageManager(subagentContainer, {
+        callbacks: {
+          onMessagesChange: (messages) => {
+            agentOptions?.callbacks?.onSideAgentUpdated?.(messages);
+          },
+        },
+        workdir: this.workdir,
+        sessionType: "subagent",
+        subagentType: "btw",
       });
-      this.sideAgentId = instance.subagentId;
+      subagentContainer.register("MessageManager", this.messageManager);
+
+      this.aiManager = new AIManager(subagentContainer, {
+        workdir: this.workdir,
+        systemPrompt: BTW_SUBAGENT_SYSTEM_PROMPT,
+        subagentType: "btw",
+        stream: agentOptions?.stream ?? true,
+        callbacks: {
+          onUsageAdded: (usage) => {
+            this.mainMessageManager.addUsage(usage);
+          },
+        },
+      });
+      subagentContainer.register("AIManager", this.aiManager);
+
+      this.sideAgentId = randomUUID();
 
       // Inherit context from main MessageManager
       const mainMessages = this.mainMessageManager.getMessages();
-      instance.messageManager.setMessages(mainMessages);
+      this.messageManager.setMessages(mainMessages);
     }
 
-    // Execute the agent with the question in the background
-    // Note: executeAgent will add the question as a user message
-    await this.subagentManager.executeAgent(
-      instance,
-      question,
-      undefined,
-      true,
-    );
+    // Add the user's question as a message
+    this.messageManager.addUserMessage({ content: question });
 
-    return instance.subagentId;
+    // Execute the AI request with no tools
+    // sendAIMessage will handle the rest
+    this.aiManager.sendAIMessage({ tools: [] }).catch((error) => {
+      this.messageManager?.addErrorBlock(
+        error instanceof Error ? error.message : String(error),
+      );
+    });
+
+    return this.sideAgentId!;
   }
 
   /**
@@ -71,6 +80,8 @@ export class BtwManager {
    */
   public dismiss(): void {
     this.sideAgentId = null;
+    this.messageManager = null;
+    this.aiManager = null;
   }
 
   /**

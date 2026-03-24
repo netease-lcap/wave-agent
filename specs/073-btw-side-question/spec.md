@@ -2,7 +2,7 @@
 
 **Feature Branch**: `073-btw-side-question`  
 **Created**: 2026-03-23  
-**Input**: User description: "when user input /btw xxx, system should send user msg like this: system-reminder-btw-side-question.md, and hide system-reminder to user. the main agent should still keep running. another agent without any tools should be launched to answer user's question. message list should show btw agent's messages and show a tip at bottom: \"Press Escape to dismiss\", when user press esc, the message list should show main agent's messages. agent sdk must provide a btw() to answer user's question. coding cli should add /btw to @packages/code/src/components/CommandSelector.tsx and call agent sdk function."
+**Input**: User description: "when user input /btw xxx, system should use a specialized system prompt for the side agent. the main agent should still keep running. another agent without any tools should be launched to answer user's question. message list should show btw agent's messages and show a tip at bottom: \"Press Escape to dismiss\", when user press esc, the message list should show main agent's messages. agent sdk must provide a btw() to answer user's question. coding cli should add /btw to @packages/code/src/components/CommandSelector.tsx and call agent sdk function."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -17,7 +17,6 @@ As a user, I want to ask a quick question without stopping the main agent's curr
 **Acceptance Scenarios**:
 
 1. **Given** the main agent is performing a task (e.g., running tests), **When** the user inputs `/btw how do I use the Grep tool?`, **Then** a side agent is launched, receives the question, and provides an answer without interrupting the main agent.
-2. **Given** a side agent is answering a `/btw` question, **When** the side agent responds, **Then** the `<system-reminder>` block (if any) is not visible to the user in the chat history.
 
 ---
 
@@ -47,28 +46,25 @@ As a user, I want the side agent to be able to explore the codebase and support 
 ### Functional Requirements
 
 - **FR-001**: System MUST recognize the `/btw` slash command followed by a question.
-- **FR-002**: System MUST launch a separate agent instance (using Explore configuration) to handle the `/btw` request.
+- **FR-002**: System MUST launch a separate agent instance with isolated managers to handle the `/btw` request.
 - **FR-003**: System MUST NOT interrupt or pause the main agent when a `/btw` command is issued.
-- **FR-004**: System MUST hide any `<system-reminder>` content from the user's view in the chat interface.
-- **FR-005**: The side agent MUST have access to exploration tools (e.g., Grep, Glob, Read, LSP, Bash).
+- **FR-005**: The side agent MUST NOT have access to any tools.
 - **FR-006**: System MUST ensure the side agent inherits all messages from the main agent's current conversation history to provide context for the answer.
 - **FR-007**: System MUST switch the message list view to show the side agent's messages when a `/btw` command is issued.
-- **FR-008**: System MUST display "Side agent is thinking... | Esc to dismiss" when the side agent is active and thinking.
-- **FR-009**: System MUST switch the message list view back to the main agent's messages when the user presses the Escape key.
-- **FR-010**: System MUST support multi-turn follow-up questions within the side agent view.
+- **FR-008**: System MUST display "Side agent is thinking..." when the side agent is active and thinking.
+- **FR-009**: System MUST display a dismissal tip "Press Space, Enter, or Esc to dismiss" when the side agent is active.
+- **FR-010**: System MUST switch the message list view back to the main agent's messages when the user presses Space, Enter, or Escape.
+- **FR-011**: System MUST hide all main agent loading indicators (AI thinking, command running, compressing) when the side agent is active.
+- **FR-012**: System MUST support multi-turn follow-up questions within the side agent view.
 
 ### Key Entities
 
-- **Side Agent**: A lightweight, tool-less agent instance spawned for side conversations.
+- **Side Agent**: A lightweight, tool-less assistant instance spawned for side conversations.
 - **Slash Command (/btw)**: The trigger for the side agent.
-- **System Reminder**: The specific instructions provided to the side agent, hidden from the user.
+- **System Prompt**: The specialized instructions provided to the side agent.
 
 ### Assumptions
 
 - The `/btw` command is handled by the CLI/Frontend before being passed to the main agent's message loop, or the main agent's loop is designed to handle asynchronous side-tasks.
-- "Hide system-reminder to user" means the user doesn't see the internal prompt engineering used to constrain the side agent.
 - The side agent uses the same model as the main agent but with a different system prompt and no tools.
-ifferent system prompt and no tools.
-means the user doesn't see the internal prompt engineering used to constrain the side agent.
-- The side agent uses the same model as the main agent but with a different system prompt and no tools.
-ifferent system prompt and no tools.
+
