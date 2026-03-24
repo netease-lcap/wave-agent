@@ -52,3 +52,19 @@
 ## Decision: Independent Filtering and Permissions
 **What was chosen**: `tools` (filtering) and `allowedTools`/`disallowedTools` (permissions) operate independently.
 **Why chosen**: Clear separation of concerns between tool visibility and execution control.
+
+## Decision: Configuration Merging Strategy
+**What was chosen**: `permissions.allow` will be merged by combining arrays from all levels (user and project).
+**Why chosen**: Permissions are additive. If a user trusts a command globally, it should be trusted in all projects. If they trust it in a specific project, it should be trusted there.
+
+## Decision: Settings Hierarchy Implementation
+**What was chosen**: The existing configuration resolution follows: `settings.local.json` > `settings.json` (project) > `settings.json` (user), with command-line flags taking highest precedence.
+**Why chosen**: Provides a clear and flexible way for users to manage their settings at different levels.
+
+## Decision: Communication of State Changes
+**What was chosen**: Extend `PermissionDecision` with `newPermissionMode?: PermissionMode` and `newPermissionRule?: string`.
+**Why chosen**: Allows the UI to signal back to the `Agent` what side effects should occur as a result of the user's choice.
+
+## Decision: dontAsk Mode Implementation
+**What was chosen**: Auto-deny restricted tools not in allow list. Injects message into system prompt.
+**Why chosen**: Provides a non-interactive mode for automated workflows while maintaining security.

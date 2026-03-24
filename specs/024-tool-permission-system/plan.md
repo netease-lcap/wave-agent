@@ -5,8 +5,8 @@
 ## Summary
 
 Comprehensive tool permission system for Wave, featuring:
-- **Permission Modes**: "default", "acceptEdits", "plan", "bypassPermissions".
-- **Confirmation UI**: Interactive CLI prompts with alternative instructions and smart wildcard suggestions.
+- **Permission Modes**: "default", "acceptEdits", "plan", "bypassPermissions", "dontAsk".
+- **Confirmation UI**: Interactive CLI prompts with alternative instructions, smart wildcard suggestions, and interactive trust options.
 - **Wildcard Matching**: Support for `*` in allow/deny rules at any position.
 - **Smart Heuristics**: Automatic suggestion of wildcard patterns for common commands.
 - **Secure Pipelines**: Decomposition and validation of complex bash command chains.
@@ -16,12 +16,15 @@ Comprehensive tool permission system for Wave, featuring:
 - **Split Chained Commands**: Splitting chained commands on "Don't ask again" and saving only non-safe parts.
 - **Bash Confirmation Safety**: Hiding "Don't ask again" for dangerous, out-of-bounds, or write-redirection commands.
 - **Programmatic and Session-specific Permissions**: `allowedTools` and `disallowedTools` in SDK and CLI.
+- **Persistent Configuration**: `permissionMode` and `permissions.allow` settings in `settings.json` with hierarchy support.
+- **Interactive Trust**: "Yes, and auto-accept edits" and "Yes, and don't ask again..." options in the confirmation prompt.
+- **dontAsk Mode**: Non-interactive mode that auto-denies unapproved restricted tools.
 
 ## Technical Context
 
 - **Language**: TypeScript
 - **Packages**: `agent-sdk` (core logic), `code` (CLI interface)
-- **Key Components**: `PermissionManager`, `Confirmation` component, `bashParser` (for heuristics and decomposition).
+- **Key Components**: `PermissionManager`, `Confirmation` component, `bashParser` (for heuristics and decomposition), `ConfigurationService`.
 
 ## Project Structure
 
@@ -35,6 +38,8 @@ packages/
 │   │   ├── managers/
 │   │   │   ├── toolManager.ts         # Permission context injection
 │   │   │   └── permissionManager.ts   # Core matching logic (wildcards, deny, safe list)
+│   │   ├── services/
+│   │   │   └── configurationService.ts # Configuration loading and persistence
 │   │   ├── utils/
 │   │   │   └── bashParser.ts          # Pipeline decomposition & smart wildcard heuristics
 │   │   └── tools/                     # Permission checks in restricted tools
@@ -60,3 +65,6 @@ packages/
 4. **Granular Control**: Deny rules and path-based permissions.
 5. **Safe Defaults**: Built-in command list with path restrictions.
 6. **Programmatic and Session-specific Permissions**: `allowedTools` and `disallowedTools` in SDK and CLI.
+7. **Persistent Configuration**: Support for `permissionMode` in `settings.json` and hierarchy resolution.
+8. **Interactive Trust**: Enhanced confirmation prompt with auto-accept and persistent rule options.
+9. **dontAsk Mode**: Implementation of auto-deny logic and system prompt injection.

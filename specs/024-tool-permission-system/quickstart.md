@@ -15,10 +15,42 @@ wave
 ### Bypass Mode (Advanced Users)
 Skip all permission checks for uninterrupted operation:
 ```bash
+# CLI flag
 wave --dangerously-skip-permissions
+
+# Or set in settings.json
+{
+  "permissions": {
+    "permissionMode": "bypassPermissions"
+  }
+}
+```
+
+### dontAsk Mode (Automated Workflows)
+Auto-deny any restricted tool that isn't pre-approved. No user prompts will be shown.
+```json
+{
+  "permissions": {
+    "permissionMode": "dontAsk"
+  }
+}
 ```
 
 ## Configuration (`settings.json`)
+
+Wave supports three levels of configuration with proper precedence:
+1. **CLI Flags** (`--dangerously-skip-permissions`)
+2. **Local Project Config** (`.wave/settings.local.json`) 
+3. **Project Config** (`.wave/settings.json`)
+4. **User Config** (`~/.wave/settings.json`)
+
+### Permission Mode
+Set the default permission behavior for your project or globally.
+```json
+"permissions": {
+  "permissionMode": "default" // "default" | "bypassPermissions" | "acceptEdits" | "plan" | "dontAsk"
+}
+```
 
 ### Allow Rules
 Add rules to `permissions.allow` to permit specific actions without prompting.
@@ -42,30 +74,30 @@ Add rules to `permissions.deny` to explicitly forbid actions. **Deny rules alway
 }
 ```
 
-### MCP Tool Permissions
-MCP tools (prefixed with `mcp__`) are subject to the same permission checks as built-in restricted tools. When you select "Yes, and don't ask again" for an MCP tool, Wave will save a persistent rule in the format `mcp__server__tool`.
-
-```json
-"permissions": {
-  "allow": [
-    "mcp__github__get_issue"
-  ]
-}
-```
-
 ### Rule Formats
 1. **Tool Name**: `Bash`, `Write`, `Read` (Allows all uses of the tool)
 2. **Bash Command**: `Bash(ls -la)`, `Bash(git *)` (Supports `*` wildcards)
 3. **Path-based**: `Read(**/*.env)`, `Write(/etc/**)` (Supports glob patterns)
+4. **MCP Tool**: `mcp__server__tool` (Format: `mcp__<server_name>__<tool_name>`)
 
-## Smart Wildcard Matching
-When Wave prompts for a bash command (e.g., `npm install lodash`), you can select:
+## Interactive Trust
+
+When Wave prompts for confirmation, you have several options to streamline your workflow:
+
+### Auto-accepting Edits
+When prompted for a file edit (e.g., `Write`), you will see an option:
+**"Yes, and auto-accept edits"**
+Selecting this will switch the session to `acceptEdits` mode, allowing all subsequent file edits in the current session without prompting.
+
+### Persisting Bash Commands
+When prompted for a `Bash` command, you will see:
+**"Yes, and don't ask again for this command in this workdir"**
+Selecting this will save the command to `.wave/settings.local.json`. Future executions of the exact same command in this project will be automatically allowed.
+
+### Smart Wildcard Matching
+For common commands, Wave may suggest a wildcard pattern:
 **"Yes, and don't ask again for: npm install *"**
-
-This will save a wildcard pattern to your settings, allowing future similar commands (like `npm install express`) to execute without prompting.
-
-### Chained Commands
-When you select "Don't ask again" for a chained command (e.g., `mkdir test && cd test`), Wave will split the chain and only save the non-safe parts (e.g., `Bash(mkdir test)`) to your allowed permissions list.
+This allows future similar commands (like `npm install express`) to execute without prompting.
 
 ## Dangerous Command Safety
 For security reasons, some commands will NOT show the "Don't ask again" option:
@@ -109,18 +141,6 @@ const agent = await Agent.create({
 });
 ```
 
-### Tool Filtering vs. Permissions
-The `tools` option is used for **filtering** (controlling which tools are available to the AI), while `allowedTools` and `disallowedTools` are used for **permissions** (controlling execution).
-
-```typescript
-const agent = await Agent.create({
-  // Only Bash and Read are available to the AI
-  tools: ["Bash", "Read"],
-  // Within the available tools, restrict specific patterns
-  disallowedTools: ["Bash(rm *)"]
-});
-```
-
 ## Agent SDK Integration
 
 ### Custom Permission Logic
@@ -129,8 +149,8 @@ import { Agent, type PermissionDecision } from 'wave-agent-sdk';
 
 const agent = await Agent.create({
   permissionMode: 'default',
-  canUseTool: async (toolName: string): Promise<PermissionDecision> => {
-    if (toolName === 'Bash') {
+  canUseTool: async (context): Promise<PermissionDecision> => {
+    if (context.toolName === 'Bash') {
       return { behavior: 'deny', message: 'Bash execution not allowed' };
     }
     return { behavior: 'allow' };
