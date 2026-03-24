@@ -209,8 +209,9 @@ Task: "Create [Entity2] model in src/models/[entity2].py"
 ## Implementation Strategy
 
 ### Task Delegation (CRITICAL)
-Tasks in this file MUST be delegated to subagents whenever possible to reduce context costs of the main agent.
+Tasks in this file MUST be delegated to subagents to reduce context costs of the main agent.
 - Use `Explore` for codebase research.
+- Use `general-purpose` for implementation tasks.
 
 ### MVP First (User Story 1 Only)
 

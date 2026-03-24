@@ -42,7 +42,7 @@ Always use `pnpm` as the package manager.
 
 ## 🤖 Subagent Usage
 
-- **Subagent Usage**: You MUST delegate tasks to subagents to reduce the main context window. This is especially important when implementing a plan or performing focused tasks.
+- **Subagent Usage**: You MUST delegate ALL implementation tasks to subagents to reduce the main context window. This is mandatory for implementing plans or performing focused tasks.
 - **Delegation Guidelines**:
     - Explicitly instruct the subagent to ONLY perform the tasks delegated to them.
     - Instruct them to update their assigned tasks frequently using the task management tools.
