@@ -71,6 +71,11 @@ packages/agent-sdk/
     │   └── task-manager.test.ts
     └── tools/
         └── task-tools.test.ts
+packages/code/
+├── src/
+│   ├── components/
+│   │   └── TaskList.tsx       # New UI component
+│   └── App.tsx                # Integrate TaskList
 ```
 
 **Structure Decision**: Logic will be centralized in `packages/agent-sdk` as it handles the core agent capabilities and tool definitions.

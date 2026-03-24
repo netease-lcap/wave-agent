@@ -1,4 +1,4 @@
-# API Contracts: CLI Tool Selection
+# API Contracts: Tools Selection
 
 ## Agent SDK
 

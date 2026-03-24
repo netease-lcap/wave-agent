@@ -2,7 +2,7 @@
 
 **Feature Branch**: `061-task-background-execution`  
 **Created**: 2026-02-09  
-**Input**: User description: "Task tool support `run_in_background` and TaskOutput tool and TaskStop tool, refer to temp.js , remove BashOutput and KillBash , use TaskOutput tool and TaskStop tool instead. Add a feature, remove /bashes, implement /tasks in code package"
+**Input**: User description: "Task tool support `run_in_background` and TaskOutput tool and TaskStop tool, refer to temp.js , remove BashOutput and KillBash , use TaskOutput tool and TaskStop tool instead. Add a feature, remove /bashes, implement /tasks in code package. Also support Ctrl-B to background a foreground bash tool or task tool."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -67,12 +67,29 @@ As a user, I want to use a `/tasks` command in the CLI to list and manage all ba
 
 ---
 
+### User Story 5 - Backgrounding a Foreground Tool (Priority: P1)
+
+As a user running a long-running bash command or a subagent task in the foreground, I want to be able to move it to the background using Ctrl-B so I can continue using the CLI for other tasks without waiting for it to finish.
+
+**Why this priority**: This provides immediate value by unblocking the user during long operations that were initially started in the foreground.
+
+**Independent Test**: Can be tested by running a long bash command (e.g., `sleep 60`), pressing Ctrl-B, and verifying that the CLI returns to the prompt while the command continues in the background.
+
+**Acceptance Scenarios**:
+
+1. **Given** a bash or task tool is running in the foreground, **When** the user sees the hint `[Ctrl-B] Background` and presses Ctrl-B, **Then** the tool's foreground execution ends, and the task continues in the background.
+2. **Given** a tool has been backgrounded via Ctrl-B, **When** the user checks the task status via `/tasks`, **Then** the tool should be visible as a background task.
+
+---
+
 ### Edge Cases
 
 - **Invalid Task ID**: How does the system handle `TaskOutput` or `TaskStop` requests with an ID that doesn't exist? (Expected: Error message indicating the task was not found).
 - **Task Already Finished**: What happens when `TaskStop` is called on a task that has already completed? (Expected: Informative message that the task is already finished).
 - **Timeout on Output Retrieval**: How does `TaskOutput` handle a task that takes longer than the specified timeout when `block: true`? (Expected: Return current output with a status indicating it's still running).
 - **Concurrent Access**: Multiple requests for output from the same background task.
+- **Ctrl-B pressed when no tool is running**: The system should ignore the keypress.
+- **Direct user bash commands (`!command`)**: Commands initiated directly by the user using the `!` prefix MUST NOT be affected by Ctrl-B.
 
 ## Requirements *(mandatory)*
 
@@ -95,6 +112,11 @@ As a user, I want to use a `/tasks` command in the CLI to list and manage all ba
 - **FR-015**: For background shell tasks, the system MUST pipe `stdout` and `stderr` to the `outputPath` log file in real-time.
 - **FR-016**: For background subagent tasks, the system MUST log tool execution details (tool name and compact parameters) to the `outputPath` log file in real-time.
 - **FR-017**: The `outputPath` log file MUST be properly closed when the task completes or is stopped.
+- **FR-018**: The CLI MUST display a UI hint (e.g., `[Ctrl-B] Background`) while a backgroundable tool (Bash or Task) is running in the foreground.
+- **FR-019**: The CLI MUST listen for the Ctrl-B key combination while a tool is executing in the foreground.
+- **FR-020**: When Ctrl-B is pressed during a Bash or Task tool execution, the system MUST transition the tool's foreground stage to "end" and continue it in the background.
+- **FR-021**: The result of a backgrounded tool MUST be set to "Command was manually backgrounded by user with ID [ID]".
+- **FR-022**: The system MUST NOT background bash commands that were initiated directly by the user using the `!` prefix when Ctrl-B is pressed.
 
 ### Key Entities *(include if feature involves data)*
 

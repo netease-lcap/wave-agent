@@ -1,10 +1,10 @@
 ---
-description: "Task list for CLI tool selection implementation"
+description: "Task list for tools selection implementation"
 ---
 
-# Tasks: CLI Tool Selection
+# Tasks: Tools Selection
 
-**Input**: Design documents from `/specs/067-cli-tool-selection/`
+**Input**: Design documents from `/specs/067-tools-selection/`
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/api.md
 
 **Tests**: Both unit and integration tests are REQUIRED for all new functionality. Ensure tests are written and failing before implementation.

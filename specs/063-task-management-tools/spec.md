@@ -1,8 +1,8 @@
-# Feature Specification: Task Management Tools
+# Feature Specification: Task Management Tools and UI
 
 **Feature Branch**: `063-task-management-tools`  
 **Created**: 2026-02-11  
-**Input**: User description: "support tools: - TaskCreate: For creating new tasks - TaskGet: For retrieving task details - TaskUpdate: For updating task status and adding comments - TaskList: For listing all tasks, you can refer to tmp.js . all tasks should be stored in ~/.wave/tasks/{taskListId}/{taskId}.json, similar like ~/.claude/tasks, you can look for that. Also remove current todowrite tool. task list id should be set by agent sdk and env var WAVE_TASK_LIST_ID"
+**Input**: User description: "support tools: - TaskCreate: For creating new tasks - TaskGet: For retrieving task details - TaskUpdate: For updating task status and adding comments - TaskList: For listing all tasks, you can refer to tmp.js . all tasks should be stored in ~/.wave/tasks/{taskListId}/{taskId}.json, similar like ~/.claude/tasks, you can look for that. Also remove current todowrite tool. task list id should be set by agent sdk and env var WAVE_TASK_LIST_ID. Also show task list at bottom of message list."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -50,7 +50,22 @@ As a user, I want to see a list of all tasks for my current session so that I ca
 
 ---
 
-### User Story 4 - Decommission Legacy TodoWrite Tool (Priority: P4)
+### User Story 4 - View Task List in Chat UI (Priority: P1)
+
+As a user, I want to see a summary of my current tasks at the bottom of the message list so that I can always keep track of my progress without manually listing tasks.
+
+**Why this priority**: This provides immediate visibility into the task state within the conversation flow.
+
+**Independent Test**: Can be tested by creating a task and verifying that a task list component appears at the bottom of the chat interface.
+
+**Acceptance Scenarios**:
+
+1. **Given** I have active tasks in the current session, **When** I view the message list, **Then** a task list summary is displayed at the bottom.
+2. **Given** the task list is displayed, **When** a task status changes, **Then** the task list UI updates to reflect the new status.
+
+---
+
+### User Story 5 - Decommission Legacy TodoWrite Tool (Priority: P4)
 
 As a system maintainer, I want to remove the legacy TodoWrite tool so that the agent exclusively uses the new task management system.
 
@@ -61,17 +76,15 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
 **Acceptance Scenarios**:
 
 1. **Given** the agent is initialized, **When** I list available tools, **Then** `TodoWrite` should not be in the list.
-2. **Given** a request to use `TodoWrite`, **When** the agent attempts to call it, **Then** it should fail or be redirected to the new task management tools.
 
 ---
 
 ### Edge Cases
 
 - **What happens when a task ID does not exist?** TaskGet and TaskUpdate should return a clear error message indicating the task was not found.
-- **How does the system handle invalid status transitions?** The system should validate that the provided status is one of the allowed values (e.g., pending, in_progress, completed, deleted).
-- **What happens if the storage directory is not writable?** The tools should handle filesystem errors gracefully and inform the user.
-- **Concurrent updates**: If multiple updates happen simultaneously (though unlikely in this CLI context), the system should ensure data integrity.
-- **Dependency Cycles**: If `addBlocks` or `addBlockedBy` creates a cycle, the system should ideally detect or handle it (though simple storage might not enforce this).
+- **How does the system handle invalid status transitions?** The system should validate that the provided status is one of the allowed values.
+- **What happens if the storage directory is not writable?** The tools should handle filesystem errors gracefully.
+- **What happens when there are many tasks?** The UI should handle a large number of tasks gracefully (e.g., by using a compact format).
 
 ## Requirements *(mandatory)*
 
@@ -81,23 +94,17 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
 - **FR-002**: System MUST store tasks as JSON files in `~/.wave/tasks/{taskListId}/{taskId}.json`.
 - **FR-003**: System MUST provide a `TaskGet` tool that retrieves all information for a specific `taskId`.
 - **FR-004**: System MUST provide a `TaskUpdate` tool that allows updating `status`, `subject`, `description`, `activeForm`, `owner`, and `metadata` using `taskId`.
-- **FR-005**: System MUST allow managing task dependencies via `addBlocks` and `addBlockedBy` in `TaskUpdate`. Adding a dependency MUST automatically update the reciprocal relationship on the target task.
+- **FR-005**: System MUST allow managing task dependencies via `addBlocks` and `addBlockedBy` in `TaskUpdate`.
 - **FR-006**: System MUST provide a `TaskList` tool that returns all tasks associated with the current `taskListId`.
 - **FR-007**: Tasks MUST include fields: `taskId`, `subject`, `description`, `status`, `activeForm`, `owner`, `blocks`, `blockedBy`, and `metadata`.
 - **FR-008**: The system MUST automatically create the necessary directory structure if it does not exist.
-- **FR-009**: The system MUST remove the `TodoWrite` tool definition from the agent's tool registry.
-- **FR-010**: The system MUST remove any code implementation specifically tied to the `TodoWrite` tool.
-- **FR-011**: The system MUST update internal documentation and system prompts to remove references to `TodoWrite`.
-- **FR-012**: The system MUST determine `taskListId` using the following priority:
-  1. Value of `WAVE_TASK_LIST_ID` environment variable.
-  2. Fallback to the `rootSessionId` provided by the `MessageManager`.
-- **FR-013**: The `taskListId` MUST remain stable for the lifetime of the session chain. This is achieved by using the `rootSessionId` (the ID of the first session in the chain) as the default `taskListId`. Even if the `sessionId` changes (e.g., due to message compression), the `taskListId` MUST NOT change.
-- **FR-017**: When the `/clear` command is executed:
-  - If `WAVE_TASK_LIST_ID` is NOT set, the `rootSessionId` MUST be reset to the new `sessionId`, and the `taskListId` MUST be updated to this new `rootSessionId`. This effectively starts a fresh task list for the new session.
-  - If `WAVE_TASK_LIST_ID` IS set, the `taskListId` MUST NOT be changed, and the existing task list MUST be preserved.
-- **FR-014**: The `ToolPlugin` interface MUST support a `prompt` function to allow tools to contribute dynamically to the system prompt.
-- **FR-015**: Task management tools MUST provide detailed behavioral instructions via the `ToolPlugin.prompt` property.
-- **FR-016**: `TaskUpdate` MUST support merging metadata, where setting a key to `null` deletes it.
+- **FR-009**: The system MUST remove the `TodoWrite` tool definition and implementation.
+- **FR-010**: The system MUST determine `taskListId` using `WAVE_TASK_LIST_ID` or `rootSessionId`.
+- **FR-011**: The system MUST render a task list component at the bottom of the message list in the CLI.
+- **FR-012**: The task list header MUST include a hint for the visibility toggle: `(Ctrl+T to hide)`.
+- **FR-013**: Each task in the list MUST show its current status and subject.
+- **FR-014**: The task list MUST update automatically when tasks are created or updated.
+- **FR-015**: The task list MUST be distinct from "background tasks" (running processes).
 
 ### Key Entities *(include if feature involves data)*
 
@@ -112,4 +119,3 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
   - **blockedBy**: List of task IDs that this task depends on (array of strings).
   - **metadata**: Arbitrary key-value pairs (object).
 - **Task List**: A grouping mechanism for tasks, identified by `taskListId`.
-- **Agent Tool Registry**: The collection of tools available to the agent.

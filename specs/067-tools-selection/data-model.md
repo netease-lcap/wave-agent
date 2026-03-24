@@ -1,4 +1,4 @@
-# Data Model: CLI Tool Selection
+# Data Model: Tools Selection
 
 ## Entities
 
