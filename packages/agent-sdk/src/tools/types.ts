@@ -79,6 +79,8 @@ export interface ToolContext {
   subagentManager?: import("../managers/subagentManager.js").SubagentManager;
   /** Skill manager instance for skill invocation */
   skillManager?: import("../managers/skillManager.js").SkillManager;
+  /** Cron manager instance for scheduling tasks */
+  cronManager?: import("../managers/cronManager.js").CronManager;
   /** Current session ID */
   sessionId?: string;
   /** The ID of the current tool call */

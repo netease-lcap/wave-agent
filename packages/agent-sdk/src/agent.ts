@@ -6,6 +6,7 @@ import { SubagentManager } from "./managers/subagentManager.js";
 import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BangManager } from "./managers/bangManager.js";
+import { CronManager } from "./managers/cronManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
@@ -56,6 +57,7 @@ export class Agent {
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
+  private cronManager: CronManager; // Add cron manager instance
   private hookManager: HookManager; // Add hooks manager instance
   private reversionManager: ReversionManager;
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
@@ -168,6 +170,7 @@ export class Agent {
     this.slashCommandManager = this.container.get("SlashCommandManager")!;
     this.pluginManager = this.container.get("PluginManager")!;
     this.bangManager = this.container.get("BangManager")!;
+    this.cronManager = this.container.get("CronManager")!;
 
     // Set initial permission mode if provided
     if (options.permissionMode) {
@@ -460,6 +463,7 @@ export class Agent {
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
+    this.cronManager.stop();
     // Cleanup background task manager
     this.backgroundTaskManager.cleanup();
     // Cleanup MCP connections

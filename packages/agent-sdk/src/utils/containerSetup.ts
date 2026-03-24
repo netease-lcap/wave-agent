@@ -14,6 +14,7 @@ import { SkillManager } from "../managers/skillManager.js";
 import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
 import { BangManager } from "../managers/bangManager.js";
+import { CronManager } from "../managers/cronManager.js";
 import { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import { ReversionManager } from "../managers/reversionManager.js";
 import { SubagentManager } from "../managers/subagentManager.js";
@@ -291,6 +292,10 @@ export function setupAgentContainer(
 
   const bangManager = new BangManager(container, { workdir });
   container.register("BangManager", bangManager);
+
+  const cronManager = new CronManager(container);
+  container.register("CronManager", cronManager);
+  cronManager.start();
 
   return container;
 }

@@ -6,6 +6,9 @@ import { editTool } from "../tools/editTool.js";
 import { writeTool } from "../tools/writeTool.js";
 import { exitPlanModeTool } from "../tools/exitPlanMode.js";
 import { askUserQuestionTool } from "../tools/askUserQuestion.js";
+import { cronCreateTool } from "../tools/cronCreateTool.js";
+import { cronDeleteTool } from "../tools/cronDeleteTool.js";
+import { cronListTool } from "../tools/cronListTool.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -114,6 +117,9 @@ class ToolManager {
       taskGetTool,
       taskUpdateTool,
       taskListTool,
+      cronCreateTool,
+      cronDeleteTool,
+      cronListTool,
     ];
 
     for (const tool of builtInTools) {
@@ -201,6 +207,11 @@ class ToolManager {
         : undefined,
       skillManager: this.container.has("SkillManager")
         ? this.container.get<SkillManager>("SkillManager")
+        : undefined,
+      cronManager: this.container.has("CronManager")
+        ? this.container.get<import("./cronManager.js").CronManager>(
+            "CronManager",
+          )
         : undefined,
       sessionId: context.sessionId,
       toolCallId: context.toolCallId,
