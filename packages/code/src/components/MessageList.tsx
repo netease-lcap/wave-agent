@@ -40,19 +40,13 @@ export const MessageList = React.memo(
 
     // Limit messages to prevent long rendering times
     const maxMessages = 10;
-    const shouldLimitMessages = messages.length > maxMessages;
-    const displayMessages = shouldLimitMessages
-      ? messages.slice(-maxMessages)
-      : messages;
 
     // Flatten messages into blocks with metadata
-    const allBlocks = displayMessages.flatMap((message, index) => {
-      const messageIndex = shouldLimitMessages
-        ? messages.length - maxMessages + index
-        : index;
+    const allBlocks = messages.flatMap((message, messageIndex) => {
       return message.blocks.map((block, blockIndex) => ({
         block,
         message,
+        messageIndex,
         isLastMessage: messageIndex === messages.length - 1,
         // Unique key for each block to help Static component
         key: `${message.id}-${blockIndex}`,
@@ -85,7 +79,13 @@ export const MessageList = React.memo(
     }, [dynamicBlocks, isExpanded, onDynamicBlocksHeightMeasured]);
 
     const staticItems = [
-      { isWelcome: true, key: "welcome", block: undefined, message: undefined },
+      {
+        isWelcome: true,
+        key: "welcome",
+        block: undefined,
+        message: undefined,
+        messageIndex: -1,
+      },
       ...staticBlocks.map((b) => ({ ...b, isWelcome: false })),
     ];
 
@@ -101,6 +101,12 @@ export const MessageList = React.memo(
                     {welcomeMessage}
                   </React.Fragment>
                 );
+              }
+              if (
+                messages.length > maxMessages &&
+                item.messageIndex < messages.length - maxMessages
+              ) {
+                return null;
               }
               return (
                 <MessageBlockItem
