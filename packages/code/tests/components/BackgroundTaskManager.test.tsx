@@ -60,12 +60,22 @@ describe("BackgroundTaskManager", () => {
     messages: [],
     backgroundTasks: mockTasks,
     getBackgroundTaskOutput: vi.fn((id) => {
-      const task = mockTasks.find((t) => t.id === id);
+      const task = [
+        ...mockTasks,
+        {
+          id: "task-log",
+          type: "shell" as const,
+          status: "running" as const,
+          startTime: Date.now(),
+          outputPath: "/tmp/test.log",
+        },
+      ].find((t) => t.id === id);
       return task
         ? {
             stdout: task.stdout || "",
             stderr: task.stderr || "",
             status: task.status || "running",
+            outputPath: task.outputPath,
           }
         : null;
     }),
@@ -80,6 +90,49 @@ describe("BackgroundTaskManager", () => {
     isCompressing: false,
     userInputHistory: [],
   };
+
+  it("should display the log file path if available", async () => {
+    const taskWithLog: Partial<BackgroundTask>[] = [
+      {
+        id: "task-log",
+        type: "shell" as const,
+        status: "running" as const,
+        startTime: Date.now(),
+        outputPath: "/tmp/test.log",
+      },
+    ];
+
+    const { lastFrame, stdin } = render(
+      <AppProvider>
+        <ChatProvider>
+          <BackgroundTaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+    callbacks.onBackgroundTasksChange!(
+      taskWithLog as unknown as BackgroundTask[],
+    );
+
+    await vi.waitFor(() => {
+      const output = lastFrame();
+      expect(output).toContain("Log File: /tmp/test.log");
+    });
+
+    // Check detail view
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      const output = lastFrame();
+      expect(output).toContain("Background Task Details: task-log");
+      expect(output).toContain("Log File: /tmp/test.log");
+    });
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
