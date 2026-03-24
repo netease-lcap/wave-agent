@@ -1,6 +1,6 @@
-# Requirements Checklist: Plugin Support
+# Requirements Checklist: Plugin Support and Marketplace
 
-This checklist ensures that the plugin support system meets all requirements.
+This checklist ensures that the plugin support system and marketplace meet all requirements.
 
 ## 1. Plugin Structure
 - [x] Plugin manifest MUST be at `.wave-plugin/plugin.json`.
@@ -38,3 +38,22 @@ This checklist ensures that the plugin support system meets all requirements.
 - [x] Plugin IDs MUST follow the `name@marketplace` format.
 - [x] `pnpm build` MUST succeed.
 - [x] `pnpm run type-check` and `pnpm lint` MUST pass.
+
+## 7. Content Quality (Marketplace)
+- [x] No implementation details (languages, frameworks, APIs)
+- [x] Focused on user value and business needs
+- [x] Written for non-technical stakeholders
+- [x] All mandatory sections completed
+
+## 8. Requirement Completeness (Marketplace)
+- [x] No [NEEDS CLARIFICATION] markers remain
+- [x] Requirements are testable and unambiguous
+- [x] All acceptance scenarios are defined
+- [x] Edge cases are identified
+- [x] Scope is clearly bounded
+- [x] Dependencies and assumptions identified
+
+## 9. Feature Readiness (Marketplace)
+- [x] All functional requirements have clear acceptance criteria
+- [x] User scenarios cover primary flows
+- [x] No implementation details leak into specification

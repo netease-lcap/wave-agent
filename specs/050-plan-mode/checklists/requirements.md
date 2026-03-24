@@ -29,3 +29,6 @@
 ## Notes
 
 - All items pass. The specification clearly defines the "Plan Mode" behavior, user interaction, and system constraints without diving into implementation details.
+- Reusing `canUseTool` for `ExitPlanMode` ensures consistency.
+- Added explicit requirement for tool description and documentation regarding plan file usage.
+- Specified that the user must see the plan file content during confirmation.
