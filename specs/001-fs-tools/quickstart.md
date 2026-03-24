@@ -45,4 +45,8 @@ const result = await grepTool.execute({
 
 ## Key Implementation Details
 - **Ripgrep Integration**: The `Grep` tool spawns the `rg` binary from `@vscode/ripgrep` for high-performance searching. If no matches are found, it suggests specifying the `path` field to search in ignored or other directories.
-- **Image Support**: `Read` tool detects image extensions and returns base64 data.
+- **Image Support**: `Read` tool detects image extensions (png, jpeg, jpg, gif, webp) and returns base64 data in the `images` array. It enforces a 20MB file size limit.
+- **Jupyter Notebook Support**: `Read` tool handles `.ipynb` files.
+
+### Image Processing Implementation
+The `Read` tool uses `convertImageToBase64` from `packages/agent-sdk/src/utils/messageOperations.ts` to process image files. It populates the `ToolResult.images` array with base64 encoded data and the correct MIME type.

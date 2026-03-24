@@ -9,6 +9,15 @@
 - [x] T008 Implement `Grep` tool using ripgrep for content search
 - [x] T009 Integrate all FS tools with `PermissionManager`
 - [x] T010 Add image reading support to `Read` tool
+    - [x] T010.1 Create image file detection helper functions in `packages/agent-sdk/src/tools/readTool.ts`
+    - [x] T010.2 Create image size validation utility in `packages/agent-sdk/src/tools/readTool.ts`
+    - [x] T010.3 Create MIME type mapping utility in `packages/agent-sdk/src/tools/readTool.ts`
+    - [x] T010.4 Implement image file detection logic in `readTool` execute function
+    - [x] T010.5 Implement `processImageFile` function with base64 conversion
+    - [x] T010.6 Add `ToolResult.images` population for PNG, JPEG, GIF, WebP files
+    - [x] T010.7 Ensure backward compatibility with text file processing
+    - [x] T010.8 Implement 20MB file size limit validation with clear error messages
+    - [x] T010.9 Add graceful error handling for corrupted image files and permission issues
 - [x] T011 Add Jupyter notebook support to `Read` tool
 - [x] T012 Update `Grep` tool to suggest `path` field when no matches are found
 - [x] T013 Modify `Write` tool display to show highlighted code as a Markdown code block (without line numbers) instead of a diff display.

@@ -18,8 +18,16 @@
 **Purpose**: Arguments for the `Read` tool.
 **Fields**:
 - `file_path: string`: Absolute path to the file.
-- `offset?: number`: Line number to start reading from.
-- `limit?: number`: Number of lines to read.
+- `offset?: number`: Line number to start reading from (text files only).
+- `limit?: number`: Number of lines to read (text files only).
+
+### ImageFile
+**Purpose**: Represents an image file processed by the `Read` tool.
+**Fields**:
+- `path: string`: Absolute path to the image file.
+- `extension: string`: File extension (png, jpeg, jpg, gif, webp).
+- `size: number`: File size in bytes (must be ≤ 20MB).
+- `mimeType: string`: MIME type (image/png, image/jpeg, image/gif, image/webp).
 
 ### WriteArguments
 **Purpose**: Arguments for the `Write` tool.

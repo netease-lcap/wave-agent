@@ -78,8 +78,11 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 
 ### Functional Requirements
 
-- **FR-001**: System MUST provide a `Read` tool that supports text, images, and Jupyter notebooks.
-- **FR-002**: `Read` tool MUST support pagination via `offset` and `limit` and truncate long lines.
+- **FR-001**: System MUST provide a `Read` tool that supports text, images (PNG, JPEG, GIF, WebP), and Jupyter notebooks.
+- **FR-002**: `Read` tool MUST support pagination via `offset` and `limit` and truncate long lines for text files.
+- **FR-015**: `Read` tool MUST detect image files by extension case-insensitively and convert content to base64 encoding.
+- **FR-016**: `Read` tool MUST populate the `ToolResult.images` array with base64 data and correct MIME type for images.
+- **FR-017**: `Read` tool MUST enforce a 20MB file size limit for image files.
 - **FR-003**: System MUST provide a `Write` tool that automatically creates parent directories.
 - **FR-004**: `Write` tool SHOULD verify that the file was read before being overwritten to prevent accidental data loss.
 - **FR-005**: System MUST provide an `Edit` tool for exact string replacement with detailed mismatch analysis.
