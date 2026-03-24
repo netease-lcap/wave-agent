@@ -68,6 +68,7 @@ import {
   getSessionFilePath,
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 describe("Session Core Functionality", () => {
   let tempDir: string;
@@ -388,10 +389,12 @@ describe("Session Core Functionality", () => {
   describe("T044: Basic session functionality", () => {
     const createTestMessages = (): Message[] => [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello, world!" }],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Hi there!" }],
         usage: {

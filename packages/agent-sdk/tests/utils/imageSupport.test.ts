@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { updateToolBlockInMessage } from "@/utils/messageOperations.js";
+import {
+  updateToolBlockInMessage,
+  generateMessageId,
+} from "@/utils/messageOperations.js";
 import { convertMessagesForAPI } from "@/utils/convertMessagesForAPI.js";
 import type { Message } from "@/types/index.js";
 
@@ -7,6 +10,7 @@ describe("Image Support in Tool Results", () => {
   it("should handle tool result with images in updateToolBlockInMessage", () => {
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           {
@@ -56,6 +60,7 @@ describe("Image Support in Tool Results", () => {
   it("should convert tool block with images to user message in convertMessagesForAPI", () => {
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           {
@@ -123,6 +128,7 @@ describe("Image Support in Tool Results", () => {
   it("should handle tool block without images normally", () => {
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           {
@@ -155,6 +161,7 @@ describe("Image Support in Tool Results", () => {
   it("should handle multiple images in tool result", () => {
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           {

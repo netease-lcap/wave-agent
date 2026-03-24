@@ -57,6 +57,7 @@ import {
   listSessionsFromJsonl,
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 describe("Session Performance Optimization", () => {
   let tempDir: string;
@@ -228,6 +229,7 @@ describe("Session Performance Optimization", () => {
 
         // Mock getLastMessage for timestamps and tokens (this should be the ONLY file read per session)
         const lastMessage = {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response" }],
           timestamp: new Date().toISOString(),
@@ -240,6 +242,7 @@ describe("Session Performance Optimization", () => {
 
         // Mock readFirstLine for efficient first message reading
         const firstMessageJson = JSON.stringify({
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "First message" }],
           timestamp: new Date(Date.now() - 1000).toISOString(),
@@ -329,6 +332,7 @@ describe("Session Performance Optimization", () => {
 
         // Mock getLastMessage for all sessions
         const lastMessage = {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response" }],
           timestamp: new Date().toISOString(),
@@ -341,6 +345,7 @@ describe("Session Performance Optimization", () => {
 
         // Mock readFirstLine for efficient first message reading
         const firstMessageJson = JSON.stringify({
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "First message" }],
           timestamp: new Date(Date.now() - 1000).toISOString(),
@@ -383,6 +388,7 @@ describe("Session Performance Optimization", () => {
         // Session type identification is now done via filename prefix checking
 
         const lastMessage = {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response" }],
           timestamp: new Date().toISOString(),
@@ -393,6 +399,7 @@ describe("Session Performance Optimization", () => {
 
         // Mock readFirstLine for efficient first message reading
         const firstMessageJson = JSON.stringify({
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "First message" }],
           timestamp: new Date(Date.now() - 1000).toISOString(),
@@ -430,6 +437,7 @@ describe("Session Performance Optimization", () => {
         // Session type identification is now done via filename prefix checking
 
         const lastMessage = {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response" }],
           timestamp: new Date().toISOString(),
@@ -442,6 +450,7 @@ describe("Session Performance Optimization", () => {
 
         // Mock readFirstLine for efficient first message reading
         const firstMessageJson = JSON.stringify({
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "First message" }],
           timestamp: new Date(Date.now() - 1000).toISOString(),
@@ -486,6 +495,7 @@ describe("Session Performance Optimization", () => {
         // Session type identification is now done via filename prefix checking
 
         const lastMessage = {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response" }],
           timestamp: new Date().toISOString(),
@@ -498,6 +508,7 @@ describe("Session Performance Optimization", () => {
 
         // Mock readFirstLine for efficient first message reading
         const firstMessageJson = JSON.stringify({
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "First message" }],
           timestamp: new Date(Date.now() - 1000).toISOString(),

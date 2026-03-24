@@ -5,6 +5,7 @@ import {
 } from "@/services/jsonlHandler.js";
 import type { SessionMessage } from "@/types/session.js";
 import type { TextBlock } from "@/types/messaging.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -31,6 +32,7 @@ describe("JsonlHandler.append()", () => {
     content: string,
     role: "user" | "assistant" = "user",
   ): SessionMessage => ({
+    id: generateMessageId(),
     role,
     blocks: [{ type: "text", content }],
     timestamp: new Date().toISOString(),
@@ -69,6 +71,7 @@ describe("JsonlHandler.append()", () => {
     // Expect timestamp-first format
     const expectedMessage = {
       timestamp: message.timestamp,
+      id: message.id,
       role: message.role,
       blocks: message.blocks,
     };
@@ -112,11 +115,13 @@ describe("JsonlHandler.append()", () => {
     // Expect timestamp-first format for both messages
     const expectedMessage1 = {
       timestamp: messages[0].timestamp,
+      id: messages[0].id,
       role: messages[0].role,
       blocks: messages[0].blocks,
     };
     const expectedMessage2 = {
       timestamp: messages[1].timestamp,
+      id: messages[1].id,
       role: messages[1].role,
       blocks: messages[1].blocks,
     };
@@ -150,6 +155,7 @@ describe("JsonlHandler.append()", () => {
 
   it("should preserve message structure when appending", async () => {
     const complexMessage: SessionMessage = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         { type: "text", content: "Response text" },
@@ -179,6 +185,7 @@ describe("JsonlHandler.append()", () => {
     // Expect timestamp-first format
     const expectedMessage = {
       timestamp: complexMessage.timestamp,
+      id: complexMessage.id,
       role: complexMessage.role,
       blocks: complexMessage.blocks,
       usage: complexMessage.usage,
@@ -202,6 +209,7 @@ describe("JsonlHandler.read()", () => {
     content = "Test message",
     timestamp = "2024-01-01T00:00:00.000Z",
   ): SessionMessage => ({
+    id: generateMessageId(),
     role,
     blocks: [
       {
@@ -342,6 +350,7 @@ invalid json line
   describe("Message format handling", () => {
     it("should handle messages with all optional properties", async () => {
       const complexMessage: SessionMessage = {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           { type: "text", content: "Response text" },
@@ -380,6 +389,7 @@ invalid json line
 
     it("should handle messages with minimal properties", async () => {
       const minimalMessage: SessionMessage = {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Simple message" }],
         timestamp: "2024-01-01T00:00:00.000Z",
@@ -601,11 +611,13 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
       // Add messages to the session
       const messages = [
         {
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Hello, world!" }],
           timestamp: "2024-01-01T00:00:00.000Z",
         },
         {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [
             { type: "text" as const, content: "Hello! How can I help you?" },

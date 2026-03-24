@@ -19,6 +19,7 @@ import {
 import { JsonlHandler } from "@/services/jsonlHandler.js";
 import type { SessionMessage, SessionFilename } from "@/types/session.js";
 import type { TextBlock } from "@/types/messaging.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 // Mock fs/promises for integration testing
 vi.mock("fs/promises", () => ({
@@ -43,6 +44,7 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
     content: string,
     timestamp?: string,
   ): SessionMessage => ({
+    id: generateMessageId(),
     role,
     blocks: [{ type: "text", content }],
     timestamp: timestamp || new Date().toISOString(),
@@ -173,6 +175,7 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
       // Add complex messages with various properties
       const complexMessages: SessionMessage[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             { type: "text", content: "Here's a complex query with code:" },
@@ -185,6 +188,7 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
           timestamp: "2024-01-01T12:00:00.000Z",
         },
         {
+          id: generateMessageId(),
           role: "assistant",
           blocks: [
             {
@@ -740,6 +744,7 @@ invalid json line here
             "2024-01-01T14:01:00.000Z",
           ),
           {
+            id: generateMessageId(),
             role: "assistant" as const,
             blocks: [
               { type: "text", content: "Here's the analysis summary..." },

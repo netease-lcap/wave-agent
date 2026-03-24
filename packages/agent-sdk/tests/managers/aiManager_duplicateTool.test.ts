@@ -5,6 +5,7 @@ import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import * as aiService from "../../src/services/aiService.js";
 import type { Message } from "../../src/types/index.js";
+import { generateMessageId } from "../../src/utils/messageOperations.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
@@ -86,6 +87,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
 
   it("should add a reminder message when the same tool is called with the same arguments in consecutive turns", async () => {
     const previousAssistantMessage: Message = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
@@ -98,6 +100,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
     };
 
     const currentAssistantMessage: Message = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
@@ -147,6 +150,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
 
   it("should not add a reminder when the tool name is the same but arguments are different", async () => {
     const previousAssistantMessage: Message = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
@@ -159,6 +163,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
     };
 
     const currentAssistantMessage: Message = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
@@ -207,6 +212,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
 
   it("should not add a reminder when the tool name is different", async () => {
     const previousAssistantMessage: Message = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
@@ -219,6 +225,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
     };
 
     const currentAssistantMessage: Message = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
@@ -267,6 +274,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
 
   it("should include reminders for all duplicate tool calls", async () => {
     const previousAssistantMessage: Message = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
@@ -285,6 +293,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
     };
 
     const currentAssistantMessage: Message = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {

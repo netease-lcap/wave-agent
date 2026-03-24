@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { convertMessagesForAPI } from "../../src/utils/convertMessagesForAPI.js";
+import { generateMessageId } from "../../src/utils/messageOperations.js";
 import type { Message } from "../../src/types/index.js";
 import type {
   ChatCompletionMessageParam,
@@ -10,14 +11,17 @@ describe("convertMessagesForAPI", () => {
   it("should correctly convert user and assistant messages", () => {
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello, can you help me?" }],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Sure! How can I help you?" }],
       },
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [
           { type: "text", content: "Thanks! Can you do something else?" },
@@ -47,6 +51,7 @@ describe("convertMessagesForAPI", () => {
   it("should convert text blocks with customCommandContent for API", () => {
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [
           {
@@ -58,6 +63,7 @@ describe("convertMessagesForAPI", () => {
         ],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           { type: "text", content: "I'll help you refactor that function." },
@@ -95,10 +101,12 @@ describe("convertMessagesForAPI", () => {
   it("should handle messages with multiple blocks", () => {
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Initial question" }],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Final response" }],
       },
@@ -115,30 +123,37 @@ describe("convertMessagesForAPI", () => {
   it("should filter out messages with no meaningful content or tool calls", () => {
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello, can you help me?" }],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "" }], // Empty content
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "   " }], // Whitespace only
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [], // No blocks at all
       },
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "" }], // Empty user message
       },
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "   " }], // Whitespace only user message
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "This is a valid response" }],
       },
@@ -161,10 +176,12 @@ describe("convertMessagesForAPI", () => {
   it("should handle assistant messages with valid tool calls but no text content", () => {
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Run a tool for me" }],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           {
@@ -205,10 +222,12 @@ describe("convertMessagesForAPI", () => {
     // convertMessagesForAPI so it remains user-visible only and is not sent to the agent
     const messages: Message[] = [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test prompt" }],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           { type: "error", content: "This error should NOT be sent to API" },

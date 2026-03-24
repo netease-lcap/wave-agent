@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentOptions } from "@/types/index.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 import type {
   PermissionCallback,
   PermissionDecision,
@@ -413,7 +414,11 @@ describe("Agent Permission Integration", () => {
         permissionMode: "default",
         systemPrompt: "Test prompt",
         messages: [
-          { role: "user", blocks: [{ type: "text", content: "test" }] },
+          {
+            id: generateMessageId(),
+            role: "user",
+            blocks: [{ type: "text", content: "test" }],
+          },
         ],
       });
 

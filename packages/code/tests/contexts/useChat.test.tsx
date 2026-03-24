@@ -153,6 +153,7 @@ describe("ChatProvider", () => {
     // Test onMessagesChange
     const newMessages = [
       {
+        id: "msg-1",
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "test" }],
       },
@@ -196,6 +197,7 @@ describe("ChatProvider", () => {
     // Test onSubagentMessagesChange
     callbacks.onSubagentMessagesChange?.("sub1", [
       {
+        id: "sub-msg-1",
         role: "assistant" as const,
         blocks: [{ type: "text" as const, content: "sub-msg" }],
       },
@@ -766,6 +768,7 @@ describe("ChatProvider", () => {
     // Trigger onMessagesChange to start a timer
     const newMessages = [
       {
+        id: "msg-1",
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "test" }],
       },

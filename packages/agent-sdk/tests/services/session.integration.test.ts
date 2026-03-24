@@ -66,6 +66,7 @@ import {
   cleanupExpiredSessionsFromJsonl,
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 describe("Session Integration Tests", () => {
   let tempDir: string;
@@ -222,10 +223,12 @@ describe("Session Integration Tests", () => {
   describe("T044: Advanced session functionality", () => {
     const createTestMessages = (): Message[] => [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello, world!" }],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Hi there!" }],
         usage: {
@@ -398,10 +401,12 @@ describe("Session Integration Tests", () => {
       // 1. Create new session with messages
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "Start of session" }],
         },
         {
+          id: generateMessageId(),
           role: "assistant",
           blocks: [{ type: "text", content: "Session started" }],
           usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
@@ -428,10 +433,12 @@ describe("Session Integration Tests", () => {
       // 3. Append more messages
       const additionalMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "Continue session" }],
         },
         {
+          id: generateMessageId(),
           role: "assistant",
           blocks: [{ type: "text", content: "Session continues" }],
           usage: { prompt_tokens: 10, completion_tokens: 7, total_tokens: 17 },
@@ -508,6 +515,7 @@ describe("Session Integration Tests", () => {
 
       const messages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "Test message" }],
         },
@@ -601,11 +609,13 @@ describe("Session Integration Tests", () => {
 
       const messagesWithAdditionalFields: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "User message" }],
           additionalFields: { userAgent: "test", source: "cli" },
         },
         {
+          id: generateMessageId(),
           role: "assistant",
           blocks: [
             { type: "text", content: "Assistant response" },

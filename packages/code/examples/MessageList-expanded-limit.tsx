@@ -16,6 +16,7 @@ const createMessage = (
   content: string,
   id: number,
 ): Message => ({
+  id: `msg-${id}`,
   role,
   blocks: [
     {

@@ -5,6 +5,7 @@ import { Message } from "@/types/index.js";
 import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 import { MessageManager } from "@/managers/messageManager.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -27,6 +28,7 @@ describe("Agent Message Compression Tests", () => {
     const messages: Message[] = [];
     for (let i = 0; i < count; i++) {
       messages.push({
+        id: generateMessageId(),
         role: "user",
         blocks: [
           {
@@ -36,6 +38,7 @@ describe("Agent Message Compression Tests", () => {
         ],
       });
       messages.push({
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           {
@@ -54,6 +57,7 @@ describe("Agent Message Compression Tests", () => {
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
+      id: generateMessageId(),
       role: "user",
       blocks: [
         {
@@ -160,6 +164,7 @@ describe("Agent Message Compression Tests", () => {
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
+      id: generateMessageId(),
       role: "user",
       blocks: [
         {
@@ -214,6 +219,7 @@ describe("Agent Message Compression Tests", () => {
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
+      id: generateMessageId(),
       role: "user",
       blocks: [
         {
@@ -291,6 +297,7 @@ describe("Agent Message Compression Tests", () => {
     const messagesWithCompression: Message[] = [
       ...initialMessages.slice(0, 8), // First 8 messages
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           {
@@ -305,6 +312,7 @@ describe("Agent Message Compression Tests", () => {
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
+      id: generateMessageId(),
       role: "user",
       blocks: [
         {
@@ -424,6 +432,7 @@ describe("Agent Message Compression Tests", () => {
 
     // Add the first user message to trigger compression
     const firstUserMessage: Message = {
+      id: generateMessageId(),
       role: "user",
       blocks: [
         {
@@ -547,6 +556,7 @@ describe("Agent Message Compression Tests", () => {
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
+      id: generateMessageId(),
       role: "user",
       blocks: [
         {

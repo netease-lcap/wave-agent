@@ -25,7 +25,7 @@ vi.mock("../../src/components/Markdown.js", () => ({
 describe("MessageBlockItem Component", () => {
   describe("Block Types", () => {
     it("should render text block", () => {
-      const message: Message = { role: "user", blocks: [] };
+      const message: Message = { id: "test-id", role: "user", blocks: [] };
       const block: MessageBlock = { type: "text", content: "plain text" };
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
@@ -34,7 +34,7 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render text block with customCommandContent (⚡)", () => {
-      const message: Message = { role: "user", blocks: [] };
+      const message: Message = { id: "test-id", role: "user", blocks: [] };
       const block: MessageBlock = {
         type: "text",
         content: "command text",
@@ -48,7 +48,7 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render text block with HOOK source (🔗)", () => {
-      const message: Message = { role: "user", blocks: [] };
+      const message: Message = { id: "test-id", role: "user", blocks: [] };
       const block: MessageBlock = {
         type: "text",
         content: "hook text",
@@ -62,7 +62,7 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render error block", () => {
-      const message: Message = { role: "assistant", blocks: [] };
+      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
       const block: MessageBlock = {
         type: "error",
         content: "something failed",
@@ -74,7 +74,7 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render bang block", () => {
-      const message: Message = { role: "assistant", blocks: [] };
+      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
       const block: MessageBlock = {
         type: "bang",
         output: "output",
@@ -89,7 +89,7 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render tool block", () => {
-      const message: Message = { role: "assistant", blocks: [] };
+      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
       const block: MessageBlock = {
         type: "tool",
         id: "1",
@@ -105,7 +105,7 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render image block without imageUrls", () => {
-      const message: Message = { role: "user", blocks: [] };
+      const message: Message = { id: "test-id", role: "user", blocks: [] };
       const block: MessageBlock = { type: "image" };
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
@@ -115,7 +115,7 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render image block with imageUrls", () => {
-      const message: Message = { role: "user", blocks: [] };
+      const message: Message = { id: "test-id", role: "user", blocks: [] };
       const block: MessageBlock = {
         type: "image",
         imageUrls: ["url1", "url2"],
@@ -128,7 +128,7 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render compress block", () => {
-      const message: Message = { role: "assistant", blocks: [] };
+      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
       const block: MessageBlock = {
         type: "compress",
         content: "compressed",
@@ -141,7 +141,7 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render reasoning block", () => {
-      const message: Message = { role: "assistant", blocks: [] };
+      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
       const block: MessageBlock = { type: "reasoning", content: "thinking" };
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,

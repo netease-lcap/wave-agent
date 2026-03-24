@@ -194,6 +194,10 @@ export class JsonlHandler {
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i];
 
+      if (!message.id) {
+        throw new Error(`Message at index ${i} is missing required field: id`);
+      }
+
       if (!message.role) {
         throw new Error(
           `Message at index ${i} is missing required field: role`,

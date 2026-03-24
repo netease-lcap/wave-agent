@@ -4,6 +4,7 @@ import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 import type { Usage } from "@/types/index.js";
 import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -303,34 +304,42 @@ describe("Agent Usage Tracking", () => {
       // Set up an agent instance with initial messages to have enough content for compression
       const initialMessages = [
         {
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Message 1" }],
         },
         {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response 1" }],
         },
         {
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Message 2" }],
         },
         {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response 2" }],
         },
         {
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Message 3" }],
         },
         {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response 3" }],
         },
         {
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Message 4" }],
         },
         {
+          id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response 4" }],
         },
