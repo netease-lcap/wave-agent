@@ -15,3 +15,6 @@ export const TASK_GET_TOOL_NAME = "TaskGet";
 export const TASK_UPDATE_TOOL_NAME = "TaskUpdate";
 export const TASK_LIST_TOOL_NAME = "TaskList";
 export const WRITE_TOOL_NAME = "Write";
+export const CRON_CREATE_TOOL_NAME = "CronCreate";
+export const CRON_DELETE_TOOL_NAME = "CronDelete";
+export const CRON_LIST_TOOL_NAME = "CronList";
