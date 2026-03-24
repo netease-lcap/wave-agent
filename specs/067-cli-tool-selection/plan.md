@@ -65,7 +65,6 @@ packages/
 │       └── managers/
 │           ├── toolManager.ts   # Implement tool filtering logic
 │           ├── aiManager.ts     # Remove tools arg from sendAIMessage
-│           ├── btwManager.ts    # Use isolated ToolManager and PermissionManager
 │           └── subagentManager.ts # Use PermissionManager to deny Agent tool
 └── code/
     └── src/

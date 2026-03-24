@@ -330,33 +330,23 @@ export const handleCommandSelect = (
       }
 
       if (!commandExecuted) {
-        if (command === "btw") {
-          const question = afterWord.trim();
-          if (question) {
-            callbacks.onBtw?.(question);
-            commandExecuted = true;
-          }
-        }
-
-        if (!commandExecuted) {
-          if (command === "clear") {
-            callbacks.onClearMessages?.();
-          } else if (command === "tasks") {
-            dispatch({
-              type: "SET_SHOW_BACKGROUND_TASK_MANAGER",
-              payload: true,
-            });
-          } else if (command === "mcp") {
-            dispatch({ type: "SET_SHOW_MCP_MANAGER", payload: true });
-          } else if (command === "rewind") {
-            dispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: true });
-          } else if (command === "help") {
-            dispatch({ type: "SET_SHOW_HELP", payload: true });
-          } else if (command === "status") {
-            dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: true });
-          } else if (command === "plugin") {
-            dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
-          }
+        if (command === "clear") {
+          callbacks.onClearMessages?.();
+        } else if (command === "tasks") {
+          dispatch({
+            type: "SET_SHOW_BACKGROUND_TASK_MANAGER",
+            payload: true,
+          });
+        } else if (command === "mcp") {
+          dispatch({ type: "SET_SHOW_MCP_MANAGER", payload: true });
+        } else if (command === "rewind") {
+          dispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: true });
+        } else if (command === "help") {
+          dispatch({ type: "SET_SHOW_HELP", payload: true });
+        } else if (command === "status") {
+          dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: true });
+        } else if (command === "plugin") {
+          dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
         }
       }
     })();
@@ -696,9 +686,7 @@ export const handleInput = async (
         state.showPluginManager
       )
     ) {
-      if (!callbacks.isSideAgentActive) {
-        callbacks.onAbortMessage?.();
-      }
+      callbacks.onAbortMessage?.();
       return true;
     }
   }

@@ -42,8 +42,6 @@ export interface InputManagerCallbacks {
   onAbortMessage?: () => void;
   onClearMessages?: () => void;
   onBackgroundCurrentTask?: () => void;
-  onBtw?: (question: string) => void | Promise<void>;
-  isSideAgentActive?: boolean;
   onPermissionModeChange?: (mode: PermissionMode) => void;
   sessionId?: string;
   workdir?: string;

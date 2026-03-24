@@ -7,7 +7,6 @@ import { TaskList } from "./TaskList.js";
 import { QueuedMessageList } from "./QueuedMessageList.js";
 import { ConfirmationDetails } from "./ConfirmationDetails.js";
 import { ConfirmationSelector } from "./ConfirmationSelector.js";
-import { SideAgentTip } from "./SideAgentTip.js";
 
 import { useChat } from "../contexts/useChat.js";
 import type { PermissionDecision } from "wave-agent-sdk";
@@ -42,15 +41,11 @@ export const ChatInterface: React.FC = () => {
     version,
     workdir,
     getModelConfig,
-    sideMessages,
-    isSideAgentThinking,
-    isSideAgentActive,
-    dismissSideAgent,
   } = useChat();
 
   const model = getModelConfig().model;
 
-  const displayMessages = sideMessages || messages;
+  const displayMessages = messages;
 
   const handleDetailsHeightMeasured = useCallback((height: number) => {
     setDetailsHeight(height);
@@ -132,7 +127,7 @@ export const ChatInterface: React.FC = () => {
         onDynamicBlocksHeightMeasured={handleDynamicBlocksHeightMeasured}
       />
 
-      {(isLoading || isCommandRunning || isCompressing || isSideAgentActive) &&
+      {(isLoading || isCommandRunning || isCompressing) &&
         !isConfirmationVisible &&
         !isExpanded && (
           <LoadingIndicator
@@ -140,17 +135,9 @@ export const ChatInterface: React.FC = () => {
             isCommandRunning={isCommandRunning}
             isCompressing={isCompressing}
             latestTotalTokens={latestTotalTokens}
-            isSideAgentThinking={isSideAgentThinking}
-            isSideAgentActive={isSideAgentActive}
           />
         )}
-      {!isConfirmationVisible && !isExpanded && !isSideAgentActive && (
-        <TaskList />
-      )}
-
-      {sideMessages && !isConfirmationVisible && !isExpanded && (
-        <SideAgentTip onDismiss={dismissSideAgent} />
-      )}
+      {!isConfirmationVisible && !isExpanded && <TaskList />}
 
       {isConfirmationVisible && (
         <>
@@ -175,7 +162,7 @@ export const ChatInterface: React.FC = () => {
         </>
       )}
 
-      {!isConfirmationVisible && !isExpanded && !isSideAgentActive && (
+      {!isConfirmationVisible && !isExpanded && (
         <>
           <QueuedMessageList />
           <InputBox

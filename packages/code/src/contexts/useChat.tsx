@@ -69,11 +69,6 @@ export interface ChatContextType {
   // Subagent messages
   subagentMessages: Record<string, Message[]>;
   subagentLatestTokens: Record<string, number>;
-  sideMessages: Message[] | null;
-  isSideAgentThinking: boolean;
-  isSideAgentActive: boolean;
-  btw: (question: string) => Promise<void>;
-  dismissSideAgent: () => void;
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -186,9 +181,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [subagentLatestTokens, setSubagentLatestTokens] = useState<
     Record<string, number>
   >({});
-
-  const [sideMessages, setSideMessages] = useState<Message[] | null>(null);
-  const [isSideAgentThinking, setIsSideAgentThinking] = useState(false);
 
   // Permission state
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
@@ -322,12 +314,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
         },
-        onSideAgentUpdated: (messages) => {
-          setSideMessages(messages ? [...messages] : null);
-          if (messages) {
-            setIsSideAgentThinking(false);
-          }
-        },
       };
 
       try {
@@ -436,12 +422,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     };
   }, []);
 
-  const btw = useCallback(async (question: string) => {
-    if (agentRef.current) {
-      await agentRef.current.btw(question);
-    }
-  }, []);
-
   // Send message function (including judgment logic)
   const sendMessage = useCallback(
     async (
@@ -453,20 +433,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       const hasImageAttachments = images && images.length > 0;
 
       if (!hasTextContent && !hasImageAttachments) return;
-
-      // Handle /btw and side agent follow-ups first, as they are non-blocking
-      if (content.startsWith("/btw")) {
-        const question = content.substring(4).trim();
-        if (question) {
-          setIsSideAgentThinking(true);
-          try {
-            await btw(question);
-          } finally {
-            setIsSideAgentThinking(false);
-          }
-          return;
-        }
-      }
 
       if (isLoading || isCommandRunning) {
         setQueuedMessages((prev) => [...prev, { content, images }]);
@@ -501,7 +467,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         // Loading state will be automatically updated by the useEffect that watches messages
       }
     },
-    [isLoading, isCommandRunning, btw],
+    [isLoading, isCommandRunning],
   );
 
   // Process queued messages when idle
@@ -671,20 +637,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       setIsTaskListVisible((prev) => !prev);
     }
 
-    // Handle ESC key to cancel confirmation or dismiss side agent
+    // Handle ESC key to cancel confirmation
     if (key.escape) {
       if (isConfirmationVisible) {
         handleConfirmationCancel();
-      } else if (sideMessages) {
-        dismissSideAgent();
       }
     }
   });
-
-  const dismissSideAgent = useCallback(() => {
-    agentRef.current?.dismissSideAgent();
-    setIsSideAgentThinking(false);
-  }, []);
 
   const contextValue: ChatContextType = {
     messages,
@@ -711,11 +670,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hasSlashCommand,
     subagentMessages,
     subagentLatestTokens,
-    sideMessages,
-    isSideAgentThinking,
-    isSideAgentActive: !!sideMessages || isSideAgentThinking,
-    btw,
-    dismissSideAgent,
     permissionMode,
     setPermissionMode,
     isConfirmationVisible,
