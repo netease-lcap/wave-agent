@@ -31,6 +31,7 @@
     - `allow`: `string[]` (List of permitted rules)
     - `deny`: `string[]` (List of explicitly denied rules)
     - `permissionMode`: `PermissionMode`
+    - `additionalDirectories`: `string[]` (List of paths that extend the Safe Zone)
 
 ### PermissionDecision
 **Description**: Result of a permission authorization check.
@@ -56,6 +57,12 @@
 - `resolver`: `(decision: PermissionDecision) => void`
 - `reject`: `() => void`
 
+### Safe Zone
+**Description**: A logical entity representing the union of allowed directories for file operations.
+**Fields**:
+- `workdir`: `string` (The current working directory of the agent)
+- `additionalDirectories`: `string[]` (User-defined allowed directories)
+
 ## Entity Relationships
 
 ```
@@ -63,7 +70,8 @@ WaveConfiguration
     └── permissions
         ├── allow: PermissionRule[]
         ├── deny: PermissionRule[]
-        └── permissionMode: PermissionMode
+        ├── permissionMode: PermissionMode
+        └── additionalDirectories: string[]
 
 Agent
     ├── permissionMode: PermissionMode
@@ -77,7 +85,8 @@ PermissionManager.checkPermission(context)
     ├── 3. Check allowedTools (Instance-specific)
     ├── 4. Check permissions.allow (Global, Exact or Wildcard)
     ├── 5. Check built-in safe commands (with path restrictions)
-    └── 6. If not allowed, trigger Confirmation UI
+    ├── 6. Check Safe Zone for file operations (Write, Edit, Delete, mkdir)
+    └── 7. If not allowed, trigger Confirmation UI
 ```
 
 ## Configuration Hierarchy
@@ -114,3 +123,4 @@ PermissionManager.checkPermission(context)
 8. **Interactive Trust**: Selecting "Yes, and auto-accept edits" sets `newPermissionMode` to `acceptEdits`. Selecting "Yes, and don't ask again..." sets `newPermissionRule`.
 9. **Rule Addition**: Triggered when `PermissionDecision` contains `newPermissionRule`. Results in updating `.wave/settings.local.json`.
 10. **dontAsk Mode**: Auto-denies restricted tools not in allow list. Injects message into system prompt.
+11. **Safe Zone Enforcement**: File modification operations outside the Safe Zone (CWD + `additionalDirectories`) always require confirmation, even in `acceptEdits` mode. Symbolic links are resolved to real paths.

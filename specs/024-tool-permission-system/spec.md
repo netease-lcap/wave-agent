@@ -1,11 +1,11 @@
 # Feature Specification: Tool Permission System
 
 **Feature Branch**: `024-tool-permission-system`  
-**Input**: Comprehensive merge of tool permission features including basic modes, wildcard matching, secure pipeline validation, deny rules, persistent configuration, interactive trust, acceptEdits mode, and dontAsk mode.
+**Input**: Comprehensive merge of tool permission features including basic modes, wildcard matching, secure pipeline validation, deny rules, persistent configuration, interactive trust, acceptEdits mode, dontAsk mode, and secure file access (Safe Zone).
 
 ## Overview
 
-The Tool Permission System provides a robust security layer for the Wave agent, ensuring that potentially destructive or sensitive operations are authorized by the user. It supports multiple permission modes, fine-grained rule matching with wildcards, secure decomposition of shell pipelines, explicit denial of specific tools or paths, persistent configuration across user and project scopes, and interactive trust mechanisms.
+The Tool Permission System provides a robust security layer for the Wave agent, ensuring that potentially destructive or sensitive operations are authorized by the user. It supports multiple permission modes, fine-grained rule matching with wildcards, secure decomposition of shell pipelines, explicit denial of specific tools or paths, persistent configuration across user and project scopes, interactive trust mechanisms, and a "Safe Zone" for file operations.
 
 ## User Scenarios & Testing
 
@@ -119,15 +119,23 @@ As a user, when I am prompted to confirm a Bash command, I want to be able to al
 2. **Given** the confirmation prompt for `Bash` command `ls` is shown, **When** the user selects "Yes, and don't ask again...", **Then** the command is executed, and `Bash(ls)` is added to the `permissions.allow` array in `.wave/settings.local.json`.
 3. **Given** `Bash(ls)` is in the `permissions.allow` array of the local project settings, **When** the agent attempts a `Bash` operation with command `ls`, **Then** it is executed without a prompt.
 
-### User Story 14 - Automatic File Edits (Priority: P1)
+### User Story 14 - Automatic File Edits in Safe Zone (Priority: P1)
 
-As a user, I want the agent to automatically apply file edits without asking for my permission every time, so that I can work more efficiently when I trust the agent's changes.
+As a user, I want the agent to automatically apply file edits within my project directory or explicitly allowed directories without asking for my permission every time, so that I can work more efficiently when I trust the agent's changes.
 
 **Acceptance Scenarios**:
-1. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use `Edit`, `Delete`, or `Write` tools, **Then** the operation is applied immediately without a permission prompt.
-2. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use `mkdir` via the `Bash` tool within the safe zone, **Then** the operation is applied immediately without a permission prompt.
+1. **Given** the agent is in `acceptEdits` mode and the file is within the Safe Zone (CWD or `additionalDirectories`), **When** the agent attempts to use `Edit`, `Delete`, or `Write` tools, **Then** the operation is applied immediately without a permission prompt.
+2. **Given** the agent is in `acceptEdits` mode and the directory is within the Safe Zone, **When** the agent attempts to use `mkdir` via the `Bash` tool, **Then** the operation is applied immediately without a permission prompt.
 
-### User Story 15 - CLI Mode Cycling (Priority: P2)
+### User Story 15 - Out-of-Bounds Security Confirmation (Priority: P1)
+
+As a user, I want the system to ask for my explicit permission before modifying any file outside of my project or allowed directories, even if I have enabled auto-accept mode, so that I can prevent accidental or malicious changes to my system.
+
+**Acceptance Scenarios**:
+1. **Given** a file located outside the Safe Zone, **When** the system attempts to write or edit the file, **Then** a confirmation prompt is displayed to the user, regardless of the `acceptEdits` setting.
+2. **Given** the system is in `acceptEdits` mode, **When** an out-of-bounds file operation is attempted, **Then** the system MUST still display a confirmation prompt instead of automatically proceeding.
+
+### User Story 16 - CLI Mode Cycling (Priority: P2)
 
 As a CLI user, I want to quickly switch between permission modes during a session using a keyboard shortcut, so that I can easily toggle between manual control, automatic edits, and full bypass.
 
@@ -136,14 +144,14 @@ As a CLI user, I want to quickly switch between permission modes during a sessio
 2. **Given** the CLI is in `acceptEdits` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to `bypassPermissions`.
 3. **Given** the CLI is in `bypassPermissions` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to `default`.
 
-### User Story 16 - Auto-deny unapproved tools (Priority: P1)
+### User Story 17 - Auto-deny unapproved tools (Priority: P1)
 
 As a user, I want tools that are not pre-approved to be automatically denied when I am in `dontAsk` mode, so that I am not interrupted by permission requests for tools I haven't explicitly allowed.
 
 **Acceptance Scenarios**:
 1. **Given** the permission mode is set to `dontAsk` and `Bash` is NOT in `permissions.allow`, **When** the agent calls `Bash`, **Then** the tool call is denied immediately and the agent receives a "permission denied" error without the user being prompted.
 
-### User Story 17 - Configure dontAsk mode (Priority: P2)
+### User Story 18 - Configure dontAsk mode (Priority: P2)
 
 As a user, I want to be able to set the permission mode to `dontAsk` in my configuration so that I can enforce this behavior across sessions.
 
@@ -165,11 +173,19 @@ As a user, I want to be able to set the permission mode to `dontAsk` in my confi
 - **FR-022**: System MUST detect write redirections (`>`, `>>`, etc.) in bash commands and treat them as dangerous, hiding the "Don't ask again" option.
 - **FR-036**: Selecting "Yes, and auto-accept edits" MUST set the current session's permission mode to `acceptEdits`.
 - **FR-037**: Selecting "Yes, and don't ask again for this command in this workdir" MUST save the rule `Bash([command])` to the `permissions.allow` array in `.wave/settings.local.json`.
-- **FR-045**: In `acceptEdits` mode, the system MUST automatically grant permission for `Edit`, `Delete`, and `Write` operations.
+- **FR-045**: In `acceptEdits` mode, the system MUST automatically grant permission for `Edit`, `Delete`, and `Write` operations within the Safe Zone.
 - **FR-046**: In `dontAsk` mode, the system MUST auto-deny any restricted tool call that does not match a rule in `permissions.allow` or `temporaryRules`.
 - **FR-047**: In `dontAsk` mode, the system MUST NOT invoke the `canUseToolCallback` (which typically triggers user prompts) for unapproved restricted tools.
 - **FR-048**: The `dontAsk` mode MUST NOT be included in the cycle of permission modes triggered by the "Shift+Tab" shortcut.
 - **FR-049**: When `dontAsk` mode is active, the system MUST inject a message into the agent's system prompt stating: "Tools are executed in a 'user-selected permission mode'. Permissions can be configured via settings.json and settings.local.json."
+
+#### Safe Zone & Secure File Access
+- **FR-050**: System MUST identify the "Safe Zone" as the union of the current working directory and all paths listed in `permissions.additionalDirectories`.
+- **FR-051**: System MUST intercept all file modification operations (Write, Edit, Delete, and `mkdir` via Bash).
+- **FR-052**: System MUST verify if the target file path of a modification operation is within the Safe Zone.
+- **FR-053**: System MUST display a confirmation prompt for any modification operation targeting a file outside the Safe Zone, regardless of the `permissionMode` setting (except `bypassPermissions`).
+- **FR-054**: System MUST support both absolute paths and paths relative to the working directory in `permissions.additionalDirectories`.
+- **FR-055**: System MUST resolve symbolic links to their absolute real paths before performing the Safe Zone check.
 
 #### Configuration & Persistence
 - **FR-038**: System MUST support a `permissionMode` setting in `permissions` object in `settings.json`.
@@ -225,6 +241,8 @@ As a user, I want to be able to set the permission mode to `dontAsk` in my confi
 - **Simple Command**: A single executable command with its arguments, extracted from a pipeline.
 - **Smart Wildcard**: A heuristic-generated pattern that replaces dynamic arguments with `*`.
 - **PermissionDecision**: The result of a permission check, extended to include optional `newPermissionMode` and `newPermissionRule` to signal the system to update its state.
+- **Safe Zone**: A collection of filesystem paths where the agent is permitted to perform file operations without explicit per-operation user confirmation.
+- **Additional Directories**: A user-configurable list of paths that extend the Safe Zone beyond the default working directory.
 
 ## Edge Cases
 
@@ -236,3 +254,5 @@ As a user, I want to be able to set the permission mode to `dontAsk` in my confi
 - **Malformed `settings.json`**: If the settings file is malformed, the system should handle it gracefully.
 - **Duplicate rules**: If the rule already exists, selecting the option again should not create a duplicate.
 - **Restricted vs Unrestricted Tools**: Unrestricted tools (those not in `RESTRICTED_TOOLS`) should still be allowed automatically, even in `dontAsk` mode.
+- **Symbolic Links**: The system should resolve the real path and check it against the safe zones to prevent bypasses via symlinks.
+- **Nested Directories**: Any file within a listed directory or its subdirectories should be considered safe.

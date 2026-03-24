@@ -8,7 +8,7 @@
 /**
  * Permission mode configuration
  * - "default": Prompt for confirmation on restricted tools
- * - "acceptEdits": Automatically accept file modifications
+ * - "acceptEdits": Automatically accept file modifications within Safe Zone
  * - "plan": Plan mode for the agent
  * - "bypassPermissions": Execute all tools without confirmation
  * - "dontAsk": Auto-deny restricted tools not in allow list
@@ -110,6 +110,25 @@ export interface ConfirmationState {
   toolName: string;
   /** Suggested pattern for smart wildcard */
   suggestedPattern?: string;
+}
+
+/**
+ * WaveConfiguration structure for permissions
+ */
+export interface WaveConfiguration {
+  permissions?: {
+    /** List of allowed tool call patterns */
+    allow?: string[];
+    /** List of explicitly denied tool call patterns */
+    deny?: string[];
+    /** Default permission mode */
+    permissionMode?: PermissionMode;
+    /** 
+     * List of directories that are considered part of the Safe Zone.
+     * File operations within these directories can be auto-accepted.
+     */
+    additionalDirectories?: string[];
+  };
 }
 
 /**

@@ -68,3 +68,12 @@
 ## Decision: dontAsk Mode Implementation
 **What was chosen**: Auto-deny restricted tools not in allow list. Injects message into system prompt.
 **Why chosen**: Provides a non-interactive mode for automated workflows while maintaining security.
+
+## Decision: Safe Zone Implementation
+**What was chosen**: Implement the "Safe Zone" as a union of the current working directory and a user-configurable list of additional directories (`permissions.additionalDirectories`).
+**Why chosen**: Ensures that the agent only has auto-accept permissions within designated safe areas, providing a critical safety net for out-of-bounds file operations.
+**Implementation Details**:
+- Use `isPathInside` utility which handles absolute paths and symbolic links (via `fs.realpathSync`).
+- Intercept file modification tools: `Write`, `Edit`, `Delete`, and `mkdir` via `Bash`.
+- Out-of-bounds operations ALWAYS require confirmation, even in `acceptEdits` mode.
+- Support both absolute and relative paths in `additionalDirectories`.
