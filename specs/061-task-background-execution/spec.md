@@ -100,7 +100,7 @@ As a user running a long-running bash command or a subagent task in the foregrou
 - **FR-003**: The system MUST provide a `TaskOutput` tool to retrieve output from background tasks.
 - **FR-004**: `TaskOutput` MUST support a `task_id` parameter.
 - **FR-005**: `TaskOutput` MUST support a `block` parameter (defaulting to true) to determine whether to wait for task completion.
-- **FR-006**: `TaskOutput` MUST support a `timeout` parameter for blocking calls.
+- **FR-006**: `TaskOutput` MUST support a `timeout` parameter for blocking calls (default: 30000ms, max: 600000ms).
 - **FR-007**: The system MUST provide a `TaskStop` tool to terminate running background tasks.
 - **FR-008**: `TaskStop` MUST support a `task_id` parameter.
 - **FR-009**: The `BashOutput` and `KillBash` tools MUST be removed/deprecated in favor of the unified `TaskOutput` and `TaskStop` tools.
