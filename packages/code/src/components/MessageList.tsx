@@ -55,12 +55,8 @@ export const MessageList = React.memo(
 
     // Determine which blocks are static vs dynamic
     const blocksWithStatus = allBlocks.map((item) => {
-      const { block, isLastMessage } = item;
-      const isDynamic =
-        !forceStatic &&
-        isLastMessage &&
-        ((block.type === "tool" && block.stage !== "end") ||
-          (block.type === "bang" && block.isRunning));
+      const { isLastMessage } = item;
+      const isDynamic = !forceStatic && isLastMessage;
       return { ...item, isDynamic };
     });
 
