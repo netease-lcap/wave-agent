@@ -17,12 +17,12 @@ This document outlines the technical strategy for implementing the `acceptEdits`
 - `Agent` and SDK provide methods to get/set permission mode.
 - CLI `InputBox` (via `InputManager`) handles `Shift+Tab` to cycle modes.
 - CLI UI displays the current permission mode.
-- `settings.json` supports `acceptEdits` in `defaultMode`.
+- `settings.json` supports `acceptEdits` in `permissionMode`.
 
 ### Unknowns & Research Tasks
 - [x] How to capture `Shift+Tab` in Ink's `useInput`? (Use `key.shift && key.tab`).
 - [x] Where is the best place to display the current permission mode in the CLI UI? (In `InputBox`).
-- [x] How to ensure `LiveConfigManager` correctly propagates `defaultMode` changes to the active `PermissionManager`. (Already handled in `Agent.initialize`).
+- [x] How to ensure `LiveConfigManager` correctly propagates `permissionMode` changes to the active `PermissionManager`. (Already handled in `Agent.initialize`).
 
 ## Constitution Check
 
@@ -42,14 +42,14 @@ This document outlines the technical strategy for implementing the `acceptEdits`
 - [ ] `PermissionManager` correctly handles `acceptEdits` for specific tools.
 - [ ] `Shift+Tab` successfully cycles modes in CLI.
 - [ ] Current mode is visible in CLI UI.
-- [ ] `settings.json` `defaultMode: "acceptEdits"` works on startup.
+- [ ] `settings.json` `permissionMode: "acceptEdits"` works on startup.
 
 ## Phase 0: Research
 
 ### Research Tasks
 - **RT-001**: Verify `Shift+Tab` detection in Ink.
 - **RT-002**: Identify existing CLI UI components for status display.
-- **RT-003**: Trace `defaultMode` initialization from `settings.json` to `PermissionManager`.
+- **RT-003**: Trace `permissionMode` initialization from `settings.json` to `PermissionManager`.
 
 ## Phase 1: Design & Contracts
 
@@ -78,6 +78,6 @@ This document outlines the technical strategy for implementing the `acceptEdits`
 - **Task 2.4**: Update `InputBox` in `packages/code/src/components/InputBox.tsx` to display the current permission mode below the input border (e.g., `Mode: Accept Edits (Shift+Tab to cycle)`).
 
 ### Step 3: Configuration & Validation
-- **Task 3.1**: Update `configValidator.ts` in `packages/agent-sdk/src/utils/configValidator.ts` to allow `acceptEdits` in `defaultMode`.
+- **Task 3.1**: Update `configValidator.ts` in `packages/agent-sdk/src/utils/configValidator.ts` to allow `acceptEdits` in `permissionMode`.
 - **Task 3.2**: Verify `LiveConfigManager` correctly updates `PermissionManager` on config reload.
 

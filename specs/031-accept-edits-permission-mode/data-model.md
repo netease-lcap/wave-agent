@@ -12,7 +12,7 @@
 ### Configuration (Entity)
 - **Description**: Global settings loaded from `settings.json`.
 - **Fields**:
-  - `defaultMode`: `PermissionMode` (Optional, defaults to `default`).
+  - `permissionMode`: `PermissionMode` (Optional, defaults to `default`).
 
 ## State Transitions
 

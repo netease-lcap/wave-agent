@@ -148,7 +148,7 @@ describe("Subagent Permission Integration", () => {
   it("should inherit all permission settings from parent PermissionManager", async () => {
     const parentPermissionManager = new PermissionManager(container, {
       workdir: "/tmp/test",
-      configuredDefaultMode: "acceptEdits",
+      configuredPermissionMode: "acceptEdits",
       allowedRules: ["git:*"],
       deniedRules: ["Bash(rm *)"],
       additionalDirectories: ["/tmp/other"],
@@ -179,7 +179,7 @@ describe("Subagent Permission Integration", () => {
     const subagentPermissionManager =
       subagentContainer.get<PermissionManager>("PermissionManager")!;
 
-    expect(subagentPermissionManager.getConfiguredDefaultMode()).toBe(
+    expect(subagentPermissionManager.getConfiguredPermissionMode()).toBe(
       "acceptEdits",
     );
     expect(subagentPermissionManager.getAllowedRules()).toContain("git:*");

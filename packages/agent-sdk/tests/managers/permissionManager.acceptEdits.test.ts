@@ -76,7 +76,7 @@ describe("PermissionManager - acceptEdits mode", () => {
   describe("resolveEffectivePermissionMode with acceptEdits", () => {
     it("should correctly resolve effective mode when acceptEdits is set as configured default", () => {
       const manager = new PermissionManager(container, {
-        configuredDefaultMode: "acceptEdits",
+        configuredPermissionMode: "acceptEdits",
       });
 
       expect(manager.resolveEffectivePermissionMode()).toBe("acceptEdits");
@@ -85,7 +85,7 @@ describe("PermissionManager - acceptEdits mode", () => {
 
     it("should correctly resolve effective mode when acceptEdits is set as CLI override", () => {
       const manager = new PermissionManager(container, {
-        configuredDefaultMode: "default",
+        configuredPermissionMode: "default",
       });
 
       expect(manager.resolveEffectivePermissionMode("acceptEdits")).toBe(
@@ -98,7 +98,7 @@ describe("PermissionManager - acceptEdits mode", () => {
 
     it("should prioritize CLI override over configured default acceptEdits", () => {
       const manager = new PermissionManager(container, {
-        configuredDefaultMode: "acceptEdits",
+        configuredPermissionMode: "acceptEdits",
       });
 
       expect(manager.resolveEffectivePermissionMode("bypassPermissions")).toBe(

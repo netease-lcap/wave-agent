@@ -25,7 +25,7 @@ export interface PermissionDecision {
 export interface WaveConfiguration {
   hooks?: Partial<Record<HookEvent, HookEventConfig[]>>;
   env?: Record<string, string>;
-  defaultMode?: PermissionMode;
+  permissionMode?: PermissionMode;
   /** New field for persistent permissions */
   permissions?: {
     allow?: string[];

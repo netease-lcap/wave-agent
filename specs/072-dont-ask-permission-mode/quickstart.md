@@ -4,11 +4,11 @@ The `dontAsk` permission mode allows you to configure the agent to automatically
 
 ## Enabling dontAsk Mode
 
-To enable `dontAsk` mode, you can set the `defaultMode` in your `settings.json` or `settings.local.json` file:
+To enable `dontAsk` mode, you can set the `permissionMode` in your `settings.json` or `settings.local.json` file:
 
 ```json
 {
-  "defaultMode": "dontAsk"
+  "permissionMode": "dontAsk"
 }
 ```
 

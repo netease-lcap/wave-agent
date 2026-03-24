@@ -30,7 +30,7 @@
 - `permissions`:
     - `allow`: `string[]` (List of permitted rules)
     - `deny`: `string[]` (List of explicitly denied rules)
-    - `defaultMode`: `PermissionMode`
+    - `permissionMode`: `PermissionMode`
 
 ### PermissionDecision
 **Description**: Result of a permission authorization check.

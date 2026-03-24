@@ -2,7 +2,7 @@
  * LiveConfigManager Validation Tests
  *
  * These tests verify that LiveConfigManager correctly validates configuration,
- * specifically the defaultMode property.
+ * specifically the permissionMode property.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -93,14 +93,14 @@ describe("LiveConfigManager - Validation", () => {
     vi.resetAllMocks();
   });
 
-  describe("defaultMode validation", () => {
+  describe("permissionMode validation", () => {
     const testValidation = async (
-      defaultMode: unknown,
+      permissionMode: unknown,
       expectedValid: boolean,
     ) => {
       const mockConfig = {
         permissions: {
-          defaultMode,
+          permissionMode,
         },
       } as unknown as WaveConfiguration;
 
@@ -109,7 +109,7 @@ describe("LiveConfigManager - Validation", () => {
         configuration: expectedValid ? mockConfig : null,
         error: expectedValid
           ? undefined
-          : "Configuration validation failed: Invalid defaultMode",
+          : "Configuration validation failed: Invalid permissionMode",
         sourcePath: "/mock/project/.wave/settings.json",
         warnings: [],
       };
@@ -132,36 +132,36 @@ describe("LiveConfigManager - Validation", () => {
           expect.stringContaining("Configuration validation failed"),
         );
         expect(logger.error).toHaveBeenCalledWith(
-          expect.stringContaining("Invalid defaultMode"),
+          expect.stringContaining("Invalid permissionMode"),
         );
       }
     };
 
-    it('should accept "default" as a valid defaultMode', async () => {
+    it('should accept "default" as a valid permissionMode', async () => {
       await testValidation("default", true);
     });
 
-    it('should accept "bypassPermissions" as a valid defaultMode', async () => {
+    it('should accept "bypassPermissions" as a valid permissionMode', async () => {
       await testValidation("bypassPermissions", true);
     });
 
-    it('should accept "acceptEdits" as a valid defaultMode', async () => {
+    it('should accept "acceptEdits" as a valid permissionMode', async () => {
       await testValidation("acceptEdits", true);
     });
 
-    it('should accept "plan" as a valid defaultMode', async () => {
+    it('should accept "plan" as a valid permissionMode', async () => {
       await testValidation("plan", true);
     });
 
-    it("should reject invalid defaultMode values", async () => {
+    it("should reject invalid permissionMode values", async () => {
       await testValidation("invalidMode", false);
     });
 
-    it("should reject numeric defaultMode values", async () => {
+    it("should reject numeric permissionMode values", async () => {
       await testValidation(123, false);
     });
 
-    it("should reject boolean defaultMode values", async () => {
+    it("should reject boolean permissionMode values", async () => {
       await testValidation(true, false);
     });
   });

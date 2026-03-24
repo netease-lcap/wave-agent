@@ -70,7 +70,7 @@
 
 - [X] T012 [US2] Implement tool-specific authorization logic for `plan` mode in `packages/agent-sdk/src/managers/permissionManager.ts`
 - [X] T013 [US2] Integrate permission checks in `Agent.ts` or relevant tool handlers to ensure `Bash` is blocked in `plan` mode.
-- [X] T021 [P] Ensure `defaultMode` in configuration and `PermissionMode` share the same type definition in `packages/agent-sdk/src/types/configuration.ts`
+- [X] T021 [P] Ensure `permissionMode` in configuration and `PermissionMode` share the same type definition in `packages/agent-sdk/src/types/configuration.ts`
 - [X] T022 [P] Update validation logic in `LiveConfigManager` and `ConfigurationService` to use `PermissionMode` values consistently
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently.

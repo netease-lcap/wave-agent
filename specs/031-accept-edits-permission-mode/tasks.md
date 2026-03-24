@@ -10,7 +10,7 @@
 **Purpose**: Project initialization and basic structure
 
 - [X] T001 [P] Update `PermissionMode` type in `packages/agent-sdk/src/types/permissions.ts` to include `"acceptEdits"`
-- [X] T002 [P] Update `configValidator.ts` in `packages/agent-sdk/src/utils/configValidator.ts` to allow `acceptEdits` in `defaultMode`
+- [X] T002 [P] Update `configValidator.ts` in `packages/agent-sdk/src/utils/configValidator.ts` to allow `acceptEdits` in `permissionMode`
 
 ---
 
@@ -80,14 +80,14 @@
 
 ## Phase 6: User Story 3 - Persistent Configuration (Priority: P3)
 
-**Goal**: Support `acceptEdits` in `settings.json` `defaultMode`.
+**Goal**: Support `acceptEdits` in `settings.json` `permissionMode`.
 
-**Independent Test**: Set `defaultMode: "acceptEdits"` in `settings.json` and verify the CLI starts in that mode.
+**Independent Test**: Set `permissionMode: "acceptEdits"` in `settings.json` and verify the CLI starts in that mode.
 
 ### Implementation for User Story 3
 
 - [X] T017 [US3] Verify `LiveConfigManager` correctly updates `PermissionManager` on config reload in `packages/agent-sdk/src/agent.ts`
-- [X] T018 [US3] Add integration test for `defaultMode: "acceptEdits"` in `packages/agent-sdk/tests/integration/config.test.ts`
+- [X] T018 [US3] Add integration test for `permissionMode: "acceptEdits"` in `packages/agent-sdk/tests/integration/config.test.ts`
 
 **Checkpoint**: Persistent configuration for `acceptEdits` is now fully supported.
 

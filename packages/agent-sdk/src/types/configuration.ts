@@ -21,7 +21,7 @@ export interface WaveConfiguration {
   permissions?: {
     allow?: string[];
     deny?: string[];
-    defaultMode?: PermissionMode; // Default permission mode for restricted tools
+    permissionMode?: PermissionMode; // Default permission mode for restricted tools
     /**
      * List of directories that are considered part of the Safe Zone.
      * File operations within these directories can be auto-accepted.
