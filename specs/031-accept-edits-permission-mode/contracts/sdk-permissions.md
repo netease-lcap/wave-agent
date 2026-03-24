@@ -17,7 +17,7 @@
 
 ### Methods
 
-#### `updateConfiguredDefaultMode(mode: PermissionMode): void`
+#### `updateConfiguredPermissionMode(mode: PermissionMode): void`
 - **Description**: Updates the default mode from configuration.
 - **Parameters**:
   - `mode`: `PermissionMode`

@@ -1,13 +1,13 @@
-# Implementation Plan: Default Permission Mode Setting
+# Implementation Plan: Permission Mode Setting
 
-**Branch**: `026-default-mode-setting` | **Date**: 2025-12-09 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/026-default-mode-setting/spec.md`
+**Branch**: `026-permission-mode-setting` | **Date**: 2025-12-09 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/026-permission-mode-setting/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
-Add support for a `defaultMode` configuration setting in settings.json files that allows users to set their default permission behavior ("default" or "bypassPermissions") without needing to use command-line flags. The feature includes settings hierarchy support, validation, and command-line override capability.
+Add support for a `permissionMode` configuration setting in settings.json files that allows users to set their default permission behavior ("default" or "bypassPermissions") without needing to use command-line flags. The feature includes settings hierarchy support, validation, and command-line override capability.
 
 ## Technical Context
 
@@ -65,22 +65,22 @@ packages/
 ├── agent-sdk/
 │   ├── src/
 │   │   ├── managers/
-│   │   │   └── PermissionManager.ts      # Extend to read defaultMode from config
+│   │   │   └── PermissionManager.ts      # Extend to read permissionMode from config
 │   │   ├── services/
-│   │   │   └── ConfigurationWatcher.ts   # Extend to handle defaultMode validation
+│   │   │   └── ConfigurationWatcher.ts   # Extend to handle permissionMode validation
 │   │   ├── types/
 │   │   │   └── hooks.ts                 # Extend WaveConfiguration type
-│   │   └── Agent.ts                     # Update initialization to use defaultMode
+│   │   └── Agent.ts                     # Update initialization to use permissionMode
 │   └── tests/
 │       ├── managers/
-│       │   └── PermissionManager.test.ts # Test defaultMode integration
+│       │   └── PermissionManager.test.ts # Test permissionMode integration
 │       └── services/
-│           └── ConfigurationWatcher.test.ts # Test defaultMode validation
+│           └── ConfigurationWatcher.test.ts # Test permissionMode validation
 └── code/
     ├── src/
     │   └── cli/                         # Command-line handling (existing)
     └── tests/
-        └── integration/                 # Integration tests for CLI + defaultMode
+        └── integration/                 # Integration tests for CLI + permissionMode
 ```
 
 **Structure Decision**: Extending existing monorepo packages (agent-sdk for core logic, code for CLI integration). No new packages needed - feature integrates into existing permission and configuration systems.

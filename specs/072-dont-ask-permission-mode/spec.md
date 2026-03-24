@@ -27,11 +27,11 @@ As a user, I want to be able to set the permission mode to `dontAsk` in my confi
 
 **Why this priority**: Users need a way to enable this feature.
 
-**Independent Test**: Change the `defaultMode` in the configuration to `dontAsk` and verify that the system respects this setting on startup.
+**Independent Test**: Change the `permissionMode` in the configuration to `dontAsk` and verify that the system respects this setting on startup.
 
 **Acceptance Scenarios**:
 
-1. **Given** the configuration file has `defaultMode: "dontAsk"`, **When** the agent starts, **Then** the effective permission mode is `dontAsk`.
+1. **Given** the configuration file has `permissionMode: "dontAsk"`, **When** the agent starts, **Then** the effective permission mode is `dontAsk`.
 
 ---
 
@@ -58,7 +58,7 @@ As a user, I want to be able to set the permission mode to `dontAsk` in my confi
 - **FR-003**: In `dontAsk` mode, the system MUST NOT invoke the `canUseToolCallback` (which typically triggers user prompts) for unapproved restricted tools.
 - **FR-004**: In `dontAsk` mode, the system MUST continue to auto-allow tools that match `permissions.allow` or `temporaryRules`.
 - **FR-005**: In `dontAsk` mode, the system MUST continue to auto-allow unrestricted tools (those not in `RESTRICTED_TOOLS`).
-- **FR-006**: The system MUST allow configuring `dontAsk` as the default permission mode via settings.
+- **FR-006**: The system MUST allow configuring `dontAsk` as the permission mode via settings.
 - **FR-007**: When a tool is auto-denied in `dontAsk` mode, the error message MUST be specific, e.g., "Permission denied: Tool '[toolName]' is not pre-approved in 'permissions.allow' and the current permission mode is 'dontAsk'. Automatic prompts are disabled in this mode."
 - **FR-008**: The `dontAsk` mode MUST NOT be included in the cycle of permission modes triggered by the "Shift+Tab" shortcut.
 - **FR-009**: When `dontAsk` mode is active, the system MUST inject a message into the agent's system prompt stating: "Tools are executed in a 'user-selected permission mode'. Permissions can be configured via settings.json and settings.local.json."

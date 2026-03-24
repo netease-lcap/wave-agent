@@ -13,11 +13,11 @@ The current mode will be displayed in the input area.
 
 ## Configuration
 
-Add `defaultMode` to your `settings.json`:
+Add `permissionMode` to your `settings.json`:
 
 ```json
 {
-  "defaultMode": "acceptEdits"
+  "permissionMode": "acceptEdits"
 }
 ```
 

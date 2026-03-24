@@ -22,12 +22,12 @@ Implement the `dontAsk` permission mode which auto-denies restricted tools not i
 
 ## Phase 4: User Story 2 - Configure dontAsk mode (US2)
 **Goal**: `dontAsk` mode can be set via configuration and informs the agent via system prompt.
-**Independent Test**: Set `defaultMode: "dontAsk"` in `settings.json`, verify the agent receives the "user-selected permission mode" message in its system prompt.
+**Independent Test**: Set `permissionMode: "dontAsk"` in `settings.json`, verify the agent receives the "user-selected permission mode" message in its system prompt.
 
 - [X] T006 [P] [US2] Update `buildSystemPrompt` signature to accept `permissionMode` in `packages/agent-sdk/src/prompts/index.ts`
 - [X] T007 [US2] Update `AIManager` to pass `permissionMode` to `buildSystemPrompt` in `packages/agent-sdk/src/managers/aiManager.ts`
 - [X] T008 [US2] Implement system prompt injection for `dontAsk` mode in `packages/agent-sdk/src/prompts/index.ts`
-- [X] T009 [US2] Verify `defaultMode: "dontAsk"` in configuration correctly sets the mode and injects the prompt message
+- [X] T009 [US2] Verify `permissionMode: "dontAsk"` in configuration correctly sets the mode and injects the prompt message
 
 ## Phase 5: Polish & UI Interaction
 - [X] T010 [P] Update `cyclePermissionMode` in `packages/code/src/managers/inputHandlers.ts` to ensure `dontAsk` is excluded

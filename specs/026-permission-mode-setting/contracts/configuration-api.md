@@ -7,7 +7,7 @@ interface WaveConfiguration {
   hooks?: Hook[];
   env?: Record<string, string>;
   permissions?: {
-    defaultMode?: "default" | "bypassPermissions" | "acceptEdits";
+    permissionMode?: "default" | "bypassPermissions" | "acceptEdits";
     allow?: string[];
   };
 }
@@ -23,8 +23,8 @@ interface ConfigValidationResult {
   errors: string[];
 }
 
-// Validation rules for defaultMode
-function validateDefaultMode(value: unknown): ValidationResult {
+// Validation rules for permissionMode
+function validatePermissionMode(value: unknown): ValidationResult {
   if (value === undefined) {
     return { valid: true, value: undefined };
   }
@@ -35,7 +35,7 @@ function validateDefaultMode(value: unknown): ValidationResult {
   
   return { 
     valid: false, 
-    error: `Invalid defaultMode: "${value}". Must be "default", "bypassPermissions" or "acceptEdits"`,
+    error: `Invalid permissionMode: "${value}". Must be "default", "bypassPermissions" or "acceptEdits"`,
     fallback: undefined
   };
 }
@@ -47,13 +47,13 @@ function validateDefaultMode(value: unknown): ValidationResult {
 interface PermissionManagerOptions {
   mode?: "default" | "bypassPermissions";
   canUseTool?: (toolName: string) => boolean;
-  configuredDefaultMode?: "default" | "bypassPermissions";
+  configuredPermissionMode?: "default" | "bypassPermissions";
 }
 
 class PermissionManager {
   constructor(options: PermissionManagerOptions) {
     // Resolve effective permission mode
-    this.effectiveMode = options.mode ?? options.configuredDefaultMode ?? "default";
+    this.effectiveMode = options.mode ?? options.configuredPermissionMode ?? "default";
   }
   
   canUseTool(toolName: string): boolean {
@@ -112,6 +112,6 @@ function resolvePermissionMode(
     return "bypassPermissions";
   }
   
-  return config.permissions?.defaultMode ?? "default";
+  return config.permissions?.permissionMode ?? "default";
 }
 ```

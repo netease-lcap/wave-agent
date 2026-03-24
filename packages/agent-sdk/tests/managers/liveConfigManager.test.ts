@@ -56,7 +56,7 @@ describe("LiveConfigManager - Configuration Management", () => {
 
     // Mock permission manager
     mockPermissionManager = {
-      updateConfiguredDefaultMode: vi.fn(),
+      updateConfiguredPermissionMode: vi.fn(),
       updateAllowedRules: vi.fn(),
       updateDeniedRules: vi.fn(),
       updateAdditionalDirectories: vi.fn(),
@@ -500,7 +500,7 @@ describe("LiveConfigManager - Configuration Management", () => {
           allow: ["Bash(ls)"],
           deny: ["Bash(rm *)"],
           additionalDirectories: ["/tmp"],
-          defaultMode: "default",
+          permissionMode: "default",
         },
       };
 
@@ -539,7 +539,7 @@ describe("LiveConfigManager - Configuration Management", () => {
         mockPermissionManager.updateAdditionalDirectories,
       ).toHaveBeenCalledWith(["/tmp"]);
       expect(
-        mockPermissionManager.updateConfiguredDefaultMode,
+        mockPermissionManager.updateConfiguredPermissionMode,
       ).toHaveBeenCalledWith("default");
 
       // Reload with empty permissions
@@ -552,7 +552,7 @@ describe("LiveConfigManager - Configuration Management", () => {
         mockPermissionManager.updateAdditionalDirectories,
       ).toHaveBeenCalledWith([]);
       expect(
-        mockPermissionManager.updateConfiguredDefaultMode,
+        mockPermissionManager.updateConfiguredPermissionMode,
       ).toHaveBeenCalledWith(undefined);
     });
   });

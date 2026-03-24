@@ -1,4 +1,4 @@
-# Quickstart: Default Permission Mode Setting
+# Quickstart: Permission Mode Setting
 
 ## For Users
 
@@ -9,7 +9,7 @@
    // settings.json (project root)
    {
      "permissions": {
-       "defaultMode": "bypassPermissions"
+       "permissionMode": "bypassPermissions"
      }
    }
    ```
@@ -19,7 +19,7 @@
    // settings.local.json (project root, gitignored)
    {
      "permissions": {
-       "defaultMode": "default"
+       "permissionMode": "default"
      }
    }
    ```
@@ -29,7 +29,7 @@
    // ~/.wave/settings.json
    {
      "permissions": {
-       "defaultMode": "bypassPermissions"
+       "permissionMode": "bypassPermissions"
      }
    }
    ```
@@ -40,7 +40,7 @@
 wave-agent --dangerously-skip-permissions
 
 # Use default behavior (ignore configuration)
-wave-agent  # Will respect configured defaultMode
+wave-agent  # Will respect configured permissionMode
 ```
 
 ### Configuration Values
@@ -58,7 +58,7 @@ wave-agent  # Will respect configured defaultMode
      hooks?: Hook[];
      env?: Record<string, string>;
      permissions?: {
-       defaultMode?: "default" | "bypassPermissions" | "acceptEdits"; // ✅ IMPLEMENTED
+       permissionMode?: "default" | "bypassPermissions" | "acceptEdits"; // ✅ IMPLEMENTED
      };
    }
    ```
@@ -67,7 +67,7 @@ wave-agent  # Will respect configured defaultMode
    ```typescript
    // packages/agent-sdk/src/services/configurationWatcher.ts
    private validateConfiguration(config: WaveConfiguration): ValidationResult {
-     // Validates defaultMode and provides clear error messages
+     // Validates permissionMode and provides clear error messages
      // ✅ IMPLEMENTED with comprehensive validation
    }
    ```
@@ -76,8 +76,8 @@ wave-agent  # Will respect configured defaultMode
    ```typescript
    // packages/agent-sdk/src/managers/permissionManager.ts
    constructor(options: PermissionManagerOptions) {
-     // Supports configuredDefaultMode parameter
-     // Includes updateConfiguredDefaultMode() and resolveEffectivePermissionMode()
+     // Supports configuredPermissionMode parameter
+     // Includes updateConfiguredPermissionMode() and resolveEffectivePermissionMode()
      // ✅ IMPLEMENTED with CLI override precedence
    }
    ```
@@ -104,7 +104,7 @@ The system now supports three levels of configuration with proper precedence:
 
 ### ✅ Validation & Error Handling (IMPLEMENTED)
 
-- **Invalid Values**: Clear error messages for invalid `defaultMode` values
+- **Invalid Values**: Clear error messages for invalid `permissionMode` values
 - **Malformed JSON**: Graceful fallback to previous valid configuration
 - **Missing Files**: Continues with remaining configuration sources
 - **Live Reloading**: Configuration changes apply immediately
@@ -116,7 +116,7 @@ The system now supports three levels of configuration with proper precedence:
 1. **Basic Configuration Test**:
    ```bash
    # Create project settings
-   echo '{"permissions": {"defaultMode": "bypassPermissions"}}' > settings.json
+   echo '{"permissions": {"permissionMode": "bypassPermissions"}}' > settings.json
    
    # Run wave-agent - should bypass permissions by default
    wave-agent --print "test message"
@@ -132,10 +132,10 @@ The system now supports three levels of configuration with proper precedence:
    ```bash
    # Create user config
    mkdir -p ~/.wave
-   echo '{"permissions": {"defaultMode": "default"}}' > ~/.wave/settings.json
+   echo '{"permissions": {"permissionMode": "default"}}' > ~/.wave/settings.json
    
    # Create project override  
-   echo '{"permissions": {"defaultMode": "bypassPermissions"}}' > settings.json
+   echo '{"permissions": {"permissionMode": "bypassPermissions"}}' > settings.json
    
    # Project should win (bypassPermissions behavior)
    wave-agent --print "test message"
@@ -150,14 +150,14 @@ The system now supports three levels of configuration with proper precedence:
 // settings.json (committed)
 {
   "permissions": {
-    "defaultMode": "default"
+    "permissionMode": "default"
   }
 }
 
 // settings.local.json (developer's machine, gitignored)  
 {
   "permissions": {
-    "defaultMode": "bypassPermissions"
+    "permissionMode": "bypassPermissions"
   }
 }
 ```
@@ -168,7 +168,7 @@ The system now supports three levels of configuration with proper precedence:
 // ~/.wave/settings.json (user config)
 {
   "permissions": {
-    "defaultMode": "bypassPermissions"
+    "permissionMode": "bypassPermissions"
   }
 }
 ```

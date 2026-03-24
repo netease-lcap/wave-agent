@@ -41,7 +41,7 @@ describe("Agent Permission Integration", () => {
   });
 
   describe("Agent Creation Tests", () => {
-    it("should create agent with default permission mode", async () => {
+    it("should create agent with permission mode", async () => {
       const agent = await Agent.create({
         workdir: process.cwd(),
       });

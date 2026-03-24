@@ -148,7 +148,7 @@ describe("ConfigurationService", () => {
     it("should return error on invalid configuration", async () => {
       const invalidConfig = {
         permissions: {
-          defaultMode: "invalid-mode",
+          permissionMode: "invalid-mode",
         },
       };
 
@@ -176,14 +176,14 @@ describe("ConfigurationService", () => {
         enabledPlugins: { "plugin1@market": true, "plugin2@market": true },
         hooks: { PreToolUse: [{ matcher: "user", hooks: [] }] },
         env: { VAR1: "user", VAR2: "user" },
-        permissions: { allow: ["rule-user"], defaultMode: "default" },
+        permissions: { allow: ["rule-user"], permissionMode: "default" },
       };
 
       const projectSettings = {
         enabledPlugins: { "plugin2@market": false, "plugin3@market": true },
         hooks: { PreToolUse: [{ matcher: "project", hooks: [] }] },
         env: { VAR2: "project", VAR3: "project" },
-        permissions: { allow: ["rule-project"], defaultMode: "acceptEdits" },
+        permissions: { allow: ["rule-project"], permissionMode: "acceptEdits" },
       };
 
       const localSettings = {
@@ -192,7 +192,7 @@ describe("ConfigurationService", () => {
         env: { VAR3: "local", VAR4: "local" },
         permissions: {
           allow: ["rule-local"],
-          defaultMode: "bypassPermissions",
+          permissionMode: "bypassPermissions",
         },
       };
 
@@ -240,8 +240,8 @@ describe("ConfigurationService", () => {
         VAR4: "local",
       });
 
-      // Verify defaultMode (highest priority wins)
-      expect(result?.permissions?.defaultMode).toBe("bypassPermissions"); // from localSettings
+      // Verify permissionMode (highest priority wins)
+      expect(result?.permissions?.permissionMode).toBe("bypassPermissions"); // from localSettings
 
       // Verify permissions.allow (combined)
       expect(result?.permissions?.allow).toEqual(
@@ -265,7 +265,7 @@ describe("ConfigurationService", () => {
         env: { VAR: "val" },
         permissions: {
           allow: ["rule"],
-          defaultMode: "bypassPermissions" as const,
+          permissionMode: "bypassPermissions" as const,
         },
       };
 
@@ -274,10 +274,10 @@ describe("ConfigurationService", () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('should validate "plan" as a valid defaultMode', () => {
+    it('should validate "plan" as a valid permissionMode', () => {
       const config = {
         permissions: {
-          defaultMode: "plan" as const,
+          permissionMode: "plan" as const,
         },
       };
 
@@ -300,16 +300,16 @@ describe("ConfigurationService", () => {
       expect(result.warnings).toContain("Unknown hook event: InvalidEvent");
     });
 
-    it("should catch invalid defaultMode", () => {
+    it("should catch invalid permissionMode", () => {
       const config = {
         permissions: {
-          defaultMode: "invalid" as unknown as "bypassPermissions",
+          permissionMode: "invalid" as unknown as "bypassPermissions",
         },
       };
 
       const result = configService.validateConfiguration(config);
       expect(result.isValid).toBe(false);
-      expect(result.errors[0]).toContain("Invalid defaultMode");
+      expect(result.errors[0]).toContain("Invalid permissionMode");
     });
 
     it("should catch invalid permissions", () => {

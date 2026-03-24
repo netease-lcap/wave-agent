@@ -1,18 +1,18 @@
-# Data Model: Default Permission Mode Setting
+# Data Model: Permission Mode Setting
 
 ## Configuration Entities
 
 ### WaveConfiguration (Extended)
-**Purpose**: Existing configuration interface extended to include default permission mode  
+**Purpose**: Existing configuration interface extended to include permission mode  
 **Location**: `packages/agent-sdk/src/types/hooks.ts`
 
 **Attributes**:
 - `hooks`: Hook[] - Existing hook configurations
 - `env`: Record<string, string> - Existing environment variables  
-- `permissions`: { defaultMode: "default" | "bypassPermissions" | "acceptEdits" | undefined, allow: string[] | undefined } - New optional permission default and allow rules
+- `permissions`: { permissionMode: "default" | "bypassPermissions" | "acceptEdits" | undefined, allow: string[] | undefined } - New optional permission default and allow rules
 
 **Validation Rules**:
-- `permissions.defaultMode` must be either "default", "bypassPermissions", "acceptEdits", or undefined
+- `permissions.permissionMode` must be either "default", "bypassPermissions", "acceptEdits", or undefined
 - Invalid values trigger validation warning and fallback to undefined
 - Missing field treated as undefined (no default permission override)
 
@@ -35,7 +35,7 @@ effectiveMode = cliOverride ? cliMode : (configuredMode ?? "default")
 ### Settings Resolution Order
 1. **Command-line flags** (highest precedence)
    - `--dangerously-skip-permissions` → "bypassPermissions"
-   - No flags → use configuration defaultMode
+   - No flags → use configuration permissionMode
    
 2. **settings.local.json** (project-level override)
    - Local project-specific overrides
@@ -59,7 +59,7 @@ effectiveMode = cliOverride ? cliMode : (configuredMode ?? "default")
   "hooks": [...],
   "env": {...},
   "permissions": {
-    "defaultMode": "bypassPermissions"
+    "permissionMode": "bypassPermissions"
   }
 }
 ```
@@ -77,18 +77,18 @@ effectiveMode = cliOverride ? cliMode : (configuredMode ?? "default")
 ```
 
 **Error States**:
-- Invalid defaultMode value → Log warning + fallback to undefined
+- Invalid permissionMode value → Log warning + fallback to undefined
 - Missing configuration file → Continue with next in hierarchy
 - Malformed JSON → Log error + skip file
 
 **Success States**:
-- Configuration loaded → Apply defaultMode
+- Configuration loaded → Apply permissionMode
 - No configuration → Use system default
 - CLI override present → Ignore configuration
 
 ## Relationships
 
-- **WaveConfiguration** contains **permissions.defaultMode** setting
+- **WaveConfiguration** contains **permissions.permissionMode** setting
 - **PermissionManager** consumes **PermissionContext**
 - **ConfigurationWatcher** validates and provides **WaveConfiguration**
 - **Agent** orchestrates configuration → permission manager flow

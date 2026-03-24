@@ -45,7 +45,7 @@ describe("Subagent Plan Mode Integration", () => {
     // Mock PermissionManager in plan mode
     mockPermissionManager = {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("plan"),
-      getConfiguredDefaultMode: vi.fn().mockReturnValue("plan"),
+      getConfiguredPermissionMode: vi.fn().mockReturnValue("plan"),
       getAllowedRules: vi.fn().mockReturnValue([]),
       getDeniedRules: vi.fn().mockReturnValue([]),
       getAdditionalDirectories: vi.fn().mockReturnValue([]),

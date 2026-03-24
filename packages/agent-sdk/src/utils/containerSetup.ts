@@ -147,7 +147,7 @@ export function setupAgentContainer(
     permissionManager.addSystemAdditionalDirectory(autoMemoryDir);
   }
   container.register("PermissionManager", permissionManager);
-  permissionManager.setOnConfiguredDefaultModeChange((mode) => {
+  permissionManager.setOnConfiguredPermissionModeChange((mode) => {
     handlePlanModeTransition(mode);
     onPermissionModeChange(mode);
   });

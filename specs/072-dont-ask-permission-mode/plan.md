@@ -4,7 +4,7 @@
 **Input**: Feature specification from `./spec.md`
 
 ## Summary
-The primary requirement is to support a new permission mode called `dontAsk`. In this mode, any restricted tool call that is not pre-approved in `permissions.allow` or `temporaryRules` will be automatically denied without prompting the user. The agent will be informed of this mode via a system prompt message. This mode will not be accessible via the "Shift+Tab" shortcut in the CLI. It can be enabled by setting `defaultMode` to `dontAsk` in the configuration.
+The primary requirement is to support a new permission mode called `dontAsk`. In this mode, any restricted tool call that is not pre-approved in `permissions.allow` or `temporaryRules` will be automatically denied without prompting the user. The agent will be informed of this mode via a system prompt message. This mode will not be accessible via the "Shift+Tab" shortcut in the CLI. It can be enabled by setting `permissionMode` to `dontAsk` in the configuration.
 
 ## Technical Context
 - **Language/Version**: TypeScript (Node.js)

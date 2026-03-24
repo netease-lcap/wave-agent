@@ -2,7 +2,7 @@
 
 **Feature Branch**: `031-accept-edits-permission-mode`  
 **Created**: 2025-12-26  
-**Input**: User description: "1, permission mode should support `acceptEdits` Automatically accepts file edit permissions for the session. 2, sdk should support set permission mode. 3, code cli should support During a session: Use Shift+Tab to cycle through modes. 4, settings.json `defaultMode` should support acceptEdits too."
+**Input**: User description: "1, permission mode should support `acceptEdits` Automatically accepts file edit permissions for the session. 2, sdk should support set permission mode. 3, code cli should support During a session: Use Shift+Tab to cycle through modes. 4, settings.json `permissionMode` should support acceptEdits too."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -43,7 +43,7 @@ As a CLI user, I want to quickly switch between permission modes during a sessio
 
 ### User Story 3 - Persistent Configuration (Priority: P3)
 
-As a user, I want to set my preferred default permission mode in a configuration file, so that I don't have to manually switch it every time I start a new session.
+As a user, I want to set my preferred permission mode in a configuration file, so that I don't have to manually switch it every time I start a new session.
 
 **Why this priority**: Improves user experience by remembering preferences across sessions.
 
@@ -51,9 +51,9 @@ As a user, I want to set my preferred default permission mode in a configuration
 
 **Acceptance Scenarios**:
 
-1. **Given** `settings.json` has `defaultMode` set to `acceptEdits`, **When** a new session starts, **Then** the initial permission mode is `acceptEdits`.
-2. **Given** `settings.json` has `defaultMode` set to `default`, **When** a new session starts, **Then** the initial permission mode is `default`.
-3. **Given** `settings.json` has `defaultMode` set to `bypassPermissions`, **When** a new session starts, **Then** the initial permission mode is `bypassPermissions`.
+1. **Given** `settings.json` has `permissionMode` set to `acceptEdits`, **When** a new session starts, **Then** the initial permission mode is `acceptEdits`.
+2. **Given** `settings.json` has `permissionMode` set to `default`, **When** a new session starts, **Then** the initial permission mode is `default`.
+3. **Given** `settings.json` has `permissionMode` set to `bypassPermissions`, **When** a new session starts, **Then** the initial permission mode is `bypassPermissions`.
 
 ---
 
@@ -73,7 +73,7 @@ As a developer using the SDK, I want to programmatically set the permission mode
 
 ### Edge Cases
 
-- **Invalid Configuration**: What happens when `settings.json` contains an unrecognized `defaultMode`? (Assumption: Fall back to `ask` mode).
+- **Invalid Configuration**: What happens when `settings.json` contains an unrecognized `permissionMode`? (Assumption: Fall back to `ask` mode).
 - **Session Persistence**: Does the mode changed via `Shift+Tab` persist if the agent restarts within the same "session" (if applicable)? (Assumption: It persists for the duration of the process).
 - **Conflicting Permissions**: How does `acceptEdits` interact with OS-level file permissions? (Assumption: OS permissions still apply; if the file is read-only at the OS level, the edit will fail even if "accepted" by the agent).
 
@@ -88,11 +88,11 @@ As a developer using the SDK, I want to programmatically set the permission mode
 - **FR-005**: The CLI MUST listen for the `Shift+Tab` key combination during an active session.
 - **FR-006**: When `Shift+Tab` is pressed in the CLI, the system MUST cycle through available permission modes in this order: `default` -> `acceptEdits` -> `bypassPermissions` -> `default`.
 - **FR-007**: The CLI MUST provide a visual indicator (e.g., in the status line or prompt) showing the currently active permission mode.
-- **FR-008**: The system MUST read the `defaultMode` property from `settings.json` on startup to initialize the permission mode.
-- **FR-009**: The `defaultMode` in `settings.json` MUST support `acceptEdits` as a valid value.
+- **FR-008**: The system MUST read the `permissionMode` property from `settings.json` on startup to initialize the permission mode.
+- **FR-009**: The `permissionMode` in `settings.json` MUST support `acceptEdits` as a valid value.
 
 ### Key Entities *(include if feature involves data)*
 
 - **PermissionMode**: An enumeration of allowed values: `default`, `acceptEdits`, `bypassPermissions`.
-- **Configuration**: The global settings object (loaded from `settings.json`) that includes the `defaultMode`.
+- **Configuration**: The global settings object (loaded from `settings.json`) that includes the `permissionMode`.
 - **AgentSession**: The runtime context of the agent where the current permission mode is maintained.

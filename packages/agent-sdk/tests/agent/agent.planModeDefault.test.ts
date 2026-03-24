@@ -14,7 +14,7 @@ vi.mock("../../src/services/configurationService.js", () => {
           success: true,
           configuration: {
             permissions: {
-              defaultMode: "plan",
+              permissionMode: "plan",
             },
           },
         }),
@@ -107,7 +107,7 @@ describe("Agent Plan Mode Default", () => {
           success: true,
           configuration: {
             permissions: {
-              defaultMode: "default",
+              permissionMode: "default",
             },
           },
         }),

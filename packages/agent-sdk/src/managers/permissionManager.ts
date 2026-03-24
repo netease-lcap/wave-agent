@@ -92,8 +92,8 @@ const DEFAULT_ALLOWED_RULES = [
 import { logger } from "../utils/globalLogger.js";
 
 export interface PermissionManagerOptions {
-  /** Configured default permission mode from settings */
-  configuredDefaultMode?: PermissionMode;
+  /** Configured permission mode from settings */
+  configuredPermissionMode?: PermissionMode;
   /** Allowed rules from settings */
   allowedRules?: string[];
   /** Denied rules from settings */
@@ -113,7 +113,7 @@ export interface PermissionManagerOptions {
 }
 
 export class PermissionManager {
-  private configuredDefaultMode?: PermissionMode;
+  private configuredPermissionMode?: PermissionMode;
   private allowedRules: string[] = [];
   private deniedRules: string[] = [];
   private instanceAllowedRules: string[] = [];
@@ -125,14 +125,14 @@ export class PermissionManager {
   private planFilePath?: string;
   private worktreeName?: string;
   private mainRepoRoot?: string;
-  private onConfiguredDefaultModeChange?: (mode: PermissionMode) => void;
+  private onConfiguredPermissionModeChange?: (mode: PermissionMode) => void;
   private _logger?: Logger;
 
   constructor(
     private container: Container,
     options: PermissionManagerOptions = {},
   ) {
-    this.configuredDefaultMode = options.configuredDefaultMode;
+    this.configuredPermissionMode = options.configuredPermissionMode;
     this.allowedRules = options.allowedRules || [];
     this.deniedRules = options.deniedRules || [];
     this.instanceAllowedRules = options.instanceAllowedRules || [];
@@ -149,34 +149,34 @@ export class PermissionManager {
   /**
    * Set a callback to be notified when the effective permission mode changes due to configuration updates
    */
-  public setOnConfiguredDefaultModeChange(
+  public setOnConfiguredPermissionModeChange(
     callback: (mode: PermissionMode) => void,
   ): void {
-    this.onConfiguredDefaultModeChange = callback;
+    this.onConfiguredPermissionModeChange = callback;
   }
 
   /**
    * Update the configured default mode (e.g., when configuration reloads)
    */
-  updateConfiguredDefaultMode(defaultMode?: PermissionMode): void {
+  updateConfiguredPermissionMode(permissionMode?: PermissionMode): void {
     const oldEffectiveMode = this.getCurrentEffectiveMode();
 
-    this.configuredDefaultMode = defaultMode;
+    this.configuredPermissionMode = permissionMode;
 
     const newEffectiveMode = this.getCurrentEffectiveMode();
     if (
       oldEffectiveMode !== newEffectiveMode &&
-      this.onConfiguredDefaultModeChange
+      this.onConfiguredPermissionModeChange
     ) {
-      this.onConfiguredDefaultModeChange(newEffectiveMode);
+      this.onConfiguredPermissionModeChange(newEffectiveMode);
     }
   }
 
   /**
    * Get the configured default mode
    */
-  public getConfiguredDefaultMode(): PermissionMode | undefined {
-    return this.configuredDefaultMode;
+  public getConfiguredPermissionMode(): PermissionMode | undefined {
+    return this.configuredPermissionMode;
   }
 
   /**
@@ -352,8 +352,8 @@ export class PermissionManager {
     }
 
     // Use configured default mode if available
-    if (this.configuredDefaultMode !== undefined) {
-      return this.configuredDefaultMode;
+    if (this.configuredPermissionMode !== undefined) {
+      return this.configuredPermissionMode;
     }
 
     // Fall back to system default

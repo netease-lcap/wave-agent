@@ -1,6 +1,6 @@
-# Tasks: Default Permission Mode Setting
+# Tasks: Permission Mode Setting
 
-**Input**: Design documents from `/specs/026-default-mode-setting/`
+**Input**: Design documents from `/specs/026-permission-mode-setting/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
 **Tests**: Tests not explicitly requested in specification, focusing on essential behavior testing per constitution
@@ -32,29 +32,29 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [x] T004 Extend WaveConfiguration interface with optional defaultMode field in packages/agent-sdk/src/types/hooks.ts
-- [x] T005 [P] Add defaultMode validation logic to ConfigurationWatcher in packages/agent-sdk/src/services/configurationWatcher.ts
-- [x] T006 [P] Update PermissionManager constructor to accept configuredDefaultMode parameter in packages/agent-sdk/src/managers/permissionManager.ts
+- [x] T004 Extend WaveConfiguration interface with optional permissionMode field in packages/agent-sdk/src/types/hooks.ts
+- [x] T005 [P] Add permissionMode validation logic to ConfigurationWatcher in packages/agent-sdk/src/services/configurationWatcher.ts
+- [x] T006 [P] Update PermissionManager constructor to accept configuredPermissionMode parameter in packages/agent-sdk/src/managers/permissionManager.ts
 - [x] T007 Run pnpm build in packages/agent-sdk to prepare for dependent package testing
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
 ---
 
-## Phase 3: User Story 1 - Configure Default Permission Mode (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - Configure Permission Mode (Priority: P1) 🎯 MVP
 
-**Goal**: Allow users to set defaultMode in settings.json that applies as default permission behavior without command-line flags
+**Goal**: Allow users to set permissionMode in settings.json that applies as default permission behavior without command-line flags
 
-**Independent Test**: Create settings.json with defaultMode value, run agent commands, verify permission behavior matches configuration
+**Independent Test**: Create settings.json with permissionMode value, run agent commands, verify permission behavior matches configuration
 
 ### Implementation for User Story 1
 
-- [x] T008 [P] [US1] Add defaultMode resolution logic to PermissionManager initialization in packages/agent-sdk/src/managers/permissionManager.ts
-- [x] T009 [P] [US1] Implement defaultMode validation with fallback behavior in packages/agent-sdk/src/services/configurationWatcher.ts
-- [x] T010 [US1] Update Agent.create() to pass configuration defaultMode to PermissionManager in packages/agent-sdk/src/Agent.ts
-- [x] T011 [US1] Add essential unit tests for defaultMode configuration loading in packages/agent-sdk/tests/services/ConfigurationWatcher.test.ts (Skipped for MVP)
-- [x] T012 [US1] Add essential unit tests for PermissionManager defaultMode integration in packages/agent-sdk/tests/managers/PermissionManager.test.ts (Skipped for MVP)
-- [x] T013 [US1] Run pnpm build and test defaultMode configuration with actual settings.json files
+- [x] T008 [P] [US1] Add permissionMode resolution logic to PermissionManager initialization in packages/agent-sdk/src/managers/permissionManager.ts
+- [x] T009 [P] [US1] Implement permissionMode validation with fallback behavior in packages/agent-sdk/src/services/configurationWatcher.ts
+- [x] T010 [US1] Update Agent.create() to pass configuration permissionMode to PermissionManager in packages/agent-sdk/src/Agent.ts
+- [x] T011 [US1] Add essential unit tests for permissionMode configuration loading in packages/agent-sdk/tests/services/ConfigurationWatcher.test.ts (Skipped for MVP)
+- [x] T012 [US1] Add essential unit tests for PermissionManager permissionMode integration in packages/agent-sdk/tests/managers/PermissionManager.test.ts (Skipped for MVP)
+- [x] T013 [US1] Run pnpm build and test permissionMode configuration with actual settings.json files
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -62,9 +62,9 @@
 
 ## Phase 4: User Story 2 - Command-Line Override (Priority: P2)
 
-**Goal**: Ensure command-line permission flags override configured defaultMode for specific runs
+**Goal**: Ensure command-line permission flags override configured permissionMode for specific runs
 
-**Independent Test**: Set defaultMode in settings.json, run with --dangerously-skip-permissions flag, verify CLI takes precedence
+**Independent Test**: Set permissionMode in settings.json, run with --dangerously-skip-permissions flag, verify CLI takes precedence
 
 ### Implementation for User Story 2
 
@@ -80,9 +80,9 @@
 
 ## Phase 5: User Story 3 - Configuration Validation and Feedback (Priority: P3)
 
-**Goal**: Provide clear error messages and graceful fallback for invalid defaultMode configurations
+**Goal**: Provide clear error messages and graceful fallback for invalid permissionMode configurations
 
-**Independent Test**: Create settings.json with invalid defaultMode value, verify clear error message and fallback behavior
+**Independent Test**: Create settings.json with invalid permissionMode value, verify clear error message and fallback behavior
 
 ### Implementation for User Story 3
 
@@ -105,8 +105,8 @@
 - [x] T026 [P] Run pnpm lint to ensure code quality standards
 - [x] T027 Run full test suite with pnpm test to validate all functionality
 - [x] T028 [P] Validate quickstart.md examples against implemented functionality
-- [x] T029 Move defaultMode to permissions.defaultMode in WaveConfiguration and update all references
-- [x] T030 [P] Ensure `defaultMode` in configuration and `PermissionMode` share the same type definition in `packages/agent-sdk/src/types/configuration.ts`
+- [x] T029 Move permissionMode to permissions.permissionMode in WaveConfiguration and update all references
+- [x] T030 [P] Ensure `permissionMode` in configuration and `PermissionMode` share the same type definition in `packages/agent-sdk/src/types/configuration.ts`
 - [x] T031 [P] Update validation logic in `LiveConfigManager` and `ConfigurationService` to use `PermissionMode` values consistently
 
 
@@ -150,12 +150,12 @@
 
 ```bash
 # Launch models/core components for User Story 1 together:
-Task: "Add defaultMode resolution logic to PermissionManager initialization"
-Task: "Implement defaultMode validation with fallback behavior in ConfigurationWatcher"
+Task: "Add permissionMode resolution logic to PermissionManager initialization"
+Task: "Implement permissionMode validation with fallback behavior in ConfigurationWatcher"
 
 # Launch tests for User Story 1 together:
-Task: "Add essential unit tests for defaultMode configuration loading"
-Task: "Add essential unit tests for PermissionManager defaultMode integration"
+Task: "Add essential unit tests for permissionMode configuration loading"
+Task: "Add essential unit tests for PermissionManager permissionMode integration"
 ```
 
 ---

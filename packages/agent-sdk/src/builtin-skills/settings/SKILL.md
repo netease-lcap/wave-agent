@@ -41,7 +41,7 @@ Manage tool permissions and define the "Safe Zone".
   "permissions": {
     "allow": ["Bash", "Read"],
     "deny": ["Write"],
-    "defaultMode": "interactive",
+    "permissionMode": "default",
     "additionalDirectories": ["/tmp/wave-exports"]
   }
 }

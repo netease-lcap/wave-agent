@@ -38,7 +38,7 @@ describe("SubagentManager - Recent Changes Coverage", () => {
     container = new Container();
     container.register("PermissionManager", {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
-      getConfiguredDefaultMode: vi.fn().mockReturnValue("default"),
+      getConfiguredPermissionMode: vi.fn().mockReturnValue("default"),
       getAllowedRules: vi.fn().mockReturnValue([]),
       getDeniedRules: vi.fn().mockReturnValue([]),
       getAdditionalDirectories: vi.fn().mockReturnValue([]),
