@@ -1,8 +1,8 @@
-# Specification Quality Checklist: Task List UI
+# Specification Quality Checklist: Tools Selection
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-02-11
-**Feature**: [specs/064-task-list-ui/spec.md](../spec.md)
+**Created**: 2026-02-25
+**Feature**: [../spec.md]
 
 ## Content Quality
 
@@ -28,4 +28,4 @@
 
 ## Notes
 
-- The spec is ready. It clearly defines the UI requirement and its relationship with the task management tools from spec 063.
+- All items pass. The specification clearly defines the behavior of the `--tools` flag and its mapping to the SDK.

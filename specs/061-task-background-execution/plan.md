@@ -56,7 +56,8 @@
 ### Step 3: CLI Updates
 - Implement `/tasks` command in `SlashCommandManager`.
 - Remove `/bashes` command.
-- Update UI components in `packages/code` to handle the new task types if necessary.
+- Implement Ctrl-B backgrounding logic in `InputManager` and `Agent`.
+- Update UI components in `packages/code` to handle the new task types and show Ctrl-B hint.
 
 ### Step 4: Verification
 - Run `pnpm build` for `agent-sdk`.

@@ -1,4 +1,4 @@
-# Research: CLI Tool Selection
+# Research: Tools Selection
 
 ## Decision: Implementation of `--tools` flag
 

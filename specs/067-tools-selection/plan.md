@@ -1,6 +1,6 @@
-# Implementation Plan: CLI Tool Selection
+# Implementation Plan: Tools Selection
 
-**Branch**: `067-cli-tool-selection` | **Date**: 2026-02-25 | **Spec**: [./spec.md]
+**Branch**: `067-tools-selection` | **Date**: 2026-02-25 | **Spec**: [./spec.md]
 **Input**: Feature specification from `./spec.md`
 
 ## Summary
@@ -45,7 +45,7 @@ The `--print` (or `-p`) option in the CLI will also support the `--tools` flag, 
 ### Documentation (this feature)
 
 ```
-specs/067-cli-tool-selection/
+specs/067-tools-selection/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output

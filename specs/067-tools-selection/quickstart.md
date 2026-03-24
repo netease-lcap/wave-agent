@@ -1,4 +1,4 @@
-# Quickstart: CLI Tool Selection
+# Quickstart: Tools Selection
 
 This guide explains how to use the `--tools` flag to control which tools are available to the agent in a CLI session.
 
