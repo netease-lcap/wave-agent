@@ -87,8 +87,8 @@ export const taskOutputTool: ToolPlugin = {
 
       if (finalContent.length > MAX_OUTPUT_LENGTH) {
         processedContent =
-          finalContent.substring(0, MAX_OUTPUT_LENGTH) +
-          "\n\n... (output truncated)";
+          "\n\n... (output truncated)\n" +
+          finalContent.substring(finalContent.length - MAX_OUTPUT_LENGTH);
         isTruncated = true;
       }
 
@@ -155,11 +155,17 @@ export const taskOutputTool: ToolPlugin = {
             if (context.abortSignal) {
               context.abortSignal.removeEventListener("abort", onAbort);
             }
-            resolve({
-              success: true,
-              content: "Retrieval timed out",
-              shortResult: `${taskId}: timeout`,
-            });
+            const result = getResult();
+            if (result) {
+              result.shortResult = `${taskId}: timeout`;
+              resolve(result);
+            } else {
+              resolve({
+                success: true,
+                content: "Retrieval timed out",
+                shortResult: `${taskId}: timeout`,
+              });
+            }
             return;
           }
 

@@ -114,4 +114,64 @@ describe("TaskOutput Tool Improvements", () => {
     expect(result.shortResult).toBe(`${taskId}: running`);
     expect(result.metadata?.status).toBe("running");
   });
+
+  it("should return current output on timeout", async () => {
+    const taskId = "test_task";
+    const currentOutput = "This is the current output";
+
+    backgroundTaskManager.addTask({
+      id: taskId,
+      type: "shell",
+      status: "running",
+      startTime: Date.now(),
+      command: "sleep 100",
+      stdout: currentOutput,
+      stderr: "",
+      process: { kill: vi.fn() } as unknown as BackgroundShell["process"],
+    });
+
+    const result = await taskOutputTool.execute(
+      {
+        task_id: taskId,
+        block: true,
+        timeout: 100, // Short timeout
+      },
+      context,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain(currentOutput);
+    expect(result.shortResult).toBe(`${taskId}: timeout`);
+  });
+
+  it("should return the end of the output when truncated", async () => {
+    const taskId = "test_task";
+    const longOutput = "A".repeat(40000) + "B".repeat(40000); // 80000 chars
+
+    backgroundTaskManager.addTask({
+      id: taskId,
+      type: "shell",
+      status: "completed",
+      startTime: Date.now(),
+      command: "echo long",
+      stdout: longOutput,
+      stderr: "",
+      process: { kill: vi.fn() } as unknown as BackgroundShell["process"],
+    });
+
+    const result = await taskOutputTool.execute(
+      {
+        task_id: taskId,
+        block: false,
+      },
+      context,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("... (output truncated)");
+    // Should contain the end of the output (B's)
+    expect(result.content).toContain("B".repeat(30000));
+    // Should NOT contain any A's because we only took the last 30000 chars of 80000
+    expect(result.content).not.toContain("A");
+  });
 });

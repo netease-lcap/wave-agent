@@ -118,6 +118,7 @@
 - [x] T026 [P] Run `pnpm run type-check` and `pnpm lint` across all packages
 - [x] T027 [P] Ensure all tests pass with `pnpm test`
 - [x] T028 Final code cleanup and refactoring of `BackgroundBashManager` (removal if fully migrated)
+- [x] T029 [US2] Update `TaskOutput` to return last few lines of log file on timeout
 
 ---
 

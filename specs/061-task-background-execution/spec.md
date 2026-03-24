@@ -86,7 +86,7 @@ As a user running a long-running bash command or a subagent task in the foregrou
 
 - **Invalid Task ID**: How does the system handle `TaskOutput` or `TaskStop` requests with an ID that doesn't exist? (Expected: Error message indicating the task was not found).
 - **Task Already Finished**: What happens when `TaskStop` is called on a task that has already completed? (Expected: Informative message that the task is already finished).
-- **Timeout on Output Retrieval**: How does `TaskOutput` handle a task that takes longer than the specified timeout when `block: true`? (Expected: Return current output with a status indicating it's still running).
+- **Timeout on Output Retrieval**: How does `TaskOutput` handle a task that takes longer than the specified timeout when `block: true`? (Expected: Return the last few lines of the log file with a status indicating it's still running).
 - **Concurrent Access**: Multiple requests for output from the same background task.
 - **Ctrl-B pressed when no tool is running**: The system should ignore the keypress.
 - **Direct user bash commands (`!command`)**: Commands initiated directly by the user using the `!` prefix MUST NOT be affected by Ctrl-B.

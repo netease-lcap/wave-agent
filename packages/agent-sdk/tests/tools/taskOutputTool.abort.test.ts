@@ -206,7 +206,7 @@ describe("TaskOutput Tool Abort Handling", () => {
     const result = await executePromise;
 
     expect(result.success).toBe(true);
-    expect(result.content).toBe("Retrieval timed out");
+    expect(result.content).toBe("No output available");
     expect(result.shortResult).toBe(`${taskId}: timeout`);
   });
 });
