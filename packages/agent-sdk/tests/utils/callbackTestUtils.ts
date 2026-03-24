@@ -23,7 +23,6 @@ export function createMockCallbacks(): MessageManagerCallbacks {
     onErrorBlockAdded: vi.fn(),
     onCompressBlockAdded: vi.fn(),
     onCompressionStateChange: vi.fn(),
-    onMemoryBlockAdded: vi.fn(),
     onAddBangMessage: vi.fn(),
     onUpdateBangMessage: vi.fn(),
     onCompleteBangMessage: vi.fn(),
