@@ -59,6 +59,7 @@ import {
   loadSessionFromJsonl,
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 describe("Session Error Handling and Edge Cases", () => {
   let tempDir: string;
@@ -252,11 +253,13 @@ describe("Session Error Handling and Edge Cases", () => {
       new Date().toISOString(); // now
 
       const olderSessionMessage = {
+        id: generateMessageId(),
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
       };
 
       const newerSessionMessage = {
+        id: generateMessageId(),
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
       };
@@ -307,6 +310,7 @@ describe("Session Error Handling and Edge Cases", () => {
 
       const messages = [
         {
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Hello from subagent" }],
         },

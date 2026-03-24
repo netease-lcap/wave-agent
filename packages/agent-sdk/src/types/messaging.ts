@@ -11,7 +11,7 @@ export enum MessageSource {
 }
 
 export interface Message {
-  id?: string; // Unique identifier for the message
+  id: string; // Unique identifier for the message
   role: "user" | "assistant";
   blocks: MessageBlock[];
   usage?: Usage; // Usage data for this message's AI operation (assistant messages only)

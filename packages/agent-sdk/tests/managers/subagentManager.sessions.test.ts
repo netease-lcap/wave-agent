@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { Container } from "../../src/utils/container.js";
+import { generateMessageId } from "../../src/utils/messageOperations.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 
@@ -535,6 +536,7 @@ describe("SubagentManager - Session Functionality", () => {
       });
 
       const message = {
+        id: generateMessageId(),
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
       };

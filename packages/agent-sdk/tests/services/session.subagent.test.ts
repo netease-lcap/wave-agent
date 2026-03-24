@@ -65,6 +65,7 @@ import {
   listSessionsFromJsonl,
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 describe("Subagent Session Tests", () => {
   let tempDir: string;
@@ -345,6 +346,7 @@ describe("Subagent Session Tests", () => {
 
         const messages = [
           {
+            id: generateMessageId(),
             role: "user" as const,
             blocks: [
               { type: "text" as const, content: "Hello from subagent session" },
@@ -387,16 +389,19 @@ describe("Subagent Session Tests", () => {
         // Mock getLastMessage for session listing
         mockJsonlHandler.getLastMessage
           .mockResolvedValueOnce({
+            id: generateMessageId(),
             role: "user",
             blocks: [{ type: "text", content: "Main session message" }],
           })
           .mockResolvedValueOnce({
+            id: generateMessageId(),
             role: "user",
             blocks: [{ type: "text", content: "Subagent session message" }],
           });
 
         // Mock read for getting first message timestamps
         const mockMessage = {
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Test" }],
         };
@@ -500,6 +505,7 @@ describe("Subagent Session Tests", () => {
 
         // Mock getLastMessage and read for session metadata
         const mockMessage = {
+          id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Test" }],
         };

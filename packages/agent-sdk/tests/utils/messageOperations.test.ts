@@ -7,6 +7,7 @@ import {
   completeBangInMessage,
   addUserMessageToMessages,
   addErrorBlockToMessage,
+  generateMessageId,
 } from "@/utils/messageOperations.js";
 import type { Message } from "@/types/index.js";
 
@@ -106,6 +107,7 @@ describe("addUserMessageToMessages", () => {
   it("should add to existing messages", () => {
     const initialMessages: Message[] = [
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Previous message" }],
       },
@@ -135,6 +137,7 @@ describe("addUserMessageToMessages", () => {
   it("should not modify original messages array", () => {
     const initialMessages: Message[] = [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Original" }],
       },
@@ -240,6 +243,7 @@ describe("Bang Message Operations", () => {
     it("should add a new command output message", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "!echo hello" }],
         },
@@ -291,6 +295,7 @@ describe("Bang Message Operations", () => {
     it("should not modify the original messages array", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "test" }],
         },
@@ -311,6 +316,7 @@ describe("Bang Message Operations", () => {
     it("should update output in the correct command block", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -342,6 +348,7 @@ describe("Bang Message Operations", () => {
     it("should update the correct command when multiple commands exist", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -354,6 +361,7 @@ describe("Bang Message Operations", () => {
           ],
         },
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -391,6 +399,7 @@ describe("Bang Message Operations", () => {
     it("should trim the output", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -418,6 +427,7 @@ describe("Bang Message Operations", () => {
     it("should not update if no matching running command is found", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -449,6 +459,7 @@ describe("Bang Message Operations", () => {
     it("should mark command as completed with exit code and output", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -481,6 +492,7 @@ describe("Bang Message Operations", () => {
     it("should handle error exit codes", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -509,6 +521,7 @@ describe("Bang Message Operations", () => {
     it("should complete the correct command when multiple commands exist", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -521,6 +534,7 @@ describe("Bang Message Operations", () => {
           ],
         },
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -558,6 +572,7 @@ describe("Bang Message Operations", () => {
     it("should not modify if no matching running command is found", () => {
       const initialMessages: Message[] = [
         {
+          id: generateMessageId(),
           role: "user",
           blocks: [
             {
@@ -590,10 +605,12 @@ describe("addErrorBlockToMessage", () => {
   it("should add error block to the last assistant message", () => {
     const initialMessages: Message[] = [
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello" }],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Hi there!" }],
       },
@@ -617,10 +634,12 @@ describe("addErrorBlockToMessage", () => {
   it("should create new assistant message when last message is not assistant", () => {
     const initialMessages: Message[] = [
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Hi there!" }],
       },
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello again" }],
       },
@@ -659,14 +678,17 @@ describe("addErrorBlockToMessage", () => {
   it("should add error block to last assistant message when multiple assistant messages exist", () => {
     const initialMessages: Message[] = [
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "First response" }],
       },
       {
+        id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Follow-up" }],
       },
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [
           { type: "text", content: "Second response" },
@@ -697,6 +719,7 @@ describe("addErrorBlockToMessage", () => {
   it("should not mutate original messages array", () => {
     const initialMessages: Message[] = [
       {
+        id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Original" }],
       },

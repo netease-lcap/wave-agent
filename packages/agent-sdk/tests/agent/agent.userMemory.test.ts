@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/types/index.js";
+import { generateMessageId } from "@/utils/messageOperations.js";
 
 // Mock os module
 vi.mock("node:os", () => ({
@@ -201,6 +202,7 @@ describe("Agent User Memory Integration", () => {
     // Add a user message first with correct structure
     const initialMessages = [
       {
+        id: generateMessageId(),
         role: "user" as const,
         blocks: [
           {
