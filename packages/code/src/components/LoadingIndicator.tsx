@@ -47,6 +47,16 @@ export const LoadingIndicator = ({
               </Text>
             </>
           )}
+          <Text color="gray" dimColor>
+            |{" "}
+          </Text>
+          <Text color="red" bold>
+            Esc
+          </Text>
+          <Text color="gray" dimColor>
+            {" "}
+            to abort
+          </Text>
         </Box>
       )}
       {isCommandRunning && <Text color="blue">✻ Command is running...</Text>}

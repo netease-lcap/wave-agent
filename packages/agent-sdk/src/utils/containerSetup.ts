@@ -71,6 +71,7 @@ export function setupAgentContainer(
 
   const callbacks = options.callbacks || {};
   const container = new Container();
+  container.register("AgentOptions", options);
 
   const foregroundTaskManager = new ForegroundTaskManager(container);
   container.register("ForegroundTaskManager", foregroundTaskManager);
@@ -274,7 +275,7 @@ export function setupAgentContainer(
   });
   container.register("SubagentManager", subagentManager);
 
-  const btwManager = new BtwManager(container);
+  const btwManager = new BtwManager(container, workdir);
   container.register("BtwManager", btwManager);
 
   const aiManager = new AIManager(container, {

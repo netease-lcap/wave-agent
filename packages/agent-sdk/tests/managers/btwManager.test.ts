@@ -1,148 +1,112 @@
-import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { BtwManager } from "../../src/managers/btwManager.js";
 import { Container } from "../../src/utils/container.js";
+import { MessageManager } from "../../src/managers/messageManager.js";
+import { AIManager } from "../../src/managers/aiManager.js";
+
+// Mock MessageManager and AIManager
+vi.mock("../../src/managers/messageManager.js", () => {
+  return {
+    MessageManager: vi.fn().mockImplementation(function (this: {
+      setMessages: Mock;
+      getMessages: Mock;
+      addUserMessage: Mock;
+      addUsage: Mock;
+      addErrorBlock: Mock;
+    }) {
+      this.setMessages = vi.fn();
+      this.getMessages = vi.fn().mockReturnValue([]);
+      this.addUserMessage = vi.fn();
+      this.addUsage = vi.fn();
+      this.addErrorBlock = vi.fn();
+    }),
+  };
+});
+
+vi.mock("../../src/managers/aiManager.js", () => {
+  return {
+    AIManager: vi.fn().mockImplementation(function (this: {
+      sendAIMessage: Mock;
+    }) {
+      this.sendAIMessage = vi.fn().mockResolvedValue(undefined);
+    }),
+  };
+});
 
 describe("BtwManager", () => {
   let btwManager: BtwManager;
   let container: Container;
-  let mockSubagentManager: {
-    getInstance: Mock;
-    loadConfigurations: Mock;
-    createInstance: Mock;
-    executeAgent: Mock;
-  };
   let mockMainMessageManager: {
     getMessages: Mock;
+    addUsage: Mock;
   };
+  const workdir = "/mock/workdir";
 
   beforeEach(() => {
+    vi.clearAllMocks();
     container = new Container();
-
-    mockSubagentManager = {
-      getInstance: vi.fn(),
-      loadConfigurations: vi.fn().mockResolvedValue([{ name: "Explore" }]),
-      createInstance: vi.fn().mockResolvedValue({
-        subagentId: "side-agent-123",
-        messageManager: {
-          setMessages: vi.fn(),
-        },
-      }),
-      executeAgent: vi.fn().mockResolvedValue("task-123"),
-    };
 
     mockMainMessageManager = {
       getMessages: vi
         .fn()
         .mockReturnValue([{ role: "user", content: "main context" }]),
+      addUsage: vi.fn(),
     };
 
-    container.register("SubagentManager", mockSubagentManager);
     container.register("MessageManager", mockMainMessageManager);
+    container.register("AgentOptions", { callbacks: {}, stream: true });
 
-    btwManager = new BtwManager(container);
+    btwManager = new BtwManager(container, workdir);
   });
 
   it("should create a new side agent instance if none exists", async () => {
     const subagentId = await btwManager.btw("What is this?");
 
-    expect(subagentId).toBe("side-agent-123");
-    expect(mockSubagentManager.createInstance).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Explore" }),
-      expect.objectContaining({
-        description: "Side agent for /btw questions",
-        prompt: "What is this?",
-        subagent_type: "btw",
-      }),
+    expect(subagentId).toBeDefined();
+    expect(MessageManager).toHaveBeenCalled();
+    expect(AIManager).toHaveBeenCalled();
+
+    const sideMessageManager = vi.mocked(MessageManager).mock.results[0].value;
+    expect(sideMessageManager.setMessages).toHaveBeenCalledWith(
+      mockMainMessageManager.getMessages(),
     );
-    expect(mockSubagentManager.executeAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ subagentId: "side-agent-123" }),
-      "What is this?",
-      undefined,
-      true,
-    );
-  });
 
-  it("should reuse existing side agent instance if it is healthy", async () => {
-    const mockInstance = {
-      subagentId: "side-agent-123",
-      status: "active",
-      messageManager: { setMessages: vi.fn() },
-    };
-
-    // First call to set sideAgentId
-    await btwManager.btw("First question");
-
-    mockSubagentManager.getInstance.mockReturnValue(mockInstance);
-
-    const subagentId = await btwManager.btw("Second question");
-
-    expect(subagentId).toBe("side-agent-123");
-    expect(mockSubagentManager.createInstance).toHaveBeenCalledTimes(1); // Only from first call
-    expect(mockSubagentManager.executeAgent).toHaveBeenCalledWith(
-      mockInstance,
-      "Second question",
-      undefined,
-      true,
-    );
-  });
-
-  it("should create a new instance if existing one is errored", async () => {
-    const mockErroredInstance = {
-      subagentId: "side-agent-123",
-      status: "error",
-    };
-
-    // First call to set sideAgentId
-    await btwManager.btw("First question");
-
-    mockSubagentManager.getInstance.mockReturnValue(mockErroredInstance);
-    mockSubagentManager.createInstance.mockResolvedValue({
-      subagentId: "side-agent-456",
-      messageManager: { setMessages: vi.fn() },
+    expect(sideMessageManager.addUserMessage).toHaveBeenCalledWith({
+      content: "What is this?",
     });
 
-    const subagentId = await btwManager.btw("Second question");
-
-    expect(subagentId).toBe("side-agent-456");
-    expect(mockSubagentManager.createInstance).toHaveBeenCalledTimes(2);
+    const sideAiManager = vi.mocked(AIManager).mock.results[0].value;
+    expect(sideAiManager.sendAIMessage).toHaveBeenCalledWith({ tools: [] });
   });
 
-  it("should inherit context from main message manager when creating new instance", async () => {
-    const mainMessages = [{ role: "user", content: "main context" }];
-    mockMainMessageManager.getMessages.mockReturnValue(mainMessages);
+  it("should reuse existing side agent instance", async () => {
+    await btwManager.btw("First question");
+    const firstCallCount = vi.mocked(MessageManager).mock.calls.length;
 
-    const mockSetMessages = vi.fn();
-    mockSubagentManager.createInstance.mockResolvedValue({
-      subagentId: "side-agent-123",
-      messageManager: { setMessages: mockSetMessages },
+    await btwManager.btw("Second question");
+    expect(vi.mocked(MessageManager).mock.calls.length).toBe(firstCallCount);
+
+    const sideMessageManager = vi.mocked(MessageManager).mock.results[0].value;
+    expect(sideMessageManager.addUserMessage).toHaveBeenCalledWith({
+      content: "Second question",
     });
-
-    await btwManager.btw("Question");
-
-    expect(mockMainMessageManager.getMessages).toHaveBeenCalled();
-    expect(mockSetMessages).toHaveBeenCalledWith(mainMessages);
   });
 
   it("should correctly identify side agent ID", async () => {
-    await btwManager.btw("Question");
+    const subagentId = await btwManager.btw("Question");
 
-    expect(btwManager.isSideAgent("side-agent-123")).toBe(true);
+    expect(btwManager.isSideAgent(subagentId)).toBe(true);
     expect(btwManager.isSideAgent("other-agent")).toBe(false);
   });
 
-  it("should clear side agent ID on dismiss", async () => {
-    await btwManager.btw("Question");
-    expect(btwManager.isSideAgent("side-agent-123")).toBe(true);
+  it("should clear side agent on dismiss", async () => {
+    const subagentId = await btwManager.btw("Question");
+    expect(btwManager.isSideAgent(subagentId)).toBe(true);
 
     btwManager.dismiss();
-    expect(btwManager.isSideAgent("side-agent-123")).toBe(false);
-  });
+    expect(btwManager.isSideAgent(subagentId)).toBe(false);
 
-  it("should throw error if Explore configuration is not found", async () => {
-    mockSubagentManager.loadConfigurations.mockResolvedValue([]);
-
-    await expect(btwManager.btw("Question")).rejects.toThrow(
-      "Explore subagent configuration not found",
-    );
+    await btwManager.btw("New question");
+    expect(vi.mocked(MessageManager).mock.calls.length).toBe(2);
   });
 });

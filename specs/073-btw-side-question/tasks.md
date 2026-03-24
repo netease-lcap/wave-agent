@@ -6,8 +6,8 @@
 
 ## Phase 1: Setup
 
-- [x] T001 Create system reminder prompt file in `packages/agent-sdk/src/prompts/btw-side-question.md`
-- [x] T002 Export `BTW_SIDE_QUESTION_SYSTEM_PROMPT` in `packages/agent-sdk/src/prompts/index.ts`
+- [x] T001 Add `BTW_SUBAGENT_SYSTEM_PROMPT` to `packages/agent-sdk/src/prompts/index.ts`
+- [x] T002 Export `BTW_SUBAGENT_SYSTEM_PROMPT` in `packages/agent-sdk/src/prompts/index.ts`
 - [x] T003 Add `btw` command definition to `AVAILABLE_COMMANDS` in `packages/code/src/constants/commands.ts`
 
 ## Phase 2: Foundational
@@ -27,10 +27,9 @@
 - [x] T010 [US1] Integrate `/btw` command in `useChat.tsx` to trigger the side agent flow and track `isSideAgentThinking`
 - [x] T011 [US1] Create `SideAgentTip.tsx` to show dismissal instructions
 - [x] T012 [US1] Add `isSideAgentActive` derived state to `useChat` context
-- [x] T013 [US2] Update `BtwManager` to use `Explore` subagent configuration
+- [x] T013 [US2] Update `BtwManager` to use isolated `MessageManager` and `AIManager` with no tools
 - [x] T014 [US2] Implement follow-up message handling in `useChat.tsx` when `sideMessages` is present
-- [x] T015 [US2] Ensure subagents inherit `stream` configuration from main agent in `SubagentManager.ts`
-- [x] T016 Ensure `<system-reminder>` is hidden from the user in `packages/code/src/components/MessageList.tsx`
+- [x] T015 [US2] Ensure side agent inherits `stream` configuration from main agent via `AIManager` method
 - [x] T017 Run `pnpm build` to validate the implementation
 - [x] T018 Verify `/btw` works as expected in the CLI
 

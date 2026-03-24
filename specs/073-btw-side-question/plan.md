@@ -8,7 +8,7 @@
 
 ## Summary
 
-The `/btw` side question feature allows users to ask quick questions or explore the codebase without interrupting the main agent's current task. This is achieved by launching a separate side agent instance (using the `Explore` configuration) asynchronously using the `BtwManager` in `agent-sdk`. The side agent inherits all messages from the main conversation to provide full context. The UI in the `code` package will switch to a dedicated message list for the side agent and provide a "Side agent is thinking... | Esc to dismiss" indicator to return to the main conversation.
+The `/btw` side question feature allows users to ask quick questions or get explanations without interrupting the main agent's current task. This is achieved by launching a separate side assistant instance with isolated `MessageManager` and `AIManager` asynchronously using the `BtwManager` in `agent-sdk`. The side agent inherits all messages from the main conversation to provide full context but has NO access to tools. The UI in the `code` package will switch to a dedicated message list for the side agent and provide a "Side agent is thinking... | Esc to dismiss" indicator to return to the main conversation.
 
 ## Technical Context
 
@@ -19,7 +19,7 @@ The `/btw` side question feature allows users to ask quick questions or explore 
 **Target Platform**: Linux/macOS/Windows (CLI)
 **Project Type**: Monorepo (agent-sdk and code packages)
 **Performance Goals**: Side agent should launch and respond within standard LLM latency limits without impacting main agent performance.
-**Constraints**: Side agent uses Explore configuration. Main agent MUST NOT be interrupted.
+**Constraints**: Side agent MUST NOT have any tools. Main agent MUST NOT be interrupted.
 **Scale/Scope**: Multi-turn side questions with access to conversation history.
 
 ## Constitution Check
@@ -28,12 +28,12 @@ The `/btw` side question feature allows users to ask quick questions or explore 
 
 - [x] **Package-First Architecture**: Feature spans `agent-sdk` (logic) and `code` (UI).
 - [x] **TypeScript Excellence**: Strict typing will be used for all new state and functions.
-- [x] **Test Alignment**: Unit tests for `BtwManager` and `SubagentManager` integration; integration tests for UI switching.
+- [x] **Test Alignment**: Unit tests for `BtwManager` with isolated managers; integration tests for UI switching.
 - [x] **Build Dependencies**: `pnpm build` will be run after `agent-sdk` changes.
 - [x] **Documentation Minimalism**: Only necessary spec and plan files created.
 - [x] **Quality Gates**: `pnpm run type-check`, `pnpm run lint`, and `pnpm test:coverage` will be run.
 - [x] **Source Code Structure**: Follows established patterns for managers, services, and components.
-- [x] **Type System Evolution**: Existing `SubagentConfiguration` and `ChatState` will be extended.
+- [x] **Side Agent Isolation**: Side agent uses its own `MessageManager` and `AIManager` to ensure it doesn't interfere with the main agent and has no tools. It inherits the `stream` setting directly from `AgentOptions` in the DI container.
 - [x] **Data Model Minimalism**: Minimal state added to `useChat` for side agent tracking.
 - [x] **Planning and Task Delegation**: General-purpose agent used for planning.
 - [x] **User-Centric Quickstart**: `quickstart.md` will focus on how to use `/btw`.
@@ -86,9 +86,10 @@ packages/
 
 ## Technical Implementation Requirements
 
-- **TIR-001**: The Agent SDK MUST expose a `btw()` function that handles the side agent's logic via `BtwManager`.
+- **TIR-001**: The Agent SDK MUST expose a `btw()` function that handles the side agent's logic via `BtwManager` using isolated managers.
 - **TIR-002**: The CLI MUST integrate the `/btw` command into the `useChat.tsx` context in `@packages/code/src/contexts/`.
 - **TIR-003**: The CLI MUST invoke the `btw()` function from the Agent SDK when the user types the `/btw` command.
 - **TIR-004**: The CLI MUST support multi-turn follow-up questions within the side agent view.
 - **TIR-005**: The CLI MUST ensure a clean UI reset when activating or dismissing the side agent.
+- **TIR-006**: The side agent MUST NOT have access to any tools.
 
