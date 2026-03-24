@@ -127,6 +127,18 @@ description: "Task list for CLI tool selection implementation"
 
 ---
 
+## Phase 8: Refinement & Isolation (Post-MVP)
+
+**Purpose**: Improve robustness and simplify AI invocation flow.
+
+- [x] T028 [P] Remove `tools` argument from `AIManager.sendAIMessage` and rely on `ToolManager` as single source of truth.
+- [x] T029 [P] Implement isolated `ToolManager` and `PermissionManager` for `BtwManager` (side agent).
+- [x] T030 [P] Update `SubagentManager` to use `PermissionManager` for denying `Agent` tool instead of manual filtering.
+- [x] T031 [P] Update `btwManager.test.ts` to reflect simplified `sendAIMessage` signature.
+- [x] T032 [P] Verify all tests pass after refactoring.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

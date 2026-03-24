@@ -58,3 +58,20 @@ export interface ToolManagerOptions {
   tools?: string[];
 }
 ```
+
+## AI Manager
+
+### `sendAIMessage` Method
+
+The `sendAIMessage` method in `packages/agent-sdk/src/managers/aiManager.ts` will **not** take a `tools` argument. Instead, it will rely on the `ToolManager` injected into its container to determine available tools.
+
+```typescript
+public async sendAIMessage(
+  options: {
+    recursionDepth?: number;
+    model?: string;
+    allowedRules?: string[];
+    maxTokens?: number;
+  } = {},
+): Promise<void>;
+```

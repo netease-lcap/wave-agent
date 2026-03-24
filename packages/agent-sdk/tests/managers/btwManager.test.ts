@@ -76,7 +76,7 @@ describe("BtwManager", () => {
     });
 
     const sideAiManager = vi.mocked(AIManager).mock.results[0].value;
-    expect(sideAiManager.sendAIMessage).toHaveBeenCalledWith({ tools: [] });
+    expect(sideAiManager.sendAIMessage).toHaveBeenCalled();
   });
 
   it("should reuse existing side agent instance", async () => {
