@@ -474,7 +474,6 @@ export class AIManager {
             name: toolCall.name,
             parameters: toolCall.parameters,
             parametersChunk: toolCall.parametersChunk,
-            compactParams: toolCall.parameters?.split("\n").pop()?.slice(-30),
             stage: toolCall.stage || "streaming", // Default to streaming if stage not provided
           });
         };
@@ -713,6 +712,7 @@ export class AIManager {
                 error: toolResult.error,
                 stage: "end",
                 name: toolName,
+                compactParams,
                 shortResult: toolResult.shortResult,
                 isManuallyBackgrounded: toolResult.isManuallyBackgrounded,
                 startLineNumber: toolResult.startLineNumber,
