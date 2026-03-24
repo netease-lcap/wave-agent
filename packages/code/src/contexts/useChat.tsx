@@ -25,6 +25,7 @@ import {
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
+import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
 
 import { BaseAppProps } from "../types.js";
 
@@ -41,12 +42,14 @@ export interface ChatContextType {
   queuedMessages: Array<{
     content: string;
     images?: Array<{ path: string; mimeType: string }>;
+    longTextMap?: Record<string, string>;
   }>;
   // AI functionality
   sessionId: string;
   sendMessage: (
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
+    longTextMap?: Record<string, string>,
   ) => Promise<void>;
   abortMessage: () => void;
   latestTotalTokens: number;
@@ -151,6 +154,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     Array<{
       content: string;
       images?: Array<{ path: string; mimeType: string }>;
+      longTextMap?: Record<string, string>;
     }>
   >([]);
 
@@ -427,6 +431,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     async (
       content: string,
       images?: Array<{ path: string; mimeType: string }>,
+      longTextMap?: Record<string, string>,
     ) => {
       // Check if there's content to send (text content or image attachments)
       const hasTextContent = content.trim();
@@ -435,18 +440,25 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       if (!hasTextContent && !hasImageAttachments) return;
 
       if (isLoading || isCommandRunning) {
-        setQueuedMessages((prev) => [...prev, { content, images }]);
+        setQueuedMessages((prev) => [
+          ...prev,
+          { content, images, longTextMap },
+        ]);
         return;
       }
 
       try {
+        const expandedContent = longTextMap
+          ? expandLongTextPlaceholders(content, longTextMap)
+          : content;
+
         // Handle bash mode - check if it's a bash command (starts with ! and only one line)
         if (
-          content.startsWith("!") &&
-          !content.includes("\n") &&
+          expandedContent.startsWith("!") &&
+          !expandedContent.includes("\n") &&
           !hasImageAttachments
         ) {
-          const command = content.substring(1).trim();
+          const command = expandedContent.substring(1).trim();
           if (command) {
             await agentRef.current?.executeBashCommand(command);
             return;
@@ -457,7 +469,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setIsLoading(true);
 
         try {
-          await agentRef.current?.sendMessage(content, images);
+          await agentRef.current?.sendMessage(expandedContent, images);
         } finally {
           // Clear loading state
           setIsLoading(false);
@@ -475,7 +487,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     if (!isLoading && !isCommandRunning && queuedMessages.length > 0) {
       const nextMessage = queuedMessages[0];
       setQueuedMessages((prev) => prev.slice(1));
-      sendMessage(nextMessage.content, nextMessage.images);
+      sendMessage(
+        nextMessage.content,
+        nextMessage.images,
+        nextMessage.longTextMap,
+      );
     }
   }, [isLoading, isCommandRunning, queuedMessages, sendMessage]);
 

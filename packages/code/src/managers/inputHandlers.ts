@@ -54,10 +54,6 @@ export const handleSubmit = async (
     const contentWithPlaceholders = state.inputText
       .replace(imageRegex, "")
       .trim();
-    const cleanContent = expandLongTextPlaceholders(
-      contentWithPlaceholders,
-      state.longTextMap,
-    );
 
     PromptHistoryManager.addEntry(
       contentWithPlaceholders,
@@ -69,8 +65,9 @@ export const handleSubmit = async (
     });
 
     callbacks.onSendMessage?.(
-      cleanContent,
+      contentWithPlaceholders,
       referencedImages.length > 0 ? referencedImages : undefined,
+      state.longTextMap,
     );
     dispatch({ type: "CLEAR_INPUT" });
     dispatch({ type: "RESET_HISTORY_NAVIGATION" });
@@ -322,7 +319,7 @@ export const handleCommandSelect = (
       if (callbacks.onSendMessage && callbacks.onHasSlashCommand?.(command)) {
         const fullCommand = `/${command}`;
         try {
-          await callbacks.onSendMessage(fullCommand);
+          await callbacks.onSendMessage(fullCommand, undefined, {});
           commandExecuted = true;
         } catch (error) {
           console.error("Failed to execute slash command:", error);

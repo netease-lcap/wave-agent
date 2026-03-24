@@ -233,6 +233,28 @@ describe("ChatProvider", () => {
     expect(mockAgent.sendMessage).toHaveBeenCalledWith("Hello AI", undefined);
   });
 
+  it("handles sendMessage with long text placeholders", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const content = "Check this: [LongText#1]";
+    const longTextMap = { "[LongText#1]": "Expanded content" };
+    await lastValue?.sendMessage(content, undefined, longTextMap);
+
+    expect(mockAgent.sendMessage).toHaveBeenCalledWith(
+      "Check this: Expanded content",
+      undefined,
+    );
+  });
+
   it("handles sendMessage for bash commands", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
