@@ -398,10 +398,10 @@ describe("inputReducer", () => {
     expect(state.selectorJustUsed).toBe(true);
   });
 
-  it("should handle COMPRESS_AND_INSERT_TEXT", () => {
+  it("should handle INSERT_TEXT_WITH_PLACEHOLDER", () => {
     // Short text
     let state = inputReducer(initialState, {
-      type: "COMPRESS_AND_INSERT_TEXT",
+      type: "INSERT_TEXT_WITH_PLACEHOLDER",
       payload: "short text",
     });
     expect(state.inputText).toBe("short text");
@@ -411,7 +411,7 @@ describe("inputReducer", () => {
     // Long text
     const longText = "a".repeat(201);
     state = inputReducer(initialState, {
-      type: "COMPRESS_AND_INSERT_TEXT",
+      type: "INSERT_TEXT_WITH_PLACEHOLDER",
       payload: longText,
     });
     expect(state.inputText).toBe("[LongText#1]");

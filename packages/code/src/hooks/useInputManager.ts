@@ -70,7 +70,10 @@ export const useInputManager = (
           /\r/g,
           "\n",
         );
-        dispatch({ type: "COMPRESS_AND_INSERT_TEXT", payload: processedInput });
+        dispatch({
+          type: "INSERT_TEXT_WITH_PLACEHOLDER",
+          payload: processedInput,
+        });
         dispatch({ type: "END_PASTE" });
         dispatch({ type: "RESET_HISTORY_NAVIGATION" });
       }, pasteDebounceDelay);

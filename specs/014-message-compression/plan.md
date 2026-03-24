@@ -5,7 +5,7 @@
 
 ## Summary
 
-Implement a two-tier compression system: history compression in `agent-sdk` to manage token limits, and input compression in `code` to keep the UI clean when pasting large amounts of text.
+Implement a history compression system in `agent-sdk` to manage token limits by automatically summarizing older messages.
 
 ## Technical Context
 
@@ -15,20 +15,20 @@ Implement a two-tier compression system: history compression in `agent-sdk` to m
 **Testing**: Vitest
 **Target Platform**: CLI (Node.js)
 **Project Type**: Monorepo (agent-sdk + code)
-**Performance Goals**: Efficient summarization and responsive UI during paste
-**Constraints**: 200-character threshold for input compression; full history replacement for history compression
+**Performance Goals**: Efficient summarization
+**Constraints**: Full history replacement for history compression
 **Scale/Scope**: Core resource management for all agent sessions
 
 ## Constitution Check
 
-- [x] **Package-First Architecture**: History compression in `agent-sdk`, input compression in `code`.
-- [x] **TypeScript Excellence**: Strict typing for `compress` blocks and `longTextMap`.
-- [x] **Test Alignment**: Unit tests for compression logic and placeholder handling.
+- [x] **Package-First Architecture**: History compression in `agent-sdk`.
+- [x] **TypeScript Excellence**: Strict typing for `compress` blocks.
+- [x] **Test Alignment**: Unit tests for compression logic.
 - [x] **Build Dependencies**: `pnpm build` required for `agent-sdk` changes.
 - [x] **Quality Gates**: `type-check` and `lint` must pass.
 - [x] **Test-Driven Development**: Write failing tests for token threshold detection first.
 - [x] **Type System Evolution**: Use existing message block patterns.
-- [x] **Data Model Minimalism**: Simple summary string and placeholder map.
+- [x] **Data Model Minimalism**: Simple summary string.
 
 ## Project Structure
 
@@ -56,14 +56,6 @@ packages/agent-sdk/
 └── tests/
     └── utils/
         └── messageOperations.test.ts
-
-packages/code/
-├── src/
-│   └── managers/
-│       └── InputManager.ts     # Handle input compression
-└── tests/
-    └── managers/
-        └── InputManager.test.ts
 ```
 
 ## Complexity Tracking

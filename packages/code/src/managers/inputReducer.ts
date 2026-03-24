@@ -149,7 +149,7 @@ export type InputAction =
   | { type: "SET_SHOW_PLUGIN_MANAGER"; payload: boolean }
   | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }
   | { type: "SET_SELECTOR_JUST_USED"; payload: boolean }
-  | { type: "COMPRESS_AND_INSERT_TEXT"; payload: string }
+  | { type: "INSERT_TEXT_WITH_PLACEHOLDER"; payload: string }
   | { type: "CLEAR_LONG_TEXT_MAP" }
   | { type: "CLEAR_INPUT" }
   | { type: "START_PASTE"; payload: { buffer: string; cursorPosition: number } }
@@ -344,16 +344,16 @@ export function inputReducer(
       return { ...state, permissionMode: action.payload };
     case "SET_SELECTOR_JUST_USED":
       return { ...state, selectorJustUsed: action.payload };
-    case "COMPRESS_AND_INSERT_TEXT": {
+    case "INSERT_TEXT_WITH_PLACEHOLDER": {
       let textToInsert = action.payload;
       let newLongTextCounter = state.longTextCounter;
       const newLongTextMap = { ...state.longTextMap };
 
       if (textToInsert.length > 200) {
         newLongTextCounter += 1;
-        const compressedLabel = `[LongText#${newLongTextCounter}]`;
-        newLongTextMap[compressedLabel] = textToInsert;
-        textToInsert = compressedLabel;
+        const placeholderLabel = `[LongText#${newLongTextCounter}]`;
+        newLongTextMap[placeholderLabel] = textToInsert;
+        textToInsert = placeholderLabel;
       }
 
       const beforeCursor = state.inputText.substring(0, state.cursorPosition);
