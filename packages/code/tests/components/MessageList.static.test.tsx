@@ -48,7 +48,7 @@ describe("MessageList Static Rendering", () => {
   });
 
   describe("Static rendering scenarios", () => {
-    it("should render all messages (23 messages)", () => {
+    it("should render only last 10 messages (23 messages)", () => {
       const messages = Array.from({ length: 23 }, (_, i) =>
         createMessage("user", `Message ${i + 1}`, i + 1),
       );
@@ -57,8 +57,9 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // All messages should be visible (no pagination)
-      expect(lastFrame()).toContain("Message 1 - Message 1");
+      // Only last 10 messages should be visible
+      expect(lastFrame()).not.toContain("Message 1 - Message 1");
+      expect(lastFrame()).not.toContain("Message 13 - Message 13");
       expect(lastFrame()).toContain("Message 14 - Message 14");
       expect(lastFrame()).toContain("Message 23 - Message 23");
 
@@ -66,7 +67,7 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).not.toContain("Page");
     });
 
-    it("should render all messages without pagination (15 messages)", () => {
+    it("should render only last 10 messages (15 messages)", () => {
       const messages = Array.from({ length: 15 }, (_, i) =>
         createMessage("user", `Msg ${i + 1}`, i + 1),
       );
@@ -75,8 +76,9 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // All messages should be visible
-      expect(lastFrame()).toContain("Msg 1 - Message 1");
+      // Only last 10 messages should be visible
+      expect(lastFrame()).not.toContain("Msg 1 - Message 1");
+      expect(lastFrame()).not.toContain("Msg 5 - Message 5");
       expect(lastFrame()).toContain("Msg 6 - Message 6");
       expect(lastFrame()).toContain("Msg 15 - Message 15");
 
@@ -84,7 +86,7 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).not.toContain("Page");
     });
 
-    it("should handle large number of messages and show all (47 messages)", () => {
+    it("should handle large number of messages and show only last 10 (47 messages)", () => {
       const messages = Array.from({ length: 47 }, (_, i) =>
         createMessage("user", `Bulk ${i + 1}`, i + 1),
       );
@@ -93,9 +95,9 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // All messages should be visible (no pagination limits)
-      expect(lastFrame()).toContain("Bulk 1 - Message 1");
-      expect(lastFrame()).toContain("Bulk 7 - Message 7");
+      // Only last 10 messages should be visible
+      expect(lastFrame()).not.toContain("Bulk 1 - Message 1");
+      expect(lastFrame()).not.toContain("Bulk 37 - Message 37");
       expect(lastFrame()).toContain("Bulk 38 - Message 38");
       expect(lastFrame()).toContain("Bulk 47 - Message 47");
 
@@ -195,7 +197,7 @@ describe("MessageList Static Rendering", () => {
   });
 
   describe("Message content and types", () => {
-    it("should render all messages content (no pagination filtering)", () => {
+    it("should render only last 10 messages content (no pagination filtering)", () => {
       const messages = Array.from({ length: 22 }, (_, i) =>
         createMessage("user", `Unique content ${i}`, i + 1),
       );
@@ -204,15 +206,14 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // ALL messages should be visible (no pagination)
-      expect(lastFrame()).toContain("Unique content 0"); // Message 1
-      expect(lastFrame()).toContain("Unique content 1"); // Message 2
-      expect(lastFrame()).toContain("Unique content 11"); // Message 12
+      // Only last 10 messages should be visible
+      expect(lastFrame()).not.toContain("Unique content 0"); // Message 1
+      expect(lastFrame()).not.toContain("Unique content 11"); // Message 12
       expect(lastFrame()).toContain("Unique content 12"); // Message 13
       expect(lastFrame()).toContain("Unique content 21"); // Message 22
     });
 
-    it("should handle different message types and preserve structure for all messages", () => {
+    it("should handle different message types and preserve structure for last 10 messages", () => {
       const messages = Array.from({ length: 12 }, (_, i) => {
         const role = i % 2 === 0 ? "user" : "assistant";
         return createMessage(role, `Test ${i + 1}`, i + 1);
@@ -222,8 +223,10 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // All messages should be visible
-      expect(lastFrame()).toContain("Test 1 - Message 1");
+      // Only last 10 messages should be visible
+      expect(lastFrame()).not.toContain("Test 1 - Message 1");
+      expect(lastFrame()).not.toContain("Test 2 - Message 2");
+      expect(lastFrame()).toContain("Test 3 - Message 3");
       expect(lastFrame()).toContain("Test 12 - Message 12");
     });
 

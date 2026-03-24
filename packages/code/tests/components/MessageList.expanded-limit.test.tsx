@@ -47,9 +47,9 @@ describe("MessageList Component - Expanded Mode Limit", () => {
     } as unknown as ChatContextType);
   });
 
-  describe("Message limiting in expanded mode", () => {
-    it("should not limit messages when count is <= 20", () => {
-      const messages = Array.from({ length: 15 }, (_, i) =>
+  describe("Message limiting in both modes", () => {
+    it("should not limit messages when count is <= 10", () => {
+      const messages = Array.from({ length: 8 }, (_, i) =>
         createMessage(
           i % 2 === 0 ? "user" : "assistant",
           `Test ${i + 1}`,
@@ -63,15 +63,12 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       const output = lastFrame();
 
-      // Should show all 15 messages
+      // Should show all 8 messages
       expect(output).toContain("Test 1 - Message 1");
-      expect(output).toContain("Test 15 - Message 15");
-
-      // Should not show omitted message indicator
-      expect(output).not.toContain("earlier messages omitted");
+      expect(output).toContain("Test 8 - Message 8");
     });
 
-    it("should limit messages to 20 when count > 20 and expanded", () => {
+    it("should limit messages to 10 when count > 10 and expanded", () => {
       const messages = Array.from({ length: 25 }, (_, i) =>
         createMessage(
           i % 2 === 0 ? "user" : "assistant",
@@ -86,14 +83,14 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       const output = lastFrame();
 
-      // Should show only the latest 20 messages (messages 6-25)
+      // Should show only the latest 10 messages (messages 16-25)
       expect(output).not.toContain("Test 1 - Message 1");
-      expect(output).not.toContain("Test 5 - Message 5");
-      expect(output).toContain("Test 6 - Message 6");
+      expect(output).not.toContain("Test 15 - Message 15");
+      expect(output).toContain("Test 16 - Message 16");
       expect(output).toContain("Test 25 - Message 25");
     });
 
-    it("should not limit messages when not in expanded mode", () => {
+    it("should limit messages to 10 when count > 10 and collapsed", () => {
       const messages = Array.from({ length: 25 }, (_, i) =>
         createMessage(
           i % 2 === 0 ? "user" : "assistant",
@@ -108,16 +105,15 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       const output = lastFrame();
 
-      // Should show all messages in collapsed mode
-      expect(output).toContain("Test 1 - Message 1");
+      // Should show only the latest 10 messages (messages 16-25)
+      expect(output).not.toContain("Test 1 - Message 1");
+      expect(output).not.toContain("Test 15 - Message 15");
+      expect(output).toContain("Test 16 - Message 16");
       expect(output).toContain("Test 25 - Message 25");
-
-      // Should not show omitted message indicator
-      expect(output).not.toContain("earlier messages omitted");
     });
 
-    it("should handle exact limit boundary (20 messages)", () => {
-      const messages = Array.from({ length: 20 }, (_, i) =>
+    it("should handle exact limit boundary (10 messages)", () => {
+      const messages = Array.from({ length: 10 }, (_, i) =>
         createMessage(
           i % 2 === 0 ? "user" : "assistant",
           `Test ${i + 1}`,
@@ -131,16 +127,13 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       const output = lastFrame();
 
-      // Should show all 20 messages without limiting
+      // Should show all 10 messages without limiting
       expect(output).toContain("Test 1 - Message 1");
-      expect(output).toContain("Test 20 - Message 20");
-
-      // Should not show omitted message indicator
-      expect(output).not.toContain("earlier messages omitted");
+      expect(output).toContain("Test 10 - Message 10");
     });
 
-    it("should handle exact limit boundary + 1 (21 messages)", () => {
-      const messages = Array.from({ length: 21 }, (_, i) =>
+    it("should handle exact limit boundary + 1 (11 messages)", () => {
+      const messages = Array.from({ length: 11 }, (_, i) =>
         createMessage(
           i % 2 === 0 ? "user" : "assistant",
           `Test ${i + 1}`,
@@ -154,11 +147,11 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       const output = lastFrame();
 
-      // Should limit to 20 messages
+      // Should limit to 10 messages
       // Should not show the first message
       expect(output).not.toContain("Test 1 - Message 1");
       expect(output).toContain("Test 2 - Message 2");
-      expect(output).toContain("Test 21 - Message 21");
+      expect(output).toContain("Test 11 - Message 11");
     });
   });
 
@@ -178,9 +171,9 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       const output = lastFrame();
 
-      // Should show only the latest 20 messages
+      // Should show only the latest 10 messages
       expect(output).not.toContain("Test 1 - Message 1");
-      expect(output).toContain("Test 6 - Message 6");
+      expect(output).toContain("Test 16 - Message 16");
       expect(output).toContain("Test 25 - Message 25");
     });
 
@@ -202,9 +195,9 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       // Should NOT show loading indicator
       expect(output).not.toContain("💭 AI is thinking...");
 
-      // Should show only the latest 20 messages
+      // Should show only the latest 10 messages
       expect(output).not.toContain("Test 1 - Message 1");
-      expect(output).toContain("Test 6 - Message 6");
+      expect(output).toContain("Test 16 - Message 16");
       expect(output).toContain("Test 25 - Message 25");
     });
   });
