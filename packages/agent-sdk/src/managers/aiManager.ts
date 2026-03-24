@@ -161,26 +161,18 @@ export class AIManager {
   /**
    * Get filtered tool configuration based on tools list
    */
-  private getFilteredToolsConfig(tools?: string[]) {
+  private getFilteredToolsConfig() {
     // Get available subagents and skills for dynamic prompts
     const availableSubagents = this.subagentManager?.getConfigurations();
     const availableSkills = this.skillManager
       ?.getAvailableSkills()
       .filter((skill) => !skill.disableModelInvocation);
 
-    const allTools = this.toolManager.getToolsConfig({
+    return this.toolManager.getToolsConfig({
       availableSubagents,
       availableSkills,
       workdir: this.workdir,
     });
-
-    // If tools is undefined, return all tools
-    if (tools === undefined) {
-      return allTools;
-    }
-
-    // Filter tools (will return [] if tools is [])
-    return allTools.filter((tool) => tools.includes(tool.function.name));
   }
 
   public setIsLoading(isLoading: boolean): void {
@@ -337,18 +329,10 @@ export class AIManager {
       model?: string;
       /** Rules for automatic tool approval (e.g., "Bash(git status*)") */
       allowedRules?: string[];
-      /** List of tools available to the AI (e.g., ["Bash", "Read"]) */
-      tools?: string[];
       maxTokens?: number;
     } = {},
   ): Promise<void> {
-    const {
-      recursionDepth = 0,
-      model,
-      allowedRules,
-      tools,
-      maxTokens,
-    } = options;
+    const { recursionDepth = 0, model, allowedRules, maxTokens } = options;
 
     // Only check isLoading for the initial call (recursionDepth === 0)
     if (recursionDepth === 0 && this.isLoading) {
@@ -402,7 +386,7 @@ export class AIManager {
       const currentMode = this.permissionManager?.getCurrentEffectiveMode(
         this.getModelConfig().permissionMode,
       );
-      const toolsConfig = this.getFilteredToolsConfig(tools);
+      const toolsConfig = this.getFilteredToolsConfig();
       const toolNames = new Set(toolsConfig.map((t) => t.function.name));
       const filteredToolPlugins = this.toolManager
         .getTools()
@@ -874,7 +858,6 @@ export class AIManager {
             recursionDepth: recursionDepth + 1,
             model,
             allowedRules,
-            tools,
             maxTokens,
           });
         }
@@ -927,7 +910,6 @@ export class AIManager {
               recursionDepth: 0,
               model,
               allowedRules,
-              tools,
               maxTokens,
             });
           }

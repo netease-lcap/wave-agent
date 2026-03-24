@@ -1,6 +1,8 @@
 import { Container } from "../utils/container.js";
 import { MessageManager } from "./messageManager.js";
 import { AIManager } from "./aiManager.js";
+import { ToolManager } from "./toolManager.js";
+import { PermissionManager } from "./permissionManager.js";
 import { BTW_SUBAGENT_SYSTEM_PROMPT } from "../prompts/index.js";
 import { randomUUID } from "node:crypto";
 import { AgentOptions } from "../types/index.js";
@@ -28,6 +30,37 @@ export class BtwManager {
     if (!this.aiManager || !this.messageManager) {
       const subagentContainer = this.container.createChild();
       const agentOptions = this.container.get<AgentOptions>("AgentOptions");
+
+      const parentPermissionManager =
+        this.container.get<PermissionManager>("PermissionManager");
+      const subagentPermissionManager = new PermissionManager(
+        subagentContainer,
+        {
+          workdir: this.workdir,
+          configuredDefaultMode:
+            parentPermissionManager?.getConfiguredDefaultMode(),
+          allowedRules: parentPermissionManager?.getAllowedRules(),
+          deniedRules: parentPermissionManager?.getDeniedRules(),
+          instanceAllowedRules:
+            parentPermissionManager?.getInstanceAllowedRules?.(),
+          instanceDeniedRules:
+            parentPermissionManager?.getInstanceDeniedRules?.(),
+          additionalDirectories:
+            parentPermissionManager?.getAdditionalDirectories(),
+          planFilePath: parentPermissionManager?.getPlanFilePath(),
+        },
+      );
+      subagentContainer.register(
+        "PermissionManager",
+        subagentPermissionManager,
+      );
+
+      const toolManager = new ToolManager({
+        container: subagentContainer,
+        tools: [], // Explicitly no tools for side agent
+      });
+      toolManager.initializeBuiltInTools();
+      subagentContainer.register("ToolManager", toolManager);
 
       this.messageManager = new MessageManager(subagentContainer, {
         callbacks: {
@@ -64,9 +97,9 @@ export class BtwManager {
     // Add the user's question as a message
     this.messageManager.addUserMessage({ content: question });
 
-    // Execute the AI request with no tools
+    // Execute the AI request
     // sendAIMessage will handle the rest
-    this.aiManager.sendAIMessage({ tools: [] }).catch((error) => {
+    this.aiManager.sendAIMessage().catch((error) => {
       this.messageManager?.addErrorBlock(
         error instanceof Error ? error.message : String(error),
       );

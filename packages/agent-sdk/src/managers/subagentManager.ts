@@ -188,7 +188,10 @@ export class SubagentManager {
       deniedRules: parentPermissionManager?.getDeniedRules(),
       instanceAllowedRules:
         parentPermissionManager?.getInstanceAllowedRules?.(),
-      instanceDeniedRules: parentPermissionManager?.getInstanceDeniedRules?.(),
+      instanceDeniedRules: [
+        ...(parentPermissionManager?.getInstanceDeniedRules?.() || []),
+        AGENT_TOOL_NAME, // Always deny Agent tool in subagents to prevent recursion
+      ],
       additionalDirectories:
         parentPermissionManager?.getAdditionalDirectories(),
       planFilePath: parentPermissionManager?.getPlanFilePath(),
@@ -418,24 +421,9 @@ export class SubagentManager {
       // Add the user's prompt as a message
       instance.messageManager.addUserMessage({ content: prompt });
 
-      // Create enabled tools list - always exclude Agent tool to prevent subagent recursion
-      // Use instance.configuration.tools if provided, otherwise fallback to all tools
-      let enabledTools = instance.configuration.tools;
-
-      // Always filter out the Agent tool to prevent subagents from creating sub-subagents
-      if (enabledTools) {
-        enabledTools = enabledTools.filter((tool) => tool !== AGENT_TOOL_NAME);
-      } else {
-        // If no tools specified, get all tools except Agent
-        const allTools = instance.toolManager.list().map((tool) => tool.name);
-        enabledTools = allTools.filter((tool) => tool !== AGENT_TOOL_NAME);
-      }
-
-      // Execute the AI request with tool restrictions
+      // Execute the AI request
       // The AIManager will handle abort signals through its own abort controllers
-      const executeAI = instance.aiManager.sendAIMessage({
-        tools: enabledTools,
-      });
+      const executeAI = instance.aiManager.sendAIMessage();
 
       // If we have an abort signal, race against it using utilities to prevent listener accumulation
       if (abortSignal && !instance.backgroundTaskId) {
