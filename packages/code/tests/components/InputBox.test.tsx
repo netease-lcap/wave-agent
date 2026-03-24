@@ -158,7 +158,11 @@ describe("InputBox Smoke Tests", () => {
 
       stdin.write("\r");
       await vi.waitFor(() => {
-        expect(mockSendMessage).toHaveBeenCalledWith("/git-commit");
+        expect(mockSendMessage).toHaveBeenCalledWith(
+          "/git-commit",
+          undefined,
+          {},
+        );
       });
 
       expect(mockHasSlashCommand).toHaveBeenCalledWith("git-commit");
@@ -191,6 +195,7 @@ describe("InputBox Smoke Tests", () => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           "/git-commit some arguments",
           undefined,
+          {},
         );
       });
 

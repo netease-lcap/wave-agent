@@ -30,6 +30,7 @@ export interface InputBoxProps {
   sendMessage?: (
     message: string,
     images?: Array<{ path: string; mimeType: string }>,
+    longTextMap?: Record<string, string>,
   ) => void;
   abortMessage?: () => void;
   // MCP related properties

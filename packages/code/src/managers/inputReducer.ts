@@ -37,6 +37,7 @@ export interface InputManagerCallbacks {
   onSendMessage?: (
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
+    longTextMap?: Record<string, string>,
   ) => void | Promise<void>;
   onHasSlashCommand?: (commandId: string) => boolean;
   onAbortMessage?: () => void;

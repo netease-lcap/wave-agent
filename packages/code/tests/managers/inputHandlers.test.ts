@@ -149,8 +149,9 @@ describe("inputHandlers", () => {
       await handleSubmit(state, dispatch, callbacks);
 
       expect(callbacks.onSendMessage).toHaveBeenCalledWith(
-        "hello world",
+        "hello [LongText#1]",
         undefined,
+        { "[LongText#1]": "world" },
       );
       expect(dispatch).toHaveBeenCalledWith({ type: "CLEAR_INPUT" });
       expect(dispatch).toHaveBeenCalledWith({ type: "CLEAR_LONG_TEXT_MAP" });
@@ -175,12 +176,14 @@ describe("inputHandlers", () => {
       };
       await handleSubmit(state, dispatch, callbacks);
 
-      expect(callbacks.onSendMessage).toHaveBeenCalledWith("Look at this", [
-        { path: "/path/to/img.png", mimeType: "image/png" },
-      ]);
+      expect(callbacks.onSendMessage).toHaveBeenCalledWith(
+        "Look at this",
+        [{ path: "/path/to/img.png", mimeType: "image/png" }],
+        {},
+      );
     });
 
-    it("should expand long text placeholders during submit", async () => {
+    it("should preserve long text placeholders during submit", async () => {
       const state: InputState = {
         ...initialState,
         inputText: "Check this: [LongText#1]",
@@ -191,8 +194,9 @@ describe("inputHandlers", () => {
       await handleSubmit(state, dispatch, callbacks);
 
       expect(callbacks.onSendMessage).toHaveBeenCalledWith(
-        "Check this: Expanded content",
+        "Check this: [LongText#1]",
         undefined,
+        { "[LongText#1]": "Expanded content" },
       );
       expect(PromptHistoryManager.addEntry).toHaveBeenCalledWith(
         "Check this: [LongText#1]",
@@ -487,7 +491,11 @@ describe("inputHandlers", () => {
 
       // Wait for async command execution
       await vi.waitFor(() => {
-        expect(callbacks.onSendMessage).toHaveBeenCalledWith("/test-command");
+        expect(callbacks.onSendMessage).toHaveBeenCalledWith(
+          "/test-command",
+          undefined,
+          {},
+        );
       });
     });
 
@@ -685,7 +693,11 @@ describe("inputHandlers", () => {
       );
 
       expect(result).toBe(true);
-      expect(callbacks.onSendMessage).toHaveBeenCalledWith("test", undefined);
+      expect(callbacks.onSendMessage).toHaveBeenCalledWith(
+        "test",
+        undefined,
+        {},
+      );
       expect(clearImages).toHaveBeenCalled();
     });
 
