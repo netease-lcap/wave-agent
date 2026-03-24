@@ -4,7 +4,7 @@
 **Input**: Feature specification from `/specs/050-plan-mode/spec.md`
 
 ## Summary
-Implement a "Plan Mode" permission state that allows the LLM to analyze the codebase in a read-only manner while building a plan in a designated plan file. Users can cycle through permission modes (Full Access -> Accept Edits -> Plan Mode) using `Shift+Tab`.
+Implement a "Plan Mode" permission state that allows the LLM to analyze the codebase in a read-only manner while building a plan in a designated plan file. Users can cycle through permission modes (Full Access -> Accept Edits -> Plan Mode) using `Shift+Tab`. Additionally, provide an `ExitPlanMode` tool that allows the agent to signal completion of the planning phase, triggering a user review of the plan file with options to proceed in default mode, accept edits mode, or provide feedback.
 
 ## Technical Context
 
@@ -15,8 +15,8 @@ Implement a "Plan Mode" permission state that allows the LLM to analyze the code
 **Target Platform**: Linux/macOS/Windows (Node.js)
 **Project Type**: Monorepo (agent-sdk, code)
 **Performance Goals**: Instant mode switching, minimal overhead for permission checks.
-**Constraints**: Read-only enforcement for all files except the plan file; no bash command execution in Plan Mode. The plan file is managed by the LLM using `Write` and `Edit` tools.
-**Scale/Scope**: Core permission system enhancement.
+**Constraints**: Read-only enforcement for all files except the plan file; no bash command execution in Plan Mode. The plan file is managed by the LLM using `Write` and `Edit` tools. `ExitPlanMode` MUST reuse `canUseTool` mechanism; MUST only be visible in plan mode; MUST NOT be available in `bypassPermissions` mode.
+**Scale/Scope**: Core permission system enhancement and new tool implementation.
 
 ## Constitution Check
 
@@ -55,21 +55,30 @@ packages/
 │   │   ├── managers/
 │   │   │   ├── permissionManager.ts  # Update for plan mode
 │   │   │   ├── planManager.ts        # New manager for plan files
-│   │   │   └── aiManager.ts          # Update system prompt
+│   │   │   ├── aiManager.ts          # Update system prompt
+│   │   │   └── toolManager.ts        # Filter ExitPlanMode
+│   │   ├── tools/
+│   │   │   └── exitPlanMode.ts       # New tool for exiting plan mode
 │   │   ├── types/
 │   │   │   └── permissions.ts        # Add "plan" mode
-│   │   └── utils/
-│   │       └── nameGenerator.ts      # New utility for deterministic names
+│   │   ├── utils/
+│   │   │   └── nameGenerator.ts      # New utility for deterministic names
+│   │   └── agent.ts                  # Register ExitPlanMode
 │   └── tests/
-│       └── managers/
-│           ├── permissionManager.plan.test.ts
-│           └── planManager.test.ts
+│       ├── managers/
+│       │   ├── permissionManager.plan.test.ts
+│       │   └── planManager.test.ts
+│       ├── tools/
+│       │   └── exitPlanMode.test.ts
+│       └── agent/
+│           └── exitPlanMode.integration.test.ts
 └── code/
     ├── src/
     │   ├── managers/
     │   │   └── InputManager.ts       # Update Shift+Tab cycle
     │   └── components/
-    │       └── PermissionIndicator.tsx # Visual feedback (if needed)
+    │       ├── PermissionIndicator.tsx # Visual feedback (if needed)
+    │       └── Confirmation.tsx       # 3-option UI for ExitPlanMode
     └── tests/
         └── managers/
             └── InputManager.plan.test.ts

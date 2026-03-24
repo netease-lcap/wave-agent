@@ -95,7 +95,26 @@
 
 ---
 
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 7: User Story 4 - Approve Plan via ExitPlanMode (Priority: P1)
+
+**Goal**: Implement the `ExitPlanMode` tool and its 3-option confirmation UI.
+
+**Independent Test**: Put agent in plan mode, write to plan file, call `ExitPlanMode`, verify 3-option UI with plan content, and verify state transitions for each option.
+
+- [X] T023 [US4] Define `ExitPlanMode` tool in `packages/agent-sdk/src/tools/exitPlanMode.ts`
+- [X] T024 [US4] Add `ExitPlanMode` to `RESTRICTED_TOOLS` in `packages/agent-sdk/src/types/permissions.ts`
+- [X] T025 [US4] Update `ToolManager` to filter `ExitPlanMode` based on `permissionMode` in `packages/agent-sdk/src/managers/toolManager.ts`
+- [X] T026 [US4] Ensure `ExitPlanMode` is NOT available when `permissionMode` is `bypassPermissions` in `packages/agent-sdk/src/managers/toolManager.ts`
+- [X] T027 [US4] Register `ExitPlanMode` tool in `Agent` class in `packages/agent-sdk/src/agent.ts`
+- [X] T028 [US4] Implement `ExitPlanMode` tool logic to read plan file and call `checkPermission` in `packages/agent-sdk/src/tools/exitPlanMode.ts`
+- [X] T029 [US4] Update `Confirmation` component to support 3-option UI for `ExitPlanMode` in `packages/code/src/components/Confirmation.tsx`
+- [X] T030 [US4] Update `Confirmation` component to display plan file content for `ExitPlanMode` in `packages/code/src/components/Confirmation.tsx`
+- [X] T031 [US4] Add unit tests for `ExitPlanMode` tool in `packages/agent-sdk/tests/tools/exitPlanMode.test.ts`
+- [X] T032 [US4] Add integration tests for the full `ExitPlanMode` flow in `packages/agent-sdk/tests/agent/exitPlanMode.integration.test.ts`
+
+---
+
+## Phase 8: Polish & Cross-Cutting Concerns
 
 **Purpose**: Improvements that affect multiple user stories
 
@@ -120,6 +139,7 @@
 - **User Story 1 (P1)**: Can start after Foundational (Phase 2).
 - **User Story 2 (P2)**: Can start after Foundational (Phase 2).
 - **User Story 3 (P3)**: Can start after Foundational (Phase 2).
+- **User Story 4 (P1)**: Can start after Foundational (Phase 2).
 
 ### Parallel Opportunities
 
