@@ -17,7 +17,6 @@ import { BangManager } from "../managers/bangManager.js";
 import { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import { ReversionManager } from "../managers/reversionManager.js";
 import { SubagentManager } from "../managers/subagentManager.js";
-import { BtwManager } from "../managers/btwManager.js";
 import { LiveConfigManager } from "../managers/liveConfigManager.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ReversionService } from "../services/reversionService.js";
@@ -262,9 +261,6 @@ export function setupAgentContainer(
         callbacks.onSubagentAssistantReasoningUpdated,
       onSubagentToolBlockUpdated: callbacks.onSubagentToolBlockUpdated,
       onSubagentMessagesChange: (subagentId, messages) => {
-        if (btwManager.isSideAgent(subagentId)) {
-          callbacks.onSideAgentUpdated?.(messages);
-        }
         callbacks.onSubagentMessagesChange?.(subagentId, messages);
       },
       onSubagentLatestTotalTokensChange:
@@ -274,9 +270,6 @@ export function setupAgentContainer(
     stream,
   });
   container.register("SubagentManager", subagentManager);
-
-  const btwManager = new BtwManager(container, workdir);
-  container.register("BtwManager", btwManager);
 
   const aiManager = new AIManager(container, {
     callbacks: {

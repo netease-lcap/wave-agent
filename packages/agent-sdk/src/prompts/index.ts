@@ -245,15 +245,6 @@ List 3-5 files most critical for implementing this plan:
 
 REMEMBER: You can ONLY explore and plan. You CANNOT and MUST NOT write, edit, or modify any files. You do NOT have access to file editing tools.`;
 
-export const BTW_SUBAGENT_SYSTEM_PROMPT = `You are a helpful assistant for answering side questions and providing explanations.
-
-Guidelines:
-- Answer the user's questions based on the current conversation context and your internal knowledge.
-- You do NOT have access to any tools. You cannot read files, run commands, or perform any actions on the system.
-- If the user asks you to perform a task that requires tools, explain that you are a side assistant without tool access and suggest they ask the main agent instead.
-- Be concise and helpful.
-- For clear communication, avoid using emojis.`;
-
 export const INIT_PROMPT = `Please analyze this codebase and create a AGENTS.md file, which will be given to future instances of Agent to operate in this repository.
 
 What to add:
