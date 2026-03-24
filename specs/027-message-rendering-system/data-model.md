@@ -41,5 +41,5 @@ interface BlockWithStatus {
 }
 ```
 
-- **isDynamic**: True if the block is currently active (e.g., a tool in `start`, `streaming`, or `running` stage, or a running `bang` command).
+- **isDynamic**: True if the block belongs to the last message and `forceStatic` is false.
 - **key**: A unique identifier for the block, typically `${message.id}-${blockIndex}`.
