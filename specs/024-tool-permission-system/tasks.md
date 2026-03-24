@@ -85,3 +85,10 @@
 - [x] T060 Update `buildSystemPrompt` to inject message when `dontAsk` mode is active.
 - [x] T061 Ensure `dontAsk` mode is excluded from `Shift+Tab` cycling.
 - [x] T062 Verify `permissionMode: "dontAsk"` in configuration correctly sets the mode.
+
+## Phase 15: Secure File Access (from 047)
+- [x] T063 Update `WaveConfiguration` type to include `permissions.additionalDirectories: string[]`.
+- [x] T064 Update `PermissionManager` to store and use `additionalDirectories` for Safe Zone checks.
+- [x] T065 Implement Safe Zone check in `PermissionManager.checkPermission` for `Write`, `Edit`, `Delete`, and `mkdir`.
+- [x] T066 Ensure out-of-bounds operations always require confirmation, regardless of `acceptEdits` mode.
+- [x] T067 Add unit tests for Safe Zone logic and out-of-bounds operations.

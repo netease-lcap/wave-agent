@@ -52,6 +52,17 @@ Set the default permission behavior for your project or globally.
 }
 ```
 
+### Safe Zone (Additional Directories)
+Define extra directories where file operations are considered safe.
+```json
+"permissions": {
+  "additionalDirectories": [
+    "/path/to/my/other/project",
+    "../shared-libs"
+  ]
+}
+```
+
 ### Allow Rules
 Add rules to `permissions.allow` to permit specific actions without prompting.
 ```json
@@ -87,7 +98,7 @@ When Wave prompts for confirmation, you have several options to streamline your 
 ### Auto-accepting Edits
 When prompted for a file edit (e.g., `Write`), you will see an option:
 **"Yes, and auto-accept edits"**
-Selecting this will switch the session to `acceptEdits` mode, allowing all subsequent file edits in the current session without prompting.
+Selecting this will switch the session to `acceptEdits` mode, allowing all subsequent file edits in the current session without prompting, **provided they are within the Safe Zone**.
 
 ### Persisting Bash Commands
 When prompted for a `Bash` command, you will see:
@@ -98,6 +109,13 @@ Selecting this will save the command to `.wave/settings.local.json`. Future exec
 For common commands, Wave may suggest a wildcard pattern:
 **"Yes, and don't ask again for: npm install *"**
 This allows future similar commands (like `npm install express`) to execute without prompting.
+
+## Safe Zone & Secure File Access
+Wave enforces a "Safe Zone" for file modification operations (`Write`, `Edit`, `Delete`, and `mkdir` via `Bash`).
+- **Safe Zone**: The union of the current working directory and any paths in `additionalDirectories`.
+- **Auto-Accept**: If `acceptEdits` mode is enabled, file operations within the Safe Zone proceed automatically.
+- **Security**: Any file operation **outside** the Safe Zone will **always** trigger a confirmation prompt, even if `acceptEdits` is enabled.
+- **Symlinks**: The system resolves symbolic links to their real paths before checking against the Safe Zone.
 
 ## Dangerous Command Safety
 For security reasons, some commands will NOT show the "Don't ask again" option:
