@@ -48,4 +48,4 @@ We will implement a unified `BackgroundTaskManager` (or extend `BackgroundBashMa
 
 ## NEEDS CLARIFICATION Resolved
 - **Task ID Scheme**: We will use a unified `task_N` prefix for all background tasks to avoid confusion with the old `bash_N` scheme, or keep `bash_N` for shells and use `subagent_N` for subagents but have them both managed by the same registry. *Decision: Use `task_N` for all to emphasize unification.*
-- **Output Retrieval**: `TaskOutput` will support a `block` parameter. For subagents, "blocking" means waiting for the AI loop to finish. For shells, it means waiting for the process to exit.
+- **Output Retrieval**: `TaskOutput` will support a `block` parameter. For subagents, "blocking" means waiting for the AI loop to finish. For shells, it means waiting for the process to exit. If a timeout occurs during a blocking call, the tool will return the last few lines of the log file to provide the most recent context.
