@@ -129,6 +129,23 @@
 
 ---
 
+## Phase 8: Subagent Message Callbacks (Added 2025-11-20) ✅ COMPLETED
+
+**Purpose**: Add granular message callbacks for subagents through dedicated SubagentManagerCallbacks interface.
+
+- [x] T045 Create SubagentManagerCallbacks interface with onSubagent* callback types
+- [x] T046 Refactor SubagentManager to use dedicated callbacks system instead of parentCallbacks
+- [x] T047 Update AgentCallbacks to include SubagentManagerCallbacks
+- [x] T048 Implement onSubagentUserMessageAdded forwarding in SubagentManager
+- [x] T049 Implement onSubagentAssistantMessageAdded forwarding in SubagentManager
+- [x] T050 Implement onSubagentAssistantContentUpdated forwarding in SubagentManager
+- [x] T051 Implement onSubagentToolBlockUpdated forwarding in SubagentManager
+- [x] T052 Remove messages from SubagentBlock type, handled via onSubagentMessagesChange callback
+- [x] T053 Update UI layer to use callback-based message state management
+- [x] T054 Update test suite to reflect new architecture
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

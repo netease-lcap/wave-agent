@@ -120,7 +120,7 @@ packages/
 **Design Complexity Analysis**:
 - **Multiple Manager Instances**: Isolated aiManager/messageManager per subagent required for context isolation (FR-007)
 - **New Message Block Type**: SubagentBlock required for UI display requirements (FR-016-018, FR-020)
-- **Callback Extensions**: MessageManager callbacks extended to support UI reactivity for subagent state
+- **Callback Extensions (Revised 2025-11-20)**: Dedicated `SubagentManagerCallbacks` interface instead of extending `MessageManagerCallbacks`, providing cleaner separation between main agent and subagent callback responsibilities.
 - **Configuration System**: File-based YAML parsing required by specification (FR-001, FR-002)
 
 **Complexity Mitigation**:
