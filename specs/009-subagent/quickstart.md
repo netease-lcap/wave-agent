@@ -126,21 +126,42 @@ Focus on:
 - Bug identification
 ```
 
-### Message Manager Callback Extension
+### Subagent Message Callbacks (Added 2025-11-20)
+
+Dedicated subagent-specific callbacks through a new `SubagentManagerCallbacks` interface, providing clean architectural separation between main agent and subagent event handling.
+
+#### Basic Usage
+
 ```typescript
-export interface MessageManagerCallbacks {
-  // Existing callbacks...
-  onSubAgentBlockAdded?: (
-    subagentId: string,
-    parameters: {
-      description: string;
-      prompt: string;
-      subagent_type: string;
+import { Agent } from 'wave-agent-sdk';
+
+const agent = await Agent.create({
+  callbacks: {
+    // Subagent-specific callbacks (AgentCallbacks extends SubagentManagerCallbacks)
+    onSubagentUserMessageAdded: (subagentId, params) => {
+      console.log(`Subagent ${subagentId} received: ${params.content}`);
+    },
+    
+    onSubagentAssistantContentUpdated: (subagentId, chunk, accumulated) => {
+      updateSubagentUI(subagentId, accumulated);
     }
-  ) => void;
-  onSubAgentBlockUpdated?: (subagentId: string, messages: Message[], status: SubagentBlock["status"]) => void;
-}
+  }
+});
 ```
+
+#### Available Subagent Callbacks
+
+- `onSubagentUserMessageAdded`: Triggered when a subagent receives a user message.
+- `onSubagentAssistantMessageAdded`: Triggered when a subagent creates a new assistant message.
+- `onSubagentAssistantContentUpdated`: Triggered during subagent content streaming.
+- `onSubagentToolBlockUpdated`: Triggered when a subagent tool is updated.
+
+#### Migration Guide
+
+No migration needed! Your existing code works exactly the same. To add subagent support:
+1. Keep all existing callbacks as-is.
+2. Add new `onSubagent*` callbacks for subagent events.
+3. Implement UI updates for subagent-specific events.
 
 ### Subagent Block Type
 ```typescript

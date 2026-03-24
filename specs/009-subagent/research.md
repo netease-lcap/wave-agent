@@ -82,19 +82,43 @@
 - Automatic matching based on task description - rejected in favor of explicit tool calling
 - ML-based matching - rejected due to complexity and dependency overhead
 
-## Message Manager Callbacks Extension
+## Message Manager Callbacks Extension (Revised 2025-11-20)
 
-**Decision**: Extend MessageManagerCallbacks interface with subagent-specific callbacks
+**Decision**: Create dedicated `SubagentManagerCallbacks` interface instead of extending `MessageManagerCallbacks`.
 
-**Rationale**:
-- onSubAgentBlockAdded for new subagent session creation
-- onSubAgentBlockUpdated for message updates within subagent
-- Maintains existing callback pattern consistency
-- Enables UI reactivity for subagent state changes
+**Rationale**: 
+- Cleaner architectural separation between `MessageManager` and `SubagentManager` responsibilities.
+- Avoids mixing main agent callbacks with subagent-specific callbacks.
+- `SubagentManager` owns its callback system independently.
+- `AgentCallbacks` extends `SubagentManagerCallbacks` for end-to-end integration.
 
-**Alternatives considered**:
-- Generic message callbacks - rejected due to lack of subagent context
-- Event-based system - rejected to maintain existing patterns
+**Implementation Pattern**:
+```typescript
+// New SubagentManager interface
+interface SubagentManagerOptions {
+  callbacks?: SubagentManagerCallbacks;
+}
+
+// Dedicated subagent callbacks
+interface SubagentManagerCallbacks {
+  onSubagentUserMessageAdded?: (subagentId: string, params: UserMessageParams) => void;
+  onSubagentAssistantMessageAdded?: (subagentId: string) => void;
+  onSubagentAssistantContentUpdated?: (subagentId: string, chunk: string, accumulated: string) => void;
+  onSubagentToolBlockUpdated?: (subagentId: string, params: AgentToolBlockUpdateParams) => void;
+}
+```
+
+**Cleanup Strategy**:
+- Use existing `SubagentManager.cleanupInstance()` method.
+- Simple manual cleanup when subagent completes.
+
+**Error Handling**:
+- Let callback errors bubble up naturally.
+- Keep implementation minimal and straightforward.
+
+**Performance**:
+- Direct callback execution without batching.
+- Simple direct execution is sufficient.
 
 ## React Component Architecture
 

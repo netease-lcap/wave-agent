@@ -148,6 +148,35 @@ As a user, I want subagent conversations to be displayed as expandable blocks wi
 - **Subagent Instance**: An active subagent handling a specific task with its own context window and tool access
 - **Agent Delegation**: The process of matching user requests to appropriate subagents via the Agent tool based on expertise and availability
 - **Agent Context**: Isolated conversation context maintained separately for each subagent and the main agent
+- **SubagentManagerCallbacks**: New callback interface containing granular subagent-specific event handlers (separate from MessageManagerCallbacks)
+- **SubagentMessageEvents**: Event parameters that include subagent ID and relevant message/content data  
+- **SubagentManager**: Component responsible for forwarding subagent events to parent callback handlers through its own callback system
+- **AgentCallbacks**: Extended to include SubagentManagerCallbacks for end-to-end callback support
+
+## Subagent Message Callbacks (Added 2025-11-20)
+
+This feature provides granular message callbacks for subagents, moving subagent-specific callbacks from `MessageManager` to `SubagentManager` for a cleaner separation of concerns.
+
+### Key Changes
+
+1. **SubagentManagerCallbacks Interface**: New interface for subagent events:
+   - `onSubagentUserMessageAdded`
+   - `onSubagentAssistantMessageAdded` 
+   - `onSubagentAssistantContentUpdated`
+   - `onSubagentToolBlockUpdated`
+   - `onSubagentMessagesChange`
+
+2. **Refactored SubagentManager**: 
+   - Uses `callbacks: SubagentManagerCallbacks` instead of `parentCallbacks`.
+   - Each subagent properly forwards events with `subagentId` parameter.
+
+3. **Removed Messages from SubagentBlock**:
+   - `SubagentBlock` interface no longer contains `messages` field.
+   - Subagent messages now managed through dedicated callback system.
+
+4. **Updated UI Layer**:
+   - `useChat` context maintains `subagentMessages` state via callbacks.
+   - `SubagentBlock` component reads messages from context instead of block properties.
 
 ## Clarifications
 
