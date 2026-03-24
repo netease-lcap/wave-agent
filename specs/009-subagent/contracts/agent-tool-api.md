@@ -1,8 +1,8 @@
-# Tool API Contract: Task Tool
+# Tool API Contract: Agent Tool
 
 ## Tool Definition
 
-**Name**: `Task`
+**Name**: `Agent`
 **Type**: Function Tool
 **Purpose**: Delegate specialized tasks to configured subagents
 
@@ -83,7 +83,6 @@ The `content` field contains the actual output from the subagent's last assistan
 1. **Input Validation**: Validate required fields and types
 2. **Subagent Selection**: 
    - If `subagent_type` matches existing subagent name exactly → use that subagent
-   - Otherwise → find best match using description similarity
    - Fallback → return error with available subagents
 3. **Instance Creation**: Create new SubagentInstance with isolated context
 4. **Task Execution**: Execute task using subagent's aiManager
@@ -97,7 +96,6 @@ The `content` field contains the actual output from the subagent's last assistan
 interface SubagentManager {
   loadConfigurations(): Promise<SubagentConfiguration[]>;
   findSubagent(name: string): Promise<SubagentConfiguration | null>;
-  findBestMatch(description: string): Promise<SubagentConfiguration | null>;
   createInstance(
     config: SubagentConfiguration, 
     parameters: {
@@ -126,7 +124,7 @@ interface MessageManagerCallbacks {
 ```
 
 ### With UI Components
-- Task tool execution triggers `onSubAgentBlockAdded` callback
+- Agent tool execution triggers `onSubAgentBlockAdded` callback
 - Subagent message updates trigger `onSubAgentBlockUpdated` callback
 - UI renders SubagentBlock component in MessageList
 

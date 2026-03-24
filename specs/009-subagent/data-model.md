@@ -49,8 +49,8 @@ active → error (when task failed)
 (completed | error) → [destroyed] (when session ends)
 ```
 
-### TaskDelegation
-Represents the input parameters for task delegation via the Task tool.
+### AgentDelegation
+Represents the input parameters for task delegation via the Agent tool.
 
 **Fields**:
 - `description: string` - A short (3-5 word) description of the task
@@ -102,8 +102,8 @@ active → error (when subagent fails)
 - SubagentBlock lifecycle tied to SubagentInstance
 - Block destroyed when instance destroyed
 
-### TaskDelegation → Instance (1:1)
-- Each TaskDelegation input creates at most one SubagentInstance
+### AgentDelegation → Instance (1:1)
+- Each AgentDelegation input creates at most one SubagentInstance
 - Failed delegations create no instances
 - Successful delegations create exactly one instance
 
@@ -132,7 +132,7 @@ Multiple paragraphs supported.
 
 ### Memory-based State
 **SubagentInstances**: Map<subagentId, SubagentInstance>
-**TaskDelegation**: Input parameters only (no persistent state)
+**AgentDelegation**: Input parameters only (no persistent state)
 
 **Lifecycle Management**:
 - Load configurations on-demand from filesystem
@@ -150,7 +150,7 @@ File System → On-demand YAML Parser → Validation → Ready for Use
 
 ### Task Delegation
 ```
-Task Tool Input → Subagent Selection → Instance Creation → UI Block Creation
+Agent Tool Input → Subagent Selection → Instance Creation → UI Block Creation
 ```
 
 ### Message Flow
