@@ -45,12 +45,6 @@ export interface MessageManagerCallbacks {
   onErrorBlockAdded?: (error: string) => void;
   onCompressBlockAdded?: (content: string) => void;
   onCompressionStateChange?: (isCompressing: boolean) => void;
-  onMemoryBlockAdded?: (
-    content: string,
-    success: boolean,
-    type: "project" | "user",
-    storagePath: string,
-  ) => void;
   // Bang callback
   onAddBangMessage?: (command: string) => void;
   onUpdateBangMessage?: (command: string, output: string) => void;

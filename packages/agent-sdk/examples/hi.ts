@@ -38,16 +38,6 @@ const agent = await Agent.create({
     onCompressBlockAdded: (content: string) => {
       console.log(`🗜️  Compress block added (${content.length} chars)`);
     },
-    onMemoryBlockAdded: (
-      content: string,
-      success: boolean,
-      type: "project" | "user",
-      storagePath: string,
-    ) => {
-      console.log(
-        `🧠 Memory ${type} ${success ? "saved" : "failed"} at ${storagePath}: ${content}`,
-      );
-    },
 
     // Messages change callback - triggered when message list changes
     // This callback can be used to update UI in real-time in frontend frameworks
