@@ -50,7 +50,6 @@ describe("inputHandlers", () => {
       onInputTextChange: vi.fn(),
       onCursorPositionChange: vi.fn(),
       onHasSlashCommand: vi.fn(),
-      onClearMessages: vi.fn(),
       onAbortMessage: vi.fn(),
       onBackgroundCurrentTask: vi.fn(),
       logger: {
@@ -499,18 +498,24 @@ describe("inputHandlers", () => {
       });
     });
 
-    it("should handle local commands like clear and replace entire command word", () => {
+    it("should handle clear command by sending /clear message", async () => {
       const state: InputState = {
         ...initialState,
         slashPosition: 0,
-        inputText: "/clear-command",
-        cursorPosition: 6, // Cursor at /clear|
+        inputText: "/clear",
+        cursorPosition: 6,
       };
-      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(false);
+      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(true);
 
       handleCommandSelect(state, dispatch, callbacks, "clear");
 
-      expect(callbacks.onClearMessages).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(callbacks.onSendMessage).toHaveBeenCalledWith(
+          "/clear",
+          undefined,
+          {},
+        );
+      });
     });
   });
 

@@ -90,6 +90,18 @@ export class SlashCommandManager {
         await this.aiManager.sendAIMessage();
       },
     });
+
+    // Register built-in clear command
+    this.registerCommand({
+      id: "clear",
+      name: "clear",
+      description: "Clear conversation history and reset session",
+      handler: async () => {
+        this.aiManager.abortAIMessage();
+        this.messageManager.clearMessages();
+        await this.taskManager.syncWithSession();
+      },
+    });
   }
 
   /**

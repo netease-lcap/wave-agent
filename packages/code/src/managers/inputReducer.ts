@@ -41,7 +41,6 @@ export interface InputManagerCallbacks {
   ) => void | Promise<void>;
   onHasSlashCommand?: (commandId: string) => boolean;
   onAbortMessage?: () => void;
-  onClearMessages?: () => void;
   onBackgroundCurrentTask?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
   sessionId?: string;

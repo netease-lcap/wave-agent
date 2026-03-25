@@ -327,9 +327,7 @@ export const handleCommandSelect = (
       }
 
       if (!commandExecuted) {
-        if (command === "clear") {
-          callbacks.onClearMessages?.();
-        } else if (command === "tasks") {
+        if (command === "tasks") {
           dispatch({
             type: "SET_SHOW_BACKGROUND_TASK_MANAGER",
             payload: true,
