@@ -17,7 +17,7 @@ Implement a robust set of file system tools for the Wave Agent to allow safe and
 - `packages/agent-sdk/tests/`: Unit tests for tools
 
 ## Implementation Phases
-1. **Phase 1: Basic Operations**: Implement `Read`, `Write`, `Delete`, and `LS`.
+1. **Phase 1: Basic Operations**: Implement `Read` and `Write`.
 2. **Phase 2: Advanced Search**: Implement `Glob` and `Grep` (using ripgrep).
 3. **Phase 3: Precise Editing**: Implement `Edit` and `` with detailed mismatch analysis.
 4. **Phase 4: Multimodal & Formats**: Add support for images and Jupyter notebooks in `Read`.
