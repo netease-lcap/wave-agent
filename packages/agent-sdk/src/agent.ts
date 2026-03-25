@@ -414,8 +414,8 @@ export class Agent {
     await this.bangManager?.executeCommand(command);
   }
 
-  public clearMessages(): void {
-    this.messageManager.clearMessages();
+  public async clearMessages(): Promise<void> {
+    await this.slashCommandManager.executeCommand("clear");
   }
 
   /** Unified interrupt method, interrupts both AI messages and command execution */

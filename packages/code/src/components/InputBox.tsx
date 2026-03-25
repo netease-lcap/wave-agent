@@ -58,7 +58,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     backgroundCurrentTask,
     messages,
     getFullMessageThread,
-    clearMessages,
     sessionId,
     workingDirectory,
   } = useChat();
@@ -114,7 +113,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
     onPermissionModeChange: setChatPermissionMode,
-    onClearMessages: clearMessages,
     sessionId,
     workdir: workingDirectory,
     getFullMessageThread,

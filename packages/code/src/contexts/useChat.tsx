@@ -53,7 +53,6 @@ export interface ChatContextType {
   ) => Promise<void>;
   abortMessage: () => void;
   latestTotalTokens: number;
-  clearMessages: () => void;
   // MCP functionality
   mcpServers: McpServerStatus[];
   connectMcpServer: (serverName: string) => Promise<boolean>;
@@ -504,11 +503,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     agentRef.current?.abortMessage();
   }, []);
 
-  const clearMessages = useCallback(() => {
-    setQueuedMessages([]);
-    agentRef.current?.clearMessages();
-  }, []);
-
   // Permission management methods
   const setPermissionMode = useCallback((mode: PermissionMode) => {
     setPermissionModeState((prev) => {
@@ -675,7 +669,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     sessionId,
     sendMessage,
     abortMessage,
-    clearMessages,
     latestTotalTokens,
     isCompressing,
     mcpServers,
