@@ -165,10 +165,9 @@ export function setupAgentContainer(
   });
   container.register("SkillManager", skillManager);
 
-  container.register(
-    "ReversionService",
-    new ReversionService(messageManager.getTranscriptPath()),
-  );
+  const rootSessionId = messageManager.getRootSessionId();
+
+  container.register("ReversionService", new ReversionService(rootSessionId));
   const reversionManager = new ReversionManager(container);
   container.register("ReversionManager", reversionManager);
 

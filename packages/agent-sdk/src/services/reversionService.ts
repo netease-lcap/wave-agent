@@ -6,11 +6,16 @@ import { FileSnapshot } from "../types/reversion.js";
 
 export class ReversionService {
   private historyBaseDir: string;
-  private sessionId: string;
+  private rootSessionId: string;
 
-  constructor(sessionId: string) {
-    this.sessionId = sessionId;
-    this.historyBaseDir = join(homedir(), ".wave", "file-history", sessionId);
+  constructor(rootSessionId: string) {
+    this.rootSessionId = rootSessionId;
+    this.historyBaseDir = join(
+      homedir(),
+      ".wave",
+      "file-history",
+      rootSessionId || "default",
+    );
   }
 
   private getFilePathHash(filePath: string): string {

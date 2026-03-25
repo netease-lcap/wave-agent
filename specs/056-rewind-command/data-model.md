@@ -9,7 +9,7 @@ Represents the state of a file before an agent operation.
 |-------|------|-------------|
 | `messageId` | `string` | The ID of the message/turn this snapshot is associated with. |
 | `filePath` | `string` | Absolute path to the file. |
-| `snapshotPath` | `string` | Path to the stored snapshot file in `~/.wave/file-history/`. |
+| `snapshotPath` | `string` | Path to the stored snapshot file in `~/.wave/file-history/{root-session-id}/`. |
 | `timestamp` | `number` | When the snapshot was taken. |
 | `operation` | `'create' \| 'modify' \| 'delete'` | The operation that triggered this snapshot. |
 
