@@ -1,16 +1,16 @@
-# Spec: Clear Command Move to SDK
+# Spec: Clear Command in SDK
 
 ## Overview
-The `clear` command is a core feature that resets the conversation history and session. To improve consistency and make it a first-class feature of the SDK, it has been moved from the CLI (packages/code) to the `SlashCommandManager.initializeBuiltinCommands()` in `packages/agent-sdk`.
+The `clear` command is a core feature that resets the conversation history and session. It is implemented as a built-in slash command in the `SlashCommandManager` within `packages/agent-sdk`.
 
 ## Goals
-- Move the core logic of clearing messages and syncing the task list to the SDK.
-- Ensure the CLI can still react to these changes (e.g., by clearing the terminal).
+- Provide a consistent way to clear messages and sync the task list via the SDK.
+- Ensure the CLI can react to session resets (e.g., by clearing the terminal).
 - Make the `clear` command available to all consumers of the SDK.
 - Ensure programmatic calls to `clearMessages()` have the same effect as typing `/clear`.
 
 ## Architecture
-The `clear` command is now registered as a built-in slash command in the SDK. When executed, it performs the following actions:
+The `clear` command is registered as a built-in slash command in the SDK. When executed, it performs the following actions:
 1. Aborts any ongoing AI message processing.
 2. Clears the conversation history and generates a new session ID.
 3. Synchronizes the task list with the new session ID.
@@ -24,8 +24,6 @@ The CLI (packages/code) reacts to the `sessionId` change by clearing the termina
 - **Agent**: Provides an async `clearMessages()` method that delegates to the `clear` slash command.
 
 ### CLI (code)
-- **useChat Context**: No longer manages the `clearMessages` state or implementation.
-- **inputHandlers**: No longer manually handles the `clear` command.
 - **App Component**: Reacts to `sessionId` changes to clear the terminal.
 
 ## User Experience

@@ -1,7 +1,7 @@
-# Plan: Move "clear" command to initializeBuiltinCommands()
+# Plan: Implement "clear" command in SDK
 
 ## Context
-The "clear" command is currently handled manually in the CLI (packages/code). To improve consistency and make it a first-class feature of the SDK, it should be moved to the `SlashCommandManager.initializeBuiltinCommands()` in `packages/agent-sdk`. This allows the SDK to handle the core logic of clearing messages and syncing the task list, while the CLI can still react to these changes (e.g., by clearing the terminal).
+The "clear" command is a built-in feature of the SDK, handled by `SlashCommandManager.initializeBuiltinCommands()` in `packages/agent-sdk`. This allows the SDK to handle the core logic of clearing messages and syncing the task list, while the CLI can still react to these changes (e.g., by clearing the terminal).
 
 ## Proposed Changes
 
@@ -16,18 +16,9 @@ The "clear" command is currently handled manually in the CLI (packages/code). To
 
 ### Phase 2: CLI Changes (code)
 
-#### 1. Modify `packages/code/src/contexts/useChat.tsx`
-- Remove `clearMessages` from the `ChatContext` and state.
-- Remove the `clearMessages` implementation.
-
-#### 2. Modify `packages/code/src/managers/inputHandlers.ts`
-- Remove the manual handling of the `clear` command in `handleCommandSelect`. Since `clear` will now be registered in the SDK, it will be handled by the generic slash command execution path via `onSendMessage("/clear")`.
-
-#### 3. Clean up `onClearMessages` callback
-- Remove `onClearMessages` from `InputManagerCallbacks` in `packages/code/src/managers/inputReducer.ts`.
-- Remove `onClearMessages` from `useInputManager` hook in `packages/code/src/hooks/useInputManager.ts`.
-- Remove `onClearMessages` from `InputBox` component in `packages/code/src/components/InputBox.tsx`.
-- Update `useChat.tsx` to no longer pass `clearMessages` to `useInputManager`.
+#### 1. React to session ID changes
+- The CLI should monitor the `sessionId` from the SDK.
+- When the `sessionId` changes, the CLI should clear the terminal screen and remount the chat interface.
 
 ### Phase 3: SDK Refinement (agent-sdk)
 

@@ -2,12 +2,6 @@ import type { SlashCommand } from "wave-agent-sdk";
 
 export const AVAILABLE_COMMANDS: SlashCommand[] = [
   {
-    id: "clear",
-    name: "clear",
-    description: "Clear the chat session and terminal",
-    handler: () => {}, // Handler here won't be used, actual processing is in the hook
-  },
-  {
     id: "tasks",
     name: "tasks",
     description: "View and manage background tasks (shells and subagents)",
