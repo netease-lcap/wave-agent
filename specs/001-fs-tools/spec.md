@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-fs-tools`  
 **Created**: 2024-12-19  
-**Input**: User description: "Support file system tools: Read, Write, Edit, Delete, LS, Glob, Grep"
+**Input**: User description: "Support file system tools: Read, Write, Edit, Glob, Grep"
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -53,7 +53,7 @@ As an AI agent, I want to modify files using exact string replacements so that I
 
 ### User Story 3 - Efficient Code Exploration (Priority: P2)
 
-As an AI agent, I want to search for patterns and list files using glob patterns or regex so that I can quickly locate relevant code or assets in a large project.
+As an AI agent, I want to search for patterns using glob patterns or regex so that I can quickly locate relevant code or assets in a large project.
 
 **Why this priority**: Improves efficiency by avoiding manual traversal of the directory tree.
 
@@ -86,8 +86,6 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 - **FR-003**: System MUST provide a `Write` tool that automatically creates parent directories.
 - **FR-004**: `Write` tool SHOULD verify that the file was read before being overwritten to prevent accidental data loss.
 - **FR-005**: System MUST provide an `Edit` tool for exact string replacement with detailed mismatch analysis.
-- **FR-007**: System MUST provide a `Delete` tool for removing files.
-- **FR-008**: System MUST provide an `LS` tool to list directory contents with metadata (size, type).
 - **FR-009**: System MUST provide a `Glob` tool for fast pattern matching. It MUST NOT respect `.gitignore` (but MUST always ignore the `.git` directory) and limit results to 100.
 - **FR-010**: System MUST provide a `Grep` tool based on ripgrep for powerful text searching. It MUST respect `.gitignore` and common ignore patterns.
 - **FR-011**: All tools MUST integrate with the `PermissionManager` for authorization.

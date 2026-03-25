@@ -43,12 +43,6 @@
 - `new_string: string`: Replacement text.
 - `replace_all?: boolean`: Whether to replace all occurrences.
 
-### LSArguments
-**Purpose**: Arguments for the `LS` tool.
-**Fields**:
-- `path: string`: Absolute path to the directory.
-- `ignore?: string[]`: Glob patterns to ignore.
-
 ### GlobArguments
 **Purpose**: Arguments for the `Glob` tool.
 **Fields**:
