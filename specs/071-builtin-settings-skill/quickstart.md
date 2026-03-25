@@ -35,4 +35,4 @@ Wave supports three configuration scopes:
 
 ## Detailed Documentation
 
-For more information on complex hook configurations, see the `HOOKS.md` file linked from the `settings` skill.
+For more information on complex hook configurations and environment variables, see the `HOOKS.md` and `ENV.md` files linked from the `settings` skill.

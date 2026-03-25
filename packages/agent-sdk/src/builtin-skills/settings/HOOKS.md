@@ -74,6 +74,18 @@ Wave provides detailed context to hook processes via `stdin` as a JSON object. T
 - `subagent_type`: (If executed by a subagent) The type of the subagent.
 - `name`: (WorktreeCreate) The name of the new worktree.
 
+## Hook Exit Codes
+
+Hooks can communicate status and control Wave's behavior using exit codes:
+
+- **Exit 0**: Success. Wave continues its normal execution.
+- **Exit 2**: Blocking Error. Wave blocks the current operation and provides feedback based on the event:
+    - `UserPromptSubmit`: Blocks prompt processing and shows `stderr` as a user error.
+    - `PreToolUse`: Blocks tool execution and provides `stderr` to the agent as feedback.
+    - `PostToolUse`: Appends `stderr` to the tool result as feedback for the agent.
+    - `Stop`: Blocks the stop operation and provides `stderr` to the agent.
+- **Other Exits (e.g., Exit 1)**: Non-blocking error. Wave continues execution but shows `stderr` as a warning to the user.
+
 ## Best Practices
 
 - **Keep hooks fast**: Long-running hooks can slow down your workflow unless they are `async`.

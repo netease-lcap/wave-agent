@@ -64,7 +64,7 @@ As a user, I want detailed documentation for complex hook configurations to be a
 - **FR-003**: The `settings` skill MUST allow users to update settings in specific scopes (user, project, or local).
 - **FR-004**: The `settings` skill MUST provide a guide on how to write `settings.json`, covering all supported fields (`hooks`, `env`, `permissions`, `enabledPlugins`, `language`, `autoMemoryEnabled`).
 - **FR-005**: System MUST include a `SKILL.md` for the `settings` skill.
-- **FR-006**: System MUST create a separate markdown file (e.g., `HOOKS.md`) for complex hook configurations and link it from `SKILL.md`.
+- **FR-006**: System MUST create separate markdown files (e.g., `HOOKS.md`, `ENV.md`) for complex hook and environment configurations and link them from `SKILL.md`.
 - **FR-007**: The `settings` skill MUST validate the configuration before saving changes.
 
 ### Key Entities *(include if feature involves data)*

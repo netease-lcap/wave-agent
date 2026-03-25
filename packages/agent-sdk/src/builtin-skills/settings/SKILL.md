@@ -25,6 +25,7 @@ For detailed hook configuration, see [HOOKS.md](${WAVE_SKILL_DIR}/HOOKS.md).
 
 ### 2. Environment Variables
 Set environment variables that will be available to all tools and hooks.
+For detailed environment variable configuration and available `WAVE_*` variables, see [ENV.md](${WAVE_SKILL_DIR}/ENV.md).
 ```json
 {
   "env": {
@@ -47,18 +48,7 @@ Manage tool permissions and define the "Safe Zone".
 }
 ```
 
-### 4. Enabled Plugins
-Enable or disable specific plugins.
-```json
-{
-  "enabledPlugins": {
-    "git-plugin": true,
-    "experimental-plugin": false
-  }
-}
-```
-
-### 5. Model and Token Configuration
+### 4. Model and Token Configuration
 Define which AI models Wave should use and set token limits via environment variables.
 ```json
 {
@@ -71,7 +61,7 @@ Define which AI models Wave should use and set token limits via environment vari
 }
 ```
 
-### 6. Other Settings
+### 5. Other Settings
 - `language`: Preferred language for agent communication (e.g., `"en"`, `"zh"`).
 - `autoMemoryEnabled`: Enable or disable auto-memory (default: `true`).
 
