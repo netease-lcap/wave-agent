@@ -43,6 +43,10 @@ import {
   type SetSessionModeRequest,
   type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
+  type TextContent,
+  type ResourceLink,
+  type EmbeddedResource,
+  type ImageContent,
   AGENT_METHODS,
 } from "@agentclientprotocol/sdk";
 
@@ -131,6 +135,10 @@ export class WaveAcpAgent implements AcpAgent {
         sessionCapabilities: {
           list: {},
           close: {},
+        },
+        promptCapabilities: {
+          image: true,
+          embeddedContext: true,
         },
       },
     };
@@ -320,6 +328,7 @@ export class WaveAcpAgent implements AcpAgent {
   async prompt(params: PromptRequest): Promise<PromptResponse> {
     const { sessionId, prompt } = params;
     logger.info(`Received prompt for session ${sessionId}`);
+    logger.debug(`Prompt content for session ${sessionId}:`, prompt);
     const agent = this.agents.get(sessionId);
     if (!agent) {
       logger.error(`Session ${sessionId} not found`);
@@ -332,24 +341,27 @@ export class WaveAcpAgent implements AcpAgent {
 
     for (const block of prompt) {
       if (block.type === "text") {
-        textBlocks.push((block as { text: string }).text);
+        textBlocks.push((block as TextContent).text);
+      } else if (block.type === "resource_link") {
+        const link = block as ResourceLink;
+        textBlocks.push(`[${link.name}](${link.uri})`);
       } else if (block.type === "resource") {
-        textBlocks.push((block as { resource: { uri: string } }).resource.uri);
+        const embedded = block as EmbeddedResource;
+        textBlocks.push(`[Resource](${embedded.resource.uri})`);
       } else if (block.type === "image") {
-        const img = block as { data: string; mimeType: string };
+        const img = block as ImageContent;
         images.push({
-          path: `data:${img.mimeType};base64,${img.data}`,
+          path: img.data.startsWith("data:")
+            ? img.data
+            : `data:${img.mimeType};base64,${img.data}`,
           mimeType: img.mimeType,
         });
       }
     }
 
-    const textContent = textBlocks.join("\n");
+    const textContent = textBlocks.join("");
 
     try {
-      logger.info(
-        `Sending message to agent: ${textContent.substring(0, 50)}...`,
-      );
       await agent.sendMessage(
         textContent,
         images.length > 0 ? images : undefined,

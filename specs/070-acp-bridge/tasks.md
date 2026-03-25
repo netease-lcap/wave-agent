@@ -27,3 +27,6 @@
 
 - [x] **Task 15**: Implement special handling for `ExitPlanMode` tool calls in ACP bridge.
 - [x] **Task 16**: Include `plan_content` in `ExitPlanMode` tool call content for ACP clients.
+- [x] **Task 17**: Implement `resource_link` and `resource` block handling in `prompt` method.
+- [x] **Task 18**: Advertise `image` and `embeddedContext` in `promptCapabilities` during initialization.
+- [x] **Task 19**: Improve block joining in `prompt` method to preserve inline spacing.

@@ -43,7 +43,10 @@ The ACP (Agent Control Protocol) bridge allows you to connect external clients, 
      "method": "prompt",
      "params": {
        "sessionId": "your-session-id",
-       "prompt": [{ "type": "text", "text": "Hello, Wave!" }]
+       "prompt": [
+         { "type": "text", "text": "Check this file: " },
+         { "type": "resource_link", "name": "README.md", "uri": "file:///path/to/README.md" }
+       ]
      }
    }
    ```
