@@ -1,7 +1,6 @@
 ---
 name: settings
 description: Manage Wave settings and get guidance on settings.json
-allowed-tools: Bash, Read, Write
 ---
 
 # Wave Settings Skill
