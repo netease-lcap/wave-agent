@@ -4,6 +4,8 @@ import fuzzysort from "fuzzysort";
 import type { FileItem } from "../types/fileSearch.js";
 import { logger } from "./globalLogger.js";
 
+const EXCLUDED_FILES = [".git", ".DS_Store"];
+
 /**
  * Execute ripgrep to get all file paths
  */
@@ -39,7 +41,11 @@ async function getAllFiles(workingDirectory: string): Promise<string[]> {
       const files = stdout
         .trim()
         .split("\n")
-        .filter((f) => f.length > 0)
+        .filter((f) => {
+          if (f.length === 0) return false;
+          const parts = f.split(/[/\\]/);
+          return !parts.some((part) => EXCLUDED_FILES.includes(part));
+        })
         .map((f) => f.replace(/\\/g, "/")); // Normalize to forward slashes
       resolve(files);
     });

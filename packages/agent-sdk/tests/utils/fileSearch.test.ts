@@ -130,6 +130,27 @@ describe("searchFiles", () => {
     expect(results.length).toBe(2);
   });
 
+  it("should exclude .git and .DS_Store files", async () => {
+    setupMockSpawn([
+      ".git",
+      ".git/config",
+      "src/.git/something",
+      ".DS_Store",
+      "src/.DS_Store",
+      "src/index.ts",
+    ]);
+
+    const results = await searchFiles("git");
+    expect(results.some((r) => r.path.includes(".git"))).toBe(false);
+
+    const results2 = await searchFiles("DS_Store");
+    expect(results2.some((r) => r.path.includes(".DS_Store"))).toBe(false);
+
+    const results3 = await searchFiles("");
+    expect(results3.some((r) => r.path.includes(".git"))).toBe(false);
+    expect(results3.some((r) => r.path.includes(".DS_Store"))).toBe(false);
+  });
+
   it("should handle ripgrep failure gracefully", async () => {
     const mockStdout = new EventEmitter();
     const mockStderr = new EventEmitter();
