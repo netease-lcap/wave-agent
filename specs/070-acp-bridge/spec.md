@@ -19,6 +19,7 @@ As a developer using an IDE (like VS Code), I want to connect my IDE to Wave Age
 1. **Given** the agent is started in ACP mode, **When** a client sends an `initialize` request, **Then** the agent responds with its capabilities and version information.
 2. **Given** the agent is initialized, **When** a client sends a `newSession` request with a `cwd`, **Then** the agent creates a new session in that directory and returns the session ID and available modes.
 3. **Given** an active session, **When** a client sends a `prompt` request with text, **Then** the agent processes the prompt and sends back `agent_message_chunk` and `agent_thought_chunk` updates via `sessionUpdate` notifications.
+4. **Given** an active session, **When** a client sends a `prompt` request with `resource_link` blocks, **Then** the agent receives the prompt with markdown-formatted links (e.g., `[name](uri)`) and can use its tools to read the referenced resources.
 
 ---
 
@@ -77,6 +78,9 @@ As a user, I want to see the agent's current task list and plan in my external c
 - **FR-009**: System MUST provide diffs for `Write` and `Edit` tool calls in the `tool_call` content when possible.
 - **FR-010**: System MUST handle `ExitPlanMode` tool calls specially by restricting permission options to "Approve Plan" and "Reject Plan", and automatically transitioning to `default` mode upon approval.
 - **FR-011**: System MUST include `plan_content` in the `tool_call` content for `ExitPlanMode` tool calls.
+- **FR-012**: System MUST support `resource_link` and `resource` blocks in the `prompt` method, formatting them as markdown-like links `[name](uri)` or `[Resource](uri)` to provide context to the agent.
+- **FR-013**: System MUST join prompt content blocks using an empty string to preserve inline spacing provided by text blocks.
+- **FR-014**: System MUST advertise support for `image` and `embeddedContext` in `promptCapabilities` during initialization.
 
 ### Key Entities
 
