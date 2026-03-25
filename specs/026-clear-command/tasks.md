@@ -1,16 +1,12 @@
-# Tasks: Move "clear" command to initializeBuiltinCommands()
+# Tasks: Implement "clear" command in SDK
 
 ## Phase 1: SDK Changes (agent-sdk)
 - [x] Register the `clear` command in `SlashCommandManager.initializeBuiltinCommands()`.
 - [x] Implement the `clear` command handler to abort AI messages, clear history, and sync tasks.
 
 ## Phase 2: CLI Changes (code)
-- [x] Remove `clearMessages` from `ChatContext` and state in `useChat.tsx`.
-- [x] Remove manual handling of the `clear` command in `handleCommandSelect` in `inputHandlers.ts`.
-- [x] Remove `onClearMessages` from `InputManagerCallbacks` in `inputReducer.ts`.
-- [x] Remove `onClearMessages` from `useInputManager` hook in `useInputManager.ts`.
-- [x] Remove `onClearMessages` from `InputBox` component in `InputBox.tsx`.
-- [x] Update `useChat.tsx` to no longer pass `clearMessages` to `useInputManager`.
+- [x] Ensure the CLI reacts to session ID changes to clear the terminal.
+- [x] Use the SDK's built-in `clear` command via the standard slash command path.
 
 ## Phase 3: SDK Refinement (agent-sdk)
 - [x] Update `clearMessages()` in `agent.ts` to be `async` and call the `clear` command.
