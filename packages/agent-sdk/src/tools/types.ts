@@ -87,4 +87,6 @@ export interface ToolContext {
   toolCallId?: string;
   /** Callback to update the short result of the current tool block */
   onShortResultUpdate?: (shortResult: string) => void;
+  /** Callback to update the full result of the current tool block */
+  onResultUpdate?: (result: string) => void;
 }

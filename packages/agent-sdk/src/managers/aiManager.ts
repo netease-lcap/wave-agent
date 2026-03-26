@@ -692,6 +692,13 @@ export class AIManager {
                     stage: "running", // Keep it in running stage while updating shortResult
                   });
                 },
+                onResultUpdate: (result: string) => {
+                  this.messageManager.updateToolBlock({
+                    id: toolId,
+                    result,
+                    stage: "running", // Keep it in running stage while updating result
+                  });
+                },
               };
 
               // Execute tool

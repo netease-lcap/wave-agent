@@ -8,3 +8,4 @@
 - [x] T006 Integrate `Bash` tool with `PermissionManager`
 - [x] T007 Implement timeout handling for bash commands
 - [x] T008 Add support for process group termination
+- [x] T009 Implement real-time streaming updates for foreground bash commands
