@@ -16,17 +16,18 @@
 
 ## Phase 2: Integration (Priority: P2)
 
-- [ ] **Task 3: Integrate `BangManager` with `InputManager`**
-    - [ ] Detect `!` prefix in chat input.
-    - [ ] Call `BangManager.executeCommand` when a bang command is entered.
-    - [ ] Handle command abort (e.g., Ctrl+C).
+- [x] **Task 3: Integrate `BangManager` with `InputManager`**
+    - [x] Detect `!` prefix in chat input.
+    - [x] Call `BangManager.executeCommand` when a bang command is entered.
+    - [x] Handle command abort (e.g., Ctrl+C).
+    - [x] Update `isCommandRunning` state in `useChat` context to ensure UI updates correctly.
 
-- [ ] **Task 4: Update `MessageManager` to support `BangBlock`**
-    - [ ] Add `BangBlock` type to `packages/agent-sdk/src/types/messaging.ts`.
-    - [ ] Implement `addBangMessage`, `updateBangMessage`, and `completeBangMessage` methods.
+- [x] **Task 4: Update `MessageManager` to support `BangBlock`**
+    - [x] Add `BangBlock` type to `packages/agent-sdk/src/types/messaging.ts`.
+    - [x] Implement `addBangMessage`, `updateBangMessage`, and `completeBangMessage` methods.
 
 ## Phase 3: UI Enhancements (Priority: P3)
 
-- [ ] **Task 5: Add Expand/Collapse functionality to `BangDisplay`**
-    - [ ] Implement a way for users to toggle the expansion of the output block.
-    - [ ] Ensure the UI remains responsive during long-running commands.
+- [x] **Task 5: Add Expand/Collapse functionality to `BangDisplay`**
+    - [x] Implement a way for users to toggle the expansion of the output block (via global `isExpanded` state).
+    - [x] Ensure the UI remains responsive during long-running commands.
