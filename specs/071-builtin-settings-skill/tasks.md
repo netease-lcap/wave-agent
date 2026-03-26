@@ -46,8 +46,8 @@ Goal: Implement the `settings` skill content and ensure it can read/write settin
 
 Goal: Add detailed guidance and examples to the `settings` skill.
 
-- [x] T014 [US2] Update `SKILL.md` in `packages/agent-sdk/src/builtin-skills/settings/SKILL.md` to include a comprehensive guide on all `settings.json` fields
-- [x] T015 [US2] Add examples for each configuration field (hooks, env, permissions, etc.) in `SKILL.md`
+- [x] T014 [US2] Update `SKILL.md` in `packages/agent-sdk/src/builtin-skills/settings/SKILL.md` to include a comprehensive guide on all `settings.json` fields, including MCP and memory rules.
+- [x] T015 [US2] Add examples for each configuration field (hooks, env, permissions, MCP, memory rules) in `SKILL.md` and associated documentation.
 - [x] T016 [US2] Implement validation logic within the skill instructions to ensure users provide valid JSON and values
 
 **Independent Test**: Invoke the `settings` skill and ask for help on a specific field (e.g., "How do I configure permissions?"). Verify the output is clear and accurate.
@@ -59,6 +59,8 @@ Goal: Create `HOOKS.md` and link it from `SKILL.md`.
 - [x] T017 [US3] Create `HOOKS.md` with detailed documentation for complex hook configurations in `packages/agent-sdk/src/builtin-skills/settings/HOOKS.md`
 - [x] T018 [US3] Add a link to `HOOKS.md` in `SKILL.md` using the `${WAVE_SKILL_DIR}` placeholder
 - [x] T019 [US3] Verify the link works correctly when the skill is invoked
+- [x] T024 [US3] Create `MCP.md` and `MEMORY_RULES.md` and link them from `SKILL.md`
+- [x] T025 [US3] Update `SKILL.md` description to help agent know when to use it
 
 **Independent Test**: Read the `SKILL.md` for the settings skill and verify the link to `HOOKS.md` is present and accessible.
 

@@ -1,6 +1,6 @@
 ---
 name: settings
-description: Manage Wave settings and get guidance on settings.json
+description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory rules, skills, and subagents. Use this when the user wants to view, update, or learn how to configure Wave.
 ---
 
 # Wave Settings Skill
@@ -60,7 +60,23 @@ Define which AI models Wave should use and set token limits via environment vari
 }
 ```
 
-### 5. Other Settings
+### 5. Model Context Protocol (MCP)
+Connect to external servers to provide additional tools and context.
+For detailed MCP configuration, see [MCP.md](${WAVE_SKILL_DIR}/MCP.md).
+
+### 6. Memory Rules
+Provide context-specific instructions and guidelines to the agent.
+For detailed memory rules configuration, see [MEMORY_RULES.md](${WAVE_SKILL_DIR}/MEMORY_RULES.md).
+
+### 7. Skills
+Extend Wave's functionality by creating custom skills.
+For detailed guidance on creating skills, see [SKILLS.md](${WAVE_SKILL_DIR}/SKILLS.md).
+
+### 8. Subagents
+Delegate tasks to specialized AI personalities.
+For detailed guidance on creating subagents, see [SUBAGENTS.md](${WAVE_SKILL_DIR}/SUBAGENTS.md).
+
+### 9. Other Settings
 - `language`: Preferred language for agent communication (e.g., `"en"`, `"zh"`).
 - `autoMemoryEnabled`: Enable or disable auto-memory (default: `true`).
 
@@ -71,5 +87,7 @@ You can ask me to:
 - "Update my project settings to enable auto-memory"
 - "How do I configure a post-commit hook?"
 - "What are the available permission modes?"
+- "How do I create a custom skill?"
+- "How do I define a new subagent?"
 
 I will guide you through the process and ensure your configuration is valid.

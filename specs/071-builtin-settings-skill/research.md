@@ -15,12 +15,16 @@
 - The skill will use `Bash`, `Read`, and `Write` tools to help users view and update settings.
 - It will contain detailed instructions for the agent on how to guide the user through configuration.
 
-## Decision: Complex Hooks Documentation
-**Rationale**: Hooks can be complex, and detailed documentation should be kept separate to maintain clarity in the main skill guide.
+## Decision: Complex Configurations Documentation
+**Rationale**: Hooks, MCP, Memory Rules, Skills, and Subagents can be complex, and detailed documentation should be kept separate to maintain clarity in the main skill guide.
 **Chosen Approach**:
 - Create `packages/agent-sdk/src/builtin-skills/settings/HOOKS.md`.
-- Link to `HOOKS.md` from `SKILL.md`.
-- Use `${WAVE_SKILL_DIR}` placeholder in `SKILL.md` to correctly link to `HOOKS.md` regardless of where the skill is installed.
+- Create `packages/agent-sdk/src/builtin-skills/settings/MCP.md`.
+- Create `packages/agent-sdk/src/builtin-skills/settings/MEMORY_RULES.md`.
+- Create `packages/agent-sdk/src/builtin-skills/settings/SKILLS.md`.
+- Create `packages/agent-sdk/src/builtin-skills/settings/SUBAGENTS.md`.
+- Link to these files from `SKILL.md`.
+- Use `${WAVE_SKILL_DIR}` placeholder in `SKILL.md` to correctly link to these files regardless of where the skill is installed.
 
 ## Alternatives Considered
 - **Programmatic Skill Registration**: Registering the skill in code instead of a markdown file. Rejected because it's less flexible and doesn't follow the existing skill pattern.

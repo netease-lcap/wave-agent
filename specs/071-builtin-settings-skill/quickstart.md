@@ -32,7 +32,17 @@ Wave supports three configuration scopes:
 - **enabledPlugins**: Enable or disable specific plugins.
 - **language**: Set your preferred language for agent communication.
 - **autoMemoryEnabled**: Enable or disable the auto-memory feature.
+- **mcpServers**: Configure external MCP servers for additional tools and context.
+- **memoryRules**: Define context-specific instructions and guidelines.
+- **skills**: Extend Wave's functionality with custom skills.
+- **subagents**: Delegate tasks to specialized AI personalities.
 
 ## Detailed Documentation
 
-For more information on complex hook configurations and environment variables, see the `HOOKS.md` and `ENV.md` files linked from the `settings` skill.
+For more information on complex configurations, see the following files linked from the `settings` skill:
+- `HOOKS.md`: Detailed hook configuration.
+- `ENV.md`: Environment variable configuration.
+- `MCP.md`: Model Context Protocol configuration.
+- `MEMORY_RULES.md`: Memory rules and auto-memory configuration.
+- `SKILLS.md`: Creating and managing custom skills.
+- `SUBAGENTS.md`: Creating and managing specialized subagents.

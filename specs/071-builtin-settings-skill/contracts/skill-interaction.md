@@ -23,7 +23,16 @@ The `settings` skill is a builtin skill that helps users manage their Wave confi
 - `enabledPlugins`: Enable or disable plugins.
 - `language`: Set preferred language.
 - `autoMemoryEnabled`: Enable/disable auto-memory.
+- `mcpServers`: Configure external MCP servers.
+- `memoryRules`: Define context-specific instructions.
+- `skills`: Create and manage custom skills.
+- `subagents`: Create and manage specialized subagents.
 
 ## Documentation Links
 - `SKILL.md`: Main skill documentation.
 - `HOOKS.md`: Detailed documentation for complex hook configurations.
+- `ENV.md`: Environment variable configuration.
+- `MCP.md`: Model Context Protocol configuration.
+- `MEMORY_RULES.md`: Memory rules and auto-memory configuration.
+- `SKILLS.md`: Creating and managing custom skills.
+- `SUBAGENTS.md`: Creating and managing specialized subagents.
