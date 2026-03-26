@@ -45,11 +45,11 @@ describe("Agent - Slash Commands Readiness", () => {
     const commands = agent.getSlashCommands();
 
     // Verify that commands are returned and not empty
-    // Built-in 'init' command should always be present
+    // Built-in 'clear' command should always be present
     expect(commands).toBeDefined();
     expect(Array.isArray(commands)).toBe(true);
     expect(commands.length).toBeGreaterThan(0);
-    expect(commands.some((c) => c.name === "init")).toBe(true);
+    expect(commands.some((c) => c.name === "clear")).toBe(true);
 
     await agent.destroy();
   });

@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "fs";
-import { join, extname } from "path";
+import { join, extname, basename } from "path";
 import { logger } from "./globalLogger.js";
+import { getBuiltinSubagentsDir } from "./configPaths.js";
 
 export interface SubagentConfiguration {
   name: string;
@@ -122,17 +123,26 @@ function validateConfiguration(
  */
 function parseSubagentFile(
   filePath: string,
-  scope: "project" | "user",
+  scope: "project" | "user" | "builtin",
 ): SubagentConfiguration {
   try {
     const content = readFileSync(filePath, "utf-8");
     const { frontmatter, body } = parseFrontmatter(content);
+
+    // Use filename as default name if not specified in frontmatter
+    if (!frontmatter.name) {
+      frontmatter.name = basename(filePath, extname(filePath));
+    }
 
     validateConfiguration(frontmatter, filePath);
 
     if (!body.trim()) {
       throw new Error(`Empty system prompt in ${filePath}`);
     }
+
+    let priority = 1;
+    if (scope === "user") priority = 2;
+    if (scope === "builtin") priority = 3;
 
     return {
       name: frontmatter.name!,
@@ -142,7 +152,7 @@ function parseSubagentFile(
       systemPrompt: body,
       filePath,
       scope,
-      priority: scope === "project" ? 1 : 2,
+      priority,
     };
   } catch (error) {
     throw new Error(
@@ -156,7 +166,7 @@ function parseSubagentFile(
  */
 function scanSubagentDirectory(
   dirPath: string,
-  scope: "project" | "user",
+  scope: "project" | "user" | "builtin",
 ): SubagentConfiguration[] {
   const configurations: SubagentConfiguration[] = [];
 
@@ -194,10 +204,10 @@ export async function loadSubagentConfigurations(
 ): Promise<SubagentConfiguration[]> {
   const projectDir = join(workdir, ".wave", "agents");
   const userDir = join(process.env.HOME || "~", ".wave", "agents");
+  const builtinDir = getBuiltinSubagentsDir();
 
   // Load configurations from all sources
-  const { getBuiltinSubagents } = await import("./builtinSubagents.js");
-  const builtinConfigs = getBuiltinSubagents();
+  const builtinConfigs = scanSubagentDirectory(builtinDir, "builtin");
   const projectConfigs = scanSubagentDirectory(projectDir, "project");
   const userConfigs = scanSubagentDirectory(userDir, "user");
 

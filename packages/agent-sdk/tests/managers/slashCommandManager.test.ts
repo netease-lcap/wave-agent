@@ -78,24 +78,24 @@ describe("SlashCommandManager", () => {
   });
 
   describe("Basic Command Management", () => {
-    it("should have a built-in init command", () => {
+    it("should have a built-in clear command", () => {
       const commands = slashCommandManager.getCommands();
 
-      const initCommand = commands.find((cmd) => cmd.id === "init");
-      expect(initCommand).toBeDefined();
-      expect(initCommand?.name).toBe("init");
-      expect(initCommand?.description).toBe(
-        "Initialize repository for AI agents by generating AGENTS.md",
+      const clearCommand = commands.find((cmd) => cmd.id === "clear");
+      expect(clearCommand).toBeDefined();
+      expect(clearCommand?.name).toBe("clear");
+      expect(clearCommand?.description).toBe(
+        "Clear conversation history and reset session",
       );
     });
 
-    it("should be able to check if init command exists", () => {
-      expect(slashCommandManager.hasCommand("init")).toBe(true);
+    it("should be able to check if clear command exists", () => {
+      expect(slashCommandManager.hasCommand("clear")).toBe(true);
       expect(slashCommandManager.hasCommand("nonexistent")).toBe(false);
     });
 
-    it("should be able to execute init command", async () => {
-      const result = await slashCommandManager.executeCommand("init");
+    it("should be able to execute clear command", async () => {
+      const result = await slashCommandManager.executeCommand("clear");
       expect(result).toBe(true);
     });
 
@@ -105,9 +105,9 @@ describe("SlashCommandManager", () => {
     });
 
     it("should return correct command by id", () => {
-      const initCommand = slashCommandManager.getCommand("init");
-      expect(initCommand).toBeDefined();
-      expect(initCommand?.id).toBe("init");
+      const clearCommand = slashCommandManager.getCommand("clear");
+      expect(clearCommand).toBeDefined();
+      expect(clearCommand?.id).toBe("clear");
 
       const nonExistentCommand = slashCommandManager.getCommand("nonexistent");
       expect(nonExistentCommand).toBeUndefined();
@@ -126,10 +126,10 @@ describe("SlashCommandManager", () => {
     });
 
     it("should validate existing slash commands correctly", () => {
-      const result = slashCommandManager.parseAndValidateSlashCommand("/init");
+      const result = slashCommandManager.parseAndValidateSlashCommand("/clear");
 
       expect(result.isValid).toBe(true);
-      expect(result.commandId).toBe("init");
+      expect(result.commandId).toBe("clear");
       expect(result.args).toBeUndefined();
     });
 
@@ -168,10 +168,10 @@ describe("SlashCommandManager", () => {
 
     it("should handle command with empty args correctly", () => {
       const result =
-        slashCommandManager.parseAndValidateSlashCommand("/init   ");
+        slashCommandManager.parseAndValidateSlashCommand("/clear   ");
 
       expect(result.isValid).toBe(true);
-      expect(result.commandId).toBe("init");
+      expect(result.commandId).toBe("clear");
       expect(result.args).toBeUndefined(); // Empty args should be undefined
     });
 
