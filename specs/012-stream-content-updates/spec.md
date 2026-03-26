@@ -72,6 +72,22 @@ An SDK integrator wants to track the lifecycle of a tool execution through deter
 
 ---
 
+### User Story 5 - Real-time Tool Result Streaming (Priority: P2)
+
+Users see the output of long-running tools (like `bash`) in real-time as they execute, providing immediate feedback on the tool's progress.
+
+**Why this priority**: Essential for monitoring long-running operations and providing a responsive user experience.
+
+**Independent Test**: Run a long-running bash command and verify that the tool block's result content updates incrementally in the UI.
+
+**Acceptance Scenarios**:
+
+1. **Given** a tool is in the `running` stage, **When** it produces incremental results, **Then** the `onResultUpdate` callback MUST be triggered with the latest accumulated result.
+2. **Given** a tool is in the `running` stage, **When** it produces incremental short results, **Then** the `onShortResultUpdate` callback MUST be triggered with the latest short result.
+3. **Given** a tool is streaming results, **When** the UI receives updates, **Then** it MUST update the tool block's result and shortResult accordingly.
+
+---
+
 ### Edge Cases
 
 - What happens when network connectivity is poor and stream chunks arrive out of order or with delays?
@@ -100,6 +116,11 @@ An SDK integrator wants to track the lifecycle of a tool execution through deter
 - **FR-007**: CLI MUST display content and parameters as static snapshot captured at the moment of switching to expanded view mode, with no further updates applied during streaming
 - **FR-008**: System MUST continue receiving streaming callbacks internally but only apply visual updates when in collapsed view mode
 - **FR-009**: In collapsed view mode, `compactParams` MUST update in real-time as each parameter chunk is processed, showing the most current available parameters. In expanded view mode, `compactParams` MUST remain static showing the parameter state captured at the moment of switching to expanded mode
+- **FR-010**: Agent-SDK MUST add an `onResultUpdate` callback to the `ToolContext` interface that receives the latest accumulated result for real-time streaming.
+- **FR-011**: Agent-SDK MUST add an `onShortResultUpdate` callback to the `ToolContext` interface that receives the latest short result for real-time streaming.
+- **FR-012**: AIManager MUST implement the `onResultUpdate` and `onShortResultUpdate` callbacks in `sendAIMessage` to update the tool block in the UI with the latest results and set the stage to `running`.
+- **FR-013**: Tools (like `bash`) SHOULD use the `onResultUpdate` and `onShortResultUpdate` callbacks to provide real-time feedback for long-running operations.
+- **FR-014**: Real-time result updates MUST be throttled to avoid overwhelming the UI.
 
 ### State Management Architecture
 

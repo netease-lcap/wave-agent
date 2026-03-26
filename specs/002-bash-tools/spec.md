@@ -38,6 +38,22 @@ As an AI agent, I want to run long-running commands in the background and retrie
 
 ---
 
+### User Story 3 - Real-time Foreground Streaming (Priority: P2)
+
+As an AI agent, I want to see the output of foreground commands in real-time so that I can monitor progress and receive immediate feedback for long-running tasks.
+
+**Why this priority**: Provides a more responsive and interactive experience, especially for commands that produce incremental output.
+
+**Independent Test**: Run a command like `for i in {1..5}; do echo $i; sleep 1; done` and verify that the output updates in the UI every second.
+
+**Acceptance Scenarios**:
+
+1. **Given** a foreground command is running, **When** it produces output, **Then** the `shortResult` MUST update in real-time with the last 3 lines of output.
+2. **Given** a foreground command is running, **When** it produces output, **Then** the full `result` MUST update in real-time with the accumulated output.
+3. **Given** a foreground command is running, **When** updates occur, **Then** they MUST be throttled (e.g., once per second) to avoid overwhelming the UI.
+
+---
+
 ### Edge Cases
 
 - **Output Truncation**: If a command produces massive output (e.g., > 30,000 characters), the system must truncate it to prevent overwhelming the LLM.
@@ -61,6 +77,9 @@ As an AI agent, I want to run long-running commands in the background and retrie
 - **FR-010**: The system MUST maintain environment variables across sequential `Bash` calls (persistent session behavior).
 - **FR-011**: When `run_in_background` is true, the system MUST return an `outputPath` to a real-time log file.
 - **FR-012**: The system MUST pipe `stdout` and `stderr` to the `outputPath` log file in real-time.
+- **FR-013**: Foreground `Bash` tool MUST support real-time streaming updates to both `shortResult` and the full `result` content.
+- **FR-014**: Real-time updates for foreground `Bash` tool MUST be throttled to once per second.
+- **FR-015**: Real-time `shortResult` for foreground `Bash` tool MUST show the last 3 lines of output.
 
 ### Key Entities *(include if feature involves data)*
 

@@ -433,7 +433,7 @@ describe("bashTool", () => {
       expect(result.error).toBe("Failed to execute command: spawn failed");
     });
 
-    it("should format shortResult with first 3 lines and summary for long output", async () => {
+    it("should format shortResult with last 3 lines and summary for long output", async () => {
       const longOutput = "line1\nline2\nline3\nline4\nline5";
       const mockProcess = {
         pid: 1234,
@@ -461,7 +461,7 @@ describe("bashTool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.shortResult).toBe("line1\nline2\nline3\n... +2 lines");
+      expect(result.shortResult).toBe("... +2 lines\nline3\nline4\nline5");
     });
   });
 

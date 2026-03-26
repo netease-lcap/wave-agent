@@ -46,6 +46,20 @@ function processOutput(output: string): string {
 }
 
 /**
+ * Simple throttle function to limit the frequency of updates.
+ */
+function throttle(func: () => void, limit: number) {
+  let inThrottle: boolean;
+  return function () {
+    if (!inThrottle) {
+      func();
+      inThrottle = true;
+      setTimeout(() => (inThrottle = false), limit);
+    }
+  };
+}
+
+/**
  * Bash command execution tool - supports both foreground and background execution
  */
 export const bashTool: ToolPlugin = {
@@ -232,6 +246,35 @@ Usage notes:
       let errorBuffer = "";
       let isAborted = false;
       let isBackgrounded = false;
+      let isFinished = false;
+
+      const updateRealtimeResults = throttle(() => {
+        if (isAborted || isBackgrounded || isFinished) return;
+
+        const combinedOutput =
+          outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
+
+        // Update shortResult: last 3 lines
+        if (context.onShortResultUpdate) {
+          const tail = combinedOutput.slice(-5000);
+          const lines = tail.trim().split("\n");
+          const shortResult =
+            lines.length <= 3
+              ? lines.join("\n")
+              : `... +${lines.length - 3} lines\n` + lines.slice(-3).join("\n");
+          context.onShortResultUpdate(shortResult);
+        }
+
+        // Update full result
+        if (context.onResultUpdate) {
+          const content =
+            combinedOutput.length <= MAX_OUTPUT_LENGTH
+              ? combinedOutput
+              : combinedOutput.substring(0, MAX_OUTPUT_LENGTH) +
+                "\n\n... (output truncated)";
+          context.onResultUpdate(content);
+        }
+      }, 1000);
 
       const foregroundTaskId = `bash_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -346,6 +389,7 @@ Usage notes:
         if (!isAborted && !isBackgrounded && !runInBackground) {
           const chunk = stripAnsiColors(data.toString());
           outputBuffer += chunk;
+          updateRealtimeResults();
         }
       });
 
@@ -353,10 +397,12 @@ Usage notes:
         if (!isAborted && !isBackgrounded && !runInBackground) {
           const chunk = stripAnsiColors(data.toString());
           errorBuffer += chunk;
+          updateRealtimeResults();
         }
       });
 
       child.on("exit", (code) => {
+        isFinished = true;
         if (context.foregroundTaskManager) {
           context.foregroundTaskManager.unregisterForegroundTask(
             foregroundTaskId,
@@ -381,8 +427,7 @@ Usage notes:
           const shortResult =
             lines.length <= 3
               ? lines.join("\n")
-              : lines.slice(0, 3).join("\n") +
-                `\n... +${lines.length - 3} lines`;
+              : `... +${lines.length - 3} lines\n` + lines.slice(-3).join("\n");
 
           resolve({
             success: exitCode === 0,
@@ -397,6 +442,7 @@ Usage notes:
       });
 
       child.on("error", (error) => {
+        isFinished = true;
         if (context.foregroundTaskManager) {
           context.foregroundTaskManager.unregisterForegroundTask(
             foregroundTaskId,

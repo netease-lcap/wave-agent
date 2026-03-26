@@ -88,6 +88,10 @@
 - [ ] T025a [US2] Remove deprecated isRunning field from AgentToolBlockUpdateParams and all call sites in packages/agent-sdk/
 - [X] T026 [US2] Build agent-sdk and verify tool streaming exports
 - [X] T027 [US2] Add onToolBlockUpdated callback usage with parametersChunk field in packages/code/src/print-cli.ts for logging tool parameters (example implementation only)
+- [X] T027a [US5] Add onResultUpdate and onShortResultUpdate callbacks to ToolContext in packages/agent-sdk/src/tools/types.ts
+- [X] T027b [US5] Implement onResultUpdate and onShortResultUpdate callbacks in AIManager.sendAIMessage in packages/agent-sdk/src/managers/aiManager.ts
+- [X] T027c [US5] Implement real-time streaming updates for foreground bash commands in packages/agent-sdk/src/tools/bashTool.ts
+- [X] T027d [US5] Verify real-time streaming updates for foreground bash commands with automated tests
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
