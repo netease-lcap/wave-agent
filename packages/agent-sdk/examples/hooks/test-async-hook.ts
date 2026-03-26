@@ -18,7 +18,7 @@ async function main() {
   }
 
   const agent = await Agent.create({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     workdir: projectDir,
     // We'll manually trigger the hook by simulating an Edit tool use
   });

@@ -46,13 +46,11 @@
 
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
-- [X] T009 [P] [US1] Unit test for interval parsing logic in `packages/agent-sdk/tests/builtin-skills/loop/parsing.test.ts`
 - [X] T010 [P] [US1] Integration test for `/loop` command execution in `packages/agent-sdk/tests/builtin-skills/loop/execution.test.ts`
 
 ### Implementation for User Story 1
 
-- [X] T011 [US1] Create `/loop` skill definition in `packages/agent-sdk/src/builtin-skills/loop/SKILL.md` with parsing rules for leading/trailing intervals
-- [X] T012 [US1] Implement interval-to-cron conversion logic in `packages/agent-sdk/src/builtin-skills/loop/SKILL.md` (using `cron-parser`)
+- [X] T011 [US1] Create `/loop` skill definition in `packages/agent-sdk/src/builtin-skills/loop/SKILL.md`
 - [X] T013 [US1] Implement immediate execution logic using `aiManager.sendAIMessage()` in `packages/agent-sdk/src/builtin-skills/loop/SKILL.md`
 - [X] T014 [US1] Implement confirmation message with Job ID and natural language cancellation instructions in `packages/agent-sdk/src/builtin-skills/loop/SKILL.md`
 
@@ -60,43 +58,7 @@
 
 ---
 
-## Phase 4: User Story 2 - Schedule with default interval (Priority: P2)
-
-**Goal**: Default to a 10-minute interval if no interval is specified in the `/loop` command.
-
-**Independent Test**: Run `/loop check the build` and verify it defaults to a 10-minute cadence.
-
-### Tests for User Story 2 (REQUIRED) ⚠️
-
-- [X] T015 [P] [US2] Unit test for default interval logic in `packages/agent-sdk/tests/builtin-skills/loop/parsing.test.ts`
-
-### Implementation for User Story 2
-
-- [X] T016 [US2] Update `/loop` skill in `packages/agent-sdk/src/builtin-skills/loop/SKILL.md` to handle missing intervals with a 10m default
-
-**Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
-
----
-
-## Phase 5: User Story 3 - Handling non-clean intervals (Priority: P3)
-
-**Goal**: Round intervals that don't cleanly divide their unit (e.g., `7m` -> `5m` or `10m`) and notify the user.
-
-**Independent Test**: Run `/loop 7m /echo "test"` and verify it rounds to a clean interval and notifies the user.
-
-### Tests for User Story 3 (REQUIRED) ⚠️
-
-- [X] T017 [P] [US3] Unit test for interval rounding logic in `packages/agent-sdk/tests/builtin-skills/loop/parsing.test.ts`
-
-### Implementation for User Story 3
-
-- [X] T018 [US3] Implement rounding logic and user notification in `packages/agent-sdk/src/builtin-skills/loop/SKILL.md`
-
-**Checkpoint**: All user stories should now be independently functional
-
----
-
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 4: Polish & Cross-Cutting Concerns
 
 **Purpose**: Improvements that affect multiple user stories
 

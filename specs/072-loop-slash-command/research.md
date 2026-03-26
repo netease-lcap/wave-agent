@@ -32,7 +32,6 @@
 ## Decision: Cron Parsing Library
 - **Choice**: Use `cron-parser` or a similar lightweight library.
 - **Rationale**: 
-    - **NL to Cron Flow**: The user provides a natural language prompt (e.g., `/loop 5m check the build`). The AI (via the skill) converts this to a cron expression (e.g., `*/5 * * * *`).
     - **Cron to Execution Time**: The `CronManager` needs to convert that cron string into a concrete timestamp for the next execution. A library handles the complex calendar logic (e.g., "next Monday at 9 AM") and allows for accurate jitter calculation (10% of the period between runs).
     - **Standardization**: Ensures the system follows standard cron conventions that users expect.
 - **Alternatives considered**: Manual time calculation. Rejected as it's error-prone and doesn't scale to complex cron schedules.

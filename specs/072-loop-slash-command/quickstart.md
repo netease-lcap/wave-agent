@@ -13,19 +13,13 @@ The `/loop` command is the quickest way to schedule a recurring prompt. Pass an 
 - **Every 5 minutes**: `/loop 5m check the build`
 - **Every 2 hours**: `/loop check the build every 2h`
 - **Default (10 minutes)**: `/loop check the build`
-- **Daily at midnight**: `/loop 1d /echo "Good morning!"`
+- **Daily at midnight**: `/loop 1d check the build status`
 
 ## Interval Syntax
 
-Intervals are optional. You can lead with them, trail with them, or leave them out entirely.
+Intervals are optional. You can specify them as a leading token (e.g., `5m`), a trailing "every" clause (e.g., `every 2h`), or leave them out entirely (defaults to 10 minutes).
 
-| Form | Example | Parsed Interval |
-|------|---------|-----------------|
-| Leading token | `/loop 30m check the build` | every 30 minutes |
-| Trailing "every" clause | `/loop check the build every 2 hours` | every 2 hours |
-| No interval | `/loop check the build` | defaults to every 10 minutes |
-
-Supported units are `s` (seconds), `m` (minutes), `h` (hours), and `d` (days). Seconds are rounded up to the nearest minute since cron has one-minute granularity.
+Supported units are `s` (seconds), `m` (minutes), `h` (hours), and `d` (days).
 
 ## Managing Jobs
 
@@ -46,4 +40,3 @@ All recurring tasks automatically expire and are deleted after **7 days** to kee
 ## Notes
 
 - Jobs only fire when Agent is **idle** (not currently processing another message).
-- If an interval doesn't divide evenly into its unit (e.g., `7m` or `90m`), Agent will round it to the nearest clean interval and let you know.
