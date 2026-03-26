@@ -34,6 +34,7 @@
     - Update `InputManager` to detect `!` prefix.
     - Call `BangManager.executeCommand` when a bang command is entered.
     - Handle command abort (e.g., Ctrl+C).
+    - Update `isCommandRunning` state in `useChat` context to ensure the UI correctly identifies the command as running and prevents it from becoming static prematurely.
 
 ### Task 4: Update `MessageManager` to support `BangBlock`
 
