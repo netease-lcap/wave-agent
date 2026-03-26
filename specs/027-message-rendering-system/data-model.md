@@ -41,5 +41,5 @@ interface BlockWithStatus {
 }
 ```
 
-- **isDynamic**: True if the block belongs to the last message and `forceStatic` is false.
+- **isDynamic**: True if the block belongs to the last message, `forceStatic` is false, and `isFinished` is false.
 - **key**: A unique identifier for the block, typically `${message.id}-${blockIndex}`.

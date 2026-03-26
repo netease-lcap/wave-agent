@@ -8,6 +8,7 @@ export interface MessageListProps {
   messages: Message[];
   isExpanded?: boolean;
   forceStatic?: boolean;
+  isFinished?: boolean;
   version?: string;
   workdir?: string;
   model?: string;
@@ -19,6 +20,7 @@ export const MessageList = React.memo(
     messages,
     isExpanded = false,
     forceStatic = false,
+    isFinished = false,
     version,
     workdir,
     model,
@@ -56,7 +58,7 @@ export const MessageList = React.memo(
     // Determine which blocks are static vs dynamic
     const blocksWithStatus = allBlocks.map((item) => {
       const { isLastMessage } = item;
-      const isDynamic = !forceStatic && isLastMessage;
+      const isDynamic = !forceStatic && !isFinished && isLastMessage;
       return { ...item, isDynamic };
     });
 
