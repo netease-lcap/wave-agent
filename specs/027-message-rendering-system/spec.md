@@ -65,7 +65,8 @@ As a user, I want different types of content (text, code, errors, images, tool c
 - **FR-001**: System MUST render a list of `Message` objects in chronological order.
 - **FR-002**: System MUST flatten messages into individual `MessageBlock` items for rendering.
 - **FR-003**: System MUST use Ink's `Static` component for rendering historical (non-dynamic) message blocks.
-- **FR-004**: System MUST identify "dynamic" blocks (e.g., blocks in the last message when `forceStatic` is false) and render them outside the `Static` component.
+- **FR-004**: System MUST identify "dynamic" blocks (e.g., blocks in the last message when `forceStatic` is false and `isFinished` is false) and render them outside the `Static` component.
+- **FR-004.1**: System MUST treat all blocks in the last message as static when `isFinished` is true.
 - **FR-005**: System MUST support a "welcome message" at the top of the message list showing version and environment info.
 - **FR-006**: System MUST limit the number of rendered messages to a maximum of 10 by default.
 - **FR-007**: System MUST provide a mechanism to measure the height of dynamic blocks and report it via a callback.

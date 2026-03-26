@@ -12,6 +12,8 @@ export interface MessageListProps {
   isExpanded?: boolean;
   /** If true, all blocks are treated as static (no dynamic updates) */
   forceStatic?: boolean;
+  /** If true, the AI has finished generating the last message, making it static */
+  isFinished?: boolean;
   /** Wave version to display in the welcome message */
   version?: string;
   /** Current working directory to display in the welcome message */
@@ -29,7 +31,8 @@ export interface MessageListProps {
 2. **Message Flattening**: Converts the nested `messages -> blocks` structure into a flat list of blocks for rendering.
 3. **Static vs Dynamic Split**:
    - Blocks that are not the last message are considered **static**.
-   - All blocks in the last message are considered **dynamic** (unless `forceStatic` is true).
+   - Blocks in the last message are considered **dynamic** ONLY IF `forceStatic` is false AND `isFinished` is false.
+   - When `isFinished` is true, the entire last message becomes static and is moved into the `<Static>` component.
 4. **Static Rendering**: Uses Ink's `<Static>` component to render static blocks. This ensures they are only rendered once and then "frozen" in the terminal scrollback.
 5. **Dynamic Rendering**: Renders dynamic blocks in a regular `<Box>`. This allows them to re-render and update their display (e.g., showing streaming text or a spinner).
 6. **Message Limiting**: Only renders the last `maxMessages` (default 10) to prevent performance degradation in long sessions.
