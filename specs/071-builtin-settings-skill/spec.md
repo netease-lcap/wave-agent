@@ -62,9 +62,10 @@ As a user, I want detailed documentation for complex hook configurations to be a
 - **FR-001**: System MUST provide a builtin `settings` skill.
 - **FR-002**: The `settings` skill MUST be able to read and display merged configurations from user, project, and local scopes.
 - **FR-003**: The `settings` skill MUST allow users to update settings in specific scopes (user, project, or local).
-- **FR-004**: The `settings` skill MUST provide a guide on how to write `settings.json`, covering all supported fields (`hooks`, `env`, `permissions`, `enabledPlugins`, `language`, `autoMemoryEnabled`).
+- **FR-004**: The `settings` skill MUST provide a guide on how to write `settings.json`, covering all supported fields (`hooks`, `env`, `permissions`, `enabledPlugins`, `language`, `autoMemoryEnabled`, `mcpServers`, `memoryRules`).
 - **FR-005**: System MUST include a `SKILL.md` for the `settings` skill.
-- **FR-006**: System MUST create separate markdown files (e.g., `HOOKS.md`, `ENV.md`) for complex hook and environment configurations and link them from `SKILL.md`.
+- **FR-006**: System MUST create separate markdown files (e.g., `HOOKS.md`, `ENV.md`, `MCP.md`, `MEMORY_RULES.md`, `SKILLS.md`, `SUBAGENTS.md`) for complex configurations and link them from `SKILL.md`.
+- **FR-008**: The `settings` skill MUST provide guidance on how to create and manage custom skills and subagents.
 - **FR-007**: The `settings` skill MUST validate the configuration before saving changes.
 
 ### Key Entities *(include if feature involves data)*

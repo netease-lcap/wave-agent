@@ -11,6 +11,8 @@ The root configuration structure for all Wave Agent settings.
 | `enabledPlugins` | `Record<string, boolean>` | Enable or disable plugins. |
 | `language` | `string` | Preferred language for agent communication. |
 | `autoMemoryEnabled` | `boolean` | Whether auto-memory is enabled. |
+| `mcpServers` | `Record<string, McpServerConfig>` | Configure external MCP servers. |
+| `memoryRules` | `MemoryRule[]` | Define context-specific instructions. |
 
 ## SkillMetadata (Updated)
 Metadata for a skill, including its type.

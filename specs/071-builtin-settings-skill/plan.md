@@ -11,7 +11,7 @@ The primary requirement is to support a builtin `settings` skill that guides use
 1.  Creating a `builtin-skills` directory in `agent-sdk`.
 2.  Updating `SkillManager` to discover skills from this directory.
 3.  Implementing the `settings` skill as a markdown file with detailed instructions and examples.
-4.  Providing separate documentation for complex hook configurations in `HOOKS.md`.
+4.  Providing separate documentation for complex configurations in `HOOKS.md`, `ENV.md`, `MCP.md`, `MEMORY_RULES.md`, `SKILLS.md`, and `SUBAGENTS.md`.
 
 ## Technical Context
 
@@ -68,7 +68,12 @@ packages/agent-sdk/
 │   ├── builtin-skills/
 │   │   └── settings/
 │   │       ├── SKILL.md
-│   │       └── HOOKS.md
+│   │       ├── HOOKS.md
+│   │       ├── ENV.md
+│   │       ├── MCP.md
+│   │       ├── MEMORY_RULES.md
+│   │       ├── SKILLS.md
+│   │       └── SUBAGENTS.md
 │   ├── managers/
 │   │   └── skillManager.ts
 │   ├── services/
