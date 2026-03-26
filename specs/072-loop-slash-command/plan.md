@@ -4,7 +4,7 @@
 
 ## Summary
 
-Implement the `/loop` slash command to schedule recurring prompts. The command will parse user input for intervals (e.g., `5m`, `every 2h`), convert them to cron expressions, and use the `CronCreate` tool to schedule recurring tasks. It will also immediately execute the prompt once and provide a confirmation message with cancellation instructions.
+Implement the `/loop` slash command to schedule recurring prompts. The command will use the `CronCreate` tool to schedule recurring tasks based on user input. It will also immediately execute the prompt once and provide a confirmation message with cancellation instructions.
 
 ## Technical Context
 
