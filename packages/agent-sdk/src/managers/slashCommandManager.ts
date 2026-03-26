@@ -16,7 +16,6 @@ import {
   replaceBashCommandsWithOutput,
   executeBashCommands,
 } from "../utils/markdownParser.js";
-import { INIT_PROMPT } from "../prompts/index.js";
 import type { SkillManager } from "./skillManager.js";
 import type { SkillMetadata } from "../types/skills.js";
 
@@ -73,24 +72,6 @@ export class SlashCommandManager {
   }
 
   private initializeBuiltinCommands(): void {
-    // Register built-in init command
-    this.registerCommand({
-      id: "init",
-      name: "init",
-      description:
-        "Initialize repository for AI agents by generating AGENTS.md",
-      handler: async () => {
-        // Add custom command message to show the command being executed
-        this.messageManager.addUserMessage({
-          content: "/init",
-          customCommandContent: INIT_PROMPT,
-        });
-
-        // Execute the AI conversation with the init prompt
-        await this.aiManager.sendAIMessage();
-      },
-    });
-
     // Register built-in clear command
     this.registerCommand({
       id: "clear",

@@ -1,4 +1,7 @@
 import { Agent } from "../src/agent.js";
+import { tmpdir } from "os";
+import { join } from "path";
+import { mkdir, rm } from "fs/promises";
 
 /**
  * This example demonstrates how to use the /loop slash command
@@ -9,8 +12,12 @@ import { Agent } from "../src/agent.js";
  * 2. Run: cd packages/agent-sdk && pnpm exec tsx examples/loop-command-demo.ts
  */
 async function main() {
+  const tempDir = join(tmpdir(), `loop-demo-${Date.now()}`);
+  await mkdir(tempDir, { recursive: true });
+
   // 1. Create Agent instance
   const agent = await Agent.create({
+    workdir: tempDir,
     model: "gemini-2.5-flash", // Use a supported model
     callbacks: {
       onAssistantContentUpdated: (chunk) => {
@@ -29,6 +36,7 @@ async function main() {
 
   try {
     console.log("--- /loop Slash Command Demo ---\n");
+    console.log(`📁 Using temporary directory: ${tempDir}\n`);
 
     // 2. Send a /loop command
     // The AI will parse this using the instructions in SKILL.md and call CronCreate
@@ -50,6 +58,8 @@ async function main() {
   } finally {
     // 5. Always destroy the agent to ensure the process exits
     await agent.destroy();
+    await rm(tempDir, { recursive: true, force: true });
+    console.log("🧹 Demo complete and temporary directory cleaned up");
   }
 }
 

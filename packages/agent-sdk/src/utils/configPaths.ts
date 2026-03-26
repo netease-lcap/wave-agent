@@ -22,16 +22,18 @@ const __dirname = dirname(__filename);
  * Get the builtin skills directory path
  */
 export function getBuiltinSkillsDir(): string {
-  // In development, it's in src/builtin-skills
-  // In production (dist), it should be in dist/builtin-skills
-  // We'll look for it relative to this file
-  const devPath = join(__dirname, "..", "builtin-skills");
-  const prodPath = join(__dirname, "builtin-skills");
+  // Builtin skills are now in the 'builtin/skills' directory at the root of the package
+  // Relative to this file (src/utils/configPaths.ts), it's ../../builtin/skills
+  return join(__dirname, "..", "..", "builtin", "skills");
+}
 
-  if (existsSync(devPath)) {
-    return devPath;
-  }
-  return prodPath;
+/**
+ * Get the builtin subagents directory path
+ */
+export function getBuiltinSubagentsDir(): string {
+  // Builtin subagents are now in the 'builtin/subagents' directory at the root of the package
+  // Relative to this file (src/utils/configPaths.ts), it's ../../builtin/subagents
+  return join(__dirname, "..", "..", "builtin", "subagents");
 }
 
 /**
