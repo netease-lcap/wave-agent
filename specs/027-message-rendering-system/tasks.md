@@ -28,6 +28,7 @@
 - [X] T010 [P] Use `React.memo` for `MessageList` and `MessageBlockItem`
 - [X] T011 [P] Ensure proper padding and spacing between blocks
 - [X] T012 [P] Simplify `isDynamic` logic to treat all blocks in the last message as dynamic (unless `forceStatic` is true)
+- [X] T015 [P] Update `isDynamic` logic to only include running tool and bang blocks, and remove `isFinished` dependency.
 
 ## Phase 5: Verification
 

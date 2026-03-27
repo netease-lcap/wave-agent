@@ -121,7 +121,6 @@ export const ChatInterface: React.FC = () => {
         messages={displayMessages}
         isExpanded={isExpanded}
         forceStatic={isConfirmationVisible && isConfirmationTooTall}
-        isFinished={!isLoading && !isCommandRunning && !isCompressing}
         version={version}
         workdir={workdir}
         model={model}
