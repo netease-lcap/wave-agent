@@ -544,9 +544,7 @@ export class WaveAcpAgent implements AcpAgent {
         case "allow_always":
           if (context.toolName === BASH_TOOL_NAME) {
             const command = (context.toolInput?.command as string) || "";
-            const rule = context.suggestedPrefix
-              ? `${context.suggestedPrefix}*`
-              : command;
+            const rule = context.suggestedPrefix || command;
             return {
               behavior: "allow",
               newPermissionRule: `${BASH_TOOL_NAME}(${rule})`,

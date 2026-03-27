@@ -375,7 +375,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
             onDecision({ behavior: "allow", newPermissionMode: "acceptEdits" });
           } else {
             const rule = suggestedPrefix
-              ? `Bash(${suggestedPrefix}*)`
+              ? `Bash(${suggestedPrefix})`
               : `Bash(${toolInput?.command})`;
             onDecision({ behavior: "allow", newPermissionRule: rule });
           }
