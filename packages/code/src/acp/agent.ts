@@ -838,7 +838,10 @@ export class WaveAcpAgent implements AcpAgent {
         let parsedParameters: Record<string, unknown> | undefined = undefined;
         if (parameters) {
           try {
-            parsedParameters = JSON.parse(parameters);
+            const parsed = JSON.parse(parameters);
+            parsedParameters = Array.isArray(parsed)
+              ? { args: parsed }
+              : parsed;
           } catch {
             // Ignore parse errors during streaming
           }
