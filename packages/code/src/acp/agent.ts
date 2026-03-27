@@ -554,7 +554,8 @@ export class WaveAcpAgent implements AcpAgent {
           }
           if (
             context.toolName === EDIT_TOOL_NAME ||
-            context.toolName === WRITE_TOOL_NAME
+            context.toolName === WRITE_TOOL_NAME ||
+            context.toolName === EXIT_PLAN_MODE_TOOL_NAME
           ) {
             return {
               behavior: "allow",
