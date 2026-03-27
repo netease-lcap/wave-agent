@@ -10,6 +10,7 @@
 - [ ] Refactor `packages/agent-sdk/src/prompts/index.ts` to use the registry
 - [ ] Update `ToolManager` to use the registry for tool descriptions
 - [ ] Implement prompt template substitution logic
+- [X] Add max tool calls limit to parallel tool calls prompt
 
 ## Phase 3: Testing & Validation
 - [ ] Write unit tests for `PromptRegistry`
