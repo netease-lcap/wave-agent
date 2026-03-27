@@ -773,6 +773,34 @@ describe("WaveAcpAgent", () => {
     expect(decision.newPermissionRule).toBe("test-tool");
   });
 
+  it("should handle Bash permission allow always with suggestedPrefix", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.requestPermission).mockResolvedValue({
+      outcome: { outcome: "selected", optionId: "allow_always" },
+    } as unknown as RequestPermissionResponse);
+
+    const decision = await canUseToolCallback!({
+      toolName: "Bash",
+      toolInput: { command: "npm run dev:foo" },
+      permissionMode: "default",
+      suggestedPrefix: "npm run dev:foo",
+    });
+    expect(decision.behavior).toBe("allow");
+    expect(decision.newPermissionRule).toBe("Bash(npm run dev:foo)");
+  });
+
   it("should handle permission cancellation", async () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {

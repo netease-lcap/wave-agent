@@ -1424,7 +1424,7 @@ describe("Confirmation", () => {
         expect(mockOnDecision).toHaveBeenCalledWith(
           expect.objectContaining({
             behavior: "allow",
-            newPermissionRule: "Bash(ls*)",
+            newPermissionRule: "Bash(ls)",
           }),
         );
       });
