@@ -32,7 +32,7 @@ As a user, I want to see real-time updates for active tool executions or running
 **Acceptance Scenarios**:
 1. **Given** a tool block in the `running` stage, **When** rendered, **Then** it shows a dynamic display (e.g., a spinner or progress indicator).
 2. **Given** a running `bang` command, **When** rendered, **Then** its output is updated in real-time.
-3. **Given** a message being streamed, **When** rendered, **Then** the new content appears as it is received.
+3. **Given** any other block type (e.g., text, error), **When** rendered, **Then** it is treated as static content.
 
 ---
 
@@ -65,8 +65,9 @@ As a user, I want different types of content (text, code, errors, images, tool c
 - **FR-001**: System MUST render a list of `Message` objects in chronological order.
 - **FR-002**: System MUST flatten messages into individual `MessageBlock` items for rendering.
 - **FR-003**: System MUST use Ink's `Static` component for rendering historical (non-dynamic) message blocks.
-- **FR-004**: System MUST identify "dynamic" blocks (e.g., blocks in the last message when `forceStatic` is false and `isFinished` is false) and render them outside the `Static` component.
-- **FR-004.1**: System MUST treat all blocks in the last message as static when `isFinished` is true.
+- **FR-004**: System MUST identify "dynamic" blocks and render them outside the `Static` component.
+- **FR-004.1**: A block is dynamic ONLY IF `forceStatic` is false AND (it is a `tool` block in the `running` stage OR it is a `bang` block with `isRunning` set to true).
+- **FR-004.2**: All other blocks (including text, error, and completed tool/bang blocks) MUST be rendered as static content.
 - **FR-005**: System MUST support a "welcome message" at the top of the message list showing version and environment info.
 - **FR-006**: System MUST limit the number of rendered messages to a maximum of 10 by default.
 - **FR-007**: System MUST provide a mechanism to measure the height of dynamic blocks and report it via a callback.

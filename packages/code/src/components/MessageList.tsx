@@ -8,7 +8,6 @@ export interface MessageListProps {
   messages: Message[];
   isExpanded?: boolean;
   forceStatic?: boolean;
-  isFinished?: boolean;
   version?: string;
   workdir?: string;
   model?: string;
@@ -20,7 +19,6 @@ export const MessageList = React.memo(
     messages,
     isExpanded = false,
     forceStatic = false,
-    isFinished = false,
     version,
     workdir,
     model,
@@ -49,7 +47,6 @@ export const MessageList = React.memo(
         block,
         message,
         messageIndex,
-        isLastMessage: messageIndex === messages.length - 1,
         // Unique key for each block to help Static component
         key: `${message.id}-${blockIndex}`,
       }));
@@ -57,8 +54,11 @@ export const MessageList = React.memo(
 
     // Determine which blocks are static vs dynamic
     const blocksWithStatus = allBlocks.map((item) => {
-      const { isLastMessage } = item;
-      const isDynamic = !forceStatic && !isFinished && isLastMessage;
+      const { block } = item;
+      const isDynamic =
+        !forceStatic &&
+        ((block.type === "tool" && block.stage === "running") ||
+          (block.type === "bang" && block.isRunning));
       return { ...item, isDynamic };
     });
 
