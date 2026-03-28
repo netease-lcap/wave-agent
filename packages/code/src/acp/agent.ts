@@ -14,8 +14,6 @@ import {
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
 } from "wave-agent-sdk";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { logger } from "../utils/logger.js";
 import {
   type Agent as AcpAgent,
@@ -427,7 +425,6 @@ export class WaveAcpAgent implements AcpAgent {
     );
 
     const agent = this.agents.get(sessionId);
-    const workdir = agent?.workingDirectory || process.cwd();
 
     const toolCallId =
       context.toolCallId ||
@@ -505,11 +502,7 @@ export class WaveAcpAgent implements AcpAgent {
     }
 
     const content = context.toolName
-      ? await this.getToolContentAsync(
-          context.toolName,
-          context.toolInput,
-          workdir,
-        )
+      ? this.getToolContent(context.toolName, context.toolInput, undefined)
       : undefined;
     const locations = context.toolName
       ? this.getToolLocations(context.toolName, context.toolInput)
@@ -581,83 +574,6 @@ export class WaveAcpAgent implements AcpAgent {
         message: `Error requesting permission: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-  }
-
-  private async getToolContentAsync(
-    name: string,
-    parameters: Record<string, unknown> | undefined,
-    workdir: string,
-  ): Promise<ToolCallContent[] | undefined> {
-    if (!parameters) return undefined;
-    if (name === "Write") {
-      let oldText: string | null = null;
-      try {
-        const filePath = (parameters.file_path ||
-          parameters.filePath) as string;
-        const fullPath = path.isAbsolute(filePath)
-          ? filePath
-          : path.join(workdir, filePath);
-        oldText = await fs.readFile(fullPath, "utf-8");
-      } catch {
-        // File might not exist, which is fine for Write
-      }
-      return [
-        {
-          type: "diff",
-          path: (parameters.file_path || parameters.filePath) as string,
-          oldText,
-          newText: parameters.content as string,
-        },
-      ];
-    }
-    if (name === "Edit") {
-      let oldText: string | null = null;
-      let newText: string | null = null;
-      try {
-        const filePath = (parameters.file_path ||
-          parameters.filePath) as string;
-        const fullPath = path.isAbsolute(filePath)
-          ? filePath
-          : path.join(workdir, filePath);
-        oldText = await fs.readFile(fullPath, "utf-8");
-        if (oldText) {
-          if (parameters.replace_all) {
-            newText = oldText
-              .split(parameters.old_string as string)
-              .join(parameters.new_string as string);
-          } else {
-            newText = oldText.replace(
-              parameters.old_string as string,
-              parameters.new_string as string,
-            );
-          }
-        }
-      } catch {
-        logger.error("Failed to read file for Edit diff");
-      }
-
-      if (oldText && newText) {
-        return [
-          {
-            type: "diff",
-            path: (parameters.file_path || parameters.filePath) as string,
-            oldText,
-            newText,
-          },
-        ];
-      }
-
-      // Fallback to snippets if file reading fails
-      return [
-        {
-          type: "diff",
-          path: (parameters.file_path || parameters.filePath) as string,
-          oldText: parameters.old_string as string,
-          newText: parameters.new_string as string,
-        },
-      ];
-    }
-    return this.getToolContent(name, parameters, undefined);
   }
 
   private getToolContent(
