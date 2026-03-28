@@ -681,14 +681,6 @@ export class WaveAcpAgent implements AcpAgent {
           oldText: parameters.old_string as string,
           newText: parameters.new_string as string,
         });
-      } else if (name === EXIT_PLAN_MODE_TOOL_NAME) {
-        contents.push({
-          type: "content",
-          content: {
-            type: "text",
-            text: parameters.plan_content as string,
-          },
-        });
       }
     }
 
