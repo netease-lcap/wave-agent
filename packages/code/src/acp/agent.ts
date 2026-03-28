@@ -657,12 +657,13 @@ export class WaveAcpAgent implements AcpAgent {
         },
       ];
     }
-    return this.getToolContent(name, parameters);
+    return this.getToolContent(name, parameters, undefined);
   }
 
   private getToolContent(
     name: string,
     parameters: Record<string, unknown> | undefined,
+    shortResult: string | undefined,
   ): ToolCallContent[] | undefined {
     const contents: ToolCallContent[] = [];
     if (parameters) {
@@ -680,7 +681,25 @@ export class WaveAcpAgent implements AcpAgent {
           oldText: parameters.old_string as string,
           newText: parameters.new_string as string,
         });
+      } else if (name === EXIT_PLAN_MODE_TOOL_NAME) {
+        contents.push({
+          type: "content",
+          content: {
+            type: "text",
+            text: parameters.plan_content as string,
+          },
+        });
       }
+    }
+
+    if (shortResult) {
+      contents.push({
+        type: "content",
+        content: {
+          type: "text",
+          text: shortResult,
+        },
+      });
     }
 
     return contents.length > 0 ? contents : undefined;
@@ -828,7 +847,11 @@ export class WaveAcpAgent implements AcpAgent {
 
         const content =
           effectiveName && (parsedParameters || effectiveShortResult)
-            ? this.getToolContent(effectiveName, parsedParameters)
+            ? this.getToolContent(
+                effectiveName,
+                parsedParameters,
+                effectiveShortResult,
+              )
             : undefined;
         const locations =
           effectiveName && parsedParameters
