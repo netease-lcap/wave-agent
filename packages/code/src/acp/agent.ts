@@ -583,26 +583,46 @@ export class WaveAcpAgent implements AcpAgent {
   ): ToolCallContent[] | undefined {
     const contents: ToolCallContent[] = [];
     if (parameters) {
-      if (name === "Write") {
+      if (
+        name === "Write" &&
+        typeof parameters.file_path === "string" &&
+        typeof parameters.content === "string"
+      ) {
         contents.push({
           type: "diff",
-          path: (parameters.file_path || parameters.filePath) as string,
+          path: parameters.file_path,
           oldText: null,
-          newText: parameters.content as string,
+          newText: parameters.content,
         });
-      } else if (name === "Edit") {
+      } else if (
+        name === "Edit" &&
+        typeof parameters.file_path === "string" &&
+        typeof parameters.old_string === "string" &&
+        typeof parameters.new_string === "string"
+      ) {
         contents.push({
           type: "diff",
-          path: (parameters.file_path || parameters.filePath) as string,
-          oldText: parameters.old_string as string,
-          newText: parameters.new_string as string,
+          path: parameters.file_path,
+          oldText: parameters.old_string,
+          newText: parameters.new_string,
         });
-      } else if (name === "Bash" && parameters.command) {
+      } else if (name === "Bash" && typeof parameters.command === "string") {
         contents.push({
           type: "content",
           content: {
             type: "text",
-            text: parameters.command as string,
+            text: parameters.command,
+          },
+        });
+      } else if (
+        name === EXIT_PLAN_MODE_TOOL_NAME &&
+        typeof parameters.plan_content === "string"
+      ) {
+        contents.push({
+          type: "content",
+          content: {
+            type: "text",
+            text: parameters.plan_content,
           },
         });
       }

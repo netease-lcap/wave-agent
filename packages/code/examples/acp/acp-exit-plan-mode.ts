@@ -48,6 +48,12 @@ async function runExitPlanModeExample() {
 
       // Automatically approve ExitPlanMode with 'allow_always' to transition to 'acceptEdits' mode
       if (params.toolCall.title.includes("ExitPlanMode")) {
+        if (params.toolCall.content) {
+          console.log(
+            "Tool call content:",
+            JSON.stringify(params.toolCall.content, null, 2),
+          );
+        }
         console.log("Approving ExitPlanMode with 'allow_always'...");
         return {
           outcome: {
