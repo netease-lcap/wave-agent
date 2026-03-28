@@ -597,6 +597,14 @@ export class WaveAcpAgent implements AcpAgent {
           oldText: parameters.old_string as string,
           newText: parameters.new_string as string,
         });
+      } else if (name === "Bash" && parameters.command) {
+        contents.push({
+          type: "content",
+          content: {
+            type: "text",
+            text: parameters.command as string,
+          },
+        });
       }
     }
 
