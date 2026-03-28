@@ -659,7 +659,15 @@ describe("WaveAcpAgent", () => {
         toolCall: expect.objectContaining({
           toolCallId: "exit-plan-id",
           title: "ExitPlanMode",
-          content: undefined,
+          content: [
+            {
+              type: "content",
+              content: {
+                type: "text",
+                text: "My Plan",
+              },
+            },
+          ],
         }),
         options: [
           {
@@ -1523,7 +1531,15 @@ describe("WaveAcpAgent", () => {
         update: expect.objectContaining({
           sessionUpdate: "tool_call_update",
           toolCallId: "1",
-          content: undefined,
+          content: [
+            {
+              type: "content",
+              content: {
+                type: "text",
+                text: "Found 3 matches",
+              },
+            },
+          ],
         }),
       }),
     );
