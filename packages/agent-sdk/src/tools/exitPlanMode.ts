@@ -85,10 +85,9 @@ Ensure your plan is complete and unambiguous:
         EXIT_PLAN_MODE_TOOL_NAME,
         context.permissionMode || "plan",
         context.canUseToolCallback,
-        {
-          plan_content: planContent,
-        },
+        {},
         context.toolCallId,
+        planContent,
       );
 
       const permissionResult =

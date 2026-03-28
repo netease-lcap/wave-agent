@@ -647,7 +647,8 @@ describe("WaveAcpAgent", () => {
 
     const decision = await canUseToolCallback!({
       toolName: "ExitPlanMode",
-      toolInput: { plan_content: "My Plan" },
+      toolInput: {},
+      planContent: "My Plan",
       permissionMode: "plan",
       toolCallId: "exit-plan-id",
     });
@@ -659,9 +660,16 @@ describe("WaveAcpAgent", () => {
         toolCall: expect.objectContaining({
           toolCallId: "exit-plan-id",
           title: "ExitPlanMode",
-          rawInput: {
-            plan_content: "My Plan",
-          },
+          rawInput: {},
+          content: [
+            {
+              type: "content",
+              content: {
+                type: "text",
+                text: "My Plan",
+              },
+            },
+          ],
         }),
         options: [
           {
@@ -699,7 +707,8 @@ describe("WaveAcpAgent", () => {
 
     const decision = await canUseToolCallback!({
       toolName: "ExitPlanMode",
-      toolInput: { plan_content: "My Plan" },
+      toolInput: {},
+      planContent: "My Plan",
       permissionMode: "plan",
       toolCallId: "exit-plan-id",
     });

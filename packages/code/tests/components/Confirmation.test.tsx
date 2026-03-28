@@ -1273,11 +1273,11 @@ describe("Confirmation", () => {
       });
     });
 
-    it("should handle EXIT_PLAN_MODE_TOOL_NAME with plan_content", async () => {
+    it("should handle EXIT_PLAN_MODE_TOOL_NAME with planContent", async () => {
       const { lastFrame } = render(
         <Confirmation
           toolName="ExitPlanMode"
-          toolInput={{ plan_content: "My Plan" }}
+          planContent="My Plan"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
           onAbort={mockOnAbort}
@@ -1296,7 +1296,7 @@ describe("Confirmation", () => {
       const { stdin, lastFrame } = render(
         <Confirmation
           toolName="ExitPlanMode"
-          toolInput={{ plan_content: "My Plan" }}
+          planContent="My Plan"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
           onAbort={mockOnAbort}
@@ -1323,7 +1323,7 @@ describe("Confirmation", () => {
       const { stdin: stdin2, lastFrame: lastFrame2 } = render(
         <Confirmation
           toolName="ExitPlanMode"
-          toolInput={{ plan_content: "My Plan" }}
+          planContent="My Plan"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
           onAbort={mockOnAbort}
@@ -1349,7 +1349,7 @@ describe("Confirmation", () => {
       const { stdin: stdin3, lastFrame: lastFrame3 } = render(
         <Confirmation
           toolName="ExitPlanMode"
-          toolInput={{ plan_content: "My Plan" }}
+          planContent="My Plan"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
           onAbort={mockOnAbort}

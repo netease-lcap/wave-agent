@@ -505,7 +505,12 @@ export class WaveAcpAgent implements AcpAgent {
     }
 
     const content = context.toolName
-      ? this.getToolContent(context.toolName, context.toolInput, undefined)
+      ? this.getToolContent(
+          context.toolName,
+          context.toolInput,
+          undefined,
+          context.planContent,
+        )
       : undefined;
     const locations = context.toolName
       ? this.getToolLocations(context.toolName, context.toolInput)
@@ -583,6 +588,7 @@ export class WaveAcpAgent implements AcpAgent {
     name: string,
     parameters: Record<string, unknown> | undefined,
     shortResult: string | undefined,
+    planContent?: string,
   ): ToolCallContent[] | undefined {
     const contents: ToolCallContent[] = [];
     if (parameters) {
@@ -617,15 +623,12 @@ export class WaveAcpAgent implements AcpAgent {
             text: parameters.command,
           },
         });
-      } else if (
-        name === EXIT_PLAN_MODE_TOOL_NAME &&
-        typeof parameters.plan_content === "string"
-      ) {
+      } else if (name === EXIT_PLAN_MODE_TOOL_NAME && planContent) {
         contents.push({
           type: "content",
           content: {
             type: "text",
-            text: parameters.plan_content,
+            text: planContent,
           },
         });
       } else if (

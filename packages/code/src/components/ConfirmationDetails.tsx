@@ -38,6 +38,7 @@ const getActionDescription = (
 export interface ConfirmationDetailsProps {
   toolName: string;
   toolInput?: Record<string, unknown>;
+  planContent?: string;
   isExpanded?: boolean;
   onHeightMeasured?: (height: number) => void;
   isStatic?: boolean;
@@ -46,6 +47,7 @@ export interface ConfirmationDetailsProps {
 export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   toolName,
   toolInput,
+  planContent,
   isExpanded = false,
   onHeightMeasured,
   isStatic = false,
@@ -87,11 +89,8 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
 
       {toolName !== ASK_USER_QUESTION_TOOL_NAME &&
         toolName === EXIT_PLAN_MODE_TOOL_NAME &&
-        !!toolInput?.plan_content && (
-          <PlanDisplay
-            plan={toolInput.plan_content as string}
-            isExpanded={isExpanded}
-          />
+        !!planContent && (
+          <PlanDisplay plan={planContent} isExpanded={isExpanded} />
         )}
     </Box>
   );

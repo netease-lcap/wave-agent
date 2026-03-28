@@ -69,7 +69,7 @@ describe("Confirmation Border", () => {
     const { lastFrame } = render(
       <Confirmation
         toolName="ExitPlanMode"
-        toolInput={{ plan_content: "**Test** Plan Content" }}
+        planContent="**Test** Plan Content"
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
         onAbort={mockOnAbort}

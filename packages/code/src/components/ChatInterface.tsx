@@ -144,6 +144,7 @@ export const ChatInterface: React.FC = () => {
           <ConfirmationDetails
             toolName={confirmingTool!.name}
             toolInput={confirmingTool!.input}
+            planContent={confirmingTool!.planContent}
             isExpanded={isExpanded}
             onHeightMeasured={handleDetailsHeightMeasured}
             isStatic={isConfirmationTooTall}
