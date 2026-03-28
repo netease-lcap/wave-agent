@@ -46,19 +46,26 @@ async function runToolCallEventTest() {
   const client: Client = {
     requestPermission: async (params) => {
       console.log("Received permission request:", params);
-      return { outcome: "approved" };
+      return {
+        outcome: {
+          outcome: "selected",
+          optionId: "allow_once",
+        },
+      };
     },
     sessionUpdate: async (notification: SessionNotification) => {
       if (notification.update.sessionUpdate === "tool_call") {
         console.log(
           "✅ Received 'tool_call' event:",
           notification.update.title,
+          JSON.stringify(notification.update.content, null, 2),
         );
         toolCallReceived = true;
       } else if (notification.update.sessionUpdate === "tool_call_update") {
         console.log(
           "Received 'tool_call_update' event, status:",
           notification.update.status,
+          JSON.stringify(notification.update.content, null, 2),
         );
         toolCallUpdateReceived = true;
       }
