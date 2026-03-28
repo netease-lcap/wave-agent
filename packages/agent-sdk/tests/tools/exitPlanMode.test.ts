@@ -102,8 +102,9 @@ describe("exitPlanModeTool", () => {
       "ExitPlanMode",
       "plan",
       mockContext.canUseToolCallback,
-      { plan_content: planContent },
+      {},
       undefined,
+      planContent,
     );
   });
 

@@ -59,6 +59,8 @@ export interface ToolPermissionContext {
   hidePersistentOption?: boolean;
   /** The ID of the tool call that triggered this permission request */
   toolCallId?: string;
+  /** The content of the plan being exited from */
+  planContent?: string;
 }
 
 /** List of tools that require permission checks in default mode */

@@ -616,6 +616,7 @@ export class PermissionManager {
     callback?: PermissionCallback,
     toolInput?: Record<string, unknown>,
     toolCallId?: string,
+    planContent?: string,
   ): ToolPermissionContext {
     let suggestedPrefix: string | undefined;
     if (toolName === BASH_TOOL_NAME && toolInput?.command) {
@@ -637,6 +638,7 @@ export class PermissionManager {
       toolInput,
       suggestedPrefix,
       toolCallId,
+      planContent,
     };
 
     // Set hidePersistentOption for out-of-bounds file operations
