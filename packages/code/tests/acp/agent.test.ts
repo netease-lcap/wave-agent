@@ -659,15 +659,9 @@ describe("WaveAcpAgent", () => {
         toolCall: expect.objectContaining({
           toolCallId: "exit-plan-id",
           title: "ExitPlanMode",
-          content: [
-            {
-              type: "content",
-              content: {
-                type: "text",
-                text: "My Plan",
-              },
-            },
-          ],
+          rawInput: {
+            plan_content: "My Plan",
+          },
         }),
         options: [
           {
