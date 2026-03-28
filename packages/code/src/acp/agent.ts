@@ -13,6 +13,9 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  ASK_USER_QUESTION_TOOL_NAME,
+  AskUserQuestion,
+  AskUserQuestionOption,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import {
@@ -623,6 +626,31 @@ export class WaveAcpAgent implements AcpAgent {
           content: {
             type: "text",
             text: parameters.plan_content,
+          },
+        });
+      } else if (
+        name === ASK_USER_QUESTION_TOOL_NAME &&
+        Array.isArray(parameters.questions)
+      ) {
+        const markdown = (parameters.questions as AskUserQuestion[])
+          .map((q, i) => {
+            let text = `### Question ${i + 1}\n${q.question}\n`;
+            if (Array.isArray(q.options)) {
+              text += q.options
+                .map(
+                  (opt: AskUserQuestionOption) =>
+                    `- ${opt.label}${opt.description ? `: ${opt.description}` : ""}`,
+                )
+                .join("\n");
+            }
+            return text;
+          })
+          .join("\n\n");
+        contents.push({
+          type: "content",
+          content: {
+            type: "text",
+            text: markdown,
           },
         });
       }
