@@ -717,6 +717,46 @@ describe("WaveAcpAgent", () => {
     expect(decision.newPermissionMode).toBe("acceptEdits");
   });
 
+  it("should handle AskUserQuestion permission request specially", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    const mockAnswers = JSON.stringify({ Library: "Option 1" });
+    vi.mocked(mockConnection.requestPermission).mockResolvedValue({
+      outcome: { outcome: "selected", optionId: "dummy" },
+      message: mockAnswers,
+    } as unknown as RequestPermissionResponse);
+
+    const decision = await canUseToolCallback!({
+      toolName: "AskUserQuestion",
+      toolInput: { questions: [] },
+      permissionMode: "default",
+      toolCallId: "ask-id",
+    });
+
+    expect(decision.behavior).toBe("allow");
+    expect(decision.message).toBe(mockAnswers);
+    expect(mockConnection.requestPermission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: [],
+        toolCall: expect.objectContaining({
+          toolCallId: "ask-id",
+          title: "AskUserQuestion",
+        }),
+      }),
+    );
+  });
+
   it("should handle permission rejection", async () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
@@ -1540,6 +1580,89 @@ describe("WaveAcpAgent", () => {
               content: {
                 type: "text",
                 text: "Found 3 matches",
+              },
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("should include formatted bash command in tool call content", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      name: "Bash",
+      stage: "start",
+      parameters: JSON.stringify({
+        command: "ls -la",
+      }),
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "1",
+          content: [
+            {
+              type: "content",
+              content: {
+                type: "text",
+                text: "**Command:**\n```bash\nls -la\n```",
+              },
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("should include formatted bash shortResult in tool call content", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      name: "Bash",
+      stage: "end",
+      success: true,
+      shortResult: "test output",
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "1",
+          content: [
+            {
+              type: "content",
+              content: {
+                type: "text",
+                text: "```\ntest output\n```",
               },
             },
           ],
