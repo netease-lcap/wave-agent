@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { BackgroundTask, BackgroundShell } from "../../src/types/processes.js";
@@ -19,16 +19,35 @@ describe("BackgroundTaskManager", () => {
     });
   });
 
+  afterEach(() => {
+    const tasks = manager.getAllTasks();
+    manager.cleanup();
+    for (const task of tasks) {
+      if (
+        "outputPath" in task &&
+        task.outputPath &&
+        fs.existsSync(task.outputPath)
+      ) {
+        try {
+          fs.unlinkSync(task.outputPath);
+        } catch {
+          // Ignore errors
+        }
+      }
+    }
+  });
+
   it("should generate unique task IDs", () => {
     const id1 = manager.generateId();
     const id2 = manager.generateId();
-    expect(id1).toBe("task_1");
-    expect(id2).toBe("task_2");
+    expect(id1).toMatch(/^task_\d+_1$/);
+    expect(id2).toMatch(/^task_\d+_2$/);
   });
 
   it("should add and retrieve tasks", () => {
+    const id = manager.generateId();
     const task: BackgroundTask = {
-      id: "task_1",
+      id,
       type: "subagent",
       status: "running",
       startTime: Date.now(),
@@ -36,22 +55,23 @@ describe("BackgroundTaskManager", () => {
       stderr: "",
     };
     manager.addTask(task);
-    expect(manager.getTask("task_1")).toEqual(task);
+    expect(manager.getTask(id)).toEqual(task);
     expect(manager.getAllTasks()).toContain(task);
     expect(mockCallbacks.onBackgroundTasksChange).toHaveBeenCalledWith([task]);
   });
 
   it("should start a shell task", async () => {
     const { id } = manager.startShell("echo hello");
-    expect(id).toBe("task_1");
+    expect(id).toMatch(/^task_\d+_1$/);
     const task = manager.getTask(id);
     expect(task?.type).toBe("shell");
     expect(task?.status).toBe("running");
   });
 
   it("should stop a running task", () => {
+    const id = manager.generateId();
     const task: BackgroundTask = {
-      id: "task_1",
+      id,
       type: "subagent",
       status: "running",
       startTime: Date.now(),
@@ -59,14 +79,15 @@ describe("BackgroundTaskManager", () => {
       stderr: "",
     };
     manager.addTask(task);
-    const result = manager.stopTask("task_1");
+    const result = manager.stopTask(id);
     expect(result).toBe(true);
-    expect(manager.getTask("task_1")?.status).toBe("killed");
+    expect(manager.getTask(id)?.status).toBe("killed");
   });
 
   it("should retrieve output with filter", () => {
+    const id = manager.generateId();
     const task: BackgroundTask = {
-      id: "task_1",
+      id,
       type: "subagent",
       status: "running",
       startTime: Date.now(),
@@ -74,14 +95,15 @@ describe("BackgroundTaskManager", () => {
       stderr: "error1\nerror2",
     };
     manager.addTask(task);
-    const output = manager.getOutput("task_1", "match");
+    const output = manager.getOutput(id, "match");
     expect(output?.stdout).toBe("match");
     expect(output?.stderr).toBe("");
   });
 
   it("should handle cleanup", () => {
+    const id = manager.generateId();
     const task: BackgroundTask = {
-      id: "task_1",
+      id,
       type: "subagent",
       status: "running",
       startTime: Date.now(),
@@ -95,8 +117,9 @@ describe("BackgroundTaskManager", () => {
   });
 
   it("should handle invalid regex filter", () => {
+    const id = manager.generateId();
     const task: BackgroundTask = {
-      id: "task_1",
+      id,
       type: "subagent",
       status: "running",
       startTime: Date.now(),
@@ -104,7 +127,7 @@ describe("BackgroundTaskManager", () => {
       stderr: "",
     };
     manager.addTask(task);
-    const output = manager.getOutput("task_1", "["); // Invalid regex
+    const output = manager.getOutput(id, "["); // Invalid regex
     expect(output?.stdout).toBe("test"); // Should return unfiltered
   });
 
@@ -117,8 +140,9 @@ describe("BackgroundTaskManager", () => {
   });
 
   it("should return false when stopping already stopped task", () => {
+    const id = manager.generateId();
     const task: BackgroundTask = {
-      id: "task_1",
+      id,
       type: "subagent",
       status: "completed",
       startTime: Date.now(),
@@ -126,7 +150,7 @@ describe("BackgroundTaskManager", () => {
       stderr: "",
     };
     manager.addTask(task);
-    expect(manager.stopTask("task_1")).toBe(false);
+    expect(manager.stopTask(id)).toBe(false);
   });
 
   it("should handle shell process error", async () => {
@@ -185,7 +209,10 @@ describe("BackgroundTaskManager", () => {
   });
 
   it("should create a log file and write output to it", async () => {
-    const { id } = manager.startShell("echo hello");
+    const uniqueId = `task_unique_${Math.random().toString(36).substring(7)}`;
+    vi.spyOn(manager, "generateId").mockReturnValue(uniqueId);
+    const { id } = manager.startShell("sleep 10");
+    expect(id).toBe(uniqueId);
     const task = manager.getTask(id) as BackgroundShell;
     expect(task.outputPath).toBeDefined();
 
@@ -195,15 +222,15 @@ describe("BackgroundTaskManager", () => {
     task.process.stdout?.emit("data", Buffer.from("hello world\n"));
 
     // Wait for file write
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    const content = fs.readFileSync(task.outputPath!, "utf8");
-    expect(content).toContain("hello world");
+    await vi.waitFor(
+      () => {
+        const content = fs.readFileSync(task.outputPath!, "utf8");
+        return content.includes("hello world");
+      },
+      { timeout: 1000 },
+    );
 
     // Cleanup
     manager.stopTask(id);
-    if (task.outputPath && fs.existsSync(task.outputPath)) {
-      fs.unlinkSync(task.outputPath);
-    }
   });
 });

@@ -35,7 +35,7 @@ export class BackgroundTaskManager {
   }
 
   public generateId(): string {
-    return `task_${this.nextId++}`;
+    return `task_${process.pid}_${this.nextId++}`;
   }
 
   public addTask(task: BackgroundTask): void {
@@ -69,7 +69,7 @@ export class BackgroundTaskManager {
 
     // Create log file
     const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
-    const logStream = fs.createWriteStream(logPath, { flags: "a" });
+    const logStream = fs.createWriteStream(logPath, { flags: "w" });
 
     const shell: BackgroundShell = {
       id,
@@ -198,7 +198,7 @@ export class BackgroundTaskManager {
 
     // Create log file
     const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
-    const logStream = fs.createWriteStream(logPath, { flags: "a" });
+    const logStream = fs.createWriteStream(logPath, { flags: "w" });
 
     // Write initial output to log file
     if (initialStdout) {
