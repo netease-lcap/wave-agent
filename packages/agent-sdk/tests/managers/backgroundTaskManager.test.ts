@@ -40,8 +40,8 @@ describe("BackgroundTaskManager", () => {
   it("should generate unique task IDs", () => {
     const id1 = manager.generateId();
     const id2 = manager.generateId();
-    expect(id1).toMatch(/^task_\d+_1-/);
-    expect(id2).toMatch(/^task_\d+_2-/);
+    expect(id1).toMatch(/^task_\d+_1$/);
+    expect(id2).toMatch(/^task_\d+_2$/);
   });
 
   it("should add and retrieve tasks", () => {
@@ -62,7 +62,7 @@ describe("BackgroundTaskManager", () => {
 
   it("should start a shell task", async () => {
     const { id } = manager.startShell("echo hello");
-    expect(id).toMatch(/^task_\d+_1-/);
+    expect(id).toMatch(/^task_\d+_1$/);
     const task = manager.getTask(id);
     expect(task?.type).toBe("shell");
     expect(task?.status).toBe("running");

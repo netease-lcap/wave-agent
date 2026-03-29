@@ -6,7 +6,6 @@ import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
-import { generateRandomName } from "../utils/nameGenerator.js";
 
 export interface BackgroundTaskManagerCallbacks {
   onBackgroundTasksChange?: (tasks: BackgroundTask[]) => void;
@@ -36,7 +35,7 @@ export class BackgroundTaskManager {
   }
 
   public generateId(): string {
-    return `task_${process.pid}_${this.nextId++}-${generateRandomName()}`;
+    return `task_${process.pid}_${this.nextId++}`;
   }
 
   public addTask(task: BackgroundTask): void {
