@@ -46,6 +46,7 @@ const SAFE_COMMANDS = [
   "head",
   "tail",
   "wc",
+  "sleep",
 ];
 
 const DEFAULT_ALLOWED_RULES = [
@@ -87,6 +88,7 @@ const DEFAULT_ALLOWED_RULES = [
   "Bash(head*)",
   "Bash(tail*)",
   "Bash(wc*)",
+  "Bash(sleep*)",
 ];
 
 import { logger } from "../utils/globalLogger.js";
@@ -816,7 +818,8 @@ export class PermissionManager {
                   cmd === "cat" ||
                   cmd === "head" ||
                   cmd === "tail" ||
-                  cmd === "wc"
+                  cmd === "wc" ||
+                  cmd === "sleep"
                 ) {
                   return true;
                 }
@@ -929,7 +932,8 @@ export class PermissionManager {
             cmd === "cat" ||
             cmd === "head" ||
             cmd === "tail" ||
-            cmd === "wc"
+            cmd === "wc" ||
+            cmd === "sleep"
           ) {
             isSafe = true;
           } else {
