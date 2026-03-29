@@ -228,7 +228,10 @@ export class McpManager {
       const transport = new StdioClientTransport({
         command: server.config.command,
         args: server.config.args || [],
-        env: server.config.env || {},
+        env: {
+          ...(process.env as Record<string, string>),
+          ...(server.config.env || {}),
+        },
         cwd: this.workdir, // Use the agent's workdir as the process working directory
       });
 
