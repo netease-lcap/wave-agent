@@ -240,7 +240,10 @@ describe("McpManager", () => {
       expect(StdioClientTransport).toHaveBeenCalledWith({
         command: "npx",
         args: ["test-mcp-server"],
-        env: { TEST_VAR: "value" },
+        env: {
+          ...process.env,
+          TEST_VAR: "value",
+        },
         cwd: "/test/workdir",
       });
       expect(mockClient.connect).toHaveBeenCalledWith(mockTransport);
