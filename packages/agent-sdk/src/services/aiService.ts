@@ -253,9 +253,9 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
     processedTools = tools;
-
+    logger.info("当前采用的模型为", currentModel);
     if (isClaudeModel(currentModel)) {
-      logger.error("走到了claude的处理", currentModel);
+      logger.info("走到了claude的处理", currentModel);
       openaiMessages = transformMessagesForClaudeCache(
         openaiMessages,
         currentModel,
