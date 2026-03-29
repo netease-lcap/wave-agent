@@ -132,7 +132,7 @@ describe("bashTool", () => {
 
       expect(result.success).toBe(true);
       expect(result.content).toMatch(
-        /Command started in background with ID: task_\d+/,
+        /Command started in background with ID: task_\d+_\d+-[a-z-]+/,
       );
     });
 
@@ -503,7 +503,7 @@ describe("bashTool", () => {
       );
 
       expect(bashResult.success).toBe(true);
-      const taskId = bashResult.content.match(/task_(\d+)/)?.[0];
+      const taskId = bashResult.content.match(/task_\d+_\d+-[a-z-]+/)?.[0];
       expect(taskId).toBeDefined();
 
       // Wait a bit for output to accumulate
@@ -579,7 +579,7 @@ describe("bashTool", () => {
         context,
       );
 
-      const taskId = bashResult.content.match(/task_(\d+)/)?.[0];
+      const taskId = bashResult.content.match(/task_\d+_\d+-[a-z-]+/)?.[0];
       expect(taskId).toBeDefined();
 
       // Kill the process
@@ -635,7 +635,7 @@ describe("bashTool", () => {
         context,
       );
 
-      const taskId = bashResult.content.match(/task_(\d+)/)?.[0];
+      const taskId = bashResult.content.match(/task_\d+_\d+-[a-z-]+/)?.[0];
       expect(taskId).toBeDefined();
 
       // Wait for process to complete
