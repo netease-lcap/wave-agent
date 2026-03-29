@@ -502,6 +502,8 @@ export class WaveAcpAgent implements AcpAgent {
           kind: "allow_always",
         },
       ];
+    } else if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+      options = [];
     }
 
     const content = context.toolName
@@ -536,6 +538,13 @@ export class WaveAcpAgent implements AcpAgent {
 
       if (response.outcome.outcome === "cancelled") {
         return { behavior: "deny", message: "Cancelled by user" };
+      }
+
+      if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+        return {
+          behavior: "allow",
+          message: (response as unknown as { message?: string }).message,
+        };
       }
 
       const selectedOptionId = response.outcome.optionId;
@@ -593,7 +602,7 @@ export class WaveAcpAgent implements AcpAgent {
     const contents: ToolCallContent[] = [];
     if (parameters) {
       if (
-        name === "Write" &&
+        name === WRITE_TOOL_NAME &&
         typeof parameters.file_path === "string" &&
         typeof parameters.content === "string"
       ) {
@@ -604,7 +613,7 @@ export class WaveAcpAgent implements AcpAgent {
           newText: parameters.content,
         });
       } else if (
-        name === "Edit" &&
+        name === EDIT_TOOL_NAME &&
         typeof parameters.file_path === "string" &&
         typeof parameters.old_string === "string" &&
         typeof parameters.new_string === "string"
@@ -615,12 +624,15 @@ export class WaveAcpAgent implements AcpAgent {
           oldText: parameters.old_string,
           newText: parameters.new_string,
         });
-      } else if (name === "Bash" && typeof parameters.command === "string") {
+      } else if (
+        name === BASH_TOOL_NAME &&
+        typeof parameters.command === "string"
+      ) {
         contents.push({
           type: "content",
           content: {
             type: "text",
-            text: parameters.command,
+            text: "**Command:**\n```bash\n" + parameters.command + "\n```",
           },
         });
       } else if (name === EXIT_PLAN_MODE_TOOL_NAME && planContent) {
@@ -664,7 +676,10 @@ export class WaveAcpAgent implements AcpAgent {
         type: "content",
         content: {
           type: "text",
-          text: shortResult,
+          text:
+            name === BASH_TOOL_NAME
+              ? "```\n" + shortResult + "\n```"
+              : shortResult,
         },
       });
     }
