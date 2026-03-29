@@ -6,6 +6,7 @@ import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
+import { generateRandomName } from "../utils/nameGenerator.js";
 
 export interface BackgroundTaskManagerCallbacks {
   onBackgroundTasksChange?: (tasks: BackgroundTask[]) => void;
@@ -35,7 +36,7 @@ export class BackgroundTaskManager {
   }
 
   public generateId(): string {
-    return `task_${this.nextId++}`;
+    return `task_${process.pid}_${this.nextId++}-${generateRandomName()}`;
   }
 
   public addTask(task: BackgroundTask): void {
@@ -69,7 +70,7 @@ export class BackgroundTaskManager {
 
     // Create log file
     const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
-    const logStream = fs.createWriteStream(logPath, { flags: "a" });
+    const logStream = fs.createWriteStream(logPath, { flags: "w" });
 
     const shell: BackgroundShell = {
       id,
@@ -198,7 +199,7 @@ export class BackgroundTaskManager {
 
     // Create log file
     const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
-    const logStream = fs.createWriteStream(logPath, { flags: "a" });
+    const logStream = fs.createWriteStream(logPath, { flags: "w" });
 
     // Write initial output to log file
     if (initialStdout) {
