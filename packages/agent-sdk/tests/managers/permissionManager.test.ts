@@ -1991,6 +1991,39 @@ describe("PermissionManager", () => {
       expect(result.behavior).toBe("allow");
     });
 
+    it("should allow 'sleep 1' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "sleep 1" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'sleep 5s' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "sleep 5s" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'sleep 1 && ls' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "sleep 1 && ls" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
     it("should deny 'grep pattern file > output' by default", async () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
