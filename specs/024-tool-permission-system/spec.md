@@ -158,6 +158,14 @@ As a user, I want to be able to set the permission mode to `dontAsk` in my confi
 **Acceptance Scenarios**:
 1. **Given** the configuration file has `permissionMode: "dontAsk"`, **When** the agent starts, **Then** the effective permission mode is `dontAsk`.
 
+### User Story 19 - Bash Write Redirection to Dedicated Tools (Priority: P1)
+
+As a user, I want the agent to use the dedicated `Write` and `Edit` tools for file modifications instead of bash redirections, so that I have better visibility and control over file changes.
+
+**Acceptance Scenarios**:
+1. **Given** the agent attempts to run a bash command with write redirection (e.g., `echo "content" > file.txt`), **When** the command is executed, **Then** the system MUST automatically deny the operation and provide a reminder to use the `Write` or `Edit` tools.
+2. **Given** the agent attempts to run a bash command with stream redirection (e.g., `ls 2>&1`), **When** the command is executed, **Then** the system SHOULD NOT automatically deny it based on write redirection rules (though it may still require normal bash permissions).
+
 ## Requirements
 
 ### Functional Requirements
@@ -170,7 +178,7 @@ As a user, I want to be able to set the permission mode to `dontAsk` in my confi
 - **FR-005**: System MUST support a `canUseTool` callback in the Agent SDK for custom permission logic.
 - **FR-006**: System MUST support cycling through permission modes (default -> acceptEdits -> bypassPermissions) via `Shift+Tab`.
 - **FR-021**: System MUST hide the "Don't ask again" option for commands identified as dangerous or out-of-bounds.
-- **FR-022**: System MUST detect write redirections (`>`, `>>`, etc.) in bash commands and treat them as dangerous, hiding the "Don't ask again" option.
+- **FR-022**: System MUST automatically deny bash commands with write redirections (`>`, `>>`, etc.) and remind the agent to use the dedicated `Write` or `Edit` tools for file modifications.
 - **FR-036**: Selecting "Yes, and auto-accept edits" MUST set the current session's permission mode to `acceptEdits`.
 - **FR-037**: Selecting "Yes, and don't ask again for this command in this workdir" MUST save the rule `Bash([command])` to the `permissions.allow` array in `.wave/settings.local.json`.
 - **FR-045**: In `acceptEdits` mode, the system MUST automatically grant permission for `Edit`, `Delete`, and `Write` operations within the Safe Zone.
@@ -214,7 +222,7 @@ As a user, I want to be able to set the permission mode to `dontAsk` in my confi
 - **FR-011**: System MUST parse complex bash commands and identify all individual "simple commands" joined by operators (`&&`, `||`, `;`, `|`).
 - **FR-012**: A complex command MUST be automatically permitted ONLY IF every constituent simple command matches a permitted rule.
 - **FR-013**: System MUST strip inline environment variable assignments (e.g., `VAR=val cmd`) before matching.
-- **FR-025**: System MUST ensure that bash commands with write redirections are not automatically allowed by default rules (e.g., `Bash(echo*)`).
+- **FR-025**: System MUST automatically deny bash commands with write redirections and remind the agent to use dedicated tools, even if the command would otherwise match a default allowed rule (e.g., `Bash(echo*)`).
 
 #### Deny Rules & Path-based Permissions
 - **FR-014**: System MUST support a `permissions.deny` field in settings.
