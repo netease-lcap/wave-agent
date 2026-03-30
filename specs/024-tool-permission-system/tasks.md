@@ -92,9 +92,3 @@
 - [x] T065 Implement Safe Zone check in `PermissionManager.checkPermission` for `Write`, `Edit`, `Delete`, and `mkdir`.
 - [x] T066 Ensure out-of-bounds operations always require confirmation, regardless of `acceptEdits` mode.
 - [x] T067 Add unit tests for Safe Zone logic and out-of-bounds operations.
-
-## Phase 16: Bash Write Redirection to Dedicated Tools
-- [x] T068 Enhance `hasWriteRedirections` to ignore file descriptor redirections (e.g., `2>&1`).
-- [x] T069 Implement automatic denial of bash write redirections in `PermissionManager.checkPermission`.
-- [x] T070 Provide a reminder message to use `Write` or `Edit` tools when bash write redirection is denied.
-- [x] T071 Add unit tests for bash write redirection interception and reminder message.
