@@ -253,9 +253,9 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
     processedTools = tools;
-    logger.info("当前采用的模型为", currentModel);
+    console.log("当前采用的模型为", currentModel);
     if (isClaudeModel(currentModel)) {
-      logger.info("走到了claude的处理", currentModel);
+      console.log("走到了claude的处理", currentModel);
       openaiMessages = transformMessagesForClaudeCache(
         openaiMessages,
         currentModel,
@@ -333,8 +333,8 @@ Today's date: ${new Date().toISOString().split("T")[0]}
       });
 
       if (!response?.choices?.[0]?.message) {
-        logger.error("callAgent 返回为空-原始 responese", response);
-        logger.error("callAgent 返回为空-请求 messages", openaiMessages);
+        console.error("callAgent 返回为空-原始 responese", response);
+        console.error("callAgent 返回为空-请求 messages", openaiMessages);
         // eslint-disable-next-line no-warning-comments
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         throw new Error(
