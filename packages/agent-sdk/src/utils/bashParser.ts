@@ -381,24 +381,11 @@ export function hasWriteRedirections(command: string): boolean {
         continue;
       }
 
-      // Ignore file descriptor redirections like 2>&1, >&2, etc.
-      if (target.startsWith("&") && /^\d+$/.test(target.substring(1))) {
-        i = k - 1;
-        continue;
-      }
-
       return true;
     }
   }
 
   return false;
-}
-
-/**
- * Alias for hasWriteRedirections, used for semantic clarity in permission checks.
- */
-export function isBashWriteRedirect(command: string): boolean {
-  return hasWriteRedirections(command);
 }
 
 /**
