@@ -26,5 +26,4 @@ Represents any operation running asynchronously in the background.
 
 ## Validation Rules
 - `task_id` must follow the pattern `task_\d+`.
-- `TaskOutput` timeout must be between 0 and 600,000 ms.
 - `TaskStop` can only be called on tasks in the `running` state.

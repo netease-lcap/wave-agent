@@ -36,7 +36,7 @@ export const agentTool: ToolPlugin = {
           run_in_background: {
             type: "boolean",
             description:
-              "Set to true to run this command in the background. Use TaskOutput to read the output later.",
+              "Set to true to run this command in the background. Use Read to read the output later.",
           },
         },
         required: ["description", "prompt", "subagent_type"],

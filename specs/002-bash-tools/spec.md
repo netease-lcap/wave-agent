@@ -27,14 +27,13 @@ As an AI agent, I want to run long-running commands in the background and retrie
 
 **Why this priority**: Essential for tasks like starting a development server or running a long test suite without blocking the agent.
 
-**Independent Test**: Start a background process with `sleep 5 && echo "done"`, check its output with `BashOutput` after 5 seconds.
+**Independent Test**: Start a background process with `sleep 5 && echo "done"`, check its output with the `Read` tool after 5 seconds.
 
 **Acceptance Scenarios**:
 
 1. **Given** `run_in_background` is true, **When** `Bash` is called, **Then** it MUST return a `bash_id` and an `outputPath` to a real-time log file immediately.
-2. **Given** a valid `bash_id`, **When** `TaskOutput` (formerly `BashOutput`) is called, **Then** it MUST return the accumulated output.
-3. **Given** a running background process, **When** `TaskStop` (formerly `KillBash`) is called with its ID, **Then** the process MUST be terminated.
-4. **Given** a background process started, **When** I read the provided `outputPath` file, **Then** I should see the real-time output of the process.
+2. **Given** a running background process, **When** `TaskStop` (formerly `KillBash`) is called with its ID, **Then** the process MUST be terminated.
+3. **Given** a background process started, **When** I read the provided `outputPath` file using the `Read` tool, **Then** I should see the real-time output of the process.
 
 ---
 
@@ -68,8 +67,7 @@ As an AI agent, I want to see the output of foreground commands in real-time so 
 - **FR-001**: System MUST provide a `Bash` tool for executing shell commands.
 - **FR-002**: `Bash` tool MUST support an optional `timeout` parameter (default 120s for foreground).
 - **FR-003**: `Bash` tool MUST support a `run_in_background` parameter.
-- **FR-004**: System MUST provide a `TaskOutput` (formerly `BashOutput`) tool to retrieve output from background processes using a `bash_id`.
-- **FR-005**: `TaskOutput` tool SHOULD support filtering output lines using a regular expression.
+- **FR-004**: System MUST NOT provide a `TaskOutput` (formerly `BashOutput`) tool; instead, agents SHOULD use the `Read` tool to read the `outputPath`.
 - **FR-006**: System MUST provide a `TaskStop` (formerly `KillBash`) tool to terminate background processes.
 - **FR-007**: All bash output MUST have ANSI color codes stripped.
 - **FR-008**: Foreground bash output MUST be truncated if it exceeds 30,000 characters.
@@ -80,6 +78,7 @@ As an AI agent, I want to see the output of foreground commands in real-time so 
 - **FR-013**: Foreground `Bash` tool MUST support real-time streaming updates to both `shortResult` and the full `result` content.
 - **FR-014**: Real-time updates for foreground `Bash` tool MUST be throttled to once per second.
 - **FR-015**: Real-time `shortResult` for foreground `Bash` tool MUST show the last 3 lines of output.
+- **FR-016**: The `Read` tool MUST work for reading the `outputPath` of background processes.
 
 ### Key Entities *(include if feature involves data)*
 

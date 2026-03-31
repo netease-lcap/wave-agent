@@ -17,24 +17,11 @@ await agent.callTool("Task", {
 
 ## Checking Task Progress
 
-To see what the task has produced so far:
+To see what the task has produced so far, use the `Read` tool with the `outputPath` provided when the task started:
 
 ```typescript
-await agent.callTool("TaskOutput", {
-  task_id: "task_1",
-  block: false
-});
-```
-
-## Waiting for Completion
-
-To wait for a task to finish and get the final result:
-
-```typescript
-await agent.callTool("TaskOutput", {
-  task_id: "task_1",
-  block: true,
-  timeout: 60000
+await agent.callTool("Read", {
+  file_path: "/tmp/task_1_output.log"
 });
 ```
 

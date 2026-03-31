@@ -28,13 +28,12 @@ As a user, I want to retrieve the output of a background task (either while it's
 
 **Why this priority**: Background tasks are useless if their results cannot be inspected. This provides the necessary visibility into background operations. Real-time monitoring via log files provides an even better experience for long-running tasks.
 
-**Independent Test**: Can be tested by using the `TaskOutput` tool with a valid task ID and verifying that the output (logs, results, etc.) is returned, or by reading the `outputPath` provided when the task started.
+**Independent Test**: Can be tested by using the `Read` tool with the `outputPath` provided when the task started.
 
 **Acceptance Scenarios**:
 
-1. **Given** a running background task, **When** I use `TaskOutput` with `block: true`, **Then** the tool should wait for the task to complete and then return the full output.
-2. **Given** a running background task, **When** I use `TaskOutput` with `block: false`, **Then** the tool should immediately return the output generated so far without waiting for completion.
-3. **Given** a background task started, **When** I access the `outputPath` file, **Then** I should see the same output as `TaskOutput` but in real-time.
+1. **Given** a background task started, **When** I access the `outputPath` file using the `Read` tool, **Then** I should see the output generated so far.
+2. **Given** a background task is running, **When** I read the provided log file path, **Then** I should see the real-time output of the task.
 
 ---
 
@@ -97,14 +96,11 @@ As a user running a long-running bash command or a subagent task in the foregrou
 
 - **FR-001**: The `Task` tool MUST support a `run_in_background` boolean parameter.
 - **FR-002**: When `run_in_background` is true, the system MUST initiate the task asynchronously and return a unique `task_id` and an `outputPath` to a real-time log file immediately.
-- **FR-003**: The system MUST provide a `TaskOutput` tool to retrieve output from background tasks.
-- **FR-004**: `TaskOutput` MUST support a `task_id` parameter.
-- **FR-005**: `TaskOutput` MUST support a `block` parameter (defaulting to true) to determine whether to wait for task completion.
-- **FR-006**: `TaskOutput` MUST support a `timeout` parameter for blocking calls (default: 30000ms, max: 600000ms).
+- **FR-003**: The system MUST NOT provide a `TaskOutput` tool; instead, agents SHOULD use the `Read` tool to read the `outputPath`.
 - **FR-007**: The system MUST provide a `TaskStop` tool to terminate running background tasks.
 - **FR-008**: `TaskStop` MUST support a `task_id` parameter.
-- **FR-009**: The `BashOutput` and `KillBash` tools MUST be removed/deprecated in favor of the unified `TaskOutput` and `TaskStop` tools.
-- **FR-010**: `TaskOutput` MUST work for both background shell tasks and async agent tasks.
+- **FR-009**: The `BashOutput` and `KillBash` tools MUST be removed/deprecated in favor of the unified `Read` and `TaskStop` tools.
+- **FR-010**: The `Read` tool MUST work for reading the `outputPath` of both background shell tasks and async agent tasks.
 - **FR-011**: Background tasks MUST NOT update their `shortResult` while running to prevent unnecessary message updates and "unknown" tool blocks in the UI.
 - **FR-012**: The CLI MUST implement a `/tasks` command to list all active and recently completed tasks.
 - **FR-013**: The legacy `/bashes` command MUST be removed from the CLI.

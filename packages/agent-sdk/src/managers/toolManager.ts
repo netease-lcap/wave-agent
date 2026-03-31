@@ -1,6 +1,5 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "../tools/types.js";
 import { bashTool } from "../tools/bashTool.js";
-import { taskOutputTool } from "../tools/taskOutputTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
 import { editTool } from "../tools/editTool.js";
 import { writeTool } from "../tools/writeTool.js";
@@ -103,7 +102,6 @@ class ToolManager {
   public initializeBuiltInTools(): void {
     const builtInTools = [
       bashTool,
-      taskOutputTool,
       taskStopTool,
       editTool,
       writeTool,

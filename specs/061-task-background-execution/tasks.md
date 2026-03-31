@@ -57,19 +57,17 @@
 
 **Goal**: Retrieve output from running or completed background tasks
 
-**Independent Test**: Use `TaskOutput` tool with a valid task ID and verify output is returned.
+**Independent Test**: Use `Read` tool with the `outputPath` provided when the task started.
 
 ### Tests for User Story 2 (REQUIRED) ⚠️
 
-- [x] T013 [P] [US2] Integration test for `TaskOutput` tool in `packages/agent-sdk/tests/tools/taskOutputTool.test.ts`
+- [x] T013 [P] [US2] Integration test for reading `outputPath` in `packages/agent-sdk/tests/tools/bashTool.test.ts`
 
 ### Implementation for User Story 2
 
-- [x] T014 [US2] Implement `TaskOutput` tool in `packages/agent-sdk/src/tools/taskOutputTool.ts`
-- [x] T015 [US2] Register `TaskOutput` tool in `ToolManager` in `packages/agent-sdk/src/managers/toolManager.ts`
 - [x] T016 [US2] Remove `BashOutput` tool from `packages/agent-sdk/src/tools/bashTool.ts` and `ToolManager`
 
-**Checkpoint**: Task output can be retrieved via the unified `TaskOutput` tool.
+**Checkpoint**: Task output can be retrieved via the `Read` tool.
 
 ---
 
@@ -118,7 +116,6 @@
 - [x] T026 [P] Run `pnpm run type-check` and `pnpm lint` across all packages
 - [x] T027 [P] Ensure all tests pass with `pnpm test`
 - [x] T028 Final code cleanup and refactoring of `BackgroundBashManager` (removal if fully migrated)
-- [x] T029 [US2] Update `TaskOutput` to return last few lines of log file on timeout
 
 ---
 
@@ -170,6 +167,6 @@ Task: "Integration test for background shell execution in packages/agent-sdk/tes
 
 1. Complete Setup + Foundational → Foundation ready
 2. Add User Story 1 → MVP!
-3. Add User Story 2 → Output retrieval
+3. Add User Story 2 → Output retrieval via Read tool
 4. Add User Story 3 → Termination
 5. Add User Story 4 → CLI Management

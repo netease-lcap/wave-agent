@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs";
 import { bashTool } from "../../src/tools/bashTool.js";
-import { taskOutputTool } from "../../src/tools/taskOutputTool.js";
 import { taskStopTool } from "../../src/tools/taskStopTool.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
@@ -462,94 +461,6 @@ describe("bashTool", () => {
 
       expect(result.success).toBe(true);
       expect(result.shortResult).toBe("... +2 lines\nline3\nline4\nline5");
-    });
-  });
-
-  describe("TaskOutput tool", () => {
-    it("should retrieve output from background shell", async () => {
-      const mockProcess = {
-        pid: 1234,
-        stdout: {
-          on: vi.fn((event, callback) => {
-            if (event === "data") {
-              setTimeout(
-                () => callback(Buffer.from("output from bg process")),
-                10,
-              );
-            }
-          }),
-        },
-        stderr: {
-          on: vi.fn(),
-        },
-        on: vi.fn((event, callback) => {
-          if (event === "exit") {
-            setTimeout(() => callback(0), 50);
-          }
-        }),
-        kill: vi.fn(),
-        killed: false,
-      };
-
-      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
-
-      // Start background process
-      const bashResult = await bashTool.execute(
-        {
-          command: "echo hello",
-          run_in_background: true,
-        },
-        context,
-      );
-
-      expect(bashResult.success).toBe(true);
-      const taskId = bashResult.content.match(/task_\d+_\d+/)?.[0];
-      expect(taskId).toBeDefined();
-
-      // Wait a bit for output to accumulate
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      // Get output
-      const outputResult = await taskOutputTool.execute(
-        {
-          task_id: taskId!,
-        },
-        context,
-      );
-
-      expect(outputResult.success).toBe(true);
-      expect(outputResult.content).toBe("output from bg process");
-    });
-
-    it("should handle non-existent task ID", async () => {
-      const result = await taskOutputTool.execute(
-        {
-          task_id: "task_999",
-        },
-        context,
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Task with ID task_999 not found");
-    });
-
-    it("should validate task_id parameter", async () => {
-      const result = await taskOutputTool.execute({}, context);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        "task_id parameter is required and must be a string",
-      );
-    });
-
-    it("should format compact params correctly", () => {
-      const params1 = { task_id: "task_1" };
-      const result1 = taskOutputTool.formatCompactParams?.(params1, context);
-      expect(result1).toBe("task_1 (blocking)");
-
-      const params2 = { task_id: "task_1", block: false };
-      const result2 = taskOutputTool.formatCompactParams?.(params2, context);
-      expect(result2).toBe("task_1");
     });
   });
 
