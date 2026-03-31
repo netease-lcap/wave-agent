@@ -7,11 +7,12 @@ import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import { Agent, stripAnsiColors, type Task } from "wave-agent-sdk";
 
 // Mock Agent.create to control the agent instance
-vi.mock("wave-agent-sdk", async () => {
-  const actual = await vi.importActual("wave-agent-sdk");
+vi.mock("wave-agent-sdk", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
     Agent: {
+      ...(actual.Agent as Record<string, unknown>),
       create: vi.fn(),
     },
   };

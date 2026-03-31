@@ -151,6 +151,8 @@ Any promises made to the user
 Be concise but complete—err on the side of including information that would prevent duplicate work or repeated mistakes. Write in a way that enables immediate resumption of the task.
 Wrap your summary in <summary></summary> tags.`;
 
+export const WEB_CONTENT_SYSTEM_PROMPT = `You are a helpful assistant that extracts information from web content. The content is provided in Markdown format.`;
+
 export function buildSystemPrompt(
   basePrompt: string | undefined,
   tools: ToolPlugin[],
