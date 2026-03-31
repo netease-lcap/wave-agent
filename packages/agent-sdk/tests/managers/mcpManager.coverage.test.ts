@@ -52,7 +52,21 @@ describe("McpManager Coverage", () => {
 
       await mcpManager.initialize("/test/workdir", true);
 
+      // Wait for background connection attempts
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       expect(connectSpy).toHaveBeenCalledTimes(2);
+      expect(logger.debug).toHaveBeenCalledWith("Initializing MCP servers...");
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Connecting to MCP server: server1",
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Connecting to MCP server: server2",
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        "MCP servers initialization started in background",
+      );
+
       expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining(
           "Successfully connected to MCP server: server1",
@@ -75,8 +89,15 @@ describe("McpManager Coverage", () => {
       );
 
       await mcpManager.initialize("/test/workdir", true);
+
+      // Wait for background connection attempts
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Error connecting to MCP server server1"),
+        expect.stringContaining(
+          "Background connection to MCP server server1 failed:",
+        ),
+        expect.any(Error),
       );
     });
   });
