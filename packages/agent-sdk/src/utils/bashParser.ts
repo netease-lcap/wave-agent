@@ -58,7 +58,8 @@ export function splitBashCommand(command: string): string[] {
     else if (char === "|" && nextChar === "&") opLen = 2;
     else if (char === ";") opLen = 1;
     else if (char === "|") opLen = 1;
-    else if (char === "&" && nextChar !== ">") opLen = 1;
+    else if (char === "&" && nextChar !== ">" && command[i - 1] !== ">")
+      opLen = 1;
 
     if (opLen > 0) {
       // Check if preceded by an odd number of backslashes
@@ -381,11 +382,67 @@ export function hasWriteRedirections(command: string): boolean {
         continue;
       }
 
+      // Ignore file descriptor redirections like 2>&1, >&2, etc.
+      if (target.startsWith("&") && /^\d+$/.test(target.substring(1))) {
+        i = k - 1;
+        continue;
+      }
+
       return true;
     }
   }
 
   return false;
+}
+
+/**
+ * Checks if a bash command contains any heredocs (<<, <<-).
+ */
+export function hasHeredoc(command: string): boolean {
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (inSingleQuote || inDoubleQuote) {
+      continue;
+    }
+
+    if (char === "<" && command[i + 1] === "<") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Checks if a bash command is a heredoc write operation (e.g., cat <<EOF > file).
+ */
+export function isBashHeredocWrite(command: string): boolean {
+  return hasHeredoc(command) && hasWriteRedirections(command);
 }
 
 /**
