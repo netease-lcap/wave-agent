@@ -669,6 +669,16 @@ export class WaveAcpAgent implements AcpAgent {
           },
         });
       }
+
+      if (contents.length === 0) {
+        contents.push({
+          type: "content",
+          content: {
+            type: "text",
+            text: "```json\n" + JSON.stringify(parameters, null, 2) + "\n```",
+          },
+        });
+      }
     }
 
     if (shortResult) {

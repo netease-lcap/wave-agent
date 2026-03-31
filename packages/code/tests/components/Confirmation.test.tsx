@@ -182,6 +182,30 @@ describe("Confirmation", () => {
       expect(frame).not.toContain("Yes, and don't ask again");
       expect(frame).toContain("Type here to tell Wave what to change");
     });
+
+    it("should render raw JSON for unknown tools", async () => {
+      const { lastFrame } = render(
+        <Confirmation
+          toolName="UnknownTool"
+          toolInput={{ arg1: "val1", arg2: 42 }}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Tool: UnknownTool",
+        );
+      });
+
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("Tool: UnknownTool");
+      expect(frame).toContain("Execute operation");
+      expect(frame).toContain('"arg1": "val1"');
+      expect(frame).toContain('"arg2": 42');
+    });
   });
 
   describe("User Interaction Tests", () => {
