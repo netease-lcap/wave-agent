@@ -18,10 +18,11 @@ As a user, I want to switch the system into a "Plan Mode" so that I can have the
 
 1. **Given** the system is in "default" mode, **When** the user presses Shift+Tab, **Then** the system switches to "acceptEdits" mode.
 2. **Given** the system is in "acceptEdits" mode, **When** the user presses Shift+Tab, **Then** the system switches to "plan" mode.
-3. **Given** the system is in "plan" mode, **When** the user presses Shift+Tab, **Then** the system switches back to "default" mode.
-4. **Given** the system switches to "plan" mode, **When** the mode is active, **Then** a plan file path with a random English name is determined in `~/.wave/plans/`.
-5. **Given** the system is in "plan" mode, **When** the LLM uses the `Write` or `Edit` tool on the designated plan file, **Then** the action is permitted.
-6. **Given** the system is in "plan" mode, **When** the user looks at the UI, **Then** there is a clear visual indicator that plan mode is active.
+3. **Given** the system is in "plan" mode, **When** the user presses Shift+Tab, **Then** the system switches back to "default" mode (unless `bypassPermissions` was enabled at start).
+4. **Given** the system was started with bypass flags, **When** the user is in "plan" mode and presses Shift+Tab, **Then** the system switches to "bypassPermissions" mode.
+5. **Given** the system switches to "plan" mode, **When** the mode is active, **Then** a plan file path with a random English name is determined in `~/.wave/plans/`.
+6. **Given** the system is in "plan" mode, **When** the LLM uses the `Write` or `Edit` tool on the designated plan file, **Then** the action is permitted.
+7. **Given** the system is in "plan" mode, **When** the user looks at the UI, **Then** there is a clear visual indicator that plan mode is active.
 
 ---
 
@@ -92,6 +93,7 @@ As an agent in plan mode, I want to use the `ExitPlanMode` tool after I have fin
 
 - **FR-001**: System MUST support a "plan" permission state.
 - **FR-002**: Users MUST be able to cycle through permission modes in the following order: default -> acceptEdits -> plan -> default, using the Shift+Tab keyboard shortcut.
+- **FR-002.1**: `bypassPermissions` MUST ONLY be included in the cycle if the session was started with `--dangerously-skip-permissions` or `--permission-mode bypassPermissions`.
 - **FR-003**: When in plan mode, the system MUST restrict the LLM to read-only actions for all files except the designated plan file.
 - **FR-004**: When in plan mode, the system MUST allow the LLM to execute commands.
 - **FR-005**: When plan mode is activated, the system MUST determine a plan file path in `~/.wave/plans/` with a human-readable name (adjective-noun format). This name MUST be deterministic within a session chain by using the `rootSessionId` as a seed, ensuring the same plan file is reused even after message compression or session restoration.

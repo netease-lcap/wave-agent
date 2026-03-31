@@ -100,8 +100,12 @@ export const cyclePermissionMode = (
   currentMode: PermissionMode,
   dispatch: React.Dispatch<InputAction>,
   callbacks: Partial<InputManagerCallbacks>,
+  allowBypassInCycle: boolean = false,
 ) => {
   const modes: PermissionMode[] = ["default", "acceptEdits", "plan"];
+  if (allowBypassInCycle) {
+    modes.push("bypassPermissions");
+  }
   const currentIndex = modes.indexOf(currentMode);
   const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length;
   const nextMode = modes[nextIndex];
@@ -687,7 +691,12 @@ export const handleInput = async (
   }
 
   if (key.tab && key.shift) {
-    cyclePermissionMode(state.permissionMode, dispatch, callbacks);
+    cyclePermissionMode(
+      state.permissionMode,
+      dispatch,
+      callbacks,
+      state.allowBypassInCycle,
+    );
     return true;
   }
 

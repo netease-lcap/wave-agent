@@ -39,6 +39,7 @@ describe("ChatInterface Loading State", () => {
     slashCommands: [],
     hasSlashCommand: vi.fn(),
     isTaskListVisible: true,
+    allowBypassInCycle: false,
     getModelConfig: vi.fn().mockReturnValue({
       model: "test-model",
       fastModel: "test-fast-model",
@@ -49,6 +50,7 @@ describe("ChatInterface Loading State", () => {
     isManagerReady: true,
     showRewindManager: false,
     setPermissionMode: vi.fn(),
+    setAllowBypassInCycle: vi.fn(),
   };
 
   it("should show loading indicator when isLoading is true", () => {

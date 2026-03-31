@@ -75,6 +75,7 @@ export interface InputState {
   showStatusCommand: boolean;
   showPluginManager: boolean;
   permissionMode: PermissionMode;
+  allowBypassInCycle: boolean;
   selectorJustUsed: boolean;
   isPasting: boolean;
   pasteBuffer: string;
@@ -109,6 +110,7 @@ export const initialState: InputState = {
   showStatusCommand: false,
   showPluginManager: false,
   permissionMode: "default",
+  allowBypassInCycle: false,
   selectorJustUsed: false,
   isPasting: false,
   pasteBuffer: "",
@@ -146,6 +148,7 @@ export type InputAction =
   | { type: "SET_SHOW_STATUS_COMMAND"; payload: boolean }
   | { type: "SET_SHOW_PLUGIN_MANAGER"; payload: boolean }
   | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }
+  | { type: "SET_ALLOW_BYPASS_IN_CYCLE"; payload: boolean }
   | { type: "SET_SELECTOR_JUST_USED"; payload: boolean }
   | { type: "INSERT_TEXT_WITH_PLACEHOLDER"; payload: string }
   | { type: "CLEAR_LONG_TEXT_MAP" }
@@ -340,6 +343,8 @@ export function inputReducer(
       };
     case "SET_PERMISSION_MODE":
       return { ...state, permissionMode: action.payload };
+    case "SET_ALLOW_BYPASS_IN_CYCLE":
+      return { ...state, allowBypassInCycle: action.payload };
     case "SET_SELECTOR_JUST_USED":
       return { ...state, selectorJustUsed: action.payload };
     case "INSERT_TEXT_WITH_PLACEHOLDER": {

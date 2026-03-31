@@ -307,6 +307,10 @@ export const useInputManager = (
     callbacksRef.current.onPermissionModeChange?.(mode);
   }, []);
 
+  const setAllowBypassInCycle = useCallback((allow: boolean) => {
+    dispatch({ type: "SET_ALLOW_BYPASS_IN_CYCLE", payload: allow });
+  }, []);
+
   const addImage = useCallback((imagePath: string, mimeType: string) => {
     dispatch({ type: "ADD_IMAGE", payload: { path: imagePath, mimeType } });
   }, []);
@@ -437,6 +441,7 @@ export const useInputManager = (
     setShowStatusCommand,
     setShowPluginManager,
     setPermissionMode,
+    setAllowBypassInCycle,
 
     // Image management
     addImage,

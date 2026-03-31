@@ -268,6 +268,20 @@ describe("inputHandlers", () => {
         payload: "default",
       });
     });
+
+    it("should include bypassPermissions in cycle if allowBypassInCycle is true", () => {
+      cyclePermissionMode("plan", dispatch, callbacks, true);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_PERMISSION_MODE",
+        payload: "bypassPermissions",
+      });
+
+      cyclePermissionMode("bypassPermissions", dispatch, callbacks, true);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_PERMISSION_MODE",
+        payload: "default",
+      });
+    });
   });
 
   describe("updateSearchQueriesForActiveSelectors", () => {

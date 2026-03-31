@@ -36,6 +36,14 @@ Auto-deny any restricted tool that isn't pre-approved. No user prompts will be s
 }
 ```
 
+## Mode Cycling
+
+You can quickly switch between permission modes during a session using the `Shift+Tab` keyboard shortcut.
+
+- **Cycle Order**: `default` -> `acceptEdits` -> `plan` -> `default`.
+- **Bypass Mode**: `bypassPermissions` is only included in the cycle if the session was started with `--dangerously-skip-permissions` or `--permission-mode bypassPermissions`.
+- **dontAsk Mode**: This mode is never included in the cycle to prevent accidental auto-denial of tools.
+
 ## Configuration (`settings.json`)
 
 Wave supports three levels of configuration with proper precedence:

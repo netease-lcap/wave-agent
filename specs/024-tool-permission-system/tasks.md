@@ -86,14 +86,7 @@
 - [x] T061 Ensure `dontAsk` mode is excluded from `Shift+Tab` cycling.
 - [x] T062 Verify `permissionMode: "dontAsk"` in configuration correctly sets the mode.
 
-## Phase 15: Secure File Access (from 047)
-- [x] T063 Update `WaveConfiguration` type to include `permissions.additionalDirectories: string[]`.
-- [x] T064 Update `PermissionManager` to store and use `additionalDirectories` for Safe Zone checks.
-- [x] T065 Implement Safe Zone check in `PermissionManager.checkPermission` for `Write`, `Edit`, `Delete`, and `mkdir`.
-- [x] T066 Ensure out-of-bounds operations always require confirmation, regardless of `acceptEdits` mode.
-- [x] T067 Add unit tests for Safe Zone logic and out-of-bounds operations.
-- [x] T068 Implement `hasHeredoc` and `isBashHeredocWrite` in `bashParser.ts`.
-- [x] T069 Restore file descriptor redirection exclusion in `hasWriteRedirections`.
-- [x] T070 Implement automatic denial of bash heredoc write redirections in `PermissionManager.checkPermission`.
-- [x] T071 Provide a reminder message to use `Write` or `Edit` tools when bash heredoc write redirection is denied.
-- [x] T072 Add unit tests for bash heredoc write redirection interception and reminder message.
+## Phase 16: Restrict bypassPermissions in Cycle
+- [x] T073 Restrict `bypassPermissions` in the `Shift+Tab` cycle to only when explicitly enabled at start.
+- [x] T074 Update `InputManager` and `ChatProvider` to track and enforce this restriction.
+- [x] T075 Add unit tests for restricted mode cycling.

@@ -77,6 +77,7 @@ export interface ChatContextType {
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
+  allowBypassInCycle: boolean;
   // Permission confirmation state
   isConfirmationVisible: boolean;
   confirmingTool?: {
@@ -237,6 +238,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Confirmation too tall state
   const [wasLastDetailsTooTall, setWasLastDetailsTooTall] = useState(0);
+  const allowBypassInCycle =
+    !!bypassPermissions || initialPermissionMode === "bypassPermissions";
 
   const agentRef = useRef<Agent | null>(null);
   const taskUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -698,6 +701,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     subagentLatestTokens,
     permissionMode,
     setPermissionMode,
+    allowBypassInCycle,
     isConfirmationVisible,
     confirmingTool,
     showConfirmation,
