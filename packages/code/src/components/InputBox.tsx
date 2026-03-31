@@ -10,6 +10,7 @@ import { RewindCommand } from "./RewindCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
 import { PluginManagerShell } from "./PluginManagerShell.js";
+import { StatusLine } from "./StatusLine.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
@@ -268,21 +269,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
                 )}
               </Text>
             </Box>
-            <Box paddingRight={1} justifyContent="space-between" width="100%">
-              {isShellCommand ? (
-                <Text color="gray">
-                  Shell: <Text color="yellow">Run shell command</Text>
-                </Text>
-              ) : (
-                <Text color="gray">
-                  Mode:{" "}
-                  <Text color={permissionMode === "plan" ? "yellow" : "cyan"}>
-                    {permissionMode}
-                  </Text>{" "}
-                  (Shift+Tab to cycle)
-                </Text>
-              )}
-            </Box>
+            <StatusLine
+              permissionMode={permissionMode}
+              isShellCommand={isShellCommand}
+            />
           </Box>
         )}
     </Box>
