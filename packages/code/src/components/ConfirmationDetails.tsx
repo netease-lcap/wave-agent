@@ -9,6 +9,7 @@ import {
 } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
 import { PlanDisplay } from "./PlanDisplay.js";
+import { highlightToAnsi } from "../utils/highlightUtils.js";
 
 // Helper function to generate descriptive action text
 const getActionDescription = (
@@ -86,6 +87,19 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
         parameters={JSON.stringify(toolInput)}
         startLineNumber={startLineNumber}
       />
+
+      {toolName !== WRITE_TOOL_NAME &&
+        toolName !== EDIT_TOOL_NAME &&
+        toolName !== EXIT_PLAN_MODE_TOOL_NAME &&
+        toolName !== ASK_USER_QUESTION_TOOL_NAME &&
+        toolName !== BASH_TOOL_NAME &&
+        !!toolInput && (
+          <Box paddingLeft={2} borderLeft borderColor="cyan">
+            <Text>
+              {highlightToAnsi(JSON.stringify(toolInput, null, 2), "json")}
+            </Text>
+          </Box>
+        )}
 
       {toolName !== ASK_USER_QUESTION_TOOL_NAME &&
         toolName === EXIT_PLAN_MODE_TOOL_NAME &&
