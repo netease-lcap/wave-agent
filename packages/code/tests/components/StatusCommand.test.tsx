@@ -15,6 +15,7 @@ describe("StatusCommand", () => {
     workingDirectory: "/test/cwd",
     getGatewayConfig: vi.fn().mockReturnValue({ baseURL: "https://test.api" }),
     getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+    btwState: { isActive: false, question: "", isLoading: false },
   };
 
   beforeEach(() => {

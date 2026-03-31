@@ -152,6 +152,10 @@ Be concise but complete—err on the side of including information that would pr
 Wrap your summary in <summary></summary> tags.`;
 
 export const WEB_CONTENT_SYSTEM_PROMPT = `You are a helpful assistant that extracts information from web content. The content is provided in Markdown format.`;
+export const BTW_SYSTEM_PROMPT = `You are a helpful assistant. Answer the user's side question based on the conversation history. 
+Do NOT say things like "Let me try...", "I'll now...", "Let me check...", or promise to take any action. 
+If you don't know the answer, say so - do not offer to look it up or investigate. 
+Simply answer the question with the information you have.`;
 
 export function buildSystemPrompt(
   basePrompt: string | undefined,

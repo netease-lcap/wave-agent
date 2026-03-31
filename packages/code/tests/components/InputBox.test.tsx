@@ -28,6 +28,7 @@ vi.mock("../../src/contexts/useChat.js", () => ({
     messages: [],
     handleRewindSelect: mockHandleRewindSelect,
     backgroundCurrentTask: mockBackgroundCurrentTask,
+    btwState: { isActive: false, question: "", isLoading: false },
   }),
 }));
 

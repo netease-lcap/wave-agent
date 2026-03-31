@@ -51,6 +51,7 @@ export interface ChatContextType {
     images?: Array<{ path: string; mimeType: string }>,
     longTextMap?: Record<string, string>,
   ) => Promise<void>;
+  askBtw: (question: string) => Promise<string>;
   abortMessage: () => void;
   latestTotalTokens: number;
   // MCP functionality
@@ -114,6 +115,10 @@ export interface ChatContextType {
   workingDirectory: string;
   version?: string;
   workdir?: string;
+  btwState: import("../managers/inputReducer.js").BtwState;
+  setBtwState: (
+    payload: Partial<import("../managers/inputReducer.js").BtwState>,
+  ) => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -235,6 +240,28 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Status metadata state
   const [workingDirectory, setWorkingDirectory] = useState("");
+
+  // /btw state
+  const [btwState, setBtwStateInternal] = useState<
+    import("../managers/inputReducer.js").BtwState
+  >({
+    isActive: false,
+    question: "",
+    isLoading: false,
+  });
+
+  const setBtwState = useCallback(
+    (payload: Partial<import("../managers/inputReducer.js").BtwState>) => {
+      setBtwStateInternal((prev) => {
+        const newState = { ...prev, ...payload };
+        if (process.env.NODE_ENV === "test") {
+          // console.log("setBtwState", newState);
+        }
+        return newState;
+      });
+    },
+    [],
+  );
 
   // Confirmation too tall state
   const [wasLastDetailsTooTall, setWasLastDetailsTooTall] = useState(0);
@@ -500,6 +527,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [isLoading, isCommandRunning],
   );
 
+  const askBtw = useCallback(async (question: string) => {
+    if (!agentRef.current) {
+      throw new Error("Agent not initialized");
+    }
+    return await agentRef.current.askBtw(question);
+  }, []);
+
   // Process queued messages when idle
   useEffect(() => {
     if (!isLoading && !isCommandRunning && queuedMessages.length > 0) {
@@ -667,10 +701,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       setIsTaskListVisible((prev) => !prev);
     }
 
-    // Handle ESC key to cancel confirmation
+    // Handle ESC key to cancel confirmation or dismiss BTW
     if (key.escape) {
       if (isConfirmationVisible) {
         handleConfirmationCancel();
+      } else if (btwState.isActive) {
+        setBtwState({
+          isActive: false,
+          question: "",
+          answer: undefined,
+          isLoading: false,
+        });
       }
     }
   });
@@ -685,6 +726,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     queuedMessages,
     sessionId,
     sendMessage,
+    askBtw,
     abortMessage,
     latestTotalTokens,
     isCompressing,
@@ -719,6 +761,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workingDirectory,
     version,
     workdir,
+    btwState,
+    setBtwState,
   };
 
   return (

@@ -531,6 +531,26 @@ describe("inputHandlers", () => {
         );
       });
     });
+
+    it("should handle btw command by activating btwState", async () => {
+      const state: InputState = {
+        ...initialState,
+        slashPosition: 0,
+        inputText: "/btw",
+        cursorPosition: 4,
+      };
+      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(false);
+
+      handleCommandSelect(state, dispatch, callbacks, "btw");
+
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_BTW_STATE",
+        payload: { isActive: true, question: "", isLoading: false },
+      });
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "CANCEL_COMMAND_SELECTOR",
+      });
+    });
   });
 
   describe("handleFileSelect", () => {
@@ -675,7 +695,7 @@ describe("inputHandlers", () => {
       const key = {} as Key;
       const result = handleSelectorInput(state, dispatch, callbacks, " ", key);
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
       expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
     });
 
@@ -690,7 +710,7 @@ describe("inputHandlers", () => {
       const key = {} as Key;
       const result = handleSelectorInput(state, dispatch, callbacks, " ", key);
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
       expect(dispatch).toHaveBeenCalledWith({
         type: "CANCEL_COMMAND_SELECTOR",
       });
@@ -971,6 +991,48 @@ describe("inputHandlers", () => {
       const result = await handleInput(state, dispatch, callbacks, "", key);
       expect(result).toBe(true);
       expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_HISTORY_SEARCH" });
+    });
+
+    it("should handle input when btwState is active", async () => {
+      const state = {
+        ...initialState,
+        btwState: { isActive: true, question: "", isLoading: false },
+        inputText: "What is the time?",
+      };
+      const key = { return: true } as Key;
+      const result = await handleInput(state, dispatch, callbacks, "", key);
+
+      expect(result).toBe(true);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_BTW_STATE",
+        payload: {
+          question: "What is the time?",
+          isLoading: true,
+          answer: undefined,
+        },
+      });
+      expect(dispatch).toHaveBeenCalledWith({ type: "CLEAR_INPUT" });
+    });
+
+    it("should handle escape to dismiss btwState", async () => {
+      const state = {
+        ...initialState,
+        btwState: { isActive: true, question: "", isLoading: false },
+      };
+      const key = { escape: true } as Key;
+      const result = await handleInput(state, dispatch, callbacks, "", key);
+
+      expect(result).toBe(true);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_BTW_STATE",
+        payload: {
+          isActive: false,
+          question: "",
+          answer: undefined,
+          isLoading: false,
+        },
+      });
+      expect(callbacks.onAbortMessage).not.toHaveBeenCalled();
     });
   });
 });

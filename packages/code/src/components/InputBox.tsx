@@ -62,6 +62,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     getFullMessageThread,
     sessionId,
     workingDirectory,
+    askBtw,
+    btwState: chatBtwState,
+    setBtwState: setChatBtwState,
   } = useChat();
 
   // Input manager with all input state and functionality (including images)
@@ -106,12 +109,17 @@ export const InputBox: React.FC<InputBoxProps> = ({
     permissionMode,
     setPermissionMode,
     setAllowBypassInCycle,
+    // BTW state
+    btwState,
     // Main handler
     handleInput,
     // Manager ready state
     isManagerReady,
   } = useInputManager({
     onSendMessage: sendMessage,
+    onAskBtw: askBtw,
+    btwState: chatBtwState,
+    onBtwStateChange: setChatBtwState,
     onHasSlashCommand: hasSlashCommand,
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
@@ -251,12 +259,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
           <Box flexDirection="column">
             <Box
               borderStyle="single"
-              borderColor="gray"
+              borderColor={btwState.isActive ? "cyan" : "gray"}
               borderLeft={false}
               borderRight={false}
             >
               <Text color={isPlaceholder ? "gray" : "white"}>
-                {shouldShowCursor ? (
+                {btwState.isActive && isPlaceholder ? (
+                  "Type your side question..."
+                ) : shouldShowCursor ? (
                   <>
                     {beforeCursor}
                     <Text backgroundColor="white" color="black">

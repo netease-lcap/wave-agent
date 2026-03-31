@@ -153,6 +153,47 @@ export const useInputManager = (
     callbacksRef.current.onImagesStateChange?.(state.attachedImages);
   }, [state.attachedImages]);
 
+  useEffect(() => {
+    if (callbacksRef.current.onBtwStateChange) {
+      callbacksRef.current.onBtwStateChange(state.btwState);
+    }
+  }, [state.btwState]);
+
+  // Handle /btw side question
+  useEffect(() => {
+    if (
+      state.btwState.isActive &&
+      state.btwState.isLoading &&
+      state.btwState.question
+    ) {
+      const askBtw = async () => {
+        try {
+          const answer = await callbacksRef.current.onAskBtw?.(
+            state.btwState.question,
+          );
+          dispatch({
+            type: "SET_BTW_STATE",
+            payload: { answer, isLoading: false },
+          });
+        } catch (error) {
+          console.error("Failed to ask side question:", error);
+          dispatch({
+            type: "SET_BTW_STATE",
+            payload: {
+              answer: "Error: Failed to get an answer for your side question.",
+              isLoading: false,
+            },
+          });
+        }
+      };
+      askBtw();
+    }
+  }, [
+    state.btwState.isActive,
+    state.btwState.isLoading,
+    state.btwState.question,
+  ]);
+
   // Methods
   const insertTextAtCursor = useCallback((text: string) => {
     dispatch({ type: "INSERT_TEXT", payload: text });
@@ -311,6 +352,17 @@ export const useInputManager = (
     dispatch({ type: "SET_ALLOW_BYPASS_IN_CYCLE", payload: allow });
   }, []);
 
+  const setBtwState = useCallback(
+    (payload: Partial<import("../managers/inputReducer.js").BtwState>) => {
+      if (callbacksRef.current.onBtwStateChange) {
+        callbacksRef.current.onBtwStateChange(payload);
+      } else {
+        dispatch({ type: "SET_BTW_STATE", payload });
+      }
+    },
+    [],
+  );
+
   const addImage = useCallback((imagePath: string, mimeType: string) => {
     dispatch({ type: "ADD_IMAGE", payload: { path: imagePath, mimeType } });
   }, []);
@@ -402,6 +454,7 @@ export const useInputManager = (
     showPluginManager: state.showPluginManager,
     permissionMode: state.permissionMode,
     attachedImages: state.attachedImages,
+    btwState: state.btwState,
     isManagerReady: true,
 
     // Methods
@@ -442,6 +495,7 @@ export const useInputManager = (
     setShowPluginManager,
     setPermissionMode,
     setAllowBypassInCycle,
+    setBtwState,
 
     // Image management
     addImage,

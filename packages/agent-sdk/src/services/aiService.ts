@@ -25,6 +25,7 @@ import * as path from "path";
 import {
   COMPRESS_MESSAGES_SYSTEM_PROMPT,
   WEB_CONTENT_SYSTEM_PROMPT,
+  BTW_SYSTEM_PROMPT,
 } from "../prompts/index.js";
 
 /**
@@ -924,6 +925,103 @@ export async function processWebContent(
       throw new Error("Web content processing request was aborted");
     }
     logger.error("Failed to process web content:", error);
+    throw error;
+  }
+}
+
+export interface BtwOptions {
+  // Resolved configuration
+  gatewayConfig: GatewayConfig;
+  modelConfig: ModelConfig;
+
+  // Parameters
+  messages: ChatCompletionMessageParam[];
+  question: string;
+  abortSignal?: AbortSignal;
+  model?: string;
+}
+
+export interface BtwResult {
+  content: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+export async function btw(options: BtwOptions): Promise<BtwResult> {
+  const { gatewayConfig, modelConfig, messages, question, abortSignal } =
+    options;
+
+  // Apply global 1 QPS rate limit
+  if (
+    process.env.NODE_ENV !== "test" ||
+    modelConfig.model === "rate-limit-test"
+  ) {
+    await acquireSlot(abortSignal);
+  }
+
+  // Create OpenAI client with injected configuration
+  const openai = new OpenAIClient({
+    apiKey: gatewayConfig.apiKey,
+    baseURL: gatewayConfig.baseURL,
+    defaultHeaders: gatewayConfig.defaultHeaders,
+    fetchOptions: gatewayConfig.fetchOptions,
+    fetch: gatewayConfig.fetch,
+  });
+
+  // Get model configuration - use injected agent model
+  const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
+    temperature: 0.1,
+    max_tokens: 4096,
+  });
+
+  try {
+    const response = await openai.chat.completions.create(
+      {
+        ...openaiModelConfig,
+        messages: [
+          {
+            role: "system",
+            content: BTW_SYSTEM_PROMPT,
+          },
+          ...messages,
+          {
+            role: "user",
+            content: question,
+          },
+        ],
+      },
+      {
+        signal: abortSignal,
+      },
+    );
+
+    const result = response.choices[0]?.message?.content?.trim();
+    if (!result) {
+      throw new Error(
+        "Failed to process side question: Empty response from AI",
+      );
+    }
+    const usage = response.usage
+      ? {
+          prompt_tokens: response.usage.prompt_tokens,
+          completion_tokens: response.usage.completion_tokens,
+          total_tokens: response.usage.total_tokens,
+        }
+      : undefined;
+
+    return {
+      content: result,
+      usage,
+    };
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      logger.info("Side question request was aborted");
+      throw new Error("Side question request was aborted");
+    }
+    logger.error("Failed to process side question:", error);
     throw error;
   }
 }

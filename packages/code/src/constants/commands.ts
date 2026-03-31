@@ -38,4 +38,10 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "View and manage plugins",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "btw",
+    name: "btw",
+    description: "Ask a side question without tool use",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];

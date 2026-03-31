@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useLayoutEffect } from "react";
 import { Box, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
+import { BtwDisplay } from "./BtwDisplay.js";
 import { InputBox } from "./InputBox.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import { TaskList } from "./TaskList.js";
@@ -41,6 +42,7 @@ export const ChatInterface: React.FC = () => {
     version,
     workdir,
     getModelConfig,
+    btwState,
   } = useChat();
 
   const model = getModelConfig().model;
@@ -166,6 +168,7 @@ export const ChatInterface: React.FC = () => {
       {!isConfirmationVisible && !isExpanded && (
         <>
           <QueuedMessageList />
+          {btwState.isActive && <BtwDisplay btwState={btwState} />}
           <InputBox
             isLoading={isLoading}
             isCommandRunning={isCommandRunning}
