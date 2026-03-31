@@ -6,14 +6,14 @@ We will implement a unified `BackgroundTaskManager` (or extend `BackgroundBashMa
 
 ### Rationale
 - **Consistency**: Users should have a single way to interact with any background operation, whether it's a simple shell command or a complex agent task.
-- **Simplicity**: A unified ID scheme (e.g., `task_1`, `task_2`) simplifies the tool interface (`TaskOutput`, `TaskStop`).
+- **Simplicity**: A unified ID scheme (e.g., `task_1`, `task_2`) simplifies the tool interface (`TaskStop`).
 - **Maintainability**: Centralizing task state management reduces duplication between `BackgroundBashManager` and `SubagentManager`.
 
 ### Findings & Technical Details
 
 #### 1. Tool Evolution
 - **`Task` Tool**: Update `packages/agent-sdk/src/tools/taskTool.ts` to support `run_in_background: boolean`.
-- **`TaskOutput` Tool**: New tool to replace `BashOutput`. It will query the unified manager for output.
+- **`Read` Tool**: Use the existing `Read` tool to retrieve output from background tasks via the `outputPath`.
 - **`TaskStop` Tool**: New tool to replace `KillBash`. It will terminate either a shell process or a subagent's AI loop.
 - **`Bash` Tool**: Keep `run_in_background` but ensure it registers with the unified manager.
 
@@ -37,6 +37,7 @@ We will implement a unified `BackgroundTaskManager` (or extend `BackgroundBashMa
     command?: string; // for shell
     description?: string; // for subagent
     output: { stdout: string; stderr: string };
+    outputPath?: string; // path to real-time log file
   }
   ```
 
@@ -48,4 +49,4 @@ We will implement a unified `BackgroundTaskManager` (or extend `BackgroundBashMa
 
 ## NEEDS CLARIFICATION Resolved
 - **Task ID Scheme**: We will use a unified `task_N` prefix for all background tasks to avoid confusion with the old `bash_N` scheme, or keep `bash_N` for shells and use `subagent_N` for subagents but have them both managed by the same registry. *Decision: Use `task_N` for all to emphasize unification.*
-- **Output Retrieval**: `TaskOutput` will support a `block` parameter. For subagents, "blocking" means waiting for the AI loop to finish. For shells, it means waiting for the process to exit. If a timeout occurs during a blocking call, the tool will return the last few lines of the log file to provide the most recent context.
+- **Output Retrieval**: Agents will use the `Read` tool to read the `outputPath` of background tasks. This provides a unified way to access both real-time and completed task output without needing a specialized `TaskOutput` tool.

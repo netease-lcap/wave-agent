@@ -229,7 +229,7 @@ describe("ToolManager bypassPermissions mode", () => {
     expect(names).toContain("AskUserQuestion");
   });
 
-  it("should register TaskOutput and TaskStop tools", () => {
+  it("should register TaskStop tool", () => {
     const mockMcpManager = {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
       getMcpToolPlugins: vi.fn().mockReturnValue([]),
@@ -244,7 +244,7 @@ describe("ToolManager bypassPermissions mode", () => {
     const tools = toolManager.list();
     const names = tools.map((t) => t.name);
 
-    expect(names).toContain("TaskOutput");
+    expect(names).not.toContain("TaskOutput");
     expect(names).toContain("TaskStop");
   });
 });

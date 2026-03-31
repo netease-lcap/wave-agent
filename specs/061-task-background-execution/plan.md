@@ -8,7 +8,7 @@
 
 ### Architecture
 - **SDK Layer**: `packages/agent-sdk` will host the `BackgroundTaskManager` which unifies `BackgroundBashManager` and background subagent execution.
-- **Tool Layer**: `Task`, `TaskOutput`, and `TaskStop` tools will interface with the `BackgroundTaskManager`.
+- **Tool Layer**: `Task` and `TaskStop` tools will interface with the `BackgroundTaskManager`. Agents will use the `Read` tool to read the `outputPath` of background tasks.
 - **CLI Layer**: `packages/code` will implement the `/tasks` slash command and remove `/bashes`.
 
 ### Dependencies
@@ -37,7 +37,7 @@
 
 ## Phase 1: Design & Contracts
 - [x] Define `BackgroundTask` data model.
-- [x] Define API contracts for `Task`, `TaskOutput`, and `TaskStop` tools.
+- [x] Define API contracts for `Task` and `TaskStop` tools.
 - [x] Generate `quickstart.md`.
 
 ## Phase 2: Implementation Strategy
@@ -49,9 +49,10 @@
 
 ### Step 2: Tool Updates
 - Update `Task` tool to support `run_in_background`.
-- Implement `TaskOutput` and `TaskStop` tools.
+- Implement `TaskStop` tool.
 - Update `Bash` tool to use the new manager.
 - Remove `BashOutput` and `KillBash` tools.
+- Remove `TaskOutput` tool in favor of using the `Read` tool.
 
 ### Step 3: CLI Updates
 - Implement `/tasks` command in `SlashCommandManager`.

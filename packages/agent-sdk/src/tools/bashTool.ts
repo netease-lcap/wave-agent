@@ -7,7 +7,6 @@ import { stripAnsiColors } from "../utils/stringUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import {
   BASH_TOOL_NAME,
-  TASK_OUTPUT_TOOL_NAME,
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
   READ_TOOL_NAME,
@@ -87,7 +86,7 @@ export const bashTool: ToolPlugin = {
           },
           run_in_background: {
             type: "boolean",
-            description: `Set to true to run this command in the background. Use ${TASK_OUTPUT_TOOL_NAME} to read the output later.`,
+            description: `Set to true to run this command in the background. Use ${READ_TOOL_NAME} to read the output later.`,
           },
         },
         required: ["command"],
@@ -120,7 +119,7 @@ Usage notes:
   - You can specify an optional timeout in milliseconds (up to ${BASH_DEFAULT_TIMEOUT_MS}ms / ${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes). If not specified, commands will timeout after ${BASH_DEFAULT_TIMEOUT_MS}ms (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes).
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
   - If the output exceeds ${MAX_OUTPUT_LENGTH} characters, output will be truncated and the full output will be persisted to a temporary file.
-  - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${BASH_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
+  - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${READ_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
   - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
     - Content search: Use ${GREP_TOOL_NAME}
@@ -226,7 +225,7 @@ Usage notes:
       const outputPath = task?.outputPath;
       return {
         success: true,
-        content: `Command started in background with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ` Use TaskOutput tool with task_id="${taskId}" to monitor output.`}`,
+        content: `Command started in background with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ` Use ${READ_TOOL_NAME} tool with task_id="${taskId}" to monitor output.`}`,
         shortResult: `Background process ${taskId} started`,
       };
     }

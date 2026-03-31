@@ -15,21 +15,6 @@ Delegates a task to a subagent, now with background support.
 
 ---
 
-## TaskOutput Tool (New)
-Retrieves output from a background task.
-
-**Parameters:**
-- `task_id` (string, required): The ID of the task.
-- `block` (boolean, required, default: true): Whether to wait for completion.
-- `timeout` (number, required, default: 30000): Max wait time in ms (minimum: 0, maximum: 600000).
-
-**Returns:**
-- `stdout` (string): Accumulated output.
-- `stderr` (string): Accumulated errors.
-- `status` (string): Current task status.
-
----
-
 ## TaskStop Tool (New)
 Terminates a running background task.
 
