@@ -12,6 +12,13 @@ export interface AttachedImage {
   mimeType: string;
 }
 
+export interface BtwState {
+  isActive: boolean;
+  question: string;
+  answer?: string;
+  isLoading: boolean;
+}
+
 export interface InputManagerCallbacks {
   onInputTextChange?: (text: string) => void;
   onCursorPositionChange?: (position: number) => void;
@@ -43,6 +50,9 @@ export interface InputManagerCallbacks {
   onAbortMessage?: () => void;
   onBackgroundCurrentTask?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
+  onAskBtw?: (question: string) => Promise<string>;
+  btwState?: BtwState;
+  onBtwStateChange?: (payload: Partial<BtwState>) => void;
   sessionId?: string;
   workdir?: string;
   getFullMessageThread?: () => Promise<{
@@ -85,6 +95,7 @@ export interface InputState {
   originalInputText: string;
   originalLongTextMap: Record<string, string>;
   isFileSearching: boolean;
+  btwState: BtwState;
 }
 
 export const initialState: InputState = {
@@ -120,6 +131,11 @@ export const initialState: InputState = {
   originalInputText: "",
   originalLongTextMap: {},
   isFileSearching: false,
+  btwState: {
+    isActive: false,
+    question: "",
+    isLoading: false,
+  },
 };
 
 export type InputAction =
@@ -163,7 +179,8 @@ export type InputAction =
   | { type: "SET_HISTORY_ENTRIES"; payload: PromptEntry[] }
   | { type: "NAVIGATE_HISTORY"; payload: "up" | "down" }
   | { type: "RESET_HISTORY_NAVIGATION" }
-  | { type: "SELECT_HISTORY_ENTRY"; payload: PromptEntry };
+  | { type: "SELECT_HISTORY_ENTRY"; payload: PromptEntry }
+  | { type: "SET_BTW_STATE"; payload: Partial<BtwState> };
 
 export function inputReducer(
   state: InputState,
@@ -487,6 +504,14 @@ export function inputReducer(
         history: [],
         originalInputText: "",
         originalLongTextMap: {},
+      };
+    case "SET_BTW_STATE":
+      return {
+        ...state,
+        btwState: {
+          ...state.btwState,
+          ...action.payload,
+        },
       };
     default:
       return state;

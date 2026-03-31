@@ -35,6 +35,8 @@ import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
+import { btw } from "./services/aiService.js";
+import { convertMessagesForAPI } from "./utils/convertMessagesForAPI.js";
 import { InitializationService } from "./services/initializationService.js";
 import { InteractionService } from "./services/interactionService.js";
 import { ConfigurationService } from "./services/configurationService.js";
@@ -493,6 +495,22 @@ export class Agent {
    */
   public triggerShowRewind(): void {
     this.messageManager.triggerShowRewind();
+  }
+
+  /**
+   * Ask a side question without tool use
+   * @param question - The side question to ask
+   * @returns Promise that resolves to the AI's answer
+   */
+  public async askBtw(question: string): Promise<string> {
+    const messages = convertMessagesForAPI(this.messageManager.getMessages());
+    const result = await btw({
+      gatewayConfig: this.getGatewayConfig(),
+      modelConfig: this.getModelConfig(),
+      messages,
+      question,
+    });
+    return result.content;
   }
 
   /**

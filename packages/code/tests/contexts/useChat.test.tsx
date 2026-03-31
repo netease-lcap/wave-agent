@@ -81,6 +81,7 @@ describe("ChatProvider", () => {
     backgroundCurrentTask: vi.fn(),
     destroy: vi.fn(),
     setPermissionMode: vi.fn(),
+    askBtw: vi.fn(),
     usages: [],
     sessionFilePath: "test-path",
   };

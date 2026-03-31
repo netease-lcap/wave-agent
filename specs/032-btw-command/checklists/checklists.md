@@ -1,0 +1,15 @@
+# BTW Command Checklists
+
+- [x] Implement `btw` method in `AiService` (agent-sdk)
+- [x] Add `askBtw` method to `Agent` class (agent-sdk)
+- [x] Add tests for `btw` method in `aiService.btw.test.ts` (agent-sdk)
+- [x] Update `inputReducer.ts` to include `btwState` (code)
+- [x] Update `inputHandlers.ts` to intercept `/btw` command and bypass queue/history (code)
+- [x] Update `inputHandlers.ts` to handle **ESC** key for dismissing side question (code)
+- [x] Update `useInputManager.ts` to manage side question lifecycle (code)
+- [x] Update `useChat.tsx` to provide `askBtw` implementation that bypasses queue (code)
+- [x] Create `BtwDisplay.tsx` component (code)
+- [x] Integrate `BtwDisplay` into `ChatInterface.tsx` (code)
+- [x] Update `InputBox.tsx` to show disabled state (code)
+- [x] Fix broken component tests (code)
+- [x] Verify all tests pass (agent-sdk and code)

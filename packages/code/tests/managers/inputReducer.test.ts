@@ -41,6 +41,11 @@ describe("inputReducer", () => {
       originalInputText: "",
       originalLongTextMap: {},
       isFileSearching: false,
+      btwState: {
+        isActive: false,
+        question: "",
+        isLoading: false,
+      },
     });
   });
 

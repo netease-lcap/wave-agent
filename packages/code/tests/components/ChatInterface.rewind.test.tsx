@@ -59,6 +59,7 @@ describe("ChatInterface Rewind Visibility", () => {
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
       allowBypassInCycle: false,
+      btwState: { isActive: false, question: "", isLoading: false },
       getModelConfig: vi.fn().mockReturnValue({
         model: "test-model",
         fastModel: "test-fast-model",
@@ -76,6 +77,7 @@ describe("ChatInterface Rewind Visibility", () => {
       handleInput: mockHandleInput,
       setPermissionMode: vi.fn(),
       setAllowBypassInCycle: vi.fn(),
+      btwState: { isActive: false, question: "", isLoading: false },
       isManagerReady: true,
       showRewindManager: true, // Rewind is visible
     } as unknown as ReturnType<typeof useInputManager>);
@@ -138,6 +140,7 @@ describe("ChatInterface Rewind Visibility", () => {
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
       allowBypassInCycle: false,
+      btwState: { isActive: false, question: "", isLoading: false },
       getModelConfig: vi.fn().mockReturnValue({
         model: "test-model",
         fastModel: "test-fast-model",
@@ -155,6 +158,7 @@ describe("ChatInterface Rewind Visibility", () => {
       handleInput: mockHandleInput,
       setPermissionMode: vi.fn(),
       setAllowBypassInCycle: vi.fn(),
+      btwState: { isActive: false, question: "", isLoading: false },
       isManagerReady: true,
       showRewindManager: false, // Rewind is NOT visible
     } as unknown as ReturnType<typeof useInputManager>);

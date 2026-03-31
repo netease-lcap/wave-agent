@@ -55,6 +55,30 @@ export const handleSubmit = async (
       .replace(imageRegex, "")
       .trim();
 
+    if (
+      contentWithPlaceholders === "/btw" ||
+      contentWithPlaceholders.startsWith("/btw ")
+    ) {
+      const question = contentWithPlaceholders.startsWith("/btw ")
+        ? contentWithPlaceholders.substring(5).trim()
+        : "";
+
+      const payload = {
+        isActive: true,
+        question,
+        isLoading: question !== "",
+      };
+
+      dispatch({
+        type: "SET_BTW_STATE",
+        payload,
+      });
+      dispatch({ type: "CLEAR_INPUT" });
+      dispatch({ type: "RESET_HISTORY_NAVIGATION" });
+      dispatch({ type: "CLEAR_LONG_TEXT_MAP" });
+      return;
+    }
+
     PromptHistoryManager.addEntry(
       contentWithPlaceholders,
       callbacks.sessionId,
@@ -346,6 +370,11 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: true });
         } else if (command === "plugin") {
           dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
+        } else if (command === "btw") {
+          dispatch({
+            type: "SET_BTW_STATE",
+            payload: { isActive: true, question: "", isLoading: false },
+          });
         }
       }
     })();
@@ -465,8 +494,10 @@ export const handleSelectorInput = (
   if (input === " ") {
     if (state.showFileSelector) {
       dispatch({ type: "CANCEL_FILE_SELECTOR" });
+      return false;
     } else if (state.showCommandSelector) {
       dispatch({ type: "CANCEL_COMMAND_SELECTOR" });
+      return false;
     }
   }
 
@@ -671,6 +702,46 @@ export const handleInput = async (
     return true;
   }
 
+  if (state.btwState.isActive) {
+    if (key.escape) {
+      dispatch({
+        type: "SET_BTW_STATE",
+        payload: {
+          isActive: false,
+          question: "",
+          answer: undefined,
+          isLoading: false,
+        },
+      });
+      return true;
+    }
+
+    if (key.return) {
+      if (state.inputText.trim() && !state.btwState.isLoading) {
+        dispatch({
+          type: "SET_BTW_STATE",
+          payload: {
+            question: state.inputText.trim(),
+            isLoading: true,
+            answer: undefined,
+          },
+        });
+        dispatch({ type: "CLEAR_INPUT" });
+      }
+      return true;
+    }
+
+    // Handle normal input for the question
+    return await handleNormalInput(
+      state,
+      dispatch,
+      callbacks,
+      input,
+      key,
+      clearImages,
+    );
+  }
+
   if (key.escape) {
     if (
       !(
@@ -682,7 +753,8 @@ export const handleInput = async (
         state.showRewindManager ||
         state.showHelp ||
         state.showStatusCommand ||
-        state.showPluginManager
+        state.showPluginManager ||
+        state.btwState.isActive
       )
     ) {
       callbacks.onAbortMessage?.();
@@ -709,7 +781,8 @@ export const handleInput = async (
     state.showRewindManager ||
     state.showHelp ||
     state.showStatusCommand ||
-    state.showPluginManager
+    state.showPluginManager ||
+    state.btwState.isActive
   ) {
     if (
       state.showBackgroundTaskManager ||
@@ -717,7 +790,8 @@ export const handleInput = async (
       state.showRewindManager ||
       state.showHelp ||
       state.showStatusCommand ||
-      state.showPluginManager
+      state.showPluginManager ||
+      state.btwState.isActive
     ) {
       return true;
     }
