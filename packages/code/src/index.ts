@@ -228,6 +228,15 @@ export async function main() {
             },
           );
       })
+      .command(
+        "update",
+        "Update WAVE Code to the latest version",
+        {},
+        async () => {
+          const { updateCommand } = await import("./commands/update.js");
+          await updateCommand();
+        },
+      )
       .version()
       .alias("v", "version")
       .example("$0", "Start CLI with default settings")
