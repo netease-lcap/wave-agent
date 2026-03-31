@@ -63,12 +63,11 @@ export class McpManager {
       const config = await this.ensureConfigLoaded();
 
       if (config && config.mcpServers) {
-        // Connect to all configured servers
-        const connectionPromises = Object.keys(config.mcpServers).map(
-          async (serverName) => {
-            try {
-              logger?.debug(`Connecting to MCP server: ${serverName}`);
-              const success = await this.connectServer(serverName);
+        // Connect to all configured servers in background to avoid blocking agent initialization
+        Object.keys(config.mcpServers).forEach((serverName) => {
+          logger?.debug(`Connecting to MCP server: ${serverName}`);
+          this.connectServer(serverName)
+            .then((success) => {
               if (success) {
                 logger?.debug(
                   `Successfully connected to MCP server: ${serverName}`,
@@ -76,18 +75,18 @@ export class McpManager {
               } else {
                 logger?.warn(`Failed to connect to MCP server: ${serverName}`);
               }
-            } catch {
-              logger?.error(`Error connecting to MCP server ${serverName}`);
-            }
-          },
-        );
-
-        // Wait for all connection attempts to complete
-        await Promise.all(connectionPromises);
+            })
+            .catch((error) => {
+              logger?.error(
+                `Background connection to MCP server ${serverName} failed:`,
+                error,
+              );
+            });
+        });
       }
 
-      logger?.debug("MCP servers initialization completed");
-      // Trigger state change callback after initialization
+      logger?.debug("MCP servers initialization started in background");
+      // Trigger state change callback after starting initialization
       this.callbacks.onServersChange?.(this.getAllServers());
     }
   }
@@ -233,7 +232,29 @@ export class McpManager {
           ...(server.config.env || {}),
         },
         cwd: this.workdir, // Use the agent's workdir as the process working directory
+        stderr: "pipe", // Pipe stderr to capture it
       });
+
+      // Handle stderr output
+      const stderr = transport.stderr;
+      if (stderr) {
+        let buffer = "";
+        stderr.on("data", (chunk: Buffer) => {
+          buffer += chunk.toString();
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (line.trim()) {
+              logger?.error(`[MCP Server ${name}] ${line}`);
+            }
+          }
+        });
+        stderr.on("end", () => {
+          if (buffer.trim()) {
+            logger?.error(`[MCP Server ${name}] ${buffer}`);
+          }
+        });
+      }
 
       // Create client
       const client = new Client(

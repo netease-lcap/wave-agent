@@ -17,6 +17,7 @@ interface MockTransport {
   close: ReturnType<typeof vi.fn>;
   onerror: null;
   onclose: null;
+  stderr: import("node:stream").Stream | null;
 }
 
 // Mock the MCP SDK
@@ -219,6 +220,7 @@ describe("McpManager", () => {
         close: vi.fn().mockResolvedValue(undefined),
         onerror: null,
         onclose: null,
+        stderr: null,
       };
 
       vi.mocked(Client).mockImplementation(function () {
@@ -245,6 +247,7 @@ describe("McpManager", () => {
           TEST_VAR: "value",
         },
         cwd: "/test/workdir",
+        stderr: "pipe",
       });
       expect(mockClient.connect).toHaveBeenCalledWith(mockTransport);
 
@@ -303,6 +306,7 @@ describe("McpManager", () => {
         close: vi.fn().mockResolvedValue(undefined),
         onerror: null,
         onclose: null,
+        stderr: null,
       };
 
       vi.mocked(Client).mockImplementation(function () {
@@ -354,6 +358,7 @@ describe("McpManager", () => {
         close: vi.fn().mockResolvedValue(undefined),
         onerror: null,
         onclose: null,
+        stderr: null,
       };
 
       vi.mocked(Client).mockImplementation(function () {
