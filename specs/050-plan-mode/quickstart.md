@@ -9,7 +9,8 @@ Plan Mode allows you to safely analyze your codebase and build a plan without ma
 2. **Observe Plan File Path**: A new plan file path with a random name (e.g., `~/.wave/plans/gentle-breeze.md`) will be determined.
 3. **Ask the system to Plan**: The system will now be able to read your files and will start building the plan by writing to the designated plan file.
 4. **Review the Plan**: You can open the plan file to see the progress as it incrementally updates the file.
-5. **Switch back**: Press `Shift+Tab` to return to "default" mode when you are ready to implement the plan.
+5. **Switch back**: Press `Shift+Tab` to return to "default" mode when you are ready to implement the plan (unless `bypassPermissions` was enabled at start).
+6. **Bypass Mode**: If the session was started with `--dangerously-skip-permissions` or `--permission-mode bypassPermissions`, `bypassPermissions` will be included in the `Shift+Tab` cycle.
 
 ---
 

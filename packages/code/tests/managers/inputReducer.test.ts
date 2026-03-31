@@ -31,6 +31,7 @@ describe("inputReducer", () => {
       showHelp: false,
       showStatusCommand: false,
       permissionMode: "default",
+      allowBypassInCycle: false,
       selectorJustUsed: false,
       isPasting: false,
       pasteBuffer: "",
@@ -388,6 +389,13 @@ describe("inputReducer", () => {
       payload: "plan",
     });
     expect(state.permissionMode).toBe("plan");
+  });
+  it("should handle SET_ALLOW_BYPASS_IN_CYCLE", () => {
+    const state = inputReducer(initialState, {
+      type: "SET_ALLOW_BYPASS_IN_CYCLE",
+      payload: true,
+    });
+    expect(state.allowBypassInCycle).toBe(true);
   });
 
   it("should handle SET_SELECTOR_JUST_USED", () => {

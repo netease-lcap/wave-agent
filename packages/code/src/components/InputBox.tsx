@@ -54,6 +54,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const {
     permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
+    allowBypassInCycle: chatAllowBypassInCycle,
     handleRewindSelect,
     backgroundCurrentTask,
     messages,
@@ -103,6 +104,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // Permission mode
     permissionMode,
     setPermissionMode,
+    setAllowBypassInCycle,
     // Main handler
     handleInput,
     // Manager ready state
@@ -122,6 +124,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
   useEffect(() => {
     setPermissionMode(chatPermissionMode);
   }, [chatPermissionMode, setPermissionMode]);
+
+  // Sync allowBypassInCycle from useChat to InputManager
+  useEffect(() => {
+    setAllowBypassInCycle(chatAllowBypassInCycle);
+  }, [chatAllowBypassInCycle, setAllowBypassInCycle]);
 
   // Use the InputManager's unified input handler
   useInput(async (input, key) => {
