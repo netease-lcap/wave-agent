@@ -4,6 +4,8 @@ import {
   stripEnvVars,
   stripRedirections,
   hasWriteRedirections,
+  hasHeredoc,
+  isBashHeredocWrite,
   getSmartPrefix,
 } from "../../src/utils/bashParser.js";
 
@@ -139,7 +141,12 @@ describe("bashParser", () => {
       expect(hasWriteRedirections("ls 2> file")).toBe(true);
       expect(hasWriteRedirections("ls &> file")).toBe(true);
       expect(hasWriteRedirections("ls >| file")).toBe(true);
-      expect(hasWriteRedirections("ls 2>&1")).toBe(true);
+    });
+
+    it("should ignore file descriptor redirections", () => {
+      expect(hasWriteRedirections("ls 2>&1")).toBe(false);
+      expect(hasWriteRedirections("ls >&2")).toBe(false);
+      expect(hasWriteRedirections("ls 1>&2")).toBe(false);
     });
 
     it("should NOT detect read redirections", () => {
@@ -177,7 +184,41 @@ describe("bashParser", () => {
     it("should still detect other write redirections when /dev/null is present", () => {
       expect(hasWriteRedirections("ls > /dev/null > file")).toBe(true);
       expect(hasWriteRedirections("ls > file 2> /dev/null")).toBe(true);
-      expect(hasWriteRedirections("ls > /dev/null 2>&1")).toBe(true); // 2>&1 is still considered a write redirection
+      expect(hasWriteRedirections("ls > /dev/null 2>&1")).toBe(false); // 2>&1 is now ignored
+    });
+  });
+
+  describe("hasHeredoc", () => {
+    it("should detect simple heredocs", () => {
+      expect(hasHeredoc("cat <<EOF")).toBe(true);
+      expect(hasHeredoc("cat <<-EOF")).toBe(true);
+    });
+
+    it("should NOT detect other redirections", () => {
+      expect(hasHeredoc("cat < file")).toBe(false);
+      expect(hasHeredoc("echo hi > file")).toBe(false);
+    });
+
+    it("should NOT detect quoted or escaped heredocs", () => {
+      expect(hasHeredoc('echo "<<EOF"')).toBe(false);
+      expect(hasHeredoc("echo '<<EOF'")).toBe(false);
+      expect(hasHeredoc("echo \\<\\<EOF")).toBe(false);
+    });
+  });
+
+  describe("isBashHeredocWrite", () => {
+    it("should detect heredoc write operations", () => {
+      expect(isBashHeredocWrite("cat <<EOF > file")).toBe(true);
+      expect(isBashHeredocWrite("cat > file <<EOF")).toBe(true);
+      expect(isBashHeredocWrite("cat <<EOF >> file")).toBe(true);
+    });
+
+    it("should NOT detect heredoc without write redirection", () => {
+      expect(isBashHeredocWrite("cat <<EOF")).toBe(false);
+    });
+
+    it("should NOT detect write redirection without heredoc", () => {
+      expect(isBashHeredocWrite("echo hi > file")).toBe(false);
     });
   });
 

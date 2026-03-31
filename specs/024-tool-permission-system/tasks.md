@@ -92,3 +92,8 @@
 - [x] T065 Implement Safe Zone check in `PermissionManager.checkPermission` for `Write`, `Edit`, `Delete`, and `mkdir`.
 - [x] T066 Ensure out-of-bounds operations always require confirmation, regardless of `acceptEdits` mode.
 - [x] T067 Add unit tests for Safe Zone logic and out-of-bounds operations.
+- [x] T068 Implement `hasHeredoc` and `isBashHeredocWrite` in `bashParser.ts`.
+- [x] T069 Restore file descriptor redirection exclusion in `hasWriteRedirections`.
+- [x] T070 Implement automatic denial of bash heredoc write redirections in `PermissionManager.checkPermission`.
+- [x] T071 Provide a reminder message to use `Write` or `Edit` tools when bash heredoc write redirection is denied.
+- [x] T072 Add unit tests for bash heredoc write redirection interception and reminder message.

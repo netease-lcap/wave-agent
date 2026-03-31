@@ -21,6 +21,7 @@ import {
   stripEnvVars,
   stripRedirections,
   hasWriteRedirections,
+  isBashHeredocWrite,
   getSmartPrefix,
   DANGEROUS_COMMANDS,
 } from "../utils/bashParser.js";
@@ -369,6 +370,37 @@ export class PermissionManager {
   async checkPermission(
     context: ToolPermissionContext,
   ): Promise<PermissionDecision> {
+    // 0. Intercept Bash EOF writing operations
+    if (context.toolName === BASH_TOOL_NAME && context.toolInput?.command) {
+      const command = String(context.toolInput.command);
+      if (isBashHeredocWrite(command)) {
+        // Check if this specific command is explicitly allowed by a rule that includes redirection
+        const isExplicitlyAllowed = [
+          ...this.instanceAllowedRules,
+          ...this.temporaryRules,
+          ...this.allowedRules,
+          ...DEFAULT_ALLOWED_RULES,
+        ].some((rule) => {
+          if (rule.startsWith("Bash(") && rule.endsWith(")")) {
+            const pattern = rule.substring(5, rule.length - 1);
+            // If the pattern itself has write redirections, we check if it matches
+            if (hasWriteRedirections(pattern)) {
+              return this.matchesRule(context, rule);
+            }
+          }
+          return false;
+        });
+
+        if (!isExplicitlyAllowed) {
+          return {
+            behavior: "deny",
+            message:
+              "Bash-based file writing operations using heredocs (e.g., 'cat <<EOF > file') are not allowed. Please use the dedicated 'Write' or 'Edit' tools instead for file modifications.",
+          };
+        }
+      }
+    }
+
     // 0. Check instance-specific denied rules first - Deny always takes precedence
     for (const rule of this.instanceDeniedRules) {
       if (this.matchesRule(context, rule)) {

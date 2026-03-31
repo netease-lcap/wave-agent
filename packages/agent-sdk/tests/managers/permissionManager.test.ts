@@ -43,6 +43,88 @@ describe("PermissionManager", () => {
   });
 
   describe("checkPermission method", () => {
+    describe("Bash Heredoc Write Interception", () => {
+      it("should deny bash commands with heredoc write redirections and provide a reminder", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "cat <<EOF > test.txt\ncontent\nEOF" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain(
+          "Bash-based file writing operations using heredocs",
+        );
+        expect(result.message).toContain(
+          "Please use the dedicated 'Write' or 'Edit' tools",
+        );
+      });
+
+      it("should deny bash commands with heredoc append redirections", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "cat <<EOF >> test.txt\ncontent\nEOF" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should allow bash commands with simple write redirections (not heredoc)", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "echo 'test' > test.txt" },
+        };
+
+        // Should fall through to normal permission check (which is deny for Bash without callback)
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+        expect(result.message).not.toContain(
+          "Bash-based file writing operations using heredocs",
+        );
+        expect(result.message).toContain("requires permission approval");
+      });
+
+      it("should allow bash commands with heredoc but no write redirection", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "cat <<EOF\ncontent\nEOF" },
+        };
+
+        // cat is allowed by default rules
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow bash commands with stream redirections (e.g., 2>&1)", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls non_existent 2>&1" },
+        };
+
+        // ls is allowed by default rules
+        // Note: 2>&1 is now ignored by hasWriteRedirections
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should deny bash heredoc write redirections even in bypassPermissions mode", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "bypassPermissions",
+          toolInput: { command: "cat <<EOF > test.txt\ncontent\nEOF" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+    });
+
     describe("Safe Zone and Auto-Memory", () => {
       it("should allow file operations in auto-memory directory (Safe Zone)", async () => {
         const workdir = "/home/user/project";
