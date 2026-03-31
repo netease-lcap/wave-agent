@@ -1,0 +1,68 @@
+# Implementation Plan: WebFetch Tool
+
+**Branch**: `017-web-fetch-tool` | **Status**: Completed | **Date**: 2026-03-31 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/017-web-fetch-tool/spec.md`
+
+## Summary
+
+Implement a `WebFetch` tool that allows users to fetch web content, convert it to Markdown, and process it with a fast AI model. This involves adding `turndown` as a dependency, creating a new `WebFetchToolPlugin` in `agent-sdk`, and registering it in the `ToolManager`. The tool will handle HTTP to HTTPS upgrades, redirects to different hosts, and caching of Markdown content for 15 minutes. It will also suggest using the `gh` CLI for GitHub URLs. To optimize performance and stability, a specialized `processWebContent` function is implemented in `aiService` to handle the AI processing without the overhead of the full `callAgent` infrastructure.
+
+## Technical Context
+
+**Language/Version**: TypeScript (Node.js)
+**Primary Dependencies**: `turndown` (for HTML to Markdown conversion), Node.js built-in `fetch`
+**Storage**: In-memory `Map` for caching Markdown content
+**Testing**: Vitest (Unit tests for the tool logic)
+**Target Platform**: Linux/macOS/Windows (Node.js environment)
+**Project Type**: Monorepo (agent-sdk + code)
+**Performance Goals**: Fast content extraction and processing (< 2s for typical pages)
+**Constraints**: Must handle redirects and host changes as specified.
+
+## Constitution Check
+
+1. **Package-First Architecture**: Logic implemented in `agent-sdk` as a tool plugin. Pass.
+2. **TypeScript Excellence**: Strict typing for tool parameters and results. Pass.
+3. **Test Alignment**: Mandatory unit tests for `WebFetchToolPlugin`. Pass.
+4. **Build Dependencies**: `agent-sdk` must be built before use. Pass.
+5. **Documentation Minimalism**: Only necessary spec/plan/research/data-model/quickstart files. Pass.
+6. **Quality Gates**: `type-check` and `lint` required. Pass.
+7. **Source Code Structure**: `webFetchTool.ts` in `packages/agent-sdk/src/tools/`. Pass.
+8. **Data Model Minimalism**: Simple `WebFetchCache` entity. Pass.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```
+specs/017-web-fetch-tool/
+├── plan.md              # This file
+├── research.md          # Phase 0 output
+├── data-model.md        # Phase 1 output
+├── quickstart.md        # Phase 1 output
+├── contracts/           # Phase 1 output
+└── tasks.md             # Phase 2 output
+```
+
+### Source Code (repository root)
+
+```
+packages/
+├── agent-sdk/
+│   ├── src/
+│   │   ├── constants/
+│   │   │   └── tools.ts
+│   │   ├── managers/
+│   │   │   └── toolManager.ts
+│   │   ├── tools/
+│   │   │   ├── types.ts
+│   │   │   └── webFetchTool.ts
+│   └── tests/
+│       └── tools/
+│           └── webFetchTool.test.ts
+```
+
+## Complexity Tracking
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| None | N/A | N/A |

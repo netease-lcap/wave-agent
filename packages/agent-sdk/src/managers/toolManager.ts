@@ -9,6 +9,7 @@ import { askUserQuestionTool } from "../tools/askUserQuestion.js";
 import { cronCreateTool } from "../tools/cronCreateTool.js";
 import { cronDeleteTool } from "../tools/cronDeleteTool.js";
 import { cronListTool } from "../tools/cronListTool.js";
+import { webFetchTool } from "../tools/webFetchTool.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -34,6 +35,7 @@ import type { SubagentManager } from "./subagentManager.js";
 import type { SkillManager } from "./skillManager.js";
 
 import { ReversionManager } from "./reversionManager.js";
+import * as aiService from "../services/aiService.js";
 
 import { Container } from "../utils/container.js";
 
@@ -120,6 +122,7 @@ class ToolManager {
       cronCreateTool,
       cronDeleteTool,
       cronListTool,
+      webFetchTool,
     ];
 
     for (const tool of builtInTools) {
@@ -213,6 +216,10 @@ class ToolManager {
             "CronManager",
           )
         : undefined,
+      aiManager: this.container.has("AIManager")
+        ? this.container.get<import("./aiManager.js").AIManager>("AIManager")
+        : undefined,
+      aiService: aiService,
       sessionId: context.sessionId,
       toolCallId: context.toolCallId,
     };

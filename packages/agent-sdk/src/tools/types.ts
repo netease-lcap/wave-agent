@@ -81,6 +81,10 @@ export interface ToolContext {
   skillManager?: import("../managers/skillManager.js").SkillManager;
   /** Cron manager instance for scheduling tasks */
   cronManager?: import("../managers/cronManager.js").CronManager;
+  /** AI manager instance for AI operations */
+  aiManager?: import("../managers/aiManager.js").AIManager;
+  /** AI service instance for AI operations */
+  aiService?: typeof import("../services/aiService.js");
   /** Current session ID */
   sessionId?: string;
   /** The ID of the current tool call */

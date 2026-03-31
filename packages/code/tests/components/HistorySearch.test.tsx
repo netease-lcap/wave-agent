@@ -4,8 +4,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { HistorySearch } from "../../src/components/HistorySearch.js";
 import { PromptHistoryManager, stripAnsiColors } from "wave-agent-sdk";
 
-vi.mock("wave-agent-sdk", async () => {
-  const actual = (await vi.importActual("wave-agent-sdk")) as object;
+vi.mock("wave-agent-sdk", async (importOriginal) => {
+  const actual = (await importOriginal()) as object;
   return {
     ...actual,
     PromptHistoryManager: {

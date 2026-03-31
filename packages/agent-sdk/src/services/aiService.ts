@@ -22,7 +22,10 @@ import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 
-import { COMPRESS_MESSAGES_SYSTEM_PROMPT } from "../prompts/index.js";
+import {
+  COMPRESS_MESSAGES_SYSTEM_PROMPT,
+  WEB_CONTENT_SYSTEM_PROMPT,
+} from "../prompts/index.js";
 
 /**
  * Interface for debug data saved during 400 errors
@@ -826,6 +829,101 @@ export async function compressMessages(
       throw new Error("Compression request was aborted");
     }
     logger.error("Failed to compress messages:", error);
+    throw error;
+  }
+}
+
+export interface ProcessWebContentOptions {
+  // Resolved configuration
+  gatewayConfig: GatewayConfig;
+  modelConfig: ModelConfig;
+
+  // Parameters
+  content: string;
+  prompt: string;
+  abortSignal?: AbortSignal;
+  model?: string;
+}
+
+export interface ProcessWebContentResult {
+  content: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+export async function processWebContent(
+  options: ProcessWebContentOptions,
+): Promise<ProcessWebContentResult> {
+  const { gatewayConfig, modelConfig, content, prompt, abortSignal } = options;
+
+  // Apply global 1 QPS rate limit
+  if (
+    process.env.NODE_ENV !== "test" ||
+    modelConfig.model === "rate-limit-test"
+  ) {
+    await acquireSlot(abortSignal);
+  }
+
+  // Create OpenAI client with injected configuration
+  const openai = new OpenAIClient({
+    apiKey: gatewayConfig.apiKey,
+    baseURL: gatewayConfig.baseURL,
+    defaultHeaders: gatewayConfig.defaultHeaders,
+    fetchOptions: gatewayConfig.fetchOptions,
+    fetch: gatewayConfig.fetch,
+  });
+
+  // Get model configuration - use injected agent model
+  const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
+    temperature: 0.1,
+    max_tokens: 4096,
+  });
+
+  try {
+    const response = await openai.chat.completions.create(
+      {
+        ...openaiModelConfig,
+        messages: [
+          {
+            role: "system",
+            content: WEB_CONTENT_SYSTEM_PROMPT,
+          },
+          {
+            role: "user",
+            content: `Web Content:\n\n${content}\n\nUser Prompt: ${prompt}`,
+          },
+        ],
+      },
+      {
+        signal: abortSignal,
+      },
+    );
+
+    const result = response.choices[0]?.message?.content?.trim();
+    if (!result) {
+      throw new Error("Failed to process web content: Empty response from AI");
+    }
+    const usage = response.usage
+      ? {
+          prompt_tokens: response.usage.prompt_tokens,
+          completion_tokens: response.usage.completion_tokens,
+          total_tokens: response.usage.total_tokens,
+        }
+      : undefined;
+
+    return {
+      content: result,
+      usage,
+    };
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      logger.info("Web content processing request was aborted");
+      throw new Error("Web content processing request was aborted");
+    }
+    logger.error("Failed to process web content:", error);
     throw error;
   }
 }
