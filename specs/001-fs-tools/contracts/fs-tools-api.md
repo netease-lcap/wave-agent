@@ -34,6 +34,7 @@ interface ToolResult {
     mediaType: string;
   }>;
   filePath?: string;
+  metadata?: Record<string, unknown>;
 }
 ```
 
@@ -90,6 +91,7 @@ interface LSArgs {
 interface GlobArgs {
   pattern: string;
   path?: string;
+  limit?: number;
 }
 ```
 
@@ -108,5 +110,7 @@ interface GrepArgs {
   type?: string;
   head_limit?: number;
   multiline?: boolean;
+  offset?: number;
+  context?: number;
 }
 ```

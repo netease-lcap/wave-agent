@@ -1,5 +1,6 @@
 import { readFile, stat } from "fs/promises";
 import { extname } from "path";
+import { createHash } from "crypto";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
@@ -117,6 +118,10 @@ async function processImageFile(
           mediaType: mimeType,
         },
       ],
+      metadata: {
+        type: "image",
+        mimeType,
+      },
     };
   } catch (error) {
     return {
@@ -192,10 +197,14 @@ Usage:
 
     // Check for binary document formats
     if (isBinaryDocument(filePath)) {
+      const isPdf = filePath.toLowerCase().endsWith(".pdf");
       return {
         success: false,
         content: "",
         error: getBinaryDocumentError(filePath),
+        metadata: {
+          type: isPdf ? "pdf" : "binary",
+        },
       };
     }
 
@@ -230,7 +239,53 @@ Usage:
         ? filePath
         : resolvePath(filePath, context.workdir);
 
+      const stats = await stat(actualFilePath);
+
+      // Deduplication
+      if (context.readFileState) {
+        const state = context.readFileState.get(actualFilePath);
+        if (state && state.mtime === stats.mtime.getTime()) {
+          return {
+            success: true,
+            content: `File ${filePath} has not changed since last read.`,
+            shortResult: "File unchanged",
+            metadata: {
+              type: "file_unchanged",
+            },
+          };
+        }
+      }
+
+      // Resource Limits
+      const maxSizeBytes =
+        context.fileReadingLimits?.maxSizeBytes ?? 1024 * 1024; // Default 1MB
+      if (
+        stats.size > maxSizeBytes &&
+        typeof offset !== "number" &&
+        typeof limit !== "number"
+      ) {
+        return {
+          success: false,
+          content: "",
+          error: `File size (${(stats.size / 1024).toFixed(2)}KB) exceeds limit (${(maxSizeBytes / 1024).toFixed(2)}KB). Please use offset and limit to read a portion of the file.`,
+          metadata: {
+            type: "error_limit_exceeded",
+            size: stats.size,
+            limit: maxSizeBytes,
+          },
+        };
+      }
+
       const fileContent = await readFile(actualFilePath, "utf-8");
+
+      // Update readFileState
+      if (context.readFileState) {
+        const hash = createHash("sha256").update(fileContent).digest("hex");
+        context.readFileState.set(actualFilePath, {
+          mtime: stats.mtime.getTime(),
+          hash,
+        });
+      }
 
       // Check if file is empty
       if (fileContent.length === 0) {
@@ -240,6 +295,10 @@ Usage:
           content:
             "⚠️ System reminder: This file exists but has empty contents.",
           shortResult: "Empty file",
+          metadata: {
+            type: "text",
+            isEmpty: true,
+          },
         };
       }
 
@@ -306,6 +365,13 @@ Usage:
         success: true,
         content,
         shortResult: `Read ${selectedLines.length} lines${totalLines > 2000 ? " (truncated)" : ""}`,
+        metadata: {
+          type: "text",
+          totalLines,
+          startLine,
+          endLine,
+          truncated: endLine < totalLines,
+        },
       };
     } catch (error) {
       return {

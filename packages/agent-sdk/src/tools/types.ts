@@ -93,4 +93,11 @@ export interface ToolContext {
   onShortResultUpdate?: (shortResult: string) => void;
   /** Callback to update the full result of the current tool block */
   onResultUpdate?: (result: string) => void;
+  /** Limits for file reading operations */
+  fileReadingLimits?: {
+    maxSizeBytes: number;
+    maxTokens: number;
+  };
+  /** State of files read in the current session for deduplication */
+  readFileState?: Map<string, { mtime: number; hash: string }>;
 }

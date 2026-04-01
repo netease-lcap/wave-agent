@@ -19,3 +19,11 @@
 - [x] T011 Add Jupyter notebook support to `Read` tool
 - [x] T012 Update `Grep` tool to suggest `path` field when no matches are found
 - [x] T013 Modify `Write` tool display to show highlighted code as a Markdown code block (without line numbers) instead of a diff display.
+- [x] T014 Improve File System Tools with structured metadata and advanced features
+    - [x] T014.1 Add `ToolResult.metadata` and `ToolContext` fields for resource management
+    - [x] T014.2 Implement deduplication in `Read` tool using `mtime` and `hash`
+    - [x] T014.3 Implement resource limits in `Read` tool
+    - [x] T014.4 Add `offset` and `context` arguments to `Grep` tool
+    - [x] T014.5 Add `limit` argument to `Glob` tool
+    - [x] T014.6 Implement `suggestPathUnderCwd` and `findSimilarFile` in `fileUtils.ts`
+    - [x] T014.7 Populate structured metadata for `Read`, `Grep`, and `Glob` tools

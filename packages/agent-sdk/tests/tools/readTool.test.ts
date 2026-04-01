@@ -67,6 +67,7 @@ Multi-byte: café naïve résumé`,
 };
 
 const mockReadFile = vi.mocked(readFile);
+const mockStat = vi.mocked(stat);
 
 describe("readTool", () => {
   beforeEach(() => {
@@ -79,6 +80,21 @@ describe("readTool", () => {
         return mockFiles[pathStr];
       }
       throw new Error(`ENOENT: no such file or directory, open '${pathStr}'`);
+    });
+
+    mockStat.mockImplementation(async (path: unknown) => {
+      const pathStr = path as string;
+      if (mockFiles[pathStr] !== undefined) {
+        return {
+          size: Buffer.byteLength(mockFiles[pathStr]),
+          mtime: { getTime: () => 1000 },
+        } as unknown as Awaited<ReturnType<typeof stat>>;
+      }
+      // Default for other files used in tests
+      return {
+        size: 1024,
+        mtime: { getTime: () => 1000 },
+      } as unknown as Awaited<ReturnType<typeof stat>>;
     });
   });
 
@@ -705,6 +721,43 @@ describe("readTool", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Failed to read file: String error");
+    });
+
+    it("should support deduplication using readFileState", async () => {
+      const readFileState = new Map<string, { mtime: number; hash: string }>();
+      const filePath = "/test/workdir/small.txt";
+
+      // First read
+      const result1 = await readTool.execute(
+        { file_path: filePath },
+        { ...testContext, readFileState },
+      );
+      expect(result1.success).toBe(true);
+      expect(result1.metadata?.type).toBe("text");
+      expect(readFileState.has(filePath)).toBe(true);
+
+      // Second read (unchanged)
+      const result2 = await readTool.execute(
+        { file_path: filePath },
+        { ...testContext, readFileState },
+      );
+      expect(result2.success).toBe(true);
+      expect(result2.metadata?.type).toBe("file_unchanged");
+      expect(result2.content).toContain("has not changed");
+    });
+
+    it("should enforce resource limits", async () => {
+      const filePath = "/test/workdir/small.txt";
+      const fileReadingLimits = { maxSizeBytes: 10, maxTokens: 100 };
+
+      const result = await readTool.execute(
+        { file_path: filePath },
+        { ...testContext, fileReadingLimits },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.metadata?.type).toBe("error_limit_exceeded");
+      expect(result.error).toContain("exceeds limit");
     });
   });
 });

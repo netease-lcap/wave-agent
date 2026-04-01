@@ -197,6 +197,26 @@ describe("globTool", () => {
     );
   });
 
+  it("should support limit argument and populate metadata", async () => {
+    mockGlob.mockResolvedValue(["file1.ts", "file2.ts", "file3.ts"]);
+    mockStat.mockResolvedValue(createMockStats());
+
+    const result = await globTool.execute(
+      {
+        pattern: "**/*.ts",
+        limit: 2,
+      },
+      testContext,
+    );
+
+    expect(result.success).toBe(true);
+    const lines = result.content.split("\n").filter((line) => line.trim());
+    expect(lines.length).toBe(2);
+    expect(result.metadata?.numFiles).toBe(3);
+    expect(result.metadata?.truncated).toBe(true);
+    expect(result.metadata?.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
   it("should format compact parameters correctly", () => {
     const params1 = { pattern: "**/*.ts" };
     expect(globTool.formatCompactParams?.(params1, testContext)).toBe(
