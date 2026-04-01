@@ -230,6 +230,14 @@ export function convertMessagesForAPI(
             });
           });
         }
+
+        // If there is a tool block in user message, add its result
+        if (block.type === "tool" && block.stage === "end" && block.result) {
+          contentParts.push({
+            type: "text",
+            text: `<local-command-stdout>\n${stripAnsiColors(block.result)}\n</local-command-stdout>`,
+          });
+        }
       });
 
       // Only add user message if there is meaningful content

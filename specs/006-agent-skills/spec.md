@@ -113,10 +113,11 @@ A user wants to execute a complex skill in a separate subagent to provide a fres
 
 **Acceptance Scenarios**:
 
-1. **Given** I have a skill with `context: fork` in its frontmatter, **When** the skill is invoked, **Then** Wave should execute the skill content in a new subagent instance
+1. **Given** I have a skill with `context: fork` in its frontmatter, **When** the skill is invoked (manually via slash command or autonomously by AI), **Then** Wave should execute the skill content in a new subagent instance
 2. **Given** I have a skill with `context: fork` and `agent: general-purpose`, **When** the skill is invoked, **Then** Wave should use a `general-purpose` subagent to execute the skill
-3. **Given** a skill is forked into a subagent, **When** the subagent is running, **Then** Wave should provide real-time updates on the subagent's progress (tools used, tokens consumed) in the tool's short result
+3. **Given** a skill is forked into a subagent, **When** the subagent is running, **Then** Wave should provide real-time updates on the subagent's progress (tools used, tokens consumed) in the tool's short result (for AI invocation) or in a ToolBlock within the user message (for manual invocation)
 4. **Given** I have a skill with `model: gpt-4o`, **When** the skill is invoked (manually or autonomously), **Then** Wave should use the specified model for the execution
+5. **Given** a forked skill is manually invoked, **When** the subagent completes, **Then** its final result should be flattened into the main conversation as a ToolBlock within the user message, and the main agent should NOT be automatically triggered.
 
 ---
 

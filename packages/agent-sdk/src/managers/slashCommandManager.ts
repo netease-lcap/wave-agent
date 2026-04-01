@@ -18,6 +18,8 @@ import {
 } from "../utils/markdownParser.js";
 import type { SkillManager } from "./skillManager.js";
 import type { SkillMetadata } from "../types/skills.js";
+import type { SubagentManager } from "./subagentManager.js";
+import { AGENT_TOOL_NAME } from "../constants/tools.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -30,6 +32,7 @@ export class SlashCommandManager {
   private customCommands = new Map<string, CustomSlashCommand>();
   private skillCommandIds = new Set<string>();
   private workdir: string;
+  private currentCommandAbortController: AbortController | null = null;
 
   constructor(
     private container: Container,
@@ -69,6 +72,10 @@ export class SlashCommandManager {
 
   private get skillManager(): SkillManager {
     return this.container.get<SkillManager>("SkillManager")!;
+  }
+
+  private get subagentManager(): SubagentManager {
+    return this.container.get<SubagentManager>("SubagentManager")!;
   }
 
   private initializeBuiltinCommands(): void {
@@ -153,7 +160,7 @@ export class SlashCommandManager {
         id: commandId,
         name: skill.name,
         description: `Skill: ${skill.description}`,
-        handler: async (args?: string) => {
+        handler: async (args?: string, signal?: AbortSignal) => {
           try {
             // 1. Prepare skill content immediately
             const prepared = await this.skillManager.prepareSkill({
@@ -173,6 +180,97 @@ export class SlashCommandManager {
 
             if (!prepared.skill) {
               // If skill not found or invalid, we're done (error message already in prepared.content)
+              return;
+            }
+
+            if (skill.context === "fork") {
+              // Forked skill execution
+              const subagentConfigs =
+                await this.subagentManager.loadConfigurations();
+              const config = subagentConfigs.find(
+                (c) => c.name === AGENT_TOOL_NAME,
+              );
+              if (!config) {
+                throw new Error(
+                  `Subagent configuration for ${AGENT_TOOL_NAME} not found`,
+                );
+              }
+
+              // Add a ToolBlock to the initial command message for progress tracking
+              const toolBlockId = this.messageManager.addToolBlockToMessage(
+                messageId,
+                {
+                  name: AGENT_TOOL_NAME,
+                  parameters: JSON.stringify({
+                    description: skill.description,
+                    prompt: prepared.content,
+                    subagent_type: AGENT_TOOL_NAME,
+                  }),
+                  stage: "running",
+                },
+              );
+
+              try {
+                const instance = await this.subagentManager.createInstance(
+                  config,
+                  {
+                    description: skill.description,
+                    prompt: prepared.content,
+                    subagent_type: AGENT_TOOL_NAME,
+                    model: skill.model,
+                  },
+                  false,
+                  () => {
+                    // Update the tool block with progress
+                    const subagent = this.subagentManager.getInstance(
+                      instance.subagentId,
+                    );
+                    if (subagent) {
+                      const toolCount = subagent.messages.filter(
+                        (m) =>
+                          m.role === "assistant" &&
+                          m.blocks.some((b) => b.type === "tool"),
+                      ).length;
+                      const tokenCount =
+                        subagent.messageManager.getLatestTotalTokens();
+                      this.messageManager.updateToolBlock({
+                        id: toolBlockId,
+                        messageId,
+                        shortResult: `(${toolCount} tools | ${tokenCount.toLocaleString()} tokens)`,
+                      });
+                    }
+                  },
+                );
+
+                try {
+                  const result = await this.subagentManager.executeAgent(
+                    instance,
+                    prepared.content,
+                    signal,
+                  );
+
+                  // Update the ToolBlock with final result
+                  this.messageManager.updateToolBlock({
+                    id: toolBlockId,
+                    messageId,
+                    result,
+                    success: true,
+                    stage: "end",
+                  });
+                } finally {
+                  this.subagentManager.cleanupInstance(instance.subagentId);
+                }
+              } catch (error) {
+                // Update the ToolBlock with error
+                this.messageManager.updateToolBlock({
+                  id: toolBlockId,
+                  messageId,
+                  success: false,
+                  error: error instanceof Error ? error.message : String(error),
+                  stage: "end",
+                });
+                throw error; // Re-throw to be caught by outer catch for logging/error block
+              }
               return;
             }
 
@@ -228,7 +326,6 @@ export class SlashCommandManager {
         command.description ||
         `Plugin command: ${namespacedName}${hasParameterPlaceholders(command.content) ? " (supports parameters)" : ""}`;
 
-      // Register as a regular command with a handler that executes the custom command
       this.registerCommand({
         id: namespacedId,
         name: namespacedName,
@@ -313,12 +410,22 @@ export class SlashCommandManager {
       return false;
     }
 
+    // Abort any previous command if it's still running
+    this.currentCommandAbortController?.abort();
+    this.currentCommandAbortController = new AbortController();
+
     try {
-      await command.handler(args);
+      await command.handler(args, this.currentCommandAbortController.signal);
       return true;
     } catch (error) {
-      console.error(`Failed to execute slash command ${commandId}:`, error);
+      if (error instanceof Error && error.name === "AbortError") {
+        logger?.debug(`Slash command ${commandId} was aborted`);
+      } else {
+        console.error(`Failed to execute slash command ${commandId}:`, error);
+      }
       return false;
+    } finally {
+      this.currentCommandAbortController = null;
     }
   }
 
@@ -429,5 +536,9 @@ export class SlashCommandManager {
   public abortCurrentCommand(): void {
     // Abort the AI manager if it's running
     this.aiManager.abortAIMessage();
+
+    // Abort the current slash command handler
+    this.currentCommandAbortController?.abort();
+    this.currentCommandAbortController = null;
   }
 }

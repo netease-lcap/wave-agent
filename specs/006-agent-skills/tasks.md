@@ -154,6 +154,12 @@
 - [x] T048 [US4] Update SlashCommandManager to refresh commands on skill changes in packages/agent-sdk/src/managers/slashCommandManager.ts
 - [x] T049 [US4] Add unit tests for real-time skill discovery and slash command refresh
 - [x] T050 [US3] Modify skill tool prompt to include repetitive invocation warning and use shared description constant
+- [x] T051 [US7] Implement forked skill support for manual invocation in packages/agent-sdk/src/managers/slashCommandManager.ts
+- [x] T052 [US7] Update updateToolBlockInMessage to support targeting specific messages in packages/agent-sdk/src/utils/messageOperations.ts
+- [x] T053 [US7] Update convertMessagesForAPI to handle ToolBlocks in user messages in packages/agent-sdk/src/utils/convertMessagesForAPI.ts
+- [x] T054 [US7] Update ToolDisplay component to render results for user messages in packages/code/src/components/ToolDisplay.tsx
+- [x] T055 [US7] Add unit tests for forked skill manual invocation in packages/agent-sdk/tests/managers/slashCommandManager.test.ts
+- [x] T056 [US7] Rename getlatestTotalTokens to getLatestTotalTokens across the codebase for consistency
 
 ---
 

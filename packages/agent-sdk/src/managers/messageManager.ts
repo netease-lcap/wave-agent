@@ -8,6 +8,7 @@ import {
   updateBangInMessage,
   completeBangInMessage,
   removeLastUserMessage,
+  addToolBlockToMessageInMessages,
   UserMessageParams,
   type AgentToolBlockUpdateParams,
   generateMessageId,
@@ -137,7 +138,7 @@ export class MessageManager {
     return [...this._usages];
   }
 
-  public getlatestTotalTokens(): number {
+  public getLatestTotalTokens(): number {
     return this.latestTotalTokens;
   }
 
@@ -399,6 +400,20 @@ export class MessageManager {
     this.callbacks.onToolBlockUpdated?.(params);
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
+  }
+
+  /**
+   * Add a tool block to a specific message by ID.
+   */
+  public addToolBlockToMessage(
+    messageId: string,
+    params: Omit<AgentToolBlockUpdateParams, "id">,
+  ): string {
+    const { messages: newMessages, toolBlockId } =
+      addToolBlockToMessageInMessages(this.messages, messageId, params);
+    this.setMessages(newMessages);
+    this.callbacks.onToolBlockUpdated?.({ ...params, id: toolBlockId });
+    return toolBlockId;
   }
 
   public addErrorBlock(error: string): void {

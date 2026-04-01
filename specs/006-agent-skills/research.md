@@ -31,6 +31,11 @@
 **Alternatives considered**: Keep skills model-invoked only, use separate slash command system  
 **Chosen approach**: Register skills as slash commands in `SlashCommandManager`, support parameter substitution (`$1`, `$ARGUMENTS`) and bash execution (`!`command``) in `SkillManager`.
 
+### Decision: Forked Skill Support for Manual Invocation
+**Rationale**: Skills with `context: fork` should run in a sub-agent even when manually invoked via slash commands. This maintains consistency between autonomous and manual invocation and keeps the main conversation clean.
+**Alternatives considered**: Run forked skills in the main agent when manually invoked, only support forking for autonomous invocation.
+**Chosen approach**: Update `SlashCommandManager` to detect `context: fork` and spawn a sub-agent. Use a `ToolBlock` within the original user message to show progress and the final result, ensuring the main agent can see the output via `<local-command-stdout>` tags.
+
 ## Technical Research
 
 ### Existing Markdown Parser Capabilities
@@ -122,6 +127,6 @@ All success criteria from spec are technically achievable:
 - ✅ SC-003: 90% correct invocation - metadata-based selection
 - ✅ SC-004: <500ms evaluation - cached metadata approach
 - ✅ SC-005: 2-minute error fix - validation with clear messages
-- ❌ SC-006: Auto-reload - not implemented (requires manual restart)
+- ✅ SC-006: Auto-reload - implemented using FileWatcherService in SkillManager
 
 **Research Status**: ✅ COMPLETE - All technical unknowns resolved

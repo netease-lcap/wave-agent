@@ -137,7 +137,7 @@ export const skillTool: ToolPlugin = {
           () => {
             // Update shortResult
             const messages = instance.messageManager.getMessages();
-            const tokens = instance.messageManager.getlatestTotalTokens();
+            const tokens = instance.messageManager.getLatestTotalTokens();
             const lastTools = instance.lastTools;
 
             const toolCount = countToolBlocks(messages);
@@ -168,7 +168,7 @@ export const skillTool: ToolPlugin = {
           subagentManager.cleanupInstance(instance.subagentId);
 
           const messages = instance.messageManager.getMessages();
-          const tokens = instance.messageManager.getlatestTotalTokens();
+          const tokens = instance.messageManager.getLatestTotalTokens();
           const toolCount = countToolBlocks(messages);
           const summary = formatToolTokenSummary(toolCount, tokens);
 

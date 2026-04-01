@@ -98,7 +98,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         lastTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
-          getlatestTotalTokens: vi.fn(() => 0),
+          getLatestTotalTokens: vi.fn(() => 0),
         },
       };
 
@@ -171,7 +171,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         lastTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
-          getlatestTotalTokens: vi.fn(() => 0),
+          getLatestTotalTokens: vi.fn(() => 0),
         },
       };
 
@@ -206,7 +206,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         lastTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
-          getlatestTotalTokens: vi.fn(() => 0),
+          getLatestTotalTokens: vi.fn(() => 0),
         },
       };
 
@@ -263,7 +263,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         lastTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
-          getlatestTotalTokens: vi.fn(() => 0),
+          getLatestTotalTokens: vi.fn(() => 0),
         },
       };
 
@@ -316,7 +316,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         lastTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
-          getlatestTotalTokens: vi.fn(() => 0),
+          getLatestTotalTokens: vi.fn(() => 0),
         },
       };
 
@@ -349,7 +349,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         lastTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
-          getlatestTotalTokens: vi.fn(() => 0),
+          getLatestTotalTokens: vi.fn(() => 0),
         },
       };
 

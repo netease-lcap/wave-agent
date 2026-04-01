@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { Message, Usage } from "../types/index.js";
+import type { Message, Usage, ToolBlock } from "../types/index.js";
 import { MessageSource } from "../types/index.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
@@ -24,6 +24,7 @@ export interface AddUserMessageParams extends UserMessageParams {
 export interface UpdateToolBlockParams {
   messages: Message[];
   id: string;
+  messageId?: string; // Optional message ID to target a specific message
   parameters?: string;
   result?: string;
   success?: boolean;
@@ -35,7 +36,7 @@ export interface UpdateToolBlockParams {
    * - 'running': Tool execution in progress
    * - 'end': Tool execution completed with final result
    */
-  stage: "start" | "streaming" | "running" | "end";
+  stage?: "start" | "streaming" | "running" | "end";
   name?: string;
   shortResult?: string;
   startLineNumber?: number;
@@ -230,10 +231,43 @@ export const addAssistantMessageToMessages = (
   return [...messages, initialAssistantMessage];
 };
 
-// Update Tool Block of the last assistant message
+/**
+ * Add a tool block to a specific message by ID.
+ */
+export const addToolBlockToMessageInMessages = (
+  messages: Message[],
+  messageId: string,
+  params: Omit<AgentToolBlockUpdateParams, "id">,
+): { messages: Message[]; toolBlockId: string } => {
+  const toolBlockId = randomUUID();
+  const newMessages = messages.map((msg) => {
+    if (msg.id === messageId) {
+      return {
+        ...msg,
+        blocks: [
+          ...msg.blocks,
+          {
+            type: "tool" as const,
+            id: toolBlockId,
+            name: params.name || "unknown",
+            parameters: params.parameters || "",
+            result: params.result || "",
+            stage: "start",
+            ...params,
+          } as ToolBlock,
+        ],
+      };
+    }
+    return msg;
+  });
+  return { messages: newMessages, toolBlockId };
+};
+
+// Update Tool Block of the last assistant or user message
 export const updateToolBlockInMessage = ({
   messages,
   id,
+  messageId,
   parameters,
   result,
   success,
@@ -248,9 +282,42 @@ export const updateToolBlockInMessage = ({
   isManuallyBackgrounded,
 }: UpdateToolBlockParams): Message[] => {
   const newMessages = [...messages];
-  // Find the last assistant message
+
+  // If messageId is provided, target that specific message
+  if (messageId) {
+    const messageIndex = newMessages.findIndex((msg) => msg.id === messageId);
+    if (messageIndex !== -1) {
+      const toolBlockIndex = newMessages[messageIndex].blocks.findIndex(
+        (block) => block.type === "tool" && block.id === id,
+      );
+
+      if (toolBlockIndex !== -1) {
+        const toolBlock = newMessages[messageIndex].blocks[toolBlockIndex];
+        if (toolBlock.type === "tool") {
+          if (parameters !== undefined) toolBlock.parameters = parameters;
+          if (result !== undefined) toolBlock.result = result;
+          if (shortResult !== undefined) toolBlock.shortResult = shortResult;
+          if (startLineNumber !== undefined)
+            toolBlock.startLineNumber = startLineNumber;
+          if (images !== undefined) toolBlock.images = images;
+          if (success !== undefined) toolBlock.success = success;
+          if (error !== undefined) toolBlock.error = error;
+          if (stage !== undefined) toolBlock.stage = stage;
+          if (compactParams !== undefined)
+            toolBlock.compactParams = compactParams;
+          if (parametersChunk !== undefined)
+            toolBlock.parametersChunk = parametersChunk;
+          if (isManuallyBackgrounded !== undefined)
+            toolBlock.isManuallyBackgrounded = isManuallyBackgrounded;
+        }
+      }
+    }
+    return newMessages;
+  }
+
+  // Find the last assistant or user message
   for (let i = newMessages.length - 1; i >= 0; i--) {
-    if (newMessages[i].role === "assistant") {
+    if (newMessages[i].role === "assistant" || newMessages[i].role === "user") {
       const toolBlockIndex = newMessages[i].blocks.findIndex(
         (block) => block.type === "tool" && block.id === id,
       );
@@ -274,8 +341,9 @@ export const updateToolBlockInMessage = ({
           if (isManuallyBackgrounded !== undefined)
             toolBlock.isManuallyBackgrounded = isManuallyBackgrounded;
         }
-      } else {
-        // If existing block not found, create new one
+        break; // Found and updated, stop searching
+      } else if (newMessages[i].role === "assistant") {
+        // If existing block not found in assistant message, create new one
         // This handles cases where we're streaming tool parameters before execution
         newMessages[i].blocks.push({
           type: "tool",
@@ -293,8 +361,8 @@ export const updateToolBlockInMessage = ({
           parametersChunk: parametersChunk,
           isManuallyBackgrounded: isManuallyBackgrounded,
         });
+        break; // Created and added, stop searching
       }
-      break;
     }
   }
   return newMessages;

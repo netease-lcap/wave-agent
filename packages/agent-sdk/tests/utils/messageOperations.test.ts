@@ -9,6 +9,8 @@ import {
   updateUserMessageInMessages,
   addErrorBlockToMessage,
   generateMessageId,
+  addToolBlockToMessageInMessages,
+  updateToolBlockInMessage,
 } from "@/utils/messageOperations.js";
 import type { Message } from "@/types/index.js";
 
@@ -779,6 +781,179 @@ describe("addErrorBlockToMessage", () => {
     expect(initialMessages[0].blocks[0]).toEqual({
       type: "text",
       content: "Original",
+    });
+  });
+});
+
+describe("addToolBlockToMessageInMessages", () => {
+  it("should add a tool block to a specific user message", () => {
+    const messageId = generateMessageId();
+    const initialMessages: Message[] = [
+      {
+        id: messageId,
+        role: "user",
+        blocks: [{ type: "text", content: "/forked-skill" }],
+      },
+    ];
+
+    const { messages, toolBlockId } = addToolBlockToMessageInMessages(
+      initialMessages,
+      messageId,
+      {
+        name: "test-tool",
+        parameters: "{}",
+      },
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].blocks).toHaveLength(2);
+    expect(messages[0].blocks[1]).toMatchObject({
+      type: "tool",
+      id: toolBlockId,
+      name: "test-tool",
+      parameters: "{}",
+      stage: "start",
+    });
+  });
+
+  it("should not add a tool block if message ID does not match", () => {
+    const initialMessages: Message[] = [
+      {
+        id: "wrong-id",
+        role: "user",
+        blocks: [{ type: "text", content: "hello" }],
+      },
+    ];
+
+    const { messages } = addToolBlockToMessageInMessages(
+      initialMessages,
+      "target-id",
+      { name: "test" },
+    );
+
+    expect(messages[0].blocks).toHaveLength(1);
+  });
+});
+
+describe("updateToolBlockInMessage with messageId", () => {
+  it("should update a tool block in a specific user message", () => {
+    const messageId = generateMessageId();
+    const toolBlockId = "tool-123";
+    const initialMessages: Message[] = [
+      {
+        id: messageId,
+        role: "user",
+        blocks: [
+          { type: "text", content: "/forked-skill" },
+          {
+            type: "tool",
+            id: toolBlockId,
+            name: "test-tool",
+            parameters: "{}",
+            result: "",
+            stage: "start",
+          },
+        ],
+      },
+    ];
+
+    const result = updateToolBlockInMessage({
+      messages: initialMessages,
+      id: toolBlockId,
+      messageId: messageId,
+      stage: "end",
+      result: "success",
+    });
+
+    expect(result[0].blocks[1]).toMatchObject({
+      id: toolBlockId,
+      stage: "end",
+      result: "success",
+    });
+  });
+
+  it("should update a tool block in a user message without messageId (searching)", () => {
+    const toolBlockId = "tool-123";
+    const initialMessages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [
+          { type: "text", content: "/forked-skill" },
+          {
+            type: "tool",
+            id: toolBlockId,
+            name: "test-tool",
+            parameters: "{}",
+            result: "",
+            stage: "start",
+          },
+        ],
+      },
+    ];
+
+    const result = updateToolBlockInMessage({
+      messages: initialMessages,
+      id: toolBlockId,
+      stage: "end",
+      result: "success",
+    });
+
+    expect(result[0].blocks[1]).toMatchObject({
+      id: toolBlockId,
+      stage: "end",
+      result: "success",
+    });
+  });
+
+  it("should update all optional fields in a tool block", () => {
+    const toolBlockId = "tool-123";
+    const initialMessages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: toolBlockId,
+            name: "test-tool",
+            parameters: "{}",
+            result: "",
+            stage: "start",
+          },
+        ],
+      },
+    ];
+
+    const result = updateToolBlockInMessage({
+      messages: initialMessages,
+      id: toolBlockId,
+      parameters: '{"key": "val"}',
+      result: "final result",
+      shortResult: "short",
+      startLineNumber: 10,
+      images: [{ data: "base64", mediaType: "image/png" }],
+      success: true,
+      error: "no error",
+      stage: "end",
+      compactParams: "compact",
+      parametersChunk: "chunk",
+      isManuallyBackgrounded: true,
+    });
+
+    const block = result[0].blocks[0];
+    expect(block).toMatchObject({
+      parameters: '{"key": "val"}',
+      result: "final result",
+      shortResult: "short",
+      startLineNumber: 10,
+      images: [{ data: "base64", mediaType: "image/png" }],
+      success: true,
+      error: "no error",
+      stage: "end",
+      compactParams: "compact",
+      parametersChunk: "chunk",
+      isManuallyBackgrounded: true,
     });
   });
 });

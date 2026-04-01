@@ -273,4 +273,37 @@ describe("convertMessagesForAPI", () => {
       { type: "text", text: "Hidden message" },
     ]);
   });
+
+  it("should handle ToolBlocks in user messages", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [
+          { type: "text", content: "/test-fork" },
+          {
+            type: "tool",
+            id: "tool1",
+            name: "Agent",
+            parameters: '{"prompt": "hello"}',
+            stage: "end",
+            result: "Subagent result",
+            success: true,
+          },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(1);
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[0].content).toEqual([
+      { type: "text", text: "/test-fork" },
+      {
+        type: "text",
+        text: "<local-command-stdout>\nSubagent result\n</local-command-stdout>",
+      },
+    ]);
+  });
 });
