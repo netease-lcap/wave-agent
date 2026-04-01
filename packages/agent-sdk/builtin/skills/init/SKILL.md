@@ -1,4 +1,6 @@
 ---
+name: init
+description: Analyze the codebase and create an AGENTS.md file to guide future agents.
 disable-model-invocation: true
 ---
 
