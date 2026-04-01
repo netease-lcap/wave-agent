@@ -133,7 +133,7 @@ const ChatInterfaceWithRemount: React.FC = () => {
 
     if (newKey !== remountKey) {
       const timeout = setTimeout(() => {
-        stdout?.write("\u001b[2J\u001b[0;0H", (err?: Error | null) => {
+        stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", (err?: Error | null) => {
           if (err) {
             console.error("Failed to clear terminal:", err);
           }
