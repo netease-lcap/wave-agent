@@ -1,7 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { Markdown } from "./Markdown.js";
-import chalk from "chalk";
 import { BtwState } from "../managers/inputReducer.js";
 
 interface BtwDisplayProps {
@@ -14,28 +13,13 @@ export const BtwDisplay: React.FC<BtwDisplayProps> = ({ btwState }) => {
   }
 
   return (
-    <Box flexDirection="column" paddingX={1} marginTop={0} marginBottom={0}>
-      <Box>
-        <Text bold color="cyan">
-          BY THE WAY
-        </Text>
-      </Box>
-
-      {btwState.question ? (
-        <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={0} marginBottom={1}>
+      {btwState.question && (
+        <Box>
+          <Text color={btwState.isLoading ? "yellow" : "green"}>● </Text>
           <Text italic color="gray">
-            Question: {btwState.question}
+            /btw {btwState.question}
           </Text>
-        </Box>
-      ) : (
-        <Box>
-          <Text color="yellow">Type your side question and press Enter...</Text>
-        </Box>
-      )}
-
-      {btwState.isLoading && (
-        <Box>
-          <Text color="yellow">AI is answering...</Text>
         </Box>
       )}
 
@@ -44,10 +28,6 @@ export const BtwDisplay: React.FC<BtwDisplayProps> = ({ btwState }) => {
           <Markdown>{btwState.answer}</Markdown>
         </Box>
       )}
-
-      <Box>
-        <Text dimColor>Press {chalk.bold("ESC")} to dismiss</Text>
-      </Box>
     </Box>
   );
 };

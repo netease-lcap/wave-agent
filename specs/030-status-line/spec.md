@@ -19,6 +19,7 @@ As a developer, I want the status line logic to be encapsulated in its own compo
 1. **Given** the CLI is running, **When** the user is in normal mode, **Then** the status line shows "Mode: [current mode] (Shift+Tab to cycle)".
 2. **Given** the CLI is running, **When** the user types `!`, **Then** the status line shows "Shell: Run shell command".
 3. **Given** the CLI is running, **When** the user cycles modes with Shift+Tab, **Then** the `permissionMode` in the status line updates and changes color accordingly.
+4. **Given** the CLI is running, **When** the user is in BTW mode, **Then** the status line shows "Mode: BTW (ESC to dismiss)".
 
 ---
 
@@ -27,8 +28,8 @@ As a developer, I want the status line logic to be encapsulated in its own compo
 ### Functional Requirements
 
 - **FR-001**: System MUST have a dedicated `StatusLine` component in `packages/code/src/components/StatusLine.tsx`.
-- **FR-002**: `StatusLine` component MUST accept `permissionMode` (string) and `isShellCommand` (boolean) as props.
-- **FR-003**: `StatusLine` component MUST render the same UI as previously implemented in `InputBox.tsx`.
+- **FR-002**: `StatusLine` component MUST accept `permissionMode` (string), `isShellCommand` (boolean), and `isBtwActive` (boolean) as props.
+- **FR-003**: `StatusLine` component MUST prioritize displaying BTW mode when `isBtwActive` is true.
 - **FR-004**: `InputBox.tsx` MUST use the `StatusLine` component instead of inline rendering logic.
 
 ### Key Entities *(include if feature involves data)*
