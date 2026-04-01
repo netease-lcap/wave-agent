@@ -32,6 +32,10 @@ export const globTool: ToolPlugin = {
             description:
               'The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null" - simply omit it for the default behavior. Must be a valid directory path if provided.',
           },
+          limit: {
+            type: "number",
+            description: "Maximum number of files to return. Defaults to 100.",
+          },
         },
         required: ["pattern"],
       },
@@ -50,6 +54,8 @@ export const globTool: ToolPlugin = {
   ): Promise<ToolResult> => {
     const pattern = args.pattern as string;
     const searchPath = args.path as string;
+    const limit = (args.limit as number) || MAX_GLOB_RESULTS;
+    const startTime = Date.now();
 
     if (!pattern || typeof pattern !== "string") {
       return {
@@ -113,22 +119,29 @@ export const globTool: ToolPlugin = {
         .map((item) => item.path);
 
       const totalCount = sortedFiles.length;
-      const finalFiles = sortedFiles.slice(0, MAX_GLOB_RESULTS);
+      const finalFiles = sortedFiles.slice(0, limit);
 
       // Format output
       const output = finalFiles
         .map((file, index) => `${index + 1}. ${file}`)
         .join("\n");
 
-      const isTruncated = totalCount > MAX_GLOB_RESULTS;
+      const isTruncated = totalCount > limit;
       const shortResult = isTruncated
-        ? `Found ${totalCount} files (showing first ${MAX_GLOB_RESULTS})`
+        ? `Found ${totalCount} files (showing first ${limit})`
         : `Found ${totalCount} file${totalCount === 1 ? "" : "s"}`;
+
+      const durationMs = Date.now() - startTime;
 
       return {
         success: true,
         content: output,
         shortResult,
+        metadata: {
+          durationMs,
+          numFiles: totalCount,
+          truncated: isTruncated,
+        },
       };
     } catch (error) {
       return {

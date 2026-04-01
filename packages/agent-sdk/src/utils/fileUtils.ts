@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
+import { glob } from "glob";
 
 /**
  * Reads the first line of a file efficiently using Node.js readline.
@@ -157,4 +158,72 @@ export async function ensureGlobalGitIgnore(pattern: string): Promise<void> {
   } catch {
     // Ignore errors
   }
+}
+
+/**
+ * Simple Levenshtein distance implementation
+ */
+function levenshtein(a: string, b: string): number {
+  const matrix = Array.from({ length: a.length + 1 }, () =>
+    Array.from({ length: b.length + 1 }, () => 0),
+  );
+
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+}
+
+/**
+ * Suggests similar paths if a file is not found.
+ */
+export async function suggestPathUnderCwd(
+  targetPath: string,
+  workdir: string,
+): Promise<string[]> {
+  try {
+    const allFiles = await glob("**/*", {
+      cwd: workdir,
+      nodir: true,
+      dot: true,
+      ignore: ["**/.git/**", "**/node_modules/**"],
+    });
+
+    const targetBasename = path.basename(targetPath);
+    const suggestions = allFiles
+      .map((file) => ({
+        path: file,
+        distance: levenshtein(targetBasename, path.basename(file)),
+      }))
+      .filter((item) => item.distance <= 3) // Threshold for similarity
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 5)
+      .map((item) => item.path);
+
+    return suggestions;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Uses fuzzy matching to find the intended file.
+ */
+export async function findSimilarFile(
+  targetPath: string,
+  workdir: string,
+): Promise<string | null> {
+  const suggestions = await suggestPathUnderCwd(targetPath, workdir);
+  return suggestions.length > 0 ? suggestions[0] : null;
 }

@@ -81,6 +81,15 @@ export const grepTool: ToolPlugin = {
             description:
               "Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false.",
           },
+          offset: {
+            type: "number",
+            description: "The number of matches to skip.",
+          },
+          context: {
+            type: "number",
+            description:
+              'Alias for -C. Number of lines to show before and after each match. Requires output_mode: "content", ignored otherwise.',
+          },
         },
         required: ["pattern"],
       },
@@ -113,6 +122,8 @@ export const grepTool: ToolPlugin = {
     const fileType = args.type as string;
     const headLimit = args.head_limit as number;
     const multiline = args.multiline as boolean;
+    const offset = args.offset as number;
+    const contextArg = args.context as number;
 
     if (!pattern || typeof pattern !== "string") {
       return {
@@ -165,8 +176,9 @@ export const grepTool: ToolPlugin = {
 
       // Context lines (only effective in content mode)
       if (outputMode === "content") {
-        if (contextAround) {
-          rgArgs.push("-C", contextAround.toString());
+        const effectiveContext = contextArg ?? contextAround;
+        if (effectiveContext) {
+          rgArgs.push("-C", effectiveContext.toString());
         } else {
           if (contextBefore) {
             rgArgs.push("-B", contextBefore.toString());
@@ -215,41 +227,57 @@ export const grepTool: ToolPlugin = {
           content:
             "No matches found. Suggestion: specify the 'path' field to search in ignored or other directories (e.g., 'node_modules'), as the default search path is the current working directory and respects .gitignore.",
           shortResult: "No matches found",
+          metadata: {
+            numMatches: 0,
+          },
         };
       }
 
-      // Apply head_limit with default fallback
-      let finalOutput = output;
       let lines = output.split("\n");
+      const totalMatches = lines.length;
 
-      // Set default head_limit if not specified to prevent excessive token usage
+      // Apply offset
+      const effectiveOffset = offset || 0;
+      if (effectiveOffset > 0) {
+        lines = lines.slice(effectiveOffset);
+      }
+
+      // Apply head_limit
       const effectiveHeadLimit = headLimit || 0;
-
+      let truncated = false;
       if (effectiveHeadLimit > 0 && lines.length > effectiveHeadLimit) {
         lines = lines.slice(0, effectiveHeadLimit);
-        finalOutput = lines.join("\n");
+        truncated = true;
       }
+
+      const finalOutput = lines.join("\n");
 
       // Generate short result
       let shortResult: string;
-      const totalLines = output.split("\n").length;
+      const numMatches = lines.length;
 
       if (outputMode === "files_with_matches") {
-        shortResult = `Found ${totalLines} file${totalLines === 1 ? "" : "s"}`;
+        shortResult = `Found ${numMatches} file${numMatches === 1 ? "" : "s"}`;
       } else if (outputMode === "count") {
-        shortResult = `Match counts for ${totalLines} file${totalLines === 1 ? "" : "s"}`;
+        shortResult = `Match counts for ${numMatches} file${numMatches === 1 ? "" : "s"}`;
       } else {
-        shortResult = `Found ${totalLines} matching line${totalLines === 1 ? "" : "s"}`;
+        shortResult = `Found ${numMatches} matching line${numMatches === 1 ? "" : "s"}`;
       }
 
-      if (effectiveHeadLimit && totalLines > effectiveHeadLimit) {
-        shortResult += ` (showing first ${effectiveHeadLimit})`;
+      if (effectiveOffset > 0 || truncated) {
+        shortResult += ` (showing ${numMatches} of ${totalMatches})`;
       }
 
       return {
         success: true,
         content: finalOutput,
         shortResult,
+        metadata: {
+          numMatches: totalMatches,
+          truncated,
+          appliedLimit: effectiveHeadLimit,
+          appliedOffset: effectiveOffset,
+        },
       };
     } catch (error) {
       return {

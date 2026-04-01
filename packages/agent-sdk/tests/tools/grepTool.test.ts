@@ -349,7 +349,7 @@ src/index.ts-3-  return new Application();
     expect(result.success).toBe(true);
     const lines = result.content.split("\n").filter((line) => line.trim());
     expect(lines.length).toBe(1);
-    expect(result.shortResult).toContain("showing first 1");
+    expect(result.shortResult).toContain("(showing 1 of 3)");
   });
 
   it("should work with multiline mode", async () => {
@@ -433,6 +433,34 @@ src/index.ts-3-  return new Application();
     expect(result.success).toBe(false);
     expect(result.error).toContain(
       "pattern parameter is required and must be a string",
+    );
+  });
+
+  it("should support offset and context arguments", async () => {
+    const stdout = "file1.ts:1:match1\nfile2.ts:2:match2\nfile3.ts:3:match3\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
+    const result = await grepTool.execute(
+      {
+        pattern: "match",
+        offset: 1,
+        context: 2,
+        output_mode: "content",
+      },
+      testContext,
+    );
+
+    expect(result.success).toBe(true);
+    const lines = result.content.split("\n").filter((line) => line.trim());
+    expect(lines.length).toBe(2); // file2.ts and file3.ts
+    expect(result.metadata?.numMatches).toBe(3);
+    expect(result.metadata?.appliedOffset).toBe(1);
+
+    // Verify that context was passed as -C
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["-C", "2"]),
+      expect.any(Object),
     );
   });
 

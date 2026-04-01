@@ -16,9 +16,10 @@ As an AI agent, I want to read the content of files in the local filesystem so t
 
 **Acceptance Scenarios**:
 
-1. **Given** a text file exists, **When** the agent calls `Read`, **Then** it MUST receive the content with line numbers.
+1. **Given** a text file exists, **When** the agent calls `Read`, **Then** it MUST receive the content with line numbers and structured metadata.
 2. **Given** a large file, **When** the agent uses `offset` and `limit`, **Then** it MUST receive only the specified chunk.
-3. **Given** an image file, **When** the agent calls `Read`, **Then** it MUST receive the image data in a format suitable for multimodal analysis.
+3. **Given** an image file, **When** the agent calls `Read`, **Then** it MUST receive the image data in a format suitable for multimodal analysis and structured metadata.
+4. **Given** a file has not changed since the last read, **When** the agent calls `Read`, **Then** it MUST receive a minimal response indicating the file is unchanged.
 
 ---
 
@@ -61,8 +62,8 @@ As an AI agent, I want to search for patterns using glob patterns or regex so th
 
 **Acceptance Scenarios**:
 
-1. **Given** a search pattern, **When** the agent calls `Grep`, **Then** it MUST receive matching lines or file paths, respecting `.gitignore` and common ignore patterns.
-2. **Given** a glob pattern like `**/*.ts`, **When** the agent calls `Glob`, **Then** it MUST receive a list of matching TypeScript files, including those ignored by `.gitignore` (but excluding the `.git` directory), up to a maximum of 100 results.
+1. **Given** a search pattern, **When** the agent calls `Grep`, **Then** it MUST receive matching lines or file paths, respecting `.gitignore` and common ignore patterns, and structured metadata including match counts.
+2. **Given** a glob pattern like `**/*.ts`, **When** the agent calls `Glob`, **Then** it MUST receive a list of matching TypeScript files, including those ignored by `.gitignore` (but excluding the `.git` directory), up to a specified `limit` (default 100), and structured metadata.
 3. **Given** a search pattern with no matches, **When** the agent calls `Grep`, **Then** it MUST receive a message suggesting to specify the `path` field to search in ignored or other directories.
 
 ---
@@ -79,15 +80,17 @@ As an AI agent, I want to search for patterns using glob patterns or regex so th
 ### Functional Requirements
 
 - **FR-001**: System MUST provide a `Read` tool that supports text, images (PNG, JPEG, GIF, WebP), and Jupyter notebooks.
-- **FR-002**: `Read` tool MUST support pagination via `offset` and `limit` and truncate long lines for text files.
+- **FR-002**: `Read` tool MUST support pagination via `offset` and `limit`, truncate long lines for text files, and provide structured metadata.
+- **FR-018**: `Read` tool MUST support deduplication by checking file modification time and returning a minimal response if unchanged.
+- **FR-019**: `Read` tool MUST enforce resource limits (e.g., 1MB default) for full file reads.
 - **FR-015**: `Read` tool MUST detect image files by extension case-insensitively and convert content to base64 encoding.
 - **FR-016**: `Read` tool MUST populate the `ToolResult.images` array with base64 data and correct MIME type for images.
 - **FR-017**: `Read` tool MUST enforce a 20MB file size limit for image files.
 - **FR-003**: System MUST provide a `Write` tool that automatically creates parent directories.
 - **FR-004**: `Write` tool SHOULD verify that the file was read before being overwritten to prevent accidental data loss.
 - **FR-005**: System MUST provide an `Edit` tool for exact string replacement with detailed mismatch analysis.
-- **FR-009**: System MUST provide a `Glob` tool for fast pattern matching. It MUST NOT respect `.gitignore` (but MUST always ignore the `.git` directory) and limit results to 100.
-- **FR-010**: System MUST provide a `Grep` tool based on ripgrep for powerful text searching. It MUST respect `.gitignore` and common ignore patterns.
+- **FR-009**: System MUST provide a `Glob` tool for fast pattern matching. It MUST NOT respect `.gitignore` (but MUST always ignore the `.git` directory), support a configurable `limit`, and provide structured metadata.
+- **FR-010**: System MUST provide a `Grep` tool based on ripgrep for powerful text searching. It MUST respect `.gitignore` and common ignore patterns, support `offset` and `context` arguments, and provide structured metadata.
 - **FR-011**: All tools MUST integrate with the `PermissionManager` for authorization.
 - **FR-012**: System MUST provide a visual diff display with word-level highlights for line-by-line changes.
 - **FR-013**: If the `Grep` tool finds no matches, the output MUST include a suggestion to specify the `path` field. This is because the default search path is the current working directory and respects `.gitignore`, and specifying a path (e.g., `node_modules`) can allow searching in ignored or specific directories.
