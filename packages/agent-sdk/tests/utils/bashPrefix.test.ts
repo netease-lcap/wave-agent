@@ -118,6 +118,10 @@ describe("getSmartPrefix", () => {
       expect(getSmartPrefix("docker run -it ubuntu")).toBe("docker run");
     });
 
+    it("should handle docker with flags", () => {
+      expect(getSmartPrefix("docker -D run ubuntu")).toBe("docker -D run");
+    });
+
     it("should extract prefix for kubectl get", () => {
       expect(getSmartPrefix("kubectl get pods")).toBe("kubectl get");
     });
@@ -128,8 +132,8 @@ describe("getSmartPrefix", () => {
   });
 
   describe("Sudo and Env Vars", () => {
-    it("should strip sudo", () => {
-      expect(getSmartPrefix("sudo npm install")).toBe("npm install");
+    it("should keep sudo", () => {
+      expect(getSmartPrefix("sudo npm install")).toBe("sudo npm install");
     });
 
     it("should strip env vars", () => {

@@ -456,13 +456,159 @@ export const DANGEROUS_COMMANDS = [
   "chown",
   "sh",
   "bash",
+  "zsh",
+  "fish",
+  "pwsh",
+  "cmd.exe",
+  "powershell.exe",
   "sudo",
   "dd",
   "apt",
   "apt-get",
   "yum",
   "dnf",
+  "ssh",
+  "scp",
+  "sftp",
+  "ftp",
+  "telnet",
+  "nc",
+  "netcat",
 ];
+
+/**
+ * Registry of commands and their expected subcommand depth for smart prefix extraction.
+ * For example, 'git: 2' means 'git commit' is a valid prefix, but 'git' alone is not.
+ * Multi-word keys can be used for more specific rules.
+ */
+export interface ToolRule {
+  depth: number;
+  scopeFlags?: string[];
+}
+
+export const TOOL_RULES: Record<string, ToolRule> = {
+  // Node/JS
+  npm: { depth: 2, scopeFlags: ["--prefix", "-C", "--registry"] },
+  "npm run": { depth: 3, scopeFlags: ["--prefix", "-C", "--registry"] },
+  pnpm: { depth: 2, scopeFlags: ["-C", "--dir", "-F", "--filter"] },
+  "pnpm run": { depth: 3, scopeFlags: ["-C", "--dir", "-F", "--filter"] },
+  yarn: { depth: 2, scopeFlags: ["workspace", "--cwd"] },
+  "yarn run": { depth: 3, scopeFlags: ["workspace", "--cwd"] },
+  "yarn workspace": { depth: 4, scopeFlags: ["--cwd"] },
+  bun: { depth: 2 },
+  "bun run": { depth: 3 },
+  deno: { depth: 2 },
+  "deno run": { depth: 3 },
+  "deno task": { depth: 3 },
+
+  // Git
+  git: {
+    depth: 2,
+    scopeFlags: ["-C", "-c", "--directory", "--work-tree", "--git-dir"],
+  },
+
+  // Python
+  python: { depth: 2 },
+  python3: { depth: 2 },
+  "python -m": { depth: 2 },
+  "python3 -m": { depth: 2 },
+  "python -m pip install": { depth: 3 },
+  "python3 -m pip install": { depth: 3 },
+  pip: { depth: 2 },
+  pip3: { depth: 2 },
+  poetry: { depth: 2 },
+  conda: { depth: 2 },
+
+  // Java
+  mvn: { depth: 2 },
+  gradle: { depth: 2 },
+  java: { depth: 1 },
+  "java -jar": { depth: 1 },
+
+  // Rust & Go
+  cargo: { depth: 2 },
+  go: { depth: 2 },
+
+  // Containers & Infrastructure
+  docker: { depth: 2 },
+  "docker-compose": { depth: 2 },
+  kubectl: { depth: 2 },
+  terraform: { depth: 2 },
+  gcloud: { depth: 2 },
+  "gcloud compute": { depth: 4 },
+  "gcloud container": { depth: 4 },
+  aws: { depth: 2 },
+};
+
+/**
+ * Registry of dangerous subcommands for specific tools.
+ */
+export const DANGEROUS_SUBCOMMANDS: Record<string, string[]> = {
+  docker: ["rm", "rmi", "system", "volume", "network", "image", "container"],
+  git: ["reset", "clean"],
+  npm: ["uninstall", "un", "remove", "rm"],
+  pnpm: ["uninstall", "un", "remove", "rm"],
+  yarn: ["remove"],
+  deno: ["uninstall"],
+  bun: ["remove", "rm"],
+};
+
+/**
+ * Heuristic to determine if a flag takes an argument.
+ * If nextArg doesn't start with '-' and isn't a known subcommand, assume it's a flag value.
+ */
+function flagTakesArg(flag: string, nextArg: string | undefined): boolean {
+  if (!nextArg) return false;
+  if (nextArg.startsWith("-")) return false;
+  // If it's a common subcommand, it's probably not a flag argument
+  const commonSubcommands = [
+    "install",
+    "add",
+    "remove",
+    "run",
+    "test",
+    "build",
+    "status",
+    "diff",
+    "commit",
+    "push",
+    "pull",
+    "checkout",
+    "log",
+    "fetch",
+    "merge",
+    "rebase",
+  ];
+  if (commonSubcommands.includes(nextArg)) return false;
+  return true;
+}
+
+/**
+ * Detects if an argument is a file path or URL.
+ */
+function shouldStopAtArg(arg: string): boolean {
+  if (!arg) return false;
+  // URLs
+  if (/^(https?|ftp|ssh|git):\/\//.test(arg)) return true;
+  // File paths (starts with /, ./, ../, or ~/)
+  if (
+    arg.startsWith("/") ||
+    arg.startsWith("./") ||
+    arg.startsWith("../") ||
+    arg.startsWith("~/")
+  )
+    return true;
+  // Common file extensions (but not scoped packages or common subcommands)
+  if (
+    /\.(ts|js|py|sh|md|txt|json|yml|yaml|html|css|go|rs|java|cpp|c|h|php|rb|pl|sql)$/.test(
+      arg,
+    ) &&
+    !arg.includes("@") &&
+    !arg.includes("/")
+  )
+    return true;
+  return false;
+}
 
 /**
  * Extracts a "smart prefix" from a bash command based on common developer tools.
@@ -475,187 +621,152 @@ export function getSmartPrefix(command: string): string | null {
   // For now, we only support prefix matching for single commands or the first command in a chain
   // to keep it simple and safe.
   const firstCommand = parts[0];
-  let stripped = stripRedirections(stripEnvVars(firstCommand));
 
-  // Handle sudo
-  if (stripped.startsWith("sudo ")) {
-    stripped = stripped.substring(5).trim();
-  }
+  // Safety check: don't allow heredoc writes
+  if (isBashHeredocWrite(firstCommand)) return null;
 
+  const stripped = stripRedirections(stripEnvVars(firstCommand));
   const tokens = stripped.split(/\s+/);
   if (tokens.length === 0) return null;
 
-  const exe = tokens[0];
-  const sub = tokens[1];
+  const prefixParts: string[] = [];
+  let i = 0;
 
+  // Handle prefix tools like sudo
+  const prefixTools = ["sudo", "time", "stdbuf", "timeout"];
+  while (i < tokens.length && prefixTools.includes(tokens[i])) {
+    prefixParts.push(tokens[i]);
+    i++;
+  }
+
+  if (i >= tokens.length) return null;
+
+  const exe = tokens[i];
   // Blacklist - Hard blacklist for dangerous commands
   if (DANGEROUS_COMMANDS.includes(exe)) return null;
 
-  // Node/JS
-  if (["npm", "pnpm", "yarn", "deno", "bun"].includes(exe)) {
-    let currentIdx = 1;
-    const prefixParts = [exe];
+  // Find the longest matching rule in TOOL_RULES
+  let bestRuleKey = "";
+  let rule: ToolRule | undefined;
 
-    // Handle workspace/filter flags
-    if (exe === "pnpm") {
-      while (
-        (tokens[currentIdx] === "-F" || tokens[currentIdx] === "--filter") &&
-        tokens[currentIdx + 1]
+  for (const [key, r] of Object.entries(TOOL_RULES)) {
+    const keyTokens = key.split(/\s+/);
+    let match = true;
+    for (let j = 0; j < keyTokens.length; j++) {
+      if (tokens[i + j] !== keyTokens[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match && key.length > bestRuleKey.length) {
+      bestRuleKey = key;
+      rule = r;
+    }
+  }
+
+  // If no rule found, we don't suggest a prefix
+  if (!rule) return null;
+
+  const depth = rule.depth;
+  const scopeFlags = rule.scopeFlags || [];
+  let currentDepth = 0;
+
+  // Safety check: only allow safe subcommands for git
+  const safeGitSubcommands = [
+    "commit",
+    "push",
+    "pull",
+    "checkout",
+    "add",
+    "status",
+    "diff",
+    "branch",
+    "merge",
+    "rebase",
+    "log",
+    "fetch",
+    "remote",
+    "stash",
+  ];
+
+  const destructiveGitFlags = [
+    "-d",
+    "-D",
+    "--delete",
+    "--hard",
+    "--force",
+    "-f",
+  ];
+
+  // Global safety check: scan ALL tokens for dangerous flags/subcommands
+  for (let j = i; j < tokens.length; j++) {
+    const token = tokens[j];
+    if (token.startsWith("-")) {
+      if (exe === "git" && destructiveGitFlags.includes(token)) return null;
+    } else {
+      if (DANGEROUS_SUBCOMMANDS[exe]?.includes(token)) return null;
+    }
+  }
+
+  // Include all tokens from the best matching rule
+  const ruleTokens = bestRuleKey.split(/\s+/);
+  for (let j = 0; j < ruleTokens.length; j++) {
+    const token = tokens[i];
+    if (!token) break;
+
+    if (token.startsWith("-")) {
+      if (exe === "git" && destructiveGitFlags.includes(token)) return null;
+    } else {
+      if (DANGEROUS_SUBCOMMANDS[exe]?.includes(token)) return null;
+      if (
+        exe === "git" &&
+        currentDepth > 0 &&
+        !safeGitSubcommands.includes(token)
       ) {
-        prefixParts.push(tokens[currentIdx], tokens[currentIdx + 1]);
-        currentIdx += 2;
+        return null;
       }
-    } else if (
-      exe === "npm" &&
-      (tokens[currentIdx] === "--prefix" || tokens[currentIdx] === "-C") &&
-      tokens[currentIdx + 1]
-    ) {
-      prefixParts.push(tokens[currentIdx], tokens[currentIdx + 1]);
-      currentIdx += 2;
-    } else if (
-      exe === "yarn" &&
-      tokens[currentIdx] === "workspace" &&
-      tokens[currentIdx + 1]
-    ) {
-      prefixParts.push(tokens[currentIdx], tokens[currentIdx + 1]);
-      currentIdx += 2;
+      currentDepth++;
     }
 
-    const subCommand = tokens[currentIdx];
-    const safeSubcommands = [
-      "install",
-      "i",
-      "add",
-      "remove",
-      "rm",
-      "uninstall",
-      "un",
-      "test",
-      "t",
-      "build",
-      "start",
-      "dev",
-    ];
-
-    if (safeSubcommands.includes(subCommand)) {
-      prefixParts.push(subCommand);
-      return prefixParts.join(" ");
-    }
-    if (
-      (subCommand === "run" || (exe === "deno" && subCommand === "task")) &&
-      tokens[currentIdx + 1]
-    ) {
-      prefixParts.push(subCommand, tokens[currentIdx + 1]);
-      return prefixParts.join(" ");
-    }
-    return null;
+    prefixParts.push(token);
+    i++;
   }
 
-  // Git
-  if (exe === "git") {
-    let currentIdx = 1;
-    const prefixParts = [exe];
+  // Continue until we reach the required depth
+  while (i < tokens.length && currentDepth < depth) {
+    const token = tokens[i];
 
-    // Handle -C <path>
-    if (tokens[currentIdx] === "-C" && tokens[currentIdx + 1]) {
-      prefixParts.push(tokens[currentIdx], tokens[currentIdx + 1]);
-      currentIdx += 2;
-    }
+    if (token.startsWith("-")) {
+      // Safety checks for flags
+      if (exe === "git" && destructiveGitFlags.includes(token)) return null;
 
-    const subCommand = tokens[currentIdx];
-    const safeGitSubcommands = [
-      "commit",
-      "push",
-      "pull",
-      "checkout",
-      "add",
-      "status",
-      "diff",
-      "branch",
-      "merge",
-      "rebase",
-      "log",
-      "fetch",
-      "remote",
-      "stash",
-    ];
-
-    if (safeGitSubcommands.includes(subCommand)) {
-      if (subCommand === "branch") {
-        // Check for destructive flags
-        const destructiveFlags = ["-d", "-D", "--delete"];
-        if (tokens.some((t) => destructiveFlags.includes(t))) {
-          return null;
+      prefixParts.push(token);
+      if (scopeFlags.includes(token) || flagTakesArg(token, tokens[i + 1])) {
+        if (i + 1 < tokens.length) {
+          prefixParts.push(tokens[++i]);
         }
       }
-      prefixParts.push(subCommand);
-      return prefixParts.join(" ");
-    }
-    return null;
-  }
-
-  // Python
-  if (["python", "python3", "pip", "pip3", "poetry", "conda"].includes(exe)) {
-    if (exe === "python" || exe === "python3") {
-      if (tokens[1] === "-m" && tokens[2]) {
-        if (tokens[2] === "pip" && tokens[3] === "install") {
-          return `${exe} -m pip install`;
-        }
-        return `${exe} -m ${tokens[2]}`;
+    } else {
+      // Safety checks for subcommands
+      if (DANGEROUS_SUBCOMMANDS[exe]?.includes(token)) return null;
+      if (
+        exe === "git" &&
+        currentDepth > 0 &&
+        !safeGitSubcommands.includes(token)
+      ) {
+        return null;
       }
-      return null;
+
+      // Stop at data/paths
+      if (shouldStopAtArg(token) && currentDepth > 0) break;
+
+      prefixParts.push(token);
+      currentDepth++;
     }
-    if (["install", "add", "remove", "test", "run"].includes(sub)) {
-      return `${exe} ${sub}`;
-    }
-    return null;
+    i++;
   }
 
-  // Java
-  if (["mvn", "gradle"].includes(exe)) {
-    if (sub && !sub.startsWith("-")) {
-      return `${exe} ${sub}`;
-    }
-    return null;
-  }
-  if (exe === "java") {
-    if (sub === "-jar") return "java -jar";
-    return "java";
-  }
+  if (currentDepth < depth) return null;
 
-  // Rust & Go
-  if (exe === "cargo") {
-    if (["build", "test", "run", "add", "check"].includes(sub)) {
-      return `${exe} ${sub}`;
-    }
-    return null;
-  }
-  if (exe === "go") {
-    if (["build", "test", "run", "get", "mod"].includes(sub)) {
-      return `${exe} ${sub}`;
-    }
-    return null;
-  }
-
-  // Containers & Infrastructure
-  if (exe === "docker" || exe === "docker-compose") {
-    if (["run", "build", "ps", "exec", "up", "down"].includes(sub)) {
-      return `${exe} ${sub}`;
-    }
-    return null;
-  }
-  if (exe === "kubectl") {
-    if (["get", "describe", "apply", "logs"].includes(sub)) {
-      return `${exe} ${sub}`;
-    }
-    return null;
-  }
-  if (exe === "terraform") {
-    if (["plan", "apply", "destroy", "init"].includes(sub)) {
-      return `${exe} ${sub}`;
-    }
-    return null;
-  }
-
-  return null;
+  return prefixParts.join(" ");
 }

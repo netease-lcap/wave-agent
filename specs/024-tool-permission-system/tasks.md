@@ -12,9 +12,10 @@
 
 ## Phase 2: Wildcard Matching & Smart Heuristics
 - [x] T007 Support `*` wildcard in `permissions.allow` at any position.
-- [x] T008 Implement `getSmartWildcard` heuristic for bash commands.
+- [x] T008 Implement `getSmartPrefix` heuristic for bash commands with rule-based parsing.
 - [x] T009 Update UI to suggest and allow editing of smart wildcard patterns.
-- [x] T010 Implement blacklist for dangerous commands (e.g., `rm`, `sudo`) to prevent wildcard matching.
+- [x] T010 Implement blacklist for dangerous commands and subcommands to prevent wildcard matching.
+- [x] T076 Preserve flags (e.g., `-C`, `--prefix`) and prefix tools (e.g., `sudo`) in smart prefixes for correct rule matching.
 
 ## Phase 3: Secure Pipeline Validation
 - [x] T011 Implement bash command decomposition into "simple commands".

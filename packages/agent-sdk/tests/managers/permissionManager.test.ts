@@ -2195,7 +2195,7 @@ describe("PermissionManager", () => {
     it("should not return broad glob rules for unknown subcommands", () => {
       const command = "npm list";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toContain("Bash(npm list)");
+      expect(rules).toContain("Bash(npm list*)");
       expect(rules).not.toContain("Bash(npm*)");
     });
 
