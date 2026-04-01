@@ -16,6 +16,7 @@ export interface Message {
   blocks: MessageBlock[];
   usage?: Usage; // Usage data for this message's AI operation (assistant messages only)
   additionalFields?: Record<string, unknown>; // Additional metadata from AI responses
+  isMeta?: boolean; // Whether the message is a meta message (hidden from UI)
 }
 
 export type MessageBlock =

@@ -8,15 +8,15 @@
 
 ### User Story 1 - Automatic Continuation on Truncation (Priority: P1)
 
-As a user, I want the agent to automatically continue its response when it is cut off by the output token limit, so that I don't have to manually prompt it to finish its work.
+As a user, I want the agent to automatically continue its response when it is cut off by the output token limit, so that I don't have to manually prompt it to finish its work. The continuation prompt should be hidden from the UI to keep the conversation clean.
 
 **Why this priority**: This is the core functionality requested. It improves the user experience by making the agent more autonomous and reducing manual intervention.
 
-**Independent Test**: Can be tested by simulating an AI response with `finish_reason: "length"` and verifying that the agent adds the continuation message and recurses.
+**Independent Test**: Can be tested by simulating an AI response with `finish_reason: "length"` and verifying that the agent adds the hidden continuation message and recurses.
 
 **Acceptance Scenarios**:
 
-1. **Given** the AI response is truncated due to length limit and no tools were called, **When** the agent processes the response, **Then** it should add a user message: "Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off." and automatically initiate a new AI call.
+1. **Given** the AI response is truncated due to length limit, **When** the agent processes the response, **Then** it should add a hidden user message (with `isMeta: true`): "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces." and automatically initiate a new AI call.
 
 ---
 
@@ -26,7 +26,7 @@ As a user, I want the agent to execute tools and then automatically continue its
 
 **Acceptance Scenarios**:
 
-1. **Given** the AI response is truncated due to length limit and tools WERE called, **When** the agent processes the response, **Then** it should NOT add the extra user message (as tool results serve as the reminder) but it SHOULD still automatically initiate a new AI call after tool execution.
+1. **Given** the AI response is truncated due to length limit and tools WERE called, **When** the agent processes the response, **Then** it should still add the hidden recovery message (with `isMeta: true`) and automatically initiate a new AI call after tool execution.
 
 ---
 
@@ -74,9 +74,9 @@ As a user, I want the agent to handle cases where the AI provides malformed JSON
 ### Functional Requirements
 
 - **FR-001**: The system MUST detect when an AI response is truncated due to the output token limit (`finish_reason: "length"`).
-- **FR-002**: If a response is truncated and no tools were called, the system MUST add a user message: "Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off."
+- **FR-002**: If a response is truncated, the system MUST add a hidden user message (with `isMeta: true`): "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."
 - **FR-003**: If a response is truncated, the system MUST automatically initiate a recursive AI call to continue the response.
-- **FR-004**: If a response is truncated and tools were called, the system MUST NOT add the extra user message, but MUST still recurse after tool execution.
+- **FR-004**: The system MUST filter out messages with `isMeta: true` from the UI rendering.
 - **FR-005**: The system MUST retry on 429 errors with exponential backoff (up to 5 retries).
 - **FR-006**: The system MUST save debug data (messages, error details) to a temporary directory when a 400 error occurs.
 - **FR-007**: The system MUST handle JSON parsing errors for tool arguments. If the response was truncated, the error message MUST include: `"(output truncated, please reduce your output)"`.

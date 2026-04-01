@@ -175,6 +175,25 @@ describe("MessageList Component", () => {
       expect(output).toContain("Second - Message 2");
       expect(output).toContain("Third - Message 3");
     });
+
+    it("should filter out messages with isMeta flag", () => {
+      const messages = [
+        createMessage("user", "Visible", 1),
+        {
+          ...createMessage("user", "Hidden", 2),
+          isMeta: true,
+        },
+      ];
+
+      const { lastFrame } = render(<MessageList messages={messages} />);
+
+      const output = lastFrame();
+
+      // Should show visible message
+      expect(output).toContain("Visible - Message 1");
+      // Should NOT show hidden message
+      expect(output).not.toContain("Hidden - Message 2");
+    });
   });
 
   describe("forceStatic prop", () => {

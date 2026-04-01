@@ -798,11 +798,12 @@ export class AIManager {
             "Some tools were manually backgrounded, stopping recursion.",
           );
         } else if (!isCurrentlyAborted) {
-          // If response was truncated and no tools were called, add a continuation message
-          if (result.finish_reason === "length" && toolCalls.length === 0) {
+          // If response was truncated, add a hidden continuation message
+          if (result.finish_reason === "length") {
             this.messageManager.addUserMessage({
               content:
-                "Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off.",
+                "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.",
+              isMeta: true,
             });
           }
 

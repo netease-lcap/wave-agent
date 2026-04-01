@@ -12,6 +12,7 @@ export interface UserMessageParams {
   images?: Array<{ path: string; mimeType: string }>;
   customCommandContent?: string;
   source?: MessageSource;
+  isMeta?: boolean;
 }
 
 // Parameter interfaces for message operations
@@ -125,6 +126,7 @@ export const addUserMessageToMessages = ({
   customCommandContent,
   source,
   id,
+  isMeta,
 }: AddUserMessageParams): Message[] => {
   const blocks: Message["blocks"] = [];
 
@@ -150,6 +152,7 @@ export const addUserMessageToMessages = ({
     id: id || generateMessageId(),
     role: "user",
     blocks,
+    ...(isMeta !== undefined && { isMeta }),
   };
   return [...messages, userMessage];
 };
@@ -177,7 +180,11 @@ export const updateUserMessageInMessages = (
         }
         return block;
       });
-      return { ...msg, blocks: newBlocks };
+      return {
+        ...msg,
+        blocks: newBlocks,
+        ...(params.isMeta !== undefined && { isMeta: params.isMeta }),
+      };
     }
     return msg;
   });

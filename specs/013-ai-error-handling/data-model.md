@@ -16,9 +16,10 @@ The message history is managed by the `MessageManager` and stores the conversati
 - `role`: The role of the message sender (`"user"`, `"assistant"`, or `"system"`).
 - `blocks`: A list of message blocks (text, tool, error, etc.).
 - `usage`: Token usage statistics for the message.
+- `isMeta`: A boolean flag indicating if the message is a meta message (hidden from UI).
 
 ## Continuation Prompt
-The continuation prompt is a new user message added to the message history when a response is truncated.
+The continuation prompt is a new hidden user message added to the message history when a response is truncated.
 
 ### Content:
-"Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off."
+"Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."

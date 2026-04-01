@@ -254,4 +254,23 @@ describe("convertMessagesForAPI", () => {
     const allApiContent = JSON.stringify(apiMessages);
     expect(allApiContent).not.toContain("This error should NOT be sent to API");
   });
+
+  it("should include messages with isMeta flag in API conversion", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Hidden message" }],
+        isMeta: true,
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(1);
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[0].content).toEqual([
+      { type: "text", text: "Hidden message" },
+    ]);
+  });
 });
