@@ -3,9 +3,10 @@
 ## Phase 1: Implementation
 
 - [x] Create `packages/code/src/components/StatusLine.tsx` with the extracted logic.
-- [x] Update `packages/code/src/components/InputBox.tsx` to use the new `StatusLine` component.
+- [x] Update `StatusLine.tsx` to support `isBtwActive` prop and display BTW mode.
+- [x] Update `InputBox.tsx` to pass `isBtwActive` to `StatusLine`.
 
 ## Phase 2: Verification
 
 - [x] Run `pnpm -F wave-code run type-check` to verify types.
-- [ ] Manually verify the UI in the CLI.
+- [x] Manually verify the UI in the CLI.

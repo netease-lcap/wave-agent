@@ -23,8 +23,11 @@ The implementation of the `/btw` command involves changes to both the `agent-sdk
 ## Phase 3: UI Components
 
 1. Create `BtwDisplay.tsx` to render the side question and answer.
+   - Display the question as `/btw <question>` in italic gray.
+   - Make the display compact by removing unnecessary headers and padding.
 2. Integrate `BtwDisplay` into `ChatInterface.tsx`.
-3. Update `InputBox.tsx` to show a disabled state when `btwState.isActive` is true.
+3. Update `InputBox.tsx` to show a cyan border and a cursor before the placeholder text when `btwState.isActive` is true.
+4. Update `StatusLine.tsx` to prioritize displaying `Mode: BTW (ESC to dismiss)` when `btwState.isActive` is true.
 
 ## Phase 4: Testing and Verification
 

@@ -129,17 +129,32 @@ export const ChatInterface: React.FC = () => {
         onDynamicBlocksHeightMeasured={handleDynamicBlocksHeightMeasured}
       />
 
-      {(isLoading || isCommandRunning || isCompressing) &&
-        !isConfirmationVisible &&
-        !isExpanded && (
-          <LoadingIndicator
+      {!isConfirmationVisible && !isExpanded && (
+        <>
+          <BtwDisplay btwState={btwState} />
+          {(isLoading || isCommandRunning || isCompressing) && (
+            <LoadingIndicator
+              isLoading={isLoading}
+              isCommandRunning={isCommandRunning}
+              isCompressing={isCompressing}
+              latestTotalTokens={latestTotalTokens}
+            />
+          )}
+          <TaskList />
+          <QueuedMessageList />
+          <InputBox
             isLoading={isLoading}
             isCommandRunning={isCommandRunning}
-            isCompressing={isCompressing}
-            latestTotalTokens={latestTotalTokens}
+            sendMessage={sendMessage}
+            abortMessage={abortMessage}
+            mcpServers={mcpServers}
+            connectMcpServer={connectMcpServer}
+            disconnectMcpServer={disconnectMcpServer}
+            slashCommands={slashCommands}
+            hasSlashCommand={hasSlashCommand}
           />
-        )}
-      {!isConfirmationVisible && !isExpanded && <TaskList />}
+        </>
+      )}
 
       {isConfirmationVisible && (
         <>
@@ -161,24 +176,6 @@ export const ChatInterface: React.FC = () => {
             onCancel={handleConfirmationCancel}
             onAbort={abortMessage}
             onHeightMeasured={handleSelectorHeightMeasured}
-          />
-        </>
-      )}
-
-      {!isConfirmationVisible && !isExpanded && (
-        <>
-          <QueuedMessageList />
-          {btwState.isActive && <BtwDisplay btwState={btwState} />}
-          <InputBox
-            isLoading={isLoading}
-            isCommandRunning={isCommandRunning}
-            sendMessage={sendMessage}
-            abortMessage={abortMessage}
-            mcpServers={mcpServers}
-            connectMcpServer={connectMcpServer}
-            disconnectMcpServer={disconnectMcpServer}
-            slashCommands={slashCommands}
-            hasSlashCommand={hasSlashCommand}
           />
         </>
       )}

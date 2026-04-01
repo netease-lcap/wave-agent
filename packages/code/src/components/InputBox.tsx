@@ -265,7 +265,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
             >
               <Text color={isPlaceholder ? "gray" : "white"}>
                 {btwState.isActive && isPlaceholder ? (
-                  "Type your side question..."
+                  <>
+                    <Text backgroundColor="white" color="black">
+                      {" "}
+                    </Text>
+                    <Text color="cyan">Type your side question...</Text>
+                  </>
                 ) : shouldShowCursor ? (
                   <>
                     {beforeCursor}
@@ -282,6 +287,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
             <StatusLine
               permissionMode={permissionMode}
               isShellCommand={isShellCommand}
+              isBtwActive={btwState.isActive}
             />
           </Box>
         )}
