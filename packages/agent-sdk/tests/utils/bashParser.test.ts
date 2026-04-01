@@ -245,13 +245,54 @@ describe("bashParser", () => {
       expect(getSmartPrefix("git commit -m 'msg'")).toBe("git commit");
     });
 
-    it("should handle -C flag in git", () => {
+    it("should handle -C flag in git by keeping it", () => {
       expect(getSmartPrefix("git -C some/path status")).toBe(
         "git -C some/path status",
       );
       expect(getSmartPrefix("git -C some/path branch -D some-branch")).toBe(
         null,
       );
+    });
+
+    it("should handle npm commands", () => {
+      expect(getSmartPrefix("npm install lodash")).toBe("npm install");
+      expect(getSmartPrefix("npm i lodash")).toBe("npm i");
+      expect(getSmartPrefix("npm run build")).toBe("npm run build");
+      expect(getSmartPrefix("npm test")).toBe("npm test");
+    });
+
+    it("should handle gcloud commands", () => {
+      expect(
+        getSmartPrefix("gcloud compute instances list --project my-project"),
+      ).toBe("gcloud compute instances list");
+    });
+
+    it("should handle python commands", () => {
+      expect(getSmartPrefix("python3 -m pip install requests")).toBe(
+        "python3 -m pip install",
+      );
+      expect(getSmartPrefix("python3 -m venv .venv")).toBe("python3 -m venv");
+    });
+
+    it("should return null for dangerous commands", () => {
+      expect(getSmartPrefix("rm -rf /")).toBe(null);
+      expect(getSmartPrefix("bash script.sh")).toBe(null);
+      expect(getSmartPrefix("sudo rm -rf /")).toBe(null);
+    });
+
+    it("should return null for heredoc writes", () => {
+      expect(getSmartPrefix("cat <<EOF > file.txt")).toBe(null);
+    });
+
+    it("should stop at file paths and URLs", () => {
+      expect(getSmartPrefix("git status file.txt")).toBe("git status");
+      expect(getSmartPrefix("npm install ./pkg")).toBe("npm install");
+    });
+
+    it("should handle sudo correctly", () => {
+      expect(getSmartPrefix("sudo apt update")).toBe(null); // apt is dangerous
+      expect(getSmartPrefix("sudo npm install")).toBe("sudo npm install");
+      expect(getSmartPrefix("sudo git status")).toBe("sudo git status");
     });
   });
 });
