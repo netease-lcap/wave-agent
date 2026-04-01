@@ -198,7 +198,7 @@ export class Agent {
   }
 
   public get latestTotalTokens(): number {
-    return this.messageManager.getlatestTotalTokens();
+    return this.messageManager.getLatestTotalTokens();
   }
 
   /** Get working directory */

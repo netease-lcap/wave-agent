@@ -35,7 +35,7 @@ describe("skillTool model override", () => {
         subagentId: "test-id",
         messageManager: {
           getMessages: vi.fn().mockReturnValue([]),
-          getlatestTotalTokens: vi.fn().mockReturnValue(0),
+          getLatestTotalTokens: vi.fn().mockReturnValue(0),
         },
         lastTools: [],
       }),

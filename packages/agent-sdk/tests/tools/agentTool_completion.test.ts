@@ -55,7 +55,7 @@ describe("Agent Tool Completion shortResult", () => {
           { blocks: [{ type: "tool" }, { type: "tool" }] },
           { blocks: [{ type: "tool" }] },
         ]),
-        getlatestTotalTokens: vi.fn(() => 1234),
+        getLatestTotalTokens: vi.fn(() => 1234),
       },
     };
 
@@ -84,7 +84,7 @@ describe("Agent Tool Completion shortResult", () => {
       lastTools: ["Read"],
       messageManager: {
         getMessages: vi.fn(() => [{ blocks: [{ type: "tool" }] }]),
-        getlatestTotalTokens: vi.fn(() => 0),
+        getLatestTotalTokens: vi.fn(() => 0),
       },
     };
 
@@ -112,7 +112,7 @@ describe("Agent Tool Completion shortResult", () => {
       lastTools: [],
       messageManager: {
         getMessages: vi.fn(() => []),
-        getlatestTotalTokens: vi.fn(() => 0),
+        getLatestTotalTokens: vi.fn(() => 0),
       },
     };
 

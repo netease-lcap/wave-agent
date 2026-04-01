@@ -7,7 +7,7 @@ export interface SlashCommand {
   id: string;
   name: string;
   description: string;
-  handler: (args?: string) => Promise<void> | void;
+  handler: (args?: string, signal?: AbortSignal) => Promise<void> | void;
 }
 
 export interface CustomSlashCommandConfig {

@@ -154,7 +154,7 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
           if (run_in_background || isBackgrounded) return;
 
           const messages = instance.messageManager.getMessages();
-          const tokens = instance.messageManager.getlatestTotalTokens();
+          const tokens = instance.messageManager.getLatestTotalTokens();
           const lastTools = instance.lastTools;
 
           const toolCount = countToolBlocks(messages);
@@ -224,7 +224,7 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
             subagentManager.cleanupInstance(instance.subagentId);
 
             const messages = instance.messageManager.getMessages();
-            const tokens = instance.messageManager.getlatestTotalTokens();
+            const tokens = instance.messageManager.getLatestTotalTokens();
             const toolCount = countToolBlocks(messages);
             const summary = formatToolTokenSummary(toolCount, tokens);
 

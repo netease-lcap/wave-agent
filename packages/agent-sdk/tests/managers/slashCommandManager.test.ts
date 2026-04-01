@@ -7,9 +7,12 @@ import {
   CustomSlashCommand,
   TextBlock,
   SkillMetadata,
+  Skill,
 } from "../../src/types/index.js";
 import { Container } from "../../src/utils/container.js";
 import * as markdownParser from "../../src/utils/markdownParser.js";
+import type { SubagentManager } from "../../src/managers/subagentManager.js";
+import type { SkillManager } from "../../src/managers/skillManager.js";
 
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
@@ -38,6 +41,8 @@ describe("SlashCommandManager", () => {
   let slashCommandManager: SlashCommandManager;
   let messageManager: MessageManager;
   let aiManager: AIManager;
+  let mockSubagentManager: SubagentManager;
+  let mockSkillManager: SkillManager;
 
   beforeEach(() => {
     // Reset mocks
@@ -63,9 +68,37 @@ describe("SlashCommandManager", () => {
       generateId: vi.fn(),
     };
 
+    mockSubagentManager = {
+      loadConfigurations: vi.fn().mockResolvedValue([{ name: "Agent" }]),
+      createInstance: vi
+        .fn()
+        .mockResolvedValue({ subagentId: "test-subagent-id" }),
+      executeAgent: vi.fn().mockResolvedValue("Subagent result"),
+      cleanupInstance: vi.fn(),
+      getInstance: vi.fn().mockReturnValue({
+        messages: [],
+        aiManager: { getLatestTotalTokens: () => 100 },
+        messageManager: { getLatestTotalTokens: () => 100 },
+      }),
+    } as unknown as SubagentManager;
+
+    mockSkillManager = {
+      prepareSkill: vi.fn().mockResolvedValue({
+        content: "Prepared content",
+        skill: { name: "test-skill", allowedTools: ["tool1", "tool2"] },
+      }),
+      executeSkill: vi.fn().mockResolvedValue({
+        content: "Skill content",
+        allowedTools: ["tool1", "tool2"],
+      }),
+      on: vi.fn(),
+    } as unknown as SkillManager;
+
     container.register("MessageManager", messageManager);
     container.register("AIManager", aiManager);
     container.register("BackgroundTaskManager", backgroundTaskManager);
+    container.register("SubagentManager", mockSubagentManager);
+    container.register("SkillManager", mockSkillManager);
     container.register(
       "TaskManager",
       new TaskManager(container, "test-task-list"),
@@ -237,22 +270,6 @@ describe("SlashCommandManager", () => {
 
   describe("registerSkillCommands", () => {
     it("should register skill commands and pass allowedTools to aiManager", async () => {
-      const mockSkillManager = {
-        prepareSkill: vi.fn().mockResolvedValue({
-          content: "Prepared content",
-          skill: { name: "test-skill", allowedTools: ["tool1", "tool2"] },
-        }),
-        executeSkill: vi.fn().mockResolvedValue({
-          content: "Skill content",
-          allowedTools: ["tool1", "tool2"],
-        }),
-      };
-
-      const container = (
-        slashCommandManager as unknown as { container: Container }
-      ).container;
-      container.register("SkillManager", mockSkillManager);
-
       const skills = [
         {
           name: "test-skill",
@@ -283,20 +300,19 @@ describe("SlashCommandManager", () => {
     });
 
     it("should register namespaced skill commands", async () => {
-      const mockSkillManager = {
-        prepareSkill: vi.fn().mockResolvedValue({
-          content: "Prepared content",
-          skill: { name: "my-plugin:my-skill" },
-        }),
-        executeSkill: vi.fn().mockResolvedValue({
-          content: "Skill content",
-        }),
-      };
-
-      const container = (
-        slashCommandManager as unknown as { container: Container }
-      ).container;
-      container.register("SkillManager", mockSkillManager);
+      vi.mocked(mockSkillManager.prepareSkill).mockResolvedValue({
+        content: "Prepared content",
+        skill: {
+          name: "my-plugin:my-skill",
+          description: "",
+          type: "personal",
+          skillPath: "",
+          content: "",
+          frontmatter: { name: "my-plugin:my-skill", description: "" },
+          isValid: true,
+          errors: [],
+        } as Skill,
+      });
 
       const skills = [
         {
@@ -404,25 +420,25 @@ describe("SlashCommandManager", () => {
         allowedTools: ["tool1"],
       };
 
-      const mockSkillManager = {
-        prepareSkill: vi.fn().mockResolvedValue({
-          content: "Prepared skill content with !`echo hello`!",
-          skill: {
-            name: "test-skill",
-            model: "gpt-4",
-            allowedTools: ["tool1"],
-          },
-        }),
-        executeSkill: vi.fn().mockResolvedValue({
-          content: "Final skill content with bash output",
+      vi.mocked(mockSkillManager.prepareSkill).mockResolvedValue({
+        content: "Prepared skill content with !`echo hello`!",
+        skill: {
+          name: "test-skill",
+          description: "",
+          type: "personal",
+          skillPath: "",
+          model: "gpt-4",
           allowedTools: ["tool1"],
-        }),
-      };
-
-      const container = (
-        slashCommandManager as unknown as { container: Container }
-      ).container;
-      container.register("SkillManager", mockSkillManager);
+          content: "",
+          frontmatter: { name: "test-skill", description: "" },
+          isValid: true,
+          errors: [],
+        } as Skill,
+      });
+      vi.mocked(mockSkillManager.executeSkill).mockResolvedValue({
+        content: "Final skill content with bash output",
+        allowedTools: ["tool1"],
+      });
 
       slashCommandManager.registerSkillCommands([
         skillMetadata,
@@ -453,11 +469,11 @@ describe("SlashCommandManager", () => {
       });
 
       // Verify order
-      const prepareSkillOrder =
-        mockSkillManager.prepareSkill.mock.invocationCallOrder[0];
+      const prepareSkillOrder = vi.mocked(mockSkillManager.prepareSkill).mock
+        .invocationCallOrder[0];
       const addUserMessageOrder = addUserMessageSpy.mock.invocationCallOrder[0];
-      const executeSkillOrder =
-        mockSkillManager.executeSkill.mock.invocationCallOrder[0];
+      const executeSkillOrder = vi.mocked(mockSkillManager.executeSkill).mock
+        .invocationCallOrder[0];
       const updateUserMessageOrder =
         updateUserMessageSpy.mock.invocationCallOrder[0];
       const sendAIMessageOrder = vi.mocked(aiManager.sendAIMessage).mock
@@ -467,6 +483,174 @@ describe("SlashCommandManager", () => {
       expect(addUserMessageOrder).toBeLessThan(executeSkillOrder);
       expect(executeSkillOrder).toBeLessThan(updateUserMessageOrder);
       expect(updateUserMessageOrder).toBeLessThan(sendAIMessageOrder);
+    });
+  });
+
+  describe("Forked Skill Execution", () => {
+    it("should execute forked skill using SubagentManager", async () => {
+      const skillMetadata = {
+        name: "fork-skill",
+        description: "Forked skill",
+        userInvocable: true,
+        context: "fork",
+        model: "gpt-4",
+      };
+
+      vi.mocked(mockSkillManager.prepareSkill).mockResolvedValue({
+        content: "Forked skill content",
+        skill: {
+          name: "fork-skill",
+          description: "Forked skill",
+          type: "personal",
+          skillPath: "",
+          context: "fork",
+          model: "gpt-4",
+          content: "",
+          frontmatter: { name: "fork-skill", description: "Forked skill" },
+          isValid: true,
+          errors: [],
+        } as Skill,
+      });
+
+      slashCommandManager.registerSkillCommands([
+        skillMetadata,
+      ] as unknown as SkillMetadata[]);
+
+      const cmd = slashCommandManager.getCommand("fork-skill");
+
+      const addToolBlockSpy = vi.spyOn(messageManager, "addToolBlockToMessage");
+      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+
+      await cmd?.handler("args");
+
+      expect(mockSubagentManager.createInstance).toHaveBeenCalled();
+      expect(mockSubagentManager.executeAgent).toHaveBeenCalled();
+      expect(addToolBlockSpy).toHaveBeenCalled();
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: expect.any(String),
+          messageId: expect.any(String),
+          result: "Subagent result",
+          success: true,
+          stage: "end",
+        }),
+      );
+
+      // Verify that main agent is NOT triggered
+      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
+    });
+
+    it("should handle error when no Agent configuration is found", async () => {
+      const skillMetadata = {
+        name: "fork-skill",
+        context: "fork",
+      };
+      slashCommandManager.registerSkillCommands([
+        skillMetadata,
+      ] as unknown as SkillMetadata[]);
+
+      const cmd = slashCommandManager.getCommand("fork-skill");
+      const addErrorSpy = vi.spyOn(messageManager, "addErrorBlock");
+
+      // Mock SubagentManager to return empty configurations
+      vi.spyOn(mockSubagentManager, "loadConfigurations").mockResolvedValue([]);
+
+      await cmd?.handler();
+
+      expect(addErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Subagent configuration for Agent not found"),
+      );
+    });
+
+    it("should handle error during subagent instance creation", async () => {
+      const skillMetadata = {
+        name: "fork-skill",
+        context: "fork",
+      };
+      slashCommandManager.registerSkillCommands([
+        skillMetadata,
+      ] as unknown as SkillMetadata[]);
+
+      const cmd = slashCommandManager.getCommand("fork-skill");
+      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+
+      // Mock SubagentManager to fail creation
+      vi.spyOn(mockSubagentManager, "createInstance").mockRejectedValue(
+        new Error("Creation failed"),
+      );
+
+      await cmd?.handler();
+
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: expect.any(String),
+          messageId: expect.any(String),
+          success: false,
+          error: "Creation failed",
+          stage: "end",
+        }),
+      );
+    });
+
+    it("should handle error during subagent execution", async () => {
+      const skillMetadata = {
+        name: "fork-skill",
+        context: "fork",
+      };
+      slashCommandManager.registerSkillCommands([
+        skillMetadata,
+      ] as unknown as SkillMetadata[]);
+
+      const cmd = slashCommandManager.getCommand("fork-skill");
+      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+
+      // Mock SubagentManager to fail execution
+      vi.spyOn(mockSubagentManager, "executeAgent").mockRejectedValue(
+        new Error("Execution failed"),
+      );
+
+      await cmd?.handler();
+
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: expect.any(String),
+          messageId: expect.any(String),
+          success: false,
+          error: "Execution failed",
+          stage: "end",
+        }),
+      );
+    });
+
+    it("should handle aborting forked skill execution", async () => {
+      const skillMetadata = {
+        name: "fork-skill",
+        context: "fork",
+      };
+      slashCommandManager.registerSkillCommands([
+        skillMetadata,
+      ] as unknown as SkillMetadata[]);
+
+      const cmd = slashCommandManager.getCommand("fork-skill");
+
+      // Mock SubagentManager to wait
+      let resolveExecute!: (value: string) => void;
+      const executePromise = new Promise<string>((resolve) => {
+        resolveExecute = resolve;
+      });
+      vi.mocked(mockSubagentManager.executeAgent).mockReturnValue(
+        executePromise,
+      );
+
+      const handlerPromise = cmd?.handler();
+
+      // Abort the command
+      slashCommandManager.abortCurrentCommand();
+
+      resolveExecute("Finished anyway");
+      await handlerPromise;
+
+      expect(mockSubagentManager.cleanupInstance).toHaveBeenCalled();
     });
   });
 });

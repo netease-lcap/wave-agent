@@ -138,7 +138,7 @@ describe("skillTool fork", () => {
       subagentId: "subagent-123",
       messageManager: {
         getMessages: vi.fn().mockReturnValue([]),
-        getlatestTotalTokens: vi.fn().mockReturnValue(100),
+        getLatestTotalTokens: vi.fn().mockReturnValue(100),
       },
       lastTools: [],
     };

@@ -58,7 +58,7 @@ describe("Agent Tool Background Execution", () => {
       lastTools: [],
       messageManager: {
         getMessages: vi.fn(() => []),
-        getlatestTotalTokens: vi.fn(() => 0),
+        getLatestTotalTokens: vi.fn(() => 0),
       },
     };
 
@@ -102,7 +102,7 @@ describe("Agent Tool Background Execution", () => {
           { blocks: [{ type: "tool" }, { type: "tool" }] },
           { blocks: [{ type: "tool" }] },
         ]),
-        getlatestTotalTokens: vi.fn(() => 1000),
+        getLatestTotalTokens: vi.fn(() => 1000),
       },
     };
 
@@ -148,7 +148,7 @@ describe("Agent Tool Background Execution", () => {
         getMessages: vi.fn(() => [
           { blocks: [{ type: "tool" }, { type: "tool" }] },
         ]),
-        getlatestTotalTokens: vi.fn(() => 1000),
+        getLatestTotalTokens: vi.fn(() => 1000),
       },
     };
 
