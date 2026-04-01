@@ -41,8 +41,11 @@ export const MessageList = React.memo(
     // Limit messages to prevent long rendering times
     const maxMessages = 10;
 
+    // Filter out meta messages
+    const visibleMessages = messages.filter((m) => !m.isMeta);
+
     // Flatten messages into blocks with metadata
-    const allBlocks = messages.flatMap((message, messageIndex) => {
+    const allBlocks = visibleMessages.flatMap((message, messageIndex) => {
       return message.blocks.map((block, blockIndex) => ({
         block,
         message,
@@ -101,8 +104,8 @@ export const MessageList = React.memo(
                 );
               }
               if (
-                messages.length > maxMessages &&
-                item.messageIndex < messages.length - maxMessages
+                visibleMessages.length > maxMessages &&
+                item.messageIndex < visibleMessages.length - maxMessages
               ) {
                 return null;
               }

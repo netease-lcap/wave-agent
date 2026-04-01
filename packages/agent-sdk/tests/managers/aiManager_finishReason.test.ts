@@ -149,7 +149,8 @@ describe("AIManager finish reason", () => {
 
     expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining("cut off"),
+        content: expect.stringContaining("Output token limit hit"),
+        isMeta: true,
       }),
     );
     expect(callAgent).toHaveBeenCalledTimes(2);
@@ -191,8 +192,13 @@ describe("AIManager finish reason", () => {
 
     await aiManager.sendAIMessage();
 
-    // It should NOT call addUserMessage because tool results serve as reminder
-    expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+    // It should still call addUserMessage with isMeta: true
+    expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining("Output token limit hit"),
+        isMeta: true,
+      }),
+    );
     expect(callAgent).toHaveBeenCalledTimes(2);
   });
 

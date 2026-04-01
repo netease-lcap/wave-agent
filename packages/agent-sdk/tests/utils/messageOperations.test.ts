@@ -6,6 +6,7 @@ import {
   updateBangInMessage,
   completeBangInMessage,
   addUserMessageToMessages,
+  updateUserMessageInMessages,
   addErrorBlockToMessage,
   generateMessageId,
 } from "@/utils/messageOperations.js";
@@ -151,6 +152,48 @@ describe("addUserMessageToMessages", () => {
     expect(initialMessages).toHaveLength(1);
     expect(result).toHaveLength(2);
     expect(result).not.toBe(initialMessages);
+  });
+
+  it("should add user message with isMeta flag", () => {
+    const initialMessages: Message[] = [];
+
+    const result = addUserMessageToMessages({
+      messages: initialMessages,
+      content: "Hidden message",
+      isMeta: true,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      role: "user",
+      blocks: [{ type: "text", content: "Hidden message" }],
+      isMeta: true,
+    });
+  });
+});
+
+describe("updateUserMessageInMessages", () => {
+  it("should update user message content and isMeta flag", () => {
+    const id = generateMessageId();
+    const initialMessages: Message[] = [
+      {
+        id,
+        role: "user",
+        blocks: [{ type: "text", content: "Original" }],
+      },
+    ];
+
+    const result = updateUserMessageInMessages(initialMessages, id, {
+      content: "Updated",
+      isMeta: true,
+    });
+
+    expect(result[0]).toMatchObject({
+      id,
+      role: "user",
+      blocks: [{ type: "text", content: "Updated" }],
+      isMeta: true,
+    });
   });
 });
 

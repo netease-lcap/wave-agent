@@ -30,10 +30,10 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
     }
   }, [getFullMessageThread]);
 
-  // Filter user messages as checkpoints
+  // Filter user messages as checkpoints, excluding meta messages
   const checkpoints = messages
     .map((msg, index) => ({ msg, index }))
-    .filter(({ msg }) => msg.role === "user");
+    .filter(({ msg }) => msg.role === "user" && !msg.isMeta);
 
   const MAX_VISIBLE_ITEMS = 3;
   const [selectedIndex, setSelectedIndex] = useState(checkpoints.length - 1);

@@ -453,7 +453,8 @@ describe("AIManager", () => {
       );
       expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          content: expect.stringContaining("cut off"),
+          content: expect.stringContaining("Output token limit hit"),
+          isMeta: true,
         }),
       );
       expect(aiService.callAgent).toHaveBeenCalledTimes(2);

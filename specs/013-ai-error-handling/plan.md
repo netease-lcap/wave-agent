@@ -5,7 +5,8 @@
 ### 1. Core Logic Changes
 Modify `packages/agent-sdk/src/managers/aiManager.ts`:
 - **Update Recursion Condition**: Change the condition for recursive `sendAIMessage` calls to include `result.finish_reason === "length"`.
-- **Add Continuation Prompt**: Just before the recursive call, if `finish_reason === "length"` AND `toolCalls.length === 0`, add a user message: `"Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off."`. If `toolCalls.length > 0`, the tool results will serve as the reminder for the AI to continue, so no extra user message is needed.
+- **Add Continuation Prompt**: Just before the recursive call, if `finish_reason === "length"`, add a hidden user message (with `isMeta: true`): `"Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."`.
+- **Update UI Rendering**: Update `packages/code/src/components/MessageList.tsx` to filter out messages with `isMeta: true` before rendering.
 - **Duplicate Tool Call Detection**: In `sendAIMessage`, after tool execution and before recursion:
     - Retrieve the message history from `MessageManager`.
     - Find the most recent assistant message (before the current one) that contains tool blocks.
