@@ -2,7 +2,6 @@
 name: check-and-fix
 description: Runs type checks and linting, and fixes any errors found using the typescript-expert subagent.
 context: fork
-agent: typescript-expert
 ---
 
 1. Run `pnpm run type-check` and `pnpm lint`.
