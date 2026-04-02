@@ -55,17 +55,8 @@ export class MemoryRuleManager {
 
     this.state.rules = newRules;
     const ruleCount = Object.keys(newRules).length;
+    // Removed verbose logging of all discovered rules
     logger.debug(`Discovered ${ruleCount} modular memory rules`);
-
-    if (ruleCount > 0) {
-      logger.debug("Loaded memory rules:");
-      for (const [id, rule] of Object.entries(newRules)) {
-        const pathInfo = rule.metadata.paths
-          ? `paths: ${JSON.stringify(rule.metadata.paths)}`
-          : "global (no path restriction)";
-        logger.debug(`  - ${id} (${rule.source}): ${pathInfo}`);
-      }
-    }
   }
 
   private async scanDirectory(
