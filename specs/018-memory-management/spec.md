@@ -166,8 +166,10 @@ As a user, I want to define personal memory rules in `~/.wave/rules/` that apply
 - **FR-013**: System MUST allow disabling auto-memory via `settings.json` or `WAVE_DISABLE_AUTO_MEMORY=1`.
 - **FR-014**: System MUST discover all `.md` files in `.wave/rules/` and its immediate subdirectories and load them as project memory.
 - **FR-015**: System MUST support YAML frontmatter in memory rule files with a `paths` field containing a list of glob patterns.
-- **FR-016**: System MUST apply path-specific memory rules if *any* file currently in the context window (read or modified) matches the glob patterns.
+- **FR-016**: System MUST apply path-specific memory rules using an event-driven trigger system. Rules are activated if *any* file currently in the "active" context (read, modified, or explicitly mentioned) matches the glob patterns.
 - **FR-017**: If multiple files are in context, the system MUST activate the union of all matching memory rules.
+- **FR-025**: System MUST maintain a session-persistent set of loaded memory rules to ensure each rule is attached only once per session (deduplication).
+- **FR-026**: System MUST clear the deduplication set during conversation compaction to allow relevant rules to be re-injected into the new context.
 - **FR-018**: System MUST support standard glob patterns, including `**` for recursive matching and brace expansion (e.g., `*.{ts,tsx}`).
 - **FR-019**: System MUST resolve symlinks within the `.wave/rules/` directory and load the target contents.
 - **FR-020**: System MUST detect and gracefully handle circular symlinks to prevent infinite loops.

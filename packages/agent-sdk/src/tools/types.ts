@@ -85,6 +85,8 @@ export interface ToolContext {
   aiManager?: import("../managers/aiManager.js").AIManager;
   /** AI service instance for AI operations */
   aiService?: typeof import("../services/aiService.js");
+  /** Message manager instance for message operations */
+  messageManager?: import("../managers/messageManager.js").MessageManager;
   /** Current session ID */
   sessionId?: string;
   /** The ID of the current tool call */

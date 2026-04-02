@@ -218,6 +218,10 @@ class ToolManager {
         ? this.container.get<import("./aiManager.js").AIManager>("AIManager")
         : undefined,
       aiService: aiService,
+      messageManager:
+        this.container.get<import("./messageManager.js").MessageManager>(
+          "MessageManager",
+        )!,
       sessionId: context.sessionId,
       toolCallId: context.toolCallId,
     };

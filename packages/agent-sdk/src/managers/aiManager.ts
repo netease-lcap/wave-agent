@@ -339,6 +339,25 @@ export class AIManager {
       return;
     }
 
+    // Scan for file mentions in the last user message
+    if (recursionDepth === 0) {
+      const messages = this.messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role === "user") {
+        for (const block of lastMessage.blocks) {
+          if (block.type === "text") {
+            const content = block.content;
+            const fileMentionRegex = /(?:^|\s)@([\w.\-/]+)/g;
+            let match;
+            while ((match = fileMentionRegex.exec(content)) !== null) {
+              const filePath = match[1];
+              this.messageManager.touchFile(filePath);
+            }
+          }
+        }
+      }
+    }
+
     // Save session in each recursion to ensure message persistence
     await this.messageManager.saveSession();
 

@@ -66,6 +66,9 @@ Usage:
       };
     }
 
+    // Touch file to track it in context
+    context.messageManager?.touchFile(filePath);
+
     try {
       const resolvedPath = resolvePath(filePath, context.workdir);
 
