@@ -47,15 +47,21 @@ Manage tool permissions and define the "Safe Zone".
 }
 ```
 
-### 4. Model and Token Configuration
-Define which AI models Wave should use and set token limits via environment variables.
+### 4. Model Configuration
+Define which AI models Wave should use and set model-specific parameters like `temperature`, `reasoning_effort`, and `thinking`.
+For detailed model configuration, see [MODELS.md](${WAVE_SKILL_DIR}/MODELS.md).
 ```json
 {
-  "env": {
-    "WAVE_MODEL": "gemini-3-flash",
-    "WAVE_FAST_MODEL": "gemini-2.5-flash",
-    "WAVE_MAX_INPUT_TOKENS": "100000",
-    "WAVE_MAX_OUTPUT_TOKENS": "4096"
+  "models": {
+    "claude-3-7-sonnet-20250219": {
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 1024
+      }
+    },
+    "o3-mini": {
+      "reasoning_effort": "high"
+    }
   }
 }
 ```

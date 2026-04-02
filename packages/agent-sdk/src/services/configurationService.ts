@@ -275,6 +275,23 @@ export class ConfigurationService {
       result.errors.push("autoMemoryEnabled configuration must be a boolean");
     }
 
+    // Validate models if present
+    if (config.models !== undefined) {
+      if (typeof config.models !== "object" || config.models === null) {
+        result.isValid = false;
+        result.errors.push("models configuration must be an object");
+      } else {
+        for (const [modelName, modelConfig] of Object.entries(config.models)) {
+          if (typeof modelConfig !== "object" || modelConfig === null) {
+            result.isValid = false;
+            result.errors.push(
+              `Configuration for model '${modelName}' must be an object`,
+            );
+          }
+        }
+      }
+    }
+
     return result;
   }
 
@@ -461,12 +478,25 @@ export class ConfigurationService {
     // Resolve max output tokens
     const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);
 
-    return {
+    const baseConfig: ModelConfig = {
       model: resolvedAgentModel,
       fastModel: resolvedFastModel,
       maxTokens: resolvedMaxTokens,
       permissionMode: permissionMode ?? this.options.permissionMode,
     };
+
+    // Merge model-specific settings from configuration
+    const modelSpecificConfig =
+      this.currentConfiguration?.models?.[resolvedAgentModel];
+
+    if (modelSpecificConfig) {
+      return {
+        ...baseConfig,
+        ...modelSpecificConfig,
+      };
+    }
+
+    return baseConfig;
   }
 
   /**
@@ -874,6 +904,7 @@ export function loadWaveConfigFromFile(
         config.autoMemoryEnabled !== undefined
           ? config.autoMemoryEnabled
           : undefined,
+      models: config.models || undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -1001,6 +1032,17 @@ export function loadMergedWaveConfig(
     if (config.autoMemoryEnabled !== undefined) {
       mergedConfig.autoMemoryEnabled = config.autoMemoryEnabled;
     }
+
+    // Merge models
+    if (config.models) {
+      if (!mergedConfig.models) mergedConfig.models = {};
+      for (const [modelName, modelConfig] of Object.entries(config.models)) {
+        if (!mergedConfig.models[modelName]) {
+          mergedConfig.models[modelName] = {};
+        }
+        Object.assign(mergedConfig.models[modelName], modelConfig);
+      }
+    }
   }
 
   return {
@@ -1024,5 +1066,9 @@ export function loadMergedWaveConfig(
         : undefined,
     language: mergedConfig.language,
     autoMemoryEnabled: mergedConfig.autoMemoryEnabled,
+    models:
+      mergedConfig.models && Object.keys(mergedConfig.models).length > 0
+        ? mergedConfig.models
+        : undefined,
   };
 }

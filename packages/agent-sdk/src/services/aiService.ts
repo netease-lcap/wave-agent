@@ -135,10 +135,12 @@ function getModelConfig(
     ...baseConfig,
   };
 
-  // Configuration rules for specific models
-  if (modelName.includes("gpt-5")) {
-    // gpt-5 models should not have temperature field
-    delete config.temperature;
+  // Handle parameter exclusion: if a parameter is explicitly set to null, remove it.
+  // This allows users to "unset" default parameters like temperature for models that don't support them.
+  for (const key in config) {
+    if (config[key as keyof OpenAIModelConfig] === null) {
+      delete config[key as keyof OpenAIModelConfig];
+    }
   }
 
   return config;
@@ -261,9 +263,21 @@ export async function callAgent(
     }
 
     // Get model configuration - use injected modelConfig with optional override
+    const {
+      model: _model,
+      fastModel: _fastModel,
+      maxTokens: _maxTokens,
+      permissionMode: _permissionMode,
+      ...extraParams
+    } = modelConfig;
+    void _model;
+    void _fastModel;
+    void _maxTokens;
+    void _permissionMode;
+
     const openaiModelConfig = getModelConfig(model || modelConfig.model, {
-      temperature: 0,
       max_tokens: resolvedMaxTokens,
+      ...extraParams,
     });
 
     // Determine if streaming is needed
@@ -780,9 +794,22 @@ export async function compressMessages(
   });
 
   // Get model configuration - use injected agent model
+  const {
+    model: _model,
+    fastModel: _fastModel,
+    maxTokens: _maxTokens,
+    permissionMode: _permissionMode,
+    ...extraParams
+  } = modelConfig;
+  void _model;
+  void _fastModel;
+  void _maxTokens;
+  void _permissionMode;
+
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
     max_tokens: 8192,
+    ...extraParams,
   });
 
   try {
@@ -878,9 +905,22 @@ export async function processWebContent(
   });
 
   // Get model configuration - use injected agent model
+  const {
+    model: _model,
+    fastModel: _fastModel,
+    maxTokens: _maxTokens,
+    permissionMode: _permissionMode,
+    ...extraParams
+  } = modelConfig;
+  void _model;
+  void _fastModel;
+  void _maxTokens;
+  void _permissionMode;
+
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
     max_tokens: 4096,
+    ...extraParams,
   });
 
   try {
@@ -972,9 +1012,22 @@ export async function btw(options: BtwOptions): Promise<BtwResult> {
   });
 
   // Get model configuration - use injected agent model
+  const {
+    model: _model,
+    fastModel: _fastModel,
+    maxTokens: _maxTokens,
+    permissionMode: _permissionMode,
+    ...extraParams
+  } = modelConfig;
+  void _model;
+  void _fastModel;
+  void _maxTokens;
+  void _permissionMode;
+
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
     max_tokens: 4096,
+    ...extraParams,
   });
 
   try {

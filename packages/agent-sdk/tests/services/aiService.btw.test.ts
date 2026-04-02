@@ -143,5 +143,25 @@ describe("AI Service - BTW", () => {
         }),
       ).rejects.toThrow("Side question request was aborted");
     });
+
+    it("should pass generic model configuration parameters to OpenAI", async () => {
+      const question = "Test question";
+      const messages: ChatCompletionMessageParam[] = [];
+
+      await btw({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7,
+          reasoning_effort: "high",
+        },
+        messages,
+        question,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.temperature).toBe(0.7);
+      expect(callArgs.reasoning_effort).toBe("high");
+    });
   });
 });

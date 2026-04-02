@@ -341,10 +341,7 @@ export class Agent {
     // Validate resolved configuration
     configValidator.validateGatewayConfig(gatewayConfig);
     configValidator.validateMaxInputTokens(maxInputTokens);
-    configValidator.validateModelConfig(
-      modelConfig.model,
-      modelConfig.fastModel,
-    );
+    configValidator.validateModelConfig(modelConfig);
   }
 
   /** Private initialization method, handles async initialization logic */

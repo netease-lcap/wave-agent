@@ -344,5 +344,42 @@ describe("AI Service - Basic CallAgent", () => {
       expect(result.finish_reason).toBe("stop");
       expect(result.response_headers).toBeUndefined();
     });
+
+    it("should pass generic model configuration parameters to OpenAI", async () => {
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7,
+          reasoning_effort: "high",
+          thinking: { type: "enabled", budget_tokens: 1024 },
+        },
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.temperature).toBe(0.7);
+      expect(callArgs.reasoning_effort).toBe("high");
+      expect(callArgs.thinking).toEqual({
+        type: "enabled",
+        budget_tokens: 1024,
+      });
+    });
+
+    it("should remove parameters set to null in modelConfig", async () => {
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: null as unknown as number,
+        },
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs).not.toHaveProperty("temperature");
+    });
   });
 });

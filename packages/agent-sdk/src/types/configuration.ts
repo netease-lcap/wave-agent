@@ -8,6 +8,7 @@
 
 import type { HookEvent, HookEventConfig } from "./hooks.js";
 import type { PermissionMode } from "./permissions.js";
+import type { ModelConfig } from "./config.js";
 
 export type Scope = "user" | "project" | "local";
 
@@ -34,6 +35,8 @@ export interface WaveConfiguration {
   language?: string;
   /** Whether auto-memory is enabled */
   autoMemoryEnabled?: boolean;
+  /** Model-specific configuration overrides */
+  models?: Record<string, Partial<ModelConfig>>;
 }
 
 /**
