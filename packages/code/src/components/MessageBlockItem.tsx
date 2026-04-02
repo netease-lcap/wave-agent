@@ -44,7 +44,9 @@ export const MessageBlockItem = ({
         </Box>
       )}
 
-      {block.type === "slash" && <SlashDisplay block={block} />}
+      {block.type === "slash" && (
+        <SlashDisplay block={block} isExpanded={isExpanded} />
+      )}
 
       {block.type === "error" && (
         <Box>

@@ -10,7 +10,9 @@ vi.mock("../../src/components/BangDisplay.js", () => ({
   BangDisplay: () => <Text>MOCKED_BANG</Text>,
 }));
 vi.mock("../../src/components/SlashDisplay.js", () => ({
-  SlashDisplay: () => <Text>MOCKED_SLASH</Text>,
+  SlashDisplay: ({ isExpanded }: { isExpanded: boolean }) => (
+    <Text>MOCKED_SLASH {isExpanded ? "EXPANDED" : "COLLAPSED"}</Text>
+  ),
 }));
 vi.mock("../../src/components/ToolDisplay.js", () => ({
   ToolDisplay: () => <Text>MOCKED_TOOL_RESULT</Text>,
@@ -36,7 +38,7 @@ describe("MessageBlockItem Component", () => {
       expect(lastFrame()).toContain("plain text");
     });
 
-    it("should render slash block", () => {
+    it("should render slash block with isExpanded=false", () => {
       const message: Message = { id: "test-id", role: "user", blocks: [] };
       const block: MessageBlock = {
         type: "slash",
@@ -46,7 +48,20 @@ describe("MessageBlockItem Component", () => {
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
       );
-      expect(lastFrame()).toContain("MOCKED_SLASH");
+      expect(lastFrame()).toContain("MOCKED_SLASH COLLAPSED");
+    });
+
+    it("should render slash block with isExpanded=true", () => {
+      const message: Message = { id: "test-id", role: "user", blocks: [] };
+      const block: MessageBlock = {
+        type: "slash",
+        command: "test",
+        stage: "running",
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={true} />,
+      );
+      expect(lastFrame()).toContain("MOCKED_SLASH EXPANDED");
     });
 
     it("should render text block with HOOK source (🔗)", () => {
