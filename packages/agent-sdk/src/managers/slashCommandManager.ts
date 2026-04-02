@@ -16,10 +16,13 @@ import {
   replaceBashCommandsWithOutput,
   executeBashCommands,
 } from "../utils/markdownParser.js";
+import {
+  countToolBlocks,
+  formatToolTokenSummary,
+} from "../utils/messageOperations.js";
 import type { SkillManager } from "./skillManager.js";
 import type { SkillMetadata } from "../types/skills.js";
 import type { SubagentManager } from "./subagentManager.js";
-import { AGENT_TOOL_NAME } from "../constants/tools.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -187,12 +190,13 @@ export class SlashCommandManager {
               // Forked skill execution
               const subagentConfigs =
                 await this.subagentManager.loadConfigurations();
+              const subagentType = skill.agent || "general-purpose";
               const config = subagentConfigs.find(
-                (c) => c.name === AGENT_TOOL_NAME,
+                (c) => c.name === subagentType,
               );
               if (!config) {
                 throw new Error(
-                  `Subagent configuration for ${AGENT_TOOL_NAME} not found`,
+                  `Subagent configuration for ${subagentType} not found`,
                 );
               }
 
@@ -200,11 +204,11 @@ export class SlashCommandManager {
               const toolBlockId = this.messageManager.addToolBlockToMessage(
                 messageId,
                 {
-                  name: AGENT_TOOL_NAME,
+                  name: subagentType,
                   parameters: JSON.stringify({
                     description: skill.description,
                     prompt: prepared.content,
-                    subagent_type: AGENT_TOOL_NAME,
+                    subagent_type: subagentType,
                   }),
                   stage: "running",
                 },
@@ -216,7 +220,7 @@ export class SlashCommandManager {
                   {
                     description: skill.description,
                     prompt: prepared.content,
-                    subagent_type: AGENT_TOOL_NAME,
+                    subagent_type: subagentType,
                     model: skill.model,
                   },
                   false,
@@ -226,17 +230,28 @@ export class SlashCommandManager {
                       instance.subagentId,
                     );
                     if (subagent) {
-                      const toolCount = subagent.messages.filter(
-                        (m) =>
-                          m.role === "assistant" &&
-                          m.blocks.some((b) => b.type === "tool"),
-                      ).length;
-                      const tokenCount =
+                      const messages = subagent.messages;
+                      const tokens =
                         subagent.messageManager.getLatestTotalTokens();
+                      const lastTools = subagent.lastTools;
+
+                      const toolCount = countToolBlocks(messages);
+                      const summary = formatToolTokenSummary(toolCount, tokens);
+
+                      let shortResult = "";
+                      if (toolCount > 2) {
+                        shortResult += "... ";
+                      }
+                      if (lastTools.length > 0) {
+                        shortResult += `${lastTools.join(", ")} `;
+                      }
+
+                      shortResult += summary;
+
                       this.messageManager.updateToolBlock({
                         id: toolBlockId,
                         messageId,
-                        shortResult: `(${toolCount} tools | ${tokenCount.toLocaleString()} tokens)`,
+                        shortResult,
                       });
                     }
                   },

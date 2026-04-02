@@ -13,7 +13,7 @@ A subagent is defined by a Markdown file with YAML frontmatter.
 
 ## The `subagent.md` File
 
-The `subagent.md` file uses YAML frontmatter for configuration and Markdown for the system prompt.
+The `subagent.md` file uses YAML frontmatter for configuration and Markdown for the system prompt. The Markdown content (excluding frontmatter) is passed directly as the system prompt to the subagent. Avoid using top-level Markdown headers (like `# My Subagent`) unless you want them to be part of the system prompt.
 
 ```markdown
 ---
@@ -24,8 +24,6 @@ tools:
   - Read
 model: gemini-3-flash
 ---
-
-# My Subagent System Prompt
 
 You are a specialized subagent for a specific task. Your goal is to:
 1. Use the `Read` tool to examine the project structure.

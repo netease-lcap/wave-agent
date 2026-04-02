@@ -69,7 +69,9 @@ describe("SlashCommandManager", () => {
     };
 
     mockSubagentManager = {
-      loadConfigurations: vi.fn().mockResolvedValue([{ name: "Agent" }]),
+      loadConfigurations: vi
+        .fn()
+        .mockResolvedValue([{ name: "Agent" }, { name: "general-purpose" }]),
       createInstance: vi
         .fn()
         .mockResolvedValue({ subagentId: "test-subagent-id" }),
@@ -558,7 +560,9 @@ describe("SlashCommandManager", () => {
       await cmd?.handler();
 
       expect(addErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Subagent configuration for Agent not found"),
+        expect.stringContaining(
+          "Subagent configuration for general-purpose not found",
+        ),
       );
     });
 
