@@ -40,6 +40,7 @@ export interface InputManagerCallbacks {
   onHelpStateChange?: (show: boolean) => void;
   onStatusCommandStateChange?: (show: boolean) => void;
   onPluginManagerStateChange?: (show: boolean) => void;
+  onModelSelectorStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
     content: string,
@@ -84,6 +85,7 @@ export interface InputState {
   showHelp: boolean;
   showStatusCommand: boolean;
   showPluginManager: boolean;
+  showModelSelector: boolean;
   permissionMode: PermissionMode;
   allowBypassInCycle: boolean;
   selectorJustUsed: boolean;
@@ -120,6 +122,7 @@ export const initialState: InputState = {
   showHelp: false,
   showStatusCommand: false,
   showPluginManager: false,
+  showModelSelector: false,
   permissionMode: "default",
   allowBypassInCycle: false,
   selectorJustUsed: false,
@@ -163,6 +166,7 @@ export type InputAction =
   | { type: "SET_SHOW_HELP"; payload: boolean }
   | { type: "SET_SHOW_STATUS_COMMAND"; payload: boolean }
   | { type: "SET_SHOW_PLUGIN_MANAGER"; payload: boolean }
+  | { type: "SET_SHOW_MODEL_SELECTOR"; payload: boolean }
   | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }
   | { type: "SET_ALLOW_BYPASS_IN_CYCLE"; payload: boolean }
   | { type: "SET_SELECTOR_JUST_USED"; payload: boolean }
@@ -356,6 +360,12 @@ export function inputReducer(
       return {
         ...state,
         showPluginManager: action.payload,
+        selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
+      };
+    case "SET_SHOW_MODEL_SELECTOR":
+      return {
+        ...state,
+        showModelSelector: action.payload,
         selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
       };
     case "SET_PERMISSION_MODE":

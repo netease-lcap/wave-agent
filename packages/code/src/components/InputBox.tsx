@@ -10,6 +10,7 @@ import { RewindCommand } from "./RewindCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
 import { PluginManagerShell } from "./PluginManagerShell.js";
+import { ModelSelector } from "./ModelSelector.js";
 import { StatusLine } from "./StatusLine.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
@@ -65,6 +66,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     askBtw,
     btwState: chatBtwState,
     setBtwState: setChatBtwState,
+    currentModel,
+    configuredModels,
+    setModel,
   } = useChat();
 
   // Input manager with all input state and functionality (including images)
@@ -99,12 +103,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showHelp,
     showStatusCommand,
     showPluginManager,
+    showModelSelector,
     setShowBackgroundTaskManager,
     setShowMcpManager,
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,
     setShowPluginManager,
+    setShowModelSelector,
     // Permission mode
     permissionMode,
     setPermissionMode,
@@ -203,6 +209,17 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   if (showPluginManager) {
     return <PluginManagerShell onCancel={() => setShowPluginManager(false)} />;
+  }
+
+  if (showModelSelector) {
+    return (
+      <ModelSelector
+        onCancel={() => setShowModelSelector(false)}
+        currentModel={currentModel}
+        configuredModels={configuredModels}
+        onSelectModel={setModel}
+      />
+    );
   }
 
   return (

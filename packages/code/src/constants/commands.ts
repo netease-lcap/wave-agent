@@ -44,4 +44,10 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "Ask a side question without tool use",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "model",
+    name: "model",
+    description: "Switch between configured AI models",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];

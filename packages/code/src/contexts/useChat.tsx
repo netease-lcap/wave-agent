@@ -54,6 +54,11 @@ export interface ChatContextType {
   askBtw: (question: string) => Promise<string>;
   abortMessage: () => void;
   latestTotalTokens: number;
+  // Model functionality
+  currentModel: string;
+  configuredModels: string[];
+  getConfiguredModels: () => string[];
+  setModel: (model: string) => void;
   // MCP functionality
   mcpServers: McpServerStatus[];
   connectMcpServer: (serverName: string) => Promise<boolean>;
@@ -176,6 +181,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [sessionId, setSessionId] = useState("");
   const [isCommandRunning, setIsCommandRunning] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
+  const [currentModel, setCurrentModelState] = useState("");
+  const [configuredModels, setConfiguredModels] = useState<string[]>([]);
 
   // MCP State
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
@@ -357,6 +364,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
         },
+        onModelChange: (model) => {
+          setCurrentModelState(model);
+        },
       };
 
       try {
@@ -414,6 +424,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setIsCompressing(agent.isCompressing);
         setPermissionModeState(agent.getPermissionMode());
         setWorkingDirectory(agent.workingDirectory);
+        setCurrentModelState(agent.getModelConfig().model);
+        setConfiguredModels(agent.getConfiguredModels());
 
         // Get initial MCP servers state
         const mcpServers = agent.getMcpServers?.() || [];
@@ -672,6 +684,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return agentRef.current.getModelConfig();
   }, []);
 
+  const getConfiguredModels = useCallback(() => {
+    if (!agentRef.current) {
+      return [];
+    }
+    return agentRef.current.getConfiguredModels();
+  }, []);
+
+  const setModel = useCallback((model: string) => {
+    if (agentRef.current) {
+      agentRef.current.setModel(model);
+      setCurrentModelState(model);
+    }
+  }, []);
+
   // Listen for Ctrl+O hotkey to toggle collapse/expand state and ESC to cancel confirmation
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
@@ -729,6 +755,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     askBtw,
     abortMessage,
     latestTotalTokens,
+    currentModel,
+    configuredModels,
+    getConfiguredModels,
+    setModel,
     isCompressing,
     mcpServers,
     connectMcpServer,
