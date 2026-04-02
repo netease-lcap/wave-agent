@@ -85,6 +85,9 @@ As a user, I want to add and manage marketplace sources so that I can access plu
 - **FR-019**: System MUST support auto-update for registered marketplaces (enabled by default for builtin).
 - **FR-020**: System MUST check for Git availability before performing any GitHub or Git-related operations.
 - **FR-021**: System MUST track and display the last update time for each registered marketplace.
+- **FR-022**: System MUST perform marketplace auto-updates in the background during startup to avoid blocking the CLI.
+- **FR-023**: System MUST implement a file-based locking mechanism to ensure safe concurrent access to plugin registries and cache.
+- **FR-024**: System MUST enforce a timeout (default 120s) for all Git operations to prevent hanging on slow networks or large repositories.
 
 ### Key Entities
 - **Plugin**: A self-contained directory containing metadata and functionality extensions.

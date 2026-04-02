@@ -27,6 +27,8 @@ vi.mock("fs", async () => {
       cp: vi.fn(),
       rename: vi.fn(),
       mkdir: vi.fn(),
+      open: vi.fn(),
+      unlink: vi.fn(),
     },
   };
 });
@@ -34,6 +36,8 @@ vi.mock("fs", async () => {
 import { promises as fsPromises } from "fs";
 
 const mockReadFile = vi.mocked(fsPromises.readFile);
+const mockOpen = vi.mocked(fsPromises.open);
+const mockUnlink = vi.mocked(fsPromises.unlink);
 const mockExistsSync = vi.mocked(existsSync);
 
 describe("MarketplaceService - General Git Support", () => {
@@ -52,6 +56,10 @@ describe("MarketplaceService - General Git Support", () => {
     userHome = "/mock/home";
     vi.mocked(os.homedir).mockReturnValue(userHome);
     vi.mocked(fsPromises.mkdtemp).mockResolvedValue(userHome);
+    mockOpen.mockResolvedValue({ close: vi.fn() } as unknown as Awaited<
+      ReturnType<typeof fsPromises.open>
+    >);
+    mockUnlink.mockResolvedValue(undefined);
 
     mockGitService = {
       clone: vi.fn(),

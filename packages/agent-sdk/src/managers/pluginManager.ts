@@ -74,9 +74,11 @@ export class PluginManager {
 
       const marketplaceService = new MarketplaceService();
 
-      // Trigger auto-update for marketplaces
+      // Trigger auto-update for marketplaces in the background
       if (!process.env.VITEST) {
-        await marketplaceService.autoUpdateAll();
+        marketplaceService.autoUpdateAll().catch((error) => {
+          logger?.error("Background marketplace auto-update failed:", error);
+        });
       }
 
       let installedRegistry = await marketplaceService.getInstalledPlugins();

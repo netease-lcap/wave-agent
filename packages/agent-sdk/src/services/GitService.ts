@@ -4,6 +4,17 @@ import { promisify } from "util";
 const execAsync = promisify(exec);
 
 export class GitService {
+  private getTimeout(): number {
+    const envTimeout = process.env.WAVE_PLUGIN_GIT_TIMEOUT_MS;
+    if (envTimeout) {
+      const parsed = parseInt(envTimeout, 10);
+      if (!isNaN(parsed)) {
+        return parsed;
+      }
+    }
+    return 120000; // Default 120 seconds
+  }
+
   /**
    * Checks if git is installed and available in the system path
    */
@@ -50,6 +61,7 @@ export class GitService {
       const refArgs = ref ? `-b "${ref}"` : "--depth 1";
       await execAsync(`git clone ${refArgs} "${url}" "${targetPath}"`, {
         env: { ...process.env, LC_ALL: "C" },
+        timeout: this.getTimeout(),
       });
     } catch (error) {
       throw this.handleGitError(urlOrRepo, error);
@@ -73,6 +85,7 @@ export class GitService {
     try {
       await execAsync(`git -C "${targetPath}" pull`, {
         env: { ...process.env, LC_ALL: "C" },
+        timeout: this.getTimeout(),
       });
     } catch (error) {
       throw this.handleGitError(targetPath, error);
@@ -82,6 +95,13 @@ export class GitService {
   private handleGitError(context: string, error: unknown): Error {
     const stderr = (error as { stderr?: string })?.stderr || "";
     const message = (error as Error)?.message || String(error);
+    const killed = (error as { killed?: boolean })?.killed || false;
+
+    if (message.includes("ETIMEDOUT") || killed) {
+      return new Error(
+        `Git operation timed out after ${this.getTimeout() / 1000}s. The repository may be too large or the network is slow. You can increase the timeout by setting the WAVE_PLUGIN_GIT_TIMEOUT_MS environment variable.`,
+      );
+    }
 
     if (
       stderr.includes("Repository not found") ||
