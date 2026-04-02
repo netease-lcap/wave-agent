@@ -23,7 +23,6 @@ The `SKILL.md` file uses YAML frontmatter for configuration and Markdown for ins
 name: my-skill
 description: A brief description of what the skill does.
 context: fork
-agent: general-purpose
 allowed-tools:
   - Bash
   - Read
