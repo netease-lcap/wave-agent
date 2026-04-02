@@ -193,4 +193,42 @@ describe("GitService", () => {
       /The path "\/path" is not a valid git repository/,
     );
   });
+
+  it("should handle git operation timeout", async () => {
+    // Mock git --version success first
+    vi.mocked(exec).mockImplementationOnce((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
+        (
+          callback as unknown as (
+            err: null,
+            res: { stdout: string; stderr: string },
+          ) => void
+        )(null, { stdout: "git version 2.34.1", stderr: "" });
+      }
+      return {} as unknown as ReturnType<typeof exec>;
+    });
+
+    const error = new Error("Command failed");
+    (error as unknown as { killed: boolean }).killed = true;
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
+        (
+          callback as unknown as (
+            err: Error,
+            res: { stdout: string; stderr: string },
+          ) => void
+        )(error, {
+          stdout: "",
+          stderr: "",
+        });
+      }
+      return {} as unknown as ReturnType<typeof exec>;
+    });
+
+    await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
+      /Git operation timed out after 120s/,
+    );
+  });
 });
