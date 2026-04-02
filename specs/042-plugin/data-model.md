@@ -82,6 +82,11 @@ Stored in `~/.wave/plugins/installed_plugins.json`.
 | `scope` | `'user' \| 'project' \| 'local'` | Installation scope. |
 | `isEnabled` | `boolean` | Whether the plugin is enabled in the current scope. |
 
+### 9. Lock File (Internal)
+Located at `~/.wave/plugins/.lock`.
+
+Used to synchronize access to `known_marketplaces.json` and `installed_plugins.json` across multiple `wave-agent` processes. It is a re-entrant file-based lock.
+
 ## UI State
 ```typescript
 interface PluginManagerState {

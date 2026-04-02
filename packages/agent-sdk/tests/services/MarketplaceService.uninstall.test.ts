@@ -25,6 +25,8 @@ vi.mock("fs", async () => {
       mkdir: vi.fn(),
       cp: vi.fn(),
       rename: vi.fn(),
+      open: vi.fn(),
+      unlink: vi.fn(),
     },
   };
 });
@@ -36,11 +38,17 @@ describe("MarketplaceService - Uninstall", () => {
   const mockReadFile = vi.mocked(fs.readFile);
   const mockWriteFile = vi.mocked(fs.writeFile);
   const mockRm = vi.mocked(fs.rm);
+  const mockOpen = vi.mocked(fs.open);
+  const mockUnlink = vi.mocked(fs.unlink);
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getPluginsDir).mockReturnValue(mockPluginsDir);
     mockExistsSync.mockReturnValue(false); // By default, directories don't exist
+    mockOpen.mockResolvedValue({ close: vi.fn() } as unknown as Awaited<
+      ReturnType<typeof fs.open>
+    >);
+    mockUnlink.mockResolvedValue(undefined);
     service = new MarketplaceService();
   });
 

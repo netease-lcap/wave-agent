@@ -18,9 +18,11 @@ import { GitService } from "./GitService.js";
  * and state management for installed plugins.
  */
 export class MarketplaceService {
+  private static isLockedInProcess = false;
   private pluginsDir: string;
   private knownMarketplacesPath: string;
   private installedPluginsPath: string;
+  private lockPath: string;
   private tmpDir: string;
   private cacheDir: string;
   private marketplacesDir: string;
@@ -44,6 +46,7 @@ export class MarketplaceService {
       this.pluginsDir,
       "installed_plugins.json",
     );
+    this.lockPath = path.join(this.pluginsDir, ".lock");
     this.tmpDir = path.join(this.pluginsDir, "tmp");
     this.cacheDir = path.join(this.pluginsDir, "cache");
     this.marketplacesDir = path.join(this.pluginsDir, "marketplaces");
@@ -63,6 +66,53 @@ export class MarketplaceService {
         }
       },
     );
+  }
+
+  /**
+   * Acquires a file-based lock and executes the provided function.
+   * Supports re-entrancy within the same process.
+   */
+  private async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (MarketplaceService.isLockedInProcess) {
+      return await fn();
+    }
+
+    let lockFd: Awaited<ReturnType<typeof fs.open>> | undefined;
+    const maxRetries = 600; // 60 seconds total
+    const retryDelay = 100;
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        lockFd = await fs.open(this.lockPath, "wx");
+        break;
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "EEXIST"
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!lockFd) {
+      throw new Error(
+        `Failed to acquire marketplace lock after ${maxRetries} retries. If no other wave-agent process is running, please delete ${this.lockPath}`,
+      );
+    }
+
+    MarketplaceService.isLockedInProcess = true;
+    try {
+      return await fn();
+    } finally {
+      MarketplaceService.isLockedInProcess = false;
+      await lockFd.close();
+      await fs.unlink(this.lockPath).catch(() => {});
+    }
   }
 
   /**
@@ -123,10 +173,9 @@ export class MarketplaceService {
   async saveKnownMarketplaces(
     registry: KnownMarketplacesRegistry,
   ): Promise<void> {
-    await fs.writeFile(
-      this.knownMarketplacesPath,
-      JSON.stringify(registry, null, 2),
-    );
+    const tmpPath = `${this.knownMarketplacesPath}.tmp`;
+    await fs.writeFile(tmpPath, JSON.stringify(registry, null, 2));
+    await fs.rename(tmpPath, this.knownMarketplacesPath);
   }
 
   /**
@@ -135,10 +184,9 @@ export class MarketplaceService {
   async saveInstalledPlugins(
     registry: InstalledPluginsRegistry,
   ): Promise<void> {
-    await fs.writeFile(
-      this.installedPluginsPath,
-      JSON.stringify(registry, null, 2),
-    );
+    const tmpPath = `${this.installedPluginsPath}.tmp`;
+    await fs.writeFile(tmpPath, JSON.stringify(registry, null, 2));
+    await fs.rename(tmpPath, this.installedPluginsPath);
   }
 
   /**
@@ -192,97 +240,101 @@ export class MarketplaceService {
    * Adds a new marketplace (local directory, GitHub repo, or Git URL)
    */
   async addMarketplace(input: string): Promise<KnownMarketplace> {
-    let marketplace: KnownMarketplace;
+    return this.withLock(async () => {
+      let marketplace: KnownMarketplace;
 
-    const isFullUrl =
-      input.startsWith("http://") ||
-      input.startsWith("https://") ||
-      input.startsWith("git@") ||
-      input.startsWith("ssh://");
+      const isFullUrl =
+        input.startsWith("http://") ||
+        input.startsWith("https://") ||
+        input.startsWith("git@") ||
+        input.startsWith("ssh://");
 
-    if (
-      isFullUrl ||
-      (input.includes("/") && !path.isAbsolute(input) && !input.startsWith("."))
-    ) {
-      // Git or GitHub repo
-      let urlOrRepo = input;
-      let ref: string | undefined;
+      if (
+        isFullUrl ||
+        (input.includes("/") &&
+          !path.isAbsolute(input) &&
+          !input.startsWith("."))
+      ) {
+        // Git or GitHub repo
+        let urlOrRepo = input;
+        let ref: string | undefined;
 
-      if (input.includes("#")) {
-        [urlOrRepo, ref] = input.split("#");
-      }
+        if (input.includes("#")) {
+          [urlOrRepo, ref] = input.split("#");
+        }
 
-      const tempMarketplace: KnownMarketplace = isFullUrl
-        ? { name: "", source: { source: "git", url: urlOrRepo, ref } }
-        : { name: "", source: { source: "github", repo: urlOrRepo, ref } };
+        const tempMarketplace: KnownMarketplace = isFullUrl
+          ? { name: "", source: { source: "git", url: urlOrRepo, ref } }
+          : { name: "", source: { source: "github", repo: urlOrRepo, ref } };
 
-      const targetPath = this.getMarketplacePath(tempMarketplace);
+        const targetPath = this.getMarketplacePath(tempMarketplace);
 
-      if (!existsSync(targetPath)) {
+        if (!existsSync(targetPath)) {
+          try {
+            await this.gitService.clone(urlOrRepo, targetPath, ref);
+          } catch (error) {
+            throw new Error(
+              `Failed to add marketplace from Git: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+
+        let manifest: MarketplaceManifest;
         try {
-          await this.gitService.clone(urlOrRepo, targetPath, ref);
+          manifest = await this.loadMarketplaceManifest(targetPath);
         } catch (error) {
           throw new Error(
-            `Failed to add marketplace from Git: ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to load manifest from cloned repository: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
+
+        marketplace = {
+          name: manifest.name,
+          source: isFullUrl
+            ? { source: "git", url: urlOrRepo, ref }
+            : { source: "github", repo: urlOrRepo, ref },
+          autoUpdate: false,
+          lastUpdated: new Date().toISOString(),
+        };
+      } else {
+        // Local directory format
+        const absolutePath = path.resolve(input);
+        let manifest: MarketplaceManifest;
+        try {
+          manifest = await this.loadMarketplaceManifest(absolutePath);
+        } catch (error) {
+          throw new Error(
+            `Failed to load manifest from directory: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+
+        marketplace = {
+          name: manifest.name,
+          source: { source: "directory", path: absolutePath },
+          autoUpdate: false,
+          lastUpdated: new Date().toISOString(),
+        };
       }
 
-      let manifest: MarketplaceManifest;
-      try {
-        manifest = await this.loadMarketplaceManifest(targetPath);
-      } catch (error) {
-        throw new Error(
-          `Failed to load manifest from cloned repository: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      const registry = await this.getKnownMarketplaces();
+
+      // Check if already exists
+      const existingIndex = registry.marketplaces.findIndex(
+        (m) => m.name === marketplace.name,
+      );
+      if (existingIndex >= 0) {
+        registry.marketplaces[existingIndex] = marketplace;
+      } else {
+        registry.marketplaces.push(marketplace);
       }
 
-      marketplace = {
-        name: manifest.name,
-        source: isFullUrl
-          ? { source: "git", url: urlOrRepo, ref }
-          : { source: "github", repo: urlOrRepo, ref },
-        autoUpdate: false,
-        lastUpdated: new Date().toISOString(),
-      };
-    } else {
-      // Local directory format
-      const absolutePath = path.resolve(input);
-      let manifest: MarketplaceManifest;
-      try {
-        manifest = await this.loadMarketplaceManifest(absolutePath);
-      } catch (error) {
-        throw new Error(
-          `Failed to load manifest from directory: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+      // Ensure builtin is included if we are creating the file for the first time
+      // and it hasn't been explicitly removed yet.
+      // (getKnownMarketplaces already handles the default injection)
 
-      marketplace = {
-        name: manifest.name,
-        source: { source: "directory", path: absolutePath },
-        autoUpdate: false,
-        lastUpdated: new Date().toISOString(),
-      };
-    }
-
-    const registry = await this.getKnownMarketplaces();
-
-    // Check if already exists
-    const existingIndex = registry.marketplaces.findIndex(
-      (m) => m.name === marketplace.name,
-    );
-    if (existingIndex >= 0) {
-      registry.marketplaces[existingIndex] = marketplace;
-    } else {
-      registry.marketplaces.push(marketplace);
-    }
-
-    // Ensure builtin is included if we are creating the file for the first time
-    // and it hasn't been explicitly removed yet.
-    // (getKnownMarketplaces already handles the default injection)
-
-    await this.saveKnownMarketplaces(registry);
-    return marketplace;
+      await this.saveKnownMarketplaces(registry);
+      return marketplace;
+    });
   }
 
   /**
@@ -300,17 +352,19 @@ export class MarketplaceService {
    * Removes a marketplace by name
    */
   async removeMarketplace(name: string): Promise<void> {
-    const registry = await this.getKnownMarketplaces();
-    const initialCount = registry.marketplaces.length;
-    registry.marketplaces = registry.marketplaces.filter(
-      (m) => m.name !== name,
-    );
+    return this.withLock(async () => {
+      const registry = await this.getKnownMarketplaces();
+      const initialCount = registry.marketplaces.length;
+      registry.marketplaces = registry.marketplaces.filter(
+        (m) => m.name !== name,
+      );
 
-    if (registry.marketplaces.length === initialCount) {
-      throw new Error(`Marketplace ${name} not found`);
-    }
+      if (registry.marketplaces.length === initialCount) {
+        throw new Error(`Marketplace ${name} not found`);
+      }
 
-    await this.saveKnownMarketplaces(registry);
+      await this.saveKnownMarketplaces(registry);
+    });
   }
 
   /**
@@ -320,138 +374,146 @@ export class MarketplaceService {
     name?: string,
     options?: { updatePlugins?: boolean },
   ): Promise<void> {
-    const registry = await this.getKnownMarketplaces();
-    const toUpdate = name
-      ? registry.marketplaces.filter((m) => m.name === name)
-      : registry.marketplaces;
+    return this.withLock(async () => {
+      const registry = await this.getKnownMarketplaces();
+      const toUpdate = name
+        ? registry.marketplaces.filter((m) => m.name === name)
+        : registry.marketplaces;
 
-    if (name && toUpdate.length === 0) {
-      throw new Error(`Marketplace ${name} not found`);
-    }
+      if (name && toUpdate.length === 0) {
+        throw new Error(`Marketplace ${name} not found`);
+      }
 
-    const isGitAvailable = await this.gitService.isGitAvailable();
-    const errors: string[] = [];
-    for (const marketplace of toUpdate) {
-      try {
-        if (
-          marketplace.source.source === "github" ||
-          marketplace.source.source === "git"
-        ) {
-          if (!isGitAvailable) {
-            console.warn(
-              `Skipping update for Git/GitHub marketplace "${marketplace.name}" because Git is not installed.`,
-            );
-            continue;
-          }
-          const targetPath = this.getMarketplacePath(marketplace);
-          if (existsSync(targetPath)) {
-            await this.gitService.pull(targetPath);
-          } else {
-            let url: string;
-            if (marketplace.source.source === "github") {
-              url = marketplace.source.repo;
-            } else {
-              url = marketplace.source.url;
-            }
-            await this.gitService.clone(
-              url,
-              targetPath,
-              marketplace.source.ref,
-            );
-          }
-        }
-        // For directory source, we just re-validate the manifest
-        const manifest = await this.loadMarketplaceManifest(
-          this.getMarketplacePath(marketplace),
-        );
-
-        marketplace.lastUpdated = new Date().toISOString();
-
-        if (options?.updatePlugins) {
-          const installedRegistry = await this.getInstalledPlugins();
-          const pluginsToUpdate = installedRegistry.plugins.filter(
-            (p) => p.marketplace === marketplace.name,
-          );
-          for (const plugin of pluginsToUpdate) {
-            const pluginEntry = manifest.plugins.find(
-              (p) => p.name === plugin.name,
-            );
-            if (!pluginEntry) {
+      const isGitAvailable = await this.gitService.isGitAvailable();
+      const errors: string[] = [];
+      for (const marketplace of toUpdate) {
+        try {
+          if (
+            marketplace.source.source === "github" ||
+            marketplace.source.source === "git"
+          ) {
+            if (!isGitAvailable) {
               console.warn(
-                `Plugin "${plugin.name}" no longer found in marketplace "${marketplace.name}". Uninstalling...`,
+                `Skipping update for Git/GitHub marketplace "${marketplace.name}" because Git is not installed.`,
               );
+              continue;
+            }
+            const targetPath = this.getMarketplacePath(marketplace);
+            if (existsSync(targetPath)) {
+              await this.gitService.pull(targetPath);
+            } else {
+              let url: string;
+              if (marketplace.source.source === "github") {
+                url = marketplace.source.repo;
+              } else {
+                url = marketplace.source.url;
+              }
+              await this.gitService.clone(
+                url,
+                targetPath,
+                marketplace.source.ref,
+              );
+            }
+          }
+          // For directory source, we just re-validate the manifest
+          const manifest = await this.loadMarketplaceManifest(
+            this.getMarketplacePath(marketplace),
+          );
+
+          marketplace.lastUpdated = new Date().toISOString();
+
+          if (options?.updatePlugins) {
+            const installedRegistry = await this.getInstalledPlugins();
+            const pluginsToUpdate = installedRegistry.plugins.filter(
+              (p) => p.marketplace === marketplace.name,
+            );
+            for (const plugin of pluginsToUpdate) {
+              const pluginEntry = manifest.plugins.find(
+                (p) => p.name === plugin.name,
+              );
+              if (!pluginEntry) {
+                console.warn(
+                  `Plugin "${plugin.name}" no longer found in marketplace "${marketplace.name}". Uninstalling...`,
+                );
+                try {
+                  await this.uninstallPlugin(
+                    `${plugin.name}@${plugin.marketplace}`,
+                    plugin.projectPath,
+                  );
+                } catch (error) {
+                  console.error(
+                    `Failed to uninstall orphaned plugin "${plugin.name}" from marketplace "${marketplace.name}":`,
+                    error,
+                  );
+                }
+                continue;
+              }
               try {
-                await this.uninstallPlugin(
+                await this.installPlugin(
                   `${plugin.name}@${plugin.marketplace}`,
                   plugin.projectPath,
                 );
               } catch (error) {
                 console.error(
-                  `Failed to uninstall orphaned plugin "${plugin.name}" from marketplace "${marketplace.name}":`,
+                  `Failed to update plugin "${plugin.name}" from marketplace "${marketplace.name}":`,
                   error,
                 );
               }
-              continue;
-            }
-            try {
-              await this.installPlugin(
-                `${plugin.name}@${plugin.marketplace}`,
-                plugin.projectPath,
-              );
-            } catch (error) {
-              console.error(
-                `Failed to update plugin "${plugin.name}" from marketplace "${marketplace.name}":`,
-                error,
-              );
             }
           }
+        } catch (error) {
+          const msg = `Failed to update marketplace "${marketplace.name}": ${error instanceof Error ? error.message : String(error)}`;
+          console.error(msg);
+          errors.push(msg);
         }
-      } catch (error) {
-        const msg = `Failed to update marketplace "${marketplace.name}": ${error instanceof Error ? error.message : String(error)}`;
-        console.error(msg);
-        errors.push(msg);
       }
-    }
 
-    if (errors.length > 0) {
-      throw new Error(
-        `Some marketplaces failed to update:\n${errors.join("\n")}`,
-      );
-    }
+      if (errors.length > 0) {
+        throw new Error(
+          `Some marketplaces failed to update:\n${errors.join("\n")}`,
+        );
+      }
 
-    await this.saveKnownMarketplaces(registry);
+      await this.saveKnownMarketplaces(registry);
+    });
   }
 
   /**
    * Automatically updates all marketplaces that have auto-update enabled
    */
   async autoUpdateAll(): Promise<void> {
-    const registry = await this.getKnownMarketplaces();
-    const toAutoUpdate = registry.marketplaces.filter((m) => m.autoUpdate);
+    return this.withLock(async () => {
+      const registry = await this.getKnownMarketplaces();
+      const toAutoUpdate = registry.marketplaces.filter((m) => m.autoUpdate);
 
-    for (const marketplace of toAutoUpdate) {
-      try {
-        await this.updateMarketplace(marketplace.name, { updatePlugins: true });
-      } catch (error) {
-        console.error(
-          `Auto-update failed for marketplace "${marketplace.name}":`,
-          error,
-        );
+      for (const marketplace of toAutoUpdate) {
+        try {
+          await this.updateMarketplace(marketplace.name, {
+            updatePlugins: true,
+          });
+        } catch (error) {
+          console.error(
+            `Auto-update failed for marketplace "${marketplace.name}":`,
+            error,
+          );
+        }
       }
-    }
+    });
   }
 
   /**
    * Toggles auto-update for a marketplace
    */
   async toggleAutoUpdate(name: string, enabled: boolean): Promise<void> {
-    const registry = await this.getKnownMarketplaces();
-    const marketplace = registry.marketplaces.find((m) => m.name === name);
-    if (!marketplace) {
-      throw new Error(`Marketplace ${name} not found`);
-    }
-    marketplace.autoUpdate = enabled;
-    await this.saveKnownMarketplaces(registry);
+    return this.withLock(async () => {
+      const registry = await this.getKnownMarketplaces();
+      const marketplace = registry.marketplaces.find((m) => m.name === name);
+      if (!marketplace) {
+        throw new Error(`Marketplace ${name} not found`);
+      }
+      marketplace.autoUpdate = enabled;
+      await this.saveKnownMarketplaces(registry);
+    });
   }
 
   /**
@@ -461,125 +523,130 @@ export class MarketplaceService {
     pluginAtMarketplace: string,
     projectPath?: string,
   ): Promise<InstalledPlugin> {
-    const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
-    if (!pluginName || !marketplaceName) {
-      throw new Error("Invalid plugin format. Use name@marketplace");
-    }
-
-    const marketplaces = await this.listMarketplaces();
-    const marketplace = marketplaces.find((m) => m.name === marketplaceName);
-    if (!marketplace) {
-      throw new Error(`Marketplace ${marketplaceName} not found`);
-    }
-
-    const marketplacePath = this.getMarketplacePath(marketplace);
-    const manifest = await this.loadMarketplaceManifest(marketplacePath);
-    const pluginEntry = manifest.plugins.find((p) => p.name === pluginName);
-    if (!pluginEntry) {
-      throw new Error(
-        `Plugin ${pluginName} not found in marketplace ${marketplaceName}`,
-      );
-    }
-
-    const isGitSource =
-      pluginEntry.source.startsWith("http://") ||
-      pluginEntry.source.startsWith("https://") ||
-      pluginEntry.source.startsWith("git@") ||
-      pluginEntry.source.startsWith("ssh://");
-
-    let pluginSrcPath: string;
-    let tempCloneDir: string | undefined;
-
-    if (isGitSource) {
-      tempCloneDir = path.join(this.tmpDir, `clone-${Date.now()}`);
-      let url = pluginEntry.source;
-      let ref: string | undefined;
-      if (url.includes("#")) {
-        [url, ref] = url.split("#");
+    return this.withLock(async () => {
+      const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
+      if (!pluginName || !marketplaceName) {
+        throw new Error("Invalid plugin format. Use name@marketplace");
       }
-      await this.gitService.clone(url, tempCloneDir, ref);
-      pluginSrcPath = tempCloneDir;
-    } else {
-      pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
-    }
 
-    const pluginManifestPath = path.join(
-      pluginSrcPath,
-      ".wave-plugin",
-      "plugin.json",
-    );
-    if (!existsSync(pluginManifestPath)) {
-      if (tempCloneDir) {
-        await fs.rm(tempCloneDir, { recursive: true, force: true });
+      const marketplaces = await this.listMarketplaces();
+      const marketplace = marketplaces.find((m) => m.name === marketplaceName);
+      if (!marketplace) {
+        throw new Error(`Marketplace ${marketplaceName} not found`);
       }
-      throw new Error(`Plugin manifest not found at ${pluginManifestPath}`);
-    }
 
-    const pluginManifestContent = await fs.readFile(
-      pluginManifestPath,
-      "utf-8",
-    );
-    const pluginManifest = JSON.parse(pluginManifestContent);
-    const version = pluginManifest.version || "1.0.0";
+      const marketplacePath = this.getMarketplacePath(marketplace);
+      const manifest = await this.loadMarketplaceManifest(marketplacePath);
+      const pluginEntry = manifest.plugins.find((p) => p.name === pluginName);
+      if (!pluginEntry) {
+        throw new Error(
+          `Plugin ${pluginName} not found in marketplace ${marketplaceName}`,
+        );
+      }
 
-    // Atomic installation
-    const tmpPluginDir = path.join(this.tmpDir, `${pluginName}-${Date.now()}`);
-    try {
+      const isGitSource =
+        pluginEntry.source.startsWith("http://") ||
+        pluginEntry.source.startsWith("https://") ||
+        pluginEntry.source.startsWith("git@") ||
+        pluginEntry.source.startsWith("ssh://");
+
+      let pluginSrcPath: string;
+      let tempCloneDir: string | undefined;
+
       if (isGitSource) {
-        await fs.rename(pluginSrcPath, tmpPluginDir);
-        tempCloneDir = undefined; // Already moved
+        tempCloneDir = path.join(this.tmpDir, `clone-${Date.now()}`);
+        let url = pluginEntry.source;
+        let ref: string | undefined;
+        if (url.includes("#")) {
+          [url, ref] = url.split("#");
+        }
+        await this.gitService.clone(url, tempCloneDir, ref);
+        pluginSrcPath = tempCloneDir;
       } else {
-        await fs.cp(pluginSrcPath, tmpPluginDir, { recursive: true });
+        pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
       }
 
-      const cachePath = path.join(
-        this.cacheDir,
-        marketplaceName,
-        pluginName,
-        version,
+      const pluginManifestPath = path.join(
+        pluginSrcPath,
+        ".wave-plugin",
+        "plugin.json",
       );
-      if (existsSync(cachePath)) {
-        await fs.rm(cachePath, { recursive: true, force: true });
+      if (!existsSync(pluginManifestPath)) {
+        if (tempCloneDir) {
+          await fs.rm(tempCloneDir, { recursive: true, force: true });
+        }
+        throw new Error(`Plugin manifest not found at ${pluginManifestPath}`);
       }
-      await fs.mkdir(path.dirname(cachePath), { recursive: true });
-      await fs.rename(tmpPluginDir, cachePath);
 
-      const installedRegistry = await this.getInstalledPlugins();
-      const existingIndex = installedRegistry.plugins.findIndex(
-        (p) =>
-          p.name === pluginName &&
-          p.marketplace === marketplaceName &&
-          p.projectPath === projectPath,
+      const pluginManifestContent = await fs.readFile(
+        pluginManifestPath,
+        "utf-8",
       );
+      const pluginManifest = JSON.parse(pluginManifestContent);
+      const version = pluginManifest.version || "1.0.0";
 
-      const installedPlugin: InstalledPlugin = {
-        name: pluginName,
-        marketplace: marketplaceName,
-        version,
-        cachePath,
-        projectPath,
-      };
-
-      if (existingIndex >= 0) {
-        installedRegistry.plugins[existingIndex] = installedPlugin;
-      } else {
-        installedRegistry.plugins.push(installedPlugin);
-      }
-
-      await this.saveInstalledPlugins(installedRegistry);
-      return installedPlugin;
-    } catch (error) {
-      // Cleanup tmp dirs if they exist
-      if (existsSync(tmpPluginDir)) {
-        await fs.rm(tmpPluginDir, { recursive: true, force: true });
-      }
-      if (tempCloneDir && existsSync(tempCloneDir)) {
-        await fs.rm(tempCloneDir, { recursive: true, force: true });
-      }
-      throw new Error(
-        `Failed to install plugin ${pluginName}: ${error instanceof Error ? error.message : String(error)}`,
+      // Atomic installation
+      const tmpPluginDir = path.join(
+        this.tmpDir,
+        `${pluginName}-${Date.now()}`,
       );
-    }
+      try {
+        if (isGitSource) {
+          await fs.rename(pluginSrcPath, tmpPluginDir);
+          tempCloneDir = undefined; // Already moved
+        } else {
+          await fs.cp(pluginSrcPath, tmpPluginDir, { recursive: true });
+        }
+
+        const cachePath = path.join(
+          this.cacheDir,
+          marketplaceName,
+          pluginName,
+          version,
+        );
+        if (existsSync(cachePath)) {
+          await fs.rm(cachePath, { recursive: true, force: true });
+        }
+        await fs.mkdir(path.dirname(cachePath), { recursive: true });
+        await fs.rename(tmpPluginDir, cachePath);
+
+        const installedRegistry = await this.getInstalledPlugins();
+        const existingIndex = installedRegistry.plugins.findIndex(
+          (p) =>
+            p.name === pluginName &&
+            p.marketplace === marketplaceName &&
+            p.projectPath === projectPath,
+        );
+
+        const installedPlugin: InstalledPlugin = {
+          name: pluginName,
+          marketplace: marketplaceName,
+          version,
+          cachePath,
+          projectPath,
+        };
+
+        if (existingIndex >= 0) {
+          installedRegistry.plugins[existingIndex] = installedPlugin;
+        } else {
+          installedRegistry.plugins.push(installedPlugin);
+        }
+
+        await this.saveInstalledPlugins(installedRegistry);
+        return installedPlugin;
+      } catch (error) {
+        // Cleanup tmp dirs if they exist
+        if (existsSync(tmpPluginDir)) {
+          await fs.rm(tmpPluginDir, { recursive: true, force: true });
+        }
+        if (tempCloneDir && existsSync(tempCloneDir)) {
+          await fs.rm(tempCloneDir, { recursive: true, force: true });
+        }
+        throw new Error(
+          `Failed to install plugin ${pluginName}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    });
   }
 
   /**
@@ -589,47 +656,51 @@ export class MarketplaceService {
     pluginAtMarketplace: string,
     projectPath?: string,
   ): Promise<void> {
-    const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
-    if (!pluginName || !marketplaceName) {
-      throw new Error("Invalid plugin format. Use name@marketplace");
-    }
+    return this.withLock(async () => {
+      const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
+      if (!pluginName || !marketplaceName) {
+        throw new Error("Invalid plugin format. Use name@marketplace");
+      }
 
-    const installedRegistry = await this.getInstalledPlugins();
-    const pluginIndex = installedRegistry.plugins.findIndex(
-      (p) =>
-        p.name === pluginName &&
-        p.marketplace === marketplaceName &&
-        p.projectPath === projectPath,
-    );
-
-    if (pluginIndex === -1) {
-      throw new Error(
-        `Plugin ${pluginName}@${marketplaceName} is not installed${projectPath ? ` for project ${projectPath}` : ""}`,
+      const installedRegistry = await this.getInstalledPlugins();
+      const pluginIndex = installedRegistry.plugins.findIndex(
+        (p) =>
+          p.name === pluginName &&
+          p.marketplace === marketplaceName &&
+          p.projectPath === projectPath,
       );
-    }
 
-    const pluginToRemove = installedRegistry.plugins[pluginIndex];
+      if (pluginIndex === -1) {
+        throw new Error(
+          `Plugin ${pluginName}@${marketplaceName} is not installed${projectPath ? ` for project ${projectPath}` : ""}`,
+        );
+      }
 
-    // Remove from registry first
-    installedRegistry.plugins.splice(pluginIndex, 1);
-    await this.saveInstalledPlugins(installedRegistry);
+      const pluginToRemove = installedRegistry.plugins[pluginIndex];
 
-    // Check if any other project is still using this same cache path
-    const isStillReferenced = installedRegistry.plugins.some(
-      (p) => p.cachePath === pluginToRemove.cachePath,
-    );
+      // Remove from registry first
+      installedRegistry.plugins.splice(pluginIndex, 1);
+      await this.saveInstalledPlugins(installedRegistry);
 
-    // Only remove cached files if no other references exist
-    if (!isStillReferenced && existsSync(pluginToRemove.cachePath)) {
-      await fs.rm(pluginToRemove.cachePath, { recursive: true, force: true });
-    }
+      // Check if any other project is still using this same cache path
+      const isStillReferenced = installedRegistry.plugins.some(
+        (p) => p.cachePath === pluginToRemove.cachePath,
+      );
+
+      // Only remove cached files if no other references exist
+      if (!isStillReferenced && existsSync(pluginToRemove.cachePath)) {
+        await fs.rm(pluginToRemove.cachePath, { recursive: true, force: true });
+      }
+    });
   }
 
   /**
    * Updates a plugin (uninstall followed by install)
    */
   async updatePlugin(pluginAtMarketplace: string): Promise<InstalledPlugin> {
-    await this.uninstallPlugin(pluginAtMarketplace);
-    return this.installPlugin(pluginAtMarketplace);
+    return this.withLock(async () => {
+      await this.uninstallPlugin(pluginAtMarketplace);
+      return this.installPlugin(pluginAtMarketplace);
+    });
   }
 }

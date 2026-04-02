@@ -71,4 +71,8 @@ This document combines the tasks for the plugin support system and the plugin ma
 - [x] T052 Implement auto-update support for marketplaces
 - [x] T053 Run `pnpm run type-check` and `pnpm lint` across the monorepo (Duplicate of T023)
 - [x] T054 Verify full end-to-end flow using the `quickstart.md` scenarios (Duplicate of T022)
-- [ ] T055 Implement "last update" tracking and display for marketplaces
+- [x] T055 Implement "last update" tracking and display for marketplaces
+- [x] T056 Implement file-based locking in `MarketplaceService`
+- [x] T057 Implement Git operation timeouts in `GitService`
+- [x] T058 Implement background auto-update in `PluginManager`
+- [x] T059 Implement atomic registry writes in `MarketplaceService`
