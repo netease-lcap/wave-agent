@@ -71,12 +71,10 @@ describe("MessageManager Coverage Improvements", () => {
   it("should update an existing user message by ID", () => {
     const id = messageManager.addUserMessage({
       content: "Original content",
-      customCommandContent: "Original custom content",
     });
 
     messageManager.updateUserMessage(id, {
       content: "Updated content",
-      customCommandContent: "Updated custom content",
     });
 
     const messages = messageManager.getMessages();
@@ -85,9 +83,38 @@ describe("MessageManager Coverage Improvements", () => {
     expect((messages[0].blocks[0] as TextBlock).content).toBe(
       "Updated content",
     );
-    expect((messages[0].blocks[0] as TextBlock).customCommandContent).toBe(
-      "Updated custom content",
-    );
+  });
+
+  it("should handle addSlashMessage and updateSlashBlock", () => {
+    const id = messageManager.addSlashMessage({
+      command: "test",
+      args: "hello",
+      content: "expanded",
+    });
+    expect(id).toBeDefined();
+
+    const messages = messageManager.getMessages();
+    expect(messages[0].blocks[0]).toMatchObject({
+      type: "slash",
+      command: "test",
+      args: "hello",
+      content: "expanded",
+      stage: "running",
+    });
+
+    messageManager.updateSlashBlock({
+      command: "test",
+      messageId: id,
+      stage: "success",
+      result: "done",
+    });
+
+    const updatedMessages = messageManager.getMessages();
+    expect(updatedMessages[0].blocks[0]).toMatchObject({
+      command: "test",
+      stage: "success",
+      result: "done",
+    });
   });
 
   it("should only update the specified user message", () => {

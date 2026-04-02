@@ -9,6 +9,9 @@ import { MessageSource, type Message, type MessageBlock } from "wave-agent-sdk";
 vi.mock("../../src/components/BangDisplay.js", () => ({
   BangDisplay: () => <Text>MOCKED_BANG</Text>,
 }));
+vi.mock("../../src/components/SlashDisplay.js", () => ({
+  SlashDisplay: () => <Text>MOCKED_SLASH</Text>,
+}));
 vi.mock("../../src/components/ToolDisplay.js", () => ({
   ToolDisplay: () => <Text>MOCKED_TOOL_RESULT</Text>,
 }));
@@ -33,18 +36,17 @@ describe("MessageBlockItem Component", () => {
       expect(lastFrame()).toContain("plain text");
     });
 
-    it("should render text block with customCommandContent (⚡)", () => {
+    it("should render slash block", () => {
       const message: Message = { id: "test-id", role: "user", blocks: [] };
       const block: MessageBlock = {
-        type: "text",
-        content: "command text",
-        customCommandContent: "some command",
+        type: "slash",
+        command: "test",
+        stage: "running",
       };
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
       );
-      expect(lastFrame()).toContain("$");
-      expect(lastFrame()).toContain("command text");
+      expect(lastFrame()).toContain("MOCKED_SLASH");
     });
 
     it("should render text block with HOOK source (🔗)", () => {

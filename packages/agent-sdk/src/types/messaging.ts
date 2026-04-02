@@ -25,6 +25,7 @@ export type MessageBlock =
   | ToolBlock
   | ImageBlock
   | BangBlock
+  | SlashBlock
   | CompressBlock
   | ReasoningBlock
   | FileHistoryBlock;
@@ -32,8 +33,18 @@ export type MessageBlock =
 export interface TextBlock {
   type: "text";
   content: string;
-  customCommandContent?: string;
   source?: MessageSource;
+}
+
+export interface SlashBlock {
+  type: "slash";
+  command: string;
+  args?: string;
+  content?: string; // The expanded prompt (template + args + bash output)
+  result?: string; // The final output (e.g., from a forked skill)
+  stage: "running" | "success" | "error" | "aborted";
+  error?: string;
+  shortResult?: string; // Progress summary (e.g., "3 tools | 1,234 tokens")
 }
 
 export interface ErrorBlock {

@@ -7,9 +7,13 @@ import {
   addBangMessage,
   updateBangInMessage,
   completeBangInMessage,
+  addSlashMessageToMessages,
+  updateSlashBlockInMessage,
   removeLastUserMessage,
   addToolBlockToMessageInMessages,
   UserMessageParams,
+  AddSlashParams,
+  UpdateSlashParams,
   type AgentToolBlockUpdateParams,
   generateMessageId,
 } from "../utils/messageOperations.js";
@@ -50,6 +54,13 @@ export interface MessageManagerCallbacks {
   onAddBangMessage?: (command: string) => void;
   onUpdateBangMessage?: (command: string, output: string) => void;
   onCompleteBangMessage?: (command: string, exitCode: number) => void;
+  // Slash callback
+  onAddSlashMessage?: (
+    params: import("../utils/messageOperations.js").AddSlashParams,
+  ) => void;
+  onUpdateSlashBlock?: (
+    params: import("../utils/messageOperations.js").UpdateSlashParams,
+  ) => void;
   onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
   onShowRewind?: () => void;
@@ -581,6 +592,35 @@ export class MessageManager {
     });
     this.setMessages(updatedMessages);
     this.callbacks.onCompleteBangMessage?.(command, exitCode);
+  }
+
+  // Slash related message operations
+  public addSlashMessage(params: Omit<AddSlashParams, "messages">): string {
+    const id = params.id || generateMessageId();
+    const updatedMessages = addSlashMessageToMessages({
+      messages: this.messages,
+      ...params,
+      id,
+    });
+    this.setMessages(updatedMessages);
+    this.callbacks.onAddSlashMessage?.({
+      messages: updatedMessages,
+      ...params,
+      id,
+    });
+    return id;
+  }
+
+  public updateSlashBlock(params: Omit<UpdateSlashParams, "messages">): void {
+    const updatedMessages = updateSlashBlockInMessage({
+      messages: this.messages,
+      ...params,
+    });
+    this.setMessages(updatedMessages);
+    this.callbacks.onUpdateSlashBlock?.({
+      messages: updatedMessages,
+      ...params,
+    });
   }
 
   /**

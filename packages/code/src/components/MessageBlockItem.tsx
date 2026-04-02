@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
 import { BangDisplay } from "./BangDisplay.js";
+import { SlashDisplay } from "./SlashDisplay.js";
 import { ToolDisplay } from "./ToolDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
@@ -25,11 +26,6 @@ export const MessageBlockItem = ({
     <Box flexDirection="column" paddingTop={paddingTop}>
       {block.type === "text" && block.content.trim() && (
         <Box>
-          {block.customCommandContent && (
-            <Text color="cyan" bold>
-              ${" "}
-            </Text>
-          )}
           {block.source === MessageSource.HOOK && (
             <Text color="magenta" bold>
               ~{" "}
@@ -47,6 +43,8 @@ export const MessageBlockItem = ({
           )}
         </Box>
       )}
+
+      {block.type === "slash" && <SlashDisplay block={block} />}
 
       {block.type === "error" && (
         <Box>

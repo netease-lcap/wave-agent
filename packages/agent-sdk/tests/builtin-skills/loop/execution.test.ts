@@ -4,7 +4,7 @@ import { MessageManager } from "../../../src/managers/messageManager.js";
 import { AIManager } from "../../../src/managers/aiManager.js";
 import { SkillManager } from "../../../src/managers/skillManager.js";
 import { Container } from "../../../src/utils/container.js";
-import { TextBlock } from "../../../src/types/messaging.js";
+import { SlashBlock } from "../../../src/types/messaging.js";
 
 describe("/loop execution integration", () => {
   let slashCommandManager: SlashCommandManager;
@@ -64,12 +64,13 @@ describe("/loop execution integration", () => {
     // Verify that a message was added to messageManager
     const messages = messageManager.getMessages();
     expect(messages.length).toBe(1);
-    const textBlock = messages[0].blocks[0] as TextBlock;
-    expect(textBlock.content).toBe("/loop 5m /echo hello");
-    expect(textBlock.customCommandContent).toContain(
+    const slashBlock = messages[0].blocks[0] as SlashBlock;
+    expect(slashBlock.command).toBe("loop");
+    expect(slashBlock.args).toBe("5m /echo hello");
+    expect(slashBlock.content).toContain(
       "# /loop — schedule a recurring prompt",
     );
-    expect(textBlock.customCommandContent).toContain("5m /echo hello");
+    expect(slashBlock.content).toContain("5m /echo hello");
 
     // Verify that aiManager.sendAIMessage was called
     expect(aiManager.sendAIMessage).toHaveBeenCalled();
@@ -80,10 +81,9 @@ describe("/loop execution integration", () => {
     await cmd?.handler("check the build every 2h");
 
     const messages = messageManager.getMessages();
-    const textBlock = messages[0].blocks[0] as TextBlock;
-    expect(textBlock.content).toBe("/loop check the build every 2h");
-    expect(textBlock.customCommandContent).toContain(
-      "check the build every 2h",
-    );
+    const slashBlock = messages[0].blocks[0] as SlashBlock;
+    expect(slashBlock.command).toBe("loop");
+    expect(slashBlock.args).toBe("check the build every 2h");
+    expect(slashBlock.content).toContain("check the build every 2h");
   });
 });
