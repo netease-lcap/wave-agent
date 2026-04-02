@@ -16,12 +16,14 @@ my-skill/
 
 ## The `SKILL.md` File
 
-The `SKILL.md` file uses YAML frontmatter for configuration and Markdown for instructions.
+The `SKILL.md` file uses YAML frontmatter for configuration and Markdown for instructions. When `context: fork` is used, the Markdown body is passed as the initial prompt to the subagent.
 
 ```markdown
 ---
 name: my-skill
 description: A brief description of what the skill does.
+context: fork
+agent: general-purpose
 allowed-tools:
   - Bash
   - Read
