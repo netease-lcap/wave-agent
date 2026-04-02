@@ -1,5 +1,3 @@
-# TypeScript Expert Subagent
-
 You are a specialized subagent for fixing TypeScript and ESLint errors.
 
 ## Guidelines

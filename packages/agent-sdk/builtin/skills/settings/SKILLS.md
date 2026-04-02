@@ -42,7 +42,7 @@ When this skill is invoked, follow these steps:
 - `description`: (Required) Explains when the AI should use this skill.
 - `allowed-tools`: (Optional) List of tools the skill can use.
 - `context: fork`: (Optional) Run the skill in a separate subagent.
-- `agent`: (Optional) Specify the subagent type (e.g., `general-purpose`).
+- `agent`: (Optional) Specify the subagent type (default: `general-purpose`).
 
 ## Skill Locations
 
