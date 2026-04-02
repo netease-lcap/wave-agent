@@ -98,6 +98,7 @@ describe("AIManager", () => {
       saveSession: vi.fn().mockResolvedValue(undefined),
       compressMessagesAndUpdateSession: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
+      touchFile: vi.fn(),
     } as unknown as MessageManager;
 
     // Create mock ToolManager
@@ -771,6 +772,57 @@ describe("AIManager", () => {
           systemPrompt: expect.stringContaining("Is directory a git repo: No"),
         }),
       );
+    });
+  });
+
+  describe("File Mention Scanning", () => {
+    it("should scan for file mentions in the last user message and call touchFile", async () => {
+      const messages = [
+        {
+          id: "msg-1",
+          role: "user",
+          blocks: [
+            {
+              type: "text",
+              content: "Please check @src/main.ts and @package.json",
+            },
+          ],
+        },
+      ];
+      vi.mocked(mockMessageManager.getMessages).mockReturnValue(
+        messages as unknown as ReturnType<
+          typeof mockMessageManager.getMessages
+        >,
+      );
+
+      await aiManager.sendAIMessage();
+
+      expect(mockMessageManager.touchFile).toHaveBeenCalledWith("src/main.ts");
+      expect(mockMessageManager.touchFile).toHaveBeenCalledWith("package.json");
+    });
+
+    it("should only scan for file mentions at recursionDepth 0", async () => {
+      const messages = [
+        {
+          id: "msg-1",
+          role: "user",
+          blocks: [
+            {
+              type: "text",
+              content: "Please check @src/main.ts",
+            },
+          ],
+        },
+      ];
+      vi.mocked(mockMessageManager.getMessages).mockReturnValue(
+        messages as unknown as ReturnType<
+          typeof mockMessageManager.getMessages
+        >,
+      );
+
+      await aiManager.sendAIMessage({ recursionDepth: 1 });
+
+      expect(mockMessageManager.touchFile).not.toHaveBeenCalled();
     });
   });
 });

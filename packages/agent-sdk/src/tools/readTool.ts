@@ -195,6 +195,9 @@ Usage:
       };
     }
 
+    // Touch file to track it in context
+    context.messageManager?.touchFile(filePath);
+
     // Check for binary document formats
     if (isBinaryDocument(filePath)) {
       const isPdf = filePath.toLowerCase().endsWith(".pdf");

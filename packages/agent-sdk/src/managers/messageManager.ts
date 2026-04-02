@@ -14,7 +14,7 @@ import {
   generateMessageId,
 } from "../utils/messageOperations.js";
 import type { Message, Usage } from "../types/index.js";
-import { join } from "path";
+import { join, isAbsolute, relative } from "path";
 import {
   appendMessages,
   createSession,
@@ -222,9 +222,53 @@ export class MessageManager {
     }
   }
 
+  /**
+   * Adds a file path to the set of files in context, normalizing it if necessary.
+   */
+  public touchFile(filePath: string): void {
+    const normalizedPath = isAbsolute(filePath)
+      ? relative(this.workdir, filePath)
+      : filePath;
+    this.filesInContext.add(normalizedPath);
+  }
+
+  /**
+   * Extracts and adds file paths from a message's tool blocks.
+   */
+  private addPathsFromMessage(message: Message): void {
+    for (const block of message.blocks) {
+      if (block.type === "tool" && block.parameters) {
+        try {
+          const params = JSON.parse(block.parameters) as Record<
+            string,
+            unknown
+          >;
+          const paths = this.extractPathsFromParams(params);
+          for (const p of paths) {
+            this.touchFile(p);
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+  }
+
   public setMessages(messages: Message[]): void {
+    const oldLength = this.messages.length;
     this.messages = [...messages];
-    this.updateFilesInContext(messages);
+
+    // Incrementally add paths from new messages
+    const newMessages = messages.slice(oldLength);
+    for (const message of newMessages) {
+      this.addPathsFromMessage(message);
+    }
+
+    // Also check if the last message was updated (common for tool blocks)
+    if (messages.length > 0 && messages.length === oldLength) {
+      this.addPathsFromMessage(messages[messages.length - 1]);
+    }
+
     this.callbacks.onMessagesChange?.([...messages]);
   }
 
@@ -297,7 +341,6 @@ export class MessageManager {
     this.rootSessionId = sessionData.rootSessionId || sessionData.id;
     this.parentSessionId = sessionData.parentSessionId;
     this.setMessages([...sessionData.messages]);
-    this.updateFilesInContext(sessionData.messages);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
 
     // Set saved message count to the number of loaded messages since they're already saved
@@ -476,6 +519,19 @@ export class MessageManager {
 
     // Set new message list
     this.setMessages(newMessages);
+
+    // Reset and re-populate filesInContext
+    this.filesInContext.clear();
+    for (const message of this.messages) {
+      this.addPathsFromMessage(message);
+    }
+
+    // Scan compressedContent for file mentions
+    const fileMentionRegex = /(?:^|\s)@([\w.\-/]+)/g;
+    let match;
+    while ((match = fileMentionRegex.exec(compressedContent)) !== null) {
+      this.touchFile(match[1]);
+    }
 
     // Trigger compression callback
     this.callbacks.onCompressBlockAdded?.(compressedContent);
@@ -806,34 +862,6 @@ export class MessageManager {
       await writeFile(this.transcriptPath, content, "utf8");
     } catch (error) {
       logger?.error("Failed to rewrite session file:", error);
-    }
-  }
-
-  /**
-   * Updates the set of files mentioned in the conversation.
-   */
-  private updateFilesInContext(messages: Message[]): void {
-    this.filesInContext.clear();
-    for (const message of messages) {
-      for (const block of message.blocks) {
-        if (block.type === "tool") {
-          // Extract file paths from common tool parameters
-          if (block.parameters) {
-            try {
-              const params = JSON.parse(block.parameters) as Record<
-                string,
-                unknown
-              >;
-              const paths = this.extractPathsFromParams(params);
-              for (const p of paths) {
-                this.filesInContext.add(p);
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-      }
     }
   }
 
