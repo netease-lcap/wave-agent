@@ -78,8 +78,11 @@ export class InitializationService {
       resolveAndValidateConfig,
     } = context;
 
+    const startTime = performance.now();
+
     // Initialize managers first
     try {
+      const phaseStart = performance.now();
       // Initialize SkillManager
       await skillManager.initialize();
 
@@ -100,6 +103,9 @@ export class InitializationService {
       slashCommandManager.registerSkillCommands(
         skillManager.getAvailableSkills(),
       );
+      logger?.debug(
+        `Initialization Phase [Managers and Tools] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
     } catch (error) {
       logger?.error("Failed to initialize managers and tools:", error);
       // Don't throw error to prevent app startup failure
@@ -107,10 +113,14 @@ export class InitializationService {
 
     // Initialize MCP servers with auto-connect
     try {
+      const phaseStart = performance.now();
       await mcpManager.initialize(workdir, true);
       if (lspManager instanceof LspManager) {
         await lspManager.initialize(workdir);
       }
+      logger?.debug(
+        `Initialization Phase [MCP and LSP] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
     } catch (error) {
       logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
@@ -118,6 +128,7 @@ export class InitializationService {
 
     // Initialize hooks configuration
     try {
+      const phaseStart = performance.now();
       // Load hooks configuration using ConfigurationService
       const configResult =
         await configurationService.loadMergedConfiguration(workdir);
@@ -158,6 +169,9 @@ export class InitializationService {
           }
         }
       }
+      logger?.debug(
+        `Initialization Phase [Hooks Configuration] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
     } catch (error) {
       logger?.error("Failed to initialize hooks system:", error);
       // Don't throw error to prevent app startup failure
@@ -196,6 +210,7 @@ export class InitializationService {
 
     // Initialize auto-memory directory
     try {
+      const phaseStart = performance.now();
       if (configurationService.resolveAutoMemoryEnabled()) {
         const memoryService =
           container.get<import("./memory.js").MemoryService>("MemoryService");
@@ -209,6 +224,9 @@ export class InitializationService {
           }
         }
       }
+      logger?.debug(
+        `Initialization Phase [Auto-memory Initialization] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
     } catch (error) {
       logger?.error("Failed to initialize auto-memory directory:", error);
     }
@@ -218,14 +236,22 @@ export class InitializationService {
 
     // Discover modular memory rules
     try {
+      const phaseStart = performance.now();
       await memoryRuleManager.discoverRules();
+      logger?.debug(
+        `Initialization Phase [Memory Rules Discovery] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
     } catch (error) {
       logger?.error("Failed to discover memory rules:", error);
     }
 
     // Initialize live configuration reload
     try {
+      const phaseStart = performance.now();
       await liveConfigManager.initialize();
+      logger?.debug(
+        `Initialization Phase [Live Config Initialization] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
     } catch (error) {
       logger?.error("Failed to initialize live configuration reload:", error);
       // Don't throw error to prevent app startup failure - continue without live reload
@@ -233,6 +259,7 @@ export class InitializationService {
 
     // Load memory files during initialization
     try {
+      const phaseStart = performance.now();
       const memoryService = container.get<MemoryService>("MemoryService");
       if (!memoryService) {
         throw new Error("MemoryService not found in container");
@@ -256,6 +283,9 @@ export class InitializationService {
         logger?.warn("Failed to load user memory file:", error);
         setUserMemory("");
       }
+      logger?.debug(
+        `Initialization Phase [Memory Files Loading] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
     } catch (error) {
       // Ensure memory is always initialized even if loading fails
       setProjectMemory("");
@@ -265,6 +295,7 @@ export class InitializationService {
     }
 
     // Handle session restoration or set provided messages
+    const sessionPhaseStart = performance.now();
     if (options?.messages) {
       // If messages are provided, use them directly (useful for testing)
       messageManager.setMessages(options.messages);
@@ -293,5 +324,12 @@ export class InitializationService {
         agentOptions.callbacks?.onTasksChange?.(tasks);
       }
     }
+    logger?.debug(
+      `Initialization Phase [Session Restoration] took ${(performance.now() - sessionPhaseStart).toFixed(2)}ms`,
+    );
+
+    logger?.debug(
+      `Total Initialization took ${(performance.now() - startTime).toFixed(2)}ms`,
+    );
   }
 }

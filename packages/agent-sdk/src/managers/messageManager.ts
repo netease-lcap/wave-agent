@@ -173,12 +173,7 @@ export class MessageManager {
       const filesInContext = this.getFilesInContext();
       const activeRules = this.memoryRuleManager.getActiveRules(filesInContext);
       if (activeRules.length > 0) {
-        logger?.debug(
-          `Active modular rules (${activeRules.length}): ${activeRules.map((r) => r.id).join(", ")}`,
-        );
-        if (combined) {
-          combined += "\n\n";
-        }
+        combined += "\n\n";
         combined += activeRules.map((r) => r.content).join("\n\n");
       }
     }
