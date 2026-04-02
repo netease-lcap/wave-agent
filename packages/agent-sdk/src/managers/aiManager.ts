@@ -172,6 +172,7 @@ export class AIManager {
       availableSubagents,
       availableSkills,
       workdir: this.workdir,
+      isSubagent: !!this.subagentType,
     });
   }
 

@@ -38,10 +38,20 @@ export const skillTool: ToolPlugin = {
     },
   },
 
-  prompt: (args?: { availableSkills?: SkillMetadata[] }) => {
-    const availableSkills = args?.availableSkills?.filter(
+  prompt: (args?: {
+    availableSkills?: SkillMetadata[];
+    isSubagent?: boolean;
+  }) => {
+    let availableSkills = args?.availableSkills?.filter(
       (skill) => !skill.disableModelInvocation,
     );
+
+    if (args?.isSubagent) {
+      availableSkills = availableSkills?.filter(
+        (skill) => skill.context !== "fork",
+      );
+    }
+
     if (!availableSkills || availableSkills.length === 0) {
       return `${SKILL_TOOL_DESCRIPTION} No skills are currently available.`;
     }

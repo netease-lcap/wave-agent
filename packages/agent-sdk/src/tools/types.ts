@@ -29,6 +29,7 @@ export interface ToolPlugin {
     availableSubagents?: SubagentConfiguration[];
     availableSkills?: SkillMetadata[];
     workdir?: string;
+    isSubagent?: boolean;
   }) => string;
 }
 
