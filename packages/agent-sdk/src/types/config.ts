@@ -19,4 +19,5 @@ export interface ModelConfig {
   fastModel: string;
   maxTokens?: number;
   permissionMode?: PermissionMode;
+  [key: string]: unknown;
 }

@@ -77,6 +77,7 @@ export interface AgentOptions {
    * These rules follow the standard permission rule syntax: `ToolName` or `ToolName(pattern)`.
    */
   disallowedTools?: string[];
+  [key: string]: unknown;
 }
 
 export interface AgentCallbacks

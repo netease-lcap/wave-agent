@@ -23,6 +23,7 @@ Extended interface for Agent constructor parameters.
 - `messages?: Message[]` - Existing initial messages
 - `workdir?: string` - Existing working directory
 - `systemPrompt?: string` - Existing custom system prompt
+- `[key: string]: unknown` - Arbitrary additional model-specific parameters (e.g., `temperature`, `reasoning_effort`, `thinking`)
 
 **Validation Rules**:
 - If neither constructor arg nor environment variable provided for apiKey/baseURL, Agent creation fails (unless custom headers provide auth)
@@ -53,6 +54,7 @@ Resolved configuration for model selection.
 - `model: string` - Model ID for main operations (resolved from constructor, env, or default)
 - `fastModel: string` - Model ID for compression and fast operations (resolved from constructor, env, or default)
 - `maxTokens: number` - Max output tokens for AI responses
+- `[key: string]: unknown` - Arbitrary additional model-specific parameters (e.g., `temperature`, `reasoning_effort`, `thinking`)
 
 **Validation Rules**:
 - Model IDs must be non-empty strings after resolution

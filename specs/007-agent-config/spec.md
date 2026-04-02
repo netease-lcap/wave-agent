@@ -123,6 +123,9 @@ As a user, I want to specify my preferred language in the settings file or via a
 - **FR-015**: SDK MUST NOT enforce the presence of an `apiKey` during initialization if alternative auth is provided via custom headers.
 - **FR-016**: System MUST support setting `language` via `AgentOptions` or `settings.json`.
 - **FR-017**: System MUST inject a language instruction into the system prompt if a language is configured, following the specified format.
+- **FR-018**: `AgentOptions` and `ModelConfig` MUST support arbitrary additional properties to allow model-specific parameters (e.g., `temperature`, `reasoning_effort`, `thinking`).
+- **FR-019**: System MUST support model-specific overrides in `settings.json` via a `models` field.
+- **FR-020**: System MUST allow unsetting default parameters by setting them to `null` in the configuration.
 
 ### Key Entities *(include if feature involves data)*
 

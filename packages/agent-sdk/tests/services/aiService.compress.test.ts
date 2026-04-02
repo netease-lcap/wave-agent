@@ -276,5 +276,28 @@ describe("AI Service - CompressMessages", () => {
         }),
       ).rejects.toThrow("Compression request was aborted");
     });
+
+    it("should pass generic model configuration parameters to OpenAI", async () => {
+      const messages = [
+        {
+          role: "user" as const,
+          content: "Test message",
+        },
+      ];
+
+      await compressMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7,
+          reasoning_effort: "high",
+        },
+        messages,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.temperature).toBe(0.7);
+      expect(callArgs.reasoning_effort).toBe("high");
+    });
   });
 });

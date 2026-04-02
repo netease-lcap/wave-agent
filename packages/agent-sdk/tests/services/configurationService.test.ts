@@ -177,6 +177,10 @@ describe("ConfigurationService", () => {
         hooks: { PreToolUse: [{ matcher: "user", hooks: [] }] },
         env: { VAR1: "user", VAR2: "user" },
         permissions: { allow: ["rule-user"], permissionMode: "default" },
+        models: {
+          model1: { temperature: 0.1, maxTokens: 500 },
+          model2: { temperature: 0.2 },
+        },
       };
 
       const projectSettings = {
@@ -184,6 +188,10 @@ describe("ConfigurationService", () => {
         hooks: { PreToolUse: [{ matcher: "project", hooks: [] }] },
         env: { VAR2: "project", VAR3: "project" },
         permissions: { allow: ["rule-project"], permissionMode: "acceptEdits" },
+        models: {
+          model1: { temperature: 0.5, maxTokens: 1000 },
+          model2: { temperature: 0.8 },
+        },
       };
 
       const localSettings = {
@@ -193,6 +201,9 @@ describe("ConfigurationService", () => {
         permissions: {
           allow: ["rule-local"],
           permissionMode: "bypassPermissions",
+        },
+        models: {
+          model2: { reasoning_effort: "high" },
         },
       };
 
@@ -248,6 +259,16 @@ describe("ConfigurationService", () => {
         expect.arrayContaining(["rule-user", "rule-project", "rule-local"]),
       );
       expect(result?.permissions?.allow).toHaveLength(3);
+
+      // Verify models (merged with precedence)
+      expect(result?.models?.["model1"]).toEqual({
+        temperature: 0.5,
+        maxTokens: 1000,
+      });
+      expect(result?.models?.["model2"]).toEqual({
+        temperature: 0.8,
+        reasoning_effort: "high",
+      });
     });
   });
 
@@ -435,6 +456,26 @@ describe("ConfigurationService", () => {
       expect(config.model).toBe("custom-agent");
       expect(config.fastModel).toBe("custom-fast");
       expect(config.maxTokens).toBe(1000);
+    });
+
+    it("should merge model-specific settings from configuration", async () => {
+      const config = {
+        models: {
+          "gpt-4o": {
+            temperature: 0.5,
+            reasoning_effort: "high",
+          },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      const resolved = configService.resolveModelConfig("gpt-4o");
+
+      expect(resolved.model).toBe("gpt-4o");
+      expect(resolved.temperature).toBe(0.5);
+      expect(resolved.reasoning_effort).toBe("high");
     });
   });
 

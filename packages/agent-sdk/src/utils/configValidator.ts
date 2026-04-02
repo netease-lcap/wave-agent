@@ -5,6 +5,7 @@
 
 import {
   GatewayConfig,
+  ModelConfig,
   ConfigurationError,
   CONFIG_ERRORS,
 } from "../types/index.js";
@@ -89,11 +90,11 @@ export class ConfigValidator {
 
   /**
    * Validates model configuration (basic validation)
-   * @param model - Agent model string
-   * @param fastModel - Fast model string
+   * @param config - Model configuration object
    * @throws ConfigurationError if invalid
    */
-  static validateModelConfig(model: string, fastModel: string): void {
+  static validateModelConfig(config: ModelConfig): void {
+    const { model, fastModel } = config;
     if (!model || typeof model !== "string" || model.trim() === "") {
       throw new ConfigurationError(
         "Agent model must be a non-empty string.",
@@ -123,5 +124,6 @@ export class ConfigValidator {
 export const configValidator = {
   validateGatewayConfig: ConfigValidator.validateGatewayConfig,
   validateMaxInputTokens: ConfigValidator.validateMaxInputTokens,
-  validateModelConfig: ConfigValidator.validateModelConfig,
+  validateModelConfig: (config: ModelConfig) =>
+    ConfigValidator.validateModelConfig(config),
 };
