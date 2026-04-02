@@ -1,9 +1,42 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { MarketplaceService } from "../../src/services/MarketplaceService.js";
-import { promises as fs, existsSync } from "fs";
+import { KnownMarketplace } from "../../src/types/marketplace.js";
+import * as fsModule from "fs";
+const fs = fsModule.promises;
+const { existsSync } = fsModule;
 import * as path from "path";
 import { getPluginsDir } from "../../src/utils/configPaths.js";
+
+vi.mock("fs", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  const promises = actual.promises as Record<string, unknown>;
+  return {
+    ...actual,
+    existsSync: vi.fn(actual.existsSync as (...args: unknown[]) => boolean),
+    promises: {
+      ...promises,
+      open: vi.fn(promises.open as (...args: unknown[]) => Promise<unknown>),
+      readdir: vi.fn(
+        promises.readdir as (...args: unknown[]) => Promise<unknown>,
+      ),
+      rm: vi.fn(promises.rm as (...args: unknown[]) => Promise<unknown>),
+      mkdir: vi.fn(promises.mkdir as (...args: unknown[]) => Promise<unknown>),
+      rename: vi.fn(
+        promises.rename as (...args: unknown[]) => Promise<unknown>,
+      ),
+      writeFile: vi.fn(
+        promises.writeFile as (...args: unknown[]) => Promise<unknown>,
+      ),
+      readFile: vi.fn(
+        promises.readFile as (...args: unknown[]) => Promise<unknown>,
+      ),
+      unlink: vi.fn(
+        promises.unlink as (...args: unknown[]) => Promise<unknown>,
+      ),
+    },
+  };
+});
 
 vi.mock("../../src/utils/configPaths.js", () => ({
   getPluginsDir: vi.fn(),
@@ -21,10 +54,31 @@ describe("MarketplaceService - Builtin Marketplace", () => {
       await fs.rm(mockPluginsDir, { recursive: true, force: true });
     }
     service = new MarketplaceService();
+    // Reset static variable
+    (
+      MarketplaceService as unknown as { isLockedInProcess: boolean }
+    ).isLockedInProcess = false;
     // Mock all git operations by default
-    vi.spyOn(service["gitService"], "isGitAvailable").mockResolvedValue(true);
-    vi.spyOn(service["gitService"], "clone").mockResolvedValue();
-    vi.spyOn(service["gitService"], "pull").mockResolvedValue();
+    vi.spyOn(
+      service["gitService"] as unknown as {
+        isGitAvailable: () => Promise<boolean>;
+      },
+      "isGitAvailable",
+    ).mockResolvedValue(true);
+    vi.spyOn(
+      service["gitService"] as unknown as { clone: () => Promise<void> },
+      "clone",
+    ).mockResolvedValue();
+    vi.spyOn(
+      service["gitService"] as unknown as { pull: () => Promise<void> },
+      "pull",
+    ).mockResolvedValue();
+
+    // Spy on fs methods
+    vi.mocked(fs.open).mockResolvedValue({
+      close: vi.fn(),
+    } as unknown as Awaited<ReturnType<typeof fs.open>>);
+    vi.mocked(fs.unlink).mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -213,6 +267,117 @@ describe("MarketplaceService - Builtin Marketplace", () => {
         "orphaned-plugin@wave-plugins-official",
         undefined,
       );
+    });
+  });
+
+  describe("Locking Mechanism", () => {
+    it("should support re-entrant locking within the same process", async () => {
+      vi.spyOn(
+        service,
+        "loadMarketplaceManifest" as keyof MarketplaceService,
+      ).mockResolvedValue({
+        name: "test",
+        plugins: [],
+      } as never);
+
+      // Mock getKnownMarketplaces to return the marketplace
+      vi.spyOn(service, "getKnownMarketplaces").mockResolvedValue({
+        marketplaces: [
+          {
+            name: "test",
+            source: { source: "directory", path: "/path" },
+            autoUpdate: false,
+          } as unknown as KnownMarketplace,
+        ],
+      });
+
+      // Mock saveKnownMarketplaces to call another locked method
+      const saveSpy = vi.spyOn(service, "saveKnownMarketplaces");
+      saveSpy.mockImplementationOnce(async () => {
+        // This call should NOT trigger another fs.open because we're already locked
+        // We use mockImplementationOnce to avoid infinite recursion since toggleAutoUpdate calls saveKnownMarketplaces
+        await service.toggleAutoUpdate("test", true);
+      });
+
+      vi.mocked(fs.open).mockClear();
+      await service.addMarketplace("/some/path");
+
+      // fs.open should only be called once for the outer lock
+      expect(fs.open).toHaveBeenCalledTimes(1);
+    });
+
+    it("should retry acquiring the lock if it already exists", async () => {
+      vi.spyOn(
+        service,
+        "loadMarketplaceManifest" as keyof MarketplaceService,
+      ).mockResolvedValue({
+        name: "test",
+        plugins: [],
+      } as never);
+
+      vi.mocked(fs.open)
+        .mockRejectedValueOnce({ code: "EEXIST" } as unknown as Error)
+        .mockRejectedValueOnce({ code: "EEXIST" } as unknown as Error)
+        .mockResolvedValueOnce({ close: vi.fn() } as unknown as Awaited<
+          ReturnType<typeof fs.open>
+        >);
+
+      // Mock setTimeout to resolve immediately
+      const originalSetTimeout = global.setTimeout;
+      (
+        global as unknown as { setTimeout: (fn: () => void) => void }
+      ).setTimeout = (fn: () => void) => fn();
+
+      vi.mocked(fs.open).mockClear();
+      const result = await service.addMarketplace("/some/path");
+
+      expect(result).toBeDefined();
+      expect(fs.open).toHaveBeenCalledTimes(3);
+
+      global.setTimeout = originalSetTimeout;
+    });
+
+    it("should cleanup temporary directories if installation fails", async () => {
+      vi.spyOn(service, "getKnownMarketplaces").mockResolvedValue({
+        marketplaces: [
+          {
+            name: "test",
+            source: { source: "github", repo: "owner/repo" },
+            autoUpdate: false,
+          },
+        ],
+      });
+
+      vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+        name: "test",
+        plugins: [
+          { name: "plugin", source: "plugin-dir", description: "test" },
+        ],
+      } as never);
+
+      // Mock git clone to succeed but something else to fail
+      vi.spyOn(
+        service["gitService"] as unknown as { clone: () => Promise<void> },
+        "clone",
+      ).mockResolvedValue(undefined);
+
+      // Mock fs.readFile to fail when reading plugin manifest
+      vi.mocked(fs.readFile).mockImplementation((path: unknown) => {
+        if (String(path).includes("plugin.json")) {
+          throw new Error("Read error");
+        }
+        return Promise.resolve("");
+      });
+
+      // Mock existsSync to return true for cleanup check
+      vi.mocked(fsModule.existsSync).mockReturnValue(true);
+
+      await expect(
+        service.installPlugin("plugin@test", "/project"),
+      ).rejects.toThrow(/Failed to install plugin plugin: Read error/);
+
+      // Should attempt to remove tmp dirs
+      expect(fs.rm).toHaveBeenCalled();
     });
   });
 });

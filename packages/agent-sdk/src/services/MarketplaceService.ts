@@ -553,92 +553,94 @@ export class MarketplaceService {
       let pluginSrcPath: string;
       let tempCloneDir: string | undefined;
 
-      if (isGitSource) {
-        tempCloneDir = path.join(this.tmpDir, `clone-${Date.now()}`);
-        let url = pluginEntry.source;
-        let ref: string | undefined;
-        if (url.includes("#")) {
-          [url, ref] = url.split("#");
-        }
-        await this.gitService.clone(url, tempCloneDir, ref);
-        pluginSrcPath = tempCloneDir;
-      } else {
-        pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
-      }
-
-      const pluginManifestPath = path.join(
-        pluginSrcPath,
-        ".wave-plugin",
-        "plugin.json",
-      );
-      if (!existsSync(pluginManifestPath)) {
-        if (tempCloneDir) {
-          await fs.rm(tempCloneDir, { recursive: true, force: true });
-        }
-        throw new Error(`Plugin manifest not found at ${pluginManifestPath}`);
-      }
-
-      const pluginManifestContent = await fs.readFile(
-        pluginManifestPath,
-        "utf-8",
-      );
-      const pluginManifest = JSON.parse(pluginManifestContent);
-      const version = pluginManifest.version || "1.0.0";
-
-      // Atomic installation
-      const tmpPluginDir = path.join(
-        this.tmpDir,
-        `${pluginName}-${Date.now()}`,
-      );
       try {
         if (isGitSource) {
-          await fs.rename(pluginSrcPath, tmpPluginDir);
-          tempCloneDir = undefined; // Already moved
+          tempCloneDir = path.join(this.tmpDir, `clone-${Date.now()}`);
+          let url = pluginEntry.source;
+          let ref: string | undefined;
+          if (url.includes("#")) {
+            [url, ref] = url.split("#");
+          }
+          await this.gitService.clone(url, tempCloneDir, ref);
+          pluginSrcPath = tempCloneDir;
         } else {
-          await fs.cp(pluginSrcPath, tmpPluginDir, { recursive: true });
+          pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
         }
 
-        const cachePath = path.join(
-          this.cacheDir,
-          marketplaceName,
-          pluginName,
-          version,
+        const pluginManifestPath = path.join(
+          pluginSrcPath,
+          ".wave-plugin",
+          "plugin.json",
         );
-        if (existsSync(cachePath)) {
-          await fs.rm(cachePath, { recursive: true, force: true });
+        if (!existsSync(pluginManifestPath)) {
+          throw new Error(`Plugin manifest not found at ${pluginManifestPath}`);
         }
-        await fs.mkdir(path.dirname(cachePath), { recursive: true });
-        await fs.rename(tmpPluginDir, cachePath);
 
-        const installedRegistry = await this.getInstalledPlugins();
-        const existingIndex = installedRegistry.plugins.findIndex(
-          (p) =>
-            p.name === pluginName &&
-            p.marketplace === marketplaceName &&
-            p.projectPath === projectPath,
+        const pluginManifestContent = await fs.readFile(
+          pluginManifestPath,
+          "utf-8",
         );
+        const pluginManifest = JSON.parse(pluginManifestContent);
+        const version = pluginManifest.version || "1.0.0";
 
-        const installedPlugin: InstalledPlugin = {
-          name: pluginName,
-          marketplace: marketplaceName,
-          version,
-          cachePath,
-          projectPath,
-        };
+        // Atomic installation
+        const tmpPluginDir = path.join(
+          this.tmpDir,
+          `${pluginName}-${Date.now()}`,
+        );
+        try {
+          if (isGitSource) {
+            await fs.rename(pluginSrcPath, tmpPluginDir);
+            tempCloneDir = undefined; // Already moved
+          } else {
+            await fs.cp(pluginSrcPath, tmpPluginDir, { recursive: true });
+          }
 
-        if (existingIndex >= 0) {
-          installedRegistry.plugins[existingIndex] = installedPlugin;
-        } else {
-          installedRegistry.plugins.push(installedPlugin);
+          const cachePath = path.join(
+            this.cacheDir,
+            marketplaceName,
+            pluginName,
+            version,
+          );
+          if (existsSync(cachePath)) {
+            await fs.rm(cachePath, { recursive: true, force: true });
+          }
+          await fs.mkdir(path.dirname(cachePath), { recursive: true });
+          await fs.rename(tmpPluginDir, cachePath);
+
+          const installedRegistry = await this.getInstalledPlugins();
+          const existingIndex = installedRegistry.plugins.findIndex(
+            (p) =>
+              p.name === pluginName &&
+              p.marketplace === marketplaceName &&
+              p.projectPath === projectPath,
+          );
+
+          const installedPlugin: InstalledPlugin = {
+            name: pluginName,
+            marketplace: marketplaceName,
+            version,
+            cachePath,
+            projectPath,
+          };
+
+          if (existingIndex >= 0) {
+            installedRegistry.plugins[existingIndex] = installedPlugin;
+          } else {
+            installedRegistry.plugins.push(installedPlugin);
+          }
+
+          await this.saveInstalledPlugins(installedRegistry);
+          return installedPlugin;
+        } catch (error) {
+          // Cleanup tmp dir if it exists
+          if (existsSync(tmpPluginDir)) {
+            await fs.rm(tmpPluginDir, { recursive: true, force: true });
+          }
+          throw error;
         }
-
-        await this.saveInstalledPlugins(installedRegistry);
-        return installedPlugin;
       } catch (error) {
-        // Cleanup tmp dirs if they exist
-        if (existsSync(tmpPluginDir)) {
-          await fs.rm(tmpPluginDir, { recursive: true, force: true });
-        }
+        // Cleanup temp clone dir if it exists
         if (tempCloneDir && existsSync(tempCloneDir)) {
           await fs.rm(tempCloneDir, { recursive: true, force: true });
         }
