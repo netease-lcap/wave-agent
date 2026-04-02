@@ -360,6 +360,34 @@ describe("PluginManager", () => {
         ),
       );
     });
+
+    it("should log error if background auto-update fails", async () => {
+      const originalVitest = process.env.VITEST;
+      delete process.env.VITEST;
+
+      const error = new Error("Update failed");
+      vi.mocked(MarketplaceService).mockImplementation(function () {
+        return {
+          getInstalledPlugins: vi.fn().mockResolvedValue({ plugins: [] }),
+          listMarketplaces: vi.fn().mockResolvedValue([]),
+          autoUpdateAll: vi.fn().mockRejectedValue(error),
+        } as unknown as MarketplaceService;
+      });
+
+      try {
+        await pluginManager.loadPlugins([]);
+
+        // Wait for background promise to settle
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(logger.error).toHaveBeenCalledWith(
+          "Background marketplace auto-update failed:",
+          error,
+        );
+      } finally {
+        process.env.VITEST = originalVitest;
+      }
+    });
   });
 
   describe("getPlugins and getPlugin", () => {

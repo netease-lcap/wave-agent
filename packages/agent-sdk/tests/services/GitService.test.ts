@@ -231,4 +231,136 @@ describe("GitService", () => {
       /Git operation timed out after 120s/,
     );
   });
+
+  it("should handle repository not found error", async () => {
+    vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
+        (
+          callback as unknown as (
+            err: unknown,
+            res: { stdout: string; stderr: string },
+          ) => void
+        )(
+          { stderr: "Repository not found" },
+          { stdout: "", stderr: "Repository not found" },
+        );
+      }
+      return {} as unknown as ReturnType<typeof exec>;
+    });
+
+    await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
+      'Repository "owner/repo" not found',
+    );
+  });
+
+  it("should handle access denied error", async () => {
+    vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
+        (
+          callback as unknown as (
+            err: unknown,
+            res: { stdout: string; stderr: string },
+          ) => void
+        )(
+          { stderr: "Could not read from remote repository" },
+          { stdout: "", stderr: "Could not read from remote repository" },
+        );
+      }
+      return {} as unknown as ReturnType<typeof exec>;
+    });
+
+    await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
+      'Could not access repository "owner/repo"',
+    );
+  });
+
+  it("should handle authentication failure", async () => {
+    vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
+        (
+          callback as unknown as (
+            err: unknown,
+            res: { stdout: string; stderr: string },
+          ) => void
+        )(
+          { stderr: "Authentication failed" },
+          { stdout: "", stderr: "Authentication failed" },
+        );
+      }
+      return {} as unknown as ReturnType<typeof exec>;
+    });
+
+    await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
+      'Authentication failed for repository "owner/repo"',
+    );
+  });
+
+  it("should handle rate limit error", async () => {
+    vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
+        (
+          callback as unknown as (
+            err: unknown,
+            res: { stdout: string; stderr: string },
+          ) => void
+        )({ stderr: "rate limit" }, { stdout: "", stderr: "rate limit" });
+      }
+      return {} as unknown as ReturnType<typeof exec>;
+    });
+
+    await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
+      "GitHub rate limit exceeded",
+    );
+  });
+
+  it("should handle not a git repository error", async () => {
+    vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
+        (
+          callback as unknown as (
+            err: unknown,
+            res: { stdout: string; stderr: string },
+          ) => void
+        )(
+          { stderr: "not a git repository" },
+          { stdout: "", stderr: "not a git repository" },
+        );
+      }
+      return {} as unknown as ReturnType<typeof exec>;
+    });
+
+    await expect(service.pull("/path")).rejects.toThrow(
+      'The path "/path" is not a valid git repository',
+    );
+  });
+
+  it("should handle generic git error", async () => {
+    vi.spyOn(service, "isGitAvailable").mockResolvedValue(true);
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
+        (
+          callback as unknown as (
+            err: unknown,
+            res: { stdout: string; stderr: string },
+          ) => void
+        )(new Error("Unknown error"), { stdout: "", stderr: "Unknown error" });
+      }
+      return {} as unknown as ReturnType<typeof exec>;
+    });
+
+    await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
+      'Git operation failed for "owner/repo": Unknown error',
+    );
+  });
 });
