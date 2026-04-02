@@ -609,6 +609,40 @@ export class ConfigurationService {
   }
 
   /**
+   * Set the active model in the session
+   */
+  setModel(model: string): void {
+    this.options.model = model;
+  }
+
+  /**
+   * Get all configured models from settings.json and defaults
+   */
+  getConfiguredModels(): string[] {
+    const DEFAULT_AGENT_MODEL = "gemini-3-flash";
+    const models = new Set<string>();
+
+    // Add default model
+    models.add(DEFAULT_AGENT_MODEL);
+
+    // Add current model from options or environment
+    const currentModel =
+      this.options.model || this.env.WAVE_MODEL || process.env.WAVE_MODEL;
+    if (currentModel) {
+      models.add(currentModel);
+    }
+
+    // Add models from merged configuration
+    if (this.currentConfiguration?.models) {
+      Object.keys(this.currentConfiguration.models).forEach((model) => {
+        models.add(model);
+      });
+    }
+
+    return Array.from(models);
+  }
+
+  /**
    * Resolve all configuration file paths
    */
   getConfigurationPaths(workdir: string): ConfigurationPaths {

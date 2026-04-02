@@ -102,6 +102,23 @@ export class Agent {
   }
 
   /**
+   * Set the active model for the agent session
+   * @param model - The ID of the model to use
+   */
+  public setModel(model: string): void {
+    this.configurationService.setModel(model);
+    this.options.callbacks?.onModelChange?.(model);
+  }
+
+  /**
+   * Get all configured models from settings.json and defaults
+   * @returns Array of model IDs
+   */
+  public getConfiguredModels(): string[] {
+    return this.configurationService.getConfiguredModels();
+  }
+
+  /**
    * Agent constructor - handles configuration resolution and validation
    *
    * IMPORTANT: This constructor is private. Use Agent.create() instead for proper

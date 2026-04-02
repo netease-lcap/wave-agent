@@ -562,4 +562,37 @@ describe("ConfigurationService", () => {
       expect(result.conflicts[0].key).toBe("VAR2");
     });
   });
+
+  describe("Model Selection", () => {
+    it("should set model in options", () => {
+      configService.setModel("new-model");
+      const config = configService.resolveModelConfig();
+      expect(config.model).toBe("new-model");
+    });
+
+    it("should get configured models including default and current", () => {
+      configService.setEnvironmentVars({ WAVE_MODEL: "env-model" });
+      const models = configService.getConfiguredModels();
+      expect(models).toContain("gemini-3-flash");
+      expect(models).toContain("env-model");
+    });
+
+    it("should get models from configuration", async () => {
+      const config = {
+        models: {
+          "model-a": {},
+          "model-b": {},
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      const models = configService.getConfiguredModels();
+
+      expect(models).toContain("model-a");
+      expect(models).toContain("model-b");
+      expect(models).toContain("gemini-3-flash");
+    });
+  });
 });

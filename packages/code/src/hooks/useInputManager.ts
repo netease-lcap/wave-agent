@@ -150,6 +150,10 @@ export const useInputManager = (
   }, [state.showPluginManager]);
 
   useEffect(() => {
+    callbacksRef.current.onModelSelectorStateChange?.(state.showModelSelector);
+  }, [state.showModelSelector]);
+
+  useEffect(() => {
     callbacksRef.current.onImagesStateChange?.(state.attachedImages);
   }, [state.attachedImages]);
 
@@ -343,6 +347,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: show });
   }, []);
 
+  const setShowModelSelector = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: show });
+  }, []);
+
   const setPermissionMode = useCallback((mode: PermissionMode) => {
     dispatch({ type: "SET_PERMISSION_MODE", payload: mode });
     callbacksRef.current.onPermissionModeChange?.(mode);
@@ -452,6 +460,7 @@ export const useInputManager = (
     showHelp: state.showHelp,
     showStatusCommand: state.showStatusCommand,
     showPluginManager: state.showPluginManager,
+    showModelSelector: state.showModelSelector,
     permissionMode: state.permissionMode,
     attachedImages: state.attachedImages,
     btwState: state.btwState,
@@ -493,6 +502,7 @@ export const useInputManager = (
     setShowHelp,
     setShowStatusCommand,
     setShowPluginManager,
+    setShowModelSelector,
     setPermissionMode,
     setAllowBypassInCycle,
     setBtwState,

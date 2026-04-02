@@ -30,6 +30,7 @@ describe("inputReducer", () => {
       showRewindManager: false,
       showHelp: false,
       showStatusCommand: false,
+      showModelSelector: false,
       permissionMode: "default",
       allowBypassInCycle: false,
       selectorJustUsed: false,
@@ -385,6 +386,38 @@ describe("inputReducer", () => {
       payload: false,
     });
     expect(state.showStatusCommand).toBe(false);
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle SET_SHOW_PLUGIN_MANAGER", () => {
+    let state = inputReducer(initialState, {
+      type: "SET_SHOW_PLUGIN_MANAGER",
+      payload: true,
+    });
+    expect(state.showPluginManager).toBe(true);
+    expect(state.selectorJustUsed).toBe(false);
+
+    state = inputReducer(state, {
+      type: "SET_SHOW_PLUGIN_MANAGER",
+      payload: false,
+    });
+    expect(state.showPluginManager).toBe(false);
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle SET_SHOW_MODEL_SELECTOR", () => {
+    let state = inputReducer(initialState, {
+      type: "SET_SHOW_MODEL_SELECTOR",
+      payload: true,
+    });
+    expect(state.showModelSelector).toBe(true);
+    expect(state.selectorJustUsed).toBe(false);
+
+    state = inputReducer(state, {
+      type: "SET_SHOW_MODEL_SELECTOR",
+      payload: false,
+    });
+    expect(state.showModelSelector).toBe(false);
     expect(state.selectorJustUsed).toBe(true);
   });
 
