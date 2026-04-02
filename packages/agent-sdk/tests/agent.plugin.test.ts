@@ -28,7 +28,7 @@ vi.mock("../src/managers/mcpManager.js");
 vi.mock("../src/managers/skillManager.js");
 
 import { SkillManager } from "../src/managers/skillManager.js";
-import { TextBlock } from "../src/types/index.js";
+import { SlashBlock } from "../src/types/index.js";
 
 describe("Agent Plugin Integration", () => {
   const workdir = "/test/workdir";
@@ -155,9 +155,9 @@ describe("Agent Plugin Integration", () => {
 
     const messages = agent.messages;
     const lastMessage = messages[messages.length - 1];
-    const textBlock = lastMessage.blocks[0] as TextBlock;
-    expect(textBlock.content).toBe("/test-plugin:hello");
-    expect(textBlock.customCommandContent).toBe("Hello world");
+    const slashBlock = lastMessage.blocks[0] as SlashBlock;
+    expect(slashBlock.command).toBe("test-plugin:hello");
+    expect(slashBlock.content).toBe("Hello world");
   });
 
   it("should handle plugin commands with parameters", async () => {
@@ -198,8 +198,9 @@ describe("Agent Plugin Integration", () => {
 
     const messages = agent.messages;
     const lastMessage = messages[messages.length - 1];
-    const textBlock = lastMessage.blocks[0] as TextBlock;
-    expect(textBlock.content).toBe("/test-plugin:greet World");
-    expect(textBlock.customCommandContent).toBe("Hello World!");
+    const slashBlock = lastMessage.blocks[0] as SlashBlock;
+    expect(slashBlock.command).toBe("test-plugin:greet");
+    expect(slashBlock.args).toBe("World");
+    expect(slashBlock.content).toBe("Hello World!");
   });
 });

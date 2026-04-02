@@ -171,18 +171,21 @@ export class SlashCommandManager {
               args,
             });
 
-            const originalInput = args
-              ? `/${skill.name} ${args}`
-              : `/${skill.name}`;
-
-            // 2. Add user message immediately
-            const messageId = this.messageManager.addUserMessage({
-              content: originalInput,
-              customCommandContent: prepared.content,
+            // 2. Add slash message immediately
+            const messageId = this.messageManager.addSlashMessage({
+              command: skill.name,
+              args,
+              content: prepared.content,
             });
 
             if (!prepared.skill) {
               // If skill not found or invalid, we're done (error message already in prepared.content)
+              this.messageManager.updateSlashBlock({
+                command: skill.name,
+                messageId,
+                stage: "error",
+                error: prepared.content,
+              });
               return;
             }
 
@@ -200,20 +203,6 @@ export class SlashCommandManager {
                 );
               }
 
-              // Add a ToolBlock to the initial command message for progress tracking
-              const toolBlockId = this.messageManager.addToolBlockToMessage(
-                messageId,
-                {
-                  name: subagentType,
-                  parameters: JSON.stringify({
-                    description: skill.description,
-                    prompt: prepared.content,
-                    subagent_type: subagentType,
-                  }),
-                  stage: "running",
-                },
-              );
-
               try {
                 const instance = await this.subagentManager.createInstance(
                   config,
@@ -225,7 +214,7 @@ export class SlashCommandManager {
                   },
                   false,
                   () => {
-                    // Update the tool block with progress
+                    // Update the slash block with progress
                     const subagent = this.subagentManager.getInstance(
                       instance.subagentId,
                     );
@@ -248,8 +237,8 @@ export class SlashCommandManager {
 
                       shortResult += summary;
 
-                      this.messageManager.updateToolBlock({
-                        id: toolBlockId,
+                      this.messageManager.updateSlashBlock({
+                        command: skill.name,
                         messageId,
                         shortResult,
                       });
@@ -264,25 +253,25 @@ export class SlashCommandManager {
                     signal,
                   );
 
-                  // Update the ToolBlock with final result
-                  this.messageManager.updateToolBlock({
-                    id: toolBlockId,
+                  // Update the SlashBlock with final result
+                  this.messageManager.updateSlashBlock({
+                    command: skill.name,
                     messageId,
                     result,
-                    success: true,
-                    stage: "end",
+                    stage: "success",
                   });
                 } finally {
                   this.subagentManager.cleanupInstance(instance.subagentId);
                 }
               } catch (error) {
-                // Update the ToolBlock with error
-                this.messageManager.updateToolBlock({
-                  id: toolBlockId,
+                // Update the SlashBlock with error
+                const isAborted =
+                  error instanceof Error && error.name === "AbortError";
+                this.messageManager.updateSlashBlock({
+                  command: skill.name,
                   messageId,
-                  success: false,
+                  stage: isAborted ? "aborted" : "error",
                   error: error instanceof Error ? error.message : String(error),
-                  stage: "end",
                 });
                 throw error; // Re-throw to be caught by outer catch for logging/error block
               }
@@ -296,8 +285,11 @@ export class SlashCommandManager {
             });
 
             // 4. Update the message with final content
-            this.messageManager.updateUserMessage(messageId, {
-              customCommandContent: result.content,
+            this.messageManager.updateSlashBlock({
+              command: skill.name,
+              messageId,
+              content: result.content,
+              stage: "success",
             });
 
             // 5. Trigger AI response
@@ -498,13 +490,11 @@ export class SlashCommandManager {
     args?: string,
   ): Promise<void> {
     try {
-      // Add custom command message immediately to show the command being executed
-      const originalInput = args
-        ? `/${commandName} ${args}`
-        : `/${commandName}`;
-      const messageId = this.messageManager.addUserMessage({
-        content: originalInput,
-        customCommandContent: content, // Initial content with bash placeholders
+      // Add slash command message immediately to show the command being executed
+      const messageId = this.messageManager.addSlashMessage({
+        command: commandName,
+        args,
+        content, // Initial content with bash placeholders
       });
 
       // Parse bash commands from the content
@@ -521,8 +511,11 @@ export class SlashCommandManager {
       }
 
       // Update the message with final content
-      this.messageManager.updateUserMessage(messageId, {
-        customCommandContent: finalContent,
+      this.messageManager.updateSlashBlock({
+        command: commandName,
+        messageId,
+        content: finalContent,
+        stage: "success",
       });
 
       // Execute the AI conversation with custom configuration

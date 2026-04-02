@@ -5,7 +5,6 @@ import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import {
   CustomSlashCommand,
-  TextBlock,
   SkillMetadata,
   Skill,
 } from "../../src/types/index.js";
@@ -263,10 +262,9 @@ describe("SlashCommandManager", () => {
 
       const messages = messageManager.getMessages();
       const lastMessage = messages[messages.length - 1];
-      const textBlock = lastMessage.blocks[0] as TextBlock;
-      expect(textBlock.customCommandContent).toBe(
-        "Base content extra arguments",
-      );
+      const slashBlock = lastMessage
+        .blocks[0] as import("../../src/types/index.js").SlashBlock;
+      expect(slashBlock.content).toBe("Base content extra arguments");
     });
   });
 
@@ -361,8 +359,9 @@ describe("SlashCommandManager", () => {
 
       const messages = messageManager.getMessages();
       const lastMessage = messages[messages.length - 1];
-      const textBlock = lastMessage.blocks[0] as TextBlock;
-      expect(textBlock.customCommandContent).toBe("Path is ${WAVE_SKILL_DIR}");
+      const slashBlock = lastMessage
+        .blocks[0] as import("../../src/types/index.js").SlashBlock;
+      expect(slashBlock.content).toBe("Path is ${WAVE_SKILL_DIR}");
     });
   });
 
@@ -382,38 +381,40 @@ describe("SlashCommandManager", () => {
       const cmd = slashCommandManager.getCommand("test:test-bash");
 
       // Spy on messageManager methods
-      const addUserMessageSpy = vi.spyOn(messageManager, "addUserMessage");
-      const updateUserMessageSpy = vi.spyOn(
-        messageManager,
-        "updateUserMessage",
-      );
+      const addSlashMessageSpy = vi.spyOn(messageManager, "addSlashMessage");
+      const updateSlashBlockSpy = vi.spyOn(messageManager, "updateSlashBlock");
 
       await cmd?.handler();
 
-      expect(addUserMessageSpy).toHaveBeenCalled();
-      const messageId = addUserMessageSpy.mock.results[0].value;
+      expect(addSlashMessageSpy).toHaveBeenCalled();
+      const messageId = addSlashMessageSpy.mock.results[0].value;
 
-      expect(updateUserMessageSpy).toHaveBeenCalledWith(messageId, {
-        customCommandContent: expect.stringContaining("bash output"),
-      });
+      expect(updateSlashBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId,
+          content: expect.stringContaining("bash output"),
+          stage: "success",
+        }),
+      );
 
       expect(aiManager.sendAIMessage).toHaveBeenCalled();
 
-      // Verify the order: addUserMessage -> executeBashCommands -> updateUserMessage -> sendAIMessage
-      const addUserMessageOrder = addUserMessageSpy.mock.invocationCallOrder[0];
+      // Verify the order: addSlashMessage -> executeBashCommands -> updateSlashBlock -> sendAIMessage
+      const addSlashMessageOrder =
+        addSlashMessageSpy.mock.invocationCallOrder[0];
       const executeBashOrder = vi.mocked(markdownParser.executeBashCommands)
         .mock.invocationCallOrder[0];
-      const updateUserMessageOrder =
-        updateUserMessageSpy.mock.invocationCallOrder[0];
+      const updateSlashBlockOrder =
+        updateSlashBlockSpy.mock.invocationCallOrder[0];
       const sendAIMessageOrder = vi.mocked(aiManager.sendAIMessage).mock
         .invocationCallOrder[0];
 
-      expect(addUserMessageOrder).toBeLessThan(executeBashOrder);
-      expect(executeBashOrder).toBeLessThan(updateUserMessageOrder);
-      expect(updateUserMessageOrder).toBeLessThan(sendAIMessageOrder);
+      expect(addSlashMessageOrder).toBeLessThan(executeBashOrder);
+      expect(executeBashOrder).toBeLessThan(updateSlashBlockOrder);
+      expect(updateSlashBlockOrder).toBeLessThan(sendAIMessageOrder);
     });
 
-    it("should update user message after bash execution in skill command", async () => {
+    it("should update slash block after bash execution in skill command", async () => {
       const skillMetadata = {
         name: "test-skill",
         description: "Test skill",
@@ -448,22 +449,23 @@ describe("SlashCommandManager", () => {
 
       const cmd = slashCommandManager.getCommand("test-skill");
 
-      const addUserMessageSpy = vi.spyOn(messageManager, "addUserMessage");
-      const updateUserMessageSpy = vi.spyOn(
-        messageManager,
-        "updateUserMessage",
-      );
+      const addSlashMessageSpy = vi.spyOn(messageManager, "addSlashMessage");
+      const updateSlashBlockSpy = vi.spyOn(messageManager, "updateSlashBlock");
 
       await cmd?.handler("args");
 
       expect(mockSkillManager.prepareSkill).toHaveBeenCalled();
-      expect(addUserMessageSpy).toHaveBeenCalled();
-      const messageId = addUserMessageSpy.mock.results[0].value;
+      expect(addSlashMessageSpy).toHaveBeenCalled();
+      const messageId = addSlashMessageSpy.mock.results[0].value;
 
       expect(mockSkillManager.executeSkill).toHaveBeenCalled();
-      expect(updateUserMessageSpy).toHaveBeenCalledWith(messageId, {
-        customCommandContent: "Final skill content with bash output",
-      });
+      expect(updateSlashBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId,
+          content: "Final skill content with bash output",
+          stage: "success",
+        }),
+      );
 
       expect(aiManager.sendAIMessage).toHaveBeenCalledWith({
         model: "gpt-4",
@@ -473,18 +475,19 @@ describe("SlashCommandManager", () => {
       // Verify order
       const prepareSkillOrder = vi.mocked(mockSkillManager.prepareSkill).mock
         .invocationCallOrder[0];
-      const addUserMessageOrder = addUserMessageSpy.mock.invocationCallOrder[0];
+      const addSlashMessageOrder =
+        addSlashMessageSpy.mock.invocationCallOrder[0];
       const executeSkillOrder = vi.mocked(mockSkillManager.executeSkill).mock
         .invocationCallOrder[0];
-      const updateUserMessageOrder =
-        updateUserMessageSpy.mock.invocationCallOrder[0];
+      const updateSlashBlockOrder =
+        updateSlashBlockSpy.mock.invocationCallOrder[0];
       const sendAIMessageOrder = vi.mocked(aiManager.sendAIMessage).mock
         .invocationCallOrder[0];
 
-      expect(prepareSkillOrder).toBeLessThan(addUserMessageOrder);
-      expect(addUserMessageOrder).toBeLessThan(executeSkillOrder);
-      expect(executeSkillOrder).toBeLessThan(updateUserMessageOrder);
-      expect(updateUserMessageOrder).toBeLessThan(sendAIMessageOrder);
+      expect(prepareSkillOrder).toBeLessThan(addSlashMessageOrder);
+      expect(addSlashMessageOrder).toBeLessThan(executeSkillOrder);
+      expect(executeSkillOrder).toBeLessThan(updateSlashBlockOrder);
+      expect(updateSlashBlockOrder).toBeLessThan(sendAIMessageOrder);
     });
   });
 
@@ -520,21 +523,20 @@ describe("SlashCommandManager", () => {
 
       const cmd = slashCommandManager.getCommand("fork-skill");
 
-      const addToolBlockSpy = vi.spyOn(messageManager, "addToolBlockToMessage");
-      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+      const addSlashMessageSpy = vi.spyOn(messageManager, "addSlashMessage");
+      const updateSlashBlockSpy = vi.spyOn(messageManager, "updateSlashBlock");
 
       await cmd?.handler("args");
 
       expect(mockSubagentManager.createInstance).toHaveBeenCalled();
       expect(mockSubagentManager.executeAgent).toHaveBeenCalled();
-      expect(addToolBlockSpy).toHaveBeenCalled();
-      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+      expect(addSlashMessageSpy).toHaveBeenCalled();
+      expect(updateSlashBlockSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: expect.any(String),
+          command: "fork-skill",
           messageId: expect.any(String),
           result: "Subagent result",
-          success: true,
-          stage: "end",
+          stage: "success",
         }),
       );
 
@@ -576,7 +578,7 @@ describe("SlashCommandManager", () => {
       ] as unknown as SkillMetadata[]);
 
       const cmd = slashCommandManager.getCommand("fork-skill");
-      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+      const updateSlashBlockSpy = vi.spyOn(messageManager, "updateSlashBlock");
 
       // Mock SubagentManager to fail creation
       vi.spyOn(mockSubagentManager, "createInstance").mockRejectedValue(
@@ -585,13 +587,12 @@ describe("SlashCommandManager", () => {
 
       await cmd?.handler();
 
-      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+      expect(updateSlashBlockSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: expect.any(String),
+          command: "fork-skill",
           messageId: expect.any(String),
-          success: false,
           error: "Creation failed",
-          stage: "end",
+          stage: "error",
         }),
       );
     });
@@ -606,7 +607,7 @@ describe("SlashCommandManager", () => {
       ] as unknown as SkillMetadata[]);
 
       const cmd = slashCommandManager.getCommand("fork-skill");
-      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+      const updateSlashBlockSpy = vi.spyOn(messageManager, "updateSlashBlock");
 
       // Mock SubagentManager to fail execution
       vi.spyOn(mockSubagentManager, "executeAgent").mockRejectedValue(
@@ -615,13 +616,12 @@ describe("SlashCommandManager", () => {
 
       await cmd?.handler();
 
-      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+      expect(updateSlashBlockSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: expect.any(String),
+          command: "fork-skill",
           messageId: expect.any(String),
-          success: false,
           error: "Execution failed",
-          stage: "end",
+          stage: "error",
         }),
       );
     });

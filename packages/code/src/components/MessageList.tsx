@@ -61,7 +61,8 @@ export const MessageList = React.memo(
       const isDynamic =
         !forceStatic &&
         ((block.type === "tool" && block.stage === "running") ||
-          (block.type === "bang" && block.isRunning));
+          (block.type === "bang" && block.isRunning) ||
+          (block.type === "slash" && block.stage === "running"));
       return { ...item, isDynamic };
     });
 

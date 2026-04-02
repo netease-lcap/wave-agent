@@ -48,17 +48,18 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
-  it("should convert text blocks with customCommandContent for API", () => {
+  it("should convert slash blocks for API", () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
         role: "user",
         blocks: [
           {
-            type: "text",
-            content: "/refactor",
-            customCommandContent:
+            type: "slash",
+            command: "refactor",
+            content:
               "Please refactor this function to be more efficient:\n\nfunction oldFunction() {\n  // some code\n}",
+            stage: "success",
           },
         ],
       },
@@ -75,7 +76,7 @@ describe("convertMessagesForAPI", () => {
 
     expect(apiMessages).toHaveLength(2);
 
-    // Check that custom command content is expanded for API
+    // Check that slash block content is expanded for API
     expect(apiMessages[0].role).toBe("user");
     expect(apiMessages[0].content).toEqual([
       {
@@ -88,6 +89,36 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[1].content).toBe(
       "I'll help you refactor that function.",
     );
+  });
+
+  it("should include slash block result in API conversion", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [
+          {
+            type: "slash",
+            command: "test-fork",
+            content: "/test-fork",
+            result: "Subagent result",
+            stage: "success",
+          },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(1);
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[0].content).toEqual([
+      { type: "text", text: "/test-fork" },
+      {
+        type: "text",
+        text: "<local-command-stdout>\nSubagent result\n</local-command-stdout>",
+      },
+    ]);
   });
 
   it("should handle empty message arrays", () => {
@@ -271,39 +302,6 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[0].role).toBe("user");
     expect(apiMessages[0].content).toEqual([
       { type: "text", text: "Hidden message" },
-    ]);
-  });
-
-  it("should handle ToolBlocks in user messages", () => {
-    const messages: Message[] = [
-      {
-        id: generateMessageId(),
-        role: "user",
-        blocks: [
-          { type: "text", content: "/test-fork" },
-          {
-            type: "tool",
-            id: "tool1",
-            name: "Agent",
-            parameters: '{"prompt": "hello"}',
-            stage: "end",
-            result: "Subagent result",
-            success: true,
-          },
-        ],
-      },
-    ];
-
-    const apiMessages = convertMessagesForAPI(messages);
-
-    expect(apiMessages).toHaveLength(1);
-    expect(apiMessages[0].role).toBe("user");
-    expect(apiMessages[0].content).toEqual([
-      { type: "text", text: "/test-fork" },
-      {
-        type: "text",
-        text: "<local-command-stdout>\nSubagent result\n</local-command-stdout>",
-      },
     ]);
   });
 });

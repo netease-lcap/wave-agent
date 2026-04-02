@@ -24,7 +24,8 @@ The component switches on `block.type` to render the appropriate UI:
 - **text**:
   - If `message.role === "user"` or `isExpanded`, renders as plain text (with background for user messages).
   - Otherwise, renders using the `Markdown` component.
-  - Supports `customCommandContent` prefix (`$ `) and `HOOK` source prefix (`~ `).
+  - Supports `HOOK` source prefix (`~ `).
+- **slash**: Delegates to `SlashDisplay`.
 - **error**: Renders in red with an "Error: " prefix.
 - **bang**: Delegates to `BangDisplay`.
 - **tool**: Delegates to `ToolDisplay`.
