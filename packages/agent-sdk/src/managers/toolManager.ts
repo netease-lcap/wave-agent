@@ -284,6 +284,7 @@ class ToolManager {
     availableSubagents?: SubagentConfiguration[];
     availableSkills?: SkillMetadata[];
     workdir?: string;
+    isSubagent?: boolean;
   }): ChatCompletionFunctionTool[] {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
