@@ -25,43 +25,11 @@ Core Node.js SDK used by the CLI frontend. Similar to **Claude Agent SDK**.
 
 Detailed feature specifications and design documents can be found in the [`specs/`](./specs) directory.
 
-### 🚀 Quick Start
-
-1. **Install dependencies**:
-
-   ```bash
-   pnpm install
-   ```
-
-2. **Build all packages**:
-
-   ```bash
-   pnpm build
-   ```
-
-3. **Install the CLI globally**:
-
-   ```bash
-   cd packages/code && npm link
-   ```
-
-4. **Set up environment variables**:
-
-   ```bash
-   export WAVE_API_KEY="your_token_here"
-   export WAVE_BASE_URL="https://your-api-gateway-url.com"
-   ```
-
-5. **Start using**:
-   ```bash
-   wave  # or wave-code
-   ```
-
 ## Development
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 - pnpm (preferred package manager)
 
 ### Setup
@@ -75,21 +43,6 @@ cd wave-agent
 pnpm install
 
 # Build all packages
-pnpm build
-```
-
-### Working with Packages
-
-```bash
-# Work on a specific package
-cd packages/code
-pnpm dev
-
-# Run tests for all packages
-pnpm test
-
-# Build specific package
-cd packages/agent-sdk
 pnpm build
 ```
 
