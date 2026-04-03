@@ -7,35 +7,33 @@
 
 ## Summary
 
-Implement a hooks system for Wave Code that allows users to configure automated actions at specific points in the AI workflow. The system will support PreToolUse, PostToolUse, UserPromptSubmit, and Stop hooks with configurable commands that execute at user-level and project-level settings. This enables automated code quality checks, prompt validation, and post-processing workflows. Additionally, hooks receive structured JSON data via stdin containing session information and event-specific data for enhanced context.
+Implement a hooks system for Wave Code that allows users to configure automated actions at specific points in the AI workflow. The system will support PreToolUse, PostToolUse, UserPromptSubmit, and Stop hooks with configurable commands that execute at user-level and project-level settings. This enables automated code quality checks, prompt validation, and post-processing workflows. 
+
+Additionally, hooks receive structured JSON data via stdin containing session information and event-specific data for enhanced context.
+
+The system also supports exit code based communication patterns (Hook Exit Code Output Support). The system interprets hook exit codes (0=success, 2=blocking error for UserPromptSubmit only, other=non-blocking error) and handles stdout/stderr appropriately based on hook type and exit code. This involves extending the existing hook manager and message manager (including adding `removeLastUserMessage()` method) to process hook execution results and inject appropriate messages into the agent's conversation flow.
 
 ## Technical Context
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
-
 **Language/Version**: TypeScript 5.9+ with Node.js 16+  
-**Primary Dependencies**: wave-agent-sdk (workspace), React 19.1, Ink 6.0, yargs 17.7  
-**Storage**: JSON configuration files (~/.wave/settings.json, .wave/settings.json)  
-**Testing**: Vitest 3.2+ with ink-testing-library for CLI components  
+**Primary Dependencies**: wave-agent-sdk (workspace), React 19.1, Ink 6.0, yargs 17.7, openai for API types  
+**Storage**: JSON configuration files (~/.wave/settings.json, .wave/settings.json), Session-based message storage in ~/.wave/sessions (existing)  
+**Testing**: Vitest 3.2+ with ink-testing-library for CLI components, Vitest with mocking for hook execution in agent-sdk  
 **Target Platform**: Cross-platform CLI (Linux, macOS, Windows)
 **Project Type**: Monorepo with agent-sdk core and code CLI interface  
-**Performance Goals**: Hook execution <10s, minimal impact on main workflow <1s delay  
-**Constraints**: Non-blocking hook execution, isolated process execution, cross-platform compatibility  
-**Scale/Scope**: Support multiple hooks per event, regex pattern matching, environment variable injection
+**Performance Goals**: Hook execution <10s, minimal impact on main workflow <1s delay, Hook output processing within 200ms, blocking decisions within 100ms  
+**Constraints**: Non-blocking hook execution, isolated process execution, cross-platform compatibility, maintain backward compatibility with existing hooks  
+**Scale/Scope**: Support multiple hooks per event, regex pattern matching, environment variable injection, enhancement to existing hook system affecting ~10 hook-related files in agent-sdk package
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-✅ **Package-First Architecture**: Hooks functionality implemented in agent-sdk with CLI interface in code package, maintaining clear boundaries. No circular dependencies created.
+✅ **Package-First Architecture**: Hooks functionality implemented in agent-sdk with CLI interface in code package, maintaining clear boundaries. Enhancement stays within existing agent-sdk package boundaries.
 
-✅ **TypeScript Excellence**: All code uses strict TypeScript without any types, comprehensive type definitions created for hook configurations and events in contracts/hooks-api.md.
+✅ **TypeScript Excellence**: All code uses strict TypeScript without any types, comprehensive type definitions created for hook configurations and events. Comprehensive type contracts defined for all hook output processing.
 
-✅ **Test Alignment**: Tests follow structure - agent-sdk/tests/hooks/ for unit tests, agent-sdk/examples/ for integration tests with real hook execution. Mirror source structure exactly.
+✅ **Test Alignment**: Tests follow structure - agent-sdk/tests/hooks/ for unit tests, agent-sdk/examples/ for integration tests with real hook execution. Agent tests in `packages/agent-sdk/tests/agent/` following feature-based organization use full mocking to avoid real operations.
 
 ✅ **Build Dependencies**: Changes to agent-sdk will require pnpm build before testing in code package. Hook system integrates with existing build process.
 
@@ -58,28 +56,24 @@ specs/[###-feature]/
 ```
 
 ### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
 
 ```
-# Monorepo structure (chosen for Wave Code)
+# Monorepo structure
 packages/
 ├── agent-sdk/                 # Core hooks system
 │   ├── src/
 │   │   ├── managers/
-│   │   │   ├── hookManager.ts    # HookManager class (State management)
-│   │   │   └── aiManager.ts      # Integration (Pass tool input/response)
+│   │   │   ├── hookManager.ts    # HookManager class (Enhanced: hook result processing logic)
+│   │   │   ├── aiManager.ts      # Integration (Enhanced: process PreToolUse/PostToolUse/Stop hook results)
+│   │   │   └── messageManager.ts # Enhanced: add removeLastUserMessage() method
 │   │   ├── services/
 │   │   │   └── hook.ts           # Consolidated hook services (Execution & Settings)
 │   │   ├── utils/
-│   │   │   └── hookMatcher.ts    # Pattern matching utility
+│   │   │   ├── hookMatcher.ts    # Pattern matching utility
+│   │   │   └── messageOperations.ts # Enhanced: add removeLastUserMessage utility function
 │   │   ├── types/
 │   │   │   └── hooks.ts          # Hook type definitions
-│   │   └── agent.ts              # Integration (Pass user prompt data)
+│   │   └── agent.ts              # Integration (Enhanced: process UserPromptSubmit hook results)
 │   ├── tests/
 │   │   ├── managers/
 │   │   │   └── hookManager.test.ts
@@ -87,8 +81,13 @@ packages/
 │   │   │   └── hook.test.ts
 │   │   ├── utils/
 │   │   │   └── hookMatcher.test.ts
-│   │   └── types/
-│   │       └── hooks.test.ts
+│   │   ├── types/
+│   │   │   └── hooks.test.ts
+│   │   └── agent/
+│   │       └── hooks-exitcode-output/  # New: comprehensive test suite with full mocking
+│   │           ├── hook-success.test.ts
+│   │           ├── hook-blocking-errors.test.ts
+│   │           └── hook-non-blocking-errors.test.ts
 │   └── examples/
 │       └── hooks/            # Integration tests
 └── code/                     # CLI interface
@@ -110,4 +109,3 @@ packages/
 |-----------|------------|-------------------------------------|
 | [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
 | [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
-
