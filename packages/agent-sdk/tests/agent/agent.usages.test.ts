@@ -27,8 +27,8 @@ describe("Agent Usage Tracking", () => {
     originalEnv = process.env;
     // Clear environment variables that might affect model selection
     process.env = { ...originalEnv };
-    delete process.env.WAVE_MODEL;
-    delete process.env.WAVE_FAST_MODEL;
+    process.env.WAVE_MODEL = "gemini-3-flash";
+    process.env.WAVE_FAST_MODEL = "gemini-2.5-flash";
 
     // Create mock callbacks that track usage changes
     usagesHistory = [];
