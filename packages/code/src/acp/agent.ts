@@ -670,7 +670,7 @@ export class WaveAcpAgent implements AcpAgent {
         });
       }
 
-      if (contents.length === 0) {
+      if (name.startsWith("mcp__")) {
         contents.push({
           type: "content",
           content: {

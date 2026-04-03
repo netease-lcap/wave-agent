@@ -1834,6 +1834,41 @@ describe("WaveAcpAgent", () => {
         update: expect.objectContaining({
           sessionUpdate: "tool_call",
           toolCallId: "1",
+          content: undefined,
+        }),
+      }),
+    );
+  });
+
+  it("should include raw JSON content for MCP tools", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    capturedCallbacks!.onToolBlockUpdated!({
+      id: "1",
+      name: "mcp__UnknownTool",
+      stage: "start",
+      parameters: JSON.stringify({
+        arg1: "val1",
+        arg2: 42,
+      }),
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "1",
           content: [
             {
               type: "content",
