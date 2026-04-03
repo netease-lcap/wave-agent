@@ -95,7 +95,7 @@ describe("Logger Utility", () => {
       const obj = { a: 1, b: { c: 2 } };
       logger.info(obj);
       expect(stripAnsiColors(appendSpy.mock.calls[3][1] as string)).toContain(
-        JSON.stringify(obj, null, 2),
+        JSON.stringify(obj),
       );
 
       const circular: Record<string, unknown> = { a: 1 };
@@ -108,6 +108,18 @@ describe("Logger Utility", () => {
       logger.info("hello", 123, true);
       expect(stripAnsiColors(appendSpy.mock.calls[5][1] as string)).toContain(
         "hello 123 true",
+      );
+
+      logger.info("line1\nline2");
+      expect(stripAnsiColors(appendSpy.mock.calls[6][1] as string)).toContain(
+        "line1 line2",
+      );
+
+      const multiLineErr = new Error("msg");
+      multiLineErr.stack = "stack\nline2";
+      logger.info(multiLineErr);
+      expect(stripAnsiColors(appendSpy.mock.calls[7][1] as string)).toContain(
+        "stack line2",
       );
     });
   });
