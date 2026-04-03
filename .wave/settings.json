@@ -23,7 +23,8 @@
       "Bash(gh issue list*)",
       "Bash(node packages/code/dist/index.js *)",
       "Bash(wave *)",
-      "Bash(acpx *)"
+      "Bash(acpx *)",
+      "Bash(rm *packages/*/tests/*)"
     ],
     "additionalDirectories": [
       "../wave-plugins-official",
