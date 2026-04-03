@@ -3,7 +3,11 @@
  * Forces type judgment based on tool name using type assertions
  */
 
-import { type Change, type EditToolParameters } from "wave-agent-sdk";
+import {
+  type Change,
+  type WriteToolParameters,
+  type EditToolParameters,
+} from "wave-agent-sdk";
 import { logger } from "./logger.js";
 
 /**
@@ -20,6 +24,20 @@ function parseToolParameters(parameters: string): unknown {
     logger.warn("Failed to parse tool parameters:", error);
     return {};
   }
+}
+
+/**
+ * Transform Write tool parameters to changes
+ */
+export function transformWriteParameters(
+  parameters: WriteToolParameters,
+): Change[] {
+  return [
+    {
+      oldContent: "", // No previous content for write operations
+      newContent: parameters.content,
+    },
+  ];
 }
 
 /**
@@ -54,6 +72,10 @@ export function transformToolBlockToChanges(
 
     let changes: Change[] = [];
     switch (toolName) {
+      case "Write":
+        changes = transformWriteParameters(parsedParams as WriteToolParameters);
+        break;
+
       case "Edit":
         changes = transformEditParameters(parsedParams as EditToolParameters);
         break;

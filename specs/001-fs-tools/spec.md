@@ -23,19 +23,6 @@ As an AI agent, I want to read the content of files in the local filesystem so t
 
 ---
 
-### User Story 4 - Visual Feedback for File Creation (Priority: P2)
-
-As an AI agent, I want to see the content I've written to a file in a clear, syntax-highlighted format so that I can verify the correctness of the operation.
-
-**Why this priority**: Improves the user experience and allows for quick verification of file creation/overwriting.
-
-**Acceptance Scenarios**:
-
-1. **Given** a `Write` tool call, **When** the operation completes, **Then** the UI MUST display the written content as a syntax-highlighted Markdown code block.
-2. **Given** a `Write` tool call, **When** the content is displayed, **Then** it MUST NOT include line numbers.
-
----
-
 ### User Story 2 - Precise Code Modification (Priority: P1)
 
 As an AI agent, I want to modify files using exact string replacements so that I can apply changes safely without corrupting the file structure.
@@ -94,7 +81,6 @@ As an AI agent, I want to search for patterns using glob patterns or regex so th
 - **FR-011**: All tools MUST integrate with the `PermissionManager` for authorization.
 - **FR-012**: System MUST provide a visual diff display with word-level highlights for line-by-line changes.
 - **FR-013**: If the `Grep` tool finds no matches, the output MUST include a suggestion to specify the `path` field. This is because the default search path is the current working directory and respects `.gitignore`, and specifying a path (e.g., `node_modules`) can allow searching in ignored or specific directories.
-- **FR-014**: `Write` tool MUST show highlighted code rather than a diff display.
 
 ### Key Entities *(include if feature involves data)*
 

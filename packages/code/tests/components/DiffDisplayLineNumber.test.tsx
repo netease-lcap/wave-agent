@@ -5,7 +5,7 @@ import { DiffDisplay } from "../../src/components/DiffDisplay.js";
 import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from "wave-agent-sdk";
 
 describe("DiffDisplay Line Numbers", () => {
-  it("should render highlighted code for Write tool without line numbers", () => {
+  it("should render line numbers for Write tool", () => {
     const params = JSON.stringify({
       content: "line 1\nline 2\nline 3",
       file_path: "test.txt",
@@ -18,12 +18,9 @@ describe("DiffDisplay Line Numbers", () => {
       />,
     );
     const frame = lastFrame();
-    expect(frame).toContain("```txt");
-    expect(frame).toContain("line 1");
-    expect(frame).toContain("line 2");
-    expect(frame).toContain("line 3");
-    expect(frame).toContain("```");
-    expect(frame).not.toContain("1 | line 1");
+    expect(frame).toContain("      1 | +line 1");
+    expect(frame).toContain("      2 | +line 2");
+    expect(frame).toContain("      3 | +line 3");
   });
 
   it("should render line numbers for Edit tool with absolute line number", () => {
