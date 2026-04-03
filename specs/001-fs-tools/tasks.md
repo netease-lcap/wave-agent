@@ -18,7 +18,6 @@
     - [x] T010.9 Add graceful error handling for corrupted image files and permission issues
 - [x] T011 Add Jupyter notebook support to `Read` tool
 - [x] T012 Update `Grep` tool to suggest `path` field when no matches are found
-- [x] T013 Modify `Write` tool display to show highlighted code as a Markdown code block (without line numbers) instead of a diff display.
 - [x] T014 Improve File System Tools with structured metadata and advanced features
     - [x] T014.1 Add `ToolResult.metadata` and `ToolContext` fields for resource management
     - [x] T014.2 Implement deduplication in `Read` tool using `mtime` and `hash`

@@ -12,7 +12,7 @@ describe("DiffDisplay", () => {
     expect(lastFrame()).toBe("");
   });
 
-  it("should render highlighted code for Write tool", () => {
+  it("should render diff for Write tool", () => {
     const params = JSON.stringify({
       content: "new file content",
       file_path: "test.txt",
@@ -21,9 +21,7 @@ describe("DiffDisplay", () => {
       <DiffDisplay toolName={WRITE_TOOL_NAME} parameters={params} />,
     );
     const frame = lastFrame();
-    expect(frame).toContain("```txt");
-    expect(frame).toContain("new file content");
-    expect(frame).toContain("```");
+    expect(frame).toContain("+new file content");
   });
 
   it("should render diff for Edit tool", () => {
@@ -95,7 +93,7 @@ describe("DiffDisplay", () => {
       <DiffDisplay toolName={WRITE_TOOL_NAME} parameters={params} />,
     );
     expect(lastFrame()).not.toContain("truncated");
-    expect(lastFrame()).toContain("line 30");
+    expect(lastFrame()).toContain("+line 30");
   });
 
   it("should handle invalid JSON parameters gracefully", () => {

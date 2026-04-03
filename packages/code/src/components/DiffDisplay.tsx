@@ -1,14 +1,8 @@
 import React, { useMemo } from "react";
 import { Box, Text } from "ink";
-import {
-  WRITE_TOOL_NAME,
-  EDIT_TOOL_NAME,
-  type WriteToolParameters,
-} from "wave-agent-sdk";
+import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from "wave-agent-sdk";
 import { transformToolBlockToChanges } from "../utils/toolParameterTransforms.js";
 import { diffLines, diffWords } from "diff";
-import path from "path";
-import { Markdown } from "./Markdown.js";
 
 interface DiffDisplayProps {
   toolName?: string;
@@ -100,23 +94,6 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
           </Text>,
         ],
       };
-    }
-  };
-
-  // Render highlighted code for Write tool
-  const renderWriteContent = () => {
-    if (!parameters) return null;
-    try {
-      const parsed = JSON.parse(parameters) as WriteToolParameters;
-      const content = parsed.content || "";
-      const filePath = parsed.file_path || "";
-      const ext = path.extname(filePath).slice(1);
-
-      const markdown = `\`\`\`${ext}\n${content}\n\`\`\``;
-      return <Markdown>{markdown}</Markdown>;
-    } catch (error) {
-      console.warn("Error rendering write content:", error);
-      return null;
     }
   };
 
@@ -375,9 +352,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
   return (
     <Box flexDirection="column">
       <Box paddingLeft={2} borderLeft borderColor="cyan" flexDirection="column">
-        {toolName === WRITE_TOOL_NAME
-          ? renderWriteContent()
-          : renderExpandedDiff()}
+        {renderExpandedDiff()}
       </Box>
     </Box>
   );

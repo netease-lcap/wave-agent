@@ -22,4 +22,3 @@ Implement a robust set of file system tools for the Wave Agent to allow safe and
 3. **Phase 3: Precise Editing**: Implement `Edit` and `` with detailed mismatch analysis.
 4. **Phase 4: Multimodal & Formats**: Add support for images and Jupyter notebooks in `Read`.
 5. **Phase 5: Security**: Integrate with `PermissionManager`.
-6. **Phase 6: UI Enhancements**: Modify `Write` tool display to show syntax-highlighted code as a Markdown code block (without line numbers) instead of a diff display. Use the `Markdown` component for consistency.
