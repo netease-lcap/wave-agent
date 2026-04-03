@@ -52,6 +52,7 @@ As a developer, I want to provide dynamic tool descriptions based on the current
 - **FR-005**: System MUST provide a way to validate prompts against token limits.
 - **FR-006**: System MUST support prompt templates with variable substitution.
 - **FR-007**: System MUST include a maximum tool calls limit in the prompt for parallel tool execution.
+- **FR-008**: System MUST incorporate best practices from Claude Code (e.g., action safety, collaborator mindset, concise output).
 
 ### Key Entities *(include if feature involves data)*
 
