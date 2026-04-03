@@ -33,10 +33,6 @@ jobs:
       
       - name: Build
         run: pnpm build
-        env:
-          WAVE_BASE_URL: https://mock-api.test.com
       
       - name: CI
         run: pnpm run ci
-        env:
-          WAVE_BASE_URL: https://mock-api.test.com
