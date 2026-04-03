@@ -11,6 +11,10 @@ This skill helps you manage your Wave configuration and provides guidance on how
 
 `settings.json` is the central configuration file for Wave. It allows you to customize hooks, environment variables, tool permissions, and more.
 
+### Live Reload
+
+Changes to `settings.json` take effect immediately without restarting Wave. When you modify any setting, the new configuration is applied to subsequent operations automatically.
+
 Wave looks for `settings.json` in three scopes:
 1.  **User Scope**: Global settings for all projects. Located at `~/.wave/settings.json`.
 2.  **Project Scope**: Settings specific to the current project. Located at `.wave/settings.json` in your project root.
@@ -35,7 +39,7 @@ For detailed environment variable configuration and available `WAVE_*` variables
 ```
 
 ### 3. Permissions
-Manage tool permissions and define the "Safe Zone".
+Manage tool permissions and define the "Safe Zone". Changes to permissions take effect immediately with live reload.
 ```json
 {
   "permissions": {
