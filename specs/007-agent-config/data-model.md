@@ -69,6 +69,24 @@ Resolved configuration for model selection.
 - Used by Service for model selection in API calls
 - Replaces direct constant usage from utils/constants.ts
 
+### Wave Configuration (Live Reload)
+**Purpose**: Complete configuration structure supporting environment variables and hooks  
+**Location**: User and project `.wave/settings.json` files  
+**Relationships**: Contains hook configuration and environment variables
+
+```typescript
+interface WaveConfiguration {
+  hooks?: Partial<Record<HookEvent, HookEventConfig[]>>;
+  env?: Record<string, string>; // Environment variables key-value pairs
+}
+```
+
+**Validation Rules**:
+- env field must be object with string keys and string values
+- env field is optional (backward compatibility)
+- JSON structure must be valid and parseable
+- Individual environment variable names must follow standard naming conventions
+
 ## Configuration Resolution
 
 ### Resolution Chain
@@ -97,6 +115,25 @@ Configuration values resolved in this order:
    - Max output tokens: 4096
    - Agent model: "gemini-3-flash"
    - Fast model: "gemini-2.5-flash"
+
+### Environment Variables (Live Reload)
+**Purpose**: Key-value pairs for runtime environment configuration  
+**Source**: env field in settings.json files  
+**Relationships**: Merged from user and project configurations with precedence rules
+
+**Structure**:
+```typescript
+interface EnvironmentContext {
+  user: Record<string, string>;      // From ~/.wave/settings.json
+  project: Record<string, string>;   // From ./.wave/settings.json  
+  merged: Record<string, string>;    // Final merged result with project precedence
+}
+```
+
+**Precedence Rules**:
+1. Project-level variables override user-level variables with same name
+2. Existing process environment variables are not overridden
+3. Empty string values are treated as unset
 
 ### State Transitions
 

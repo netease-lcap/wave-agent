@@ -120,3 +120,44 @@
 - [x] T040 Run type-check validation across `agent-sdk` package
 - [x] T041 Run lint validation across `agent-sdk` package
 - [x] T042 Validate `quickstart.md` examples work with new configuration API
+
+---
+
+## Tasks: Live Configuration Reload ✅ COMPLETE
+
+- [x] T001 Add Chokidar dependency to packages/agent-sdk/package.json
+- [x] T002 [P] Install development dependencies @types/chokidar in packages/agent-sdk/package.json
+- [x] T003 [P] Build agent-sdk package to prepare for modifications
+- [x] T004 Rename HookConfiguration to WaveConfiguration in packages/agent-sdk/src/types/hooks.ts
+- [x] T005 [P] Add env field to WaveConfiguration interface in packages/agent-sdk/src/types/hooks.ts
+- [x] T006 [P] Create FileWatcherService class structure in packages/agent-sdk/src/services/fileWatcher.ts
+- [x] T008 Update hook service imports to use WaveConfiguration in packages/agent-sdk/src/services/hook.ts
+- [x] T009 Update all existing references from HookConfiguration to WaveConfiguration across the codebase
+- [x] T010 [P] [US1] Implement env field validation in packages/agent-sdk/src/services/hook.ts
+- [x] T011 [P] [US1] Create EnvironmentValidationResult interface in packages/agent-sdk/src/types/environment.ts
+- [x] T012 [P] [US1] Implement environment variable validation logic using EnvironmentValidationResult in packages/agent-sdk/src/services/hook.ts
+- [x] T013 [US1] Implement loadWaveConfigFromFile function to replace loadHooksConfigFromFile in packages/agent-sdk/src/services/hook.ts
+- [x] T014 [US1] Implement mergeEnvironmentConfig function in packages/agent-sdk/src/services/hook.ts
+- [x] T015 [US1] Add environment merging logic with project precedence in packages/agent-sdk/src/services/hook.ts
+- [x] T016 [US1] Update loadMergedHooksConfig to loadMergedWaveConfig in packages/agent-sdk/src/services/hook.ts
+- [x] T017 [US1] Update Agent constructor to use merged environment variables in packages/agent-sdk/src/agent.ts
+- [x] T018 [US1] Add error handling for invalid env field format in packages/agent-sdk/src/services/hook.ts
+- [x] T019 [P] [US2] Implement ConfigurationWatcher class in packages/agent-sdk/src/services/configurationWatcher.ts
+- [x] T020 [P] [US2] Implement FileWatcherService with Chokidar integration in packages/agent-sdk/src/services/fileWatcher.ts
+- [x] T021 [US2] Add file watching initialization to LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
+- [x] T022 [US2] Implement configuration reload event handling in LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
+- [x] T023 [US2] Add debouncing and error recovery to file watcher in packages/agent-sdk/src/services/fileWatcher.ts
+- [x] T024 [US2] Update hook service to support live reload in packages/agent-sdk/src/services/hook.ts
+- [x] T025 [US2] Add logging for configuration reload events in packages/agent-sdk/src/services/configurationWatcher.ts
+- [x] T026 [US2] Implement graceful fallback when invalid configuration is detected in packages/agent-sdk/src/services/hook.ts
+- [x] T027 [US2] Pass logger from Agent constructor to ConfigurationWatcher for structured logging in packages/agent-sdk/src/services/configurationWatcher.ts
+- [x] T028 [US2] Add structured logging for reload events with Live Config prefix in packages/agent-sdk/src/services/configurationWatcher.ts
+- [x] T029 [US2] Implement file watcher initialization failure handling with descriptive errors in packages/agent-sdk/src/services/fileWatcher.ts
+- [x] T030 [US2] Reset permissions to empty arrays and permissionMode to undefined when missing in new configuration during reload in packages/agent-sdk/src/managers/liveConfigManager.ts
+- [x] T038 [P] Add comprehensive error logging with Live Config prefix across all services
+- [x] T039 [P] Implement performance monitoring and metrics collection
+- [x] T040 Code cleanup and refactoring for consistency
+- [x] T041 [P] Add type safety improvements and remove any types
+- [x] T042 [P] Update existing tests that use HookConfiguration to use WaveConfiguration
+- [x] T043 Run quickstart.md validation examples
+- [x] T044 Build and test agent-sdk package integration
