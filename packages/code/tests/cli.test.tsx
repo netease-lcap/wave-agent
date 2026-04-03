@@ -34,7 +34,7 @@ describe("startCli", () => {
 
     const worktreeSession = {
       name: "test",
-      path: "/repo/root/.wave/worktrees/test",
+      path: "/repo/root.worktrees/test",
       branch: "worktree-test",
       repoRoot: "/repo/root",
       hasUncommittedChanges: false,

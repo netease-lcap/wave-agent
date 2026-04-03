@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
 import { getDefaultRemoteBranch, getGitMainRepoRoot } from "wave-agent-sdk";
 
@@ -33,9 +32,7 @@ describe("worktree utils", () => {
       const session = createWorktree("my-feat", "/repo/root");
 
       expect(session.name).toBe("my-feat");
-      expect(session.path).toBe(
-        path.join("/repo/root", ".wave/worktrees/my-feat"),
-      );
+      expect(session.path).toBe("/repo/root.worktrees/my-feat");
       expect(session.branch).toBe("worktree-my-feat");
       expect(session.repoRoot).toBe("/repo/root");
       expect(session.isNew).toBe(true);
@@ -125,7 +122,7 @@ describe("worktree utils", () => {
     it("should remove worktree and branch", () => {
       const session = {
         name: "my-feat",
-        path: "/repo/root/.wave/worktrees/my-feat",
+        path: "/repo/root.worktrees/my-feat",
         branch: "worktree-my-feat",
         repoRoot: "/repo/root",
         hasUncommittedChanges: false,
@@ -150,7 +147,7 @@ describe("worktree utils", () => {
     it("should remove worktree, original branch, and current branch if different", () => {
       const session = {
         name: "my-feat",
-        path: "/repo/root/.wave/worktrees/my-feat",
+        path: "/repo/root.worktrees/my-feat",
         branch: "worktree-my-feat",
         repoRoot: "/repo/root",
         hasUncommittedChanges: false,
@@ -185,7 +182,7 @@ describe("worktree utils", () => {
     it("should NOT remove current branch if it is a protected branch", () => {
       const session = {
         name: "my-feat",
-        path: "/repo/root/.wave/worktrees/my-feat",
+        path: "/repo/root.worktrees/my-feat",
         branch: "worktree-my-feat",
         repoRoot: "/repo/root",
         hasUncommittedChanges: false,
@@ -227,7 +224,7 @@ describe("worktree utils", () => {
 
       const session = {
         name: "my-feat",
-        path: "/repo/root/.wave/worktrees/my-feat",
+        path: "/repo/root.worktrees/my-feat",
         branch: "worktree-my-feat",
         repoRoot: "/repo/root",
         hasUncommittedChanges: false,

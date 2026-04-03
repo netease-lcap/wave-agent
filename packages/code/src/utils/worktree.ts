@@ -13,8 +13,6 @@ export interface WorktreeSession {
   isNew: boolean;
 }
 
-export const WORKTREE_DIR = ".wave/worktrees";
-
 /**
  * Create a new git worktree
  * @param name Worktree name
@@ -23,7 +21,13 @@ export const WORKTREE_DIR = ".wave/worktrees";
  */
 export function createWorktree(name: string, cwd: string): WorktreeSession {
   const repoRoot = getGitMainRepoRoot(cwd);
-  const worktreePath = path.join(repoRoot, WORKTREE_DIR, name);
+  const projectName = path.basename(repoRoot);
+  const worktreePath = path.join(
+    repoRoot,
+    "..",
+    `${projectName}.worktrees`,
+    name,
+  );
   const branchName = `worktree-${name}`;
   const baseBranch = getDefaultRemoteBranch(cwd);
 

@@ -8,7 +8,7 @@ describe("WorktreeExitPrompt", () => {
     const { lastFrame } = render(
       <WorktreeExitPrompt
         name="gentle-swift-breeze"
-        path="/repo/root/.wave/worktrees/gentle-swift-breeze"
+        path="/repo/root.worktrees/gentle-swift-breeze"
         hasUncommittedChanges={true}
         hasNewCommits={false}
         onKeep={vi.fn()}
@@ -21,16 +21,14 @@ describe("WorktreeExitPrompt", () => {
     expect(lastFrame()).toContain("You have uncommitted changes");
     expect(lastFrame()).toContain("Keep worktree");
     expect(lastFrame()).toContain("Remove worktree");
-    expect(lastFrame()).toContain(
-      "/repo/root/.wave/worktrees/gentle-swift-breeze",
-    );
+    expect(lastFrame()).toContain("/repo/root.worktrees/gentle-swift-breeze");
   });
 
   it("should show both changes and commits if present", () => {
     const { lastFrame } = render(
       <WorktreeExitPrompt
         name="gentle-swift-breeze"
-        path="/repo/root/.wave/worktrees/gentle-swift-breeze"
+        path="/repo/root.worktrees/gentle-swift-breeze"
         hasUncommittedChanges={true}
         hasNewCommits={true}
         onKeep={vi.fn()}
@@ -50,7 +48,7 @@ describe("WorktreeExitPrompt", () => {
     const { stdin, lastFrame } = render(
       <WorktreeExitPrompt
         name="gentle-swift-breeze"
-        path="/repo/root/.wave/worktrees/gentle-swift-breeze"
+        path="/repo/root.worktrees/gentle-swift-breeze"
         hasUncommittedChanges={true}
         hasNewCommits={false}
         onKeep={onKeep}
@@ -86,7 +84,7 @@ describe("WorktreeExitPrompt", () => {
     const { stdin } = render(
       <WorktreeExitPrompt
         name="gentle-swift-breeze"
-        path="/repo/root/.wave/worktrees/gentle-swift-breeze"
+        path="/repo/root.worktrees/gentle-swift-breeze"
         hasUncommittedChanges={true}
         hasNewCommits={false}
         onKeep={vi.fn()}

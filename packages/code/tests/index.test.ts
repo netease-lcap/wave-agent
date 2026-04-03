@@ -56,14 +56,13 @@ vi.mock("../src/session-selector-cli.js");
 vi.mock("../src/utils/worktree.js", () => ({
   createWorktree: vi.fn().mockImplementation((name, cwd) => ({
     name,
-    path: path.join(cwd, ".wave/worktrees", name),
+    path: path.join(cwd, "..", `${path.basename(cwd)}.worktrees`, name),
     branch: `worktree-${name}`,
     repoRoot: cwd,
     hasUncommittedChanges: false,
     hasNewCommits: false,
   })),
   removeWorktree: vi.fn(),
-  WORKTREE_DIR: ".wave/worktrees",
 }));
 
 describe("main", () => {
