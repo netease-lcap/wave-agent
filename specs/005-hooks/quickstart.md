@@ -89,6 +89,111 @@ export class Agent {
 // Merge configurations with project taking precedence
 ```
 
+---
+
+## Hook Exit Code Output Support (2025-11-15)
+
+### Overview
+
+Hooks can now communicate status and provide feedback through exit codes, stdout, and stderr, with different behaviors based on the hook event type.
+
+### Exit Code Communication Pattern
+
+```bash
+#!/bin/bash
+# Hook script example
+
+# Success - stdout handling varies by hook type
+echo "Hook executed successfully"
+exit 0
+
+# Blocking error - stderr shown to appropriate recipient  
+echo "Critical error occurred" >&2
+exit 2
+
+# Non-blocking error - stderr shown to user, execution continues
+echo "Warning: minor issue detected" >&2  
+exit 1
+```
+
+### Hook Event Behaviors
+
+| Hook Event | Exit 0 | Exit 2 | Other Exits |
+|------------|--------|--------|-------------|
+| **UserPromptSubmit** | stdout → agent context | stderr → user error, block prompt | stderr → user error |
+| **PreToolUse** | continue execution | stderr → agent, block tool | stderr → user |  
+| **PostToolUse** | continue execution | stderr → agent (tool ran) | stderr → user |
+| **Stop** | allow stop | stderr → agent, block stop | stderr → user |
+
+### Implementation Integration
+
+#### 1. Hook Manager Enhancement
+
+The existing `HookManager` is enhanced to process exit codes:
+
+```typescript
+// Enhanced hook execution with exit code processing
+const results = await hookManager.executeHooks(event, context);
+
+// Process results for message creation
+for (const result of results) {
+  if (result.exitCode === 2) {
+    // Handle blocking error based on event type
+    await handleBlockingError(event, result.stderr);
+  } else if (result.exitCode === 0 && event === 'UserPromptSubmit') {
+    // Inject stdout into agent context
+    await injectHookContext(result.stdout);
+  }
+}
+```
+
+#### 2. Message Manager Integration
+
+Hook results are integrated into the conversation flow using existing methods:
+
+```typescript
+// UserPromptSubmit success - inject context
+if (result.exitCode === 0 && event === 'UserPromptSubmit') {
+  messageManager.addUserMessage(result.stdout);
+}
+
+// PreToolUse blocking error - update tool block with error
+if (result.exitCode === 2 && event === 'PreToolUse') {
+  messageManager.updateToolBlock({
+    toolId: context.toolId,
+    result: result.stderr,
+    success: false,
+    error: "Hook blocked tool execution"
+  });
+}
+
+// PostToolUse error feedback - append stderr to original result
+if (result.exitCode === 2 && event === 'PostToolUse') {
+  messageManager.updateToolBlock({
+    toolId: context.toolId,
+    result: `${originalResult}\n\nHook feedback: ${result.stderr}`,
+    success: false
+  });
+}
+
+// UserPromptSubmit blocking error - show user error only
+if (result.exitCode === 2 && event === 'UserPromptSubmit') {
+  messageManager.addErrorBlock(result.stderr);
+}
+
+// Stop blocking error - provide agent feedback  
+if (result.exitCode === 2 && event === 'Stop') {
+  messageManager.addUserMessage(`Stop blocked: ${result.stderr}`);
+}
+
+// Non-blocking errors - show user error
+if (result.exitCode !== 0 && result.exitCode !== 2) {
+  messageManager.addErrorBlock(result.stderr);
+}
+```
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests (packages/agent-sdk/tests/hooks/)
@@ -104,103 +209,6 @@ export class Agent {
 - Cross-platform command execution testing
 - Settings file loading and merging with temp .wave/settings.json files
 - End-to-end workflow with actual tools and WAVE_PROJECT_DIR validation
-
-## Implementation Phases
-
-### Phase 1: Core Infrastructure
-1. Create hook types and interfaces
-2. Implement HookManager with basic execution
-3. Add pattern matching with minimatch
-4. Create basic unit tests
-
-### Phase 2: Agent Integration  
-1. Identify integration points in Agent class
-2. Add hook execution calls at lifecycle events
-3. Implement non-blocking execution
-4. Add comprehensive error handling
-
-### Phase 3: Settings & Configuration
-1. Extend settings loading for hook configuration
-2. Implement configuration validation
-3. Add user and project settings merging
-4. Create configuration error reporting
-
-### Phase 4: Testing & Polish
-1. Complete unit test coverage with mocked child processes
-2. Create integration test examples with temporary directory setup
-3. Test cross-platform compatibility with real file operations
-4. Performance optimization and monitoring
-
-## Configuration Examples
-
-### Basic Post-Tool Hook
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "eslint --fix \"$WAVE_PROJECT_DIR\"/src"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### Multiple Event Hooks
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command", 
-            "command": "echo 'Starting tool execution' >> \"$WAVE_PROJECT_DIR\"/wave.log"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$WAVE_PROJECT_DIR\"/.wave/hooks/cleanup.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### Async Background Hook
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npm test",
-            "async": true,
-            "timeout": 300
-          }
-        ]
-      }
-    ]
-  }
-}
-```
 
 ---
 
