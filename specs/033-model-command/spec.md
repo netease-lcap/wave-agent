@@ -28,7 +28,9 @@ The `/model` command allows users to interactively switch between configured AI 
 
 ### Agent SDK (`packages/agent-sdk`)
 
-- **`AgentCallbacks`**: Added `onModelChange?: (model: string) => void` to notify the UI of model updates.
+- **`AgentCallbacks`**: 
+    - Added `onModelChange?: (model: string) => void` to notify the UI of model updates.
+    - Added `onConfiguredModelsChange?: (models: string[]) => void` to notify the UI when configured models list changes (e.g., after config reload).
 - **`ConfigurationService`**: 
     - Added `setModel(model: string)` to update the session's active model in the internal options.
     - Added `getConfiguredModels(): string[]` to aggregate models from `settings.json`, environment variables, and defaults.

@@ -10,6 +10,8 @@ export interface AgentCallbacks {
   // ... existing callbacks
   /** Triggered when the active model is changed */
   onModelChange?: (model: string) => void;
+  /** Triggered when the list of configured models changes (e.g., after config reload) */
+  onConfiguredModelsChange?: (models: string[]) => void;
 }
 ```
 
