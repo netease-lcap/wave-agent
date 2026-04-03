@@ -86,6 +86,10 @@ Hooks can communicate status and control Wave's behavior using exit codes:
     - `Stop`: Blocks the stop operation and provides `stderr` to the agent.
 - **Other Exits (e.g., Exit 1)**: Non-blocking error. Wave continues execution but shows `stderr` as a warning to the user.
 
+## Live Reload
+
+Hook configurations support **live reload**. When you modify hooks in `settings.json`, the changes take effect immediately without restarting Wave.
+
 ## Best Practices
 
 - **Keep hooks fast**: Long-running hooks can slow down your workflow unless they are `async`.

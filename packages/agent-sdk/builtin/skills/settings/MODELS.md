@@ -65,3 +65,7 @@ You can also set the default models Wave uses via environment variables in `sett
   }
 }
 ```
+
+## Live Reload
+
+Model configurations support **live reload**. When you modify the `models` field or model-related environment variables in `settings.json`, the changes take effect immediately without restarting Wave.

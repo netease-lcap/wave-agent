@@ -57,6 +57,10 @@ Example:
 }
 ```
 
+## Live Reload
+
+Environment variables configured in `settings.json` support **live reload**. When you modify the `env` field in any `settings.json` file (user, project, or local scope), the changes take effect immediately without requiring a Wave session restart.
+
 ## Best Practices
 
 - **Use Local Overrides for Secrets**: Never commit sensitive information like `WAVE_API_KEY` to `settings.json`. Use `settings.local.json` instead.
