@@ -32,114 +32,67 @@ Represents an active subagent handling a specific task.
 - `configuration: SubagentConfiguration` - Configuration reference
 - `aiManager: AiManager` - Isolated AI manager instance
 - `messageManager: MessageManager` - Isolated message manager instance
-- `status: 'initializing' | 'active' | 'completed' | 'error'` - Current state
+- `toolManager: ToolManager` - Isolated tool manager instance
+- `status: 'initializing' | 'active' | 'completed' | 'error' | 'aborted'` - Current state
 - `messages: Message[]` - Subagent conversation history
+- `lastTools: string[]` - Tracking the last executed tools for reporting
 
 **Validation Rules**:
 - SubagentId must be valid UUID v4
-- Status transitions: initializing → active → (completed | error)
+- Status transitions: initializing → active → (completed | error | aborted)
 - Messages array maintains chronological order
-- CreatedAt cannot be future date
 
 **State Transitions**:
 ```
 initializing → active (when aiManager ready)
 active → completed (when task finished successfully)  
 active → error (when task failed)
-(completed | error) → [destroyed] (when session ends)
+active → aborted (when task was cancelled)
+(completed | error | aborted) → [destroyed] (after result is returned to main agent)
 ```
 
-### AgentDelegation
-Represents the input parameters for task delegation via the Agent tool.
+### AgentToolCall
+Represents the tool call through which subagents are invoked.
 
 **Fields**:
 - `description: string` - A short (3-5 word) description of the task
 - `prompt: string` - The task for the agent to perform
 - `subagent_type: string` - The type of specialized agent to use for this task
+- `run_in_background: boolean` - Whether to run the subagent in the background
 
 **Validation Rules**:
-- Description required and non-empty (3-5 words)
+- Description required and non-empty
 - Prompt required and non-empty
 - Subagent_type required and non-empty
-
-**State Transitions**: Immutable input parameters, no state changes
-
-### SubagentBlock
-UI representation of subagent activity within message list.
-
-**Fields**:
-- `type: 'subagent'` - Block type identifier
-- `subagentId: string` - Reference to SubagentInstance
-- `subagentName: string` - Display name from configuration
-- `messages: Message[]` - Cached message subset for display
-- `status: 'active' | 'completed' | 'error'` - Current status
-
-
-**Validation Rules**:
-- SubagentId must reference valid SubagentInstance
-- SubagentName must match configuration
-- Messages array limited to 10 most recent when expanded, 2 when collapsed
-- Status must match associated SubagentInstance status
-
-**State Transitions**:
-```
-created → active (when subagent starts processing)
-active → completed (when subagent finishes)
-active → error (when subagent fails)
-```
-
-**Note**: UI expansion state (`isExpanded`) is managed by React component state/context, not stored in the block data.
 
 ## Relationships
 
 ### Configuration → Instance (1:N)
 - One SubagentConfiguration can create multiple SubagentInstances
 - Each SubagentInstance references exactly one SubagentConfiguration
-- Instance lifecycle independent of configuration changes
+- Instance lifecycle is tied to the tool execution
 
-### Instance → Block (1:1)
-- Each SubagentInstance has exactly one SubagentBlock representation
-- SubagentBlock lifecycle tied to SubagentInstance
-- Block destroyed when instance destroyed
-
-### AgentDelegation → Instance (1:1)
-- Each AgentDelegation input creates at most one SubagentInstance
-- Failed delegations create no instances
-- Successful delegations create exactly one instance
+### Instance → AgentToolResult (1:1)
+- Each SubagentInstance produces exactly one result returned to the main agent
+- The result includes the final assistant message and a summary in `shortResult`
 
 ## Storage
 
 ### File-based Configuration
 **Location**: `.wave/agents/` (project) and `~/.wave/agents/` (user)
 **Format**: Markdown files with YAML frontmatter
-**Structure**:
-```yaml
----
-name: subagent-name
-description: "Task expertise description"
-tools: ["Read", "Write", "Bash"]  # optional
-model: "sonnet"  # optional
----
-System prompt content in markdown format.
-Multiple paragraphs supported.
-```
 
 **Access Pattern**:
 - Load configurations on-demand when subagent selection needed
-- Parse YAML frontmatter using gray-matter or similar
 - Project configs override user configs by name
-- No caching or file watching for simplicity
 
 ### Memory-based State
-**SubagentInstances**: Map<subagentId, SubagentInstance>
-**AgentDelegation**: Input parameters only (no persistent state)
+**SubagentInstances**: Map<subagentId, SubagentInstance> in `SubagentManager`
 
 **Lifecycle Management**:
-- Load configurations on-demand from filesystem
 - Create instances on task delegation
-- Cache instances for session duration
-- Clean up on main session end
-- Persist message history through instance lifecycle
+- Subagent instances are temporary and isolated
+- Active instances are cleaned up via `cleanupInstance(subagentId)` immediately after the tool execution completes
 
 ## Data Flow
 
@@ -150,15 +103,15 @@ File System → On-demand YAML Parser → Validation → Ready for Use
 
 ### Task Delegation
 ```
-Agent Tool Input → Subagent Selection → Instance Creation → UI Block Creation
+Agent Tool Input → Subagent Selection → Instance Creation → AIManager Execution
 ```
 
-### Message Flow
+### Activity Reporting
 ```
-Subagent Message → Instance MessageManager → Block Update → UI Rerender
+Subagent Event → Callback → Agent Tool `onShortResultUpdate` → UI ToolBlock Rerender
 ```
 
 ### Cleanup Flow
 ```
-Session End → Instance Destruction → Block Removal → Resource Cleanup
+Task Completion → Result Returned → cleanupInstance(subagentId) → Resource Destruction
 ```
