@@ -1,7 +1,7 @@
 import React, { useLayoutEffect, useRef } from "react";
 import os from "os";
 import { Box, Text, Static, measureElement } from "ink";
-import type { Message } from "wave-agent-sdk";
+import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageBlockItem } from "./MessageBlockItem.js";
 
 export interface MessageListProps {
@@ -39,6 +39,18 @@ export const MessageList = React.memo(
     // Filter out meta messages
     const visibleMessages = messages.filter((m) => !m.isMeta);
 
+    const isRunning = (b: MessageBlock) =>
+      (b.type === "tool" && b.stage === "running") ||
+      (b.type === "bang" && b.isRunning) ||
+      (b.type === "slash" && b.stage === "running");
+
+    const messagesWithRunningBlocks = new Set(
+      visibleMessages
+        .map((m, i) => ({ m, i }))
+        .filter(({ m }) => m.blocks.some(isRunning))
+        .map(({ i }) => i),
+    );
+
     // Flatten messages into blocks with metadata
     const allBlocks = visibleMessages.flatMap((message, messageIndex) => {
       return message.blocks.map((block, blockIndex) => ({
@@ -55,9 +67,7 @@ export const MessageList = React.memo(
       const { block } = item;
       const isDynamic =
         !forceStatic &&
-        ((block.type === "tool" && block.stage === "running") ||
-          (block.type === "bang" && block.isRunning) ||
-          (block.type === "slash" && block.stage === "running"));
+        (messagesWithRunningBlocks.has(item.messageIndex) || isRunning(block));
       return { ...item, isDynamic };
     });
 
