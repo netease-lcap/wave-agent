@@ -29,6 +29,7 @@ import { logger } from "../utils/globalLogger.js";
 
 export interface LiveConfigManagerOptions {
   workdir: string;
+  onReload?: (config: WaveConfiguration) => void;
 }
 
 export class LiveConfigManager {
@@ -48,7 +49,7 @@ export class LiveConfigManager {
 
   constructor(
     private container: Container,
-    options: LiveConfigManagerOptions,
+    private options: LiveConfigManagerOptions,
   ) {
     this.workdir = options.workdir;
     this.fileWatcher = new FileWatcherService(logger);
@@ -271,6 +272,9 @@ export class LiveConfigManager {
           this.currentConfiguration.permissions?.additionalDirectories || [],
         );
       }
+
+      // Trigger reload callback
+      this.options.onReload?.(this.currentConfiguration);
 
       return this.currentConfiguration;
     } catch (error) {

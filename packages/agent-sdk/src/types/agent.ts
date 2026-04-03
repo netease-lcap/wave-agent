@@ -94,4 +94,5 @@ export interface AgentCallbacks
   ) => void;
   onBackgroundCurrentTask?: () => void;
   onModelChange?: (model: string) => void;
+  onConfiguredModelsChange?: (models: string[]) => void;
 }

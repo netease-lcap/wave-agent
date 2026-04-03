@@ -41,11 +41,8 @@ export const ChatInterface: React.FC = () => {
     setWasLastDetailsTooTall,
     version,
     workdir,
-    getModelConfig,
     btwState,
   } = useChat();
-
-  const model = getModelConfig().model;
 
   const displayMessages = messages;
 
@@ -125,7 +122,6 @@ export const ChatInterface: React.FC = () => {
         forceStatic={isConfirmationVisible && isConfirmationTooTall}
         version={version}
         workdir={workdir}
-        model={model}
         onDynamicBlocksHeightMeasured={handleDynamicBlocksHeightMeasured}
       />
 
