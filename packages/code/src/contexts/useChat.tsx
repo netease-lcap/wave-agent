@@ -276,20 +276,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     !!bypassPermissions || initialPermissionMode === "bypassPermissions";
 
   const agentRef = useRef<Agent | null>(null);
-  const taskUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const debouncedSetTasks = useCallback(
-    (newTasks: Task[]) => {
-      if (taskUpdateTimerRef.current) {
-        clearTimeout(taskUpdateTimerRef.current);
-      }
-      taskUpdateTimerRef.current = setTimeout(() => {
-        setTasks([...newTasks]);
-        taskUpdateTimerRef.current = null;
-      }, 100);
-    },
-    [setTasks],
-  );
 
   // Permission confirmation methods with queue support
   const showConfirmation = useCallback(
@@ -343,7 +329,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setBackgroundTasks([...tasks]);
         },
         onTasksChange: (tasks) => {
-          debouncedSetTasks(tasks);
+          setTasks([...tasks]);
         },
         onSubagentMessagesChange: (subagentId: string, messages: Message[]) => {
           logger.debug("onSubagentMessagesChange", subagentId, messages.length);
@@ -455,17 +441,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workdir,
     worktreeSession,
     model,
-    debouncedSetTasks,
     initialPermissionMode,
   ]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (taskUpdateTimerRef.current) {
-        clearTimeout(taskUpdateTimerRef.current);
-      }
-
       if (agentRef.current) {
         try {
           // Display usage summary before cleanup
