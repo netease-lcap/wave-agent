@@ -44,6 +44,8 @@ export default defineConfig(() => {
         PASTE_DEBOUNCE_MS: "0",
         WAVE_API_KEY: "test-token",
         WAVE_BASE_URL: "http://localhost:8080",
+        WAVE_MODEL: "test-model",
+        WAVE_FAST_MODEL: "test-fast-model",
       },
     },
     resolve: {
