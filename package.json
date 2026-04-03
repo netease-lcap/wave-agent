@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "wave": "tsx --tsconfig packages/code/tsconfig.dev.json packages/code/src/index.ts",
+    "wave": "NODE_OPTIONS='--heapsnapshot-near-heap-limit=1' tsx --tsconfig packages/code/tsconfig.dev.json packages/code/src/index.ts",
     "wave:debug": "LOG_LEVEL=DEBUG pnpm run wave",
     "watch": "pnpm -r --parallel watch",
     "build": "pnpm -r build",
