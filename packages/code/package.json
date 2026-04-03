@@ -29,7 +29,7 @@
     "README.md"
   ],
   "scripts": {
-    "wave": "tsx --tsconfig tsconfig.dev.json src/index.ts",
+    "wave": "NODE_OPTIONS='--heapsnapshot-near-heap-limit=1' tsx --tsconfig tsconfig.dev.json src/index.ts",
     "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "type-check": "tsc --noEmit --incremental",
     "watch": "tsc -p tsconfig.build.json --watch & tsc-alias -p tsconfig.build.json --watch",
