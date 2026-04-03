@@ -124,21 +124,23 @@ const formatArg = (arg: unknown): string => {
   if (arg === null) return "null";
   if (arg === undefined) return "undefined";
 
+  let result: string;
   if (arg instanceof Error) {
     // Special handling for Error objects, display stack or message
-    return arg.stack || arg.message || String(arg);
-  }
-
-  if (typeof arg === "object") {
+    result = arg.stack || arg.message || String(arg);
+  } else if (typeof arg === "object") {
     try {
-      return JSON.stringify(arg, null, 2);
+      result = JSON.stringify(arg);
     } catch {
       // If JSON.stringify fails, fallback to String()
-      return String(arg);
+      result = String(arg);
     }
+  } else {
+    result = String(arg);
   }
 
-  return String(arg);
+  // Ensure no newlines in the result to keep log entries single-line
+  return result.replace(/[\n\r]+/g, " ");
 };
 
 /**
