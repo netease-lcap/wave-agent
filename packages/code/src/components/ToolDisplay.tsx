@@ -81,7 +81,7 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
           flexDirection="column"
         >
           {shortResult.split("\n").map((line, index) => (
-            <Text key={index} color="gray">
+            <Text key={index} color="gray" wrap="truncate-end">
               {line}
             </Text>
           ))}
