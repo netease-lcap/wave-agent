@@ -23,6 +23,10 @@
     "subagent_type": {
       "type": "string",
       "description": "The type of specialized agent to use for this task"
+    },
+    "run_in_background": {
+      "type": "boolean",
+      "description": "Set to true to run this command in the background. Use Read to read the output later."
     }
   },
   "required": [
@@ -44,7 +48,7 @@ Uses existing `ToolResult` interface without extensions:
 {
   "success": true,
   "content": "[Last assistant message content from subagent]",
-  "shortResult": "Task completed by code-reviewer"
+  "shortResult": "Agent completed (2 tools, 150 tokens)"
 }
 ```
 
@@ -54,7 +58,7 @@ Uses existing `ToolResult` interface without extensions:
   "success": false,
   "content": "",
   "error": "Subagent 'unknown-type' not found. Available: code-reviewer, documentation-writer, test-generator",
-  "shortResult": "Task delegation failed"
+  "shortResult": "Agent not found"
 }
 ```
 
@@ -64,30 +68,33 @@ Uses existing `ToolResult` interface without extensions:
 The `content` field contains the actual output from the subagent's last assistant message - exactly what the subagent produced as its final response.
 
 ### ShortResult Format
-- **Success**: `"Task completed by [subagent-name]"`  
-- **Error**: `"Task delegation failed"` or `"Task failed: [brief error]"`
+The `shortResult` is updated dynamically during execution via the `onShortResultUpdate` callback.
+
+- **Running**: `"ToolA, ToolB (3 tools, 500 tokens)"`
+- **Success**: `"Agent completed (3 tools, 750 tokens)"`
+- **Error**: `"Delegation error"` or `"Agent not found"`
 
 ## Error Conditions
 
-| Condition | Error Message | HTTP Code Equivalent |
-|-----------|---------------|---------------------|
-| No subagents configured | "No subagents available for delegation" | 404 |
-| Invalid subagent_type | "Subagent '[name]' not found. Available: [list]" | 404 |
-| Subagent initialization failed | "Failed to initialize subagent: [details]" | 500 |
-| Task execution timeout | "Subagent task timed out after [duration]ms" | 408 |
-| Circular delegation detected | "Circular delegation prevented: [chain]" | 409 |
-| Invalid tool access | "Subagent lacks permission for required tools: [tools]" | 403 |
+| Condition | Error Message |
+|-----------|---------------|
+| No subagents configured | "No subagents available for delegation" |
+| Invalid subagent_type | "No agent found matching '[name]'. Available: [list]" |
+| Subagent initialization failed | "Failed to initialize subagent: [details]" |
+| Task execution timeout | "Subagent task timed out after [duration]ms" |
+| Circular delegation detected | "Circular delegation prevented: [chain]" |
+| Invalid tool access | "Subagent lacks permission for required tools: [tools]" |
 
 ## Execution Flow
 
 1. **Input Validation**: Validate required fields and types
-2. **Subagent Selection**: 
-   - If `subagent_type` matches existing subagent name exactly → use that subagent
-   - Fallback → return error with available subagents
+2. **Subagent Selection**: Match `subagent_type` to configured subagents
 3. **Instance Creation**: Create new SubagentInstance with isolated context
-4. **Task Execution**: Execute task using subagent's aiManager
-5. **Result Collection**: Gather results and cleanup resources
-6. **Response Formation**: Format response with success/error status
+4. **Activity Reporting**: Register `onUpdate` callback to update `shortResult`
+5. **Task Execution**: Execute task using subagent's aiManager
+6. **Result Collection**: Gather results from subagent's message manager
+7. **Cleanup**: Call `subagentManager.cleanupInstance(instance.subagentId)`
+8. **Response Formation**: Format response with success/error status
 
 ## Integration Points
 
@@ -97,49 +104,43 @@ interface SubagentManager {
   loadConfigurations(): Promise<SubagentConfiguration[]>;
   findSubagent(name: string): Promise<SubagentConfiguration | null>;
   createInstance(
-    config: SubagentConfiguration, 
+    configuration: SubagentConfiguration,
     parameters: {
       description: string;
       prompt: string;
       subagent_type: string;
-    }
+    },
+    runInBackground?: boolean,
+    onUpdate?: () => void
   ): Promise<SubagentInstance>;
-  executeTask(instance: SubagentInstance, prompt: string): Promise<string>;
+  executeAgent(
+    instance: SubagentInstance,
+    prompt: string,
+    abortSignal?: AbortSignal,
+    runInBackground?: boolean
+  ): Promise<string>;
 }
 ```
 
-### With MessageManager Callbacks
+### With ToolContext
 ```typescript
-interface MessageManagerCallbacks {
-  onSubAgentBlockAdded?: (
-    subagentId: string,
-    parameters: {
-      description: string;
-      prompt: string;
-      subagent_type: string;
-    }
-  ) => void;
-  onSubAgentBlockUpdated?: (subagentId: string, messages: Message[], status: SubagentBlock["status"]) => void;
+interface ToolContext {
+  onShortResultUpdate?: (shortResult: string) => void;
+  subagentManager: SubagentManager;
+  abortSignal?: AbortSignal;
 }
 ```
-
-### With UI Components
-- Agent tool execution triggers `onSubAgentBlockAdded` callback
-- Subagent message updates trigger `onSubAgentBlockUpdated` callback
-- UI renders SubagentBlock component in MessageList
 
 ## Performance Requirements
 
 - **Selection Time**: <500ms for subagent matching and selection
 - **Initialization Time**: <2000ms for subagent instance creation  
 - **Total Overhead**: <150% of equivalent main agent task time
-- **Memory Usage**: Isolated instances cleaned up after task completion
-- **Concurrent Subagents**: Support up to 5 simultaneous subagent tasks
+- **Memory Usage**: Isolated instances cleaned up immediately after task completion
 
 ## Security Considerations
 
 - **Tool Isolation**: Subagents only access configured tools
 - **Context Isolation**: No access to main conversation history
-- **File Access**: Restricted to workspace directory and specified paths
+- **Circular Prevention**: Always deny `Agent` tool in subagents to prevent infinite recursion
 - **Configuration Validation**: YAML parsing with safe loader only
-- **Circular Prevention**: Track delegation chain to prevent infinite loops

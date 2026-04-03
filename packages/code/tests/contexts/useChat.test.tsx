@@ -195,15 +195,6 @@ describe("ChatProvider", () => {
     ];
     callbacks.onBackgroundTasksChange!(newTasks);
 
-    // Test onSubagentMessagesChange
-    callbacks.onSubagentMessagesChange?.("sub1", [
-      {
-        id: "sub-msg-1",
-        role: "assistant" as const,
-        blocks: [{ type: "text" as const, content: "sub-msg" }],
-      },
-    ]);
-
     // Test onPermissionModeChange
     callbacks.onPermissionModeChange!("bypassPermissions");
 
@@ -214,7 +205,6 @@ describe("ChatProvider", () => {
       expect(lastValue?.latestTotalTokens).toBe(100);
       expect(lastValue?.isCompressing).toBe(true);
       expect(lastValue?.backgroundTasks).toEqual(newTasks);
-      expect(lastValue?.subagentMessages["sub1"]).toHaveLength(1);
       expect(lastValue?.permissionMode).toBe("bypassPermissions");
     });
   });

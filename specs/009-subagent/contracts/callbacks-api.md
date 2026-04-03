@@ -2,11 +2,15 @@
 
 **Package**: agent-sdk  
 **File**: `src/managers/subagentManager.ts`  
-**Interface**: SubagentManagerCallbacks (New)
+**Interface**: SubagentManagerCallbacks
 
 ## Interface Definition
 
 Creates dedicated `SubagentManagerCallbacks` interface for subagent-specific callbacks, separate from MessageManagerCallbacks to provide clean architectural separation.
+
+## Primary Purpose: Progress Reporting
+
+While these callbacks provide granular access to subagent events, their primary use in the Wave CLI is to update the `shortResult` of the `Agent` tool block in real-time. This provides users with feedback on subagent activity (e.g., tool execution and token usage) without persisting the full subagent message history in the CLI memory.
 
 ## New Callback Definitions
 
@@ -25,8 +29,7 @@ onSubagentUserMessageAdded?: (subagentId: string, params: UserMessageParams) => 
 
 **Behavior**:
 - Called when subagent adds user message via `messageManager.addUserMessage()`
-- Triggered after existing `onUserMessageAdded` callback (non-interfering)
-- Provides subagent context for multi-agent UI implementations
+- Provides subagent context for monitoring and reporting
 
 ---
 
@@ -45,7 +48,6 @@ onSubagentAssistantMessageAdded?: (subagentId: string) => void;
 **Behavior**:
 - Called when subagent creates assistant message via `messageManager.addAssistantMessage()`
 - Signals start of assistant response for loading state management
-- Triggered after existing `onAssistantMessageAdded` callback (non-interfering)
 
 ---
 
@@ -70,8 +72,30 @@ onSubagentAssistantContentUpdated?: (
 **Behavior**:
 - Called during streaming via `messageManager.updateCurrentMessageContent()`
 - Provides real-time content updates with subagent context
-- Triggered after existing `onAssistantContentUpdated` callback (non-interfering)
-- Natural rate limiting by OpenAI API (typically 1-5fps)
+
+---
+
+### onSubagentAssistantReasoningUpdated
+
+**Purpose**: Notify during subagent reasoning streaming updates
+
+**Signature**:
+```typescript
+onSubagentAssistantReasoningUpdated?: (
+  subagentId: string, 
+  chunk: string, 
+  accumulated: string
+) => void;
+```
+
+**Parameters**:
+- `subagentId: string` - Unique identifier for the subagent instance
+- `chunk: string` - Incremental reasoning (new chunk from this update)
+- `accumulated: string` - Total accumulated reasoning so far
+
+**Behavior**:
+- Called during streaming via `messageManager.updateCurrentMessageReasoning()`
+- Provides real-time reasoning updates with subagent context
 
 ---
 
@@ -94,66 +118,53 @@ onSubagentToolBlockUpdated?: (
 **Behavior**:
 - Called when subagent updates tool blocks via `messageManager.updateToolBlock()`
 - Provides detailed tool execution tracking per subagent
-- Triggered after existing `onToolBlockUpdated` callback (non-interfering)
 
-## Backward Compatibility Contract
+---
 
-### Guarantee Level: 100% Backward Compatible
+### onSubagentMessagesChange
 
-1. **Existing Callback Signatures**: All existing callbacks maintain exact same signature
-2. **Optional Parameters**: All new subagent callbacks are optional
-3. **Non-Interfering**: New callbacks trigger after existing callbacks
-4. **No Breaking Changes**: Existing functionality unchanged
+**Purpose**: Notify when the full message list for a subagent changes
 
-### Callback Execution Order
-
+**Signature**:
+```typescript
+onSubagentMessagesChange?: (subagentId: string, messages: Message[]) => void;
 ```
-1. Existing callback (e.g., onUserMessageAdded)
-2. New subagent callback (e.g., onSubagentUserMessageAdded) - if registered
-3. Standard onMessagesChange callback
+
+**Behavior**:
+- Triggered whenever any message in the subagent's isolated context is added or updated.
+- Useful for comprehensive monitoring of subagent state.
+- In the Wave CLI, this is used to calculate the number of tools executed for the `shortResult` summary.
+
+---
+
+### onSubagentLatestTotalTokensChange
+
+**Purpose**: Notify when the total token usage for a subagent changes
+
+**Signature**:
+```typescript
+onSubagentLatestTotalTokensChange?: (subagentId: string, tokens: number) => void;
 ```
+
+**Behavior**:
+- Triggered after each AI interaction within the subagent context.
+- Used in the Wave CLI to update the token usage part of the `shortResult` summary.
 
 ## Usage Examples
 
 ### Basic Subagent Monitoring
 ```typescript
 const callbacks: SubagentManagerCallbacks = {
-  onSubagentUserMessageAdded: (subagentId, params) => {
-    console.log(`[${subagentId}] User: ${params.content}`);
-  },
-  
-  onSubagentAssistantContentUpdated: (subagentId, chunk, accumulated) => {
-    updateSubagentStreamingUI(subagentId, accumulated);
-  },
-  
   onSubagentToolBlockUpdated: (subagentId, params) => {
-    showSubagentToolProgress(subagentId, params.name, params.stage);
-  }
-};
-
-// Pass to Agent which forwards to SubagentManager
-const agent = await Agent.create({
-  callbacks: callbacks, // AgentCallbacks extends SubagentManagerCallbacks
-});
-```
-
-### Multi-Agent UI Implementation
-```typescript
-const callbacks: MessageManagerCallbacks = {
-  // Track which subagents are active
-  onSubagentAssistantMessageAdded: (subagentId) => {
-    setSubagentStatus(subagentId, 'generating');
-    showLoadingIndicator(subagentId);
+    // Track tool execution for reporting
+    if (params.stage === 'running') {
+      console.log(`[${subagentId}] Running tool: ${params.name}`);
+    }
   },
   
-  // Real-time content updates per subagent
-  onSubagentAssistantContentUpdated: (subagentId, chunk, accumulated) => {
-    updateSubagentDisplay(subagentId, accumulated);
-  },
-  
-  // Tool activity monitoring
-  onSubagentToolBlockUpdated: (subagentId, params) => {
-    updateToolActivity(subagentId, params.name, params.stage);
+  onSubagentLatestTotalTokensChange: (subagentId, tokens) => {
+    // Update token usage for reporting
+    updateTokenCounter(subagentId, tokens);
   }
 };
 ```
@@ -166,32 +177,18 @@ const callbacks: MessageManagerCallbacks = {
 - Failed callbacks don't affect main agent functionality
 - Standard try-catch pattern around callback invocations
 
-### Performance Considerations
-- **No Debouncing**: Direct callback execution for immediate feedback
-- **Minimal Overhead**: Simple forwarding from existing callback points
-- **Rate Limiting**: Natural limiting by underlying streaming rates
-- **Memory Efficient**: No additional state tracking required
-
 ## Testing Contract
 
 ### Mock Implementation
 ```typescript
 const mockCallbacks = {
-  onSubagentUserMessageAdded: vi.fn(),
-  onSubagentAssistantMessageAdded: vi.fn(),
-  onSubagentAssistantContentUpdated: vi.fn(),
-  onSubagentToolBlockUpdated: vi.fn()
+  onSubagentToolBlockUpdated: vi.fn(),
+  onSubagentLatestTotalTokensChange: vi.fn()
 };
 
 // Verify callback execution
-expect(mockCallbacks.onSubagentUserMessageAdded).toHaveBeenCalledWith(
+expect(mockCallbacks.onSubagentToolBlockUpdated).toHaveBeenCalledWith(
   'subagent-123',
-  expect.objectContaining({ content: 'test message' })
+  expect.objectContaining({ name: 'Bash', stage: 'running' })
 );
 ```
-
-### Integration Testing Requirements
-- Verify callbacks called with correct subagent ID
-- Confirm callback execution order (existing → subagent)
-- Validate parameter passing accuracy
-- Test error scenarios (callback failures don't break execution)

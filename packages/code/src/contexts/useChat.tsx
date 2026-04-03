@@ -77,9 +77,6 @@ export interface ChatContextType {
   // Slash Command functionality
   slashCommands: SlashCommand[];
   hasSlashCommand: (commandId: string) => boolean;
-  // Subagent messages
-  subagentMessages: Record<string, Message[]>;
-  subagentLatestTokens: Record<string, number>;
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -194,14 +191,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Command state
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
-
-  // Subagent messages state
-  const [subagentMessages, setSubagentMessages] = useState<
-    Record<string, Message[]>
-  >({});
-  const [subagentLatestTokens, setSubagentLatestTokens] = useState<
-    Record<string, number>
-  >({});
 
   // Permission state
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
@@ -330,22 +319,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onTasksChange: (tasks) => {
           setTasks([...tasks]);
-        },
-        onSubagentMessagesChange: (subagentId: string, messages: Message[]) => {
-          logger.debug("onSubagentMessagesChange", subagentId, messages.length);
-          setSubagentMessages((prev) => ({
-            ...prev,
-            [subagentId]: [...messages],
-          }));
-        },
-        onSubagentLatestTotalTokensChange: (
-          subagentId: string,
-          tokens: number,
-        ) => {
-          setSubagentLatestTokens((prev) => ({
-            ...prev,
-            [subagentId]: tokens,
-          }));
         },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
@@ -753,8 +726,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     stopBackgroundTask,
     slashCommands,
     hasSlashCommand,
-    subagentMessages,
-    subagentLatestTokens,
     permissionMode,
     setPermissionMode,
     allowBypassInCycle,

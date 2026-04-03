@@ -8,80 +8,62 @@ This guide walks through implementing subagent support in Wave Agent, enabling t
 
 ### Phase 1: Core Infrastructure (agent-sdk)
 
-#### 1.1 Create Task Tool
+#### 1.1 Create Agent Tool
 ```bash
 cd packages/agent-sdk/src/tools
-# Create taskTool.ts following existing tool patterns
+# Create agentTool.ts following existing tool patterns
 # Add to tools/index.ts exports
 # Update toolManager.ts registration
 ```
 
-#### 1.2 Extend Message Types
-```bash
-cd packages/agent-sdk/src
-# Add SubagentBlock type to types.ts
-# Update MessageBlock union type
-# Add subagent-specific callback types
-```
-
-#### 1.3 Create Subagent Manager
+#### 1.2 Create Subagent Manager
 ```bash
 cd packages/agent-sdk/src/managers
 # Create subagentManager.ts for lifecycle management
 # Add to managers/index.ts exports
 ```
 
-#### 1.4 Add Configuration Parser
+#### 1.3 Add Configuration Parser
 ```bash
 cd packages/agent-sdk/src/utils
 # Create subagentParser.ts for on-demand YAML parsing
 # Simple filesystem reading without caching or watching
 ```
 
-#### 1.5 Extend Message Manager
+#### 1.4 Implement Subagent Callbacks
 ```bash
 cd packages/agent-sdk/src/managers
-# Add subagent callbacks to MessageManagerCallbacks
-# Implement callback invocation in message operations
+# Add subagent callbacks to SubagentManagerCallbacks interface
+# Implement callback invocation in subagentManager.ts
 ```
 
-### Phase 2: UI Components (code)
+### Phase 2: UI Integration (code)
 
-#### 2.1 Create Subagent Block Component
+#### 2.1 Update Tool Display
 ```bash
 cd packages/code/src/components
-# Create SubagentBlock.tsx with expand/collapse logic
-# Implement message filtering (2 collapsed, 10 expanded)
-# Add distinctive styling and status indicators
+# Update ToolDisplay.tsx to handle dynamic shortResult updates
+# Ensure the Agent tool block reflects subagent progress
 ```
 
-#### 2.2 Extend Message List
+#### 2.2 Register Callbacks
 ```bash
-cd packages/code/src/components
-# Update MessageList.tsx to handle SubagentBlock rendering
-# No additional callback handling needed - onMessagesChange covers subagent blocks
-# Add SubagentBlock component import and rendering logic
-```
-
-#### 2.3 Update App Integration
-```bash
-cd packages/code/src
-# No changes needed to useChat.tsx - existing onMessagesChange handles subagents
-# SubagentBlock components integrate with standard message flow
-# Expansion state managed locally in SubagentBlock components
+cd packages/code/src/contexts
+# Update useChat.tsx to register subagent callbacks
+# Update the Agent tool's onShortResultUpdate callback
 ```
 
 ## Key Implementation Details
 
-### Task Tool Schema
+### Agent Tool Schema
 ```typescript
-export const taskTool: ToolPlugin = {
-  name: "Task",
+export const agentTool: ToolPlugin = {
+  name: "Agent",
   config: {
     type: "function",
     function: {
-      name: "Task",
-      description: "Delegate specialized tasks to configured subagents",
+      name: "Agent",
+      description: "Launch a new agent to handle complex, multi-step tasks autonomously.",
       parameters: {
         type: "object",
         properties: {
@@ -96,6 +78,10 @@ export const taskTool: ToolPlugin = {
           subagent_type: {
             type: "string",
             description: "The type of specialized agent to use for this task"
+          },
+          run_in_background: {
+            type: "boolean",
+            description: "Set to true to run this command in the background."
           }
         },
         required: ["description", "prompt", "subagent_type"]
@@ -117,62 +103,33 @@ model: sonnet
 
 You are a senior code reviewer specializing in TypeScript and React applications.
 Your role is to thoroughly analyze code changes and provide constructive feedback.
-
-Focus on:
-- Code quality and maintainability
-- Performance implications
-- Security considerations  
-- Best practices adherence
-- Bug identification
 ```
 
-### Subagent Message Callbacks (Added 2025-11-20)
+### Subagent Progress Reporting
 
-Dedicated subagent-specific callbacks through a new `SubagentManagerCallbacks` interface, providing clean architectural separation between main agent and subagent event handling.
+Dedicated subagent-specific callbacks through the `SubagentManagerCallbacks` interface provide real-time updates for the `Agent` tool's `shortResult`.
 
 #### Basic Usage
 
 ```typescript
-import { Agent } from 'wave-agent-sdk';
-
-const agent = await Agent.create({
-  callbacks: {
-    // Subagent-specific callbacks (AgentCallbacks extends SubagentManagerCallbacks)
-    onSubagentUserMessageAdded: (subagentId, params) => {
-      console.log(`Subagent ${subagentId} received: ${params.content}`);
-    },
+// packages/agent-sdk/src/tools/agentTool.ts
+const instance = await subagentManager.createInstance(
+  configuration,
+  parameters,
+  run_in_background,
+  () => {
+    // onUpdate callback to refresh shortResult
+    const messages = instance.messageManager.getMessages();
+    const tokens = instance.messageManager.getLatestTotalTokens();
+    const lastTools = instance.lastTools;
     
-    onSubagentAssistantContentUpdated: (subagentId, chunk, accumulated) => {
-      updateSubagentUI(subagentId, accumulated);
-    }
+    const toolCount = countToolBlocks(messages);
+    const summary = formatToolTokenSummary(toolCount, tokens);
+    
+    let shortResult = `${lastTools.join(", ")} ${summary}`;
+    context.onShortResultUpdate?.(shortResult);
   }
-});
-```
-
-#### Available Subagent Callbacks
-
-- `onSubagentUserMessageAdded`: Triggered when a subagent receives a user message.
-- `onSubagentAssistantMessageAdded`: Triggered when a subagent creates a new assistant message.
-- `onSubagentAssistantContentUpdated`: Triggered during subagent content streaming.
-- `onSubagentToolBlockUpdated`: Triggered when a subagent tool is updated.
-
-#### Migration Guide
-
-No migration needed! Your existing code works exactly the same. To add subagent support:
-1. Keep all existing callbacks as-is.
-2. Add new `onSubagent*` callbacks for subagent events.
-3. Implement UI updates for subagent-specific events.
-
-### Subagent Block Type
-```typescript
-export interface SubagentBlock {
-  type: "subagent";
-  subagentId: string;
-  subagentName: string;
-  status: 'active' | 'completed' | 'error';
-  messages: Message[];
-
-}
+);
 ```
 
 ## Testing Strategy
@@ -180,134 +137,26 @@ export interface SubagentBlock {
 ### Unit Tests
 ```bash
 # agent-sdk tests
-packages/agent-sdk/tests/tools/taskTool.test.ts
+packages/agent-sdk/tests/tools/agentTool.test.ts
 packages/agent-sdk/tests/managers/subagentManager.test.ts  
 packages/agent-sdk/tests/utils/subagentParser.test.ts
-
-# code tests
-packages/code/tests/components/SubagentBlock.test.tsx
 ```
 
 ### Integration Tests
 ```bash
 # Create temporary .wave/agents/ directory
 # Test real YAML parsing and subagent execution
-# Test UI callback integration
-# Test message isolation between main and subagent
+# Test tool result return flow
+# Test message isolation and cleanup
 ```
-
-### Example Integration Test
-```typescript
-describe('Subagent Integration', () => {
-  test('complete task delegation flow', async () => {
-    // Setup temporary config
-    const configDir = await createTempDir();
-    await writeFile(`${configDir}/test-agent.md`, `
----
-name: test-agent
-description: Test agent for validation
----
-Test system prompt
-`);
-
-    // Execute task tool
-    const result = await taskTool.execute({
-      description: "Test task",
-      prompt: "Perform test validation", 
-      subagent_type: "test-agent"
-    }, { workdir: configDir });
-
-    expect(result.success).toBe(true);
-    expect(result.subagentSessionId).toBeDefined();
-    expect(callbacks.onSubAgentBlockAdded).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        description: expect.any(String),
-        prompt: expect.any(String),
-        subagent_type: "test-agent"
-      })
-    );
-  });
-});
-```
-
-## Configuration Setup
-
-### Project-Level Subagents
-```bash
-mkdir -p .wave/agents
-cat > .wave/agents/code-reviewer.md << EOF
----
-name: code-reviewer
-description: PROACTIVELY reviews code for quality and best practices
-tools: ["Read", "Grep", "Edit"]
-model: sonnet
----
-You are an expert code reviewer...
-EOF
-```
-
-### User-Level Subagents  
-```bash
-mkdir -p ~/.wave/agents
-cat > ~/.wave/agents/general-helper.md << EOF
----
-name: general-helper
-description: Helps with general development tasks
----
-You are a helpful development assistant...
-EOF
-```
-
-## Build & Deployment
-
-### Build Process
-```bash
-# Build agent-sdk first (dependency)
-cd packages/agent-sdk
-pnpm build
-
-# Build code package
-cd ../code  
-pnpm build
-
-# Type checking and linting
-cd ../..
-pnpm run type-check
-pnpm run lint
-```
-
-### Verification
-```bash
-# Test subagent loading
-wave-code --help  # Should start without errors
-
-# Test task delegation
-echo "Use the code-reviewer subagent to check my TypeScript files" | wave-code
-
-# Verify UI components
-# Check that subagent blocks appear with proper styling
-# Verify expand/collapse behavior
-# Test message preview (2 collapsed, 10 expanded)
-```
-
-## Performance Monitoring
-
-### Key Metrics
-- Subagent selection time: <500ms
-- Instance creation time: <2000ms  
-- Total task overhead: <150% of main agent time
-- Memory usage: Cleanup after task completion
-- UI responsiveness: <100ms for expand/collapse
 
 ## Troubleshooting
 
 ### Common Issues
 1. **YAML parsing errors**: Check frontmatter syntax
 2. **Tool access denied**: Verify tools list in config
-3. **UI not updating**: Check callback registration
-4. **Context bleeding**: Verify instance isolation
-5. **Performance issues**: Check message limiting
+3. **Subagent recursion**: Ensure subagents cannot call the `Agent` tool
+4. **Memory leaks**: Verify `cleanupInstance` is called after completion
+5. **UI not updating**: Check `onShortResultUpdate` callback registration
 
-
-This quickstart provides the foundation for implementing subagent support while maintaining the existing architecture patterns and performance requirements.
+This quickstart provides the foundation for implementing subagent support using the standard tool-calling pattern and real-time progress reporting.

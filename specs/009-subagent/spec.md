@@ -86,22 +86,20 @@ As a user, I want each subagent to maintain its own context window separate from
 
 ---
 
-### User Story 5 - Subagent Message Display (Priority: P2)
+### User Story 5 - Subagent Activity Display (Priority: P2)
 
-As a user, I want subagent conversations to be displayed as expandable blocks within the message list so that I can track subagent activity while maintaining focus on the main conversation flow.
+As a user, I want to see subagent activity reflected within the main conversation flow so that I can track their progress without needing a separate message history view.
 
-**Why this priority**: Clear visual representation of subagent activity is essential for user understanding and debugging. Users need to see what subagents are doing without losing context of the main conversation.
+**Why this priority**: Clear feedback of subagent activity is essential for user understanding and debugging. Users need to know what tools subagents are running in real-time.
 
-**Independent Test**: Can be tested by triggering a subagent and verifying the message block appears with correct visual indicators, collapse/expand behavior, and message preview functionality.
+**Independent Test**: Can be tested by triggering a subagent and verifying that the `Agent` tool block's short result updates dynamically with tool names and token usage.
 
 **Acceptance Scenarios**:
 
-1. **Given** a subagent is triggered, **When** it processes a task, **Then** an expandable message block appears in the vertical message list with distinctive border and subagent name/icon header
-2. **Given** a subagent block is collapsed, **When** I view the message list, **Then** I see up to 2 most recent subagent tools being executed
-3. **Given** a subagent has only 1 tool execution, **When** the block is collapsed, **Then** I see that single tool in the preview
-4. **Given** a subagent task is completed, **When** the block is collapsed, **Then** I see the final text result rendered with markdown, and tool executions are hidden
-5. **Given** a subagent block is expanded, **When** I view it, **Then** I see all subagent messages in the conversation
-6. **Given** a subagent block is in the message list, **When** I compare it to regular messages, **Then** it is clearly distinguishable through visual indicators
+1. **Given** a subagent is triggered, **When** it processes a task, **Then** the `Agent` tool block displays real-time updates in its `shortResult`
+2. **Given** a subagent is running tools, **When** I view the message list, **Then** I see the most recent subagent tools being executed in the `shortResult` of the `Agent` tool block
+3. **Given** a subagent task is completed, **When** the task finishes, **Then** the final text result is returned as the tool output and displayed in the main conversation
+4. **Given** a subagent task is completed, **When** I view the tool block, **Then** I see a summary of the task completion including total tokens used and tools executed
 
 ---
 
@@ -130,17 +128,18 @@ As a user, I want subagent conversations to be displayed as expandable blocks wi
 - **FR-008**: System MUST restrict subagents to only the tools specified in their configuration, or inherit all tools if none specified
 - **FR-009**: System MUST support configurable models per subagent, with fallback to system default if not specified
 - **FR-010**: System MUST provide clear feedback about which subagent is handling a task
-- **FR-016**: System MUST display subagent messages as expandable blocks within the vertical message list
-- **FR-017**: System MUST show up to 2 most recent subagent tool executions when the subagent block is collapsed and active
-- **FR-022**: System MUST show the final text result rendered with markdown when the subagent block is completed, and hide tool executions
-- **FR-018**: System MUST show all subagent messages when the subagent block is expanded
-- **FR-020**: System MUST display Agent tool message blocks with distinctive borders and subagent name/icon headers to differentiate from regular messages
+- **FR-016**: System MUST update the `shortResult` of the `Agent` tool block in real-time as the subagent executes tools
+- **FR-017**: System MUST include a summary of tokens used and tools executed in the final `shortResult` of the completed `Agent` tool task
+- **FR-022**: System MUST return the subagent's final assistant message content to the main agent as the tool result
+- **FR-018**: System MUST isolate each subagent's message history and clean up instances upon task completion to prevent memory leaks
+- **FR-020**: System MUST support backgrounding subagent tasks via the `run_in_background` parameter in the `Agent` tool
 - **FR-011**: System MUST handle subagent task completion and return results to the main conversation context
-- **FR-019**: System MUST implement subagents as Agent tool calls that return either successful content or error messages to the main agent
-- **FR-012**: System MUST prevent infinite delegation loops between agents
+- **FR-019**: System MUST implement subagents as standard `Agent` tool calls that return tool results to the main agent
+- **FR-012**: System MUST prevent infinite delegation loops by disallowing subagents from calling the `Agent` tool
 - **FR-013**: System MUST support markdown content in subagent configuration files as system prompts
 - **FR-014**: System MUST validate that specified tools in subagent configurations exist and are available
 - **FR-015**: System MUST gracefully handle cases where no subagent matches a task and fall back to main agent processing
+- **FR-023**: System MUST NOT store subagent message history in the CLI layer's persistent state after task completion (OOM protection)
 
 ### Key Entities
 
@@ -148,14 +147,13 @@ As a user, I want subagent conversations to be displayed as expandable blocks wi
 - **Subagent Instance**: An active subagent handling a specific task with its own context window and tool access
 - **Agent Delegation**: The process of matching user requests to appropriate subagents via the Agent tool based on expertise and availability
 - **Agent Context**: Isolated conversation context maintained separately for each subagent and the main agent
-- **SubagentManagerCallbacks**: New callback interface containing granular subagent-specific event handlers (separate from MessageManagerCallbacks)
-- **SubagentMessageEvents**: Event parameters that include subagent ID and relevant message/content data  
-- **SubagentManager**: Component responsible for forwarding subagent events to parent callback handlers through its own callback system
+- **SubagentManagerCallbacks**: Interface containing granular subagent-specific event handlers (separate from MessageManagerCallbacks)
+- **SubagentManager**: Component responsible for managing subagent lifecycle and forwarding events to parent callback handlers
 - **AgentCallbacks**: Extended to include SubagentManagerCallbacks for end-to-end callback support
 
-## Subagent Message Callbacks (Added 2025-11-20)
+## Subagent Lifecycle (Added 2025-01-10)
 
-This feature provides granular message callbacks for subagents, moving subagent-specific callbacks from `MessageManager` to `SubagentManager` for a cleaner separation of concerns.
+This feature provides granular message callbacks for subagents and ensures strict lifecycle management.
 
 ### Key Changes
 
@@ -167,27 +165,21 @@ This feature provides granular message callbacks for subagents, moving subagent-
    - `onSubagentMessagesChange`
 
 2. **Refactored SubagentManager**: 
-   - Uses `callbacks: SubagentManagerCallbacks` instead of `parentCallbacks`.
-   - Each subagent properly forwards events with `subagentId` parameter.
+   - Uses `callbacks: SubagentManagerCallbacks` to forward events.
+   - Ensures subagent instance cleanup via `cleanupInstance(subagentId)`.
 
-3. **Removed Messages from SubagentBlock**:
-   - `SubagentBlock` interface no longer contains `messages` field.
-   - Subagent messages now managed through dedicated callback system.
-
-4. **Updated UI Layer**:
-   - `useChat` context maintains `subagentMessages` state via callbacks.
-   - `SubagentBlock` component reads messages from context instead of block properties.
+3. **Removal of Persistent Subagent UI State**:
+   - `SubagentBlock` component and its associated `subagentMessages` context state are removed from the CLI.
+   - Activity is now reported through the `shortResult` of the `Agent` tool block.
 
 ## Clarifications
 
 ### Session 2024-12-19
 
-- Q: When a subagent is triggered, should the subagent message block be displayed inline within the main conversation flow, or as a separate expandable/collapsible section alongside the main messages? → A: Separate expandable block in messagelist, not alongside, the message list is a vertical list.
-- Q: When the subagent block shows "last 2 messages" in collapsed state, what should happen if the subagent conversation has only 1 message? → A: Show the single message (display up to 2, but show whatever exists)
-- Q: How should the system handle task delegation when a subagent generates an error or fails to complete its task? → A: Return error message to main agent. subagent is tool calling, so it can return successful content or error message
-- Q: When multiple subagents could match a task, what selection criteria should the system use to choose the most appropriate one? → A: Choose subagent with most specific/detailed description match
-- Q: What visual indicators should distinguish the subagent message block from regular messages in the vertical message list? → A: Distinctive border with subagent name/icon header
-- Q: Should the Wave Agent SDK provide functionality to create subagent configuration files, or only read/load/parse user-created configurations? → A: SDK only reads/loads/parses user-created subagent files - no creation functionality
+- Q: When a subagent is triggered, should the subagent message block be displayed inline within the main conversation flow? → A: No, it is represented as an `Agent` tool block within the main conversation flow.
+- Q: How should the system handle task delegation when a subagent generates an error or fails to complete its task? → A: Return error message to main agent. subagent is tool calling, so it can return successful content or error message.
+- Q: What visual indicators should distinguish subagent activity? → A: The `shortResult` of the `Agent` tool block updates dynamically with tool execution and token usage info.
+- Q: Should the Wave Agent SDK provide functionality to create subagent configuration files? → A: No, SDK only reads/loads/parses user-created subagent files.
 
 ## Success Criteria *(mandatory)*
 

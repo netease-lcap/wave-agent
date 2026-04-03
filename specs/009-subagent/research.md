@@ -2,21 +2,17 @@
 
 ## Agent Tool Implementation
 
-**Decision**: Implement Agent tool following existing ToolPlugin interface pattern
+**Decision**: Implement `Agent` tool following existing `ToolPlugin` interface pattern
 
 **Rationale**: 
-- Consistent with existing tool architecture (readTool, editTool, etc.)
-- Leverages existing ToolResult interface for success/error handling
+- Consistent with existing tool architecture (Read, Edit, etc.)
+- Leverages existing `ToolResult` interface for success/error handling
 - Integrates seamlessly with current tool execution pipeline
 - Supports the specified input schema with description, prompt, and subagent_type
 
-**Alternatives considered**:
-- Custom delegation system outside tool framework - rejected due to complexity
-- Built-in agent method - rejected to maintain tool-based architecture consistency
-
 ## Subagent Context Isolation
 
-**Decision**: Create separate aiManager and messageManager instances per subagent
+**Decision**: Create separate `AIManager` and `MessageManager` instances per subagent
 
 **Rationale**:
 - Complete context isolation as specified in requirements
@@ -25,23 +21,18 @@
 - Clean session management per subagent
 - Prevents context bleeding between agents
 
-**Alternatives considered**:
-- Shared aiManager with context switching - rejected due to potential context leaking
-- Message filtering approach - rejected as insufficient for true isolation
-
 ## Message Display Architecture
 
-**Decision**: Extend existing MessageBlock types with SubagentBlock
+**Decision**: Use standard `ToolDisplay` to show subagent activity via `shortResult`
 
 **Rationale**:
-- Leverages existing message rendering pipeline
-- Reuses ToolResultDisplay and DiffViewer components as specified
-- Maintains consistency with other block types
-- Supports expandable/collapsible behavior through React state
+- Integrated into the main conversation flow
+- Reuses existing `ToolDisplay` component
+- Provides real-time updates through `onShortResultUpdate` callback
+- Prevents UI clutter and OOM issues by not persisting full subagent history in CLI memory
 
 **Alternatives considered**:
-- Separate message system - rejected due to UI complexity
-- Inline message mixing - rejected due to user experience requirements
+- `SubagentBlock` custom component - rejected in favor of tool-based integration for better UX and performance.
 
 ## YAML Configuration Parsing
 
@@ -49,116 +40,41 @@
 
 **Rationale**:
 - Consistent with markdown + frontmatter pattern used elsewhere
-- No additional dependencies required (existing projects use similar patterns)
 - Simple on-demand loading when subagents are needed
 - Supports both user-level (~/.wave/agents/) and project-level (.wave/agents/) configs
-- Supports precedence rules (project over user)
-
-**Alternatives considered**:
-- JSON configuration - rejected to match specification requirements
-- Custom parser - rejected due to maintenance overhead
-- Directory watching/caching - rejected to keep implementation simple
 
 ## Subagent Selection Algorithm
 
-**Decision**: Automatic selection via Agent tool with exact name matching in SDK
+**Decision**: Exact name matching via `Agent` tool's `subagent_type` parameter
 
 **Rationale**:
-- Uses explicit `Agent` tool invocation with `subagent_type` parameter
-- The LLM is responsible for choosing the correct `subagent_type` based on descriptions provided in the tool prompt.
-- Exact name matching only via `findSubagentByName()` function in SDK
-- No fallback to `findBestMatch` or fuzzy matching - requires precise subagent names
-- Clear error messages listing available subagents when no match found
-- Simplifies implementation and prevents unexpected subagent selection
+- The LLM chooses the correct `subagent_type` based on descriptions provided in the tool prompt.
+- SDK implements exact name matching only via `findSubagentByName()`.
+- Predictable behavior and clear error messages when no match is found.
 
-**Implementation Details**:
-- Single-stage lookup: exact name match only
-- No keyword-based fuzzy matching
-- Clear failure messages with available options
-- Project-level and user-level subagent discovery maintained
+## Subagent Manager Callbacks
 
-**Alternatives considered**:
-- Fuzzy matching with keyword scoring - removed to ensure predictable behavior
-- Automatic matching based on task description - rejected in favor of explicit tool calling
-- ML-based matching - rejected due to complexity and dependency overhead
-
-## Message Manager Callbacks Extension (Revised 2025-11-20)
-
-**Decision**: Create dedicated `SubagentManagerCallbacks` interface instead of extending `MessageManagerCallbacks`.
+**Decision**: Create dedicated `SubagentManagerCallbacks` interface
 
 **Rationale**: 
-- Cleaner architectural separation between `MessageManager` and `SubagentManager` responsibilities.
-- Avoids mixing main agent callbacks with subagent-specific callbacks.
-- `SubagentManager` owns its callback system independently.
+- Cleaner architectural separation between `MessageManager` and `SubagentManager`.
+- Primary use in CLI is to update the `shortResult` of the `Agent` tool block.
 - `AgentCallbacks` extends `SubagentManagerCallbacks` for end-to-end integration.
 
-**Implementation Pattern**:
-```typescript
-// New SubagentManager interface
-interface SubagentManagerOptions {
-  callbacks?: SubagentManagerCallbacks;
-}
+## Cleanup Strategy
 
-// Dedicated subagent callbacks
-interface SubagentManagerCallbacks {
-  onSubagentUserMessageAdded?: (subagentId: string, params: UserMessageParams) => void;
-  onSubagentAssistantMessageAdded?: (subagentId: string) => void;
-  onSubagentAssistantContentUpdated?: (subagentId: string, chunk: string, accumulated: string) => void;
-  onSubagentToolBlockUpdated?: (subagentId: string, params: AgentToolBlockUpdateParams) => void;
-}
-```
-
-**Cleanup Strategy**:
-- Use existing `SubagentManager.cleanupInstance()` method.
-- Simple manual cleanup when subagent completes.
-
-**Error Handling**:
-- Let callback errors bubble up naturally.
-- Keep implementation minimal and straightforward.
-
-**Performance**:
-- Direct callback execution without batching.
-- Simple direct execution is sufficient.
-
-## React Component Architecture
-
-**Decision**: Create SubagentBlock component extending existing patterns
+**Decision**: Immediate cleanup of subagent instances after task completion
 
 **Rationale**:
-- Reuses ToolResultDisplay and DiffViewer as specified
-- Implements expand/collapse with 2 messages preview / 10 messages expanded
-- Distinctive border and header styling for visual differentiation
-- No support for command_output, image, memory blocks as specified
-
-**Alternatives considered**:
-- Modify existing MessageList directly - rejected due to component complexity
-- Separate subagent UI - rejected due to integration requirements
+- Protects against OOM issues in long-running CLI sessions.
+- Subagent instances are temporary and their resources (AI/Message managers) are released immediately after returning results.
+- `subagentManager.cleanupInstance(subagentId)` is called by the `Agent` tool.
 
 ## Error Handling Strategy
 
-**Decision**: Return error messages to main agent via ToolResult interface
+**Decision**: Return error messages to main agent via `ToolResult` interface
 
 **Rationale**:
-- Subagents implemented as tool calls returning success/error
-- Main agent handles error presentation and recovery
-- Maintains tool execution consistency
-- Supports graceful degradation
-
-**Alternatives considered**:
-- Exception throwing - rejected due to poor user experience
-- Silent failure - rejected due to debugging difficulties
-- Retry mechanisms - rejected to keep initial implementation simple
-
-## Performance Considerations
-
-**Decision**: Lazy loading and session caching for subagent instances
-
-**Rationale**:
-- Create aiManager/messageManager only when subagent invoked
-- Cache instances for session duration to avoid recreation overhead
-- Clean up resources when main session ends
-- Target <500ms for subagent selection and initialization
-
-**Alternatives considered**:
-- Eager initialization - rejected due to memory overhead
-- Persistent caching - rejected due to configuration change handling complexity
+- Subagents implemented as tool calls returning success/error.
+- Main agent handles error presentation and recovery.
+- Maintains tool execution consistency.
