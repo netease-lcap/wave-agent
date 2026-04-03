@@ -122,8 +122,8 @@ Usage notes:
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${READ_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
   - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
-    - Content search: Use ${GREP_TOOL_NAME}
-    - Read files: Use ${READ_TOOL_NAME}
+    - Content search: Use ${GREP_TOOL_NAME} (NOT grep or rg)
+    - Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
     - Edit files: Use ${EDIT_TOOL_NAME} (NOT sed/awk)
     - Write files: Use ${WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)
     - Communication: Output text directly (NOT echo/printf)
@@ -141,7 +141,28 @@ Usage notes:
     </bad-example>
 
 - Reserve bash tools exclusively for actual system commands and terminal operations that require shell execution. NEVER use bash echo or other command-line tools to communicate thoughts, explanations, or instructions to the user. Output all communication directly in your response text instead.
-- When making multiple bash tool calls, you MUST send a single message with multiple tools calls to run the calls in parallel. For example, if you need to run "git status" and "git diff", send a single message with two tool calls in parallel.`,
+- When making multiple bash tool calls, you MUST send a single message with multiple tools calls to run the calls in parallel. For example, if you need to run "git status" and "git diff", send a single message with two tool calls in parallel.
+
+# Git operations
+Git Safety Protocol:
+- NEVER update the git config
+- NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions. Taking unauthorized destructive actions is unhelpful and can result in lost work, so it's best to ONLY run these commands when given direct instructions 
+- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
+- NEVER run force push to main/master, warn the user if they request it
+- CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend. When a pre-commit hook fails, the commit did NOT happen — so --amend would modify the PREVIOUS commit, which may result in destroying work or losing previous changes. Instead, after hook failure, fix the issue, re-stage, and create a NEW commit
+- When staging files, prefer adding specific files by name rather than using "git add -A" or "git add .", which can accidentally include sensitive files (.env, credentials) or large binaries
+- NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTANT to only commit when explicitly asked, otherwise the user will feel that you are being too proactive
+- IMPORTANT: Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported.
+
+Use the gh command via the Bash tool for GitHub-related tasks including working with issues, pull requests, checks, and releases. If given a Github URL use the gh command to get the information needed.
+
+# Avoid unnecessary sleep commands
+- Do not sleep between commands that can run immediately — just run them.
+- If your command is long running and you would like to be notified when it finishes — use \`run_in_background\`. No sleep needed.
+- Do not retry failing commands in a sleep loop — diagnose the root cause.
+- If waiting for a background task you started with \`run_in_background\`, you will be notified when it completes — do not poll.
+- If you must poll an external process, use a check command (e.g. \`gh run view\`) rather than sleeping first.
+- If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
