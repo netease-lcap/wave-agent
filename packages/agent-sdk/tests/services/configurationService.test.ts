@@ -433,17 +433,29 @@ describe("ConfigurationService", () => {
   });
 
   describe("resolveModelConfig", () => {
-    it("should resolve with defaults", () => {
+    it("should resolve with defaults from environment", () => {
       const config = configService.resolveModelConfig();
-      const expectedAgentModel = process.env.WAVE_MODEL || "gemini-3-flash";
-      const expectedFastModel =
-        process.env.WAVE_FAST_MODEL || "gemini-2.5-flash";
+      const expectedAgentModel = process.env.WAVE_MODEL;
+      const expectedFastModel = process.env.WAVE_FAST_MODEL;
       const expectedMaxTokens = process.env.WAVE_MAX_OUTPUT_TOKENS
         ? parseInt(process.env.WAVE_MAX_OUTPUT_TOKENS, 10)
         : DEFAULT_WAVE_MAX_OUTPUT_TOKENS;
       expect(config.model).toBe(expectedAgentModel);
       expect(config.fastModel).toBe(expectedFastModel);
       expect(config.maxTokens).toBe(expectedMaxTokens);
+    });
+
+    it("should throw when models are missing", () => {
+      const originalModel = process.env.WAVE_MODEL;
+      const originalFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        expect(() => configService.resolveModelConfig()).toThrow();
+      } finally {
+        process.env.WAVE_MODEL = originalModel;
+        process.env.WAVE_FAST_MODEL = originalFastModel;
+      }
     });
 
     it("should resolve from internal env", () => {
@@ -570,10 +582,10 @@ describe("ConfigurationService", () => {
       expect(config.model).toBe("new-model");
     });
 
-    it("should get configured models including default and current", () => {
+    it("should get configured models including current", () => {
       configService.setEnvironmentVars({ WAVE_MODEL: "env-model" });
       const models = configService.getConfiguredModels();
-      expect(models).toContain("gemini-3-flash");
+      expect(models).not.toContain("gemini-3-flash");
       expect(models).toContain("env-model");
     });
 
@@ -592,7 +604,7 @@ describe("ConfigurationService", () => {
 
       expect(models).toContain("model-a");
       expect(models).toContain("model-b");
-      expect(models).toContain("gemini-3-flash");
+      expect(models).not.toContain("gemini-3-flash");
     });
   });
 });

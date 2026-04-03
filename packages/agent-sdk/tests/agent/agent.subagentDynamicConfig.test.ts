@@ -75,6 +75,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       process.env.WAVE_API_KEY = "parent-token";
       process.env.WAVE_BASE_URL = "https://parent.url";
       process.env.WAVE_MODEL = "parent-model";
+      process.env.WAVE_FAST_MODEL = "parent-fast-model";
       process.env.WAVE_MAX_INPUT_TOKENS = "40000";
 
       // Create parent agent
@@ -212,6 +213,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       process.env.WAVE_API_KEY = "multi-token";
       process.env.WAVE_BASE_URL = "https://multi.url";
       process.env.WAVE_MODEL = "multi-model";
+      process.env.WAVE_FAST_MODEL = "multi-fast-model";
 
       // Create parent agent
       agent = await Agent.create({

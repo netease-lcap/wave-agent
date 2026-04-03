@@ -458,22 +458,40 @@ export class ConfigurationService {
     maxTokens?: number,
     permissionMode?: PermissionMode,
   ): ModelConfig {
-    // Default values as per data-model.md
-    const DEFAULT_AGENT_MODEL = "gemini-3-flash";
-    const DEFAULT_FAST_MODEL = "gemini-2.5-flash";
+    // Resolve agent model: override > options > env (settings.json) > process.env
+    const resolvedAgentModel =
+      model ||
+      this.options.model ||
+      this.env.WAVE_MODEL ||
+      process.env.WAVE_MODEL;
 
-    // Resolve agent model: override > options > env (settings.json) > process.env > default
-    let resolvedAgentModel = model || this.options.model || this.env.WAVE_MODEL;
+    // Resolve fast model: override > options > env (settings.json) > process.env
+    const resolvedFastModel =
+      fastModel ||
+      this.options.fastModel ||
+      this.env.WAVE_FAST_MODEL ||
+      process.env.WAVE_FAST_MODEL;
 
-    resolvedAgentModel =
-      resolvedAgentModel || process.env.WAVE_MODEL || DEFAULT_AGENT_MODEL;
+    // Validate required fields
+    if (!resolvedAgentModel) {
+      throw new ConfigurationError(CONFIG_ERRORS.MISSING_MODEL, "model", {
+        constructor: model,
+        environment: process.env.WAVE_MODEL,
+        settings: this.env.WAVE_MODEL,
+      });
+    }
 
-    // Resolve fast model: override > options > env (settings.json) > process.env > default
-    let resolvedFastModel =
-      fastModel || this.options.fastModel || this.env.WAVE_FAST_MODEL;
-
-    resolvedFastModel =
-      resolvedFastModel || process.env.WAVE_FAST_MODEL || DEFAULT_FAST_MODEL;
+    if (!resolvedFastModel) {
+      throw new ConfigurationError(
+        CONFIG_ERRORS.MISSING_FAST_MODEL,
+        "fastModel",
+        {
+          constructor: fastModel,
+          environment: process.env.WAVE_FAST_MODEL,
+          settings: this.env.WAVE_FAST_MODEL,
+        },
+      );
+    }
 
     // Resolve max output tokens
     const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);
@@ -616,14 +634,10 @@ export class ConfigurationService {
   }
 
   /**
-   * Get all configured models from settings.json and defaults
+   * Get all configured models from settings.json and environment
    */
   getConfiguredModels(): string[] {
-    const DEFAULT_AGENT_MODEL = "gemini-3-flash";
     const models = new Set<string>();
-
-    // Add default model
-    models.add(DEFAULT_AGENT_MODEL);
 
     // Add current model from options or environment
     const currentModel =
