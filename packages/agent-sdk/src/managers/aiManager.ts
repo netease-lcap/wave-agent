@@ -531,12 +531,6 @@ export class AIManager {
           );
         }
       }
-      if (
-        result.response_headers &&
-        Object.keys(result.response_headers).length > 0
-      ) {
-        logger?.debug("AI response headers:", result.response_headers);
-      }
 
       if (
         result.additionalFields &&
