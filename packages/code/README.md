@@ -31,38 +31,26 @@ export WAVE_API_KEY="your_token_here"
 
 # AI Gateway API URL (required)
 export WAVE_BASE_URL="https://your-api-gateway-url.com"
+
+# AI model (required)
+export WAVE_MODEL="MiniMax-M2.7"
+
+# Fast AI model (required)
+export WAVE_FAST_MODEL="MiniMax-M2.7-highspeed"
 ```
 
 ### Optional Environment Variables
 
 ```bash
-# Specify AI model (optional, defaults to gemini-3-flash)
-export WAVE_MODEL="gemini-3-flash"
-
-# Specify fast AI model (optional, defaults to gemini-2.5-flash)
-export WAVE_FAST_MODEL="gemini-2.5-flash"
-
 # Token limit (optional, defaults to 96000)
 export WAVE_MAX_INPUT_TOKENS="96000"
-
 ```
 
 ## Usage
 
-### Full Command
-
 ```bash
 # Start the CLI
-wave-code
-
-# Continue from last session
-wave-code --continue
-
-# Restore specific session
-wave-code --restore session_id
-
-# List available sessions
-wave-code --list-sessions
+wave-code -h
 ```
 
 ### Short Command (wave)
@@ -70,41 +58,11 @@ wave-code --list-sessions
 For convenience, you can also use the shorter `wave` command:
 
 ```bash
-# Start the CLI (equivalent to wave-code)
-wave
-
-# Continue from last session
-wave --continue
-
-# Restore specific session
-wave --restore session_id
-
-# List available sessions
-wave --list-sessions
-
-# Show help
-wave --help
+# Start the CLI
+wave -h
 ```
 
 The `wave` command is an alias for `wave-code` and supports all the same options and functionality.
-
-## Development
-
-This package depends on `wave-agent-sdk` for core functionality including AI services, tools, and utilities.
-
-```bash
-# Install dependencies
-pnpm install
-
-# Start development
-pnpm dev
-
-# Build
-pnpm build
-
-# Test
-pnpm test
-```
 
 ## License
 

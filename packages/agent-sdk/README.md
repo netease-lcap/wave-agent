@@ -14,19 +14,6 @@ npm install wave-agent-sdk
 
 See [examples](./examples) for usage examples.
 
-## Development
-
-```bash
-# Install dependencies
-pnpm install
-
-# Build
-pnpm build
-
-# Test
-pnpm test
-```
-
 ## License
 
 MIT
