@@ -246,7 +246,13 @@ export function setupAgentContainer(
   });
   container.register("CanUseToolCallback", canUseToolWithPermissionRequest);
 
-  const liveConfigManager = new LiveConfigManager(container, { workdir });
+  const liveConfigManager = new LiveConfigManager(container, {
+    workdir,
+    onReload: () => {
+      const models = configurationService.getConfiguredModels();
+      callbacks.onConfiguredModelsChange?.(models);
+    },
+  });
   container.register("LiveConfigManager", liveConfigManager);
 
   const subagentManager = new SubagentManager(container, {

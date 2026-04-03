@@ -367,6 +367,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onModelChange: (model) => {
           setCurrentModelState(model);
         },
+        onConfiguredModelsChange: (models) => {
+          setConfiguredModels(models);
+        },
       };
 
       try {

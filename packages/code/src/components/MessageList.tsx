@@ -10,7 +10,6 @@ export interface MessageListProps {
   forceStatic?: boolean;
   version?: string;
   workdir?: string;
-  model?: string;
   onDynamicBlocksHeightMeasured?: (height: number) => void;
 }
 
@@ -21,15 +20,11 @@ export const MessageList = React.memo(
     forceStatic = false,
     version,
     workdir,
-    model,
     onDynamicBlocksHeightMeasured,
   }: MessageListProps) => {
     const welcomeMessage = (
       <Box flexDirection="column" paddingTop={1}>
-        <Text color="gray">
-          WAVE{version ? ` v${version}` : ""}
-          {model ? ` • ${model}` : ""}
-        </Text>
+        <Text color="gray">WAVE{version ? ` v${version}` : ""}</Text>
         {workdir && (
           <Text color="gray" wrap="truncate-middle">
             {workdir.replace(os.homedir(), "~")}
