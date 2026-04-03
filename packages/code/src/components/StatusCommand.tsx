@@ -86,6 +86,13 @@ export const StatusCommand: React.FC<StatusCommandProps> = ({ onCancel }) => {
         <Text color="white">{modelConfig.model}</Text>
       </Box>
 
+      <Box>
+        <Box width={20}>
+          <Text color="yellow">Fast model:</Text>
+        </Box>
+        <Text color="white">{modelConfig.fastModel}</Text>
+      </Box>
+
       <Box marginTop={1}>
         <Text dimColor>Esc to cancel</Text>
       </Box>

@@ -14,7 +14,10 @@ describe("StatusCommand", () => {
     sessionId: "test-session-id",
     workingDirectory: "/test/cwd",
     getGatewayConfig: vi.fn().mockReturnValue({ baseURL: "https://test.api" }),
-    getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+    getModelConfig: vi.fn().mockReturnValue({
+      model: "test-model",
+      fastModel: "test-fast-model",
+    }),
     btwState: { isActive: false, question: "", isLoading: false },
   };
 
@@ -38,6 +41,8 @@ describe("StatusCommand", () => {
     expect(output).toContain("https://test.api");
     expect(output).toContain("Model:");
     expect(output).toContain("test-model");
+    expect(output).toContain("Fast model:");
+    expect(output).toContain("test-fast-model");
   });
 
   it("should call onCancel when Escape is pressed", async () => {
