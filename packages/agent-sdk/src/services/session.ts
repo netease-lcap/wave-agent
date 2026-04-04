@@ -25,6 +25,7 @@ import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import { logger } from "../utils/globalLogger.js";
+import { getMessageContent } from "../utils/messageOperations.js";
 
 export interface SessionData {
   id: string;
@@ -842,27 +843,7 @@ export async function getFirstMessageContent(
     try {
       const message = JSON.parse(firstLine) as Message;
 
-      // Find first available content block regardless of role
-      const textBlock = message.blocks.find((block) => block.type === "text");
-      if (textBlock && "content" in textBlock) {
-        return textBlock.content;
-      }
-
-      const commandBlock = message.blocks.find(
-        (block) => block.type === "bang",
-      );
-      if (commandBlock && "command" in commandBlock) {
-        return commandBlock.command;
-      }
-
-      const compressBlock = message.blocks.find(
-        (block) => block.type === "compress",
-      );
-      if (compressBlock && "content" in compressBlock) {
-        return compressBlock.content;
-      }
-
-      return null;
+      return getMessageContent(message) || null;
     } catch (error) {
       logger.warn(
         `Failed to parse first message in session ${sessionId}:`,

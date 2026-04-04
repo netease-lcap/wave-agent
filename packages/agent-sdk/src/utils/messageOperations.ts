@@ -657,3 +657,34 @@ export function formatToolTokenSummary(
   summary += ")";
   return summary;
 }
+
+/**
+ * Extracts displayable text from a Message object, handling various block types.
+ * Returns the first available content block.
+ */
+export function getMessageContent(message: Message): string {
+  // Find first available content block
+  const textBlock = message.blocks.find((block) => block.type === "text");
+  if (textBlock && "content" in textBlock) {
+    return textBlock.content;
+  }
+
+  const slashBlock = message.blocks.find((block) => block.type === "slash");
+  if (slashBlock && "command" in slashBlock) {
+    return `/${slashBlock.command}${slashBlock.args ? ` ${slashBlock.args}` : ""}`;
+  }
+
+  const bangBlock = message.blocks.find((block) => block.type === "bang");
+  if (bangBlock && "command" in bangBlock) {
+    return `!${bangBlock.command}`;
+  }
+
+  const compressBlock = message.blocks.find(
+    (block) => block.type === "compress",
+  );
+  if (compressBlock && "content" in compressBlock) {
+    return compressBlock.content;
+  }
+
+  return "";
+}
