@@ -10,6 +10,7 @@
 
 import * as fs from "fs";
 import { Chalk } from "chalk";
+import { getLastLines } from "wave-agent-sdk";
 import { LOG_FILE, DATA_DIRECTORY } from "./constants.js";
 
 const chalk = new Chalk({ level: 3 });
@@ -269,19 +270,14 @@ const truncateLogFileIfNeeded = (config: LogCleanupConfig): void => {
     // If file size exceeds limit, truncate file
     if (stats.size > config.maxFileSize) {
       const content = fs.readFileSync(logFile, "utf8");
-      const lines = content.split("\n");
-
-      // Keep the last specified number of lines
-      const keepLines = Math.min(config.keepLines, lines.length);
-      const truncatedContent = lines.slice(-keepLines).join("\n");
+      const truncatedContent = getLastLines(content, config.keepLines);
 
       // Write truncated content
       fs.writeFileSync(logFile, truncatedContent);
 
       // Record truncation operation
-      const removedLines = lines.length - keepLines;
       logger.debug(
-        `Log file truncated: removed ${removedLines} lines, kept last ${keepLines} lines`,
+        `Log file truncated: file size ${stats.size} exceeded limit ${config.maxFileSize}, kept last ${config.keepLines} lines`,
       );
     }
   } catch (error) {

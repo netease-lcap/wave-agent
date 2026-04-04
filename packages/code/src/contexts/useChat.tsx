@@ -22,6 +22,7 @@ import {
   AgentCallbacks,
   type ToolPermissionContext,
   OPERATION_CANCELLED_BY_USER,
+  cloneMessage,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
@@ -667,7 +668,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setMessages((currentMessages) => {
             if (currentMessages.length === 0) return currentMessages;
             const lastMessage = currentMessages[currentMessages.length - 1];
-            const frozenLastMessage = JSON.parse(JSON.stringify(lastMessage));
+            const frozenLastMessage = cloneMessage(lastMessage);
             return [...currentMessages.slice(0, -1), frozenLastMessage];
           });
         } else {

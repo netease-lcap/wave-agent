@@ -615,6 +615,32 @@ export const removeLastUserMessage = (messages: Message[]): Message[] => {
 };
 
 /**
+ * Efficiently clone a message for UI freezing.
+ * Clones the message object and its blocks array, but reuses string references.
+ */
+export function cloneMessage(message: Message): Message {
+  return {
+    ...message,
+    blocks: message.blocks.map((block) => {
+      const clonedBlock = { ...block };
+      // Deep clone arrays/objects within blocks if they exist
+      if (clonedBlock.type === "tool" && clonedBlock.images) {
+        clonedBlock.images = clonedBlock.images.map((img) => ({ ...img }));
+      } else if (clonedBlock.type === "image" && clonedBlock.imageUrls) {
+        clonedBlock.imageUrls = [...clonedBlock.imageUrls];
+      } else if (clonedBlock.type === "file_history" && clonedBlock.snapshots) {
+        clonedBlock.snapshots = clonedBlock.snapshots.map((s) => ({ ...s }));
+      }
+      return clonedBlock;
+    }) as Message["blocks"],
+    // Clone additionalFields if it exists
+    ...(message.additionalFields
+      ? { additionalFields: { ...message.additionalFields } }
+      : {}),
+  };
+}
+
+/**
  * Helper to format tool and token summary
  */
 export function formatToolTokenSummary(

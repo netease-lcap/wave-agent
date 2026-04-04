@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ToolBlock } from "wave-agent-sdk";
+import { getLastLines } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
 
 interface ToolDisplayProps {
@@ -45,11 +46,7 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
 
     // If no shortResult but has result, return last 5 lines
     if (block.result) {
-      const lines = block.result.split("\n");
-      if (lines.length > 5) {
-        return lines.slice(-5).join("\n");
-      }
-      return block.result;
+      return getLastLines(block.result, 5);
     }
 
     return null;

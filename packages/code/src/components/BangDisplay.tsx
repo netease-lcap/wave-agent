@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Box, Text } from "ink";
 import type { BangBlock } from "wave-agent-sdk";
+import { getLastLines } from "wave-agent-sdk";
 
 interface BangDisplayProps {
   block: BangBlock;
@@ -12,16 +13,7 @@ export const BangDisplay: React.FC<BangDisplayProps> = ({
   isExpanded = false,
 }) => {
   const { command, output, isRunning, exitCode } = block;
-  const [isOverflowing, setIsOverflowing] = useState(false);
   const MAX_LINES = 3; // Set maximum display lines
-
-  // Detect if content is overflowing
-  useEffect(() => {
-    if (output) {
-      const lines = output.split("\n");
-      setIsOverflowing(!isExpanded && lines.length > MAX_LINES);
-    }
-  }, [output, isExpanded]);
 
   const getStatusColor = () => {
     if (isRunning) return "yellow";
@@ -38,19 +30,9 @@ export const BangDisplay: React.FC<BangDisplayProps> = ({
       </Box>
 
       {output && (
-        <Box
-          paddingLeft={2}
-          height={
-            isExpanded
-              ? undefined
-              : Math.min(output.split("\n").length, MAX_LINES)
-          }
-          overflow="hidden"
-        >
+        <Box paddingLeft={2} overflow="hidden">
           <Text color="gray">
-            {isOverflowing
-              ? output.split("\n").slice(-MAX_LINES).join("\n")
-              : output}
+            {isExpanded ? output : getLastLines(output, MAX_LINES)}
           </Text>
         </Box>
       )}

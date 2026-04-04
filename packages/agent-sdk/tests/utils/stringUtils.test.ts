@@ -1,8 +1,50 @@
 import { describe, it, expect } from "vitest";
 import {
+  getLastLines,
   parseCustomHeaders,
   removeCodeBlockWrappers,
 } from "@/utils/stringUtils.js";
+
+describe("getLastLines", () => {
+  it("should return empty string for empty input", () => {
+    expect(getLastLines("", 5)).toBe("");
+  });
+
+  it("should return empty string for count <= 0", () => {
+    expect(getLastLines("some text", 0)).toBe("");
+    expect(getLastLines("some text", -1)).toBe("");
+  });
+
+  it("should return all lines if input has fewer lines than count", () => {
+    const input = "line 1\nline 2";
+    expect(getLastLines(input, 5)).toBe("line 1\nline 2");
+  });
+
+  it("should return all lines if input has exactly count lines", () => {
+    const input = "line 1\nline 2";
+    expect(getLastLines(input, 2)).toBe("line 1\nline 2");
+  });
+
+  it("should return the last N lines correctly", () => {
+    const input = "line 1\nline 2\nline 3\nline 4\nline 5";
+    expect(getLastLines(input, 3)).toBe("line 3\nline 4\nline 5");
+  });
+
+  it("should handle trailing newline correctly", () => {
+    const input = "line 1\nline 2\n";
+    // If it ends with \n, the last "line" is actually empty,
+    // but typically getLastLines would include the text after the last \n.
+    // "line 1\nline 2\n" -> lines are ["line 1", "line 2", ""]
+    // last 2 lines should be "line 2\n"
+    expect(getLastLines(input, 2)).toBe("line 2\n");
+  });
+
+  it("should handle single line input correctly", () => {
+    const input = "line 1";
+    expect(getLastLines(input, 1)).toBe("line 1");
+    expect(getLastLines(input, 5)).toBe("line 1");
+  });
+});
 
 describe("removeCodeBlockWrappers", () => {
   it("should remove code block wrappers with language", () => {
