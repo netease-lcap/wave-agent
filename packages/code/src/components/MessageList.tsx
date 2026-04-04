@@ -1,6 +1,6 @@
-import React, { useLayoutEffect, useRef } from "react";
+import React from "react";
 import os from "os";
-import { Box, Text, Static, measureElement } from "ink";
+import { Box, Text, Static } from "ink";
 import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageBlockItem } from "./MessageBlockItem.js";
 
@@ -10,7 +10,6 @@ export interface MessageListProps {
   forceStatic?: boolean;
   version?: string;
   workdir?: string;
-  onDynamicBlocksHeightMeasured?: (height: number) => void;
 }
 
 export const MessageList = React.memo(
@@ -20,7 +19,6 @@ export const MessageList = React.memo(
     forceStatic = false,
     version,
     workdir,
-    onDynamicBlocksHeightMeasured,
   }: MessageListProps) => {
     const welcomeMessage = (
       <Box flexDirection="column" paddingTop={1}>
@@ -74,17 +72,6 @@ export const MessageList = React.memo(
     const staticBlocks = blocksWithStatus.filter((b) => !b.isDynamic);
     const dynamicBlocks = blocksWithStatus.filter((b) => b.isDynamic);
 
-    const dynamicBlocksRef = useRef(null);
-
-    useLayoutEffect(() => {
-      if (dynamicBlocksRef.current) {
-        const { height } = measureElement(dynamicBlocksRef.current);
-        onDynamicBlocksHeightMeasured?.(height);
-      } else {
-        onDynamicBlocksHeightMeasured?.(0);
-      }
-    }, [dynamicBlocks, isExpanded, onDynamicBlocksHeightMeasured]);
-
     const staticItems = [
       {
         isWelcome: true,
@@ -130,7 +117,7 @@ export const MessageList = React.memo(
 
         {/* Dynamic blocks */}
         {dynamicBlocks.length > 0 && (
-          <Box ref={dynamicBlocksRef} flexDirection="column">
+          <Box flexDirection="column">
             {dynamicBlocks.map((item) => (
               <MessageBlockItem
                 key={item.key}

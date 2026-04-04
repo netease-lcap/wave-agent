@@ -1,5 +1,5 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Box, Text, useInput, useStdout, measureElement } from "ink";
+import React, { useEffect, useRef, useState } from "react";
+import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
 import {
   BASH_TOOL_NAME,
@@ -25,7 +25,6 @@ export interface ConfirmationSelectorProps {
   onDecision: (decision: PermissionDecision) => void;
   onCancel: () => void;
   onAbort: () => void;
-  onHeightMeasured?: (height: number) => void;
 }
 
 interface ConfirmationState {
@@ -44,18 +43,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   onDecision,
   onCancel,
   onAbort,
-  onHeightMeasured,
 }) => {
-  const { stdout } = useStdout();
-  const boxRef = useRef(null);
-
-  useLayoutEffect(() => {
-    if (boxRef.current) {
-      const { height } = measureElement(boxRef.current);
-      onHeightMeasured?.(height);
-    }
-  }, [stdout?.rows, onHeightMeasured, toolName, toolInput, isExpanded]);
-
   const [state, setState] = useState<ConfirmationState>({
     selectedOption: toolName === EXIT_PLAN_MODE_TOOL_NAME ? "clear" : "allow",
     alternativeText: "",
@@ -497,7 +485,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     state.selectedOption === "alternative" && !state.hasUserInput;
 
   return (
-    <Box ref={boxRef} flexDirection="column">
+    <Box flexDirection="column">
       {toolName === ASK_USER_QUESTION_TOOL_NAME &&
         currentQuestion &&
         !isExpanded && (

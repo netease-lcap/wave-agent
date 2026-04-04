@@ -1,5 +1,5 @@
-import React, { useLayoutEffect, useRef } from "react";
-import { Box, Text, useStdout, measureElement, Static } from "ink";
+import React from "react";
+import { Box, Text, Static } from "ink";
 import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -41,7 +41,6 @@ export interface ConfirmationDetailsProps {
   toolInput?: Record<string, unknown>;
   planContent?: string;
   isExpanded?: boolean;
-  onHeightMeasured?: (height: number) => void;
   isStatic?: boolean;
 }
 
@@ -50,26 +49,14 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   toolInput,
   planContent,
   isExpanded = false,
-  onHeightMeasured,
   isStatic = false,
 }) => {
-  const { stdout } = useStdout();
-  const boxRef = useRef(null);
-
   const startLineNumber =
     (toolInput?.startLineNumber as number | undefined) ??
     (toolName === WRITE_TOOL_NAME ? 1 : undefined);
 
-  useLayoutEffect(() => {
-    if (boxRef.current) {
-      const { height } = measureElement(boxRef.current);
-      onHeightMeasured?.(height);
-    }
-  }, [stdout?.rows, onHeightMeasured, toolInput, isExpanded]);
-
   const content = (
     <Box
-      ref={boxRef}
       flexDirection="column"
       borderStyle="single"
       borderColor="yellow"
