@@ -266,6 +266,8 @@ async function demonstrateNonBlockingErrors(): Promise<void> {
     console.log(
       "- Different exit codes can represent different warning levels",
     );
+
+    await agent.destroy();
   } catch (error) {
     console.error("❌ Non-blocking error demo failed:", error);
     process.exit(1);
@@ -275,4 +277,11 @@ async function demonstrateNonBlockingErrors(): Promise<void> {
 }
 
 // Run the demonstration
-demonstrateNonBlockingErrors().catch(console.error);
+demonstrateNonBlockingErrors()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

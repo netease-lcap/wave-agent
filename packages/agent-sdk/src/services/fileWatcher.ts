@@ -167,11 +167,14 @@ export class FileWatcherService extends EventEmitter {
    */
   async cleanup(): Promise<void> {
     const paths = Array.from(this.watchers.keys());
-    await Promise.all(paths.map((path) => this.unwatchFile(path)));
+    for (const path of paths) {
+      await this.unwatchFile(path);
+    }
 
     if (this.globalWatcher) {
-      await this.globalWatcher.close();
+      const watcher = this.globalWatcher;
       this.globalWatcher = null;
+      await watcher.close();
     }
   }
 
@@ -189,6 +192,14 @@ export class FileWatcherService extends EventEmitter {
           usePolling: entry.config.fallbackPolling,
           interval: entry.config.pollInterval,
         });
+
+        // Unref the global watcher to allow natural exit if it's the only thing left
+        // (chokidar watchers keep the process alive by default)
+        // Note: some platforms might need additional handling
+        const watcher = this.globalWatcher as unknown as { unref?: () => void };
+        if (watcher.unref) {
+          watcher.unref();
+        }
 
         this.setupGlobalWatcherEvents();
       }

@@ -91,4 +91,11 @@ async function demonstrateBackgrounding(): Promise<void> {
 }
 
 // Run the demonstration
-demonstrateBackgrounding().catch(console.error);
+demonstrateBackgrounding()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

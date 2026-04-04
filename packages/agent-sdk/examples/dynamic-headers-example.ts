@@ -77,7 +77,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("💥 Unhandled error:", error);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

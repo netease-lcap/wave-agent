@@ -94,4 +94,11 @@ This skill was invoked with arguments and executed bash commands.
   }
 }
 
-main().catch(console.error);
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

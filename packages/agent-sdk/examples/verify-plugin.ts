@@ -87,7 +87,11 @@ async function verify() {
   console.log("Verification successful!");
 }
 
-verify().catch((err) => {
-  console.error("Verification failed:", err);
-  process.exit(1);
-});
+verify()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("Verification failed:", err);
+    process.exit(1);
+  });

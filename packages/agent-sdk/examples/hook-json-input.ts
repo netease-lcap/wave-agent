@@ -161,6 +161,8 @@ async function demonstrateHookJsonInput(): Promise<void> {
     console.log("- Session context (session_id, transcript_path, cwd)");
     console.log("- Event-specific data (tool details, prompts)");
     console.log("- Hook execution verified by output files");
+
+    await agent.destroy();
   } catch (error) {
     console.error("❌ Hook integration test failed:", error);
     process.exit(1);
@@ -170,4 +172,11 @@ async function demonstrateHookJsonInput(): Promise<void> {
 }
 
 // Run the demonstration
-demonstrateHookJsonInput().catch(console.error);
+demonstrateHookJsonInput()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

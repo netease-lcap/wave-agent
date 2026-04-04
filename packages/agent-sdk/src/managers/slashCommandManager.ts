@@ -433,6 +433,8 @@ export class SlashCommandManager {
       return false;
     } finally {
       this.currentCommandAbortController = null;
+      // FR-013: Ensure slash commands are persisted to the session file
+      await this.messageManager.saveSession();
     }
   }
 

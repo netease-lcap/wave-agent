@@ -29,7 +29,7 @@ setInterval(() => {
       cache.delete(url);
     }
   }
-}, CACHE_TTL);
+}, CACHE_TTL).unref();
 
 export const webFetchTool: ToolPlugin = {
   name: WEB_FETCH_TOOL_NAME,
@@ -158,7 +158,8 @@ Usage notes:
         return {
           success: false,
           content: markdown,
-          error: "AI Manager or AI Service not available for processing content",
+          error:
+            "AI Manager or AI Service not available for processing content",
         };
       }
 

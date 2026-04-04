@@ -27,6 +27,7 @@ async function validateAgentConfiguration() {
     // Verify agent was created successfully
     if (agent) {
       console.log("   ✅ Basic configuration works");
+      await agent.destroy();
     }
   } catch (error) {
     console.log(
@@ -52,6 +53,7 @@ async function validateAgentConfiguration() {
     // Verify agent was created successfully with env variables
     if (agent) {
       console.log("   ✅ Environment variable fallback works");
+      await agent.destroy();
     }
   } catch (error) {
     console.log(
@@ -84,6 +86,7 @@ async function validateAgentConfiguration() {
     // Verify mixed configuration works
     if (agent) {
       console.log("   ✅ Mixed configuration works");
+      await agent.destroy();
     }
   } catch (error) {
     console.log(
@@ -106,6 +109,7 @@ async function validateAgentConfiguration() {
     // Verify test configuration works
     if (testAgent) {
       console.log("   ✅ Test configuration works");
+      await testAgent.destroy();
     }
   } catch (error) {
     console.log(
@@ -151,6 +155,7 @@ async function validateAgentConfiguration() {
     });
     if (agent) {
       console.log("   ✅ Empty API key is now allowed");
+      await agent.destroy();
     }
   } catch (error) {
     console.log(
@@ -193,6 +198,7 @@ async function validateAgentConfiguration() {
     // Verify backward compatibility works
     if (legacyAgent) {
       console.log("   ✅ Backward compatibility works");
+      await legacyAgent.destroy();
     }
   } catch (error) {
     console.log(
@@ -218,6 +224,7 @@ async function validateAgentConfiguration() {
     // Verify configuration precedence works
     if (agent) {
       console.log("   ✅ Configuration precedence works");
+      await agent.destroy();
     }
   } catch (error) {
     console.log(
@@ -246,6 +253,7 @@ async function validateAgentConfiguration() {
     // Verify advanced configuration works
     if (agent) {
       console.log("   ✅ Advanced configuration works");
+      await agent.destroy();
     }
   } catch (error) {
     console.log(
@@ -266,4 +274,11 @@ async function validateAgentConfiguration() {
 }
 
 // Run the validation
-validateAgentConfiguration().catch(console.error);
+validateAgentConfiguration()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

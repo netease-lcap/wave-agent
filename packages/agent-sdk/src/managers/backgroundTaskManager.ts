@@ -86,7 +86,7 @@ export class BackgroundTaskManager {
           logStream.end();
           if (child.pid) {
             process.kill(-child.pid, "SIGTERM");
-            setTimeout(() => {
+            const forceKillTimer = setTimeout(() => {
               if (child.pid && !child.killed) {
                 try {
                   process.kill(-child.pid, "SIGKILL");
@@ -95,6 +95,7 @@ export class BackgroundTaskManager {
                 }
               }
             }, 1000);
+            forceKillTimer.unref();
           } else {
             child.kill("SIGTERM");
           }
@@ -223,7 +224,7 @@ export class BackgroundTaskManager {
           logStream.end();
           if (child.pid) {
             process.kill(-child.pid, "SIGTERM");
-            setTimeout(() => {
+            const forceKillTimer = setTimeout(() => {
               if (child.pid && !child.killed) {
                 try {
                   process.kill(-child.pid, "SIGKILL");
@@ -232,6 +233,7 @@ export class BackgroundTaskManager {
                 }
               }
             }, 1000);
+            forceKillTimer.unref();
           } else {
             child.kill("SIGTERM");
           }

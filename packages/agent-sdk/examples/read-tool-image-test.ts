@@ -283,4 +283,11 @@ process.on("SIGINT", async () => {
   process.exit(0);
 });
 
-main().catch(console.error);
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });
