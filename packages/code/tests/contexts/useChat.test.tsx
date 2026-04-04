@@ -70,7 +70,7 @@ describe("ChatProvider", () => {
     getMcpServers: vi.fn(() => []),
     getSlashCommands: vi.fn(() => []),
     sendMessage: vi.fn(),
-    executeBashCommand: vi.fn(),
+    bang: vi.fn(),
     abortMessage: vi.fn(),
     connectMcpServer: vi.fn(),
     disconnectMcpServer: vi.fn(),
@@ -262,7 +262,7 @@ describe("ChatProvider", () => {
 
     await lastValue?.sendMessage("!ls -la");
 
-    expect(mockAgent.executeBashCommand).toHaveBeenCalledWith("ls -la");
+    expect(mockAgent.bang).toHaveBeenCalledWith("ls -la");
     expect(mockAgent.sendMessage).not.toHaveBeenCalled();
   });
 
@@ -285,7 +285,7 @@ describe("ChatProvider", () => {
       "#Remember this",
       undefined,
     );
-    expect(mockAgent.executeBashCommand).not.toHaveBeenCalled();
+    expect(mockAgent.bang).not.toHaveBeenCalled();
   });
 
   it("handles MCP management", async () => {
@@ -501,11 +501,11 @@ describe("ChatProvider", () => {
     consoleSpy.mockRestore();
   });
 
-  it("handles executeBashCommand error", async () => {
+  it("handles bang error", async () => {
     const consoleSpy = vi
       .spyOn(console, "error")
       .mockImplementation(function () {});
-    mockAgent.executeBashCommand.mockRejectedValue(new Error("Bash failed"));
+    mockAgent.bang.mockRejectedValue(new Error("Bash failed"));
 
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
@@ -598,7 +598,7 @@ describe("ChatProvider", () => {
     });
 
     await lastValue?.sendMessage("! ");
-    expect(mockAgent.executeBashCommand).not.toHaveBeenCalled();
+    expect(mockAgent.bang).not.toHaveBeenCalled();
   });
 
   it("handles canUseTool callback from agent", async () => {
