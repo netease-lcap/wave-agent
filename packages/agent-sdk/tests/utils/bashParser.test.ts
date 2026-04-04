@@ -7,6 +7,7 @@ import {
   hasHeredoc,
   isBashHeredocWrite,
   getSmartPrefix,
+  isDangerousFind,
 } from "../../src/utils/bashParser.js";
 
 describe("bashParser", () => {
@@ -219,6 +220,41 @@ describe("bashParser", () => {
 
     it("should NOT detect write redirection without heredoc", () => {
       expect(isBashHeredocWrite("echo hi > file")).toBe(false);
+    });
+  });
+
+  describe("isDangerousFind", () => {
+    it("should return false for non-find commands", () => {
+      expect(isDangerousFind("ls")).toBe(false);
+      expect(isDangerousFind("echo find")).toBe(false);
+    });
+
+    it("should return false for safe find commands", () => {
+      expect(isDangerousFind("find .")).toBe(false);
+      expect(isDangerousFind("find . -name '*.ts'")).toBe(false);
+      expect(isDangerousFind("find src -type f")).toBe(false);
+    });
+
+    it("should return true for dangerous find flags", () => {
+      expect(isDangerousFind("find . -delete")).toBe(true);
+      expect(isDangerousFind("find . -exec rm {} \\;")).toBe(true);
+      expect(isDangerousFind("find . -execdir ls {} \\;")).toBe(true);
+      expect(isDangerousFind("find . -ok rm {} \\;")).toBe(true);
+      expect(isDangerousFind("find . -okdir ls {} \\;")).toBe(true);
+      expect(isDangerousFind("find . -fprint output.txt")).toBe(true);
+      expect(isDangerousFind("find . -fprint0 output.txt")).toBe(true);
+      expect(isDangerousFind("find . -fprintf output.txt '%p\\n'")).toBe(true);
+    });
+
+    it("should handle environment variables and redirections", () => {
+      expect(isDangerousFind("VAR=val find . -delete > out.txt")).toBe(true);
+      // Even if it's an argument to -name, we currently block it for safety
+      expect(isDangerousFind("find . -name '-exec'")).toBe(true);
+    });
+
+    it("should handle quoted flags correctly", () => {
+      expect(isDangerousFind('find . "-delete"')).toBe(true);
+      expect(isDangerousFind("find . '-exec'")).toBe(true);
     });
   });
 

@@ -611,6 +611,30 @@ function shouldStopAtArg(arg: string): boolean {
 }
 
 /**
+ * Checks if a find command is dangerous (e.g., contains -exec, -delete, etc.).
+ */
+export function isDangerousFind(command: string): boolean {
+  const stripped = stripRedirections(stripEnvVars(command));
+  const tokens = stripped.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+  if (tokens.length === 0 || tokens[0] !== "find") return false;
+
+  const dangerousFlags = [
+    "-exec",
+    "-execdir",
+    "-ok",
+    "-okdir",
+    "-delete",
+    "-fprint",
+    "-fprint0",
+    "-fprintf",
+  ];
+  return tokens.some((token) => {
+    const unquoted = token.replace(/^(['"])(.*)\1$/, "$2");
+    return dangerousFlags.includes(unquoted);
+  });
+}
+
+/**
  * Extracts a "smart prefix" from a bash command based on common developer tools.
  * Returns null if the command is blacklisted or cannot be safely prefix-matched.
  */

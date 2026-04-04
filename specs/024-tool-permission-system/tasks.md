@@ -91,3 +91,9 @@
 - [x] T073 Restrict `bypassPermissions` in the `Shift+Tab` cycle to only when explicitly enabled at start.
 - [x] T074 Update `InputManager` and `ChatProvider` to track and enforce this restriction.
 - [x] T075 Add unit tests for restricted mode cycling.
+
+## Phase 17: Safe find Command
+- [x] T077 Implement `isDangerousFind` for `find` command validation.
+- [x] T078 Add `find` to `SAFE_COMMANDS` list in `PermissionManager`.
+- [x] T079 Add `Bash(find*)` to `DEFAULT_ALLOWED_RULES` with safety checks.
+- [x] T080 Verify `find` command safety through unit tests.

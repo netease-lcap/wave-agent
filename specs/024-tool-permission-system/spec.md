@@ -65,13 +65,15 @@ As a user, I want to prevent the agent from accessing specific files (e.g., `.en
 **Acceptance Scenarios**:
 1. **Given** `permissions.deny` contains `["Read(**/.env)"]`, **When** the agent attempts to read a file named `.env` in any directory, **Then** the system MUST deny the request.
 
-### User Story 8 - Built-in Safe Commands with Path Restrictions (Priority: P3)
+### User Story 8 - Built-in Safe Commands (Priority: P3)
 
-As a user, I want common safe commands (like `cd`) to be automatically permitted by default, but only when they operate within the current working directory.
+As a user, I want common safe commands (like `cd` and `find`) to be automatically permitted by default. `cd` should be restricted to the current working directory, while `find` should be allowed for read-only purposes but blocked if it uses dangerous flags like `-delete` or `-exec`.
 
 **Acceptance Scenarios**:
 1. **Given** the CWD is `/home/user/project`, **When** the user executes `cd src`, **Then** the system SHOULD automatically permit it.
 2. **Given** the CWD is `/home/user/project`, **When** the user executes `cd /etc`, **Then** the system MUST NOT automatically permit it.
+3. **Given** any directory, **When** the user executes `find . -name "*.ts"`, **Then** the system SHOULD automatically permit it.
+4. **Given** any directory, **When** the user executes `find . -delete`, **Then** the system MUST NOT automatically permit it and MUST prompt for permission.
 
 ### User Story 9 - MCP Tool Permissions (Priority: P1)
 
@@ -237,8 +239,9 @@ As a user, I want the agent to use the dedicated `Write` and `Edit` tools for fi
 - **FR-017**: If a request matches any rule in `permissions.deny`, it MUST be denied immediately.
 
 #### Built-in Safe Commands
-- **FR-018**: System MUST maintain a built-in list of safe commands (`cd`, `ls`, `pwd`, `mkdir`) that are permitted if they operate within the CWD or its subdirectories.
+- **FR-018**: System MUST maintain a built-in list of safe commands (`cd`, `ls`, `pwd`, `mkdir`, `find`) that are permitted if they meet safety criteria.
 - **FR-019**: Built-in safe commands attempting to access paths outside the CWD (e.g., `cd ..`, `ls /etc`) MUST require explicit permission.
+- **FR-019.1**: `find` MUST be considered safe only if it does not contain dangerous flags like `-exec`, `-execdir`, `-ok`, `-okdir`, `-delete`, `-fprint`, `-fprint0`, or `-fprintf`.
 
 #### Programmatic and Session-specific Permissions
 - **FR-030**: The `AgentOptions` interface in the SDK MUST include optional `allowedTools` and `disallowedTools` properties of type `string[]`.
