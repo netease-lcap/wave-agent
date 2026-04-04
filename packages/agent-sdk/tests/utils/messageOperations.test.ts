@@ -14,6 +14,7 @@ import {
   addSlashMessageToMessages,
   updateSlashBlockInMessage,
   cloneMessage,
+  getMessageContent,
 } from "@/utils/messageOperations.js";
 import type {
   Message,
@@ -1138,5 +1139,84 @@ describe("cloneMessage", () => {
     expect(clonedBlock.snapshots).not.toBe(originalBlock.snapshots);
     expect(clonedBlock.snapshots[0]).not.toBe(originalBlock.snapshots[0]);
     expect(clonedBlock.snapshots[0]).toEqual(originalBlock.snapshots[0]);
+  });
+});
+
+describe("getMessageContent", () => {
+  it("should extract text content", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "user",
+      blocks: [{ type: "text", content: "hello world" }],
+    };
+    expect(getMessageContent(message)).toBe("hello world");
+  });
+
+  it("should extract slash command", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "user",
+      blocks: [
+        {
+          type: "slash",
+          command: "settings",
+          args: "set theme dark",
+          stage: "success",
+        },
+      ],
+    };
+    expect(getMessageContent(message)).toBe("/settings set theme dark");
+  });
+
+  it("should extract slash command without args", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "user",
+      blocks: [{ type: "slash", command: "help", stage: "success" }],
+    };
+    expect(getMessageContent(message)).toBe("/help");
+  });
+
+  it("should extract bang command", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "user",
+      blocks: [
+        {
+          type: "bang",
+          command: "ls -la",
+          output: "",
+          isRunning: true,
+          exitCode: null,
+        },
+      ],
+    };
+    expect(getMessageContent(message)).toBe("!ls -la");
+  });
+
+  it("should extract compress block content", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "assistant",
+      blocks: [
+        {
+          type: "compress",
+          content: "summarized context",
+          sessionId: "test-session",
+        },
+      ],
+    };
+    expect(getMessageContent(message)).toBe("summarized context");
+  });
+
+  it("should return empty string if no content block found", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "assistant",
+      blocks: [
+        { type: "tool", name: "test", parameters: "{}", stage: "start" },
+      ],
+    };
+    expect(getMessageContent(message)).toBe("");
   });
 });

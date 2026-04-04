@@ -105,19 +105,44 @@ describe("session service - additional coverage", () => {
       );
 
       const content = await getFirstMessageContent(sessionId, workdir);
-      expect(content).toBe("ls");
+      expect(content).toBe("!ls");
     });
 
     it("should return content from compress block", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
       vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
         JSON.stringify({
-          blocks: [{ type: "compress", content: "compressed" }],
+          blocks: [
+            {
+              type: "compress",
+              content: "compressed",
+              sessionId: "test-session",
+            },
+          ],
         }),
       );
 
       const content = await getFirstMessageContent(sessionId, workdir);
       expect(content).toBe("compressed");
+    });
+
+    it("should return slash command", async () => {
+      const fileUtils = await import("../../src/utils/fileUtils.js");
+      vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
+        JSON.stringify({
+          blocks: [
+            {
+              type: "slash",
+              command: "settings",
+              args: "dark",
+              stage: "success",
+            },
+          ],
+        }),
+      );
+
+      const content = await getFirstMessageContent(sessionId, workdir);
+      expect(content).toBe("/settings dark");
     });
 
     it("should return null if no recognized blocks", async () => {
