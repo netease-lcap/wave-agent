@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useLayoutEffect } from "react";
-import { Box, useStdout } from "ink";
+import React, { useState, useCallback, useLayoutEffect, useRef } from "react";
+import { Box, useStdout, measureElement } from "ink";
 import { MessageList } from "./MessageList.js";
 import { BtwDisplay } from "./BtwDisplay.js";
 import { InputBox } from "./InputBox.js";
@@ -14,9 +14,6 @@ import type { PermissionDecision } from "wave-agent-sdk";
 
 export const ChatInterface: React.FC = () => {
   const { stdout } = useStdout();
-  const [detailsHeight, setDetailsHeight] = useState(0);
-  const [selectorHeight, setSelectorHeight] = useState(0);
-  const [dynamicBlocksHeight, setDynamicBlocksHeight] = useState(0);
   const [isConfirmationTooTall, setIsConfirmationTooTall] = useState(false);
 
   const {
@@ -44,26 +41,11 @@ export const ChatInterface: React.FC = () => {
     btwState,
   } = useChat();
 
-  const displayMessages = messages;
-
-  const handleDetailsHeightMeasured = useCallback((height: number) => {
-    setDetailsHeight(height);
-  }, []);
-
-  const handleSelectorHeightMeasured = useCallback((height: number) => {
-    setSelectorHeight(height);
-  }, []);
-
-  const handleDynamicBlocksHeightMeasured = useCallback((height: number) => {
-    setDynamicBlocksHeight(height);
-  }, []);
+  const interfaceRef = useRef(null);
 
   useLayoutEffect(() => {
     if (!isConfirmationVisible) {
       setIsConfirmationTooTall(false);
-      setDetailsHeight(0);
-      setSelectorHeight(0);
-      setDynamicBlocksHeight(0);
       return;
     }
 
@@ -71,19 +53,25 @@ export const ChatInterface: React.FC = () => {
       return;
     }
 
-    const terminalHeight = stdout?.rows || 24;
-    const totalHeight = detailsHeight + selectorHeight + dynamicBlocksHeight;
-    if (totalHeight > terminalHeight - 3) {
-      setIsConfirmationTooTall(true);
+    if (interfaceRef.current) {
+      const { height } = measureElement(interfaceRef.current);
+      const terminalHeight = stdout?.rows || 24;
+      if (height > terminalHeight - 3) {
+        setIsConfirmationTooTall(true);
+      }
     }
   }, [
-    detailsHeight,
-    selectorHeight,
-    dynamicBlocksHeight,
-    stdout?.rows,
+    messages,
+    isLoading,
+    isCommandRunning,
+    isCompressing,
+    isExpanded,
     isConfirmationVisible,
     isConfirmationTooTall,
+    stdout?.rows,
   ]);
+
+  const displayMessages = messages;
 
   const handleConfirmationCancel = useCallback(() => {
     if (isConfirmationTooTall) {
@@ -115,14 +103,13 @@ export const ChatInterface: React.FC = () => {
   if (!sessionId) return null;
 
   return (
-    <Box flexDirection="column">
+    <Box ref={interfaceRef} flexDirection="column">
       <MessageList
         messages={displayMessages}
         isExpanded={isExpanded}
         forceStatic={isConfirmationVisible && isConfirmationTooTall}
         version={version}
         workdir={workdir}
-        onDynamicBlocksHeightMeasured={handleDynamicBlocksHeightMeasured}
       />
 
       {!isConfirmationVisible && !isExpanded && (
@@ -159,7 +146,6 @@ export const ChatInterface: React.FC = () => {
             toolInput={confirmingTool!.input}
             planContent={confirmingTool!.planContent}
             isExpanded={isExpanded}
-            onHeightMeasured={handleDetailsHeightMeasured}
             isStatic={isConfirmationTooTall}
           />
           <ConfirmationSelector
@@ -171,7 +157,6 @@ export const ChatInterface: React.FC = () => {
             onDecision={wrappedHandleConfirmationDecision}
             onCancel={handleConfirmationCancel}
             onAbort={abortMessage}
-            onHeightMeasured={handleSelectorHeightMeasured}
           />
         </>
       )}
