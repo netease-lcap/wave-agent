@@ -183,6 +183,7 @@ describe("BackgroundTaskManager", () => {
     vi.advanceTimersByTime(150);
 
     expect(task.status).toBe("killed");
+    expect(task.stderr).toContain("Command timed out");
     vi.useRealTimers();
   });
 

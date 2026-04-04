@@ -383,11 +383,14 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
             }
           }
 
+          const processedOutput = processOutput(
+            outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
+          );
           resolve({
             success: false,
-            content: processOutput(
-              outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
-            ),
+            content: processedOutput
+              ? `${processedOutput}\n\n${reason}`
+              : reason,
             error: reason,
           });
         }
