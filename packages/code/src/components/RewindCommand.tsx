@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import type { Message, TextBlock } from "wave-agent-sdk";
+import type { Message, TextBlock, SlashBlock } from "wave-agent-sdk";
 
 export interface RewindCommandProps {
   messages: Message[];
@@ -132,8 +132,17 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
           const actualIndex = startIndex + index;
           const isSelected = actualIndex === selectedIndex;
           const content = checkpoint.msg.blocks
-            .filter((b): b is TextBlock => b.type === "text")
-            .map((b) => b.content)
+            .map((b) => {
+              if (b.type === "text") {
+                return (b as TextBlock).content;
+              }
+              if (b.type === "slash") {
+                const sb = b as SlashBlock;
+                return `/${sb.command}${sb.args ? " " + sb.args : ""}`;
+              }
+              return "";
+            })
+            .filter(Boolean)
             .join(" ")
             .replace(/\n/g, "\\n")
             .substring(0, 60);

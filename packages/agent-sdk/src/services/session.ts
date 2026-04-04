@@ -848,6 +848,12 @@ export async function getFirstMessageContent(
         return textBlock.content;
       }
 
+      const slashBlock = message.blocks.find((block) => block.type === "slash");
+      if (slashBlock && "command" in slashBlock) {
+        const sb = slashBlock as import("../types/messaging.js").SlashBlock;
+        return `/${sb.command}${sb.args ? " " + sb.args : ""}`;
+      }
+
       const commandBlock = message.blocks.find(
         (block) => block.type === "bang",
       );
