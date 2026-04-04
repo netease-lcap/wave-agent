@@ -91,3 +91,23 @@ export const stripAnsiColors = (text: string): string => {
 export function formatLineNumberPrefix(lineNumber: number): string {
   return `${lineNumber.toString().padStart(6)}\t`;
 }
+
+/**
+ * Efficiently get the last N lines of a string without splitting the whole string.
+ */
+export function getLastLines(text: string, count: number): string {
+  if (!text || count <= 0) return "";
+  let pos = text.length;
+  let found = 0;
+  while (pos > 0 && found < count) {
+    const nextNewline = text.lastIndexOf("\n", pos - 1);
+    if (nextNewline === -1) {
+      pos = 0;
+      found = count; // stop searching
+    } else {
+      pos = nextNewline;
+      found++;
+    }
+  }
+  return text.substring(pos === 0 ? 0 : pos + 1);
+}

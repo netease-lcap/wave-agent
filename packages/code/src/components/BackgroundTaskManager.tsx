@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { useChat } from "../contexts/useChat.js";
+import { getLastLines } from "wave-agent-sdk";
 
 interface Task {
   id: string;
@@ -207,9 +208,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
               OUTPUT (last 10 lines):
             </Text>
             <Box borderStyle="single" borderColor="green" padding={1}>
-              <Text>
-                {detailOutput.stdout.split("\n").slice(-10).join("\n")}
-              </Text>
+              <Text>{getLastLines(detailOutput.stdout, 10)}</Text>
             </Box>
           </Box>
         )}
@@ -220,9 +219,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
               ERRORS:
             </Text>
             <Box borderStyle="single" borderColor="red" padding={1}>
-              <Text color="red">
-                {detailOutput.stderr.split("\n").slice(-10).join("\n")}
-              </Text>
+              <Text color="red">{getLastLines(detailOutput.stderr, 10)}</Text>
             </Box>
           </Box>
         )}
