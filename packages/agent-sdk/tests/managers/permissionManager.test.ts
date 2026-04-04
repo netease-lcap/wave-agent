@@ -125,6 +125,123 @@ describe("PermissionManager", () => {
       });
     });
 
+    describe("find command", () => {
+      it("should allow safe find commands by default", async () => {
+        const contexts = [
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find ." },
+          },
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find . -name '*.ts'" },
+          },
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find src -type f" },
+          },
+        ];
+
+        for (const context of contexts) {
+          const result = await permissionManager.checkPermission(
+            context as ToolPermissionContext,
+          );
+          expect(result.behavior).toBe("allow");
+        }
+      });
+
+      it("should deny dangerous find flags by default", async () => {
+        const contexts = [
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find . -delete" },
+          },
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find . -exec rm {} \\;" },
+          },
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find . -execdir ls {} \\;" },
+          },
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find . -ok rm {} \\;" },
+          },
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find . -okdir ls {} \\;" },
+          },
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find . -fprint output.txt" },
+          },
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find . -fprint0 output.txt" },
+          },
+          {
+            toolName: "Bash",
+            permissionMode: "default",
+            toolInput: { command: "find . -fprintf output.txt '%p\\n'" },
+          },
+        ];
+
+        for (const context of contexts) {
+          const result = await permissionManager.checkPermission(
+            context as ToolPermissionContext,
+          );
+          expect(result.behavior).toBe("deny");
+          expect(result.message).toContain("requires permission approval");
+        }
+      });
+
+      it("should allow dangerous find flags if explicitly allowed by rule", async () => {
+        permissionManager.updateAllowedRules(["Bash(find . -delete)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "find . -delete" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should not expand dangerous find commands into persistent rules", async () => {
+        const workdir = "/home/user/project";
+        const rules = permissionManager.expandBashRule(
+          "find . -delete",
+          workdir,
+        );
+        expect(rules).toEqual([]);
+      });
+
+      it("should expand safe find commands into smart prefix rules", async () => {
+        const workdir = "/home/user/project";
+        // find doesn't have a smart prefix rule in TOOL_RULES yet, so it will return null from getSmartPrefix
+        // and expand to the full command (processed).
+        const rules = permissionManager.expandBashRule(
+          "find . -name test",
+          workdir,
+        );
+        // find is a safe command, so expandBashRule should return an empty array if it's considered "safe"
+        // because safe commands don't need explicit rules.
+        expect(rules).toEqual([]);
+      });
+    });
+
     describe("Safe Zone and Auto-Memory", () => {
       it("should allow file operations in auto-memory directory (Safe Zone)", async () => {
         const workdir = "/home/user/project";

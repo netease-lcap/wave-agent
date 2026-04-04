@@ -23,6 +23,7 @@ import {
   hasWriteRedirections,
   isBashHeredocWrite,
   getSmartPrefix,
+  isDangerousFind,
   DANGEROUS_COMMANDS,
 } from "../utils/bashParser.js";
 import { isPathInside } from "../utils/pathSafety.js";
@@ -48,6 +49,7 @@ const SAFE_COMMANDS = [
   "tail",
   "wc",
   "sleep",
+  "find",
 ];
 
 const DEFAULT_ALLOWED_RULES = [
@@ -77,6 +79,7 @@ const DEFAULT_ALLOWED_RULES = [
   "Bash(git count-objects*)",
   "Bash(echo*)",
   "Bash(ls*)",
+  "Bash(find*)",
   "Bash(which*)",
   "Bash(type*)",
   "Bash(hostname*)",
@@ -851,7 +854,8 @@ export class PermissionManager {
                   cmd === "head" ||
                   cmd === "tail" ||
                   cmd === "wc" ||
-                  cmd === "sleep"
+                  cmd === "sleep" ||
+                  (cmd === "find" && !isDangerousFind(part))
                 ) {
                   return true;
                 }
@@ -887,7 +891,7 @@ export class PermissionManager {
           }
 
           // Check if this specific part is allowed by any rule
-          if (hasWrite && isDefaultRules) {
+          if (isDefaultRules && (hasWrite || isDangerousFind(part))) {
             return false;
           }
 
@@ -965,7 +969,8 @@ export class PermissionManager {
             cmd === "head" ||
             cmd === "tail" ||
             cmd === "wc" ||
-            cmd === "sleep"
+            cmd === "sleep" ||
+            (cmd === "find" && !isDangerousFind(part))
           ) {
             isSafe = true;
           } else {
@@ -998,7 +1003,7 @@ export class PermissionManager {
           const cmd = commandMatch[1];
           const args = commandMatch[2]?.trim() || "";
 
-          if (DANGEROUS_COMMANDS.includes(cmd)) {
+          if (DANGEROUS_COMMANDS.includes(cmd) || isDangerousFind(part)) {
             continue;
           }
 
