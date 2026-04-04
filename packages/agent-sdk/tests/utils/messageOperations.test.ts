@@ -13,8 +13,14 @@ import {
   updateToolBlockInMessage,
   addSlashMessageToMessages,
   updateSlashBlockInMessage,
+  cloneMessage,
 } from "@/utils/messageOperations.js";
-import type { Message } from "@/types/index.js";
+import type {
+  Message,
+  ToolBlock,
+  ImageBlock,
+  FileHistoryBlock,
+} from "@/types/index.js";
 
 // Mock fs
 vi.mock("fs", () => ({
@@ -1046,5 +1052,91 @@ describe("Slash Message Operations", () => {
         error: "failed",
       });
     });
+  });
+});
+
+describe("cloneMessage", () => {
+  it("should clone a basic message", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "assistant",
+      blocks: [{ type: "text", content: "Hello" }],
+    };
+    const cloned = cloneMessage(message);
+    expect(cloned).toEqual(message);
+    expect(cloned).not.toBe(message);
+    expect(cloned.blocks).not.toBe(message.blocks);
+  });
+
+  it("should deep clone tool block images", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool",
+          id: "tool-1",
+          stage: "end",
+          images: [{ data: "img1", mediaType: "image/png" }],
+        },
+      ],
+    };
+    const cloned = cloneMessage(message);
+    const originalToolBlock = message.blocks[0] as ToolBlock;
+    const clonedToolBlock = cloned.blocks[0] as ToolBlock;
+    expect(clonedToolBlock.images).not.toBe(originalToolBlock.images);
+    expect(clonedToolBlock.images![0]).not.toBe(originalToolBlock.images![0]);
+    expect(clonedToolBlock.images![0]).toEqual(originalToolBlock.images![0]);
+  });
+
+  it("should clone additionalFields", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "assistant",
+      blocks: [],
+      additionalFields: { foo: "bar" },
+    };
+    const cloned = cloneMessage(message);
+    expect(cloned.additionalFields).not.toBe(message.additionalFields);
+    expect(cloned.additionalFields).toEqual(message.additionalFields);
+  });
+
+  it("should handle image blocks", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "user",
+      blocks: [{ type: "image", imageUrls: ["url1"] }],
+    };
+    const cloned = cloneMessage(message);
+    const originalBlock = message.blocks[0] as ImageBlock;
+    const clonedBlock = cloned.blocks[0] as ImageBlock;
+    expect(clonedBlock.imageUrls).not.toBe(originalBlock.imageUrls);
+    expect(clonedBlock.imageUrls).toEqual(originalBlock.imageUrls);
+  });
+
+  it("should handle file_history blocks", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "assistant",
+      blocks: [
+        {
+          type: "file_history",
+          snapshots: [
+            {
+              filePath: "test.ts",
+              messageId: "msg-1",
+              timestamp: Date.now(),
+              operation: "modify",
+            },
+          ],
+        },
+      ],
+    };
+    const cloned = cloneMessage(message);
+    const originalBlock = message.blocks[0] as FileHistoryBlock;
+    const clonedBlock = cloned.blocks[0] as FileHistoryBlock;
+    expect(clonedBlock.snapshots).not.toBe(originalBlock.snapshots);
+    expect(clonedBlock.snapshots[0]).not.toBe(originalBlock.snapshots[0]);
+    expect(clonedBlock.snapshots[0]).toEqual(originalBlock.snapshots[0]);
   });
 });

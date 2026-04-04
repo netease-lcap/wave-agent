@@ -44,6 +44,19 @@ describe("getLastLines", () => {
     expect(getLastLines(input, 1)).toBe("line 1");
     expect(getLastLines(input, 5)).toBe("line 1");
   });
+
+  it("should handle input without newlines", () => {
+    const input = "no newlines here";
+    expect(getLastLines(input, 1)).toBe("no newlines here");
+  });
+
+  it("should handle multiple newlines at the start", () => {
+    const input = "\n\nline 1";
+    expect(getLastLines(input, 1)).toBe("line 1");
+    expect(getLastLines(input, 2)).toBe("\nline 1");
+    expect(getLastLines(input, 3)).toBe("\n\nline 1");
+    expect(getLastLines(input, 4)).toBe("\n\nline 1");
+  });
 });
 
 describe("removeCodeBlockWrappers", () => {
