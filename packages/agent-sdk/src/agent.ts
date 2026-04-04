@@ -425,8 +425,8 @@ export class Agent {
     this.aiManager.abortAIMessage();
   }
 
-  /** Execute bash command */
-  public async executeBashCommand(command: string): Promise<void> {
+  /** Execute bash command (bang command) */
+  public async bang(command: string): Promise<void> {
     await this.bangManager?.executeCommand(command);
   }
 
