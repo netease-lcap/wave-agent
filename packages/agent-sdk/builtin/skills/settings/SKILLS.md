@@ -57,8 +57,21 @@ Project skills take precedence over user skills with the same name.
 - **AI-Invoked**: The agent automatically discovers and uses skills based on their `description`.
 - **User-Invoked**: Use slash commands in the CLI (e.g., `/my-skill`).
 
+## Inline Bash Commands
+
+You can embed bash commands in skill content using the `!`command`` syntax. The command will be executed and its output will be inserted inline.
+
+```markdown
+# Example Skill
+
+Current git status: !`git status --short`
+
+The above command will be replaced with the actual output when the skill is invoked.
+```
+
 ## Best Practices
 
 - **Clear Descriptions**: Write descriptions that help the AI understand exactly when the skill is relevant.
 - **Modular Design**: Keep skills focused on a single task or capability.
 - **Use `${WAVE_SKILL_DIR}`**: Use this placeholder to reference files within the skill directory.
+- **Inline Bash Commands**: Use `!`command`` to execute bash commands and insert their output inline.

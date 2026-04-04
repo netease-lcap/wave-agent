@@ -46,3 +46,14 @@ For more information on complex configurations, see the following files linked f
 - `MEMORY_RULES.md`: Memory rules and auto-memory configuration.
 - `SKILLS.md`: Creating and managing custom skills.
 - `SUBAGENTS.md`: Creating and managing specialized subagents.
+
+## Inline Bash Commands in Skills
+
+Skills support inline bash command execution using the `!`command`` syntax. The command output is inserted inline when the skill is invoked:
+
+```markdown
+Current directory: !`pwd`
+Git status: !`git status --short`
+```
+
+This is useful for displaying dynamic project information in skill content.
