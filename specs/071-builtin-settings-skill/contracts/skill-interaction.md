@@ -36,3 +36,14 @@ The `settings` skill is a builtin skill that helps users manage their Wave confi
 - `MEMORY_RULES.md`: Memory rules and auto-memory configuration.
 - `SKILLS.md`: Creating and managing custom skills.
 - `SUBAGENTS.md`: Creating and managing specialized subagents.
+
+## Inline Bash Commands
+
+Skills support inline bash command execution using the `!`command`` syntax. When a skill is invoked, any bash commands wrapped in `!`...`` will be executed and the output will be inserted inline.
+
+Example:
+```markdown
+Current branch: !`git branch --show-current`
+```
+
+This is useful for skills that need to display dynamic information about the current project state.
