@@ -121,6 +121,7 @@ const ChatInterfaceWithRemount: React.FC = () => {
   );
 
   const prevSessionId = useRef(sessionId);
+  const isRemountScheduled = useRef(false);
 
   useEffect(() => {
     const newKey =
@@ -131,13 +132,16 @@ const ChatInterfaceWithRemount: React.FC = () => {
         ? sessionId
         : "");
 
-    if (newKey !== remountKey) {
+    if (newKey !== remountKey && !isRemountScheduled.current) {
+      isRemountScheduled.current = true;
+
       const timeout = setTimeout(() => {
         stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", (err?: Error | null) => {
           if (err) {
             console.error("Failed to clear terminal:", err);
           }
           setRemountKey(newKey);
+          isRemountScheduled.current = false;
         });
       }, 100);
 
