@@ -1051,4 +1051,54 @@ describe("ChatProvider", () => {
     resolveSendMessage!();
     await firstSendMessage;
   });
+
+  it("throttles onMessagesChange updates", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    // Initial state: 0 messages
+    expect(lastValue?.messages).toEqual([]);
+
+    // 1st update: leading call should be immediate
+    const msg1 = [{ id: "1", role: "user" as const, blocks: [] }];
+    Object.assign(mockAgent, { messages: msg1 });
+    callbacks.onMessagesChange!(msg1);
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toEqual(msg1);
+    });
+
+    // 2nd update within 100ms: should be throttled
+    const msg2 = [{ id: "2", role: "user" as const, blocks: [] }];
+    Object.assign(mockAgent, { messages: msg2 });
+    callbacks.onMessagesChange!(msg2);
+    // Should NOT update yet
+    await vi.advanceTimersByTimeAsync(50);
+    expect(lastValue?.messages).toEqual(msg1);
+
+    // 3rd update within 100ms: still throttled
+    const msg3 = [{ id: "3", role: "user" as const, blocks: [] }];
+    Object.assign(mockAgent, { messages: msg3 });
+    callbacks.onMessagesChange!(msg3);
+    // Should NOT update yet
+    await vi.advanceTimersByTimeAsync(20);
+    expect(lastValue?.messages).toEqual(msg1);
+
+    // Advance to end of throttle period (100ms total from 1st call)
+    // We already advanced 50 + 20 = 70. Need 30 more.
+    await vi.advanceTimersByTimeAsync(35);
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toEqual(msg3);
+    });
+  });
 });
