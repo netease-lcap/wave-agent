@@ -112,6 +112,11 @@ export class BackgroundTaskManager {
     if (timeout && timeout > 0) {
       timeoutHandle = setTimeout(() => {
         if (shell.status === "running") {
+          const timeoutMsg = "\n\nCommand timed out";
+          shell.stderr += timeoutMsg;
+          if (logStream.writable) {
+            logStream.write(timeoutMsg);
+          }
           this.stopTask(id);
         }
       }, timeout);

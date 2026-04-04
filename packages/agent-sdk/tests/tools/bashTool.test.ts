@@ -289,6 +289,45 @@ describe("bashTool", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Command timed out");
+      expect(result.content).toBe("Command timed out");
+      vi.useRealTimers();
+    });
+
+    it("should handle command timeout with existing output", async () => {
+      vi.useFakeTimers();
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from("some output")), 10);
+            }
+          }),
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const promise = bashTool.execute(
+        {
+          command: "sleep 10",
+          timeout: 1000,
+        },
+        context,
+      );
+
+      // Trigger the stdout callback
+      vi.advanceTimersByTime(50);
+
+      vi.advanceTimersByTime(1001);
+      const result = await promise;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Command timed out");
+      expect(result.content).toBe("some output\n\nCommand timed out");
       vi.useRealTimers();
     });
 
