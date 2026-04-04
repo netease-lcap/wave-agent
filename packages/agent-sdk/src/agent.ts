@@ -428,6 +428,7 @@ export class Agent {
   /** Execute bash command (bang command) */
   public async bang(command: string): Promise<void> {
     await this.bangManager?.executeCommand(command);
+    await this.messageManager.saveSession();
   }
 
   public async clearMessages(): Promise<void> {

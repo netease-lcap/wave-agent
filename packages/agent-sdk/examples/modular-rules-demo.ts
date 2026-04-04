@@ -298,10 +298,14 @@ process.on("SIGTERM", cleanup);
 
 // Run the demo if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  demoModularRules().catch((error) => {
-    console.error("💥 Unhandled error:", error);
-    process.exit(1);
-  });
+  demoModularRules()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error("💥 Unhandled error:", error);
+      process.exit(1);
+    });
 }
 
 export { demoModularRules, setupTestWorkspace };

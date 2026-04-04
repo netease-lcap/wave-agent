@@ -22,6 +22,7 @@ export class CronManager {
   public start(): void {
     if (this.interval) return;
     this.interval = setInterval(() => this.checkJobs(), 60000); // Check every minute
+    this.interval.unref();
   }
 
   public stop(): void {

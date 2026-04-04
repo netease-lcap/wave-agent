@@ -124,10 +124,19 @@ Execute each as a separate Bash tool call so I can observe parallel execution ti
 `);
 
     console.log(`\n✅ Demo completed!`);
+
+    await agent.destroy();
   } catch (error) {
     console.error("❌ Demo failed:", (error as Error).message);
   }
 }
 
 // Run the demonstration
-demonstrateParallelExecution().catch(console.error);
+demonstrateParallelExecution()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

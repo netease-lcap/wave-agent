@@ -93,4 +93,11 @@ Hello! I am a command from the example plugin. How can I help you today?
   }
 }
 
-main().catch(console.error);
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

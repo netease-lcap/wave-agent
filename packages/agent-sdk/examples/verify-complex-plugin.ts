@@ -92,7 +92,11 @@ async function verify() {
   }
 }
 
-verify().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+verify()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

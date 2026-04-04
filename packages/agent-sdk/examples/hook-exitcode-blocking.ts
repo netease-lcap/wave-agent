@@ -252,6 +252,8 @@ async function demonstrateBlockingErrors(): Promise<void> {
       "- PostToolUse reports: shows agent error, allows continuation",
     );
     console.log("- Error messages appear in appropriate message blocks");
+
+    await agent.destroy();
   } catch (error) {
     console.error("❌ Blocking error demo failed:", error);
     process.exit(1);
@@ -261,4 +263,11 @@ async function demonstrateBlockingErrors(): Promise<void> {
 }
 
 // Run the demonstration
-demonstrateBlockingErrors().catch(console.error);
+demonstrateBlockingErrors()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

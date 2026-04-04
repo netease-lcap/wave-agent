@@ -75,21 +75,32 @@ Template Variables:
       },
     });
 
-    console.log("💬 Asking agent to discover and use Wave skills...\n");
+    try {
+      console.log("💬 Asking agent to discover and use Wave skills...\n");
 
-    // Send message to discover and use skills
-    await agent.sendMessage(
-      "Please use the skill tool to invoke the hello-world Wave skill, then read the template.txt file from that skill directory.",
-    );
+      // Send message to discover and use skills
+      await agent.sendMessage(
+        "Please use the skill tool to invoke the hello-world Wave skill, then read the template.txt file from that skill directory.",
+      );
 
-    // Show final state
-    console.log(
-      `\n📊 Final state: ${agent.messages.length} messages exchanged`,
-    );
+      // Show final state
+      console.log(
+        `\n📊 Final state: ${agent.messages.length} messages exchanged`,
+      );
+    } finally {
+      await agent.destroy();
+    }
   } finally {
     await rm(tempDir, { recursive: true, force: true });
     console.log("\n🧹 Demo complete");
   }
 }
 
-main().catch(console.error);
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

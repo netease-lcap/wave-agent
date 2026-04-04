@@ -87,4 +87,11 @@ async function runDemo() {
   }
 }
 
-runDemo().catch(console.error);
+runDemo()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

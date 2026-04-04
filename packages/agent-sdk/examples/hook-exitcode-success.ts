@@ -187,6 +187,8 @@ async function demonstrateSuccessExitCodes(): Promise<void> {
     console.log("- PreToolUse/PostToolUse hook stdout is ignored");
     console.log("- All hook stderr is ignored on success");
     console.log("- Normal execution continues without interruption");
+
+    await agent.destroy();
   } catch (error) {
     console.error("❌ Success exit code demo failed:", error);
     process.exit(1);
@@ -196,4 +198,11 @@ async function demonstrateSuccessExitCodes(): Promise<void> {
 }
 
 // Run the demonstration
-demonstrateSuccessExitCodes().catch(console.error);
+demonstrateSuccessExitCodes()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

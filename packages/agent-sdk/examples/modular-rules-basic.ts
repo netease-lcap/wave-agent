@@ -117,10 +117,14 @@ paths:
 
 // Run if executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  basicModularRulesExample().catch((error) => {
-    console.error("💥 Error:", error);
-    process.exit(1);
-  });
+  basicModularRulesExample()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error("💥 Unhandled error:", error);
+      process.exit(1);
+    });
 }
 
 export { basicModularRulesExample };

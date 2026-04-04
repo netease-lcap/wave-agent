@@ -208,8 +208,12 @@ setTimeout(async () => {
 }, 30000); // 30 seconds
 
 // Run main function
-main().catch(async (error) => {
-  console.error("💥 Unhandled error:", error);
-  await cleanup();
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(async (error) => {
+    console.error("💥 Unhandled error:", error);
+    await cleanup();
+    process.exit(1);
+  });

@@ -70,5 +70,12 @@ async function main() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  main()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error("💥 Unhandled error:", error);
+      process.exit(1);
+    });
 }

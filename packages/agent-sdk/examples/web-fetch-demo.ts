@@ -51,14 +51,18 @@ async function runTest() {
 
   try {
     // We use a real URL that is likely to be stable
-    await agent.sendMessage("Use the WebFetch tool to fetch https://example.com and tell me what the page is about.");
+    await agent.sendMessage(
+      "Use the WebFetch tool to fetch https://example.com and tell me what the page is about.",
+    );
   } catch (error) {
     console.error("❌ Error during message sending:", error);
   }
 
   console.log(`\n\n💬 Testing GitHub URL handling (should suggest gh CLI)...`);
   try {
-    await agent.sendMessage("Try to fetch https://github.com/netease-lcap/wave-agent using WebFetch.");
+    await agent.sendMessage(
+      "Try to fetch https://github.com/netease-lcap/wave-agent using WebFetch.",
+    );
   } catch (error) {
     console.error("❌ Error during message sending:", error);
   }
@@ -102,7 +106,11 @@ process.on("SIGINT", async () => {
 });
 
 // Run main function
-main().catch((error) => {
-  console.error("💥 Unhandled error:", error);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("💥 Unhandled error:", error);
+    process.exit(1);
+  });

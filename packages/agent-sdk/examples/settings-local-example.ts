@@ -132,7 +132,14 @@ async function testConfigurationPriority(): Promise<void> {
 
 // Run the test if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  testConfigurationPriority().catch(console.error);
+  testConfigurationPriority()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error("💥 Unhandled error:", error);
+      process.exit(1);
+    });
 }
 
 export { testConfigurationPriority };

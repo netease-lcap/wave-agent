@@ -158,12 +158,13 @@ export async function executeCommand(
     }
 
     // Set up timeout
+    let forceKillTimeoutHandle: NodeJS.Timeout | undefined;
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
       childProcess.kill("SIGTERM");
 
       // Force kill after additional delay
-      setTimeout(() => {
+      forceKillTimeoutHandle = setTimeout(() => {
         if (!childProcess.killed) {
           childProcess.kill("SIGKILL");
         }
@@ -205,6 +206,7 @@ export async function executeCommand(
     // Handle process completion
     childProcess.on("close", (code: number | null) => {
       clearTimeout(timeoutHandle);
+      if (forceKillTimeoutHandle) clearTimeout(forceKillTimeoutHandle);
       const duration = Date.now() - startTime;
 
       resolve({
@@ -220,6 +222,7 @@ export async function executeCommand(
     // Handle process errors
     childProcess.on("error", (error: Error) => {
       clearTimeout(timeoutHandle);
+      if (forceKillTimeoutHandle) clearTimeout(forceKillTimeoutHandle);
       const duration = Date.now() - startTime;
 
       resolve({
