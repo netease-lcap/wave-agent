@@ -5,6 +5,7 @@ import React, {
   useRef,
   useEffect,
   useState,
+  useMemo,
 } from "react";
 import { useInput } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
@@ -25,6 +26,7 @@ import {
   cloneMessage,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
+import { throttle } from "../utils/throttle.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
 import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
 
@@ -157,10 +159,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const isExpandedRef = useRef(isExpanded);
 
-  useEffect(() => {
-    isExpandedRef.current = isExpanded;
-  }, [isExpanded]);
-
   const [isTaskListVisible, setIsTaskListVisible] = useState(true);
 
   const [queuedMessages, setQueuedMessages] = useState<
@@ -171,8 +169,30 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }>
   >([]);
 
-  // AI State
   const [messages, setMessages] = useState<Message[]>([]);
+
+  const throttledSetMessages = useMemo(
+    () =>
+      throttle(() => {
+        if (!isExpandedRef.current && agentRef.current) {
+          setMessages([...agentRef.current.messages]);
+        }
+      }, 100),
+    [],
+  );
+
+  useEffect(() => {
+    isExpandedRef.current = isExpanded;
+    if (isExpanded) {
+      throttledSetMessages.cancel();
+    }
+  }, [isExpanded, throttledSetMessages]);
+
+  useEffect(() => {
+    return () => {
+      throttledSetMessages.cancel();
+    };
+  }, [throttledSetMessages]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [latestTotalTokens, setlatestTotalTokens] = useState(0);
@@ -299,9 +319,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     const initializeAgent = async () => {
       const callbacks: AgentCallbacks = {
         onMessagesChange: () => {
-          if (!isExpandedRef.current && agentRef.current) {
-            setMessages([...agentRef.current.messages]);
-          }
+          throttledSetMessages();
         },
         onServersChange: (servers) => {
           setMcpServers([...servers]);
@@ -416,6 +434,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     worktreeSession,
     model,
     initialPermissionMode,
+    throttledSetMessages,
   ]);
 
   // Cleanup on unmount
@@ -662,8 +681,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       // Clear terminal screen when expanded state changes
       setIsExpanded((prev) => {
         const newExpanded = !prev;
+        isExpandedRef.current = newExpanded;
         if (newExpanded) {
           // Transitioning to EXPANDED: Freeze the current view
+          // Cancel any pending throttled updates to avoid overwriting the frozen state
+          throttledSetMessages.cancel();
           // Deep copy the last message to ensure it doesn't update if the agent is still writing to it
           setMessages((currentMessages) => {
             if (currentMessages.length === 0) return currentMessages;
