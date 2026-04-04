@@ -177,7 +177,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         if (!isExpandedRef.current && agentRef.current) {
           setMessages([...agentRef.current.messages]);
         }
-      }, 100),
+      }, 300),
     [],
   );
 

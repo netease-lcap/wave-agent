@@ -45,20 +45,6 @@ function processOutput(output: string): string {
 }
 
 /**
- * Simple throttle function to limit the frequency of updates.
- */
-function throttle(func: () => void, limit: number) {
-  let inThrottle: boolean;
-  return function () {
-    if (!inThrottle) {
-      func();
-      inThrottle = true;
-      setTimeout(() => (inThrottle = false), limit);
-    }
-  };
-}
-
-/**
  * Bash command execution tool - supports both foreground and background execution
  */
 export const bashTool: ToolPlugin = {
@@ -268,7 +254,7 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
       let isBackgrounded = false;
       let isFinished = false;
 
-      const updateRealtimeResults = throttle(() => {
+      const updateRealtimeResults = () => {
         if (isAborted || isBackgrounded || isFinished) return;
 
         const combinedOutput =
@@ -294,7 +280,7 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
                 "\n\n... (output truncated)";
           context.onResultUpdate(content);
         }
-      }, 1000);
+      };
 
       const foregroundTaskId = `bash_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
