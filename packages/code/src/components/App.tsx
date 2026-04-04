@@ -112,7 +112,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   );
 };
 
-const ChatInterfaceWithRemount: React.FC = () => {
+export const ChatInterfaceWithRemount: React.FC = () => {
   const { stdout } = useStdout();
   const { isExpanded, rewindId, wasLastDetailsTooTall, sessionId } = useChat();
 
