@@ -103,11 +103,11 @@ export function getLastLines(text: string, count: number): string {
     const nextNewline = text.lastIndexOf("\n", pos - 1);
     if (nextNewline === -1) {
       pos = 0;
-      found = count; // stop searching
+      break;
     } else {
       pos = nextNewline;
       found++;
     }
   }
-  return text.substring(pos === 0 ? 0 : pos + 1);
+  return text.substring(pos === 0 && found < count ? 0 : pos + 1);
 }
