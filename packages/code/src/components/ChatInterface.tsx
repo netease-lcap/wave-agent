@@ -1,5 +1,6 @@
-import React from "react";
-import { Box } from "ink";
+import React, { useState, useRef, useEffect } from "react";
+import { Box, useStdout, measureElement, Static } from "ink";
+import type { DOMElement } from "ink";
 import { MessageList } from "./MessageList.js";
 import { BtwDisplay } from "./BtwDisplay.js";
 import { InputBox } from "./InputBox.js";
@@ -11,9 +12,7 @@ import { ConfirmationSelector } from "./ConfirmationSelector.js";
 
 import { useChat } from "../contexts/useChat.js";
 
-export const ChatInterface: React.FC<{ remountKey: string }> = ({
-  remountKey,
-}) => {
+export const ChatInterface: React.FC = () => {
   const {
     messages,
     isLoading,
@@ -30,26 +29,56 @@ export const ChatInterface: React.FC<{ remountKey: string }> = ({
     slashCommands,
     hasSlashCommand,
     isConfirmationVisible,
+    hasPendingConfirmations,
     confirmingTool,
     handleConfirmationDecision,
     handleConfirmationCancel,
     version,
     workdir,
     btwState,
+    remountKey,
+    requestRemount,
   } = useChat();
 
   const displayMessages = messages;
 
+  const [forceStatic, setForceStatic] = useState(false);
+  const { stdout } = useStdout();
+  const terminalHeight = stdout?.rows ?? 24;
+  const chatInterfaceRef = useRef<DOMElement>(null);
+  const prevForceStatic = useRef(forceStatic);
+
+  useEffect(() => {
+    if (isConfirmationVisible && chatInterfaceRef.current) {
+      const { height } = measureElement(chatInterfaceRef.current);
+      if (height > terminalHeight) {
+        setForceStatic(true);
+      }
+    } else {
+      setForceStatic(false);
+    }
+  }, [isConfirmationVisible, terminalHeight]);
+
+  // Handle forceStatic transition - request remount when transitioning from true to false
+  // AND there are no more pending confirmations in the queue
+  useEffect(() => {
+    if (prevForceStatic.current && !forceStatic && !hasPendingConfirmations) {
+      requestRemount();
+    }
+    prevForceStatic.current = forceStatic;
+  }, [forceStatic, hasPendingConfirmations, requestRemount]);
+
   if (!sessionId) return null;
 
   return (
-    <Box flexDirection="column">
+    <Box ref={chatInterfaceRef} flexDirection="column">
       <MessageList
         key={remountKey}
         messages={displayMessages}
         isExpanded={isExpanded}
         version={version}
         workdir={workdir}
+        forceStatic={forceStatic}
       />
 
       {!isConfirmationVisible && !isExpanded && (
@@ -81,12 +110,25 @@ export const ChatInterface: React.FC<{ remountKey: string }> = ({
 
       {isConfirmationVisible && (
         <>
-          <ConfirmationDetails
-            toolName={confirmingTool!.name}
-            toolInput={confirmingTool!.input}
-            planContent={confirmingTool!.planContent}
-            isExpanded={isExpanded}
-          />
+          {forceStatic ? (
+            <Static items={[{ key: "confirmation-details" }]}>
+              {() => (
+                <ConfirmationDetails
+                  toolName={confirmingTool!.name}
+                  toolInput={confirmingTool!.input}
+                  planContent={confirmingTool!.planContent}
+                  isExpanded={isExpanded}
+                />
+              )}
+            </Static>
+          ) : (
+            <ConfirmationDetails
+              toolName={confirmingTool!.name}
+              toolInput={confirmingTool!.input}
+              planContent={confirmingTool!.planContent}
+              isExpanded={isExpanded}
+            />
+          )}
           <ConfirmationSelector
             toolName={confirmingTool!.name}
             toolInput={confirmingTool!.input}
