@@ -142,16 +142,6 @@ Usage:
       // Record snapshot for reversion
       let snapshotId: string | undefined;
       if (context.reversionManager && context.messageId) {
-        // Log memory usage before large operations if in debug mode
-        if (process.env.LOG_LEVEL === "DEBUG") {
-          const usage = process.memoryUsage();
-          logger.debug(
-            `[Memory Before Write] RSS: ${Math.round(usage.rss / 1024 / 1024)}MB, ` +
-              `Heap: ${Math.round(usage.heapUsed / 1024 / 1024)}/${Math.round(usage.heapTotal / 1024 / 1024)}MB`,
-            { filePath, contentLength: content.length },
-          );
-        }
-
         snapshotId = await context.reversionManager.recordSnapshot(
           context.messageId,
           resolvedPath,
