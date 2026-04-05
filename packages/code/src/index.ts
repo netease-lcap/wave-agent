@@ -1,7 +1,6 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import { logger } from "./utils/logger.js";
 import { Scope, generateRandomName, type PermissionMode } from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
@@ -15,18 +14,6 @@ const version = packageJson.version;
 
 // Export main function for external use
 export async function main() {
-  // Start memory monitoring in debug mode
-  if (process.env.LOG_LEVEL === "DEBUG") {
-    setInterval(() => {
-      const usage = process.memoryUsage();
-      logger.debug(
-        `[Memory] RSS: ${Math.round(usage.rss / 1024 / 1024)}MB, ` +
-          `Heap: ${Math.round(usage.heapUsed / 1024 / 1024)}/${Math.round(usage.heapTotal / 1024 / 1024)}MB, ` +
-          `External: ${Math.round(usage.external / 1024 / 1024)}MB`,
-      );
-    }, 10000).unref();
-  }
-
   try {
     const originalCwd = process.cwd();
     const argv = await yargs(hideBin(process.argv))
