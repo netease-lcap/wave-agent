@@ -87,7 +87,7 @@ describe("TaskList Integration", () => {
     const { lastFrame } = render(
       <AppProvider>
         <ChatProvider>
-          <ChatInterface />
+          <ChatInterface remountKey="test-key" />
         </ChatProvider>
       </AppProvider>,
     );
@@ -123,7 +123,7 @@ describe("TaskList Integration", () => {
     const { lastFrame } = render(
       <AppProvider>
         <ChatProvider>
-          <ChatInterface />
+          <ChatInterface remountKey="test-key" />
         </ChatProvider>
       </AppProvider>,
     );

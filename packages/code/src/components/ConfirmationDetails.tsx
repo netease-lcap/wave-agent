@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text, Static } from "ink";
+import { Box, Text } from "ink";
 import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -41,7 +41,6 @@ export interface ConfirmationDetailsProps {
   toolInput?: Record<string, unknown>;
   planContent?: string;
   isExpanded?: boolean;
-  isStatic?: boolean;
 }
 
 export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
@@ -49,7 +48,6 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   toolInput,
   planContent,
   isExpanded = false,
-  isStatic = false,
 }) => {
   const startLineNumber =
     (toolInput?.startLineNumber as number | undefined) ??
@@ -95,14 +93,6 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
         )}
     </Box>
   );
-
-  if (isStatic) {
-    return (
-      <Static items={[1]}>
-        {(item) => <React.Fragment key={item}>{content}</React.Fragment>}
-      </Static>
-    );
-  }
 
   return content;
 };

@@ -68,7 +68,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface />);
+    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
     const output = lastFrame();
 
     expect(output).toContain("✻ AI is thinking...");
@@ -89,7 +89,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface />);
+    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
     const output = lastFrame();
 
     expect(output).not.toContain("✻ AI is thinking...");
@@ -109,7 +109,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface />);
+    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
     const output = lastFrame();
 
     expect(output).not.toContain("✻ AI is thinking...");
@@ -128,7 +128,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface />);
+    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
     const output = lastFrame();
 
     expect(output).toContain("✻ Command is running...");
@@ -146,7 +146,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface />);
+    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
     const output = lastFrame();
 
     expect(output).toContain("✻ Compressing message history...");
@@ -165,7 +165,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface />);
+    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
     const output = lastFrame();
 
     expect(output).toContain("✻ Compressing message history...");
