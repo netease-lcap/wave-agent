@@ -3,6 +3,7 @@ import { stat } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { GLOB_TOOL_NAME } from "../constants/tools.js";
+import { requireString } from "./validation.js";
 
 /**
  * Maximum number of files returned by glob tool
@@ -48,6 +49,10 @@ export const globTool: ToolPlugin = {
 - Use this tool when you need to find files by name patterns
 - When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
 - You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.`,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate pattern is required and a string
+    return requireString(args, "pattern");
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -56,14 +61,6 @@ export const globTool: ToolPlugin = {
     const searchPath = args.path as string;
     const limit = (args.limit as number) || MAX_GLOB_RESULTS;
     const startTime = Date.now();
-
-    if (!pattern || typeof pattern !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "pattern parameter is required and must be a string",
-      };
-    }
 
     try {
       // Determine search directory

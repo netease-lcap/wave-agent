@@ -14,6 +14,7 @@ import type {
   LspCallHierarchyIncomingCall as CallHierarchyIncomingCall,
   LspCallHierarchyOutgoingCall as CallHierarchyOutgoingCall,
 } from "../types/lsp.js";
+import { validationError, requireString } from "./validation.js";
 
 export const MAX_RESULTS = 1000;
 export const MAX_FILES = 100;
@@ -746,6 +747,39 @@ All operations require:
 - character: The character offset (1-based, as shown in editors)
 
 Note: LSP servers must be configured for the file type. If no server is available, an error will be returned.`,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate operation is required and a string
+    const operationError = requireString(args, "operation");
+    if (operationError) return operationError;
+
+    // Validate filePath is required and a string
+    const filePathError = requireString(args, "filePath");
+    if (filePathError) return filePathError;
+
+    // Validate line is required and a number
+    const line = args.line;
+    if (line === undefined || line === null) {
+      return validationError("Missing required parameter: line");
+    }
+    if (typeof line !== "number" || !Number.isInteger(line)) {
+      return validationError(
+        `Parameter line must be an integer, got ${typeof line}`,
+      );
+    }
+
+    // Validate character is required and a number
+    const character = args.character;
+    if (character === undefined || character === null) {
+      return validationError("Missing required parameter: character");
+    }
+    if (typeof character !== "number" || !Number.isInteger(character)) {
+      return validationError(
+        `Parameter character must be an integer, got ${typeof character}`,
+      );
+    }
+
+    return null;
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,

@@ -13,6 +13,7 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
 } from "../constants/tools.js";
+import { validationError, requireString } from "./validation.js";
 
 const MAX_OUTPUT_LENGTH = 30000;
 const BASH_DEFAULT_TIMEOUT_MS = 120000;
@@ -149,6 +150,25 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 - If waiting for a background task you started with \`run_in_background\`, you will be notified when it completes — do not poll.
 - If you must poll an external process, use a check command (e.g. \`gh run view\`) rather than sleeping first.
 - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.`,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    const timeout = args.timeout as number | undefined;
+
+    // Validate command is required and a string
+    const commandError = requireString(args, "command");
+    if (commandError) return commandError;
+
+    // Validate timeout if provided
+    if (
+      timeout !== undefined &&
+      (typeof timeout !== "number" || timeout < 0 || timeout > 600000)
+    ) {
+      return validationError(
+        "Timeout must be a number between 0 and 600000 milliseconds",
+      );
+    }
+
+    return null;
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -160,26 +180,6 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
     const timeout =
       (args.timeout as number | undefined) ??
       (runInBackground ? undefined : BASH_DEFAULT_TIMEOUT_MS);
-
-    if (!command || typeof command !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "Command parameter is required and must be a string",
-      };
-    }
-
-    // Validate timeout
-    if (
-      timeout !== undefined &&
-      (typeof timeout !== "number" || timeout < 0 || timeout > 600000)
-    ) {
-      return {
-        success: false,
-        content: "",
-        error: "Timeout must be a number between 0 and 600000 milliseconds",
-      };
-    }
 
     // Permission check after validation but before real operation
     if (context.permissionManager) {

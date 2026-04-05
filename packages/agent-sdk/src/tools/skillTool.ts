@@ -7,6 +7,7 @@ import {
   countToolBlocks,
   formatToolTokenSummary,
 } from "../utils/messageOperations.js";
+import { requireString } from "./validation.js";
 
 /**
  * Skill tool plugin for invoking Wave skills
@@ -65,6 +66,11 @@ export const skillTool: ToolPlugin = {
     return `${SKILL_TOOL_DESCRIPTION} Do not invoke the same skill repeatedly if it has already been called with the same arguments.\n\nAvailable skills:\n${skillList}`;
   },
 
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate skill_name is required and a string
+    return requireString(args, "skill_name");
+  },
+
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -79,17 +85,8 @@ export const skillTool: ToolPlugin = {
         };
       }
 
-      // Validate arguments
       const skillName = args.skill_name as string;
       const skillArgs = args.args as string | undefined;
-
-      if (!skillName || typeof skillName !== "string") {
-        return {
-          success: false,
-          content: "",
-          error: "skill_name parameter is required and must be a string",
-        };
-      }
 
       const skillMetadata = skillManager.getSkillMetadata(skillName);
 

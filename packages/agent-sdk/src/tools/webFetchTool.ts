@@ -2,6 +2,7 @@ import TurndownService from "turndown";
 import { WEB_FETCH_TOOL_NAME } from "../constants/tools.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { logger } from "../utils/globalLogger.js";
+import { requireString } from "./validation.js";
 
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const cache = new Map<string, { content: string; timestamp: number }>();
@@ -74,20 +75,23 @@ Usage notes:
       },
     },
   },
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate url is required and a string
+    const urlError = requireString(args, "url");
+    if (urlError) return urlError;
+
+    // Validate prompt is required and a string
+    const promptError = requireString(args, "prompt");
+    if (promptError) return promptError;
+
+    return null;
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
   ): Promise<ToolResult> => {
     let url = args.url as string;
     const prompt = args.prompt as string;
-
-    if (!url || !prompt) {
-      return {
-        success: false,
-        content: "",
-        error: "Both url and prompt parameters are required",
-      };
-    }
 
     // Upgrade HTTP to HTTPS
     if (url.startsWith("http://")) {

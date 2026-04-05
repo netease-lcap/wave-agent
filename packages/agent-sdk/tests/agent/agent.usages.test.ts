@@ -102,20 +102,19 @@ describe("Agent Usage Tracking", () => {
     it("should track usage when AI service returns usage data", async () => {
       const mockCallAgent = vi.mocked(aiService.callAgent);
 
-      const expectedUsage: Usage = {
+      const expectedUsage: Partial<Usage> = {
         prompt_tokens: 100,
         completion_tokens: 50,
         total_tokens: 150,
-        model: "gemini-3-flash",
         operation_type: "agent",
       };
 
       mockCallAgent.mockResolvedValue({
         content: "Test response",
         usage: {
-          prompt_tokens: expectedUsage.prompt_tokens,
-          completion_tokens: expectedUsage.completion_tokens,
-          total_tokens: expectedUsage.total_tokens,
+          prompt_tokens: expectedUsage.prompt_tokens!,
+          completion_tokens: expectedUsage.completion_tokens!,
+          total_tokens: expectedUsage.total_tokens!,
         },
       });
 

@@ -184,27 +184,26 @@ describe("Agent Tool Background Execution", () => {
   });
 
   it("should handle missing parameters", async () => {
-    const result = await agentTool.execute({}, mockToolContext);
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("description parameter is required");
+    const result = agentTool.validate!({});
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain("Missing required parameter: description");
   });
 
   it("should handle missing prompt", async () => {
-    const result = await agentTool.execute(
-      { description: "Test" },
-      mockToolContext,
-    );
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("prompt parameter is required");
+    const result = agentTool.validate!({ description: "Test" });
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain("Missing required parameter: prompt");
   });
 
   it("should handle missing subagent_type", async () => {
-    const result = await agentTool.execute(
-      { description: "Test", prompt: "Test" },
-      mockToolContext,
+    const result = agentTool.validate!({ description: "Test", prompt: "Test" });
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain(
+      "Missing required parameter: subagent_type",
     );
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("subagent_type parameter is required");
   });
 
   it("should handle execution error", async () => {

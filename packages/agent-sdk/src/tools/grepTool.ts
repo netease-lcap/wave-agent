@@ -7,6 +7,7 @@ import {
   BASH_TOOL_NAME,
   AGENT_TOOL_NAME,
 } from "../constants/tools.js";
+import { requireString } from "./validation.js";
 
 /**
  * Grep tool plugin - powerful search tool based on ripgrep
@@ -106,6 +107,10 @@ export const grepTool: ToolPlugin = {
   - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)
   - Multiline matching: By default patterns match within single lines only. For cross-line patterns like \`struct \\{[\\s\\S]*?field\`, use \`multiline: true\`
 `,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate pattern is required and a string
+    return requireString(args, "pattern");
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -124,14 +129,6 @@ export const grepTool: ToolPlugin = {
     const multiline = args.multiline as boolean;
     const offset = args.offset as number;
     const contextArg = args.context as number;
-
-    if (!pattern || typeof pattern !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "pattern parameter is required and must be a string",
-      };
-    }
 
     if (!rgPath) {
       return {

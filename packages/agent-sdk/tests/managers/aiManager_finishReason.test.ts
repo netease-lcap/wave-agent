@@ -73,6 +73,7 @@ describe("AIManager finish reason", () => {
       execute: vi
         .fn()
         .mockResolvedValue({ success: true, content: "test result" }),
+      getPlugin: vi.fn().mockReturnValue(undefined),
     } as unknown as ToolManager;
 
     // Create mock Logger

@@ -136,25 +136,22 @@ describe("bashTool", () => {
     });
 
     it("should validate command parameter", async () => {
-      const result = await bashTool.execute({}, context);
+      const result = bashTool.validate!({});
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        "Command parameter is required and must be a string",
-      );
+      expect(result).not.toBeNull();
+      expect(result!.success).toBe(false);
+      expect(result!.error).toBe("Missing required parameter: command");
     });
 
     it("should validate timeout parameter", async () => {
-      const result = await bashTool.execute(
-        {
-          command: "echo hello",
-          timeout: 700000, // Exceeds max timeout
-        },
-        context,
-      );
+      const result = bashTool.validate!({
+        command: "echo hello",
+        timeout: 700000, // Exceeds max timeout
+      });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
+      expect(result).not.toBeNull();
+      expect(result!.success).toBe(false);
+      expect(result!.error).toBe(
         "Timeout must be a number between 0 and 600000 milliseconds",
       );
     });
@@ -604,12 +601,11 @@ describe("bashTool", () => {
     });
 
     it("should validate task_id parameter", async () => {
-      const result = await taskStopTool.execute({}, context);
+      const result = taskStopTool.validate!({});
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        "task_id parameter is required and must be a string",
-      );
+      expect(result).not.toBeNull();
+      expect(result!.success).toBe(false);
+      expect(result!.error).toBe("Missing required parameter: task_id");
     });
 
     it("should format compact params correctly", () => {

@@ -1,5 +1,6 @@
 import { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { CRON_CREATE_TOOL_NAME } from "../constants/tools.js";
+import { requireString } from "./validation.js";
 
 export const cronCreateTool: ToolPlugin = {
   name: CRON_CREATE_TOOL_NAME,
@@ -31,6 +32,17 @@ export const cronCreateTool: ToolPlugin = {
         required: ["cron", "prompt"],
       },
     },
+  },
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate cron is required and a string
+    const cronError = requireString(args, "cron");
+    if (cronError) return cronError;
+
+    // Validate prompt is required and a string
+    const promptError = requireString(args, "prompt");
+    if (promptError) return promptError;
+
+    return null;
   },
   execute: async (
     args: Record<string, unknown>,

@@ -4,6 +4,7 @@ import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
+import { requireString } from "./validation.js";
 
 /**
  * File Write Tool Plugin
@@ -42,29 +43,23 @@ Usage:
 - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.
 - IMPORTANT: Always provide file_path parameter before content parameter when calling this tool.`,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate file_path is required and a string
+    const filePathError = requireString(args, "file_path");
+    if (filePathError) return filePathError;
+
+    // Validate content is required and a string
+    const contentError = requireString(args, "content");
+    if (contentError) return contentError;
+
+    return null;
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
   ): Promise<ToolResult> => {
     const filePath = args.file_path as string;
     const content = args.content as string;
-
-    // Validate required parameters
-    if (!filePath || typeof filePath !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "file_path parameter is required and must be a string",
-      };
-    }
-
-    if (typeof content !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "content parameter is required and must be a string",
-      };
-    }
 
     // Touch file to track it in context
     context.messageManager?.touchFile(filePath);

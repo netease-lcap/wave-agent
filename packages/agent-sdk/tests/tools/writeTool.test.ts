@@ -131,25 +131,21 @@ describe("writeTool", () => {
   });
 
   it("should fail when required parameters are missing", async () => {
-    const result1 = await writeTool.execute(
-      {
-        content: "test content",
-      },
-      mockContext,
-    );
+    const result1 = writeTool.validate!({
+      content: "test content",
+    });
 
-    expect(result1.success).toBe(false);
-    expect(result1.error).toContain("file_path parameter is required");
+    expect(result1).not.toBeNull();
+    expect(result1!.success).toBe(false);
+    expect(result1!.error).toContain("Missing required parameter: file_path");
 
-    const result2 = await writeTool.execute(
-      {
-        file_path: "/test/file.js",
-      },
-      mockContext,
-    );
+    const result2 = writeTool.validate!({
+      file_path: "/test/file.js",
+    });
 
-    expect(result2.success).toBe(false);
-    expect(result2.error).toContain("content parameter is required");
+    expect(result2).not.toBeNull();
+    expect(result2!.success).toBe(false);
+    expect(result2!.error).toContain("Missing required parameter: content");
   });
 
   it("should fail when file cannot be written", async () => {
@@ -457,14 +453,15 @@ describe("writeTool", () => {
     });
 
     it("should handle invalid content type", async () => {
-      const result = await writeTool.execute(
-        { file_path: "/test/file.txt", content: 123 },
-        mockContext,
-      );
+      const result = writeTool.validate!({
+        file_path: "/test/file.txt",
+        content: 123,
+      });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        "content parameter is required and must be a string",
+      expect(result).not.toBeNull();
+      expect(result!.success).toBe(false);
+      expect(result!.error).toBe(
+        "Parameter content must be a string, got number",
       );
     });
   });

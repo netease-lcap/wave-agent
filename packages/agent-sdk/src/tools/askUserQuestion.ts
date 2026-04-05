@@ -1,6 +1,7 @@
-import { ToolPlugin } from "./types.js";
+import { ToolPlugin, ToolResult } from "./types.js";
 import { AskUserQuestionInput } from "../types/tools.js";
 import { ASK_USER_QUESTION_TOOL_NAME } from "../constants/tools.js";
+import { validationError } from "./validation.js";
 
 export const askUserQuestionTool: ToolPlugin = {
   name: ASK_USER_QUESTION_TOOL_NAME,
@@ -99,21 +100,23 @@ Usage notes:
 
 Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval.
 `,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    const questions = args.questions;
+
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return validationError(
+        "The 'questions' parameter is missing or empty. Please use the correct schema: { questions: [{ question, header, options, multiSelect? }] }",
+      );
+    }
+
+    return null;
+  },
   execute: async (args, context) => {
     const {
       questions,
       answers: existingAnswers,
       metadata,
     } = args as unknown as AskUserQuestionInput;
-
-    if (!questions || !Array.isArray(questions) || questions.length === 0) {
-      return {
-        success: false,
-        content: "",
-        error:
-          "The 'questions' parameter is missing or empty. Please use the correct schema: { questions: [{ question, header, options, multiSelect? }] }",
-      };
-    }
 
     if (!context.permissionManager) {
       throw new Error(

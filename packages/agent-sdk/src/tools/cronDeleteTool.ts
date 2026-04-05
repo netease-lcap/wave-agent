@@ -1,5 +1,6 @@
 import { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { CRON_DELETE_TOOL_NAME } from "../constants/tools.js";
+import { requireString } from "./validation.js";
 
 export const cronDeleteTool: ToolPlugin = {
   name: CRON_DELETE_TOOL_NAME,
@@ -20,6 +21,10 @@ export const cronDeleteTool: ToolPlugin = {
         required: ["id"],
       },
     },
+  },
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate id is required and a string
+    return requireString(args, "id");
   },
   execute: async (
     args: Record<string, unknown>,

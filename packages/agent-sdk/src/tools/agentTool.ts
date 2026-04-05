@@ -6,6 +6,7 @@ import {
   countToolBlocks,
   formatToolTokenSummary,
 } from "../utils/messageOperations.js";
+import { requireString } from "./validation.js";
 
 /**
  * Agent tool plugin for launching specialized agents to handle complex tasks
@@ -74,6 +75,22 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
 - VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${AGENT_TOOL_NAME} tool with subagent_type=${EXPLORE_SUBAGENT_TYPE} instead of running search commands directly.`;
   },
 
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate description is required and a string
+    const descriptionError = requireString(args, "description");
+    if (descriptionError) return descriptionError;
+
+    // Validate prompt is required and a string
+    const promptError = requireString(args, "prompt");
+    if (promptError) return promptError;
+
+    // Validate subagent_type is required and a string
+    const subagentTypeError = requireString(args, "subagent_type");
+    if (subagentTypeError) return subagentTypeError;
+
+    return null;
+  },
+
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -88,38 +105,11 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
       };
     }
 
-    // Input validation
+    // Input
     const description = args.description as string;
     const prompt = args.prompt as string;
     const subagent_type = args.subagent_type as string;
     const run_in_background = args.run_in_background as boolean;
-
-    if (!description || typeof description !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "description parameter is required and must be a string",
-        shortResult: "Agent delegation failed",
-      };
-    }
-
-    if (!prompt || typeof prompt !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "prompt parameter is required and must be a string",
-        shortResult: "Agent delegation failed",
-      };
-    }
-
-    if (!subagent_type || typeof subagent_type !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "subagent_type parameter is required and must be a string",
-        shortResult: "Agent delegation failed",
-      };
-    }
 
     try {
       // Subagent selection logic with explicit name matching only

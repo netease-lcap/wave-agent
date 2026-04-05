@@ -182,19 +182,19 @@ describe("globTool", () => {
   });
 
   it("should return error for missing pattern", async () => {
-    const result = await globTool.execute({}, testContext);
+    const result = globTool.validate!({});
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("pattern parameter is required");
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain("Missing required parameter: pattern");
   });
 
   it("should return error for invalid pattern type", async () => {
-    const result = await globTool.execute({ pattern: 123 }, testContext);
+    const result = globTool.validate!({ pattern: 123 });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain(
-      "pattern parameter is required and must be a string",
-    );
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain("Parameter pattern must be a string");
   });
 
   it("should support limit argument and populate metadata", async () => {

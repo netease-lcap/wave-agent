@@ -91,18 +91,11 @@ describe("skillTool", () => {
   });
 
   it("should validate skill_name parameter", async () => {
-    const context = {
-      workdir: "/test",
-      taskManager: new TaskManager(new Container(), "test-session"),
-      skillManager,
-    };
+    const result = skillTool.validate!({});
 
-    const result = await skillTool.execute({}, context);
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe(
-      "skill_name parameter is required and must be a string",
-    );
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toBe("Missing required parameter: skill_name");
   });
 
   it("should handle skill execution successfully", async () => {

@@ -52,10 +52,11 @@ export interface UpdateToolBlockParams {
    * Tool execution stage:
    * - 'start': Tool call initiated during AI streaming
    * - 'streaming': Tool parameters being received incrementally
+   * - 'validating': Tool input parameters being validated
    * - 'running': Tool execution in progress
    * - 'end': Tool execution completed with final result
    */
-  stage?: "start" | "streaming" | "running" | "end";
+  stage?: "start" | "streaming" | "validating" | "running" | "end";
   name?: string;
   shortResult?: string;
   startLineNumber?: number;

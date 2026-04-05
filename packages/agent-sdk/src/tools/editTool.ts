@@ -4,6 +4,7 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { escapeRegExp, analyzeEditMismatch } from "../utils/editUtils.js";
 import { EDIT_TOOL_NAME, READ_TOOL_NAME } from "../constants/tools.js";
+import { validationError, requireString } from "./validation.js";
 
 /**
  * Format compact parameter display
@@ -64,6 +65,29 @@ Usage:
       },
     },
   },
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    const oldString = args.old_string as string;
+    const newString = args.new_string as string;
+
+    // Validate file_path is required and a string
+    const filePathError = requireString(args, "file_path");
+    if (filePathError) return filePathError;
+
+    // Validate old_string is required and a string
+    const oldStringError = requireString(args, "old_string");
+    if (oldStringError) return oldStringError;
+
+    // Validate new_string is required and a string
+    const newStringError = requireString(args, "new_string");
+    if (newStringError) return newStringError;
+
+    // old_string and new_string must be different
+    if (oldString === newString) {
+      return validationError("old_string and new_string must be different");
+    }
+
+    return null;
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -72,39 +96,6 @@ Usage:
     const oldString = args.old_string as string;
     const newString = args.new_string as string;
     const replaceAll = (args.replace_all as boolean) || false;
-
-    // Validate required parameters
-    if (!filePath || typeof filePath !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "file_path parameter is required and must be a string",
-      };
-    }
-
-    if (typeof oldString !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "old_string parameter is required and must be a string",
-      };
-    }
-
-    if (typeof newString !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "new_string parameter is required and must be a string",
-      };
-    }
-
-    if (oldString === newString) {
-      return {
-        success: false,
-        content: "",
-        error: "old_string and new_string must be different",
-      };
-    }
 
     // Touch file to track it in context
     context.messageManager?.touchFile(filePath);

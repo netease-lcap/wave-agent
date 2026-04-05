@@ -69,10 +69,11 @@ export interface ToolBlock {
    * Tool execution stage:
    * - 'start': Tool call initiated (from AI service streaming)
    * - 'streaming': Tool parameters being streamed (from AI service)
+   * - 'validating': Tool input parameters being validated (from AI manager)
    * - 'running': Tool execution in progress (from AI manager)
    * - 'end': Tool execution completed (from AI manager)
    */
-  stage: "start" | "streaming" | "running" | "end";
+  stage: "start" | "streaming" | "validating" | "running" | "end";
   success?: boolean;
   error?: string | Error;
   compactParams?: string; // Compact parameter display

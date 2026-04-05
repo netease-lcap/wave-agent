@@ -6,6 +6,7 @@ import {
   TASK_UPDATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
 } from "../constants/tools.js";
+import { requireString } from "./validation.js";
 
 export const taskCreateTool: ToolPlugin = {
   name: TASK_CREATE_TOOL_NAME,
@@ -99,6 +100,17 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 - Include enough detail in the description for another agent to understand and complete the task
 - After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
 - Check TaskList first to avoid creating duplicate tasks`,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate subject is required and a string
+    const subjectError = requireString(args, "subject");
+    if (subjectError) return subjectError;
+
+    // Validate description is required and a string
+    const descriptionError = requireString(args, "description");
+    if (descriptionError) return descriptionError;
+
+    return null;
+  },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const taskManager = context.taskManager;
 
@@ -181,6 +193,10 @@ Returns full task details:
 
 - After fetching a task, verify its blockedBy list is empty before beginning work.
 - Use TaskList to see all tasks in summary form.`,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate taskId is required and a string
+    return requireString(args, "taskId");
+  },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const taskManager = context.taskManager;
     const taskId = args.taskId as string;
@@ -331,6 +347,10 @@ Set up task dependencies:
 {"taskId": "2", "addBlockedBy": ["1"]}
 \`\`\`
 `,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate taskId is required and a string
+    return requireString(args, "taskId");
+  },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const taskManager = context.taskManager;
     const taskId = args.taskId as string;

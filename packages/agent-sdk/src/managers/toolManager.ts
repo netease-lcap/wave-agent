@@ -77,6 +77,15 @@ class ToolManager {
   }
 
   /**
+   * Get a registered tool plugin by name
+   * @param name - Name of the tool to retrieve
+   * @returns The tool plugin if found, undefined otherwise
+   */
+  public getPlugin(name: string): ToolPlugin | undefined {
+    return this.toolsRegistry.get(name);
+  }
+
+  /**
    * Initialize built-in tools. Can be called with dependencies for tools that require them.
    *
    * This method can be called multiple times safely. When called without dependencies,
@@ -245,6 +254,13 @@ class ToolManager {
     // Check built-in tools
     const plugin = this.toolsRegistry.get(name);
     if (plugin) {
+      // Validate input parameters before execution
+      if (plugin.validate) {
+        const validationResult = plugin.validate(args);
+        if (validationResult) {
+          return validationResult;
+        }
+      }
       try {
         return await plugin.execute(args, enhancedContext);
       } catch (error) {

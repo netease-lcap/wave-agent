@@ -270,19 +270,19 @@ describe("readTool", () => {
   });
 
   it("should return error for missing file_path parameter", async () => {
-    const result = await readTool.execute({}, testContext);
+    const result = readTool.validate!({});
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("file_path parameter is required");
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain("Missing required parameter: file_path");
   });
 
   it("should return error for invalid file_path type", async () => {
-    const result = await readTool.execute({ file_path: 123 }, testContext);
+    const result = readTool.validate!({ file_path: 123 });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain(
-      "file_path parameter is required and must be a string",
-    );
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain("Parameter file_path must be a string");
   });
 
   it("should return error for invalid offset", async () => {

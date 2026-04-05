@@ -1,5 +1,6 @@
 import { TASK_STOP_TOOL_NAME } from "../constants/tools.js";
 import { ToolContext, ToolPlugin, ToolResult } from "./types.js";
+import { requireString } from "./validation.js";
 
 export const taskStopTool: ToolPlugin = {
   name: TASK_STOP_TOOL_NAME,
@@ -26,19 +27,15 @@ export const taskStopTool: ToolPlugin = {
 - Returns a success or failure status
 - Use this tool when you need to terminate a long-running task
 `,
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate task_id is required and a string
+    return requireString(args, "task_id");
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
   ): Promise<ToolResult> => {
     const taskId = args.task_id as string;
-
-    if (!taskId || typeof taskId !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "task_id parameter is required and must be a string",
-      };
-    }
 
     const backgroundTaskManager = context?.backgroundTaskManager;
     if (!backgroundTaskManager) {

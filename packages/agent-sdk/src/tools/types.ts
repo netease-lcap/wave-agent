@@ -31,6 +31,11 @@ export interface ToolPlugin {
     workdir?: string;
     isSubagent?: boolean;
   }) => string;
+  /**
+   * Validates input parameters before tool execution.
+   * Returns a ToolResult if validation fails (error result), or null if validation passes.
+   */
+  validate?: (args: Record<string, unknown>) => ToolResult | null;
 }
 
 export interface ToolResult {

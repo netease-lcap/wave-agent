@@ -421,19 +421,19 @@ src/index.ts-3-  return new Application();
   });
 
   it("should return error for missing pattern", async () => {
-    const result = await grepTool.execute({}, testContext);
+    const result = grepTool.validate!({});
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("pattern parameter is required");
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain("Missing required parameter: pattern");
   });
 
   it("should return error for invalid pattern type", async () => {
-    const result = await grepTool.execute({ pattern: 123 }, testContext);
+    const result = grepTool.validate!({ pattern: 123 });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain(
-      "pattern parameter is required and must be a string",
-    );
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain("Parameter pattern must be a string");
   });
 
   it("should support offset and context arguments", async () => {

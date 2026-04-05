@@ -183,88 +183,74 @@ describe("editTool", () => {
   });
 
   it("should fail when required parameters are missing", async () => {
-    const result1 = await editTool.execute(
-      {
-        old_string: "old",
-        new_string: "new",
-      } as unknown as Parameters<typeof editTool.execute>[0],
-      mockContext,
-    );
+    const result1 = editTool.validate!({
+      old_string: "old",
+      new_string: "new",
+    });
 
-    expect(result1.success).toBe(false);
-    expect(result1.error).toContain("file_path parameter is required");
+    expect(result1).not.toBeNull();
+    expect(result1!.success).toBe(false);
+    expect(result1!.error).toContain("Missing required parameter: file_path");
 
-    const result2 = await editTool.execute(
-      {
-        file_path: 123,
-        old_string: "old",
-        new_string: "new",
-      } as unknown as Parameters<typeof editTool.execute>[0],
-      mockContext,
-    );
+    const result2 = editTool.validate!({
+      file_path: 123,
+      old_string: "old",
+      new_string: "new",
+    });
 
-    expect(result2.success).toBe(false);
-    expect(result2.error).toContain("file_path parameter is required");
+    expect(result2).not.toBeNull();
+    expect(result2!.success).toBe(false);
+    expect(result2!.error).toContain("Parameter file_path must be a string");
 
-    const result3 = await editTool.execute(
-      {
-        file_path: "/test/file.js",
-        new_string: "new",
-      } as unknown as Parameters<typeof editTool.execute>[0],
-      mockContext,
-    );
+    const result3 = editTool.validate!({
+      file_path: "/test/file.js",
+      new_string: "new",
+    });
 
-    expect(result3.success).toBe(false);
-    expect(result3.error).toContain("old_string parameter is required");
+    expect(result3).not.toBeNull();
+    expect(result3!.success).toBe(false);
+    expect(result3!.error).toContain("Missing required parameter: old_string");
 
-    const result4 = await editTool.execute(
-      {
-        file_path: "/test/file.js",
-        old_string: 123,
-        new_string: "new",
-      } as unknown as Parameters<typeof editTool.execute>[0],
-      mockContext,
-    );
+    const result4 = editTool.validate!({
+      file_path: "/test/file.js",
+      old_string: 123,
+      new_string: "new",
+    });
 
-    expect(result4.success).toBe(false);
-    expect(result4.error).toContain("old_string parameter is required");
+    expect(result4).not.toBeNull();
+    expect(result4!.success).toBe(false);
+    expect(result4!.error).toContain("Parameter old_string must be a string");
 
-    const result5 = await editTool.execute(
-      {
-        file_path: "/test/file.js",
-        old_string: "old",
-      } as unknown as Parameters<typeof editTool.execute>[0],
-      mockContext,
-    );
+    const result5 = editTool.validate!({
+      file_path: "/test/file.js",
+      old_string: "old",
+    });
 
-    expect(result5.success).toBe(false);
-    expect(result5.error).toContain("new_string parameter is required");
+    expect(result5).not.toBeNull();
+    expect(result5!.success).toBe(false);
+    expect(result5!.error).toContain("Missing required parameter: new_string");
 
-    const result6 = await editTool.execute(
-      {
-        file_path: "/test/file.js",
-        old_string: "old",
-        new_string: 123,
-      } as unknown as Parameters<typeof editTool.execute>[0],
-      mockContext,
-    );
+    const result6 = editTool.validate!({
+      file_path: "/test/file.js",
+      old_string: "old",
+      new_string: 123,
+    });
 
-    expect(result6.success).toBe(false);
-    expect(result6.error).toContain("new_string parameter is required");
+    expect(result6).not.toBeNull();
+    expect(result6!.success).toBe(false);
+    expect(result6!.error).toContain("Parameter new_string must be a string");
   });
 
   it("should fail when old_string and new_string are the same", async () => {
-    const result = await editTool.execute(
-      {
-        file_path: "/test/file.js",
-        old_string: "same",
-        new_string: "same",
-      },
-      mockContext,
-    );
+    const result = editTool.validate!({
+      file_path: "/test/file.js",
+      old_string: "same",
+      new_string: "same",
+    });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain(
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(false);
+    expect(result!.error).toContain(
       "old_string and new_string must be different",
     );
   });

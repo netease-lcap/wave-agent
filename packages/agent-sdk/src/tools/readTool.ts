@@ -11,6 +11,7 @@ import {
 } from "../utils/fileFormat.js";
 import { convertImageToBase64 } from "../utils/messageOperations.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
+import { requireString } from "./validation.js";
 
 /**
  * Supported image file extensions
@@ -179,6 +180,10 @@ Usage:
       },
     },
   },
+  validate: (args: Record<string, unknown>): ToolResult | null => {
+    // Validate file_path is required and a string
+    return requireString(args, "file_path");
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -186,14 +191,6 @@ Usage:
     const filePath = args.file_path as string;
     const offset = args.offset as number;
     const limit = args.limit as number;
-
-    if (!filePath || typeof filePath !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "file_path parameter is required and must be a string",
-      };
-    }
 
     // Touch file to track it in context
     context.messageManager?.touchFile(filePath);

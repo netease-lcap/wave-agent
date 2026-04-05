@@ -664,6 +664,39 @@ export class AIManager {
               });
             }
 
+            // Emit validating stage and run validation if available
+            this.messageManager.updateToolBlock({
+              id: toolId,
+              stage: "validating",
+              name: toolName,
+              compactParams,
+              parameters: argsString,
+            });
+
+            // Get plugin and validate input if validate method exists
+            const plugin = this.toolManager.getPlugin(toolName);
+            if (plugin?.validate) {
+              const validationResult = plugin.validate(toolArgs);
+              if (validationResult) {
+                // Validation failed - update tool block with error and end
+                this.messageManager.updateToolBlock({
+                  id: toolId,
+                  parameters: argsString,
+                  result:
+                    validationResult.content ||
+                    (validationResult.error
+                      ? `Error: ${validationResult.error}`
+                      : ""),
+                  success: false,
+                  error: validationResult.error,
+                  stage: "end",
+                  name: toolName,
+                  compactParams,
+                });
+                return; // Skip tool execution
+              }
+            }
+
             // Emit running stage (tool execution about to start)
             this.messageManager.updateToolBlock({
               id: toolId,
