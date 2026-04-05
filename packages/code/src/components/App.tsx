@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useStdout, useInput } from "ink";
+import React, { useState, useEffect, useCallback } from "react";
+import { useInput } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
-import { ChatProvider, useChat } from "../contexts/useChat.js";
+import { ChatProvider } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
 import { WorktreeExitPrompt } from "./WorktreeExitPrompt.js";
 import {
@@ -107,50 +107,9 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       version={version}
       model={model}
     >
-      <ChatInterfaceWithRemount />
+      <ChatInterface />
     </ChatProvider>
   );
-};
-
-export const ChatInterfaceWithRemount: React.FC = () => {
-  const { stdout } = useStdout();
-  const { isExpanded, rewindId, sessionId } = useChat();
-
-  const [remountKey, setRemountKey] = useState(String(isExpanded) + rewindId);
-
-  const prevSessionId = useRef(sessionId);
-  const isRemountScheduled = useRef(false);
-
-  useEffect(() => {
-    const newKey =
-      String(isExpanded) +
-      rewindId +
-      (prevSessionId.current && sessionId && prevSessionId.current !== sessionId
-        ? sessionId
-        : "");
-
-    if (newKey !== remountKey && !isRemountScheduled.current) {
-      isRemountScheduled.current = true;
-
-      const timeout = setTimeout(() => {
-        stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", (err?: Error | null) => {
-          if (err) {
-            console.error("Failed to clear terminal:", err);
-          }
-          setRemountKey(newKey);
-          isRemountScheduled.current = false;
-        });
-      }, 100);
-
-      return () => clearTimeout(timeout);
-    }
-
-    if (sessionId) {
-      prevSessionId.current = sessionId;
-    }
-  }, [isExpanded, rewindId, sessionId, remountKey, stdout]);
-
-  return <ChatInterface remountKey={remountKey} />;
 };
 
 export const App: React.FC<AppProps> = ({

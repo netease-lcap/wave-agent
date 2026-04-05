@@ -13,7 +13,13 @@ export interface MessageListProps {
 }
 
 export const MessageList = React.memo(
-  ({ messages, isExpanded = false, version, workdir }: MessageListProps) => {
+  ({
+    messages,
+    isExpanded = false,
+    forceStatic = false,
+    version,
+    workdir,
+  }: MessageListProps) => {
     const welcomeMessage = (
       <Box flexDirection="column" paddingTop={1}>
         <Text color="gray">WAVE{version ? ` v${version}` : ""}</Text>
@@ -58,7 +64,8 @@ export const MessageList = React.memo(
     const blocksWithStatus = allBlocks.map((item) => {
       const { block } = item;
       const isDynamic =
-        messagesWithRunningBlocks.has(item.messageIndex) || isRunning(block);
+        !forceStatic &&
+        (messagesWithRunningBlocks.has(item.messageIndex) || isRunning(block));
       return { ...item, isDynamic };
     });
 

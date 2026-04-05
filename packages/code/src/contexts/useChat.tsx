@@ -7,7 +7,7 @@ import React, {
   useState,
   useMemo,
 } from "react";
-import { useInput } from "ink";
+import { useInput, useStdout } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
 import type {
   Message,
@@ -86,6 +86,7 @@ export interface ChatContextType {
   allowBypassInCycle: boolean;
   // Permission confirmation state
   isConfirmationVisible: boolean;
+  hasPendingConfirmations: boolean;
   confirmingTool?: {
     name: string;
     input?: Record<string, unknown>;
@@ -105,8 +106,10 @@ export interface ChatContextType {
   handleConfirmationCancel: () => void;
   // Background current task
   backgroundCurrentTask: () => void;
+  // Remount functionality
+  remountKey: number;
+  requestRemount: () => void;
   // Rewind functionality
-  rewindId: number;
   handleRewindSelect: (index: number) => Promise<void>;
   getFullMessageThread: () => Promise<{
     messages: Message[];
@@ -152,6 +155,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   model,
 }) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
+  const { stdout } = useStdout();
 
   // Message Display State
   const [isExpanded, setIsExpanded] = useState(false);
@@ -250,8 +254,36 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     reject: () => void;
   } | null>(null);
 
-  // Rewind state
-  const [rewindId, setRewindId] = useState(0);
+  // Remount state
+  const [remountKey, setRemountKey] = useState(0);
+  const prevRemountKey = useRef(remountKey);
+  const prevSessionId = useRef<string | null>(null);
+
+  // Track sessionId changes to trigger remount
+  useEffect(() => {
+    if (
+      prevSessionId.current &&
+      sessionId &&
+      prevSessionId.current !== sessionId
+    ) {
+      setRemountKey((prev) => prev + 1);
+    }
+    if (sessionId) {
+      prevSessionId.current = sessionId;
+    }
+  }, [sessionId]);
+
+  // Clear terminal when remountKey changes
+  useEffect(() => {
+    if (remountKey !== prevRemountKey.current && prevRemountKey.current !== 0) {
+      stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H");
+    }
+    prevRemountKey.current = remountKey;
+  }, [remountKey, stdout]);
+
+  const requestRemount = useCallback(() => {
+    setRemountKey((prev) => prev + 1);
+  }, []);
 
   // Status metadata state
   const [workingDirectory, setWorkingDirectory] = useState("");
@@ -627,9 +659,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     if (agentRef.current) {
       try {
         await agentRef.current.truncateHistory(index);
-
-        // Clear terminal screen after rewind
-        setRewindId((prev) => prev + 1);
+        setRemountKey((prev) => prev + 1);
       } catch (error) {
         logger.error("Failed to rewind:", error);
       }
@@ -749,13 +779,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setPermissionMode,
     allowBypassInCycle,
     isConfirmationVisible,
+    hasPendingConfirmations: confirmationQueue.length > 0,
     confirmingTool,
     showConfirmation,
     hideConfirmation,
     handleConfirmationDecision,
     handleConfirmationCancel,
     backgroundCurrentTask,
-    rewindId,
+    remountKey,
+    requestRemount,
     handleRewindSelect,
     getFullMessageThread,
 

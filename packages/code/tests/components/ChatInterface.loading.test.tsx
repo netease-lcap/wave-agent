@@ -33,7 +33,8 @@ describe("ChatInterface Loading State", () => {
     isCompressing: false,
     isExpanded: false,
     isConfirmationVisible: false,
-    rewindId: 0,
+    remountKey: 0,
+    requestRemount: vi.fn(),
     latestTotalTokens: 0,
     mcpServers: [],
     slashCommands: [],
@@ -68,7 +69,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
+    const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
     expect(output).toContain("✻ AI is thinking...");
@@ -89,7 +90,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
+    const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
     expect(output).not.toContain("✻ AI is thinking...");
@@ -109,7 +110,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
+    const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
     expect(output).not.toContain("✻ AI is thinking...");
@@ -128,7 +129,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
+    const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
     expect(output).toContain("✻ Command is running...");
@@ -146,7 +147,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
+    const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
     expect(output).toContain("✻ Compressing message history...");
@@ -165,7 +166,7 @@ describe("ChatInterface Loading State", () => {
       [] as unknown as ReturnType<typeof useTasks>,
     );
 
-    const { lastFrame } = render(<ChatInterface remountKey="test-key" />);
+    const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
     expect(output).toContain("✻ Compressing message history...");
