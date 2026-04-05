@@ -112,8 +112,6 @@ export interface ChatContextType {
     messages: Message[];
     sessionIds: string[];
   }>;
-  wasLastDetailsTooTall: number;
-  setWasLastDetailsTooTall: React.Dispatch<React.SetStateAction<number>>;
   // Status metadata
   getGatewayConfig: () => import("wave-agent-sdk").GatewayConfig;
   getModelConfig: () => import("wave-agent-sdk").ModelConfig;
@@ -280,8 +278,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [],
   );
 
-  // Confirmation too tall state
-  const [wasLastDetailsTooTall, setWasLastDetailsTooTall] = useState(0);
   const allowBypassInCycle =
     !!bypassPermissions || initialPermissionMode === "bypassPermissions";
 
@@ -762,8 +758,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     rewindId,
     handleRewindSelect,
     getFullMessageThread,
-    wasLastDetailsTooTall,
-    setWasLastDetailsTooTall,
+
     getGatewayConfig,
     getModelConfig,
     workingDirectory,

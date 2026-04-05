@@ -82,7 +82,9 @@ describe("ChatInterface Rewind Visibility", () => {
       showRewindManager: true, // Rewind is visible
     } as unknown as ReturnType<typeof useInputManager>);
 
-    const { lastFrame, stdin } = render(<ChatInterface />);
+    const { lastFrame, stdin } = render(
+      <ChatInterface remountKey="test-key" />,
+    );
 
     // Wait for the component to render
     await vi.waitFor(() => {
@@ -163,7 +165,9 @@ describe("ChatInterface Rewind Visibility", () => {
       showRewindManager: false, // Rewind is NOT visible
     } as unknown as ReturnType<typeof useInputManager>);
 
-    const { lastFrame, stdin } = render(<ChatInterface />);
+    const { lastFrame, stdin } = render(
+      <ChatInterface remountKey="test-key" />,
+    );
 
     // Wait for the component to render
     await vi.waitFor(() => {
