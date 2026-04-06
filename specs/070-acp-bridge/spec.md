@@ -79,7 +79,7 @@ As a user, I want to see the agent's current task list and plan in my external c
 - **FR-010**: System MUST handle `ExitPlanMode` tool calls specially by restricting permission options to "Approve Plan" and "Reject Plan", and automatically transitioning to `default` mode upon approval.
 - **FR-011**: System MUST include `plan_content` in the `tool_call` content for `ExitPlanMode` tool calls.
 - **FR-012**: System MUST support `resource_link` and `resource` blocks in the `prompt` method, formatting them as markdown-like links `[name](uri)` or `[Resource](uri)` to provide context to the agent.
-- **FR-013**: System MUST join prompt content blocks using an empty string to preserve inline spacing provided by text blocks.
+- **FR-013**: System MUST join prompt content blocks using a newline to separate different content blocks (text, resource_link, resource).
 - **FR-014**: System MUST advertise support for `image` and `embeddedContext` in `promptCapabilities` during initialization.
 
 ### Key Entities

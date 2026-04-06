@@ -360,7 +360,7 @@ export class WaveAcpAgent implements AcpAgent {
       }
     }
 
-    const textContent = textBlocks.join("");
+    const textContent = textBlocks.join("\n");
 
     try {
       await agent.sendMessage(
