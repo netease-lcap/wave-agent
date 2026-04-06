@@ -79,7 +79,9 @@ const createMockUseChat = (
     handleConfirmationCancel: vi.fn(),
     remountKey: 0,
     requestRemount: vi.fn(),
-    getGatewayConfig: vi.fn(),
+    getGatewayConfig: vi
+      .fn()
+      .mockReturnValue({ baseURL: "http://localhost:3000" }),
     getModelConfig: vi.fn().mockReturnValue({ model: "", fastModel: "" }),
     version: "1.0.0",
     workdir: "/test",
