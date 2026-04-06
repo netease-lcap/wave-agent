@@ -46,35 +46,23 @@ export const ChatInterface: React.FC = () => {
   const { stdout } = useStdout();
   const terminalHeight = stdout?.rows ?? 24;
   const chatInterfaceRef = useRef<DOMElement>(null);
-  const prevForceStatic = useRef(forceStatic);
 
+  // Handle forceStatic mode for overflow and request remount when exiting
   useEffect(() => {
     if (isConfirmationVisible && chatInterfaceRef.current) {
       const { height } = measureElement(chatInterfaceRef.current);
       if (height > terminalHeight) {
         setForceStatic(true);
       }
-    } else {
+    } else if (forceStatic && !hasPendingConfirmations) {
       setForceStatic(false);
-    }
-  }, [isConfirmationVisible, terminalHeight]);
-
-  // Handle forceStatic transition - request remount when transitioning from true to false
-  // AND there are no more pending confirmations in the queue
-  useEffect(() => {
-    if (
-      prevForceStatic.current &&
-      !forceStatic &&
-      !hasPendingConfirmations &&
-      !isConfirmationVisible
-    ) {
       requestRemount();
     }
-    prevForceStatic.current = forceStatic;
   }, [
+    isConfirmationVisible,
+    terminalHeight,
     forceStatic,
     hasPendingConfirmations,
-    isConfirmationVisible,
     requestRemount,
   ]);
 
