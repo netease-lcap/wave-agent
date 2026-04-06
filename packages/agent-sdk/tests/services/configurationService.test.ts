@@ -4,15 +4,6 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { existsSync, readFileSync } from "fs";
 
-// Mock os.homedir before importing configurationService
-vi.mock("os", async () => {
-  const actual = await vi.importActual("os");
-  return {
-    ...(actual as typeof os),
-    homedir: vi.fn(),
-  };
-});
-
 // Mock fs module for some tests that use sync methods
 vi.mock("fs", async () => {
   const actual = await vi.importActual("fs");

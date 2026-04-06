@@ -7,19 +7,6 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import { exec } from "child_process";
 
-vi.mock("os", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("os")>();
-  return {
-    ...actual,
-    homedir: vi.fn().mockReturnValue("/home/user"),
-    platform: vi.fn().mockReturnValue("linux"),
-    default: {
-      ...actual,
-      homedir: vi.fn().mockReturnValue("/home/user"),
-      platform: vi.fn().mockReturnValue("linux"),
-    },
-  };
-});
 vi.mock("fs/promises");
 vi.mock("child_process");
 vi.mock("../src/services/session.js");
