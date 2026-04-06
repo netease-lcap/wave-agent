@@ -1767,7 +1767,7 @@ describe("WaveAcpAgent", () => {
     });
 
     expect(mockWaveAgent.sendMessage).toHaveBeenCalledWith(
-      "check this resource:[Resource](file:///test/file.txt)",
+      "check this resource:\n[Resource](file:///test/file.txt)",
       undefined,
     );
   });
@@ -1797,7 +1797,7 @@ describe("WaveAcpAgent", () => {
     });
 
     expect(mockWaveAgent.sendMessage).toHaveBeenCalledWith(
-      "text 1[Resource](uri1)text 2",
+      "text 1\n[Resource](uri1)\ntext 2",
       [
         { path: "data:image/png;base64,img1", mimeType: "image/png" },
         { path: "data:image/jpeg;base64,img2", mimeType: "image/jpeg" },
