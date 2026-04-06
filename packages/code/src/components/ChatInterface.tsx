@@ -62,11 +62,21 @@ export const ChatInterface: React.FC = () => {
   // Handle forceStatic transition - request remount when transitioning from true to false
   // AND there are no more pending confirmations in the queue
   useEffect(() => {
-    if (prevForceStatic.current && !forceStatic && !hasPendingConfirmations) {
+    if (
+      prevForceStatic.current &&
+      !forceStatic &&
+      !hasPendingConfirmations &&
+      !isConfirmationVisible
+    ) {
       requestRemount();
     }
     prevForceStatic.current = forceStatic;
-  }, [forceStatic, hasPendingConfirmations, requestRemount]);
+  }, [
+    forceStatic,
+    hasPendingConfirmations,
+    isConfirmationVisible,
+    requestRemount,
+  ]);
 
   if (!sessionId) return null;
 
