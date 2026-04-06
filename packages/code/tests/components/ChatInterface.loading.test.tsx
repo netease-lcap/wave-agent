@@ -6,18 +6,14 @@ import {
   ChatContextType,
   useChat as useChatActual,
 } from "../../src/contexts/useChat.js";
-import { useInputManager } from "../../src/hooks/useInputManager.js";
 import { useTasks } from "../../src/hooks/useTasks.js";
+import { initialState } from "../../src/reducers/inputReducer.js";
 
 vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: vi.fn(),
 }));
 
 const useChat = vi.mocked(useChatActual);
-
-vi.mock("../../src/hooks/useInputManager.js", () => ({
-  useInputManager: vi.fn(),
-}));
 
 vi.mock("../../src/hooks/useTasks.js", () => ({
   useTasks: vi.fn(),
@@ -41,20 +37,13 @@ describe("ChatInterface Loading State", () => {
     hasSlashCommand: vi.fn(),
     isTaskListVisible: true,
     allowBypassInCycle: false,
-    btwState: { isActive: false, question: "", isLoading: false },
+    inputState: initialState,
+    inputDispatch: vi.fn(),
     getModelConfig: vi.fn().mockReturnValue({
       model: "test-model",
       fastModel: "test-fast-model",
     }),
   } as unknown as ChatContextType;
-
-  const mockInputManager = {
-    isManagerReady: true,
-    showRewindManager: false,
-    btwState: { isActive: false, question: "", isLoading: false },
-    setPermissionMode: vi.fn(),
-    setAllowBypassInCycle: vi.fn(),
-  };
 
   it("should show loading indicator when isLoading is true", () => {
     vi.mocked(useChat).mockReturnValue({
@@ -62,9 +51,6 @@ describe("ChatInterface Loading State", () => {
       isLoading: true,
       latestTotalTokens: 1234,
     } as unknown as ChatContextType);
-    vi.mocked(useInputManager).mockReturnValue(
-      mockInputManager as unknown as ReturnType<typeof useInputManager>,
-    );
     vi.mocked(useTasks).mockReturnValue(
       [] as unknown as ReturnType<typeof useTasks>,
     );
@@ -83,9 +69,6 @@ describe("ChatInterface Loading State", () => {
       ...mockChatContext,
       isLoading: false,
     } as unknown as ChatContextType);
-    vi.mocked(useInputManager).mockReturnValue(
-      mockInputManager as unknown as ReturnType<typeof useInputManager>,
-    );
     vi.mocked(useTasks).mockReturnValue(
       [] as unknown as ReturnType<typeof useTasks>,
     );
@@ -103,9 +86,6 @@ describe("ChatInterface Loading State", () => {
       isConfirmationVisible: true,
       confirmingTool: { name: "test_tool", input: {} },
     } as unknown as ChatContextType);
-    vi.mocked(useInputManager).mockReturnValue(
-      mockInputManager as unknown as ReturnType<typeof useInputManager>,
-    );
     vi.mocked(useTasks).mockReturnValue(
       [] as unknown as ReturnType<typeof useTasks>,
     );
@@ -122,9 +102,6 @@ describe("ChatInterface Loading State", () => {
       ...mockChatContext,
       isCommandRunning: true,
     } as unknown as ChatContextType);
-    vi.mocked(useInputManager).mockReturnValue(
-      mockInputManager as unknown as ReturnType<typeof useInputManager>,
-    );
     vi.mocked(useTasks).mockReturnValue(
       [] as unknown as ReturnType<typeof useTasks>,
     );
@@ -140,9 +117,6 @@ describe("ChatInterface Loading State", () => {
       ...mockChatContext,
       isCompressing: true,
     } as unknown as ChatContextType);
-    vi.mocked(useInputManager).mockReturnValue(
-      mockInputManager as unknown as ReturnType<typeof useInputManager>,
-    );
     vi.mocked(useTasks).mockReturnValue(
       [] as unknown as ReturnType<typeof useTasks>,
     );
@@ -159,9 +133,6 @@ describe("ChatInterface Loading State", () => {
       isLoading: true,
       isCompressing: true,
     } as unknown as ChatContextType);
-    vi.mocked(useInputManager).mockReturnValue(
-      mockInputManager as unknown as ReturnType<typeof useInputManager>,
-    );
     vi.mocked(useTasks).mockReturnValue(
       [] as unknown as ReturnType<typeof useTasks>,
     );

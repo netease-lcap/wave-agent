@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { Markdown } from "./Markdown.js";
-import { BtwState } from "../managers/inputReducer.js";
+import { BtwState } from "../reducers/inputReducer.js";
 
 interface BtwDisplayProps {
   btwState: BtwState;

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useCallback } from "react";
 import { Box, Text } from "ink";
 import { useInput } from "ink";
 import { FileSelector } from "./FileSelector.js";
@@ -12,8 +12,10 @@ import { StatusCommand } from "./StatusCommand.js";
 import { PluginManagerShell } from "./PluginManagerShell.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { StatusLine } from "./StatusLine.js";
-import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
+import { InputManagerCallbacks } from "../reducers/inputReducer.js";
+import { PromptEntry } from "wave-agent-sdk";
+import * as handlers from "../reducers/inputHandlers.js";
 
 import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
 
@@ -54,139 +56,179 @@ export const InputBox: React.FC<InputBoxProps> = ({
   hasSlashCommand = () => false,
 }) => {
   const {
-    permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
-    allowBypassInCycle: chatAllowBypassInCycle,
     handleRewindSelect,
     backgroundCurrentTask,
     messages,
     getFullMessageThread,
     sessionId,
     workingDirectory,
-    askBtw,
-    btwState: chatBtwState,
-    setBtwState: setChatBtwState,
+    inputState,
+    inputDispatch,
     currentModel,
     configuredModels,
     setModel,
+    askBtw,
   } = useChat();
 
-  // Input manager with all input state and functionality (including images)
-  const {
-    inputText,
-    cursorPosition,
-    // Image management
-    attachedImages,
-    clearImages,
-    // File selector
-    showFileSelector,
-    filteredFiles,
-    fileSearchQuery: searchQuery,
-    isFileSearching,
-    handleFileSelect,
-    handleCancelFileSelect,
-    // Command selector
-    showCommandSelector,
-    commandSearchQuery,
-    handleCommandSelect,
-    handleCommandInsert,
-    handleCancelCommandSelect,
-    handleHistorySearchSelect,
-    handleCancelHistorySearch,
-    // History search
-    showHistorySearch,
-    historySearchQuery,
-    // Task/MCP Manager
-    showBackgroundTaskManager,
-    showMcpManager,
-    showRewindManager,
-    showHelp,
-    showStatusCommand,
-    showPluginManager,
-    showModelSelector,
-    setShowBackgroundTaskManager,
-    setShowMcpManager,
-    setShowRewindManager,
-    setShowHelp,
-    setShowStatusCommand,
-    setShowPluginManager,
-    setShowModelSelector,
-    // Permission mode
-    permissionMode,
-    setPermissionMode,
-    setAllowBypassInCycle,
-    // BTW state
-    btwState,
-    // Main handler
-    handleInput,
-    // Manager ready state
-    isManagerReady,
-  } = useInputManager({
+  // Create callbacks object for handlers
+  const callbacks: Partial<InputManagerCallbacks> = {
     onSendMessage: sendMessage,
     onAskBtw: askBtw,
-    btwState: chatBtwState,
-    onBtwStateChange: setChatBtwState,
     onHasSlashCommand: hasSlashCommand,
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
-    onPermissionModeChange: setChatPermissionMode,
+    onPermissionModeChange: (mode) => {
+      inputDispatch({ type: "SET_PERMISSION_MODE", payload: mode });
+      setChatPermissionMode(mode);
+    },
     sessionId,
     workdir: workingDirectory,
     getFullMessageThread,
-  });
+  };
 
-  // Sync permission mode from useChat to InputManager
-  useEffect(() => {
-    setPermissionMode(chatPermissionMode);
-  }, [chatPermissionMode, setPermissionMode]);
+  // Handler functions using inputDispatch
+  const handleFileSelect = useCallback(
+    (filePath: string) => {
+      return handlers.handleFileSelect(
+        inputState,
+        inputDispatch,
+        callbacks,
+        filePath,
+      );
+    },
+    [inputState, callbacks, inputDispatch],
+  );
 
-  // Sync allowBypassInCycle from useChat to InputManager
-  useEffect(() => {
-    setAllowBypassInCycle(chatAllowBypassInCycle);
-  }, [chatAllowBypassInCycle, setAllowBypassInCycle]);
+  const handleCancelFileSelect = useCallback(() => {
+    inputDispatch({ type: "CANCEL_FILE_SELECTOR" });
+  }, [inputDispatch]);
 
-  // Use the InputManager's unified input handler
+  const handleCommandSelect = useCallback(
+    (command: string) => {
+      return handlers.handleCommandSelect(
+        inputState,
+        inputDispatch,
+        callbacks,
+        command,
+      );
+    },
+    [inputState, callbacks, inputDispatch],
+  );
+
+  const handleCommandInsert = useCallback(
+    (command: string) => {
+      if (inputState.slashPosition >= 0) {
+        const wordEnd = handlers.getWordEnd(
+          inputState.inputText,
+          inputState.slashPosition,
+        );
+        const beforeSlash = inputState.inputText.substring(
+          0,
+          inputState.slashPosition,
+        );
+        const afterWord = inputState.inputText.substring(wordEnd);
+        const newInput = beforeSlash + `/${command} ` + afterWord;
+        const newCursorPosition = beforeSlash.length + command.length + 2;
+
+        inputDispatch({ type: "SET_INPUT_TEXT", payload: newInput });
+        inputDispatch({
+          type: "SET_CURSOR_POSITION",
+          payload: newCursorPosition,
+        });
+        inputDispatch({ type: "CANCEL_COMMAND_SELECTOR" });
+
+        return { newInput, newCursorPosition };
+      }
+      return {
+        newInput: inputState.inputText,
+        newCursorPosition: inputState.cursorPosition,
+      };
+    },
+    [inputState],
+  );
+
+  const handleCancelCommandSelect = useCallback(() => {
+    inputDispatch({ type: "CANCEL_COMMAND_SELECTOR" });
+  }, []);
+
+  const handleHistorySearchSelect = useCallback((entry: PromptEntry) => {
+    inputDispatch({ type: "SELECT_HISTORY_ENTRY", payload: entry });
+  }, []);
+
+  const handleCancelHistorySearch = useCallback(() => {
+    inputDispatch({ type: "CANCEL_HISTORY_SEARCH" });
+  }, []);
+
+  const setShowBackgroundTaskManager = useCallback((show: boolean) => {
+    inputDispatch({ type: "SET_SHOW_BACKGROUND_TASK_MANAGER", payload: show });
+  }, []);
+
+  const setShowMcpManager = useCallback((show: boolean) => {
+    inputDispatch({ type: "SET_SHOW_MCP_MANAGER", payload: show });
+  }, []);
+
+  const setShowRewindManager = useCallback((show: boolean) => {
+    inputDispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: show });
+  }, []);
+
+  const setShowHelp = useCallback((show: boolean) => {
+    inputDispatch({ type: "SET_SHOW_HELP", payload: show });
+  }, []);
+
+  const setShowStatusCommand = useCallback((show: boolean) => {
+    inputDispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: show });
+  }, []);
+
+  const setShowPluginManager = useCallback((show: boolean) => {
+    inputDispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: show });
+  }, []);
+
+  const setShowModelSelector = useCallback((show: boolean) => {
+    inputDispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: show });
+  }, []);
+
+  // Main input handler
   useInput(async (input, key) => {
-    await handleInput(input, key, attachedImages, clearImages);
+    await handlers.handleInput(
+      inputState,
+      inputDispatch,
+      callbacks,
+      input,
+      key,
+      () => inputDispatch({ type: "CLEAR_IMAGES" }),
+    );
   });
 
   const handleRewindCancel = () => {
-    if (setShowRewindManager) {
-      setShowRewindManager(false);
-    }
+    setShowRewindManager(false);
   };
 
-  const isPlaceholder = !inputText;
+  const isPlaceholder = !inputState.inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
 
   const isShellCommand =
-    inputText?.startsWith("!") && !inputText.includes("\n");
-
-  // handleCommandSelectorInsert is already memoized in useInputManager, no need to wrap again
+    inputState.inputText?.startsWith("!") &&
+    !inputState.inputText.includes("\n");
 
   // Split text into three parts: before cursor, cursor position, after cursor
-  const displayText = isPlaceholder ? placeholderText : inputText;
-  const beforeCursor = displayText.substring(0, cursorPosition);
+  const displayText = isPlaceholder ? placeholderText : inputState.inputText;
+  const beforeCursor = displayText.substring(0, inputState.cursorPosition);
   const atCursor =
-    cursorPosition < displayText.length ? displayText[cursorPosition] : " ";
-  const afterCursor = displayText.substring(cursorPosition + 1);
+    inputState.cursorPosition < displayText.length
+      ? displayText[inputState.cursorPosition]
+      : " ";
+  const afterCursor = displayText.substring(inputState.cursorPosition + 1);
 
-  // Always show cursor, allow user to continue input during memory mode
+  // Always show cursor
   const shouldShowCursor = true;
 
-  // Only show the Box after InputManager is created on first mount
-  if (!isManagerReady) {
-    return null;
-  }
-
   const handleRewindSelectWithClose = async (index: number) => {
-    if (setShowRewindManager) {
-      setShowRewindManager(false);
-    }
+    setShowRewindManager(false);
     await handleRewindSelect(index);
   };
 
-  if (showRewindManager) {
+  if (inputState.showRewindManager) {
     return (
       <RewindCommand
         messages={messages}
@@ -197,21 +239,21 @@ export const InputBox: React.FC<InputBoxProps> = ({
     );
   }
 
-  if (showHelp) {
+  if (inputState.showHelp) {
     return (
       <HelpView onCancel={() => setShowHelp(false)} commands={slashCommands} />
     );
   }
 
-  if (showStatusCommand) {
+  if (inputState.showStatusCommand) {
     return <StatusCommand onCancel={() => setShowStatusCommand(false)} />;
   }
 
-  if (showPluginManager) {
+  if (inputState.showPluginManager) {
     return <PluginManagerShell onCancel={() => setShowPluginManager(false)} />;
   }
 
-  if (showModelSelector) {
+  if (inputState.showModelSelector) {
     return (
       <ModelSelector
         onCancel={() => setShowModelSelector(false)}
@@ -224,19 +266,19 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   return (
     <Box flexDirection="column">
-      {showFileSelector && (
+      {inputState.showFileSelector && (
         <FileSelector
-          files={filteredFiles}
-          searchQuery={searchQuery}
-          isLoading={isFileSearching}
+          files={inputState.filteredFiles}
+          searchQuery={inputState.fileSearchQuery}
+          isLoading={inputState.isFileSearching}
           onSelect={handleFileSelect}
           onCancel={handleCancelFileSelect}
         />
       )}
 
-      {showCommandSelector && (
+      {inputState.showCommandSelector && (
         <CommandSelector
-          searchQuery={commandSearchQuery}
+          searchQuery={inputState.commandSearchQuery}
           onSelect={handleCommandSelect}
           onInsert={handleCommandInsert}
           onCancel={handleCancelCommandSelect}
@@ -244,21 +286,21 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {showHistorySearch && (
+      {inputState.showHistorySearch && (
         <HistorySearch
-          searchQuery={historySearchQuery}
+          searchQuery={inputState.historySearchQuery}
           onSelect={handleHistorySearchSelect}
           onCancel={handleCancelHistorySearch}
         />
       )}
 
-      {showBackgroundTaskManager && (
+      {inputState.showBackgroundTaskManager && (
         <BackgroundTaskManager
           onCancel={() => setShowBackgroundTaskManager(false)}
         />
       )}
 
-      {showMcpManager && (
+      {inputState.showMcpManager && (
         <McpManager
           onCancel={() => setShowMcpManager(false)}
           servers={mcpServers}
@@ -267,21 +309,21 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {showBackgroundTaskManager ||
-        showMcpManager ||
-        showRewindManager ||
-        showHelp ||
-        showStatusCommand ||
-        showPluginManager || (
+      {inputState.showBackgroundTaskManager ||
+        inputState.showMcpManager ||
+        inputState.showRewindManager ||
+        inputState.showHelp ||
+        inputState.showStatusCommand ||
+        inputState.showPluginManager || (
           <Box flexDirection="column">
             <Box
               borderStyle="single"
-              borderColor={btwState.isActive ? "cyan" : "gray"}
+              borderColor={inputState.btwState.isActive ? "cyan" : "gray"}
               borderLeft={false}
               borderRight={false}
             >
               <Text color={isPlaceholder ? "gray" : "white"}>
-                {btwState.isActive && isPlaceholder ? (
+                {inputState.btwState.isActive && isPlaceholder ? (
                   <>
                     <Text backgroundColor="white" color="black">
                       {" "}
@@ -302,9 +344,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
               </Text>
             </Box>
             <StatusLine
-              permissionMode={permissionMode}
+              permissionMode={inputState.permissionMode}
               isShellCommand={isShellCommand}
-              isBtwActive={btwState.isActive}
+              isBtwActive={inputState.btwState.isActive}
             />
           </Box>
         )}

@@ -6,20 +6,14 @@ import {
   ChatContextType,
   useChat as useChatActual,
 } from "../../src/contexts/useChat.js";
-import { useInputManager } from "../../src/hooks/useInputManager.js";
 import { stripAnsiColors } from "wave-agent-sdk";
+import { initialState } from "../../src/reducers/inputReducer.js";
 
 vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: vi.fn(),
 }));
 
 const useChat = vi.mocked(useChatActual);
-
-// Mock InputManager to track handleInput calls
-const mockHandleInput = vi.fn();
-vi.mock("../../src/hooks/useInputManager.js", () => ({
-  useInputManager: vi.fn(),
-}));
 
 describe("ChatInterface Rewind Visibility", () => {
   it("should hide InputBox when showRewindManager is true", async () => {
@@ -28,17 +22,14 @@ describe("ChatInterface Rewind Visibility", () => {
       messages: [],
       isLoading: false,
       isCommandRunning: false,
-      userInputHistory: [],
       isCompressing: false,
       isExpanded: false,
       isConfirmationVisible: false,
-      rewindId: 0,
       remountKey: 0,
       requestRemount: vi.fn(),
       handleRewindSelect: vi.fn(),
       sendMessage: vi.fn(),
       abortMessage: vi.fn(),
-      saveMemory: vi.fn(),
       mcpServers: [],
       connectMcpServer: vi.fn(),
       disconnectMcpServer: vi.fn(),
@@ -48,8 +39,6 @@ describe("ChatInterface Rewind Visibility", () => {
       backgroundTasks: [],
       getBackgroundTaskOutput: vi.fn(),
       stopBackgroundTask: vi.fn(),
-      subagentMessages: {},
-      subagentLatestTokens: {},
       permissionMode: "default",
       setPermissionMode: vi.fn(),
       showConfirmation: vi.fn(),
@@ -61,7 +50,15 @@ describe("ChatInterface Rewind Visibility", () => {
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
       allowBypassInCycle: false,
-      btwState: { isActive: false, question: "", isLoading: false },
+      inputState: {
+        ...initialState,
+        showRewindManager: true, // Rewind is visible
+      },
+      inputDispatch: vi.fn(),
+      currentModel: "",
+      configuredModels: [],
+      setModel: vi.fn(),
+      askBtw: vi.fn(),
       getModelConfig: vi.fn().mockReturnValue({
         model: "test-model",
         fastModel: "test-fast-model",
@@ -69,22 +66,16 @@ describe("ChatInterface Rewind Visibility", () => {
       getFullMessageThread: vi
         .fn()
         .mockResolvedValue({ messages: [], sessionIds: [] }),
+      getGatewayConfig: vi.fn(),
+      workingDirectory: "/test",
+      version: "1.0.0",
+      workdir: "/test",
+      queuedMessages: [],
+      hasPendingConfirmations: false,
+      confirmingTool: null,
     } as unknown as ChatContextType);
 
-    vi.mocked(useInputManager).mockReturnValue({
-      inputText: "",
-      cursorPosition: 0,
-      attachedImages: [],
-      clearImages: vi.fn(),
-      handleInput: mockHandleInput,
-      setPermissionMode: vi.fn(),
-      setAllowBypassInCycle: vi.fn(),
-      btwState: { isActive: false, question: "", isLoading: false },
-      isManagerReady: true,
-      showRewindManager: true, // Rewind is visible
-    } as unknown as ReturnType<typeof useInputManager>);
-
-    const { lastFrame, stdin } = render(<ChatInterface />);
+    const { lastFrame } = render(<ChatInterface />);
 
     // Wait for the component to render
     await vi.waitFor(() => {
@@ -97,12 +88,6 @@ describe("ChatInterface Rewind Visibility", () => {
     expect(stripAnsiColors(lastFrame() || "")).not.toContain(
       "Type your message",
     );
-
-    // Arrow keys should not affect inputbox (handleInput should not be called)
-    mockHandleInput.mockClear();
-    stdin.write("\u001B[A"); // Up arrow
-    // Verify that handleInput is called
-    expect(mockHandleInput).toHaveBeenCalled();
   });
 
   it("should show InputBox when showRewindManager is false", async () => {
@@ -111,17 +96,14 @@ describe("ChatInterface Rewind Visibility", () => {
       messages: [],
       isLoading: false,
       isCommandRunning: false,
-      userInputHistory: [],
       isCompressing: false,
       isExpanded: false,
       isConfirmationVisible: false,
-      rewindId: 0,
       remountKey: 0,
       requestRemount: vi.fn(),
       handleRewindSelect: vi.fn(),
       sendMessage: vi.fn(),
       abortMessage: vi.fn(),
-      saveMemory: vi.fn(),
       mcpServers: [],
       connectMcpServer: vi.fn(),
       disconnectMcpServer: vi.fn(),
@@ -131,8 +113,6 @@ describe("ChatInterface Rewind Visibility", () => {
       backgroundTasks: [],
       getBackgroundTaskOutput: vi.fn(),
       stopBackgroundTask: vi.fn(),
-      subagentMessages: {},
-      subagentLatestTokens: {},
       permissionMode: "default",
       setPermissionMode: vi.fn(),
       showConfirmation: vi.fn(),
@@ -144,7 +124,15 @@ describe("ChatInterface Rewind Visibility", () => {
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
       allowBypassInCycle: false,
-      btwState: { isActive: false, question: "", isLoading: false },
+      inputState: {
+        ...initialState,
+        showRewindManager: false, // Rewind is NOT visible
+      },
+      inputDispatch: vi.fn(),
+      currentModel: "",
+      configuredModels: [],
+      setModel: vi.fn(),
+      askBtw: vi.fn(),
       getModelConfig: vi.fn().mockReturnValue({
         model: "test-model",
         fastModel: "test-fast-model",
@@ -152,22 +140,16 @@ describe("ChatInterface Rewind Visibility", () => {
       getFullMessageThread: vi
         .fn()
         .mockResolvedValue({ messages: [], sessionIds: [] }),
+      getGatewayConfig: vi.fn(),
+      workingDirectory: "/test",
+      version: "1.0.0",
+      workdir: "/test",
+      queuedMessages: [],
+      hasPendingConfirmations: false,
+      confirmingTool: null,
     } as unknown as ChatContextType);
 
-    vi.mocked(useInputManager).mockReturnValue({
-      inputText: "",
-      cursorPosition: 0,
-      attachedImages: [],
-      clearImages: vi.fn(),
-      handleInput: mockHandleInput,
-      setPermissionMode: vi.fn(),
-      setAllowBypassInCycle: vi.fn(),
-      btwState: { isActive: false, question: "", isLoading: false },
-      isManagerReady: true,
-      showRewindManager: false, // Rewind is NOT visible
-    } as unknown as ReturnType<typeof useInputManager>);
-
-    const { lastFrame, stdin } = render(<ChatInterface />);
+    const { lastFrame } = render(<ChatInterface />);
 
     // Wait for the component to render
     await vi.waitFor(() => {
@@ -178,12 +160,5 @@ describe("ChatInterface Rewind Visibility", () => {
     expect(stripAnsiColors(lastFrame() || "")).not.toContain(
       "No user messages found",
     );
-
-    // Arrow keys should affect inputbox (handleInput should be called)
-    mockHandleInput.mockClear();
-    stdin.write("\u001B[A"); // Up arrow
-    await vi.waitFor(() => {
-      expect(mockHandleInput).toHaveBeenCalled();
-    });
   });
 });

@@ -3,7 +3,7 @@ import {
   inputReducer,
   initialState,
   InputState,
-} from "../../src/managers/inputReducer.js";
+} from "../../src/reducers/inputReducer.js";
 import { FileItem, PromptEntry } from "wave-agent-sdk";
 
 describe("inputReducer", () => {

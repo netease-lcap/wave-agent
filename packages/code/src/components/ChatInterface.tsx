@@ -35,7 +35,7 @@ export const ChatInterface: React.FC = () => {
     handleConfirmationCancel,
     version,
     workdir,
-    btwState,
+    inputState,
     remountKey,
     requestRemount,
   } = useChat();
@@ -83,7 +83,7 @@ export const ChatInterface: React.FC = () => {
 
       {!isConfirmationVisible && !isExpanded && (
         <>
-          <BtwDisplay btwState={btwState} />
+          <BtwDisplay btwState={inputState.btwState} />
           {(isLoading || isCommandRunning || isCompressing) && (
             <LoadingIndicator
               isLoading={isLoading}

@@ -4,7 +4,7 @@ import {
   InputState,
   InputAction,
   InputManagerCallbacks,
-} from "../../src/managers/inputReducer.js";
+} from "../../src/reducers/inputReducer.js";
 import {
   expandLongTextPlaceholders,
   getAtSelectorPosition,
@@ -22,7 +22,7 @@ import {
   handleSelectorInput,
   handleNormalInput,
   handleInput,
-} from "../../src/managers/inputHandlers.js";
+} from "../../src/reducers/inputHandlers.js";
 import { PromptHistoryManager, PermissionMode } from "wave-agent-sdk";
 import { readClipboardImage } from "../../src/utils/clipboard.js";
 import { Key } from "ink";

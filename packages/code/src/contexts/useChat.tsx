@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useState,
   useMemo,
+  useReducer,
 } from "react";
 import { useInput, useStdout } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
@@ -24,11 +25,22 @@ import {
   type ToolPermissionContext,
   OPERATION_CANCELLED_BY_USER,
   cloneMessage,
+  searchFiles,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { throttle } from "../utils/throttle.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
-import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
+import { expandLongTextPlaceholders } from "../reducers/inputHandlers.js";
+import {
+  inputReducer,
+  initialState as initialInputState,
+  InputState,
+  InputAction,
+} from "../reducers/inputReducer.js";
+import {
+  confirmReducer,
+  initialConfirmState,
+} from "../reducers/confirmReducer.js";
 
 import { BaseAppProps } from "../types.js";
 
@@ -121,10 +133,8 @@ export interface ChatContextType {
   workingDirectory: string;
   version?: string;
   workdir?: string;
-  btwState: import("../managers/inputReducer.js").BtwState;
-  setBtwState: (
-    payload: Partial<import("../managers/inputReducer.js").BtwState>,
-  ) => void;
+  inputState: InputState;
+  inputDispatch: React.Dispatch<InputAction>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -215,44 +225,104 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Command state
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
 
-  // Permission state
-  const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
-    initialPermissionMode ||
+  // Input state reducer
+  const [inputState, inputDispatch] = useReducer(inputReducer, {
+    ...initialInputState,
+    permissionMode:
+      initialPermissionMode ||
       (bypassPermissions ? "bypassPermissions" : "default"),
-  );
+  });
 
-  // Confirmation state with queue-based architecture
-  const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
-  const [confirmingTool, setConfirmingTool] = useState<
-    | {
-        name: string;
-        input?: Record<string, unknown>;
-        suggestedPrefix?: string;
-        hidePersistentOption?: boolean;
-        planContent?: string;
-      }
-    | undefined
-  >();
-  const [confirmationQueue, setConfirmationQueue] = useState<
-    Array<{
-      toolName: string;
-      toolInput?: Record<string, unknown>;
-      suggestedPrefix?: string;
-      hidePersistentOption?: boolean;
-      planContent?: string;
-      resolver: (decision: PermissionDecision) => void;
-      reject: () => void;
-    }>
-  >([]);
-  const [currentConfirmation, setCurrentConfirmation] = useState<{
-    toolName: string;
-    toolInput?: Record<string, unknown>;
-    suggestedPrefix?: string;
-    hidePersistentOption?: boolean;
-    planContent?: string;
-    resolver: (decision: PermissionDecision) => void;
-    reject: () => void;
-  } | null>(null);
+  // Handle selectorJustUsed reset
+  useEffect(() => {
+    if (inputState.selectorJustUsed) {
+      const timer = setTimeout(() => {
+        inputDispatch({ type: "SET_SELECTOR_JUST_USED", payload: false });
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [inputState.selectorJustUsed]);
+
+  // Handle debounced file search
+  useEffect(() => {
+    if (inputState.showFileSelector) {
+      const debounceDelay =
+        inputState.fileSearchQuery === ""
+          ? 0
+          : parseInt(process.env.FILE_SELECTOR_DEBOUNCE_MS || "300", 10);
+      const timer = setTimeout(async () => {
+        try {
+          const fileItems = await searchFiles(inputState.fileSearchQuery);
+          inputDispatch({ type: "SET_FILTERED_FILES", payload: fileItems });
+        } catch (error) {
+          console.error("File search error:", error);
+          inputDispatch({ type: "SET_FILTERED_FILES", payload: [] });
+        }
+      }, debounceDelay);
+      return () => clearTimeout(timer);
+    }
+  }, [inputState.showFileSelector, inputState.fileSearchQuery]);
+
+  // Handle paste debouncing
+  useEffect(() => {
+    if (inputState.isPasting) {
+      const pasteDebounceDelay = parseInt(
+        process.env.PASTE_DEBOUNCE_MS || "30",
+        10,
+      );
+      const timer = setTimeout(() => {
+        const processedInput = inputState.pasteBuffer.replace(/\r/g, "\n");
+        inputDispatch({
+          type: "INSERT_TEXT_WITH_PLACEHOLDER",
+          payload: processedInput,
+        });
+        inputDispatch({ type: "END_PASTE" });
+        inputDispatch({ type: "RESET_HISTORY_NAVIGATION" });
+      }, pasteDebounceDelay);
+      return () => clearTimeout(timer);
+    }
+  }, [inputState.isPasting, inputState.pasteBuffer]);
+
+  // Handle /btw side question
+  useEffect(() => {
+    if (
+      inputState.btwState.isActive &&
+      inputState.btwState.isLoading &&
+      inputState.btwState.question
+    ) {
+      const askBtwInternal = async () => {
+        try {
+          const agent = agentRef.current;
+          if (!agent) return;
+          const answer = await agent.askBtw(inputState.btwState.question);
+          inputDispatch({
+            type: "SET_BTW_STATE",
+            payload: { answer, isLoading: false },
+          });
+        } catch (error) {
+          console.error("Failed to ask side question:", error);
+          inputDispatch({
+            type: "SET_BTW_STATE",
+            payload: {
+              answer: "Error: Failed to get an answer for your side question.",
+              isLoading: false,
+            },
+          });
+        }
+      };
+      askBtwInternal();
+    }
+  }, [
+    inputState.btwState.isActive,
+    inputState.btwState.isLoading,
+    inputState.btwState.question,
+  ]);
+
+  // Confirmation state reducer
+  const [confirmState, confirmDispatch] = useReducer(
+    confirmReducer,
+    initialConfirmState,
+  );
 
   // Remount state
   const [remountKey, setRemountKey] = useState(0);
@@ -281,30 +351,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Status metadata state
   const [workingDirectory, setWorkingDirectory] = useState("");
 
-  // /btw state
-  const [btwState, setBtwStateInternal] = useState<
-    import("../managers/inputReducer.js").BtwState
-  >({
-    isActive: false,
-    question: "",
-    isLoading: false,
-  });
-
-  const setBtwState = useCallback(
-    (payload: Partial<import("../managers/inputReducer.js").BtwState>) => {
-      setBtwStateInternal((prev) => {
-        const newState = { ...prev, ...payload };
-        if (process.env.NODE_ENV === "test") {
-          // console.log("setBtwState", newState);
-        }
-        return newState;
-      });
-    },
-    [],
+  // Store initial permission mode for agent initialization (only used once on mount)
+  const initialPermissionModeRef = useRef(
+    initialPermissionMode ||
+      (bypassPermissions ? "bypassPermissions" : "default"),
   );
 
   const allowBypassInCycle =
-    !!bypassPermissions || initialPermissionMode === "bypassPermissions";
+    !!bypassPermissions || inputState.permissionMode === "bypassPermissions";
 
   const agentRef = useRef<Agent | null>(null);
 
@@ -318,18 +372,18 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       planContent?: string,
     ): Promise<PermissionDecision> => {
       return new Promise<PermissionDecision>((resolve, reject) => {
-        const queueItem = {
-          toolName,
-          toolInput,
-          suggestedPrefix,
-          hidePersistentOption,
-          planContent,
-          resolver: resolve,
-          reject,
-        };
-
-        setConfirmationQueue((prev) => [...prev, queueItem]);
-        // processNextConfirmation will be called via useEffect
+        confirmDispatch({
+          type: "QUEUE",
+          item: {
+            toolName,
+            toolInput,
+            suggestedPrefix,
+            hidePersistentOption,
+            planContent,
+            resolver: resolve,
+            reject,
+          },
+        });
       });
     },
     [],
@@ -361,7 +415,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setTasks([...tasks]);
         },
         onPermissionModeChange: (mode) => {
-          setPermissionModeState(mode);
+          inputDispatch({ type: "SET_PERMISSION_MODE", payload: mode });
         },
         onModelChange: (model) => {
           setCurrentModelState(model);
@@ -401,8 +455,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           continueLastSession,
           logger,
           permissionMode:
-            initialPermissionMode ||
-            (bypassPermissions ? "bypassPermissions" : undefined),
+            initialPermissionModeRef.current === "default"
+              ? undefined
+              : initialPermissionModeRef.current,
           canUseTool: permissionCallback,
           stream: false, // 关闭流式模式
           plugins: pluginDirs?.map((path) => ({ type: "local", path })),
@@ -424,7 +479,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setlatestTotalTokens(agent.latestTotalTokens);
         setIsCommandRunning(agent.isCommandRunning);
         setIsCompressing(agent.isCompressing);
-        setPermissionModeState(agent.getPermissionMode());
+        inputDispatch({
+          type: "SET_PERMISSION_MODE",
+          payload: agent.getPermissionMode(),
+        });
         setWorkingDirectory(agent.workingDirectory);
         setCurrentModelState(agent.getModelConfig().model);
         setConfiguredModels(agent.getConfiguredModels());
@@ -565,13 +623,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Permission management methods
   const setPermissionMode = useCallback((mode: PermissionMode) => {
-    setPermissionModeState((prev) => {
-      if (prev === mode) return prev;
-      if (agentRef.current && agentRef.current.getPermissionMode() !== mode) {
-        agentRef.current.setPermissionMode(mode);
-      }
-      return mode;
-    });
+    inputDispatch({ type: "SET_PERMISSION_MODE", payload: mode });
+    if (agentRef.current && agentRef.current.getPermissionMode() !== mode) {
+      agentRef.current.setPermissionMode(mode);
+    }
   }, []);
 
   // MCP management methods - delegate to Agent
@@ -599,50 +654,33 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return agentRef.current.hasSlashCommand(commandId);
   }, []);
 
-  // Queue processing helper
-  const processNextConfirmation = useCallback(() => {
-    if (confirmationQueue.length > 0 && !isConfirmationVisible) {
-      const next = confirmationQueue[0];
-      setCurrentConfirmation(next);
-      setConfirmingTool({
-        name: next.toolName,
-        input: next.toolInput,
-        suggestedPrefix: next.suggestedPrefix,
-        hidePersistentOption: next.hidePersistentOption,
-        planContent: next.planContent,
-      });
-      setIsConfirmationVisible(true);
-      setConfirmationQueue((prev) => prev.slice(1));
-    }
-  }, [confirmationQueue, isConfirmationVisible]);
-
   // Process queue when queue changes or confirmation is hidden
   useEffect(() => {
-    processNextConfirmation();
-  }, [processNextConfirmation]);
+    if (confirmState.queue.length > 0 && !confirmState.isVisible) {
+      confirmDispatch({ type: "PROCESS_NEXT" });
+    }
+  }, [confirmState.queue.length, confirmState.isVisible]);
 
   const hideConfirmation = useCallback(() => {
-    setIsConfirmationVisible(false);
-    setConfirmingTool(undefined);
-    setCurrentConfirmation(null);
+    confirmDispatch({ type: "HIDE" });
   }, []);
 
   const handleConfirmationDecision = useCallback(
     (decision: PermissionDecision) => {
-      if (currentConfirmation) {
-        currentConfirmation.resolver(decision);
+      if (confirmState.current) {
+        confirmState.current.resolver(decision);
       }
-      hideConfirmation();
+      confirmDispatch({ type: "HIDE" });
     },
-    [currentConfirmation, hideConfirmation],
+    [confirmState],
   );
 
   const handleConfirmationCancel = useCallback(() => {
-    if (currentConfirmation) {
-      currentConfirmation.reject();
+    if (confirmState.current) {
+      confirmState.current.reject();
     }
-    hideConfirmation();
-  }, [currentConfirmation, hideConfirmation]);
+    confirmDispatch({ type: "CANCEL" });
+  }, [confirmState]);
 
   const backgroundCurrentTask = useCallback(() => {
     agentRef.current?.backgroundCurrentTask();
@@ -731,14 +769,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
     // Handle ESC key to cancel confirmation or dismiss BTW
     if (key.escape) {
-      if (isConfirmationVisible) {
+      if (confirmState.isVisible) {
         handleConfirmationCancel();
-      } else if (btwState.isActive) {
-        setBtwState({
-          isActive: false,
-          question: "",
-          answer: undefined,
-          isLoading: false,
+      } else if (inputState.btwState.isActive) {
+        inputDispatch({
+          type: "SET_BTW_STATE",
+          payload: {
+            isActive: false,
+            question: "",
+            answer: undefined,
+            isLoading: false,
+          },
         });
       }
     }
@@ -771,12 +812,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     stopBackgroundTask,
     slashCommands,
     hasSlashCommand,
-    permissionMode,
+    permissionMode: inputState.permissionMode,
     setPermissionMode,
     allowBypassInCycle,
-    isConfirmationVisible,
-    hasPendingConfirmations: confirmationQueue.length > 0,
-    confirmingTool,
+    isConfirmationVisible: confirmState.isVisible,
+    hasPendingConfirmations: confirmState.queue.length > 0,
+    confirmingTool: confirmState.tool,
     showConfirmation,
     hideConfirmation,
     handleConfirmationDecision,
@@ -792,8 +833,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workingDirectory,
     version,
     workdir,
-    btwState,
-    setBtwState,
+    inputState,
+    inputDispatch,
   };
 
   return (
