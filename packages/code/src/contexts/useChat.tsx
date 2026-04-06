@@ -256,8 +256,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Remount state
   const [remountKey, setRemountKey] = useState(0);
-  const prevRemountKey = useRef(remountKey);
   const prevSessionId = useRef<string | null>(null);
+
+  const requestRemount = useCallback(() => {
+    stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
+      setRemountKey((prev) => prev + 1);
+    });
+  }, [stdout]);
 
   // Track sessionId changes to trigger remount
   useEffect(() => {
@@ -266,24 +271,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       sessionId &&
       prevSessionId.current !== sessionId
     ) {
-      setRemountKey((prev) => prev + 1);
+      requestRemount();
     }
     if (sessionId) {
       prevSessionId.current = sessionId;
     }
-  }, [sessionId]);
-
-  // Clear terminal when remountKey changes
-  useEffect(() => {
-    if (remountKey !== prevRemountKey.current && prevRemountKey.current !== 0) {
-      stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H");
-    }
-    prevRemountKey.current = remountKey;
-  }, [remountKey, stdout]);
-
-  const requestRemount = useCallback(() => {
-    setRemountKey((prev) => prev + 1);
-  }, []);
+  }, [sessionId, requestRemount]);
 
   // Status metadata state
   const [workingDirectory, setWorkingDirectory] = useState("");
@@ -655,16 +648,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     agentRef.current?.backgroundCurrentTask();
   }, []);
 
-  const handleRewindSelect = useCallback(async (index: number) => {
-    if (agentRef.current) {
-      try {
-        await agentRef.current.truncateHistory(index);
-        setRemountKey((prev) => prev + 1);
-      } catch (error) {
-        logger.error("Failed to rewind:", error);
+  const handleRewindSelect = useCallback(
+    async (index: number) => {
+      if (agentRef.current) {
+        try {
+          await agentRef.current.truncateHistory(index);
+          requestRemount();
+        } catch (error) {
+          logger.error("Failed to rewind:", error);
+        }
       }
-    }
-  }, []);
+    },
+    [requestRemount],
+  );
 
   const getFullMessageThread = useCallback(async () => {
     if (agentRef.current) {
