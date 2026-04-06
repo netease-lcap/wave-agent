@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import { Box, Text } from "ink";
 import { useInput } from "ink";
 import { FileSelector } from "./FileSelector.js";
@@ -72,20 +72,34 @@ export const InputBox: React.FC<InputBoxProps> = ({
   } = useChat();
 
   // Create callbacks object for handlers
-  const callbacks: Partial<InputManagerCallbacks> = {
-    onSendMessage: sendMessage,
-    onAskBtw: askBtw,
-    onHasSlashCommand: hasSlashCommand,
-    onAbortMessage: abortMessage,
-    onBackgroundCurrentTask: backgroundCurrentTask,
-    onPermissionModeChange: (mode) => {
-      inputDispatch({ type: "SET_PERMISSION_MODE", payload: mode });
-      setChatPermissionMode(mode);
-    },
-    sessionId,
-    workdir: workingDirectory,
-    getFullMessageThread,
-  };
+  const callbacks: Partial<InputManagerCallbacks> = useMemo(
+    () => ({
+      onSendMessage: sendMessage,
+      onAskBtw: askBtw,
+      onHasSlashCommand: hasSlashCommand,
+      onAbortMessage: abortMessage,
+      onBackgroundCurrentTask: backgroundCurrentTask,
+      onPermissionModeChange: (mode) => {
+        inputDispatch({ type: "SET_PERMISSION_MODE", payload: mode });
+        setChatPermissionMode(mode);
+      },
+      sessionId,
+      workdir: workingDirectory,
+      getFullMessageThread,
+    }),
+    [
+      sendMessage,
+      askBtw,
+      hasSlashCommand,
+      abortMessage,
+      backgroundCurrentTask,
+      inputDispatch,
+      setChatPermissionMode,
+      sessionId,
+      workingDirectory,
+      getFullMessageThread,
+    ],
+  );
 
   // Handler functions using inputDispatch
   const handleFileSelect = useCallback(
@@ -145,48 +159,75 @@ export const InputBox: React.FC<InputBoxProps> = ({
         newCursorPosition: inputState.cursorPosition,
       };
     },
-    [inputState],
+    [inputState, inputDispatch],
   );
 
   const handleCancelCommandSelect = useCallback(() => {
     inputDispatch({ type: "CANCEL_COMMAND_SELECTOR" });
-  }, []);
+  }, [inputDispatch]);
 
-  const handleHistorySearchSelect = useCallback((entry: PromptEntry) => {
-    inputDispatch({ type: "SELECT_HISTORY_ENTRY", payload: entry });
-  }, []);
+  const handleHistorySearchSelect = useCallback(
+    (entry: PromptEntry) => {
+      inputDispatch({ type: "SELECT_HISTORY_ENTRY", payload: entry });
+    },
+    [inputDispatch],
+  );
 
   const handleCancelHistorySearch = useCallback(() => {
     inputDispatch({ type: "CANCEL_HISTORY_SEARCH" });
-  }, []);
+  }, [inputDispatch]);
 
-  const setShowBackgroundTaskManager = useCallback((show: boolean) => {
-    inputDispatch({ type: "SET_SHOW_BACKGROUND_TASK_MANAGER", payload: show });
-  }, []);
+  const setShowBackgroundTaskManager = useCallback(
+    (show: boolean) => {
+      inputDispatch({
+        type: "SET_SHOW_BACKGROUND_TASK_MANAGER",
+        payload: show,
+      });
+    },
+    [inputDispatch],
+  );
 
-  const setShowMcpManager = useCallback((show: boolean) => {
-    inputDispatch({ type: "SET_SHOW_MCP_MANAGER", payload: show });
-  }, []);
+  const setShowMcpManager = useCallback(
+    (show: boolean) => {
+      inputDispatch({ type: "SET_SHOW_MCP_MANAGER", payload: show });
+    },
+    [inputDispatch],
+  );
 
-  const setShowRewindManager = useCallback((show: boolean) => {
-    inputDispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: show });
-  }, []);
+  const setShowRewindManager = useCallback(
+    (show: boolean) => {
+      inputDispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: show });
+    },
+    [inputDispatch],
+  );
 
-  const setShowHelp = useCallback((show: boolean) => {
-    inputDispatch({ type: "SET_SHOW_HELP", payload: show });
-  }, []);
+  const setShowHelp = useCallback(
+    (show: boolean) => {
+      inputDispatch({ type: "SET_SHOW_HELP", payload: show });
+    },
+    [inputDispatch],
+  );
 
-  const setShowStatusCommand = useCallback((show: boolean) => {
-    inputDispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: show });
-  }, []);
+  const setShowStatusCommand = useCallback(
+    (show: boolean) => {
+      inputDispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: show });
+    },
+    [inputDispatch],
+  );
 
-  const setShowPluginManager = useCallback((show: boolean) => {
-    inputDispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: show });
-  }, []);
+  const setShowPluginManager = useCallback(
+    (show: boolean) => {
+      inputDispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: show });
+    },
+    [inputDispatch],
+  );
 
-  const setShowModelSelector = useCallback((show: boolean) => {
-    inputDispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: show });
-  }, []);
+  const setShowModelSelector = useCallback(
+    (show: boolean) => {
+      inputDispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: show });
+    },
+    [inputDispatch],
+  );
 
   // Main input handler
   useInput(async (input, key) => {
