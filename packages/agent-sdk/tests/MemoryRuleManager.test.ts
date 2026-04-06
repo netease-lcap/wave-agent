@@ -7,7 +7,6 @@ import { logger } from "../src/utils/globalLogger.js";
 import { Container } from "../src/utils/container.js";
 
 vi.mock("node:fs/promises");
-vi.mock("node:os");
 vi.mock("../src/utils/globalLogger.js");
 
 describe("MemoryRuleManager", () => {

@@ -13,6 +13,7 @@ export default defineConfig(() => {
   return {
     test: {
       globals: true,
+      setupFiles: ["./tests/setup.ts"],
       environment: "node",
       include: ["tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
       exclude: ["node_modules", "dist"],

@@ -9,15 +9,6 @@ import { homedir } from "os";
 vi.mock("@/services/aiService");
 // Mock fs/promises to avoid actual file operations
 vi.mock("fs/promises");
-// Mock os to avoid actual homedir access
-vi.mock("os", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("os")>();
-  return {
-    ...actual,
-    homedir: vi.fn(() => "/home/testuser"),
-    platform: vi.fn(() => "linux"),
-  };
-});
 
 describe("Agent WorktreeCreate Hook", () => {
   const mockCallbacks = {

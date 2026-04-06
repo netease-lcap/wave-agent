@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PlanManager } from "../../src/managers/planManager.js";
 import fs from "node:fs/promises";
-import os from "node:os";
+import * as os from "node:os";
 import path from "node:path";
 import { Container } from "../../src/utils/container.js";
 
 vi.mock("node:fs/promises");
-vi.mock("node:os");
 
 describe("PlanManager", () => {
   let container: Container;

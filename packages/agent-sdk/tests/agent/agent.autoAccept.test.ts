@@ -1,15 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as os from "os";
 
-// Mock os.homedir before importing Agent
-vi.mock("os", async () => {
-  const actual = await vi.importActual("os");
-  return {
-    ...(actual as typeof os),
-    homedir: vi.fn(() => "/tmp"),
-  };
-});
-
 import { TaskManager } from "../../src/services/taskManager.js";
 import { Agent } from "@/agent.js";
 import { ToolManager } from "../../src/managers/toolManager.js";

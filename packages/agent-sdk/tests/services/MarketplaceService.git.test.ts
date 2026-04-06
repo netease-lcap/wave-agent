@@ -7,14 +7,6 @@ import { GitService } from "../../src/services/GitService.js";
 
 vi.mock("../../src/services/GitService.js");
 
-vi.mock("os", async () => {
-  const actual = await vi.importActual("os");
-  return {
-    ...(actual as typeof os),
-    homedir: vi.fn(),
-  };
-});
-
 vi.mock("fs", async () => {
   return {
     existsSync: vi.fn(),

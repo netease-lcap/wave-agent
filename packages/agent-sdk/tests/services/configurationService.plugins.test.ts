@@ -5,14 +5,6 @@ import * as path from "path";
 import { ConfigurationService } from "../../src/services/configurationService.js";
 import { WaveConfiguration } from "../../src/types/configuration.js";
 
-vi.mock("os", async () => {
-  const actual = await vi.importActual("os");
-  return {
-    ...actual,
-    homedir: vi.fn().mockReturnValue("/test/userhome"),
-  };
-});
-
 vi.mock("fs", async () => {
   return {
     existsSync: vi.fn(),
