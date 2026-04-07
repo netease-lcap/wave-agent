@@ -26,16 +26,21 @@ Wave supports three configuration scopes:
 
 ## Available Settings
 
+### settings.json
 - **hooks**: Automate actions at specific workflow points (e.g., `PreToolUse`, `WorktreeCreate`).
 - **env**: Set environment variables for the agent and hooks.
 - **permissions**: Manage tool permissions and safe zones.
 - **enabledPlugins**: Enable or disable specific plugins.
 - **language**: Set your preferred language for agent communication.
 - **autoMemoryEnabled**: Enable or disable the auto-memory feature.
-- **mcpServers**: Configure external MCP servers for additional tools and context.
-- **memoryRules**: Define context-specific instructions and guidelines.
-- **skills**: Extend Wave's functionality with custom skills.
-- **subagents**: Delegate tasks to specialized AI personalities.
+- **autoMemoryFrequency**: Frequency of auto-memory extraction turns.
+- **models**: Model-specific configuration overrides (e.g., `thinking`, `reasoning_effort`).
+
+### Other Configuration Files
+- **.mcp.json**: Configure external MCP servers for additional tools and context.
+- **.wave/rules/**: Define context-specific instructions and guidelines (Memory Rules).
+- **.wave/skills/**: Create and manage custom skills.
+- **.wave/agents/**: Create and manage specialized subagents.
 
 ## Detailed Documentation
 
