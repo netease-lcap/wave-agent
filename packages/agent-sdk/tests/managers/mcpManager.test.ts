@@ -5,6 +5,7 @@ import type { McpServerConfig } from "../../src/types/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 // Mock interfaces
 interface MockClient {
@@ -25,6 +26,7 @@ interface MockTransport {
 vi.mock("@modelcontextprotocol/sdk/client/index.js");
 vi.mock("@modelcontextprotocol/sdk/client/stdio.js");
 vi.mock("@modelcontextprotocol/sdk/client/sse.js");
+vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js");
 vi.mock("fs");
 
 describe("McpManager", () => {
@@ -234,6 +236,9 @@ describe("McpManager", () => {
       vi.mocked(SSEClientTransport).mockImplementation(function () {
         return mockTransport as never;
       });
+      vi.mocked(StreamableHTTPClientTransport).mockImplementation(function () {
+        return mockTransport as never;
+      });
     });
 
     it("should connect to MCP server successfully via stdio", async () => {
@@ -273,15 +278,92 @@ describe("McpManager", () => {
       vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(sseConfig));
       await mcpManager.loadConfig();
 
+      // Mock Streamable HTTP to fail to trigger fallback
+      vi.mocked(StreamableHTTPClientTransport).mockImplementation(() => {
+        throw new Error("Streamable HTTP not supported");
+      });
+
       const result = await mcpManager.connectServer("sse-server");
 
       expect(result).toBe(true);
       expect(SSEClientTransport).toHaveBeenCalledWith(
         new URL("https://example.com/sse"),
+        expect.objectContaining({
+          requestInit: { headers: undefined },
+        }),
       );
       expect(mockClient.connect).toHaveBeenCalledWith(mockTransport);
 
       const server = mcpManager.getServer("sse-server");
+      expect(server?.status).toBe("connected");
+    });
+
+    it("should connect to MCP server successfully via Streamable HTTP", async () => {
+      const streamableConfig = {
+        mcpServers: {
+          "streamable-server": {
+            url: "https://example.com/streamable",
+            headers: { Authorization: "Bearer test-token" },
+          },
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify(streamableConfig),
+      );
+      await mcpManager.loadConfig();
+
+      vi.mocked(StreamableHTTPClientTransport).mockImplementation(function () {
+        return mockTransport as never;
+      });
+
+      const result = await mcpManager.connectServer("streamable-server");
+
+      expect(result).toBe(true);
+      expect(StreamableHTTPClientTransport).toHaveBeenCalledWith(
+        new URL("https://example.com/streamable"),
+        {
+          requestInit: {
+            headers: { Authorization: "Bearer test-token" },
+          },
+        },
+      );
+      expect(mockClient.connect).toHaveBeenCalledWith(mockTransport);
+
+      const server = mcpManager.getServer("streamable-server");
+      expect(server?.status).toBe("connected");
+    });
+
+    it("should fallback to SSE if Streamable HTTP fails", async () => {
+      const config = {
+        mcpServers: {
+          "fallback-server": {
+            url: "https://example.com/fallback",
+            headers: { "X-Custom": "value" },
+          },
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(config));
+      await mcpManager.loadConfig();
+
+      // First call to connect (Streamable HTTP) fails
+      mockClient.connect.mockRejectedValueOnce(
+        new Error("Streamable HTTP failed"),
+      );
+
+      const result = await mcpManager.connectServer("fallback-server");
+
+      expect(result).toBe(true);
+      expect(StreamableHTTPClientTransport).toHaveBeenCalled();
+      expect(SSEClientTransport).toHaveBeenCalledWith(
+        new URL("https://example.com/fallback"),
+        {
+          requestInit: { headers: { "X-Custom": "value" } },
+        },
+      );
+
+      const server = mcpManager.getServer("fallback-server");
       expect(server?.status).toBe("connected");
     });
 
