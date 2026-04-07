@@ -26,6 +26,9 @@ describe("Agent Tool Recursion Tests", () => {
       onLoadingChange: vi.fn(),
     };
 
+    // Disable auto-memory for tests to avoid extra AI calls
+    process.env.WAVE_DISABLE_AUTO_MEMORY = "true";
+
     // Create Agent instance with required parameters
     agent = await Agent.create({
       callbacks: mockCallbacks,

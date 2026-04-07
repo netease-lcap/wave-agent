@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { Message } from "@/types/index.js";
@@ -14,6 +14,9 @@ describe("Agent Message Compression Tests", () => {
   let agent: Agent;
 
   beforeEach(async () => {
+    // Disable auto-memory to prevent extra callAgent calls from background tasks
+    vi.stubEnv("WAVE_DISABLE_AUTO_MEMORY", "1");
+
     // Create Agent instance with required parameters
     agent = await Agent.create({
       apiKey: "test-key",
@@ -21,6 +24,13 @@ describe("Agent Message Compression Tests", () => {
     });
 
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (agent) {
+      await agent.destroy();
+    }
+    vi.unstubAllEnvs();
   });
 
   // Helper function: generate specified number of message conversations

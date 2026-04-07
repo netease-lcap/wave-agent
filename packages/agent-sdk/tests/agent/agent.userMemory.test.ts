@@ -56,6 +56,9 @@ describe("Agent User Memory Integration", () => {
   let mockGetCombinedMemoryContent: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
+    // Disable auto-memory to prevent background extraction and ENOENT errors
+    vi.stubEnv("WAVE_DISABLE_AUTO_MEMORY", "1");
+
     // Set up mock directory path
     mockTempDir = "/mock/tmp/aimanager-test-123";
 
@@ -86,6 +89,7 @@ describe("Agent User Memory Integration", () => {
       await agent.destroy();
     }
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("should read and combine project and user memory when sending AI message", async () => {
