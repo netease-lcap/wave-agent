@@ -22,6 +22,7 @@ import { LiveConfigManager } from "../managers/liveConfigManager.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ReversionService } from "../services/reversionService.js";
 import { MemoryService } from "../services/memory.js";
+import { AutoMemoryService } from "../services/autoMemoryService.js";
 import { getGitMainRepoRoot } from "./gitUtils.js";
 import type { AgentOptions } from "../types/index.js";
 import type {
@@ -84,6 +85,9 @@ export function setupAgentContainer(
 
   const memoryService = new MemoryService(container);
   container.register("MemoryService", memoryService);
+
+  const autoMemoryService = new AutoMemoryService(container);
+  container.register("AutoMemoryService", autoMemoryService);
 
   const memoryRuleManager = new MemoryRuleManager(container, { workdir });
   container.register("MemoryRuleManager", memoryRuleManager);

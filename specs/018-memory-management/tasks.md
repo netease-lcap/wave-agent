@@ -158,4 +158,17 @@
 - [X] T047 Implement error handling for malformed YAML frontmatter in `MemoryRuleService.ts`
 - [X] T048 Create end-to-end integration tests in `packages/code/tests/MemoryRules.test.ts`
 - [X] T049 Run `pnpm run type-check` and `pnpm run lint` across the workspace
-- [X] T050 Run all tests with `pnpm test`
+---
+
+## Phase 12: User Story 9 - Auto-Memory Background Extraction (Priority: P1)
+
+**Goal**: Automatically extract and save memories using a background agent at the end of each turn.
+
+**Independent Test**: Perform several turns of conversation, verify that `MEMORY.md` in the auto-memory directory is updated without user intervention.
+
+- [X] T051 [US9] Implement `SubagentManager.forkAgent` to support forked agents with message history in `packages/agent-sdk/src/managers/subagentManager.ts`
+- [X] T052 [US9] Create `AutoMemoryService` to manage extraction lifecycle in `packages/agent-sdk/src/services/autoMemoryService.ts`
+- [X] T053 [US9] Implement memory extraction prompt in `packages/agent-sdk/src/prompts/autoMemoryExtraction.ts`
+- [X] T054 [US9] Integrate `AutoMemoryService` with `AIManager.executeStopHooks` in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T055 [US9] Add `autoMemoryFrequency` configuration and resolution in `packages/agent-sdk/src/services/configurationService.ts`
+- [X] T056 [US9] Create unit tests for `AutoMemoryService` and `forkAgent`

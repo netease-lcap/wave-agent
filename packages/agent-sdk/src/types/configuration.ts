@@ -35,6 +35,8 @@ export interface WaveConfiguration {
   language?: string;
   /** Whether auto-memory is enabled */
   autoMemoryEnabled?: boolean;
+  /** Frequency of auto-memory extraction turns */
+  autoMemoryFrequency?: number;
   /** Model-specific configuration overrides */
   models?: Record<string, Partial<ModelConfig>>;
 }
