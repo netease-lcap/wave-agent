@@ -8,7 +8,7 @@ The Model Context Protocol (MCP) is an open protocol that enables seamless integ
 ### Core Components
 - **McpManager**: The central manager for MCP servers. It handles:
   - Loading configuration from `.mcp.json`.
-  - Connecting to MCP servers using `StdioClientTransport`.
+  - Connecting to MCP servers using `StdioClientTransport` or `SSEClientTransport`.
   - Managing server lifecycles (connect, disconnect, status tracking).
   - Listing and executing tools from connected servers.
 - **McpUtils**: Utility functions for:
@@ -33,6 +33,9 @@ MCP servers are configured in a `.mcp.json` file located in the agent's working 
       "env": {
         "KEY": "VALUE"
       }
+    },
+    "sse-server": {
+      "url": "https://mcp-server.example.com/sse"
     }
   }
 }
@@ -53,7 +56,6 @@ MCP servers are configured in a `.mcp.json` file located in the agent's working 
 - **Image Support**: Handles image data returned by MCP tools.
 
 ## Future Considerations
-- Support for other transport types (e.g., SSE).
 - Enhanced resource and prompt support from MCP.
 - Better error handling and recovery for disconnected servers.
 - Permission system integration for MCP tools (currently they are treated as regular tools).

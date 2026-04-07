@@ -2,6 +2,8 @@ import { promises as fs } from "fs";
 import { join } from "path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import { createMcpToolPlugin, findToolServer } from "../utils/mcpUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
@@ -16,7 +18,7 @@ import type {
 
 interface McpConnection {
   client: Client;
-  transport: StdioClientTransport;
+  transport: Transport;
   process: null; // StdioClientTransport manages process internally
 }
 
@@ -224,36 +226,46 @@ export class McpManager {
 
     try {
       // Create transport - it will manage the process
-      const transport = new StdioClientTransport({
-        command: server.config.command,
-        args: server.config.args || [],
-        env: {
-          ...(process.env as Record<string, string>),
-          ...(server.config.env || {}),
-        },
-        cwd: this.workdir, // Use the agent's workdir as the process working directory
-        stderr: "pipe", // Pipe stderr to capture it
-      });
+      let transport: Transport;
 
-      // Handle stderr output
-      const stderr = transport.stderr;
-      if (stderr) {
-        let buffer = "";
-        stderr.on("data", (chunk: Buffer) => {
-          buffer += chunk.toString();
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (line.trim()) {
-              logger?.error(`[MCP Server ${name}] ${line}`);
+      if (server.config.url) {
+        transport = new SSEClientTransport(new URL(server.config.url));
+      } else if (server.config.command) {
+        transport = new StdioClientTransport({
+          command: server.config.command,
+          args: server.config.args || [],
+          env: {
+            ...(process.env as Record<string, string>),
+            ...(server.config.env || {}),
+          },
+          cwd: this.workdir, // Use the agent's workdir as the process working directory
+          stderr: "pipe", // Pipe stderr to capture it
+        });
+
+        // Handle stderr output for StdioClientTransport
+        const stderr = (transport as StdioClientTransport).stderr;
+        if (stderr) {
+          let buffer = "";
+          stderr.on("data", (chunk: Buffer) => {
+            buffer += chunk.toString();
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+            for (const line of lines) {
+              if (line.trim()) {
+                logger?.error(`[MCP Server ${name}] ${line}`);
+              }
             }
-          }
-        });
-        stderr.on("end", () => {
-          if (buffer.trim()) {
-            logger?.error(`[MCP Server ${name}] ${buffer}`);
-          }
-        });
+          });
+          stderr.on("end", () => {
+            if (buffer.trim()) {
+              logger?.error(`[MCP Server ${name}] ${buffer}`);
+            }
+          });
+        }
+      } else {
+        throw new Error(
+          `MCP server ${name} configuration must include either 'command' or 'url'`,
+        );
       }
 
       // Create client

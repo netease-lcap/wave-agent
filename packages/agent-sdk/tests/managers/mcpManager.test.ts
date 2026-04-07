@@ -4,6 +4,7 @@ import { Container } from "../../src/utils/container.js";
 import type { McpServerConfig } from "../../src/types/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 
 // Mock interfaces
 interface MockClient {
@@ -23,6 +24,7 @@ interface MockTransport {
 // Mock the MCP SDK
 vi.mock("@modelcontextprotocol/sdk/client/index.js");
 vi.mock("@modelcontextprotocol/sdk/client/stdio.js");
+vi.mock("@modelcontextprotocol/sdk/client/sse.js");
 vi.mock("fs");
 
 describe("McpManager", () => {
@@ -229,9 +231,12 @@ describe("McpManager", () => {
       vi.mocked(StdioClientTransport).mockImplementation(function () {
         return mockTransport as never;
       });
+      vi.mocked(SSEClientTransport).mockImplementation(function () {
+        return mockTransport as never;
+      });
     });
 
-    it("should connect to MCP server successfully", async () => {
+    it("should connect to MCP server successfully via stdio", async () => {
       const result = await mcpManager.connectServer("test-server");
 
       expect(result).toBe(true);
@@ -254,6 +259,48 @@ describe("McpManager", () => {
       const server = mcpManager.getServer("test-server");
       expect(server?.status).toBe("connected");
       expect(server?.toolCount).toBe(1);
+    });
+
+    it("should connect to MCP server successfully via SSE", async () => {
+      const sseConfig = {
+        mcpServers: {
+          "sse-server": {
+            url: "https://example.com/sse",
+          },
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(sseConfig));
+      await mcpManager.loadConfig();
+
+      const result = await mcpManager.connectServer("sse-server");
+
+      expect(result).toBe(true);
+      expect(SSEClientTransport).toHaveBeenCalledWith(
+        new URL("https://example.com/sse"),
+      );
+      expect(mockClient.connect).toHaveBeenCalledWith(mockTransport);
+
+      const server = mcpManager.getServer("sse-server");
+      expect(server?.status).toBe("connected");
+    });
+
+    it("should throw error if neither command nor url is provided", async () => {
+      const invalidConfig = {
+        mcpServers: {
+          "invalid-server": {},
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(invalidConfig));
+      await mcpManager.loadConfig();
+
+      const result = await mcpManager.connectServer("invalid-server");
+
+      expect(result).toBe(false);
+      const server = mcpManager.getServer("invalid-server");
+      expect(server?.status).toBe("error");
+      expect(server?.error).toContain("must include either 'command' or 'url'");
     });
 
     it("should handle connection failure", async () => {
