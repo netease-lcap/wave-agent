@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/types/index.js";
 import * as aiService from "@/services/aiService.js";
@@ -37,6 +45,9 @@ describe("Agent Tool Stage Tests", () => {
   };
 
   beforeEach(async () => {
+    // Disable auto-memory to prevent background extraction interference
+    vi.stubEnv("WAVE_DISABLE_AUTO_MEMORY", "1");
+
     // Create mock callbacks
     onToolBlockUpdated =
       vi.fn<NonNullable<AgentCallbacks["onToolBlockUpdated"]>>();
@@ -64,6 +75,13 @@ describe("Agent Tool Stage Tests", () => {
     mockCallAgent = vi.mocked(aiService.callAgent);
 
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (agent) {
+      await agent.destroy();
+    }
+    vi.unstubAllEnvs();
   });
 
   it("should handle tool stage emissions during execution", async () => {
