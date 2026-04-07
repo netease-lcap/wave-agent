@@ -61,7 +61,6 @@ describe("ChatInterface Rewind Visibility", () => {
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
       allowBypassInCycle: false,
-      btwState: { isActive: false, question: "", isLoading: false },
       getModelConfig: vi.fn().mockReturnValue({
         model: "test-model",
         fastModel: "test-fast-model",
@@ -144,7 +143,6 @@ describe("ChatInterface Rewind Visibility", () => {
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
       allowBypassInCycle: false,
-      btwState: { isActive: false, question: "", isLoading: false },
       getModelConfig: vi.fn().mockReturnValue({
         model: "test-model",
         fastModel: "test-fast-model",

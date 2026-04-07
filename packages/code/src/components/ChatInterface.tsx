@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { Box, useStdout, measureElement, Static } from "ink";
 import type { DOMElement } from "ink";
 import { MessageList } from "./MessageList.js";
-import { BtwDisplay } from "./BtwDisplay.js";
 import { InputBox } from "./InputBox.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import { TaskList } from "./TaskList.js";
@@ -35,7 +34,6 @@ export const ChatInterface: React.FC = () => {
     handleConfirmationCancel,
     version,
     workdir,
-    btwState,
     remountKey,
     requestRemount,
   } = useChat();
@@ -81,7 +79,6 @@ export const ChatInterface: React.FC = () => {
 
       {!isConfirmationVisible && !isExpanded && (
         <>
-          <BtwDisplay btwState={btwState} />
           {(isLoading || isCommandRunning || isCompressing) && (
             <LoadingIndicator
               isLoading={isLoading}

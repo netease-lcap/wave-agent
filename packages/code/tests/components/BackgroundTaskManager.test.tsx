@@ -88,7 +88,6 @@ describe("BackgroundTaskManager", () => {
     latestTotalTokens: 0,
     isCommandRunning: false,
     isCompressing: false,
-    btwState: { isActive: false, question: "", isLoading: false },
     userInputHistory: [],
   };
 

@@ -13,12 +13,12 @@ export const BtwDisplay: React.FC<BtwDisplayProps> = ({ btwState }) => {
   }
 
   return (
-    <Box flexDirection="column" marginTop={0} marginBottom={1}>
+    <Box flexDirection="column" marginTop={0} marginBottom={0}>
       {btwState.question && (
         <Box>
-          <Text color={btwState.isLoading ? "yellow" : "green"}>● </Text>
+          <Text color={btwState.isLoading ? "yellow" : "green"}>/ </Text>
           <Text italic color="gray">
-            /btw {btwState.question}
+            btw {btwState.question}
           </Text>
         </Box>
       )}
