@@ -1,10 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
 
 export const MarketplaceAddForm: React.FC = () => {
   const { state, actions } = usePluginManagerContext();
   const [source, setSource] = useState("");
+  const sourceRef = useRef(source);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    sourceRef.current = source;
+  }, [source]);
 
   useInput((input, key) => {
     if (key.escape) {
@@ -12,12 +18,9 @@ export const MarketplaceAddForm: React.FC = () => {
     } else if (state.isLoading) {
       return;
     } else if (key.return) {
-      setSource((prev) => {
-        if (prev.trim()) {
-          actions.addMarketplace(prev.trim());
-        }
-        return prev;
-      });
+      if (sourceRef.current.trim()) {
+        actions.addMarketplace(sourceRef.current.trim());
+      }
     } else if (key.backspace || key.delete) {
       setSource((prev) => prev.slice(0, -1));
     } else if (input.length === 1) {

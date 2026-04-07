@@ -196,7 +196,7 @@ describe("PluginDetail", () => {
     });
 
     it("should install with Enter", async () => {
-      const { stdin } = render(
+      const { stdin, lastFrame } = render(
         <PluginManagerContext.Provider value={createMockContext("plugin1@mp1")}>
           <PluginDetail />
         </PluginManagerContext.Provider>,
@@ -204,6 +204,9 @@ describe("PluginDetail", () => {
 
       // Select second scope (user) and press Enter
       stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("> Install for you (user scope)");
+      });
       stdin.write("\r");
       await vi.waitFor(() => {
         expect(mockActions.installPlugin).toHaveBeenCalledWith(
@@ -258,7 +261,7 @@ describe("PluginDetail", () => {
     });
 
     it("should uninstall with Enter", async () => {
-      const { stdin } = render(
+      const { stdin, lastFrame } = render(
         <PluginManagerContext.Provider value={createMockContext("plugin2@mp2")}>
           <PluginDetail />
         </PluginManagerContext.Provider>,
@@ -266,6 +269,9 @@ describe("PluginDetail", () => {
 
       // Select second action (uninstall) and press Enter
       stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("> Uninstall plugin");
+      });
       stdin.write("\r");
       await vi.waitFor(() => {
         expect(mockActions.uninstallPlugin).toHaveBeenCalledWith(

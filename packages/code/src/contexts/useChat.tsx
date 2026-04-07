@@ -689,21 +689,21 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
       // Clear terminal screen when expanded state changes
-      setIsExpanded((prev) => {
-        const newExpanded = !prev;
-        isExpandedRef.current = newExpanded;
-        if (newExpanded) {
-          // Transitioning to EXPANDED: Freeze the current view
-          // Cancel any pending throttled updates to avoid overwriting the frozen state
-          throttledSetMessages.cancel();
-        } else {
-          // Transitioning to COLLAPSED: Restore from agent's actual state
-          if (agentRef.current) {
-            setMessages([...agentRef.current.messages]);
-          }
+      // Use ref to get the current value to avoid stale closure
+      const nextExpanded = !isExpandedRef.current;
+      setIsExpanded(nextExpanded);
+      isExpandedRef.current = nextExpanded;
+
+      if (nextExpanded) {
+        // Transitioning to EXPANDED: Freeze the current view
+        // Cancel any pending throttled updates to avoid overwriting the frozen state
+        throttledSetMessages.cancel();
+      } else {
+        // Transitioning to COLLAPSED: Restore from agent's actual state
+        if (agentRef.current) {
+          setMessages([...agentRef.current.messages]);
         }
-        return newExpanded;
-      });
+      }
       // Force remount to re-render Static items with new isExpanded state
       requestRemount();
     }
