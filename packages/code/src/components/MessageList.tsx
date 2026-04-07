@@ -65,6 +65,7 @@ export const MessageList = React.memo(
       const { block } = item;
       const isDynamic =
         !forceStatic &&
+        !isExpanded &&
         (messagesWithRunningBlocks.has(item.messageIndex) || isRunning(block));
       return { ...item, isDynamic };
     });

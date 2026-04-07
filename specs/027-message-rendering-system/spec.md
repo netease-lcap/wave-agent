@@ -55,7 +55,7 @@ As a user, I want different types of content (text, code, errors, images, tool c
 ## Edge Cases
 
 - **What happens if there are more than 10 messages?** The system should only render the last 10 messages to ensure the terminal remains responsive and the scrollback doesn't become overwhelming.
-- **What happens if `forceStatic` is true?** All blocks, including those in the last message, should be rendered as static content, disabling any dynamic updates or spinners.
+- **What happens if `forceStatic` is true or the view is expanded?** All blocks, including those in the last message, should be rendered as static content, disabling any dynamic updates or spinners. This ensures the view remains "frozen" and performant when expanded.
 - **What happens if a block type is unknown?** The system should handle it gracefully, either by ignoring it or displaying a generic placeholder, to prevent the entire UI from crashing.
 
 ## Requirements *(mandatory)*
@@ -66,7 +66,7 @@ As a user, I want different types of content (text, code, errors, images, tool c
 - **FR-002**: System MUST flatten messages into individual `MessageBlock` items for rendering.
 - **FR-003**: System MUST use Ink's `Static` component for rendering historical (non-dynamic) message blocks.
 - **FR-004**: System MUST identify "dynamic" blocks and render them outside the `Static` component.
-- **FR-004.1**: A block is dynamic IF `forceStatic` is false AND the message contains at least one active block (`tool` in `running` stage, `bang` with `isRunning` true, or `slash` in `running` stage).
+- **FR-004.1**: A block is dynamic IF `forceStatic` is false AND `isExpanded` is false AND the message contains at least one active block (`tool` in `running` stage, `bang` with `isRunning` true, or `slash` in `running` stage).
 - **FR-004.2**: All other blocks (in messages without any active blocks) MUST be rendered as static content.
 - **FR-005**: System MUST support a "welcome message" at the top of the message list showing version and environment info.
 - **FR-006**: System MUST limit the number of rendered messages to a maximum of 10 by default.

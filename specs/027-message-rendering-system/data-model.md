@@ -40,5 +40,7 @@ interface BlockWithStatus {
 }
 ```
 
-- **isDynamic**: True if `forceStatic` is false AND (it is a `tool` block in the `running` stage OR it is a `bang` block with `isRunning` set to true).
+- **isDynamic**: True if `forceStatic` is false AND `isExpanded` is false AND (the message contains at least one active block OR the block itself is active).
+- An active block is a `tool` block in the `running` stage, a `bang` block with `isRunning` set to true, or a `slash` block in the `running` stage.
+- When `isExpanded` is true, everything is static.
 - **key**: A unique identifier for the block, typically `${message.id}-${blockIndex}`.
