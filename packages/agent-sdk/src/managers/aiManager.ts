@@ -999,6 +999,21 @@ export class AIManager {
         );
       }
 
+      // Trigger auto-memory extraction if enabled and this is the main agent
+      if (!this.subagentType) {
+        const autoMemoryService =
+          this.container.get<
+            import("../services/autoMemoryService.js").AutoMemoryService
+          >("AutoMemoryService");
+        if (autoMemoryService) {
+          // Trigger extraction, but don't block the return.
+          // onTurnEnd itself returns quickly after forking.
+          autoMemoryService.onTurnEnd(this.workdir).catch((err) => {
+            logger?.error("Auto-memory extraction trigger failed:", err);
+          });
+        }
+      }
+
       return shouldContinue;
     } catch (error) {
       // Hook execution errors should not interrupt the main workflow

@@ -275,6 +275,18 @@ export class ConfigurationService {
       result.errors.push("autoMemoryEnabled configuration must be a boolean");
     }
 
+    // Validate autoMemoryFrequency if present
+    if (
+      config.autoMemoryFrequency !== undefined &&
+      (typeof config.autoMemoryFrequency !== "number" ||
+        config.autoMemoryFrequency <= 0)
+    ) {
+      result.isValid = false;
+      result.errors.push(
+        "autoMemoryFrequency configuration must be a positive number",
+      );
+    }
+
     // Validate models if present
     if (config.models !== undefined) {
       if (typeof config.models !== "object" || config.models === null) {
@@ -593,6 +605,32 @@ export class ConfigurationService {
 
     // 3. Default (true)
     return true;
+  }
+
+  /**
+   * Resolves auto-memory extraction frequency with fallbacks
+   * Resolution priority: settings.json > WAVE_AUTO_MEMORY_FREQUENCY > default (1)
+   * @returns Resolved auto-memory extraction frequency (turns)
+   */
+  resolveAutoMemoryFrequency(): number {
+    // 1. settings.json (merged)
+    if (this.currentConfiguration?.autoMemoryFrequency !== undefined) {
+      return this.currentConfiguration.autoMemoryFrequency;
+    }
+
+    // 2. WAVE_AUTO_MEMORY_FREQUENCY environment variable
+    const envFrequency =
+      this.env.WAVE_AUTO_MEMORY_FREQUENCY ||
+      process.env.WAVE_AUTO_MEMORY_FREQUENCY;
+    if (envFrequency) {
+      const parsed = parseInt(envFrequency, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    // 3. Default (1)
+    return 1;
   }
 
   /**
@@ -1079,6 +1117,11 @@ export function loadMergedWaveConfig(
     // Merge autoMemoryEnabled (last one wins)
     if (config.autoMemoryEnabled !== undefined) {
       mergedConfig.autoMemoryEnabled = config.autoMemoryEnabled;
+    }
+
+    // Merge autoMemoryFrequency (last one wins)
+    if (config.autoMemoryFrequency !== undefined) {
+      mergedConfig.autoMemoryFrequency = config.autoMemoryFrequency;
     }
 
     // Merge models
