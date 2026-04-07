@@ -1134,4 +1134,79 @@ describe("ChatProvider", () => {
       expect(lastValue?.messages).toEqual(msg3);
     });
   });
+
+  it("throttles requestRemount to once per second", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    const { useStdout } = await import("ink");
+    const writeSpy = vi.fn((_data: string, callback?: () => void) => {
+      callback?.();
+    });
+    vi.mocked(useStdout).mockReturnValue({
+      stdout: {
+        write: writeSpy,
+      } as unknown as { write: (data: string, callback?: () => void) => void },
+    } as unknown as ReturnType<typeof useStdout>);
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const initialRemountKey = lastValue?.remountKey;
+
+    // Call requestRemount multiple times
+    lastValue?.requestRemount();
+    lastValue?.requestRemount();
+    lastValue?.requestRemount();
+
+    // Should have called write once immediately (leading: true)
+    await vi.waitFor(() => {
+      expect(writeSpy).toHaveBeenCalledTimes(1);
+      expect(lastValue?.remountKey).toBe(initialRemountKey! + 1);
+    });
+
+    // Advance time by 500ms
+    await vi.advanceTimersByTimeAsync(500);
+    lastValue?.requestRemount();
+    // Still 1 call
+    await vi.advanceTimersByTimeAsync(100); // Give some time for React update
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    expect(lastValue?.remountKey).toBe(initialRemountKey! + 1);
+
+    // Advance time by another 600ms (total 1100ms)
+    await vi.advanceTimersByTimeAsync(600);
+    lastValue?.requestRemount();
+    // Now 2 calls
+    await vi.waitFor(() => {
+      expect(writeSpy).toHaveBeenCalledTimes(2);
+      expect(lastValue?.remountKey).toBe(initialRemountKey! + 2);
+    });
+  });
+
+  it("cancels throttled requestRemount on unmount", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    const { unmount } = renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const cancelSpy = vi.spyOn(
+      lastValue!.requestRemount as unknown as { cancel: () => void },
+      "cancel",
+    );
+
+    unmount();
+
+    expect(cancelSpy).toHaveBeenCalled();
+  });
 });

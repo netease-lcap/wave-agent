@@ -258,12 +258,26 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [remountKey, setRemountKey] = useState(0);
   const prevSessionId = useRef<string | null>(null);
 
-  const requestRemount = useCallback(() => {
-    logger.info("requesting remount");
-    stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
-      setRemountKey((prev) => prev + 1);
-    });
-  }, [stdout]);
+  const requestRemount = useMemo(
+    () =>
+      throttle(
+        () => {
+          logger.info("requesting remount");
+          stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
+            setRemountKey((prev) => prev + 1);
+          });
+        },
+        1000,
+        { leading: true, trailing: false },
+      ),
+    [stdout],
+  );
+
+  useEffect(() => {
+    return () => {
+      requestRemount.cancel();
+    };
+  }, [requestRemount]);
 
   // Track sessionId changes to trigger remount
   useEffect(() => {
@@ -786,7 +800,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     handleConfirmationCancel,
     backgroundCurrentTask,
     remountKey,
-    requestRemount,
+    requestRemount: requestRemount as () => void,
     handleRewindSelect,
     getFullMessageThread,
 
