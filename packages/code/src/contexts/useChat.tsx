@@ -23,7 +23,6 @@ import {
   AgentCallbacks,
   type ToolPermissionContext,
   OPERATION_CANCELLED_BY_USER,
-  cloneMessage,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { throttle } from "../utils/throttle.js";
@@ -697,13 +696,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           // Transitioning to EXPANDED: Freeze the current view
           // Cancel any pending throttled updates to avoid overwriting the frozen state
           throttledSetMessages.cancel();
-          // Deep copy the last message to ensure it doesn't update if the agent is still writing to it
-          setMessages((currentMessages) => {
-            if (currentMessages.length === 0) return currentMessages;
-            const lastMessage = currentMessages[currentMessages.length - 1];
-            const frozenLastMessage = cloneMessage(lastMessage);
-            return [...currentMessages.slice(0, -1), frozenLastMessage];
-          });
         } else {
           // Transitioning to COLLAPSED: Restore from agent's actual state
           if (agentRef.current) {
