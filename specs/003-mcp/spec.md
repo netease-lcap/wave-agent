@@ -49,7 +49,8 @@ As a user, I want to manually connect or disconnect MCP servers and check their 
 ### Functional Requirements
 
 - **FR-001**: System MUST support loading MCP server configurations from `.mcp.json` in the working directory.
-- **FR-002**: System MUST use `StdioClientTransport` to communicate with MCP servers.
+- **FR-002**: System MUST use `StdioClientTransport` or `SSEClientTransport` to communicate with MCP servers.
+- **FR-010**: System MUST support remote MCP servers via SSE (Server-Sent Events) by providing a `url` in the configuration.
 - **FR-003**: MCP tools MUST be registered in the `ToolManager` with the prefix `mcp__[serverName]__[toolName]`.
 - **FR-004**: MCP tool schemas MUST be cleaned of unsupported fields (`$schema`, `exclusiveMinimum`, `exclusiveMaximum`).
 - **FR-005**: `McpManager` MUST track the status of each server (connected, disconnected, error).
@@ -60,11 +61,12 @@ As a user, I want to manually connect or disconnect MCP servers and check their 
 
 ### Key Entities *(include if feature involves data)*
 
-- **McpServer**: Represents an external MCP server process.
+- **McpServer**: Represents an external MCP server process or remote endpoint.
     - `name`: Unique identifier for the server.
-    - `command`: Executable to run.
-    - `args`: Command-line arguments.
-    - `env`: Environment variables.
+    - `command`: Executable to run (for stdio).
+    - `args`: Command-line arguments (for stdio).
+    - `env`: Environment variables (for stdio).
+    - `url`: Endpoint URL (for SSE).
     - `status`: Current connection state.
 - **McpTool**: A tool provided by an MCP server.
     - `name`: Original tool name.
