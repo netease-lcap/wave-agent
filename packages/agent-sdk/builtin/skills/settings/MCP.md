@@ -32,9 +32,24 @@ The `.mcp.json` file contains a list of MCP server configurations.
 
 ### Fields for each server:
 
-- `command`: The executable to run (e.g., `npx`, `uvx`, `python`, `node`).
-- `args`: An array of command-line arguments for the executable.
+- `command`: (For stdio) The executable to run (e.g., `npx`, `uvx`, `python`, `node`).
+- `args`: (For stdio) An array of command-line arguments for the executable.
 - `env`: (Optional) A record of environment variables for the server process.
+- `url`: (For SSE) The endpoint URL of a remote MCP server (e.g., `https://example.com/sse`).
+
+## Remote MCP Servers (SSE)
+
+Wave also supports connecting to remote MCP servers via SSE (Server-Sent Events).
+
+```json
+{
+  "mcpServers": {
+    "remote-server": {
+      "url": "https://mcp-server.example.com/sse"
+    }
+  }
+}
+```
 
 ## Using MCP Tools
 
