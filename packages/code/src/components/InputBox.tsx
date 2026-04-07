@@ -12,6 +12,7 @@ import { StatusCommand } from "./StatusCommand.js";
 import { PluginManagerShell } from "./PluginManagerShell.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { StatusLine } from "./StatusLine.js";
+import { BtwDisplay } from "./BtwDisplay.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
@@ -64,8 +65,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     sessionId,
     workingDirectory,
     askBtw,
-    btwState: chatBtwState,
-    setBtwState: setChatBtwState,
     currentModel,
     configuredModels,
     setModel,
@@ -124,8 +123,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   } = useInputManager({
     onSendMessage: sendMessage,
     onAskBtw: askBtw,
-    btwState: chatBtwState,
-    onBtwStateChange: setChatBtwState,
     onHasSlashCommand: hasSlashCommand,
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
@@ -224,6 +221,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   return (
     <Box flexDirection="column">
+      <BtwDisplay btwState={btwState} />
       {showFileSelector && (
         <FileSelector
           files={filteredFiles}

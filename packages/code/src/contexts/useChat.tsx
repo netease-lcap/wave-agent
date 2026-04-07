@@ -121,10 +121,6 @@ export interface ChatContextType {
   workingDirectory: string;
   version?: string;
   workdir?: string;
-  btwState: import("../managers/inputReducer.js").BtwState;
-  setBtwState: (
-    payload: Partial<import("../managers/inputReducer.js").BtwState>,
-  ) => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -295,28 +291,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Status metadata state
   const [workingDirectory, setWorkingDirectory] = useState("");
-
-  // /btw state
-  const [btwState, setBtwStateInternal] = useState<
-    import("../managers/inputReducer.js").BtwState
-  >({
-    isActive: false,
-    question: "",
-    isLoading: false,
-  });
-
-  const setBtwState = useCallback(
-    (payload: Partial<import("../managers/inputReducer.js").BtwState>) => {
-      setBtwStateInternal((prev) => {
-        const newState = { ...prev, ...payload };
-        if (process.env.NODE_ENV === "test") {
-          // console.log("setBtwState", newState);
-        }
-        return newState;
-      });
-    },
-    [],
-  );
 
   const allowBypassInCycle =
     !!bypassPermissions || initialPermissionMode === "bypassPermissions";
@@ -746,17 +720,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       setIsTaskListVisible((prev) => !prev);
     }
 
-    // Handle ESC key to cancel confirmation or dismiss BTW
+    // Handle ESC key to cancel confirmation
     if (key.escape) {
       if (isConfirmationVisible) {
         handleConfirmationCancel();
-      } else if (btwState.isActive) {
-        setBtwState({
-          isActive: false,
-          question: "",
-          answer: undefined,
-          isLoading: false,
-        });
       }
     }
   });
@@ -809,8 +776,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workingDirectory,
     version,
     workdir,
-    btwState,
-    setBtwState,
   };
 
   return (

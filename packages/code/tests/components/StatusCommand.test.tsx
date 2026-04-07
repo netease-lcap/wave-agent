@@ -18,7 +18,6 @@ describe("StatusCommand", () => {
       model: "test-model",
       fastModel: "test-fast-model",
     }),
-    btwState: { isActive: false, question: "", isLoading: false },
   };
 
   beforeEach(() => {

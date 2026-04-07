@@ -52,8 +52,6 @@ export interface InputManagerCallbacks {
   onBackgroundCurrentTask?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
   onAskBtw?: (question: string) => Promise<string>;
-  btwState?: BtwState;
-  onBtwStateChange?: (payload: Partial<BtwState>) => void;
   sessionId?: string;
   workdir?: string;
   getFullMessageThread?: () => Promise<{

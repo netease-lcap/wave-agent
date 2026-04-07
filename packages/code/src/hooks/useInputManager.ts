@@ -157,12 +157,6 @@ export const useInputManager = (
     callbacksRef.current.onImagesStateChange?.(state.attachedImages);
   }, [state.attachedImages]);
 
-  useEffect(() => {
-    if (callbacksRef.current.onBtwStateChange) {
-      callbacksRef.current.onBtwStateChange(state.btwState);
-    }
-  }, [state.btwState]);
-
   // Handle /btw side question
   useEffect(() => {
     if (
@@ -362,11 +356,7 @@ export const useInputManager = (
 
   const setBtwState = useCallback(
     (payload: Partial<import("../managers/inputReducer.js").BtwState>) => {
-      if (callbacksRef.current.onBtwStateChange) {
-        callbacksRef.current.onBtwStateChange(payload);
-      } else {
-        dispatch({ type: "SET_BTW_STATE", payload });
-      }
+      dispatch({ type: "SET_BTW_STATE", payload });
     },
     [],
   );
