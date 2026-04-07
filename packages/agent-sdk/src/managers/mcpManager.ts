@@ -3,6 +3,7 @@ import { join } from "path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import { createMcpToolPlugin, findToolServer } from "../utils/mcpUtils.js";
@@ -227,9 +228,70 @@ export class McpManager {
     try {
       // Create transport - it will manage the process
       let transport: Transport;
+      let client: Client;
+      let tools: McpTool[] = [];
+
+      const createClient = () =>
+        new Client(
+          {
+            name: "wave-code",
+            version: "1.0.0",
+          },
+          {
+            capabilities: {
+              tools: {},
+            },
+          },
+        );
 
       if (server.config.url) {
-        transport = new SSEClientTransport(new URL(server.config.url));
+        const url = new URL(server.config.url);
+        const headers = server.config.headers;
+
+        try {
+          logger?.debug(
+            `Attempting Streamable HTTP connection for ${name} at ${url.href}`,
+          );
+          const streamableTransport = new StreamableHTTPClientTransport(url, {
+            requestInit: { headers },
+          });
+
+          const streamableClient = createClient();
+          await streamableClient.connect(streamableTransport);
+
+          // Try to list tools to verify connection works
+          const toolsResponse = await streamableClient.listTools();
+
+          transport = streamableTransport;
+          client = streamableClient;
+          tools =
+            toolsResponse.tools?.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              inputSchema: tool.inputSchema,
+            })) || [];
+
+          logger?.info(`Connected to MCP server ${name} using Streamable HTTP`);
+        } catch (error) {
+          logger?.debug(
+            `Streamable HTTP failed for ${name}, falling back to SSE: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          transport = new SSEClientTransport(url, {
+            requestInit: { headers },
+          });
+          client = createClient();
+          await client.connect(transport);
+
+          const toolsResponse = await client.listTools();
+          tools =
+            toolsResponse.tools?.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              inputSchema: tool.inputSchema,
+            })) || [];
+
+          logger?.info(`Connected to MCP server ${name} using SSE (fallback)`);
+        }
       } else if (server.config.command) {
         transport = new StdioClientTransport({
           command: server.config.command,
@@ -262,24 +324,22 @@ export class McpManager {
             }
           });
         }
+
+        client = createClient();
+        await client.connect(transport);
+
+        const toolsResponse = await client.listTools();
+        tools =
+          toolsResponse.tools?.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+          })) || [];
       } else {
         throw new Error(
           `MCP server ${name} configuration must include either 'command' or 'url'`,
         );
       }
-
-      // Create client
-      const client = new Client(
-        {
-          name: "wave-code",
-          version: "1.0.0",
-        },
-        {
-          capabilities: {
-            tools: {},
-          },
-        },
-      );
 
       // Handle transport errors
       transport.onerror = (error: Error) => {
@@ -300,24 +360,11 @@ export class McpManager {
         });
       };
 
-      // Connect to transport
-      await client.connect(transport);
-
-      // List available tools
-      const toolsResponse = await client.listTools();
-
-      const tools: McpTool[] =
-        toolsResponse.tools?.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-        })) || [];
-
-      // Store connection (we don't have direct process access with StdioClientTransport)
+      // Store connection
       this.connections.set(name, {
         client,
         transport,
-        process: null, // StdioClientTransport manages the process internally
+        process: null,
       });
 
       // Update status

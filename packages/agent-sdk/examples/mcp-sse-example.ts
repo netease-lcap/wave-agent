@@ -25,7 +25,7 @@ async function main() {
     const agent = await Agent.create({
       workdir: workDir,
       name: "sse-test-agent",
-      agentModel: "gemini-2.0-flash", // Use a fast model for testing
+      model: "gemini-2.5-flash", // Use a fast model for testing
     });
 
     console.log("Agent initialized. Checking MCP servers...");
