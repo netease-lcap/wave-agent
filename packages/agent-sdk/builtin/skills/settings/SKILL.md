@@ -89,6 +89,7 @@ For detailed guidance on creating subagents, see [SUBAGENTS.md](${WAVE_SKILL_DIR
 ### 9. Other Settings
 - `language`: Preferred language for agent communication (e.g., `"en"`, `"zh"`).
 - `autoMemoryEnabled`: Enable or disable auto-memory (default: `true`).
+- `autoMemoryFrequency`: Frequency of auto-memory extraction turns (default: `1`).
 
 ## How to use this skill
 

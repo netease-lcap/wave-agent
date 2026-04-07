@@ -16,17 +16,23 @@ The `settings` skill is a builtin skill that helps users manage their Wave confi
 5.  **Modification**: The skill guides the user through updating settings in the appropriate scope.
 6.  **Validation**: The skill ensures that any changes made to `settings.json` are valid.
 
-## Supported Fields
+## Supported Settings
+
+### settings.json
 - `hooks`: Configure automation hooks.
 - `env`: Set environment variables.
 - `permissions`: Manage tool permissions.
 - `enabledPlugins`: Enable or disable plugins.
 - `language`: Set preferred language.
 - `autoMemoryEnabled`: Enable/disable auto-memory.
-- `mcpServers`: Configure external MCP servers.
-- `memoryRules`: Define context-specific instructions.
-- `skills`: Create and manage custom skills.
-- `subagents`: Create and manage specialized subagents.
+- `autoMemoryFrequency`: Frequency of auto-memory extraction.
+- `models`: Model-specific configuration overrides.
+
+### Other Files
+- `.mcp.json`: Configure external MCP servers.
+- `.wave/rules/*.md`: Define context-specific instructions (Memory Rules).
+- `.wave/skills/`: Create and manage custom skills.
+- `.wave/agents/`: Create and manage specialized subagents.
 
 ## Documentation Links
 - `SKILL.md`: Main skill documentation.
