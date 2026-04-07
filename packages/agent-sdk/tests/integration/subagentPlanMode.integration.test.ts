@@ -49,6 +49,7 @@ describe("Subagent Plan Mode Integration", () => {
       getAllowedRules: vi.fn().mockReturnValue([]),
       getDeniedRules: vi.fn().mockReturnValue([]),
       getAdditionalDirectories: vi.fn().mockReturnValue([]),
+      getSystemAdditionalDirectories: vi.fn().mockReturnValue([]),
       getPlanFilePath: vi.fn().mockReturnValue("/test/project/plan.md"),
       addTemporaryRules: vi.fn(),
       removeTemporaryRules: vi.fn(),
