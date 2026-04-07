@@ -255,6 +255,7 @@ export class ConfigurationService {
             "bypassPermissions",
             "acceptEdits",
             "plan",
+            "dontAsk",
           ];
           if (!validModes.includes(config.permissions.permissionMode)) {
             result.isValid = false;
