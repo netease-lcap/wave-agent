@@ -16,6 +16,13 @@ vi.mock("ink", async () => {
   return {
     ...actual,
     useInput: vi.fn(),
+    useStdout: vi.fn(() => ({
+      stdout: {
+        write: (_data: string, callback?: () => void) => {
+          callback?.();
+        },
+      },
+    })),
   };
 });
 
@@ -745,22 +752,48 @@ describe("ChatProvider", () => {
   });
 
   it("toggles isExpanded with Ctrl+O", async () => {
-    const onHookValue = () => {};
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
 
     renderWithProvider(onHookValue);
 
     await vi.waitFor(() => {
-      // Get the useInput callback
-      const useInputMock = vi.mocked(useInput);
-      expect(useInputMock).toHaveBeenCalled();
+      expect(lastValue).toBeDefined();
     });
 
     // Get the useInput callback
     const useInputMock = vi.mocked(useInput);
-    const inputCallback = useInputMock.mock.calls[0][0];
+    const inputCallback = useInputMock.mock.calls.find((call) =>
+      call[0].toString().includes("ctrl"),
+    )?.[0];
+    expect(inputCallback).toBeDefined();
+    const handler = inputCallback!;
 
-    // Simulate Ctrl+O
-    inputCallback("o", { ctrl: true } as Parameters<typeof inputCallback>[1]);
+    // Initially not expanded
+    expect(lastValue?.isExpanded).toBe(false);
+    const initialRemountKey = lastValue?.remountKey;
+
+    // Simulate Ctrl+O to expand
+    handler("o", { ctrl: true } as Parameters<typeof handler>[1]);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isExpanded).toBe(true);
+    });
+
+    // Remount should be requested (remountKey should increment)
+    expect(lastValue?.remountKey).toBe(initialRemountKey! + 1);
+
+    // Simulate Ctrl+O again to collapse
+    handler("o", { ctrl: true } as Parameters<typeof handler>[1]);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isExpanded).toBe(false);
+    });
+
+    // Remount should be requested again
+    expect(lastValue?.remountKey).toBe(initialRemountKey! + 2);
   });
 
   it("clears throttle timer when expanding", async () => {

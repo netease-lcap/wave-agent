@@ -724,6 +724,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         }
         return newExpanded;
       });
+      // Force remount to re-render Static items with new isExpanded state
+      requestRemount();
     }
 
     if (key.ctrl && input === "t") {
