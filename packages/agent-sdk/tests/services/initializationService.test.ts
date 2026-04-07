@@ -106,6 +106,32 @@ describe("InitializationService", () => {
     ).toHaveBeenCalledWith("/test/workdir");
   });
 
+  it("should add USER_MEMORY_FILE to the safe zone during initialization", async () => {
+    const { USER_MEMORY_FILE } = await import("../../src/utils/constants.js");
+    const mockPermissionManager = {
+      addSystemAdditionalDirectory: vi.fn(),
+    };
+    context.container.register("PermissionManager", mockPermissionManager);
+
+    vi.mocked(
+      context.configurationService.resolveAutoMemoryEnabled,
+    ).mockReturnValue(true);
+    vi.mocked(mockMemoryService.ensureAutoMemoryDirectory).mockResolvedValue(
+      undefined,
+    );
+    (
+      mockMemoryService as unknown as {
+        getAutoMemoryDirectory: ReturnType<typeof vi.fn>;
+      }
+    ).getAutoMemoryDirectory = vi.fn().mockReturnValue("/mock/auto-memory");
+
+    await InitializationService.initialize(context);
+
+    expect(
+      mockPermissionManager.addSystemAdditionalDirectory,
+    ).toHaveBeenCalledWith(USER_MEMORY_FILE);
+  });
+
   it("should NOT initialize auto-memory directory when disabled", async () => {
     vi.mocked(
       mockConfigurationService.resolveAutoMemoryEnabled,

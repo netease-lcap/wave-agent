@@ -1,6 +1,7 @@
 import { handleSessionRestoration } from "./session.js";
 import { setGlobalLogger } from "../utils/globalLogger.js";
 import { LspManager } from "../managers/lspManager.js";
+import { USER_MEMORY_FILE } from "../utils/constants.js";
 import type {
   Message,
   Logger,
@@ -221,6 +222,7 @@ export class InitializationService {
           if (permissionManager) {
             const autoMemoryDir = memoryService.getAutoMemoryDirectory(workdir);
             permissionManager.addSystemAdditionalDirectory(autoMemoryDir);
+            permissionManager.addSystemAdditionalDirectory(USER_MEMORY_FILE);
           }
         }
       }
