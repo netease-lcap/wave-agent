@@ -337,10 +337,13 @@ describe("McpManager", () => {
     });
 
     it("should disconnect a connected server with 'd' key in list view", async () => {
-      const { stdin } = render(<McpManager {...defaultProps} />);
+      const { lastFrame, stdin } = render(<McpManager {...defaultProps} />);
 
       // Move to second server (connected) and disconnect
       stdin.write("\u001B[B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 2. ✓ filesystem"),
+      );
       stdin.write("d");
       await vi.waitFor(() =>
         expect(mockOnDisconnectServer).toHaveBeenCalledWith("filesystem"),
@@ -348,10 +351,13 @@ describe("McpManager", () => {
     });
 
     it("should connect/disconnect in detail view", async () => {
-      const { stdin } = render(<McpManager {...defaultProps} />);
+      const { lastFrame, stdin } = render(<McpManager {...defaultProps} />);
 
       // Go to detail view of first server (disconnected) and connect
       stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("MCP Server Details: chrome-devtools"),
+      );
       stdin.write("c");
       await vi.waitFor(() =>
         expect(mockOnConnectServer).toHaveBeenCalledWith("chrome-devtools"),
@@ -359,8 +365,17 @@ describe("McpManager", () => {
 
       // Go back, move to second server (connected), go to detail and disconnect
       stdin.write("\u001B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 1. ○ chrome-devtools"),
+      );
       stdin.write("\u001B[B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 2. ✓ filesystem"),
+      );
       stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("MCP Server Details: filesystem"),
+      );
       stdin.write("d");
       await vi.waitFor(() =>
         expect(mockOnDisconnectServer).toHaveBeenCalledWith("filesystem"),

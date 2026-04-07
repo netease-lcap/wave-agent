@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { McpServerStatus } from "wave-agent-sdk";
 
@@ -17,6 +17,18 @@ export const McpManager: React.FC<McpManagerProps> = ({
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
+
+  // Keep ref in sync with state to avoid stale closures in useInput
+  const selectedIndexRef = useRef(selectedIndex);
+  const viewModeRef = useRef(viewMode);
+
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
+
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
 
   // Dynamically calculate selectedServer based on selectedIndex and servers
   const selectedServer =
@@ -66,30 +78,18 @@ export const McpManager: React.FC<McpManagerProps> = ({
 
   useInput((input, key) => {
     if (key.return) {
-      setViewMode((prevMode) => {
-        if (prevMode === "list") {
-          setSelectedIndex((prevIndex) => {
-            if (servers.length > 0 && prevIndex < servers.length) {
-              // We can't call setViewMode here because we're already in a setViewMode call
-              // But we can return the new mode from the outer setViewMode
-            }
-            return prevIndex;
-          });
-          return "detail";
-        }
-        return prevMode;
-      });
+      if (viewModeRef.current === "list") {
+        setViewMode("detail");
+      }
       return;
     }
 
     if (key.escape) {
-      setViewMode((prev) => {
-        if (prev === "detail") {
-          return "list";
-        }
+      if (viewModeRef.current === "detail") {
+        setViewMode("list");
+      } else {
         onCancel();
-        return prev;
-      });
+      }
       return;
     }
 
@@ -105,27 +105,21 @@ export const McpManager: React.FC<McpManagerProps> = ({
 
     // Hotkeys for server actions
     if (input === "c") {
-      setSelectedIndex((prev) => {
-        const server = servers[prev];
-        if (
-          server &&
-          (server.status === "disconnected" || server.status === "error")
-        ) {
-          handleConnect(server.name);
-        }
-        return prev;
-      });
+      const server = servers[selectedIndexRef.current];
+      if (
+        server &&
+        (server.status === "disconnected" || server.status === "error")
+      ) {
+        handleConnect(server.name);
+      }
       return;
     }
 
     if (input === "d") {
-      setSelectedIndex((prev) => {
-        const server = servers[prev];
-        if (server && server.status === "connected") {
-          handleDisconnect(server.name);
-        }
-        return prev;
-      });
+      const server = servers[selectedIndexRef.current];
+      if (server && server.status === "connected") {
+        handleDisconnect(server.name);
+      }
       return;
     }
   });

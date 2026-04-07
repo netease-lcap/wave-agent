@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
 
@@ -13,6 +13,18 @@ export const PluginDetail: React.FC = () => {
     usePluginManagerContext();
   const [selectedScopeIndex, setSelectedScopeIndex] = useState(0);
   const [selectedActionIndex, setSelectedActionIndex] = useState(0);
+
+  // Keep refs in sync with state to avoid stale closures in useInput
+  const selectedScopeIndexRef = useRef(selectedScopeIndex);
+  const selectedActionIndexRef = useRef(selectedActionIndex);
+
+  useEffect(() => {
+    selectedScopeIndexRef.current = selectedScopeIndex;
+  }, [selectedScopeIndex]);
+
+  useEffect(() => {
+    selectedActionIndexRef.current = selectedActionIndex;
+  }, [selectedActionIndex]);
 
   const plugin =
     discoverablePlugins.find(
@@ -51,24 +63,18 @@ export const PluginDetail: React.FC = () => {
       );
     } else if (key.return && plugin && !state.isLoading) {
       if (isInstalledAndEnabled) {
-        setSelectedActionIndex((prev) => {
-          const action = INSTALLED_ACTIONS[prev].id;
-          if (action === "uninstall") {
-            actions.uninstallPlugin(plugin.name, plugin.marketplace);
-          } else {
-            actions.updatePlugin(plugin.name, plugin.marketplace);
-          }
-          return prev;
-        });
+        const action = INSTALLED_ACTIONS[selectedActionIndexRef.current].id;
+        if (action === "uninstall") {
+          actions.uninstallPlugin(plugin.name, plugin.marketplace);
+        } else {
+          actions.updatePlugin(plugin.name, plugin.marketplace);
+        }
       } else {
-        setSelectedScopeIndex((prev) => {
-          actions.installPlugin(
-            plugin.name,
-            plugin.marketplace,
-            SCOPES[prev].id,
-          );
-          return prev;
-        });
+        actions.installPlugin(
+          plugin.name,
+          plugin.marketplace,
+          SCOPES[selectedScopeIndexRef.current].id,
+        );
       }
     }
   });
