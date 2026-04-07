@@ -591,7 +591,12 @@ export class ConfigurationService {
    * @returns Resolved auto-memory enabled state
    */
   resolveAutoMemoryEnabled(): boolean {
-    // 1. settings.json (merged)
+    // 1. Agent options
+    if (this.options.autoMemoryEnabled !== undefined) {
+      return this.options.autoMemoryEnabled as boolean;
+    }
+
+    // 2. settings.json (merged)
     if (this.currentConfiguration?.autoMemoryEnabled !== undefined) {
       return this.currentConfiguration.autoMemoryEnabled;
     }
@@ -613,7 +618,12 @@ export class ConfigurationService {
    * @returns Resolved auto-memory extraction frequency (turns)
    */
   resolveAutoMemoryFrequency(): number {
-    // 1. settings.json (merged)
+    // 1. Agent options
+    if (this.options.autoMemoryFrequency !== undefined) {
+      return this.options.autoMemoryFrequency as number;
+    }
+
+    // 2. settings.json (merged)
     if (this.currentConfiguration?.autoMemoryFrequency !== undefined) {
       return this.currentConfiguration.autoMemoryFrequency;
     }

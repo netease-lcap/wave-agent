@@ -36,6 +36,7 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
     agent = await Agent.create({
       callbacks: mockCallbacks,
       workdir: "/tmp/test-workdir",
+      autoMemoryEnabled: false,
     });
 
     vi.clearAllMocks();
