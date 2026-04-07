@@ -40,6 +40,7 @@ For detailed environment variable configuration and available `WAVE_*` variables
 
 ### 3. Permissions
 Manage tool permissions and define the "Safe Zone". Changes to permissions take effect immediately with live reload.
+For detailed permission configuration and available permission modes, see [PERMISSIONS.md](${WAVE_SKILL_DIR}/PERMISSIONS.md).
 ```json
 {
   "permissions": {
@@ -98,6 +99,8 @@ You can ask me to:
 - "Update my project settings to enable auto-memory"
 - "How do I configure a post-commit hook?"
 - "What are the available permission modes?"
+- "Update my permission mode to acceptEdits"
+- "How do I extend the Safe Zone for permissions?"
 - "How do I create a custom skill?"
 - "How do I define a new subagent?"
 
