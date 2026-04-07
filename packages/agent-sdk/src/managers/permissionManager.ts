@@ -110,6 +110,8 @@ export interface PermissionManagerOptions {
   instanceDeniedRules?: string[];
   /** Additional directories considered part of the Safe Zone */
   additionalDirectories?: string[];
+  /** System additional directories (persistent across reloads) */
+  systemAdditionalDirectories?: string[];
   /** The main working directory */
   workdir?: string;
   /** Path to the current plan file */
@@ -147,6 +149,9 @@ export class PermissionManager {
     this.planFilePath = options.planFilePath;
     this._logger = options.logger;
     this.updateAdditionalDirectories(options.additionalDirectories || []);
+    for (const dir of options.systemAdditionalDirectories || []) {
+      this.addSystemAdditionalDirectory(dir);
+    }
 
     this.worktreeName = this.container.get<string>("WorktreeName");
     this.mainRepoRoot = this.container.get<string>("MainRepoRoot");
@@ -218,6 +223,13 @@ export class PermissionManager {
    */
   public getAdditionalDirectories(): string[] {
     return [...this.additionalDirectories];
+  }
+
+  /**
+   * Get all system additional directories
+   */
+  public getSystemAdditionalDirectories(): string[] {
+    return [...this.systemAdditionalDirectories];
   }
 
   /**

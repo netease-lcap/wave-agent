@@ -24,6 +24,7 @@ import { ReversionService } from "../services/reversionService.js";
 import { MemoryService } from "../services/memory.js";
 import { AutoMemoryService } from "../services/autoMemoryService.js";
 import { getGitMainRepoRoot } from "./gitUtils.js";
+import { USER_MEMORY_FILE } from "./constants.js";
 import type { AgentOptions } from "../types/index.js";
 import type {
   PermissionMode,
@@ -150,6 +151,7 @@ export function setupAgentContainer(
   if (configurationService.resolveAutoMemoryEnabled()) {
     const autoMemoryDir = memoryService.getAutoMemoryDirectory(workdir);
     permissionManager.addSystemAdditionalDirectory(autoMemoryDir);
+    permissionManager.addSystemAdditionalDirectory(USER_MEMORY_FILE);
   }
   container.register("PermissionManager", permissionManager);
   permissionManager.setOnConfiguredPermissionModeChange((mode) => {
