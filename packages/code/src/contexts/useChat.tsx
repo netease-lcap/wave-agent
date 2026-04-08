@@ -170,11 +170,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const throttledSetMessages = useMemo(
     () =>
-      throttle(() => {
-        if (!isExpandedRef.current && agentRef.current) {
-          setMessages([...agentRef.current.messages]);
-        }
-      }, 300),
+      throttle(
+        () => {
+          if (!isExpandedRef.current && agentRef.current) {
+            setMessages([...agentRef.current.messages]);
+          }
+        },
+        300,
+        { leading: true, trailing: true },
+      ),
     [],
   );
 
