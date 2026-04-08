@@ -30,6 +30,7 @@ Wave uses several environment variables to control its core functionality.
 | `WAVE_MAX_OUTPUT_TOKENS` | Maximum number of output tokens allowed. | `8192` |
 | `WAVE_DISABLE_AUTO_MEMORY` | Set to `1` or `true` to disable the auto-memory feature. | `false` |
 | `WAVE_TASK_LIST_ID` | Explicitly set the task list ID for the session. | (Session ID) |
+| `WAVE_PROMPT_CACHE_REGEX` | Regex pattern to match model names that support prompt caching. Models matching this pattern will have cache control markers applied. | `claude` |
 
 ## Configuration Scopes
 

@@ -90,12 +90,26 @@ interface ClaudeUsage extends CompletionUsage {
 
 ```typescript
 /**
+ * Determines if model supports prompt caching
+ * Uses WAVE_PROMPT_CACHE_REGEX environment variable for configurable matching
+ * @param modelName - Model identifier
+ * @returns True if model name matches the configured pattern (default: contains 'claude')
+ */
+function supportsPromptCaching(modelName: string): boolean;
+
+/**
  * Determines if model supports cache control
  * @param modelName - Model identifier
- * @returns True if model name contains 'claude' (case-insensitive)
+ * @returns True if model name matches the cache pattern
+ * @deprecated Use supportsPromptCaching instead
  */
-function isClaudeModel(modelName: string): boolean;
+const isClaudeModel: typeof supportsPromptCaching;
 ```
+
+**Environment Variable Configuration**:
+- `WAVE_PROMPT_CACHE_REGEX`: Regex pattern for matching model names (default: "claude")
+- Example: `WAVE_PROMPT_CACHE_REGEX="claude|qwen"` matches both claude and qwen models
+- Invalid regex patterns fall back to simple "claude" matching
 
 ### Cache Control Application
 

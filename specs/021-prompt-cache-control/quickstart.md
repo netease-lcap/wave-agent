@@ -15,10 +15,19 @@ This feature adds automatic prompt cache control to Claude models in the OpenAI 
 **File**: `packages/agent-sdk/src/utils/cacheControlUtils.ts`
 
 ```typescript
-// 1. Model detection utility
-export function isClaudeModel(modelName: string): boolean {
-  return modelName.toLowerCase().includes('claude');
+// 1. Model detection utility (configurable via WAVE_PROMPT_CACHE_REGEX)
+export function supportsPromptCaching(modelName: string): boolean {
+  const cachePattern = process.env.WAVE_PROMPT_CACHE_REGEX || "claude";
+  try {
+    const regex = new RegExp(cachePattern, "i");
+    return regex.test(modelName.trim());
+  } catch {
+    return modelName.toLowerCase().includes("claude");
+  }
 }
+
+/** @deprecated Use supportsPromptCaching instead */
+export const isClaudeModel = supportsPromptCaching;
 
 // 2. Content transformation utilities  
 export function addCacheControlToContent(
@@ -64,13 +73,13 @@ export interface CacheControl {
 
 ```typescript
 // Add before createParams construction (line ~195)
-if (isClaudeModel(model || modelConfig.model)) {
+if (supportsPromptCaching(model || modelConfig.model)) {
   openaiMessages = transformMessagesForClaudeCache(
     openaiMessages,
     model || modelConfig.model,
     tools
   );
-  
+
   if (tools && tools.length > 0) {
     tools = addCacheControlToLastTool(tools);
   }
@@ -81,7 +90,7 @@ if (isClaudeModel(model || modelConfig.model)) {
 
 ```typescript
 // Extend usage object for Claude models
-if (response.usage && isClaudeModel(model || modelConfig.model)) {
+if (response.usage && supportsPromptCaching(model || modelConfig.model)) {
   totalUsage = extendUsageWithCacheMetrics(response.usage, responseHeaders);
 }
 ```
@@ -105,15 +114,14 @@ export function findIntervalMessageIndex(
 
 export function transformMessagesForClaudeCache(
   messages: ChatCompletionMessageParam[],
-  modelName: string,
-  tools?: ChatCompletionFunctionTool[]
+  modelName: string
 ): ChatCompletionMessageParam[] {
-  if (!isClaudeModel(modelName)) {
+  if (!supportsPromptCaching(modelName)) {
     return messages;
   }
-  
+
   const indexToCache = findIntervalMessageIndex(messages);
-  
+
   return messages.map((message, index) => {
     // System message: always cache
     if (message.role === 'system') {
@@ -122,15 +130,32 @@ export function transformMessagesForClaudeCache(
         content: addCacheControlToContent(message.content, true)
       };
     }
-    
+
     // Interval-based message caching (every 20th message)
+    // Note: cache_control is applied at BLOCK level, not message level
     if (index === indexToCache) {
+      // For tool role: add cache_control to content block
+      if (message.role === 'tool') {
+        const content = typeof message.content === 'string' ? message.content : '';
+        return {
+          ...message,
+          content: addCacheControlToContent(content, true)
+        };
+      }
+      // For assistant with tool_calls: add cache_control to last tool call
+      if (message.role === 'assistant' && message.tool_calls?.length) {
+        return {
+          ...message,
+          tool_calls: addCacheControlToLastToolCall(message.tool_calls)
+        };
+      }
+      // For other roles: add cache_control to content blocks
       return {
-        ...message, 
+        ...message,
         content: addCacheControlToContent(message.content, true)
       };
     }
-    
+
     return message;
   });
 }
@@ -264,7 +289,7 @@ vi.mocked(openai.chat.completions.create).mockResolvedValue({
 
 If issues arise:
 1. **Feature Flag**: Add `DISABLE_CLAUDE_CACHE=true` environment variable
-2. **Model Bypass**: Modify `isClaudeModel()` to return `false`
+2. **Model Bypass**: Set `WAVE_PROMPT_CACHE_REGEX=""` to disable caching for all models
 3. **Selective Rollback**: Disable individual components (system/user/tools)
 
 ## Post-Implementation Verification

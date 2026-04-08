@@ -84,7 +84,7 @@ When using Claude models with cache control, developers need accurate token trac
 
 ### Functional Requirements
 
-- **FR-001**: System MUST detect Claude models by checking if the model name contains "claude" (case-insensitive)
+- **FR-001**: System MUST detect cache-supporting models using the `WAVE_PROMPT_CACHE_REGEX` environment variable (default: "claude"), which allows configurable regex patterns for model matching
 - **FR-002**: System MUST add cache_control markers with type "ephemeral" to the first system message when using Claude models. This ensures core instructions are always cached even if reminders are added later.
 - **FR-003**: System MUST create a cache marker when total message count reaches multiples of 20 (20, 40, 60, etc.)
 - **FR-004**: System MUST NOT create cache markers when total message count is below 20 or not a multiple of 20
@@ -94,10 +94,11 @@ When using Claude models with cache control, developers need accurate token trac
 - **FR-008**: System MUST extend usage tracking to include cache-related metrics (cache_read_input_tokens, cache_creation_input_tokens, cache_creation object)
 - **FR-009**: System MUST apply cache_control markers identically for both streaming and non-streaming requests during message preparation phase
 - **FR-010**: System MUST maintain backward compatibility with existing message processing logic (except for the cache strategy itself which is a breaking change)
-- **FR-011**: System MUST support caching for different message roles at interval positions:
-    - For `tool` role: Add `cache_control` directly to the message.
+- **FR-011**: System MUST support caching for different message roles at interval positions, applying cache_control only at block level:
+    - For `tool` role: Add `cache_control` to the content block (not the message itself).
     - For `assistant` role with `tool_calls`: Add `cache_control` to the last tool call.
-    - For other roles: Add `cache_control` to the message content.
+    - For other roles: Add `cache_control` to the content blocks within the message.
+    - For tools array: Add `cache_control` to the last tool definition.
 
 ### Key Entities *(include if feature involves data)*
 
