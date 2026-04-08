@@ -4,6 +4,7 @@ import { Agent } from "../src/agent.js";
 
 // Create Agent instance, listen to all available callbacks
 const agent = await Agent.create({
+  permissionMode: "bypassPermissions",
   callbacks: {
     // Incremental callback
     onUserMessageAdded: (params) => {
@@ -58,6 +59,7 @@ async function main() {
     console.log("\n🧹 Cleaning up...");
     await agent.destroy();
     console.log("👋 Done!");
+    process.exit(0);
   }
 }
 
