@@ -498,6 +498,15 @@ export class SubagentManager {
 
       // If this was transitioned to background, update the background task
       if (instance.backgroundTaskId && backgroundTaskManager) {
+        // Write final response and completion status to log before closing
+        if (instance.logStream && response) {
+          instance.logStream.write(
+            `[${new Date().toISOString()}] Final response:\n${response}\n`,
+          );
+        }
+        instance.logStream?.write(
+          `[${new Date().toISOString()}] Agent completed successfully\n`,
+        );
         instance.logStream?.end();
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
@@ -518,6 +527,10 @@ export class SubagentManager {
 
       // If this was transitioned to background, update the background task with error
       if (instance.backgroundTaskId && backgroundTaskManager) {
+        // Write error to log before closing
+        instance.logStream?.write(
+          `[${new Date().toISOString()}] Agent failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
         instance.logStream?.end();
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {

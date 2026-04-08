@@ -271,4 +271,103 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       fs.unlinkSync(outputPath);
     }
   });
+
+  it("should write final response and completion status to log file on success", async () => {
+    const instance = await subagentManager.createInstance(testConfig, {
+      description: "d",
+      prompt: "p",
+      subagent_type: "t",
+    });
+
+    const mockTask = {
+      id: "task_123",
+      status: "running",
+      startTime: Date.now(),
+      stdout: "",
+      endTime: 0,
+      runtime: 0,
+    };
+    vi.mocked(mockBackgroundTaskManager.getTask).mockReturnValue(
+      mockTask as unknown as ReturnType<
+        typeof mockBackgroundTaskManager.getTask
+      >,
+    );
+
+    await subagentManager.backgroundInstance(instance.subagentId);
+
+    const addTaskMock = vi.mocked(mockBackgroundTaskManager.addTask);
+    const outputPath = addTaskMock.mock.calls[0][0].outputPath!;
+
+    // Mock messages to return a response
+    vi.mocked(instance.messageManager.getMessages).mockReturnValue([
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "Build completed successfully" }],
+      },
+    ] as unknown as ReturnType<typeof instance.messageManager.getMessages>);
+
+    await subagentManager.executeAgent(instance, "test prompt");
+
+    await vi.waitFor(() => expect(fs.existsSync(outputPath)).toBe(true));
+
+    const content = fs.readFileSync(outputPath, "utf8");
+    expect(content).toContain("Final response:");
+    expect(content).toContain("Build completed successfully");
+    expect(content).toContain("Agent completed successfully");
+
+    // Cleanup
+    if (fs.existsSync(outputPath)) {
+      fs.unlinkSync(outputPath);
+    }
+  });
+
+  it("should write error to log file on failure", async () => {
+    const instance = await subagentManager.createInstance(testConfig, {
+      description: "d",
+      prompt: "p",
+      subagent_type: "t",
+    });
+
+    const mockTask = {
+      id: "task_123",
+      status: "running",
+      startTime: Date.now(),
+      stderr: "",
+      endTime: 0,
+      runtime: 0,
+    };
+    vi.mocked(mockBackgroundTaskManager.getTask).mockReturnValue(
+      mockTask as unknown as ReturnType<
+        typeof mockBackgroundTaskManager.getTask
+      >,
+    );
+
+    await subagentManager.backgroundInstance(instance.subagentId);
+
+    const addTaskMock = vi.mocked(mockBackgroundTaskManager.addTask);
+    const outputPath = addTaskMock.mock.calls[0][0].outputPath!;
+
+    // Mock AI to throw an error
+    const aiManager = (instance as unknown as { aiManager: AIManager })
+      .aiManager;
+    vi.spyOn(aiManager, "sendAIMessage").mockRejectedValue(
+      new Error("Build failed with exit code 1"),
+    );
+    vi.mocked(instance.messageManager.getMessages).mockReturnValue([]);
+
+    await expect(
+      subagentManager.executeAgent(instance, "test prompt"),
+    ).rejects.toThrow("Build failed with exit code 1");
+
+    await vi.waitFor(() => expect(fs.existsSync(outputPath)).toBe(true));
+
+    const content = fs.readFileSync(outputPath, "utf8");
+    expect(content).toContain("Agent failed:");
+    expect(content).toContain("Build failed with exit code 1");
+
+    // Cleanup
+    if (fs.existsSync(outputPath)) {
+      fs.unlinkSync(outputPath);
+    }
+  });
 });
