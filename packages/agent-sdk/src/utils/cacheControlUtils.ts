@@ -73,11 +73,11 @@ export interface ClaudeUsage extends CompletionUsage {
 // ============================================================================
 
 /**
- * Determines if a model supports cache control
+ * Determines if a model supports prompt caching
  * @param modelName - Model identifier
- * @returns True if model name contains 'claude' (case-insensitive)
+ * @returns True if model name matches the cache pattern (default: contains 'claude')
  */
-export function isClaudeModel(modelName: string): boolean {
+export function supportsPromptCaching(modelName: string): boolean {
   // Handle null, undefined, and non-string inputs
   if (!modelName || typeof modelName !== "string") {
     return false;
@@ -89,8 +89,23 @@ export function isClaudeModel(modelName: string): boolean {
     return false;
   }
 
-  return trimmed.toLowerCase().includes("claude");
+  const cachePattern = process.env.WAVE_PROMPT_CACHE_REGEX || "claude";
+  try {
+    const regex = new RegExp(cachePattern, "i");
+    return regex.test(trimmed);
+  } catch {
+    // If regex is invalid, fall back to simple includes check with default
+    return trimmed.toLowerCase().includes("claude");
+  }
 }
+
+/**
+ * Determines if a model supports cache control
+ * @param modelName - Model identifier
+ * @returns True if model name contains 'claude' (case-insensitive)
+ * @deprecated Use supportsPromptCaching instead
+ */
+export const isClaudeModel = supportsPromptCaching;
 
 /**
  * Validates cache control structure
@@ -308,8 +323,8 @@ export function transformMessagesForClaudeCache(
     return [];
   }
 
-  // Only apply cache control for Claude models
-  if (!isClaudeModel(modelName)) {
+  // Only apply cache control for models that support prompt caching
+  if (!supportsPromptCaching(modelName)) {
     return messages;
   }
 
@@ -352,11 +367,15 @@ export function transformMessagesForClaudeCache(
 
     // Interval-based message caching: cache message at latest interval position (sliding window)
     if (index === intervalMessageIndex) {
-      // If the message is a tool role, add cache control directly to the message
+      // If the message is a tool role, add cache control to the content block
       if (message.role === "tool") {
+        const content =
+          typeof message.content === "string" ? message.content : "";
+        const transformedContent = addCacheControlToContent(content, true);
+
         return {
           ...message,
-          cache_control: { type: "ephemeral" },
+          content: transformedContent,
         } as ChatCompletionMessageParam;
       }
       // If the message has tool calls, cache the last tool call instead of content

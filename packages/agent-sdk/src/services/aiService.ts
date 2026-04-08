@@ -13,7 +13,7 @@ import type { GatewayConfig, ModelConfig } from "../types/index.js";
 import {
   transformMessagesForClaudeCache,
   addCacheControlToLastTool,
-  isClaudeModel,
+  supportsPromptCaching,
   extendUsageWithCacheMetrics,
   type ClaudeUsage,
 } from "../utils/cacheControlUtils.js";
@@ -250,7 +250,7 @@ export async function callAgent(
 
     processedTools = tools;
 
-    if (isClaudeModel(currentModel)) {
+    if (supportsPromptCaching(currentModel)) {
       openaiMessages = transformMessagesForClaudeCache(
         openaiMessages,
         currentModel,
@@ -351,7 +351,7 @@ export async function callAgent(
         : undefined;
 
       // Extend usage with cache metrics for Claude models
-      if (totalUsage && isClaudeModel(currentModel) && response.usage) {
+      if (totalUsage && supportsPromptCaching(currentModel) && response.usage) {
         totalUsage = extendUsageWithCacheMetrics(
           totalUsage,
           response.usage as Partial<ClaudeUsage>,
@@ -572,7 +572,7 @@ async function processStreamingResponse(
         };
 
         // Extend usage with cache metrics for Claude models
-        if (modelName && isClaudeModel(modelName)) {
+        if (modelName && supportsPromptCaching(modelName)) {
           chunkUsage = extendUsageWithCacheMetrics(
             chunkUsage,
             chunk.usage as Partial<ClaudeUsage>,

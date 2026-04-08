@@ -73,28 +73,106 @@ describe("AI Service - Claude Cache Control", () => {
       cacheUtils = await import("@/utils/cacheControlUtils.js");
     });
 
-    describe("isClaudeModel", () => {
+    describe("supportsPromptCaching", () => {
       it("should return true for Claude model names (case-insensitive)", async () => {
-        expect(cacheUtils.isClaudeModel("claude-3-sonnet-20240229")).toBe(true);
-        expect(cacheUtils.isClaudeModel("CLAUDE-3-OPUS")).toBe(true);
-        expect(cacheUtils.isClaudeModel("anthropic/claude-2")).toBe(true);
-        expect(cacheUtils.isClaudeModel("Claude-Instant")).toBe(true);
+        expect(
+          cacheUtils.supportsPromptCaching("claude-3-sonnet-20240229"),
+        ).toBe(true);
+        expect(cacheUtils.supportsPromptCaching("CLAUDE-3-OPUS")).toBe(true);
+        expect(cacheUtils.supportsPromptCaching("anthropic/claude-2")).toBe(
+          true,
+        );
+        expect(cacheUtils.supportsPromptCaching("Claude-Instant")).toBe(true);
       });
 
       it("should return false for non-Claude model names", async () => {
-        expect(cacheUtils.isClaudeModel("gpt-4o")).toBe(false);
-        expect(cacheUtils.isClaudeModel("gpt-3.5-turbo")).toBe(false);
-        expect(cacheUtils.isClaudeModel("gemini-pro")).toBe(false);
-        expect(cacheUtils.isClaudeModel("llama2")).toBe(false);
+        expect(cacheUtils.supportsPromptCaching("gpt-4o")).toBe(false);
+        expect(cacheUtils.supportsPromptCaching("gpt-3.5-turbo")).toBe(false);
+        expect(cacheUtils.supportsPromptCaching("gemini-pro")).toBe(false);
+        expect(cacheUtils.supportsPromptCaching("llama2")).toBe(false);
       });
 
       it("should handle invalid inputs gracefully", async () => {
-        expect(cacheUtils.isClaudeModel("")).toBe(false);
-        expect(cacheUtils.isClaudeModel(null as unknown as string)).toBe(false);
-        expect(cacheUtils.isClaudeModel(undefined as unknown as string)).toBe(
+        expect(cacheUtils.supportsPromptCaching("")).toBe(false);
+        expect(
+          cacheUtils.supportsPromptCaching(null as unknown as string),
+        ).toBe(false);
+        expect(
+          cacheUtils.supportsPromptCaching(undefined as unknown as string),
+        ).toBe(false);
+        expect(cacheUtils.supportsPromptCaching(123 as unknown as string)).toBe(
           false,
         );
-        expect(cacheUtils.isClaudeModel(123 as unknown as string)).toBe(false);
+      });
+
+      it("should support regex patterns via WAVE_PROMPT_CACHE_REGEX", async () => {
+        // Save original env
+        const originalEnv = process.env.WAVE_PROMPT_CACHE_REGEX;
+
+        // Test with regex pattern "claude|qwen"
+        process.env.WAVE_PROMPT_CACHE_REGEX = "claude|qwen";
+
+        // Re-import to pick up new env variable
+        vi.resetModules();
+        const cacheUtilsNew = await import("@/utils/cacheControlUtils.js");
+
+        // Should match claude
+        expect(cacheUtilsNew.supportsPromptCaching("claude-3-sonnet")).toBe(
+          true,
+        );
+        // Should match qwen
+        expect(cacheUtilsNew.supportsPromptCaching("qwen3.6-plus")).toBe(true);
+        expect(cacheUtilsNew.supportsPromptCaching("QWEN-turbo")).toBe(true);
+        // Should not match others
+        expect(cacheUtilsNew.supportsPromptCaching("gpt-4o")).toBe(false);
+        expect(cacheUtilsNew.supportsPromptCaching("gemini-pro")).toBe(false);
+
+        // Restore original env
+        if (originalEnv === undefined) {
+          delete process.env.WAVE_PROMPT_CACHE_REGEX;
+        } else {
+          process.env.WAVE_PROMPT_CACHE_REGEX = originalEnv;
+        }
+        vi.resetModules();
+      });
+
+      it("should fall back to default for invalid regex patterns", async () => {
+        // Save original env
+        const originalEnv = process.env.WAVE_PROMPT_CACHE_REGEX;
+
+        // Test with invalid regex pattern
+        process.env.WAVE_PROMPT_CACHE_REGEX = "[invalid(regex";
+
+        // Re-import to pick up new env variable
+        vi.resetModules();
+        const cacheUtilsNew = await import("@/utils/cacheControlUtils.js");
+
+        // Should fall back to default "claude" matching
+        expect(cacheUtilsNew.supportsPromptCaching("claude-3-sonnet")).toBe(
+          true,
+        );
+        expect(cacheUtilsNew.supportsPromptCaching("CLAUDE")).toBe(true);
+        expect(cacheUtilsNew.supportsPromptCaching("gpt-4o")).toBe(false);
+
+        // Restore original env
+        if (originalEnv === undefined) {
+          delete process.env.WAVE_PROMPT_CACHE_REGEX;
+        } else {
+          process.env.WAVE_PROMPT_CACHE_REGEX = originalEnv;
+        }
+        vi.resetModules();
+      });
+    });
+
+    describe("isClaudeModel (deprecated alias)", () => {
+      it("should be an alias for supportsPromptCaching", async () => {
+        // Both should return the same result
+        expect(cacheUtils.isClaudeModel("claude-3-sonnet")).toBe(
+          cacheUtils.supportsPromptCaching("claude-3-sonnet"),
+        );
+        expect(cacheUtils.isClaudeModel("gpt-4o")).toBe(
+          cacheUtils.supportsPromptCaching("gpt-4o"),
+        );
       });
     });
 
@@ -639,13 +717,20 @@ describe("AI Service - Claude Cache Control", () => {
         // System message (first) should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
 
-        // 20th message (index 19) should be a tool role with cache control
+        // 20th message (index 19) should be a tool role with cache control on content block
         const intervalMessage = result[19];
         expect(intervalMessage.role).toBe("tool");
-        expect(intervalMessage).toHaveProperty("cache_control", {
+        // Cache control is on the content block, not on the message itself
+        expect(Array.isArray(intervalMessage.content)).toBe(true);
+        const content = intervalMessage.content as Array<{
+          type: string;
+          text: string;
+          cache_control?: { type: string };
+        }>;
+        expect(content[0]).toHaveProperty("cache_control", {
           type: "ephemeral",
         });
-        expect(intervalMessage.content).toBe("rain");
+        expect(content[0].text).toBe("rain");
 
         // Type guard for tool message
         if (intervalMessage.role === "tool") {
