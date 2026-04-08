@@ -27,8 +27,12 @@ Hooks allow you to automate tasks when certain events occur (e.g., `WorktreeCrea
 For detailed hook configuration, see [HOOKS.md](${WAVE_SKILL_DIR}/HOOKS.md).
 
 ### 2. Environment Variables
-Set environment variables that will be available to all tools and hooks.
-For detailed environment variable configuration and available `WAVE_*` variables, see [ENV.md](${WAVE_SKILL_DIR}/ENV.md).
+Set environment variables that will be available to all tools and hooks. Common `WAVE_*` variables include:
+- `WAVE_MODEL`, `WAVE_FAST_MODEL`: Model selection
+- `WAVE_MAX_INPUT_TOKENS`, `WAVE_MAX_OUTPUT_TOKENS`: Token limits
+- `WAVE_API_KEY`, `WAVE_BASE_URL`: API configuration
+
+For detailed configuration, see [ENV.md](${WAVE_SKILL_DIR}/ENV.md).
 ```json
 {
   "env": {
@@ -53,7 +57,7 @@ For detailed permission configuration and available permission modes, see [PERMI
 ```
 
 ### 4. Model Configuration
-Define which AI models Wave should use and set model-specific parameters like `temperature`, `reasoning_effort`, and `thinking`.
+Define which AI models Wave should use and set model-specific parameters like `temperature`, `reasoning_effort`, and `thinking`. You can also configure model selection and token limits via environment variables in the `env` field.
 For detailed model configuration, see [MODELS.md](${WAVE_SKILL_DIR}/MODELS.md).
 ```json
 {
@@ -103,5 +107,7 @@ You can ask me to:
 - "How do I extend the Safe Zone for permissions?"
 - "How do I create a custom skill?"
 - "How do I define a new subagent?"
+- "How do I set max input tokens?"
+- "How do I change the model?"
 
 I will guide you through the process and ensure your configuration is valid.
