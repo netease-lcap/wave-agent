@@ -150,9 +150,20 @@ export interface CacheControl {
 #### T005: Model Detection Utility
 ```typescript
 // Add to packages/agent-sdk/src/utils/cacheControlUtils.ts
-export function isClaudeModel(modelName: string): boolean {
-  return modelName.toLowerCase().includes('claude');
+export function supportsPromptCaching(modelName: string): boolean {
+  const cachePattern = process.env.WAVE_PROMPT_CACHE_REGEX || "claude";
+  try {
+    const regex = new RegExp(cachePattern, "i");
+    return regex.test(modelName.trim());
+  } catch {
+    // If regex is invalid, fall back to simple includes check
+    return modelName.toLowerCase().includes("claude");
+  }
 }
+
+// Deprecated alias for backward compatibility
+/** @deprecated Use supportsPromptCaching instead */
+export const isClaudeModel = supportsPromptCaching;
 ```
 
 #### T008: Content Transformation Utility

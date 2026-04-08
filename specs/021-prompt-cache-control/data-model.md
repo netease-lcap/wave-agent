@@ -62,26 +62,39 @@ interface ClaudeUsage extends CompletionUsage {
 
 ### Claude Model Detection
 
-**Purpose**: Boolean determination of cache control applicability
+**Purpose**: Boolean determination of cache control applicability via configurable regex pattern
 
 **Structure**:
 ```typescript
 interface ModelCacheConfig {
   modelName: string;
-  isClaudeModel: boolean;
-  shouldApplyCache: boolean;
+  cachePattern: string; // From WAVE_PROMPT_CACHE_REGEX env var, default: "claude"
+  supportsPromptCaching: boolean;
 }
 ```
 
 **Validation Rules**:
-- Case-insensitive detection: `modelName.toLowerCase().includes('claude')`
-- `shouldApplyCache` equals `isClaudeModel` (1:1 relationship)
+- Pattern matching via regex: `new RegExp(cachePattern, "i").test(modelName)`
+- Default pattern is "claude" if `WAVE_PROMPT_CACHE_REGEX` is not set
+- Invalid regex patterns fall back to simple includes check with default "claude"
 - Model name cannot be empty or undefined
+
+**Configuration**:
+- Environment variable: `WAVE_PROMPT_CACHE_REGEX`
+- Default value: `"claude"`
+- Example patterns:
+  - `"claude"` - matches any model with "claude" in name
+  - `"claude|qwen"` - matches models with "claude" OR "qwen"
+  - `"claude|qwen3\\.6-plus"` - matches "claude" or exact "qwen3.6-plus"
 
 **Relationships**:
 - Determines cache control application for entire request
 - Affects message transformation and tool processing
 - Influences usage tracking structure
+
+**Legacy Support**:
+- `isClaudeModel()` is deprecated alias for `supportsPromptCaching()`
+- Backward compatibility maintained for existing code
 
 ### Structured Message Content
 
@@ -179,9 +192,12 @@ function findIntervalMessageIndex(messages: ChatCompletionMessageParam[]): numbe
 ### Role-Specific Caching Logic
 
 When applying cache control at an interval position:
-- **Tool Role**: `cache_control` is added directly to the message object.
+- **Tool Role**: `cache_control` is added to the content block (not directly to the message object). The content is transformed to a structured array with `cache_control` on the text block.
 - **Assistant Role with Tool Calls**: `cache_control` is added to the last item in the `tool_calls` array.
-- **Other Roles (User, System, Assistant without tools)**: `cache_control` is added to the message `content` (transformed to structured array if necessary).
+- **Other Roles (User, System, Assistant without tools)**: `cache_control` is added to the content blocks within the message `content` (transformed to structured array if necessary).
+- **Tools Array**: `cache_control` is added to the last tool definition in the `tools` array.
+
+**Important**: Cache control markers are ONLY applied at the block level, never at the message level.
 
 ### Usage Tracking Extension
 
