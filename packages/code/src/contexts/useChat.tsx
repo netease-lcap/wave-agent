@@ -462,6 +462,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     model,
     initialPermissionMode,
     throttledSetMessages,
+    throttledSetTokens,
   ]);
 
   // Cleanup on unmount
