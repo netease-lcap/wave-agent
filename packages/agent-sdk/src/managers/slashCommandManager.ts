@@ -130,7 +130,6 @@ export class SlashCommandManager {
               command.name,
               processedContent,
               command.config,
-              args,
             );
           },
         });
@@ -171,25 +170,27 @@ export class SlashCommandManager {
               args,
             });
 
-            // 2. Add slash message immediately
-            const messageId = this.messageManager.addSlashMessage({
-              command: skill.name,
-              args,
-              content: prepared.content,
-            });
-
             if (!prepared.skill) {
-              // If skill not found or invalid, we're done (error message already in prepared.content)
-              this.messageManager.updateSlashBlock({
-                command: skill.name,
-                messageId,
-                stage: "error",
-                error: prepared.content,
-              });
+              // If skill not found or invalid, add error
+              this.messageManager.addErrorBlock(prepared.content);
               return;
             }
 
             if (skill.context === "fork") {
+              // Forked skill execution: add user message with text + tool block
+              const messageId = this.messageManager.addUserMessage({
+                content: `/${skill.name} ${args || ""}`,
+              });
+
+              const toolBlockId = this.messageManager.addToolBlockToMessage(
+                messageId,
+                {
+                  name: skill.name,
+                  parameters: prepared.content,
+                  stage: "running",
+                },
+              );
+
               // Forked skill execution
               const subagentConfigs =
                 await this.subagentManager.loadConfigurations();
@@ -214,7 +215,7 @@ export class SlashCommandManager {
                   },
                   false,
                   () => {
-                    // Update the slash block with progress
+                    // Update the tool block with progress
                     const subagent = this.subagentManager.getInstance(
                       instance.subagentId,
                     );
@@ -237,8 +238,8 @@ export class SlashCommandManager {
 
                       shortResult += summary;
 
-                      this.messageManager.updateSlashBlock({
-                        command: skill.name,
+                      this.messageManager.updateToolBlock({
+                        id: toolBlockId,
                         messageId,
                         shortResult,
                       });
@@ -253,24 +254,22 @@ export class SlashCommandManager {
                     signal,
                   );
 
-                  // Update the SlashBlock with final result
-                  this.messageManager.updateSlashBlock({
-                    command: skill.name,
+                  // Update the ToolBlock with final result
+                  this.messageManager.updateToolBlock({
+                    id: toolBlockId,
                     messageId,
                     result,
-                    stage: "success",
+                    stage: "end",
                   });
                 } finally {
                   this.subagentManager.cleanupInstance(instance.subagentId);
                 }
               } catch (error) {
-                // Update the SlashBlock with error
-                const isAborted =
-                  error instanceof Error && error.name === "AbortError";
-                this.messageManager.updateSlashBlock({
-                  command: skill.name,
+                // Update the ToolBlock with error
+                this.messageManager.updateToolBlock({
+                  id: toolBlockId,
                   messageId,
-                  stage: isAborted ? "aborted" : "error",
+                  stage: "end",
                   error: error instanceof Error ? error.message : String(error),
                 });
                 throw error; // Re-throw to be caught by outer catch for logging/error block
@@ -278,21 +277,18 @@ export class SlashCommandManager {
               return;
             }
 
-            // 3. Execute bash commands asynchronously
+            // Non-forked skill: execute and trigger AI response
             const result = await this.skillManager.executeSkill({
               skill_name: skill.name,
               args,
             });
 
-            // 4. Update the message with final content
-            this.messageManager.updateSlashBlock({
-              command: skill.name,
-              messageId,
+            // Add user message with the processed content
+            this.messageManager.addUserMessage({
               content: result.content,
-              stage: "success",
             });
 
-            // 5. Trigger AI response
+            // Trigger AI response
             await this.aiManager.sendAIMessage({
               model: skill.model,
               allowedRules: result.allowedTools,
@@ -352,7 +348,6 @@ export class SlashCommandManager {
             namespacedName,
             processedContent,
             command.config,
-            args,
           );
         },
       });
@@ -489,16 +484,8 @@ export class SlashCommandManager {
     commandName: string,
     content: string,
     config?: { model?: string; allowedTools?: string[] },
-    args?: string,
   ): Promise<void> {
     try {
-      // Add slash command message immediately to show the command being executed
-      const messageId = this.messageManager.addSlashMessage({
-        command: commandName,
-        args,
-        content, // Initial content with bash placeholders
-      });
-
       // Parse bash commands from the content
       const { commands, processedContent } = parseBashCommands(content);
 
@@ -512,12 +499,9 @@ export class SlashCommandManager {
         );
       }
 
-      // Update the message with final content
-      this.messageManager.updateSlashBlock({
-        command: commandName,
-        messageId,
+      // Add user message with the processed content
+      this.messageManager.addUserMessage({
         content: finalContent,
-        stage: "success",
       });
 
       // Execute the AI conversation with custom configuration

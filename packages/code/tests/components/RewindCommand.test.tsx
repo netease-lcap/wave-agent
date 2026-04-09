@@ -29,17 +29,15 @@ describe("RewindCommand Content", () => {
     });
   });
 
-  it("should display slash command content", async () => {
+  it("should display slash command content as text", async () => {
     const mockMessages: Partial<Message>[] = [
       {
         id: "1",
         role: "user",
         blocks: [
           {
-            type: "slash",
-            command: "settings",
-            args: "theme dark",
-            stage: "success",
+            type: "text",
+            content: "/settings theme dark",
           },
         ],
       },

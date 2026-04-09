@@ -197,22 +197,6 @@ export function convertMessagesForAPI(
           });
         }
 
-        // Handle SlashBlock
-        if (block.type === "slash") {
-          if (block.content && block.content.trim().length > 0) {
-            contentParts.push({
-              type: "text",
-              text: block.content,
-            });
-          }
-          if (block.result && block.result.trim().length > 0) {
-            contentParts.push({
-              type: "text",
-              text: `<local-command-stdout>\n${stripAnsiColors(block.result)}\n</local-command-stdout>`,
-            });
-          }
-        }
-
         // If there is an image, add image content
         if (
           block.type === "image" &&

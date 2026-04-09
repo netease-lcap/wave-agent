@@ -20,26 +20,6 @@ export interface AddUserMessageParams extends UserMessageParams {
   id?: string;
 }
 
-export interface AddSlashParams {
-  messages: Message[];
-  command: string;
-  args?: string;
-  content?: string;
-  id?: string;
-}
-
-export interface UpdateSlashParams {
-  messages: Message[];
-  command: string;
-  messageId?: string;
-  args?: string;
-  content?: string;
-  result?: string;
-  stage?: "running" | "success" | "error" | "aborted";
-  error?: string;
-  shortResult?: string;
-}
-
 export interface UpdateToolBlockParams {
   messages: Message[];
   id: string;
@@ -173,95 +153,6 @@ export const addUserMessageToMessages = ({
     ...(isMeta !== undefined && { isMeta }),
   };
   return [...messages, userMessage];
-};
-
-/**
- * Add a slash command message to the conversation.
- */
-export const addSlashMessageToMessages = ({
-  messages,
-  command,
-  args,
-  content,
-  id,
-}: AddSlashParams): Message[] => {
-  const slashMessage: Message = {
-    id: id || generateMessageId(),
-    role: "user",
-    blocks: [
-      {
-        type: "slash",
-        command,
-        args,
-        content,
-        stage: "running",
-      },
-    ],
-  };
-  return [...messages, slashMessage];
-};
-
-/**
- * Update a slash block in a message.
- */
-export const updateSlashBlockInMessage = ({
-  messages,
-  command,
-  messageId,
-  args,
-  content,
-  result,
-  stage,
-  error,
-  shortResult,
-}: UpdateSlashParams): Message[] => {
-  const newMessages = [...messages];
-
-  // If messageId is provided, target that specific message
-  if (messageId) {
-    const messageIndex = newMessages.findIndex((msg) => msg.id === messageId);
-    if (messageIndex !== -1) {
-      const slashBlockIndex = newMessages[messageIndex].blocks.findIndex(
-        (block) => block.type === "slash" && block.command === command,
-      );
-
-      if (slashBlockIndex !== -1) {
-        const slashBlock = newMessages[messageIndex].blocks[slashBlockIndex];
-        if (slashBlock.type === "slash") {
-          if (args !== undefined) slashBlock.args = args;
-          if (content !== undefined) slashBlock.content = content;
-          if (result !== undefined) slashBlock.result = result;
-          if (stage !== undefined) slashBlock.stage = stage;
-          if (error !== undefined) slashBlock.error = error;
-          if (shortResult !== undefined) slashBlock.shortResult = shortResult;
-        }
-      }
-    }
-    return newMessages;
-  }
-
-  // Find the last user message with a slash block for this command
-  for (let i = newMessages.length - 1; i >= 0; i--) {
-    const msg = newMessages[i];
-    if (msg.role === "user") {
-      const slashBlockIndex = msg.blocks.findIndex(
-        (block) => block.type === "slash" && block.command === command,
-      );
-      if (slashBlockIndex !== -1) {
-        const slashBlock = msg.blocks[slashBlockIndex];
-        if (slashBlock.type === "slash") {
-          if (args !== undefined) slashBlock.args = args;
-          if (content !== undefined) slashBlock.content = content;
-          if (result !== undefined) slashBlock.result = result;
-          if (stage !== undefined) slashBlock.stage = stage;
-          if (error !== undefined) slashBlock.error = error;
-          if (shortResult !== undefined) slashBlock.shortResult = shortResult;
-        }
-        break;
-      }
-    }
-  }
-  return newMessages;
 };
 
 /**
@@ -667,11 +558,6 @@ export function getMessageContent(message: Message): string {
   const textBlock = message.blocks.find((block) => block.type === "text");
   if (textBlock && "content" in textBlock) {
     return textBlock.content;
-  }
-
-  const slashBlock = message.blocks.find((block) => block.type === "slash");
-  if (slashBlock && "command" in slashBlock) {
-    return `/${slashBlock.command}${slashBlock.args ? ` ${slashBlock.args}` : ""}`;
   }
 
   const bangBlock = message.blocks.find((block) => block.type === "bang");

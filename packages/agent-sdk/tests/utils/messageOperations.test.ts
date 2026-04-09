@@ -11,8 +11,6 @@ import {
   generateMessageId,
   addToolBlockToMessageInMessages,
   updateToolBlockInMessage,
-  addSlashMessageToMessages,
-  updateSlashBlockInMessage,
   cloneMessage,
   getMessageContent,
 } from "@/utils/messageOperations.js";
@@ -967,95 +965,6 @@ describe("updateToolBlockInMessage with messageId", () => {
   });
 });
 
-describe("Slash Message Operations", () => {
-  describe("addSlashMessageToMessages", () => {
-    it("should add a new slash command message", () => {
-      const initialMessages: Message[] = [];
-      const result = addSlashMessageToMessages({
-        messages: initialMessages,
-        command: "test",
-        args: "hello",
-        content: "expanded content",
-      });
-
-      expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({
-        role: "user",
-        blocks: [
-          {
-            type: "slash",
-            command: "test",
-            args: "hello",
-            content: "expanded content",
-            stage: "running",
-          },
-        ],
-      });
-    });
-  });
-
-  describe("updateSlashBlockInMessage", () => {
-    it("should update a slash block by command name", () => {
-      const initialMessages: Message[] = [
-        {
-          id: "msg-1",
-          role: "user",
-          blocks: [
-            {
-              type: "slash",
-              command: "test",
-              stage: "running",
-            },
-          ],
-        },
-      ];
-
-      const result = updateSlashBlockInMessage({
-        messages: initialMessages,
-        command: "test",
-        stage: "success",
-        result: "done",
-      });
-
-      expect(result[0].blocks[0]).toMatchObject({
-        command: "test",
-        stage: "success",
-        result: "done",
-      });
-    });
-
-    it("should update a slash block by messageId and command name", () => {
-      const initialMessages: Message[] = [
-        {
-          id: "msg-1",
-          role: "user",
-          blocks: [
-            {
-              type: "slash",
-              command: "test",
-              stage: "running",
-            },
-          ],
-        },
-      ];
-
-      const result = updateSlashBlockInMessage({
-        messages: initialMessages,
-        command: "test",
-        messageId: "msg-1",
-        stage: "error",
-        error: "failed",
-      });
-
-      expect(result[0].blocks[0]).toMatchObject({
-        command: "test",
-        stage: "error",
-        error: "failed",
-      });
-    });
-  });
-});
-
 describe("cloneMessage", () => {
   it("should clone a basic message", () => {
     const message: Message = {
@@ -1150,31 +1059,6 @@ describe("getMessageContent", () => {
       blocks: [{ type: "text", content: "hello world" }],
     };
     expect(getMessageContent(message)).toBe("hello world");
-  });
-
-  it("should extract slash command", () => {
-    const message: Message = {
-      id: "msg-1",
-      role: "user",
-      blocks: [
-        {
-          type: "slash",
-          command: "settings",
-          args: "set theme dark",
-          stage: "success",
-        },
-      ],
-    };
-    expect(getMessageContent(message)).toBe("/settings set theme dark");
-  });
-
-  it("should extract slash command without args", () => {
-    const message: Message = {
-      id: "msg-1",
-      role: "user",
-      blocks: [{ type: "slash", command: "help", stage: "success" }],
-    };
-    expect(getMessageContent(message)).toBe("/help");
   });
 
   it("should extract bang command", () => {

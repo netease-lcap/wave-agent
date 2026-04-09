@@ -85,38 +85,6 @@ describe("MessageManager Coverage Improvements", () => {
     );
   });
 
-  it("should handle addSlashMessage and updateSlashBlock", () => {
-    const id = messageManager.addSlashMessage({
-      command: "test",
-      args: "hello",
-      content: "expanded",
-    });
-    expect(id).toBeDefined();
-
-    const messages = messageManager.getMessages();
-    expect(messages[0].blocks[0]).toMatchObject({
-      type: "slash",
-      command: "test",
-      args: "hello",
-      content: "expanded",
-      stage: "running",
-    });
-
-    messageManager.updateSlashBlock({
-      command: "test",
-      messageId: id,
-      stage: "success",
-      result: "done",
-    });
-
-    const updatedMessages = messageManager.getMessages();
-    expect(updatedMessages[0].blocks[0]).toMatchObject({
-      command: "test",
-      stage: "success",
-      result: "done",
-    });
-  });
-
   it("should only update the specified user message", () => {
     const id1 = messageManager.addUserMessage({ content: "Message 1" });
     const id2 = messageManager.addUserMessage({ content: "Message 2" });
