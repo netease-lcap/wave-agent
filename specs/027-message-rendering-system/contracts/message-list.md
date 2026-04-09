@@ -31,7 +31,7 @@ export interface MessageListProps {
 2. **Message Flattening**: Converts the nested `messages -> blocks` structure into a flat list of blocks for rendering.
 3. **Static vs Dynamic Split**:
    - Blocks that are not the last message are typically considered **static**, unless they contain active tool/command executions.
-   - Blocks are considered **dynamic** ONLY IF `forceStatic` is false AND `isExpanded` is false AND they belong to a message with active blocks (e.g., tool in `running` stage).
+   - Blocks are considered **dynamic** ONLY IF `forceStatic` is false AND `isExpanded` is false AND they belong to a message with active blocks (e.g., tool in `running`/`streaming`/`start` stage, or `bang` in `running` stage) AND the block itself is not a completed `text` or `reasoning` block (`stage === "end"`).
    - When `isExpanded` is true, all blocks (including those in the last message or with active tool calls) become static and are moved into the `<Static>` component. This ensures the view remains "frozen" and performant when expanded.
    - When `isFinished` is true, the entire last message becomes static and is moved into the `<Static>` component.
 4. **Static Rendering**: Uses Ink's `<Static>` component to render static blocks. This ensures they are only rendered once and then "frozen" in the terminal scrollback.
