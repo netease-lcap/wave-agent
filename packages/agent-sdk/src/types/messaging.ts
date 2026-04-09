@@ -32,6 +32,7 @@ export type MessageBlock =
 export interface TextBlock {
   type: "text";
   content: string;
+  customCommandContent?: string;
   source?: MessageSource;
 }
 
