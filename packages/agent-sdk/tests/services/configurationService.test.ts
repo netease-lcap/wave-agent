@@ -475,6 +475,18 @@ describe("ConfigurationService", () => {
   });
 
   describe("resolveMaxInputTokens", () => {
+    const originalEnv = process.env.WAVE_MAX_INPUT_TOKENS;
+
+    beforeEach(() => {
+      delete process.env.WAVE_MAX_INPUT_TOKENS;
+    });
+
+    afterEach(() => {
+      if (originalEnv !== undefined) {
+        process.env.WAVE_MAX_INPUT_TOKENS = originalEnv;
+      }
+    });
+
     it("should return default", () => {
       expect(configService.resolveMaxInputTokens()).toBe(
         DEFAULT_WAVE_MAX_INPUT_TOKENS,

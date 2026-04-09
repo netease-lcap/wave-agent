@@ -17,6 +17,9 @@ describe("Agent Message Compression Tests", () => {
     // Disable auto-memory to prevent extra callAgent calls from background tasks
     vi.stubEnv("WAVE_DISABLE_AUTO_MEMORY", "1");
 
+    // Clear WAVE_MAX_INPUT_TOKENS to use default 96000 for compression threshold
+    delete process.env.WAVE_MAX_INPUT_TOKENS;
+
     // Create Agent instance with required parameters
     agent = await Agent.create({
       apiKey: "test-key",

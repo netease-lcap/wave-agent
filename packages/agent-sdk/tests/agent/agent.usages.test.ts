@@ -30,6 +30,7 @@ describe("Agent Usage Tracking", () => {
     process.env.WAVE_MODEL = "gemini-3-flash";
     process.env.WAVE_FAST_MODEL = "gemini-2.5-flash";
     process.env.WAVE_DISABLE_AUTO_MEMORY = "true";
+    delete process.env.WAVE_MAX_INPUT_TOKENS;
 
     // Create mock callbacks that track usage changes
     usagesHistory = [];
