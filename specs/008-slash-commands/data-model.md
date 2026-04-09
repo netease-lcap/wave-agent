@@ -1,6 +1,7 @@
 # Data Model: Custom Slash Commands
 
 **Generated**: December 19, 2024  
+**Updated**: 2026-04-09 (PR #926 — customCommandContent)
 **Feature**: Custom Slash Commands
 
 ## Core Entities
@@ -181,6 +182,14 @@ echo "Current directory: $(pwd)"
 7. **AI Cycle Start**: `PermissionManager.addTemporaryRules()` is called with the extracted `allowedTools`.
 8. **Tool Execution**: `PermissionManager.checkPermission()` matches against both `allowedRules` and `temporaryRules`. For `Bash` commands, it ensures every part of a command chain is allowed.
 9. **AI Cycle End**: `PermissionManager.clearTemporaryRules()` is called in the `finally` block of `sendAIMessage`.
+
+### Display vs AI Context (PR #926)
+
+When a custom slash command is executed:
+- `content` field stores the user-friendly command name (e.g., `/speckit.analyze`)
+- `customCommandContent` field stores the full processed markdown body
+- `convertMessagesForAPI` prioritizes `customCommandContent` when sending to AI
+- UI displays `content` (command name) to avoid cluttering the chat with full markdown body
 
 ## Error States and Recovery
 

@@ -1,7 +1,8 @@
 # Data Model: Real-Time Content Streaming
 
 **Phase 1 Design**: Simplified approach  
-**Date**: 2025-11-19
+**Date**: 2025-11-19  
+**Updated**: 2026-04-09 (PR #928 — stage field additions)
 
 ## Core Approach
 
@@ -10,6 +11,7 @@ The streaming content feature requires **no new data entities**. All functionali
 1. **Leveraging Existing Message State**: Use current `Message[]` array and existing message structures
 2. **Simple View Mode Control**: Use existing `isExpandedRef` pattern to control UI updates  
 3. **Callback-Only Streaming**: Streaming callbacks provide real-time UI feedback without managing state
+4. **Block-Level Stage Tracking**: TextBlock, ReasoningBlock, and BangBlock use `stage` fields to distinguish streaming from completed state
 
 ## No Additional Entities Needed
 
@@ -74,3 +76,45 @@ The streaming feature integrates entirely through:
 4. **Existing Flow**: All state updates through existing `onMessagesChange`
 
 **Result**: Real-time streaming functionality with zero new data model complexity.
+
+## Block Stage Fields (PR #928)
+
+### TextBlock
+
+```typescript
+interface TextBlock {
+  type: "text";
+  content: string;
+  customCommandContent?: string;
+  source?: MessageSource;
+  stage?: "streaming" | "end";  // NEW: added 2026-04-09
+}
+```
+
+### ReasoningBlock
+
+```typescript
+interface ReasoningBlock {
+  type: "reasoning";
+  content: string;
+  stage?: "streaming" | "end";  // NEW: added 2026-04-09
+}
+```
+
+### BangBlock
+
+```typescript
+interface BangBlock {
+  type: "bang";
+  command: string;
+  output: string;
+  stage: "running" | "end";     // REPLACES isRunning: boolean
+  exitCode: number | null;
+}
+```
+
+### Finalization Behavior
+
+- `finalizeCurrentStreamingBlocks()` is called before `updateToolBlock` and `addToolBlock`
+- It sets all streaming text/reasoning blocks on the last assistant message to `stage: "end"`
+- This ensures streaming blocks are properly closed before tool blocks are added
