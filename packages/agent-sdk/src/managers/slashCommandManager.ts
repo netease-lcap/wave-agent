@@ -491,21 +491,25 @@ export class SlashCommandManager {
       // Parse bash commands from the content
       const { commands, processedContent } = parseBashCommands(content);
 
-      // Execute bash commands if any
-      let finalContent = processedContent;
+      // Add user message immediately so text block shows before bash execution
+      const messageId = this.messageManager.addUserMessage({
+        content: `/${commandName}`,
+        customCommandContent: processedContent,
+      });
+
+      // Execute bash commands and update the message if any exist
       if (commands.length > 0) {
         const bashResults = await executeBashCommands(commands, this.workdir);
-        finalContent = replaceBashCommandsWithOutput(
+        const finalContent = replaceBashCommandsWithOutput(
           processedContent,
           bashResults,
         );
-      }
 
-      // Add user message with command name as display content, processed content for AI
-      this.messageManager.addUserMessage({
-        content: `/${commandName}`,
-        customCommandContent: finalContent,
-      });
+        // Update the user message with the bash-processed content
+        this.messageManager.updateUserMessage(messageId, {
+          customCommandContent: finalContent,
+        });
+      }
 
       // Execute the AI conversation with custom configuration
       await this.aiManager.sendAIMessage({

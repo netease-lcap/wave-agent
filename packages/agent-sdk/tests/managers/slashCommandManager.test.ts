@@ -381,12 +381,23 @@ describe("SlashCommandManager", () => {
 
       const cmd = slashCommandManager.getCommand("test:test-bash");
 
-      // Spy on messageManager methods
+      // Spy on messageManager methods before execution
       const addUserMessageSpy = vi.spyOn(messageManager, "addUserMessage");
+      const updateUserMessageSpy = vi.spyOn(
+        messageManager,
+        "updateUserMessage",
+      );
 
       await cmd?.handler();
 
       expect(addUserMessageSpy).toHaveBeenCalled();
+      expect(updateUserMessageSpy).toHaveBeenCalled();
+
+      // Verify addUserMessage was called BEFORE executeBashCommands
+      const addUserMessageOrder = addUserMessageSpy.mock.invocationCallOrder[0];
+      const executeBashOrder = vi.mocked(markdownParser.executeBashCommands)
+        .mock.invocationCallOrder[0];
+      expect(addUserMessageOrder).toBeLessThan(executeBashOrder);
 
       // Verify the user message contains the processed content with bash output
       const messages = messageManager.getMessages();
@@ -396,15 +407,14 @@ describe("SlashCommandManager", () => {
 
       expect(aiManager.sendAIMessage).toHaveBeenCalled();
 
-      // Verify the order: executeBashCommands -> addUserMessage -> sendAIMessage
-      const executeBashOrder = vi.mocked(markdownParser.executeBashCommands)
-        .mock.invocationCallOrder[0];
-      const addUserMessageOrder = addUserMessageSpy.mock.invocationCallOrder[0];
+      // Verify the order: addUserMessage -> executeBashCommands -> updateUserMessage -> sendAIMessage
+      const updateUserMessageOrder =
+        updateUserMessageSpy.mock.invocationCallOrder[0];
       const sendAIMessageOrder = vi.mocked(aiManager.sendAIMessage).mock
         .invocationCallOrder[0];
 
-      expect(executeBashOrder).toBeLessThan(addUserMessageOrder);
-      expect(addUserMessageOrder).toBeLessThan(sendAIMessageOrder);
+      expect(executeBashOrder).toBeLessThan(updateUserMessageOrder);
+      expect(updateUserMessageOrder).toBeLessThan(sendAIMessageOrder);
     });
 
     it("should update user message after bash execution in skill command", async () => {
