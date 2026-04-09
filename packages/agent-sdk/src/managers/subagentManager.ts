@@ -343,7 +343,8 @@ export class SubagentManager {
           outputPath: logPath,
           subagentId: instance.subagentId,
           onStop: () => {
-            instance.logStream?.end();
+            instance.logStream?.destroy();
+            instance.logStream = undefined;
             instance.aiManager.abortAIMessage();
             this.cleanupInstance(instance.subagentId);
           },
@@ -421,7 +422,8 @@ export class SubagentManager {
       outputPath: logPath,
       subagentId: instance.subagentId,
       onStop: () => {
-        instance.logStream?.end();
+        instance.logStream?.destroy();
+        instance.logStream = undefined;
         instance.aiManager.abortAIMessage();
         this.cleanupInstance(instance.subagentId);
       },
