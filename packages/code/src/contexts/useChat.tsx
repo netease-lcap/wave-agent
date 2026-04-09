@@ -182,18 +182,32 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [],
   );
 
+  const throttledSetTokens = useMemo(
+    () =>
+      throttle(
+        ((tokens: number) => {
+          setlatestTotalTokens(tokens);
+        }) as (...args: unknown[]) => void,
+        300,
+        { leading: true, trailing: true },
+      ),
+    [],
+  );
+
   useEffect(() => {
     isExpandedRef.current = isExpanded;
     if (isExpanded) {
       throttledSetMessages.cancel();
+      throttledSetTokens.cancel();
     }
-  }, [isExpanded, throttledSetMessages]);
+  }, [isExpanded, throttledSetMessages, throttledSetTokens]);
 
   useEffect(() => {
     return () => {
       throttledSetMessages.cancel();
+      throttledSetTokens.cancel();
     };
-  }, [throttledSetMessages]);
+  }, [throttledSetMessages, throttledSetTokens]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [latestTotalTokens, setlatestTotalTokens] = useState(0);
@@ -341,7 +355,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setSessionId(sessionId);
         },
         onLatestTotalTokensChange: (tokens) => {
-          setlatestTotalTokens(tokens);
+          throttledSetTokens(tokens);
         },
         onCompressionStateChange: (isCompressingState) => {
           setIsCompressing(isCompressingState);
