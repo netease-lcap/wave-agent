@@ -24,18 +24,14 @@ async function main() {
 
   console.log(`Using temporary directory: ${workDir}`);
 
-  // Configure the Tavily MCP server
+  // Configure the Tavily MCP server using env var expansion
   const mcpConfig = {
     mcpServers: {
       tavily: {
         url: "https://mcp.tavily.com/mcp/",
-        // Authenticate using the Authorization header
+        // Authenticate using the Authorization header with ${TAVILY_API_KEY} env var expansion
         headers: {
-          Authorization: `Bearer ${apiKey}`,
-          DEFAULT_PARAMETERS: JSON.stringify({
-            search_depth: "advanced",
-            max_results: 5,
-          }),
+          Authorization: "Bearer ${TAVILY_API_KEY}",
         },
       },
     },
