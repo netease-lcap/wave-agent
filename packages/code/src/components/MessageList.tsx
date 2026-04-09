@@ -39,7 +39,9 @@ export const MessageList = React.memo(
 
     const isRunning = (b: MessageBlock) =>
       (b.type === "tool" &&
-        (b.stage === "running" || b.stage === "streaming")) ||
+        (b.stage === "running" ||
+          b.stage === "streaming" ||
+          b.stage === "start")) ||
       (b.type === "bang" && b.stage === "running") ||
       ((b.type === "text" || b.type === "reasoning") &&
         b.stage === "streaming");
@@ -64,18 +66,12 @@ export const MessageList = React.memo(
     }
 
     // Determine which blocks are static vs dynamic
-    // Text/reasoning: dynamic only when they themselves are streaming
-    // Tool: dynamic when any block in the same message is running/streaming
-    // Bang: dynamic when it itself is running
+    // If any block in a message is running/streaming, ALL blocks in that message are dynamic
     const blocksWithStatus = allBlocks.map((item) => {
       const isDynamic =
         !forceStatic &&
         !isExpanded &&
-        ((item.block.type === "tool" &&
-          runningMessageIndices.has(item.messageIndex)) ||
-          ((item.block.type === "text" || item.block.type === "reasoning") &&
-            isRunning(item.block)) ||
-          (item.block.type === "bang" && isRunning(item.block)));
+        runningMessageIndices.has(item.messageIndex);
       return { ...item, isDynamic };
     });
 
