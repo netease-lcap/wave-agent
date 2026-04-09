@@ -34,6 +34,61 @@ export interface McpManagerOptions {
   logger?: Logger;
 }
 
+/**
+ * Expand environment variables in a string value.
+ * Supports ${VAR} and ${VAR:-default} patterns.
+ */
+export function expandEnvVars(value: string): string {
+  return value.replace(/\$\{([^}]+)\}/g, (_match, expr: string) => {
+    const [varName, ...rest] = expr.split(":-");
+    const defaultValue = rest.join(":-");
+    return process.env[varName] ?? defaultValue;
+  });
+}
+
+/**
+ * Walk an MCP config and expand env vars in all string fields.
+ */
+export function resolveMcpConfig(config: McpConfig): McpConfig {
+  const resolved: McpConfig = { mcpServers: {} };
+
+  for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
+    const resolvedServer: McpServerConfig = { ...serverConfig };
+
+    if (resolvedServer.command) {
+      resolvedServer.command = expandEnvVars(resolvedServer.command);
+    }
+
+    if (resolvedServer.args) {
+      resolvedServer.args = resolvedServer.args.map(expandEnvVars);
+    }
+
+    if (resolvedServer.env) {
+      const resolvedEnv: Record<string, string> = {};
+      for (const [key, val] of Object.entries(resolvedServer.env)) {
+        resolvedEnv[key] = expandEnvVars(val);
+      }
+      resolvedServer.env = resolvedEnv;
+    }
+
+    if (resolvedServer.url) {
+      resolvedServer.url = expandEnvVars(resolvedServer.url);
+    }
+
+    if (resolvedServer.headers) {
+      const resolvedHeaders: Record<string, string> = {};
+      for (const [key, val] of Object.entries(resolvedServer.headers)) {
+        resolvedHeaders[key] = expandEnvVars(val);
+      }
+      resolvedServer.headers = resolvedHeaders;
+    }
+
+    resolved.mcpServers[name] = resolvedServer;
+  }
+
+  return resolved;
+}
+
 export class McpManager {
   private config: McpConfig | null = null;
   private servers: Map<string, McpServerStatus> = new Map();
@@ -109,7 +164,7 @@ export class McpManager {
 
     try {
       const configContent = await fs.readFile(this.configPath, "utf-8");
-      this.config = JSON.parse(configContent);
+      this.config = resolveMcpConfig(JSON.parse(configContent));
 
       // Initialize server statuses (preserve existing status for already known servers)
       if (this.config) {

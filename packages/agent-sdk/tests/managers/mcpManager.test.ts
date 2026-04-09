@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { McpManager } from "../../src/managers/mcpManager.js";
+import {
+  McpManager,
+  expandEnvVars,
+  resolveMcpConfig,
+} from "../../src/managers/mcpManager.js";
 import { Container } from "../../src/utils/container.js";
 import type { McpServerConfig } from "../../src/types/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -838,5 +842,126 @@ describe("McpManager", () => {
       expect(tools).toHaveLength(2);
       expect(tools.map((t) => t.name)).toEqual(["tool1", "tool2"]);
     });
+  });
+});
+
+describe("expandEnvVars", () => {
+  const originalEnv = process.env;
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it("should replace ${VAR} with env value", () => {
+    process.env.TEST_KEY = "secret-value";
+    expect(expandEnvVars("prefix-${TEST_KEY}-suffix")).toBe(
+      "prefix-secret-value-suffix",
+    );
+  });
+
+  it("should replace ${VAR:-default} with env value when set", () => {
+    process.env.FOO = "bar";
+    expect(expandEnvVars("${FOO:-fallback}")).toBe("bar");
+  });
+
+  it("should use default when env is not set", () => {
+    delete process.env.MISSING_VAR;
+    expect(expandEnvVars("${MISSING_VAR:-my-default}")).toBe("my-default");
+  });
+
+  it("should replace with empty string when env is not set and no default", () => {
+    delete process.env.NO_DEFAULT;
+    expect(expandEnvVars("${NO_DEFAULT}")).toBe("");
+  });
+
+  it("should handle multiple vars in one string", () => {
+    process.env.A = "hello";
+    process.env.B = "world";
+    expect(expandEnvVars("${A} ${B}")).toBe("hello world");
+  });
+
+  it("should leave non-matching text unchanged", () => {
+    expect(expandEnvVars("no vars here")).toBe("no vars here");
+  });
+});
+
+describe("resolveMcpConfig", () => {
+  const originalEnv = process.env;
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it("should expand env vars in command and args", () => {
+    process.env.MCP_CMD = "npx";
+    process.env.MCP_ARG = "--verbose";
+    const config = {
+      mcpServers: {
+        s: { command: "${MCP_CMD}", args: ["${MCP_ARG}"] },
+      },
+    };
+    const resolved = resolveMcpConfig(config);
+    expect(resolved.mcpServers.s.command).toBe("npx");
+    expect(resolved.mcpServers.s.args).toEqual(["--verbose"]);
+  });
+
+  it("should expand env vars in env values", () => {
+    process.env.SECRET = "my-secret";
+    const config = {
+      mcpServers: {
+        s: { command: "cmd", env: { API_KEY: "${SECRET}" } },
+      },
+    };
+    const resolved = resolveMcpConfig(config);
+    expect(resolved.mcpServers.s.env).toEqual({ API_KEY: "my-secret" });
+  });
+
+  it("should expand env vars in url", () => {
+    process.env.MCP_HOST = "example.com";
+    const config = {
+      mcpServers: {
+        s: { url: "https://${MCP_HOST}/sse" },
+      },
+    };
+    const resolved = resolveMcpConfig(config);
+    expect(resolved.mcpServers.s.url).toBe("https://example.com/sse");
+  });
+
+  it("should expand env vars in headers values", () => {
+    process.env.AUTH_TOKEN = "tok123";
+    const config = {
+      mcpServers: {
+        s: {
+          url: "https://example.com",
+          headers: { Authorization: "Bearer ${AUTH_TOKEN}" },
+        },
+      },
+    };
+    const resolved = resolveMcpConfig(config);
+    expect(resolved.mcpServers.s.headers).toEqual({
+      Authorization: "Bearer tok123",
+    });
+  });
+
+  it("should handle defaults in url expansion", () => {
+    delete process.env.PORT;
+    const config = {
+      mcpServers: {
+        s: { url: "http://localhost:${PORT:-3000}/sse" },
+      },
+    };
+    const resolved = resolveMcpConfig(config);
+    expect(resolved.mcpServers.s.url).toBe("http://localhost:3000/sse");
+  });
+
+  it("should not mutate the original config", () => {
+    process.env.URL = "https://real.com";
+    const config = {
+      mcpServers: {
+        s: { url: "${URL}" },
+      },
+    };
+    resolveMcpConfig(config);
+    expect(config.mcpServers.s.url).toBe("${URL}");
   });
 });
