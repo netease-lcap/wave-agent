@@ -75,6 +75,8 @@ describe("WaveAcpAgent", () => {
       sendMessage: vi.fn(),
       destroy: vi.fn(),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -122,6 +124,8 @@ describe("WaveAcpAgent", () => {
       sendMessage: vi.fn(),
       destroy: vi.fn(),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -228,6 +232,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -324,6 +330,8 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-to-stop",
       destroy: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -367,6 +375,8 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-1",
       destroy: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -396,6 +406,8 @@ describe("WaveAcpAgent", () => {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -425,6 +437,8 @@ describe("WaveAcpAgent", () => {
       abortMessage: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -448,6 +462,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -507,6 +523,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -589,6 +607,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -632,6 +652,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("plan"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -692,6 +714,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("plan"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -722,6 +746,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -762,6 +788,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -795,6 +823,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -829,6 +859,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -857,6 +889,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -892,6 +926,8 @@ describe("WaveAcpAgent", () => {
       setPermissionMode: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -925,6 +961,8 @@ describe("WaveAcpAgent", () => {
       setPermissionMode: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -963,6 +1001,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -1128,6 +1168,8 @@ describe("WaveAcpAgent", () => {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -1161,6 +1203,8 @@ describe("WaveAcpAgent", () => {
       sendMessage: vi.fn().mockRejectedValue(new Error("failed")),
       saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -1189,6 +1233,8 @@ describe("WaveAcpAgent", () => {
       sendMessage: vi.fn().mockRejectedValue(new Error("abort")),
       saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -1222,6 +1268,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -1256,6 +1304,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -1290,6 +1340,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([
         {
           id: "test-cmd",
@@ -1375,6 +1427,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -1444,6 +1498,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -1552,6 +1608,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -1593,6 +1651,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -1635,6 +1695,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -1676,6 +1738,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -1748,6 +1812,8 @@ describe("WaveAcpAgent", () => {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockResolvedValue(
@@ -1778,6 +1844,8 @@ describe("WaveAcpAgent", () => {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       saveSession: vi.fn().mockResolvedValue(undefined),
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockResolvedValue(
@@ -1810,6 +1878,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
@@ -1845,6 +1915,8 @@ describe("WaveAcpAgent", () => {
     const mockWaveAgent = {
       sessionId: "session-1",
       getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
     };
     vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
