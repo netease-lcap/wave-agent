@@ -8,6 +8,7 @@
 import { readFileSync, existsSync, promises as fs } from "fs";
 import * as path from "path";
 import { isValidHookEvent } from "../types/hooks.js";
+import { logger } from "../utils/globalLogger.js";
 import type {
   ConfigurationLoadResult,
   ValidationResult,
@@ -357,6 +358,12 @@ export class ConfigurationService {
    */
   setEnvironmentVars(env: Record<string, string>): void {
     this.env = { ...env };
+    for (const [key, value] of Object.entries(env)) {
+      if (process.env[key] !== undefined) {
+        logger.warn(`Overriding environment variable: ${key}`);
+      }
+      process.env[key] = value;
+    }
   }
 
   /**
