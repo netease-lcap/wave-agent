@@ -553,9 +553,6 @@ export class AIManager {
         this.messageManager.updateCurrentMessageContent(result.content);
       }
 
-      // Finalize streaming blocks (set stage to "end")
-      this.messageManager.finalizeStreamingBlocks();
-
       // Handle usage tracking for agent operations
       let usage: Usage | undefined;
       if (result.usage) {

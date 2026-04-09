@@ -430,6 +430,8 @@ export class MessageManager {
   }
 
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {
+    // Finalize any streaming text/reasoning blocks before adding/updating a tool block
+    this.finalizeCurrentStreamingBlocks();
     const newMessages = updateToolBlockInMessage({
       messages: this.messages,
       ...params,
@@ -447,6 +449,8 @@ export class MessageManager {
     messageId: string,
     params: Omit<AgentToolBlockUpdateParams, "id">,
   ): string {
+    // Finalize any streaming text/reasoning blocks before adding a tool block
+    this.finalizeCurrentStreamingBlocks();
     const { messages: newMessages, toolBlockId } =
       addToolBlockToMessageInMessages(this.messages, messageId, params);
     this.setMessages(newMessages);
@@ -719,10 +723,10 @@ export class MessageManager {
   }
 
   /**
-   * Finalize all streaming blocks by setting their stage to "end".
-   * Called after tool execution completes to mark text/reasoning blocks as done.
+   * Finalize streaming text/reasoning blocks by setting their stage to "end".
+   * Called when a new block (e.g. tool) is appended during streaming.
    */
-  public finalizeStreamingBlocks(): void {
+  private finalizeCurrentStreamingBlocks(): void {
     if (this.messages.length === 0) return;
     const lastMessage = this.messages[this.messages.length - 1];
     if (lastMessage.role !== "assistant") return;
