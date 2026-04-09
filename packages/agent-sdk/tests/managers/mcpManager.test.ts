@@ -279,7 +279,7 @@ describe("McpManager", () => {
       await mcpManager.loadConfig();
 
       // Mock Streamable HTTP to fail to trigger fallback
-      vi.mocked(StreamableHTTPClientTransport).mockImplementation(() => {
+      vi.mocked(StreamableHTTPClientTransport).mockImplementation(function () {
         throw new Error("Streamable HTTP not supported");
       });
 
