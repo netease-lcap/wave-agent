@@ -52,6 +52,7 @@ import { parseCustomHeaders } from "../utils/stringUtils.js";
 export class ConfigurationService {
   private currentConfiguration: WaveConfiguration | null = null;
   private options: AgentOptions = {};
+  private _configuredEnvKeys = new Set<string>();
 
   /**
    * Set agent options for configuration resolution
@@ -357,10 +358,11 @@ export class ConfigurationService {
    */
   setEnvironmentVars(env: Record<string, string>): void {
     for (const [key, value] of Object.entries(env)) {
-      if (process.env[key] !== undefined) {
+      if (process.env[key] !== undefined && !this._configuredEnvKeys.has(key)) {
         logger.warn(`Overriding environment variable: ${key}`);
       }
       process.env[key] = value;
+      this._configuredEnvKeys.add(key);
     }
   }
 
