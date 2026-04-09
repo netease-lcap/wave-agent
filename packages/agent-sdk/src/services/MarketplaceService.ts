@@ -69,7 +69,28 @@ export class MarketplaceService {
   }
 
   /**
-   * Acquires a file-based lock and executes the provided function.
+   * Check if a lock file is stale by reading its PID and checking if the process is alive.
+   * Returns true if the lock is stale and safe to remove.
+   */
+  private async isStaleLock(): Promise<boolean> {
+    try {
+      const content = await fs.readFile(this.lockPath, "utf-8");
+      const pid = parseInt(content.trim(), 10);
+      if (isNaN(pid)) return true;
+      // Check if the process is still running
+      try {
+        process.kill(pid, 0);
+        return false; // Process exists, lock is valid
+      } catch {
+        return true; // Process doesn't exist, lock is stale
+      }
+    } catch {
+      return true; // Can't read lock file, assume stale
+    }
+  }
+
+  /**
+   * Acquires a file-based lock (with PID tracking for stale lock detection) and executes the provided function.
    * Supports re-entrancy within the same process.
    */
   private async withLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -92,6 +113,14 @@ export class MarketplaceService {
           "code" in error &&
           error.code === "EEXIST"
         ) {
+          // Check for stale lock every 60 retries (every ~6 seconds)
+          if (i > 0 && i % 60 === 0) {
+            const stale = await this.isStaleLock();
+            if (stale) {
+              await fs.unlink(this.lockPath).catch(() => {});
+              continue;
+            }
+          }
           await new Promise((resolve) => setTimeout(resolve, retryDelay));
           continue;
         }
@@ -104,6 +133,9 @@ export class MarketplaceService {
         `Failed to acquire marketplace lock after ${maxRetries} retries. If no other wave-agent process is running, please delete ${this.lockPath}`,
       );
     }
+
+    // Write PID into the lock file for stale lock detection
+    await fs.writeFile(this.lockPath, String(process.pid), "utf-8");
 
     MarketplaceService.isLockedInProcess = true;
     try {
