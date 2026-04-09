@@ -51,7 +51,6 @@ import { parseCustomHeaders } from "../utils/stringUtils.js";
  */
 export class ConfigurationService {
   private currentConfiguration: WaveConfiguration | null = null;
-  private env: Record<string, string> = {};
   private options: AgentOptions = {};
 
   /**
@@ -357,20 +356,12 @@ export class ConfigurationService {
    * This replaces direct process.env modification
    */
   setEnvironmentVars(env: Record<string, string>): void {
-    this.env = { ...env };
     for (const [key, value] of Object.entries(env)) {
       if (process.env[key] !== undefined) {
         logger.warn(`Overriding environment variable: ${key}`);
       }
       process.env[key] = value;
     }
-  }
-
-  /**
-   * Get current environment variables
-   */
-  getEnvironmentVars(): Record<string, string> {
-    return { ...this.env };
   }
 
   // =============================================================================
@@ -403,7 +394,7 @@ export class ConfigurationService {
     } else if (this.options.apiKey !== undefined) {
       resolvedApiKey = this.options.apiKey;
     } else {
-      resolvedApiKey = this.env.WAVE_API_KEY;
+      resolvedApiKey = process.env.WAVE_API_KEY;
     }
 
     // Resolve base URL: override > options > env (settings.json) > process.env
@@ -414,7 +405,7 @@ export class ConfigurationService {
     } else if (this.options.baseURL !== undefined) {
       resolvedBaseURL = this.options.baseURL;
     } else {
-      resolvedBaseURL = this.env.WAVE_BASE_URL || "";
+      resolvedBaseURL = process.env.WAVE_BASE_URL || "";
     }
 
     // Fallback to process.env if still not resolved (for dynamic updates in tests)
@@ -429,7 +420,7 @@ export class ConfigurationService {
       throw new ConfigurationError(CONFIG_ERRORS.MISSING_BASE_URL, "baseURL", {
         constructor: baseURL,
         environment: process.env.WAVE_BASE_URL,
-        settings: this.env.WAVE_BASE_URL,
+        settings: process.env.WAVE_BASE_URL,
       });
     }
 
@@ -443,7 +434,7 @@ export class ConfigurationService {
 
     // Resolve custom headers from environment: env (settings.json) > process.env
     const envCustomHeaders =
-      this.env.WAVE_CUSTOM_HEADERS || process.env.WAVE_CUSTOM_HEADERS || "";
+      process.env.WAVE_CUSTOM_HEADERS || process.env.WAVE_CUSTOM_HEADERS || "";
     const parsedEnvHeaders = parseCustomHeaders(envCustomHeaders);
 
     // Merge headers: env headers < options < override
@@ -482,14 +473,14 @@ export class ConfigurationService {
     const resolvedAgentModel =
       model ||
       this.options.model ||
-      this.env.WAVE_MODEL ||
+      process.env.WAVE_MODEL ||
       process.env.WAVE_MODEL;
 
     // Resolve fast model: override > options > env (settings.json) > process.env
     const resolvedFastModel =
       fastModel ||
       this.options.fastModel ||
-      this.env.WAVE_FAST_MODEL ||
+      process.env.WAVE_FAST_MODEL ||
       process.env.WAVE_FAST_MODEL;
 
     // Validate required fields
@@ -497,7 +488,6 @@ export class ConfigurationService {
       throw new ConfigurationError(CONFIG_ERRORS.MISSING_MODEL, "model", {
         constructor: model,
         environment: process.env.WAVE_MODEL,
-        settings: this.env.WAVE_MODEL,
       });
     }
 
@@ -508,7 +498,6 @@ export class ConfigurationService {
         {
           constructor: fastModel,
           environment: process.env.WAVE_FAST_MODEL,
-          settings: this.env.WAVE_FAST_MODEL,
         },
       );
     }
@@ -556,7 +545,7 @@ export class ConfigurationService {
 
     // Try env (settings.json) first, then process.env
     const envMaxInputTokens =
-      this.env.WAVE_MAX_INPUT_TOKENS || process.env.WAVE_MAX_INPUT_TOKENS;
+      process.env.WAVE_MAX_INPUT_TOKENS || process.env.WAVE_MAX_INPUT_TOKENS;
     if (envMaxInputTokens) {
       const parsed = parseInt(envMaxInputTokens, 10);
       if (!isNaN(parsed)) {
@@ -606,7 +595,8 @@ export class ConfigurationService {
 
     // 2. WAVE_DISABLE_AUTO_MEMORY environment variable
     const disableAutoMemory =
-      this.env.WAVE_DISABLE_AUTO_MEMORY || process.env.WAVE_DISABLE_AUTO_MEMORY;
+      process.env.WAVE_DISABLE_AUTO_MEMORY ||
+      process.env.WAVE_DISABLE_AUTO_MEMORY;
     if (disableAutoMemory === "1" || disableAutoMemory === "true") {
       return false;
     }
@@ -628,7 +618,7 @@ export class ConfigurationService {
 
     // 2. WAVE_AUTO_MEMORY_FREQUENCY environment variable
     const envFrequency =
-      this.env.WAVE_AUTO_MEMORY_FREQUENCY ||
+      process.env.WAVE_AUTO_MEMORY_FREQUENCY ||
       process.env.WAVE_AUTO_MEMORY_FREQUENCY;
     if (envFrequency) {
       const parsed = parseInt(envFrequency, 10);
@@ -660,7 +650,7 @@ export class ConfigurationService {
 
     // Try env (settings.json) first, then process.env
     const envMaxOutputTokens =
-      this.env.WAVE_MAX_OUTPUT_TOKENS || process.env.WAVE_MAX_OUTPUT_TOKENS;
+      process.env.WAVE_MAX_OUTPUT_TOKENS || process.env.WAVE_MAX_OUTPUT_TOKENS;
     if (envMaxOutputTokens) {
       const parsed = parseInt(envMaxOutputTokens, 10);
       if (!isNaN(parsed) && parsed > 0) {
@@ -687,7 +677,7 @@ export class ConfigurationService {
 
     // Add current model from options or environment
     const currentModel =
-      this.options.model || this.env.WAVE_MODEL || process.env.WAVE_MODEL;
+      this.options.model || process.env.WAVE_MODEL || process.env.WAVE_MODEL;
     if (currentModel) {
       models.add(currentModel);
     }

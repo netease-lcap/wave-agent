@@ -33,7 +33,6 @@ export class InteractionService {
       slashCommandManager,
       hookManager,
       workdir,
-      configurationService,
       logger,
       aiManager,
     } = context;
@@ -83,7 +82,9 @@ export class InteractionService {
               transcriptPath: messageManager.getTranscriptPath(),
               cwd: workdir,
               userPrompt: content,
-              env: configurationService.getEnvironmentVars(), // Include configuration environment variables
+              env: Object.fromEntries(
+                Object.entries(process.env).filter((e) => e[1] !== undefined),
+              ) as Record<string, string>, // Include environment variables
             },
           );
 

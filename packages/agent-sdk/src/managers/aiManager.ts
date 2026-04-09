@@ -964,7 +964,9 @@ export class AIManager {
         cwd: this.workdir,
         subagentType: this.subagentType, // Include subagent type in hook context
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
-        env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
+        env: Object.fromEntries(
+          Object.entries(process.env).filter((e) => e[1] !== undefined),
+        ) as Record<string, string>, // Include environment variables
       };
 
       const results = await this.hookManager.executeHooks(hookName, context);
@@ -1050,7 +1052,9 @@ export class AIManager {
         cwd: this.workdir,
         toolInput,
         subagentType: this.subagentType, // Include subagent type in hook context
-        env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
+        env: Object.fromEntries(
+          Object.entries(process.env).filter((e) => e[1] !== undefined),
+        ) as Record<string, string>, // Include environment variables
       };
 
       const results = await this.hookManager.executeHooks(
@@ -1116,7 +1120,9 @@ export class AIManager {
         toolInput,
         toolResponse,
         subagentType: this.subagentType, // Include subagent type in hook context
-        env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
+        env: Object.fromEntries(
+          Object.entries(process.env).filter((e) => e[1] !== undefined),
+        ) as Record<string, string>, // Include environment variables
       };
 
       const results = await this.hookManager.executeHooks(
