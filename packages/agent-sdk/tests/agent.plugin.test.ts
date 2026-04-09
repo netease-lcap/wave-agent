@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "../src/agent.js";
 import { PluginLoader } from "../src/services/pluginLoader.js";
 import { AIManager } from "../src/managers/aiManager.js";
-import { CustomSlashCommand } from "../src/types/index.js";
+import { CustomSlashCommand, TextBlock } from "../src/types/index.js";
 import * as fs from "fs/promises";
 import * as os from "os";
 import { exec } from "child_process";
@@ -15,7 +15,6 @@ vi.mock("../src/managers/mcpManager.js");
 vi.mock("../src/managers/skillManager.js");
 
 import { SkillManager } from "../src/managers/skillManager.js";
-import { SlashBlock } from "../src/types/index.js";
 
 describe("Agent Plugin Integration", () => {
   const workdir = "/test/workdir";
@@ -137,14 +136,13 @@ describe("Agent Plugin Integration", () => {
 
     // Verify that the command was parsed and executed
     // SlashCommandManager.executeCustomCommandInMainAgent should have been called
-    // which adds a message and calls aiManager.sendAIMessage
+    // which adds a user message and calls aiManager.sendAIMessage
     expect(sendAIMessageSpy).toHaveBeenCalled();
 
     const messages = agent.messages;
     const lastMessage = messages[messages.length - 1];
-    const slashBlock = lastMessage.blocks[0] as SlashBlock;
-    expect(slashBlock.command).toBe("test-plugin:hello");
-    expect(slashBlock.content).toBe("Hello world");
+    const textBlock = lastMessage.blocks[0] as TextBlock;
+    expect(textBlock.content).toBe("Hello world");
   });
 
   it("should handle plugin commands with parameters", async () => {
@@ -185,9 +183,7 @@ describe("Agent Plugin Integration", () => {
 
     const messages = agent.messages;
     const lastMessage = messages[messages.length - 1];
-    const slashBlock = lastMessage.blocks[0] as SlashBlock;
-    expect(slashBlock.command).toBe("test-plugin:greet");
-    expect(slashBlock.args).toBe("World");
-    expect(slashBlock.content).toBe("Hello World!");
+    const textBlock = lastMessage.blocks[0] as TextBlock;
+    expect(textBlock.content).toBe("Hello World!");
   });
 });

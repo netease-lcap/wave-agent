@@ -4,7 +4,7 @@ import { MessageManager } from "../../../src/managers/messageManager.js";
 import { AIManager } from "../../../src/managers/aiManager.js";
 import { SkillManager } from "../../../src/managers/skillManager.js";
 import { Container } from "../../../src/utils/container.js";
-import { SlashBlock } from "../../../src/types/messaging.js";
+import type { TextBlock } from "../../../src/types/index.js";
 
 describe("/loop execution integration", () => {
   let slashCommandManager: SlashCommandManager;
@@ -61,16 +61,15 @@ describe("/loop execution integration", () => {
 
     await cmd?.handler("5m /echo hello");
 
-    // Verify that a message was added to messageManager
+    // Verify that a user message was added with the processed skill content
     const messages = messageManager.getMessages();
-    expect(messages.length).toBe(1);
-    const slashBlock = messages[0].blocks[0] as SlashBlock;
-    expect(slashBlock.command).toBe("loop");
-    expect(slashBlock.args).toBe("5m /echo hello");
-    expect(slashBlock.content).toContain(
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    const textBlock = messages[messages.length - 1].blocks[0] as TextBlock;
+    expect(textBlock.type).toBe("text");
+    expect(textBlock.content).toContain(
       "# /loop — schedule a recurring prompt",
     );
-    expect(slashBlock.content).toContain("5m /echo hello");
+    expect(textBlock.content).toContain("5m /echo hello");
 
     // Verify that aiManager.sendAIMessage was called
     expect(aiManager.sendAIMessage).toHaveBeenCalled();
@@ -81,9 +80,7 @@ describe("/loop execution integration", () => {
     await cmd?.handler("check the build every 2h");
 
     const messages = messageManager.getMessages();
-    const slashBlock = messages[0].blocks[0] as SlashBlock;
-    expect(slashBlock.command).toBe("loop");
-    expect(slashBlock.args).toBe("check the build every 2h");
-    expect(slashBlock.content).toContain("check the build every 2h");
+    const textBlock = messages[messages.length - 1].blocks[0] as TextBlock;
+    expect(textBlock.content).toContain("check the build every 2h");
   });
 });

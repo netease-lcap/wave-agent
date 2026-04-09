@@ -48,18 +48,16 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
-  it("should convert slash blocks for API", () => {
+  it("should convert user message with text content for API", () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
         role: "user",
         blocks: [
           {
-            type: "slash",
-            command: "refactor",
+            type: "text",
             content:
               "Please refactor this function to be more efficient:\n\nfunction oldFunction() {\n  // some code\n}",
-            stage: "success",
           },
         ],
       },
@@ -76,7 +74,7 @@ describe("convertMessagesForAPI", () => {
 
     expect(apiMessages).toHaveLength(2);
 
-    // Check that slash block content is expanded for API
+    // Check that text content is included for API
     expect(apiMessages[0].role).toBe("user");
     expect(apiMessages[0].content).toEqual([
       {
@@ -91,18 +89,23 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
-  it("should include slash block result in API conversion", () => {
+  it("should include tool block result in API conversion", () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
         role: "user",
         blocks: [
           {
-            type: "slash",
-            command: "test-fork",
+            type: "text",
             content: "/test-fork",
+          },
+          {
+            type: "tool",
+            id: "tool-1",
+            name: "test-fork",
+            parameters: "skill content",
             result: "Subagent result",
-            stage: "success",
+            stage: "end",
           },
         ],
       },
@@ -116,7 +119,7 @@ describe("convertMessagesForAPI", () => {
       { type: "text", text: "/test-fork" },
       {
         type: "text",
-        text: "<local-command-stdout>\nSubagent result\n</local-command-stdout>",
+        text: `<local-command-stdout>\nSubagent result\n</local-command-stdout>`,
       },
     ]);
   });

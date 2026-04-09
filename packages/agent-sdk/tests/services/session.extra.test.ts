@@ -126,23 +126,21 @@ describe("session service - additional coverage", () => {
       expect(content).toBe("compressed");
     });
 
-    it("should return slash command", async () => {
+    it("should return text block content", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
       vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
         JSON.stringify({
           blocks: [
             {
-              type: "slash",
-              command: "settings",
-              args: "dark",
-              stage: "success",
+              type: "text",
+              content: "Hello world",
             },
           ],
         }),
       );
 
       const content = await getFirstMessageContent(sessionId, workdir);
-      expect(content).toBe("/settings dark");
+      expect(content).toBe("Hello world");
     });
 
     it("should return null if no recognized blocks", async () => {

@@ -3,7 +3,6 @@ import { Box, Text } from "ink";
 import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
 import { BangDisplay } from "./BangDisplay.js";
-import { SlashDisplay } from "./SlashDisplay.js";
 import { ToolDisplay } from "./ToolDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
@@ -42,10 +41,6 @@ export const MessageBlockItem = ({
             <Markdown>{block.content}</Markdown>
           )}
         </Box>
-      )}
-
-      {block.type === "slash" && (
-        <SlashDisplay block={block} isExpanded={isExpanded} />
       )}
 
       {block.type === "error" && (

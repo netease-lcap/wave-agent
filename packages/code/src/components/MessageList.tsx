@@ -39,15 +39,7 @@ export const MessageList = React.memo(
 
     const isRunning = (b: MessageBlock) =>
       (b.type === "tool" && b.stage === "running") ||
-      (b.type === "bang" && b.isRunning) ||
-      (b.type === "slash" && b.stage === "running");
-
-    const messagesWithRunningBlocks = new Set(
-      visibleMessages
-        .map((m, i) => ({ m, i }))
-        .filter(({ m }) => m.blocks.some(isRunning))
-        .map(({ i }) => i),
-    );
+      (b.type === "bang" && b.isRunning);
 
     // Flatten messages into blocks with metadata
     const allBlocks = visibleMessages.flatMap((message, messageIndex) => {
@@ -61,12 +53,10 @@ export const MessageList = React.memo(
     });
 
     // Determine which blocks are static vs dynamic
+    // Only mark individual running blocks as dynamic, not entire messages
     const blocksWithStatus = allBlocks.map((item) => {
       const { block } = item;
-      const isDynamic =
-        !forceStatic &&
-        !isExpanded &&
-        (messagesWithRunningBlocks.has(item.messageIndex) || isRunning(block));
+      const isDynamic = !forceStatic && !isExpanded && isRunning(block);
       return { ...item, isDynamic };
     });
 
