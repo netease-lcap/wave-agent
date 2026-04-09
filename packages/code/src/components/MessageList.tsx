@@ -73,15 +73,19 @@ export const MessageList = React.memo(
     }
 
     // Determine which blocks are static vs dynamic
-    // If any block in a message is running/streaming, blocks in that message are dynamic,
+    // Blocks not in the last message are always static.
+    // For the last message: if any block is running/streaming, blocks in that message are dynamic,
     // except text/reasoning blocks that have already completed (stage === "end")
+    const lastMessageIndex = visibleMessages.length - 1;
     const blocksWithStatus = allBlocks.map((item) => {
+      const isInLastMessage = item.messageIndex === lastMessageIndex;
       const isBlockCompleted =
         (item.block.type === "text" || item.block.type === "reasoning") &&
         item.block.stage === "end";
       const isDynamic =
         !forceStatic &&
         !isExpanded &&
+        isInLastMessage &&
         !isBlockCompleted &&
         runningMessageIndices.has(item.messageIndex);
       return { ...item, isDynamic };

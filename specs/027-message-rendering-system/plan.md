@@ -5,7 +5,7 @@
 
 ## Summary
 
-Implement a robust message rendering system for the Wave Agent CLI using Ink. The system will efficiently render a list of messages by splitting them into static (historical) and dynamic (active) blocks. Static blocks are rendered using Ink's `<Static>` component to optimize performance, while dynamic blocks (active tool executions or running shell commands) are rendered in a standard `<Box>` to allow real-time updates. Completed text and reasoning blocks (`stage === "end"`) are treated as static even when other blocks in the same message are still active, preventing unnecessary re-renders and visual flicker. The system also includes a welcome message and limits the number of rendered messages to maintain responsiveness.
+Implement a robust message rendering system for the Wave Agent CLI using Ink. The system will efficiently render a list of messages by splitting them into static (historical) and dynamic (active) blocks. Static blocks are rendered using Ink's `<Static>` component to optimize performance, while dynamic blocks (active tool executions or running shell commands) are rendered in a standard `<Box>` to allow real-time updates. Only blocks in the last message can be dynamic; all blocks not in the last message are always static. Completed text and reasoning blocks (`stage === "end"`) are treated as static even when other blocks in the same message are still active, preventing unnecessary re-renders and visual flicker. The system also includes a welcome message and limits the number of rendered messages to maintain responsiveness.
 
 ## Technical Context
 
