@@ -410,7 +410,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             initialPermissionMode ||
             (bypassPermissions ? "bypassPermissions" : undefined),
           canUseTool: permissionCallback,
-          stream: false, // 关闭流式模式
+          stream: true,
           plugins: pluginDirs?.map((path) => ({ type: "local", path })),
           tools,
           allowedTools,

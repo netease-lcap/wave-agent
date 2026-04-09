@@ -67,6 +67,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
       saveSession: vi.fn().mockResolvedValue(undefined),
       compressMessagesAndUpdateSession: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
+      finalizeStreamingBlocks: vi.fn(),
     } as unknown as MessageManager;
 
     // Create mock ToolManager

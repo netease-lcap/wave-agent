@@ -61,10 +61,18 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
           <Text color={getStatusColor()}>● </Text>
           <Text color="white">{toolName}</Text>
         </Box>
-        {/* Display compactParams in collapsed state */}
+        {/* Display compactParams or streaming parameters in collapsed state */}
         {!isExpanded && compactParams && (
           <Text color="gray"> {compactParams}</Text>
         )}
+        {!isExpanded &&
+          stage === "streaming" &&
+          parameters &&
+          !compactParams && (
+            <Text color="gray" wrap="truncate-end">
+              {` ${parameters.length > 30 ? `…${parameters.slice(-30)}` : parameters}`}
+            </Text>
+          )}
         {/* Display image indicator */}
         {hasImages() && <Text color="blue"> {getImageIndicator()}</Text>}
       </Box>

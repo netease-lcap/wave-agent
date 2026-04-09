@@ -38,8 +38,11 @@ export const MessageList = React.memo(
     const visibleMessages = messages.filter((m) => !m.isMeta);
 
     const isRunning = (b: MessageBlock) =>
-      (b.type === "tool" && b.stage === "running") ||
-      (b.type === "bang" && b.isRunning);
+      (b.type === "tool" &&
+        (b.stage === "running" || b.stage === "streaming")) ||
+      (b.type === "bang" && b.stage === "running") ||
+      ((b.type === "text" || b.type === "reasoning") &&
+        b.stage === "streaming");
 
     // Flatten messages into blocks with metadata
     const allBlocks = visibleMessages.flatMap((message, messageIndex) => {
@@ -52,11 +55,27 @@ export const MessageList = React.memo(
       }));
     });
 
+    // Find message indices that have any running/streaming block
+    const runningMessageIndices = new Set<number>();
+    for (const item of allBlocks) {
+      if (isRunning(item.block)) {
+        runningMessageIndices.add(item.messageIndex);
+      }
+    }
+
     // Determine which blocks are static vs dynamic
-    // Only mark individual running blocks as dynamic, not entire messages
+    // Text/reasoning: dynamic only when they themselves are streaming
+    // Tool: dynamic when any block in the same message is running/streaming
+    // Bang: dynamic when it itself is running
     const blocksWithStatus = allBlocks.map((item) => {
-      const { block } = item;
-      const isDynamic = !forceStatic && !isExpanded && isRunning(block);
+      const isDynamic =
+        !forceStatic &&
+        !isExpanded &&
+        ((item.block.type === "tool" &&
+          runningMessageIndices.has(item.messageIndex)) ||
+          ((item.block.type === "text" || item.block.type === "reasoning") &&
+            isRunning(item.block)) ||
+          (item.block.type === "bang" && isRunning(item.block)));
       return { ...item, isDynamic };
     });
 

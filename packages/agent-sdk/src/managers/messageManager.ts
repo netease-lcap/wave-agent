@@ -647,12 +647,14 @@ export class MessageManager {
       lastMessage.blocks[textBlockIndex] = {
         type: "text",
         content: newAccumulatedContent,
+        stage: "streaming",
       };
     } else {
       // Add new text block if none exists
       lastMessage.blocks.push({
         type: "text",
         content: newAccumulatedContent,
+        stage: "streaming",
       });
     }
 
@@ -696,12 +698,14 @@ export class MessageManager {
       lastMessage.blocks[reasoningBlockIndex] = {
         type: "reasoning",
         content: newAccumulatedReasoning,
+        stage: "streaming",
       };
     } else {
       // Add new reasoning block if none exists
       lastMessage.blocks.push({
         type: "reasoning",
         content: newAccumulatedReasoning,
+        stage: "streaming",
       });
     }
 
@@ -712,6 +716,33 @@ export class MessageManager {
     );
 
     this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
+  }
+
+  /**
+   * Finalize all streaming blocks by setting their stage to "end".
+   * Called after tool execution completes to mark text/reasoning blocks as done.
+   */
+  public finalizeStreamingBlocks(): void {
+    if (this.messages.length === 0) return;
+    const lastMessage = this.messages[this.messages.length - 1];
+    if (lastMessage.role !== "assistant") return;
+
+    const newBlocks = lastMessage.blocks.map((block) => {
+      if (
+        (block.type === "text" || block.type === "reasoning") &&
+        block.stage === "streaming"
+      ) {
+        return { ...block, stage: "end" as const };
+      }
+      return block;
+    });
+
+    // Only update if something changed
+    const changed = newBlocks.some((b, i) => b !== lastMessage.blocks[i]);
+    if (changed) {
+      lastMessage.blocks = newBlocks;
+      this.callbacks.onMessagesChange?.([...this.messages]);
+    }
   }
 
   /**

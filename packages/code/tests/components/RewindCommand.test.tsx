@@ -67,7 +67,7 @@ describe("RewindCommand Content", () => {
             type: "bang",
             command: "ls -la",
             output: "",
-            isRunning: false,
+            stage: "end" as const,
             exitCode: 0,
           },
         ],
