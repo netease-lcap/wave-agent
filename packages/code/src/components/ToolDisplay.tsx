@@ -70,7 +70,10 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
           parameters &&
           !compactParams && (
             <Text color="gray" wrap="truncate-end">
-              {` ${parameters.length > 30 ? `…${parameters.slice(-30)}` : parameters}`}
+              {` ${(() => {
+                const flat = parameters.replace(/\n/g, "\\n");
+                return flat.length > 30 ? `…${flat.slice(-30)}` : flat;
+              })()}`}
             </Text>
           )}
         {/* Display image indicator */}
