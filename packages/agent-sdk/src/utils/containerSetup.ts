@@ -111,9 +111,7 @@ export function setupAgentContainer(
   container.register("MessageManager", messageManager);
 
   const resolvedTaskListId =
-    configurationService.getEnvironmentVars().WAVE_TASK_LIST_ID ||
-    process.env.WAVE_TASK_LIST_ID ||
-    messageManager.getRootSessionId();
+    process.env.WAVE_TASK_LIST_ID || messageManager.getRootSessionId();
 
   const taskManager = new TaskManager(container, resolvedTaskListId);
   container.register("TaskManager", taskManager);
@@ -189,7 +187,9 @@ export function setupAgentContainer(
             cwd: workdir,
             toolName: context.toolName,
             toolInput: context.toolInput,
-            env: configurationService.getEnvironmentVars(),
+            env: Object.fromEntries(
+              Object.entries(process.env).filter((e) => e[1] !== undefined),
+            ) as Record<string, string>,
           });
 
           if (results.length > 0) {

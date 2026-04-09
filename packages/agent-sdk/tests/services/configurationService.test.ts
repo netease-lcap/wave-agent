@@ -87,9 +87,9 @@ describe("ConfigurationService", () => {
       });
       expect(result.configuration?.permissions?.allow).toContain("rule1");
       expect(result.configuration?.permissions?.allow).toContain("rule2");
-      expect(configService.getEnvironmentVars()).toEqual(
-        result.configuration?.env,
-      );
+      expect(process.env.USER_VAR).toBe("user");
+      expect(process.env.PROJECT_VAR).toBe("project");
+      expect(process.env.WAVE_PROJECT_DIR).toBe(tempDir);
     });
 
     it("should merge deny rules from all sources", async () => {
@@ -358,18 +358,10 @@ describe("ConfigurationService", () => {
   });
 
   describe("Environment Variable Management", () => {
-    it("should set and get environment variables", () => {
+    it("should set environment variables to process.env", () => {
       const env = { KEY: "VALUE" };
       configService.setEnvironmentVars(env);
-      expect(configService.getEnvironmentVars()).toEqual(env);
-    });
-
-    it("should return a copy of environment variables", () => {
-      const env = { KEY: "VALUE" };
-      configService.setEnvironmentVars(env);
-      const retrieved = configService.getEnvironmentVars();
-      retrieved.KEY = "CHANGED";
-      expect(configService.getEnvironmentVars().KEY).toBe("VALUE");
+      expect(process.env.KEY).toBe("VALUE");
     });
   });
 

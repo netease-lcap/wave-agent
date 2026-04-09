@@ -192,7 +192,9 @@ export class InitializationService {
           transcriptPath: messageManager.getTranscriptPath(),
           cwd: workdir,
           worktreeName: agentOptions.worktreeName,
-          env: configurationService.getEnvironmentVars(),
+          env: Object.fromEntries(
+            Object.entries(process.env).filter((e) => e[1] !== undefined),
+          ) as Record<string, string>,
         });
 
         // Process hook results
