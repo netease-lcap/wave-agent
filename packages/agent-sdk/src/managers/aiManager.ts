@@ -778,6 +778,9 @@ export class AIManager {
         model,
       );
 
+      // Finalize text/reasoning blocks for the final response (no tools)
+      this.messageManager.finalizeStreamingBlocks();
+
       // Check if there are tool operations or response was truncated, if so automatically initiate next AI service call
       if (toolCalls.length > 0 || result.finish_reason === "length") {
         // Record committed snapshots to message history

@@ -723,6 +723,14 @@ export class MessageManager {
   }
 
   /**
+   * Public wrapper for finalizeCurrentStreamingBlocks.
+   * Finalizes text/reasoning blocks after streaming completes (e.g. final response with no tools).
+   */
+  public finalizeStreamingBlocks(): void {
+    this.finalizeCurrentStreamingBlocks();
+  }
+
+  /**
    * Finalize streaming text/reasoning blocks by setting their stage to "end".
    * Called when a new block (e.g. tool) is appended during streaming.
    */
