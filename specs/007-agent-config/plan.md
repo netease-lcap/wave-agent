@@ -4,7 +4,7 @@
 
 ## Summary
 
-Consolidate all agent-level configuration into a unified system that supports explicit constructor parameters, environment variable fallbacks, and built-in defaults. This includes AI gateway settings, model selection, token limits (input and output), custom HTTP headers, and language preferences. The goal is to remove direct `process.env` access from services and managers, moving configuration resolution to the `Agent` level.
+Consolidate all agent-level configuration into a unified system that supports explicit constructor parameters, environment variable fallbacks, and built-in defaults. This includes AI gateway settings, model selection, token limits (input and output), custom HTTP headers, and language preferences. Settings.json env vars are synced to `process.env` at startup, and all code reads directly from `process.env` instead of maintaining a separate env store.
 
 ## Technical Context
 

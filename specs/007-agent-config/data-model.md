@@ -102,6 +102,7 @@ Configuration values resolved in this order:
    - `AgentOptions.language`
 
 2. **Environment Variables** (fallback)
+   - Settings.json env vars are synced to `process.env` at startup (with override warning)
    - `process.env.WAVE_API_KEY` → `apiKey`
    - `process.env.WAVE_BASE_URL` → `baseURL`
    - `process.env.WAVE_MODEL` → `model`
@@ -132,8 +133,9 @@ interface EnvironmentContext {
 
 **Precedence Rules**:
 1. Project-level variables override user-level variables with same name
-2. Existing process environment variables are not overridden
-3. Empty string values are treated as unset
+2. Environment variables from settings.json are synced to `process.env` with a warning if overriding existing values
+3. After sync, all code reads directly from `process.env` — no separate env store is maintained
+4. Empty string values are treated as unset
 
 ### State Transitions
 
