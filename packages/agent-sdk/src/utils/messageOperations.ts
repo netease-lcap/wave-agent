@@ -419,7 +419,7 @@ export const addBangMessage = ({
         type: "bang",
         command,
         output: "",
-        isRunning: true,
+        stage: "running" as const,
         exitCode: null,
       },
     ],
@@ -441,7 +441,9 @@ export const updateBangInMessage = ({
     if (msg.role === "user") {
       const commandBlock = msg.blocks.find(
         (block) =>
-          block.type === "bang" && block.command === command && block.isRunning,
+          block.type === "bang" &&
+          block.command === command &&
+          block.stage === "running",
       );
       if (commandBlock && commandBlock.type === "bang") {
         commandBlock.output = output.trim();
@@ -466,10 +468,12 @@ export const completeBangInMessage = ({
     if (msg.role === "user") {
       const commandBlock = msg.blocks.find(
         (block) =>
-          block.type === "bang" && block.command === command && block.isRunning,
+          block.type === "bang" &&
+          block.command === command &&
+          block.stage === "running",
       );
       if (commandBlock && commandBlock.type === "bang") {
-        commandBlock.isRunning = false;
+        commandBlock.stage = "end";
         commandBlock.exitCode = exitCode;
         if (output !== undefined) {
           commandBlock.output = output.trim();

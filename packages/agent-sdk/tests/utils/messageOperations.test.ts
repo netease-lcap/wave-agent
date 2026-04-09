@@ -314,7 +314,7 @@ describe("Bang Message Operations", () => {
             type: "bang",
             command: "echo hello",
             output: "",
-            isRunning: true,
+            stage: "running",
             exitCode: null,
           },
         ],
@@ -337,7 +337,7 @@ describe("Bang Message Operations", () => {
             type: "bang",
             command: "ls -la",
             output: "",
-            isRunning: true,
+            stage: "running",
             exitCode: null,
           },
         ],
@@ -375,7 +375,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "echo hello",
               output: "",
-              isRunning: true,
+              stage: "running",
               exitCode: null,
             },
           ],
@@ -392,7 +392,7 @@ describe("Bang Message Operations", () => {
         type: "bang",
         command: "echo hello",
         output: "hello",
-        isRunning: true,
+        stage: "running",
         exitCode: null,
       });
     });
@@ -407,7 +407,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "echo first",
               output: "first",
-              isRunning: false,
+              stage: "end",
               exitCode: 0,
             },
           ],
@@ -420,7 +420,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "echo second",
               output: "",
-              isRunning: true,
+              stage: "running",
               exitCode: null,
             },
           ],
@@ -437,14 +437,14 @@ describe("Bang Message Operations", () => {
       expect(result[0].blocks[0]).toMatchObject({
         command: "echo first",
         output: "first",
-        isRunning: false,
+        stage: "end",
       });
 
       // Second command should be updated
       expect(result[1].blocks[0]).toMatchObject({
         command: "echo second",
         output: "second",
-        isRunning: true,
+        stage: "running",
       });
     });
 
@@ -458,7 +458,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "echo test",
               output: "",
-              isRunning: true,
+              stage: "running",
               exitCode: null,
             },
           ],
@@ -486,7 +486,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "echo hello",
               output: "hello",
-              isRunning: false,
+              stage: "end",
               exitCode: 0,
             },
           ],
@@ -502,7 +502,7 @@ describe("Bang Message Operations", () => {
       // Should not update because the command is not running
       expect(result[0].blocks[0]).toMatchObject({
         output: "hello",
-        isRunning: false,
+        stage: "end",
       });
     });
   });
@@ -518,7 +518,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "echo hello",
               output: "",
-              isRunning: true,
+              stage: "running",
               exitCode: null,
             },
           ],
@@ -536,7 +536,7 @@ describe("Bang Message Operations", () => {
         type: "bang",
         command: "echo hello",
         output: "hello",
-        isRunning: false,
+        stage: "end",
         exitCode: 0,
       });
     });
@@ -551,7 +551,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "ls /nonexistent",
               output: "ls: /nonexistent: No such file or directory",
-              isRunning: true,
+              stage: "running",
               exitCode: null,
             },
           ],
@@ -565,7 +565,7 @@ describe("Bang Message Operations", () => {
       });
 
       expect(result[0].blocks[0]).toMatchObject({
-        isRunning: false,
+        stage: "end",
         exitCode: 1,
       });
     });
@@ -580,7 +580,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "echo first",
               output: "first",
-              isRunning: false,
+              stage: "end",
               exitCode: 0,
             },
           ],
@@ -593,7 +593,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "echo second",
               output: "second",
-              isRunning: true,
+              stage: "running",
               exitCode: null,
             },
           ],
@@ -609,14 +609,14 @@ describe("Bang Message Operations", () => {
       // First command should remain unchanged
       expect(result[0].blocks[0]).toMatchObject({
         command: "echo first",
-        isRunning: false,
+        stage: "end",
         exitCode: 0,
       });
 
       // Second command should be completed
       expect(result[1].blocks[0]).toMatchObject({
         command: "echo second",
-        isRunning: false,
+        stage: "end",
         exitCode: 0,
       });
     });
@@ -631,7 +631,7 @@ describe("Bang Message Operations", () => {
               type: "bang",
               command: "echo hello",
               output: "hello",
-              isRunning: false,
+              stage: "end",
               exitCode: 0,
             },
           ],
@@ -646,7 +646,7 @@ describe("Bang Message Operations", () => {
 
       // Should not modify because command is not running
       expect(result[0].blocks[0]).toMatchObject({
-        isRunning: false,
+        stage: "end",
         exitCode: 0, // Original exit code should remain
       });
     });
@@ -1070,7 +1070,7 @@ describe("getMessageContent", () => {
           type: "bang",
           command: "ls -la",
           output: "",
-          isRunning: true,
+          stage: "running",
           exitCode: null,
         },
       ],

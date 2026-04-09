@@ -104,6 +104,7 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(lastMessage.blocks[0]).toEqual({
         type: "text",
         content: "New content",
+        stage: "streaming",
       });
     });
 

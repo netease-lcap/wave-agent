@@ -10,7 +10,7 @@ describe("BangDisplay", () => {
     command: "ls -la",
     output:
       "total 0\ndrwxr-xr-x  2 user  group   64 Feb  5 23:00 .\ndrwxr-xr-x  3 user  group   96 Feb  5 23:00 ..",
-    isRunning: false,
+    stage: "end",
     exitCode: 0,
   };
 
@@ -22,7 +22,11 @@ describe("BangDisplay", () => {
   });
 
   it("should render command when running", () => {
-    const runningBlock = { ...mockBlock, isRunning: true, exitCode: null };
+    const runningBlock = {
+      ...mockBlock,
+      stage: "running" as const,
+      exitCode: null,
+    };
     const { lastFrame } = render(<BangDisplay block={runningBlock} />);
     expect(lastFrame()).toContain("! ls -la");
   });

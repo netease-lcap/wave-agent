@@ -99,6 +99,7 @@ describe("AIManager", () => {
       compressMessagesAndUpdateSession: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
       touchFile: vi.fn(),
+      finalizeStreamingBlocks: vi.fn(),
     } as unknown as MessageManager;
 
     // Create mock ToolManager

@@ -12,11 +12,11 @@ export const BangDisplay: React.FC<BangDisplayProps> = ({
   block,
   isExpanded = false,
 }) => {
-  const { command, output, isRunning, exitCode } = block;
+  const { command, output, stage, exitCode } = block;
   const MAX_LINES = 3; // Set maximum display lines
 
   const getStatusColor = () => {
-    if (isRunning) return "yellow";
+    if (stage === "running") return "yellow";
     if (exitCode === 0) return "green";
     if (exitCode !== null && exitCode !== 0) return "red";
     return "gray"; // Unknown state

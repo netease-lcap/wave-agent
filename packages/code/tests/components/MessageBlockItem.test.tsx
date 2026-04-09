@@ -65,7 +65,7 @@ describe("MessageBlockItem Component", () => {
         type: "bang",
         output: "output",
         command: "ls",
-        isRunning: false,
+        stage: "end",
         exitCode: 0,
       };
       const { lastFrame } = render(

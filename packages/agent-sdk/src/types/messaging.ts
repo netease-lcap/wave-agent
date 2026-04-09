@@ -34,6 +34,7 @@ export interface TextBlock {
   content: string;
   customCommandContent?: string;
   source?: MessageSource;
+  stage?: "streaming" | "end";
 }
 
 export interface ErrorBlock {
@@ -78,7 +79,7 @@ export interface BangBlock {
   type: "bang";
   command: string;
   output: string;
-  isRunning: boolean;
+  stage: "running" | "end";
   exitCode: number | null;
 }
 
@@ -91,6 +92,7 @@ export interface CompressBlock {
 export interface ReasoningBlock {
   type: "reasoning";
   content: string;
+  stage?: "streaming" | "end";
 }
 
 export interface FileHistoryBlock {
