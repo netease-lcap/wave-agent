@@ -94,10 +94,14 @@ export class WaveAcpAgent implements AcpAgent {
   }
 
   private getSessionConfigOptions(agent: WaveAgent): SessionConfigOption[] {
+    const configuredModels = agent.getConfiguredModels();
+    const currentModel = agent.getModelConfig().model;
+
     return [
       {
         id: "permission_mode",
         name: "Permission Mode",
+        description: "Controls how the agent requests permission",
         type: "select",
         category: "mode",
         currentValue: agent.getPermissionMode(),
@@ -108,6 +112,18 @@ export class WaveAcpAgent implements AcpAgent {
           { value: "bypassPermissions", name: "Bypass Permissions" },
           { value: "dontAsk", name: "Don't Ask" },
         ],
+      },
+      {
+        id: "model",
+        name: "Model",
+        description: "The AI model to use for this session",
+        type: "select",
+        category: "model",
+        currentValue: currentModel,
+        options: configuredModels.map((m) => ({
+          value: m,
+          name: m,
+        })),
       },
     ];
   }
@@ -183,6 +199,7 @@ export class WaveAcpAgent implements AcpAgent {
         onTasksChange: (tasks) => callbacks.onTasksChange?.(tasks as Task[]),
         onPermissionModeChange: (mode) =>
           callbacks.onPermissionModeChange?.(mode),
+        onModelChange: (model) => callbacks.onModelChange?.(model),
       },
     });
 
@@ -319,6 +336,8 @@ export class WaveAcpAgent implements AcpAgent {
           | "bypassPermissions"
           | "dontAsk",
       );
+    } else if (configId === "model" && typeof value === "string") {
+      agent.setModel(value);
     }
 
     return {
@@ -933,6 +952,18 @@ export class WaveAcpAgent implements AcpAgent {
             currentModeId: mode,
           },
         });
+        const agent = getAgent();
+        if (agent) {
+          this.connection.sessionUpdate({
+            sessionId: sessionId as AcpSessionId,
+            update: {
+              sessionUpdate: "config_option_update",
+              configOptions: this.getSessionConfigOptions(agent),
+            },
+          });
+        }
+      },
+      onModelChange: () => {
         const agent = getAgent();
         if (agent) {
           this.connection.sessionUpdate({
