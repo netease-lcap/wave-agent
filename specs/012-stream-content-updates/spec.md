@@ -121,6 +121,14 @@ Users see the output of long-running tools (like `bash`) in real-time as they ex
 - **FR-012**: AIManager MUST implement the `onResultUpdate` and `onShortResultUpdate` callbacks in `sendAIMessage` to update the tool block in the UI with the latest results and set the stage to `running`.
 - **FR-013**: Tools (like `bash`) SHOULD use the `onResultUpdate` and `onShortResultUpdate` callbacks to provide real-time feedback for long-running operations.
 - **FR-014**: Real-time result updates MUST be throttled to avoid overwhelming the UI.
+- **FR-015**: TextBlock and ReasoningBlock MUST include a `stage` field with values `"streaming"` or `"end"` to track streaming state.
+- **FR-016**: BangBlock MUST use `stage: "running" | "end"` instead of the deprecated `isRunning` boolean field.
+- **FR-017**: MessageManager MUST call `finalizeCurrentStreamingBlocks()` before adding or updating tool blocks to ensure streaming text/reasoning blocks are finalized.
+- **FR-018**: MessageList MUST filter out streaming text/reasoning blocks to avoid frequent height changes during streaming.
+- **FR-019**: When any block in a message is running/streaming, ALL blocks in that message MUST be rendered as dynamic.
+- **FR-020**: ToolDisplay MUST show last 30 characters of streaming parameters inline with newlines flattened (`\n` → `\\n`) when `compactParams` is not available.
+- **FR-021**: Agent MUST be created with `stream: true` by default in the useChat context.
+- **FR-022**: useChat MUST throttle `onLatestTotalTokensChange` callback using 300ms leading+trailing throttle pattern (same as `throttledSetMessages`) to prevent excessive React re-renders.
 
 ### State Management Architecture
 
@@ -140,6 +148,17 @@ Users see the output of long-running tools (like `bash`) in real-time as they ex
 - Q: onToolBlockUpdated callback parameter format → A: Existing signature with new `parametersChunk` field for incremental updates alongside accumulated parameters
 - Q: onAssistantMessageAdded callback arguments → A: Should receive no arguments, content/tools handled by dedicated streaming callbacks
 - Q: State management during streaming → A: Agent SDK manages message state internally and triggers `onMessagesChange`; streaming callbacks provide data for third-party integrations, extensions, and examples
+
+### Session 2026-04-09 (PR #928)
+
+- Q: TextBlock/ReasoningBlock stage tracking → A: Added `stage` field (`"streaming" | "end"`) to both types
+- Q: BangBlock running state → A: Replaced `isRunning: boolean` with `stage: "running" | "end"` for consistency
+- Q: When to finalize streaming blocks → A: `finalizeCurrentStreamingBlocks()` called in `updateToolBlock` and `addToolBlock` before tool blocks are added/updated
+- Q: Streaming block rendering in MessageList → A: Filter out streaming text/reasoning blocks to avoid frequent height changes during streaming
+- Q: Dynamic block rendering scope → A: If any block in a message is running/streaming, ALL blocks in that message are dynamic
+- Q: Streaming tool parameters display → A: Show last 30 chars inline with flattened newlines (`\n` → `\\n`) when no `compactParams` available
+- Q: Stream mode default → A: Changed `stream: false` to `stream: true` in useChat Agent creation
+- Q: Token state updater → A: Added `throttledSetTokens` to useCallback dependency array to prevent rendering errors
 
 ## Assumptions *(mandatory)*
 

@@ -139,6 +139,8 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **FR-018**: System MUST scan the `.wave/commands/` directory to discover all markdown files at the root level.
 - **FR-019**: System MUST register each discovered markdown file as an available slash command using simple syntax (e.g., `/help`).
 - **FR-020**: System MUST ignore non-markdown files during the discovery process.
+- **FR-021**: System MUST use `customCommandContent` in TextBlock to store the full markdown body for AI context, while `content` stores only the user-friendly command name for UI display.
+- **FR-022**: System MUST prioritize `customCommandContent` over `content` when converting messages for API calls in `convertMessagesForAPI`.
 
 ### Key Entities
 
