@@ -66,10 +66,10 @@ describe("/loop execution integration", () => {
     expect(messages.length).toBeGreaterThanOrEqual(1);
     const textBlock = messages[messages.length - 1].blocks[0] as TextBlock;
     expect(textBlock.type).toBe("text");
-    expect(textBlock.content).toContain(
+    expect(textBlock.customCommandContent).toContain(
       "# /loop — schedule a recurring prompt",
     );
-    expect(textBlock.content).toContain("5m /echo hello");
+    expect(textBlock.customCommandContent).toContain("5m /echo hello");
 
     // Verify that aiManager.sendAIMessage was called
     expect(aiManager.sendAIMessage).toHaveBeenCalled();
@@ -81,6 +81,8 @@ describe("/loop execution integration", () => {
 
     const messages = messageManager.getMessages();
     const textBlock = messages[messages.length - 1].blocks[0] as TextBlock;
-    expect(textBlock.content).toContain("check the build every 2h");
+    expect(textBlock.customCommandContent).toContain(
+      "check the build every 2h",
+    );
   });
 });

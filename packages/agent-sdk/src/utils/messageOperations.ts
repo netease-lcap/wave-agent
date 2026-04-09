@@ -9,6 +9,7 @@ import { logger } from "./globalLogger.js";
 // Base user message parameters interface
 export interface UserMessageParams {
   content: string;
+  customCommandContent?: string;
   images?: Array<{ path: string; mimeType: string }>;
   source?: MessageSource;
   isMeta?: boolean;
@@ -122,6 +123,7 @@ export const generateMessageId = (): string => `msg-${randomUUID()}`;
 export const addUserMessageToMessages = ({
   messages,
   content,
+  customCommandContent,
   images,
   source,
   id,
@@ -129,10 +131,11 @@ export const addUserMessageToMessages = ({
 }: AddUserMessageParams): Message[] => {
   const blocks: Message["blocks"] = [];
 
-  // Create text block with optional source
+  // Create text block with optional source and customCommandContent
   const textBlock = {
     type: "text" as const,
     content,
+    ...(customCommandContent && { customCommandContent }),
     ...(source && { source }),
   };
   blocks.push(textBlock);
@@ -170,6 +173,9 @@ export const updateUserMessageInMessages = (
           return {
             ...block,
             ...(params.content !== undefined && { content: params.content }),
+            ...(params.customCommandContent !== undefined && {
+              customCommandContent: params.customCommandContent,
+            }),
             ...(params.source !== undefined && { source: params.source }),
           };
         }

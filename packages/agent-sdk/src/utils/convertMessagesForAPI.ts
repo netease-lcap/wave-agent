@@ -191,9 +191,10 @@ export function convertMessagesForAPI(
           block.content &&
           block.content.trim().length > 0
         ) {
+          const textForApi = block.customCommandContent ?? block.content;
           contentParts.push({
             type: "text",
-            text: block.content,
+            text: textForApi,
           });
         }
 

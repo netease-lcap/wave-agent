@@ -264,7 +264,9 @@ describe("SlashCommandManager", () => {
       const messages = messageManager.getMessages();
       const lastMessage = messages[messages.length - 1];
       const textBlock = lastMessage.blocks[0] as TextBlock;
-      expect(textBlock.content).toBe("Base content extra arguments");
+      expect(textBlock.customCommandContent).toBe(
+        "Base content extra arguments",
+      );
     });
   });
 
@@ -360,7 +362,7 @@ describe("SlashCommandManager", () => {
       const messages = messageManager.getMessages();
       const lastMessage = messages[messages.length - 1];
       const textBlock = lastMessage.blocks[0] as TextBlock;
-      expect(textBlock.content).toBe("Path is ${WAVE_SKILL_DIR}");
+      expect(textBlock.customCommandContent).toBe("Path is ${WAVE_SKILL_DIR}");
     });
   });
 
@@ -390,7 +392,7 @@ describe("SlashCommandManager", () => {
       const messages = messageManager.getMessages();
       const lastMessage = messages[messages.length - 1];
       const textBlock = lastMessage.blocks[0] as TextBlock;
-      expect(textBlock.content).toContain("bash output");
+      expect(textBlock.customCommandContent).toContain("bash output");
 
       expect(aiManager.sendAIMessage).toHaveBeenCalled();
 
@@ -449,7 +451,8 @@ describe("SlashCommandManager", () => {
 
       // Verify addUserMessage was called with processed content
       expect(addUserMessageSpy).toHaveBeenCalledWith({
-        content: "Final skill content with bash output",
+        content: "/test-skill args",
+        customCommandContent: "Final skill content with bash output",
       });
 
       expect(aiManager.sendAIMessage).toHaveBeenCalledWith({
@@ -519,6 +522,7 @@ describe("SlashCommandManager", () => {
       // Verify addUserMessage was called with the skill command
       expect(addUserMessageSpy).toHaveBeenCalledWith({
         content: "/fork-skill args",
+        customCommandContent: "Forked skill content",
       });
       const messageId = addUserMessageSpy.mock.results[0].value;
 

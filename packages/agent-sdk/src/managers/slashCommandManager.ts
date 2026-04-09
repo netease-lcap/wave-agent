@@ -179,7 +179,8 @@ export class SlashCommandManager {
             if (skill.context === "fork") {
               // Forked skill execution: add user message with text + tool block
               const messageId = this.messageManager.addUserMessage({
-                content: `/${skill.name} ${args || ""}`,
+                content: `/${skill.name}${args ? ` ${args}` : ""}`,
+                customCommandContent: prepared.content,
               });
 
               const toolBlockId = this.messageManager.addToolBlockToMessage(
@@ -285,7 +286,8 @@ export class SlashCommandManager {
 
             // Add user message with the processed content
             this.messageManager.addUserMessage({
-              content: result.content,
+              content: `/${skill.name}${args ? ` ${args}` : ""}`,
+              customCommandContent: result.content,
             });
 
             // Trigger AI response
@@ -499,9 +501,10 @@ export class SlashCommandManager {
         );
       }
 
-      // Add user message with the processed content
+      // Add user message with command name as display content, processed content for AI
       this.messageManager.addUserMessage({
-        content: finalContent,
+        content: `/${commandName}`,
+        customCommandContent: finalContent,
       });
 
       // Execute the AI conversation with custom configuration

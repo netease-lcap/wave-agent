@@ -142,7 +142,7 @@ describe("Agent Plugin Integration", () => {
     const messages = agent.messages;
     const lastMessage = messages[messages.length - 1];
     const textBlock = lastMessage.blocks[0] as TextBlock;
-    expect(textBlock.content).toBe("Hello world");
+    expect(textBlock.customCommandContent).toBe("Hello world");
   });
 
   it("should handle plugin commands with parameters", async () => {
@@ -184,6 +184,6 @@ describe("Agent Plugin Integration", () => {
     const messages = agent.messages;
     const lastMessage = messages[messages.length - 1];
     const textBlock = lastMessage.blocks[0] as TextBlock;
-    expect(textBlock.content).toBe("Hello World!");
+    expect(textBlock.customCommandContent).toBe("Hello World!");
   });
 });
