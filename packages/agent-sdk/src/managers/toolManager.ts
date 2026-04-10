@@ -4,6 +4,7 @@ import { taskStopTool } from "../tools/taskStopTool.js";
 import { editTool } from "../tools/editTool.js";
 import { writeTool } from "../tools/writeTool.js";
 import { exitPlanModeTool } from "../tools/exitPlanMode.js";
+import { enterPlanModeTool } from "../tools/enterPlanMode.js";
 import { askUserQuestionTool } from "../tools/askUserQuestion.js";
 import { cronCreateTool } from "../tools/cronCreateTool.js";
 import { cronDeleteTool } from "../tools/cronDeleteTool.js";
@@ -106,6 +107,7 @@ class ToolManager {
       editTool,
       writeTool,
       exitPlanModeTool,
+      enterPlanModeTool,
       askUserQuestionTool,
       globTool,
       grepTool,
@@ -296,12 +298,22 @@ class ToolManager {
           return false;
         }
         if (effectivePermissionMode === "bypassPermissions") {
-          if (tool.name === "ExitPlanMode" || tool.name === "AskUserQuestion") {
+          if (
+            tool.name === "ExitPlanMode" ||
+            tool.name === "AskUserQuestion" ||
+            tool.name === "EnterPlanMode"
+          ) {
             return false;
           }
         }
         if (tool.name === "ExitPlanMode") {
           return effectivePermissionMode === "plan";
+        }
+        if (tool.name === "EnterPlanMode") {
+          return (
+            effectivePermissionMode !== "plan" &&
+            effectivePermissionMode !== "bypassPermissions"
+          );
         }
         return true;
       })

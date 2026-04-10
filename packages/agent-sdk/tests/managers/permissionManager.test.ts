@@ -1877,6 +1877,7 @@ describe("PermissionManager", () => {
         "Edit",
         "Bash",
         "Write",
+        "EnterPlanMode",
         "ExitPlanMode",
         "AskUserQuestion",
       ]);
