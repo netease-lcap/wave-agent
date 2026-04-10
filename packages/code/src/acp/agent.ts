@@ -13,6 +13,7 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   AskUserQuestion,
   AskUserQuestionOption,
@@ -521,6 +522,19 @@ export class WaveAcpAgent implements AcpAgent {
           kind: "allow_always",
         },
       ];
+    } else if (context.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
+      options = [
+        {
+          optionId: "allow_once",
+          name: "Yes, enter plan mode",
+          kind: "allow_once",
+        },
+        {
+          optionId: "allow_always",
+          name: "Yes, and stay in plan mode for future requests",
+          kind: "allow_always",
+        },
+      ];
     } else if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
       options = [];
     }
@@ -589,6 +603,9 @@ export class WaveAcpAgent implements AcpAgent {
               newPermissionMode: "acceptEdits",
             };
           }
+          if (context.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
+            return { behavior: "allow", newPermissionMode: "plan" };
+          }
           return {
             behavior: "allow",
             newPermissionRule: context.toolName,
@@ -596,6 +613,9 @@ export class WaveAcpAgent implements AcpAgent {
         case "allow_once":
           if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
             return { behavior: "allow", newPermissionMode: "default" };
+          }
+          if (context.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
+            return { behavior: "allow", newPermissionMode: "plan" };
           }
           return { behavior: "allow" };
         case "reject_once":
