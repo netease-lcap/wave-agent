@@ -147,6 +147,62 @@ describe("Agent - Branch Coverage", () => {
       expect(notificationQueue.hasPending()).toBe(false);
     });
 
+    it("should skip notification processing when agent is loading", async () => {
+      // Set loading state to true
+      const aiManager = (
+        agent as unknown as { aiManager: { isLoading: boolean } }
+      ).aiManager;
+      aiManager.isLoading = true;
+
+      const notificationQueue = (
+        agent as unknown as {
+          notificationQueue: {
+            enqueue: (n: string) => void;
+            dequeueAll: () => string[];
+            onNotificationsEnqueued?: () => void;
+          };
+        }
+      ).notificationQueue;
+
+      // Enqueue a notification first
+      notificationQueue.enqueue("test-notification");
+
+      // Manually call the callback - should NOT trigger processPendingNotifications
+      // because agent is loading
+      notificationQueue.onNotificationsEnqueued!();
+
+      // Queue should still have the notification (not processed)
+      expect(notificationQueue.dequeueAll()).toEqual(["test-notification"]);
+
+      // Reset loading state
+      aiManager.isLoading = false;
+    });
+
+    it("should process notifications when queue has items", async () => {
+      const notificationQueue = (
+        agent as unknown as {
+          notificationQueue: {
+            enqueue: (n: string) => void;
+            dequeueAll: () => string[];
+            hasPending: () => boolean;
+            onNotificationsEnqueued?: () => void;
+          };
+        }
+      ).notificationQueue;
+
+      // Enqueue a notification
+      notificationQueue.enqueue("test-notification");
+
+      // Manually call the callback (agent is idle)
+      notificationQueue.onNotificationsEnqueued!();
+
+      // Give time for the async processPendingNotifications to run
+      await new Promise((r) => setTimeout(r, 10));
+
+      // The notification should have been processed (queue is empty)
+      expect(notificationQueue.hasPending()).toBe(false);
+    });
+
     it("should handle restoreSession with same sessionId", async () => {
       const currentId = agent.sessionId;
       await agent.restoreSession(currentId);
