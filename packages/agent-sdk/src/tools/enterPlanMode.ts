@@ -65,6 +65,9 @@ export const enterPlanModeTool: ToolPlugin = {
         context.toolCallId,
       );
 
+      // No "allow always" option for plan mode transitions (matching Claude Code behavior)
+      permissionContext.hidePersistentOption = true;
+
       const permissionResult =
         await context.permissionManager.checkPermission(permissionContext);
 

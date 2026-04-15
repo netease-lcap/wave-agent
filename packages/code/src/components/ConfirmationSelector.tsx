@@ -4,6 +4,7 @@ import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
 import {
   BASH_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
 
@@ -353,6 +354,8 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       } else if (state.selectedOption === "allow") {
         if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
           onDecision({ behavior: "allow", newPermissionMode: "default" });
+        } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
+          onDecision({ behavior: "allow", newPermissionMode: "plan" });
         } else {
           onDecision({ behavior: "allow" });
         }
@@ -367,6 +370,8 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
               : `Bash(${toolInput?.command})`;
             onDecision({ behavior: "allow", newPermissionRule: rule });
           }
+        } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
+          onDecision({ behavior: "allow", newPermissionMode: "plan" });
         } else if (toolName.startsWith("mcp__")) {
           onDecision({ behavior: "allow", newPermissionRule: toolName });
         } else {
@@ -374,6 +379,11 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
         }
       } else if (state.alternativeText.trim()) {
         onDecision({ behavior: "deny", message: state.alternativeText.trim() });
+      } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
+        onDecision({
+          behavior: "deny",
+          message: "User chose not to enter plan mode",
+        });
       }
       return;
     }
@@ -622,7 +632,11 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                 bold={state.selectedOption === "alternative"}
               >
                 {state.selectedOption === "alternative" ? "> " : "  "}
-                {showPlaceholder ? (
+                {toolName === ENTER_PLAN_MODE_TOOL_NAME && showPlaceholder ? (
+                  <Text color="gray" dimColor>
+                    No, start implementing now
+                  </Text>
+                ) : showPlaceholder ? (
                   <Text color="gray" dimColor>
                     {placeholderText}
                   </Text>

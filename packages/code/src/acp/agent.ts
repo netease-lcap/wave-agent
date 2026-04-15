@@ -530,9 +530,9 @@ export class WaveAcpAgent implements AcpAgent {
           kind: "allow_once",
         },
         {
-          optionId: "allow_always",
-          name: "Yes, and stay in plan mode for future requests",
-          kind: "allow_always",
+          optionId: "reject_once",
+          name: "No, start implementing now",
+          kind: "reject_once",
         },
       ];
     } else if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
@@ -602,9 +602,6 @@ export class WaveAcpAgent implements AcpAgent {
               behavior: "allow",
               newPermissionMode: "acceptEdits",
             };
-          }
-          if (context.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
-            return { behavior: "allow", newPermissionMode: "plan" };
           }
           return {
             behavior: "allow",
