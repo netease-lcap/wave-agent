@@ -5,6 +5,7 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
@@ -29,6 +30,8 @@ const getActionDescription = (
       return `Write to file: ${toolInput.file_path || "unknown file"}`;
     case EXIT_PLAN_MODE_TOOL_NAME:
       return "Review and approve the plan";
+    case ENTER_PLAN_MODE_TOOL_NAME:
+      return "Enter plan mode for complex task planning";
     case ASK_USER_QUESTION_TOOL_NAME:
       return "Answer questions to clarify intent";
     default:
@@ -76,6 +79,7 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
       {toolName !== WRITE_TOOL_NAME &&
         toolName !== EDIT_TOOL_NAME &&
         toolName !== EXIT_PLAN_MODE_TOOL_NAME &&
+        toolName !== ENTER_PLAN_MODE_TOOL_NAME &&
         toolName !== ASK_USER_QUESTION_TOOL_NAME &&
         toolName !== BASH_TOOL_NAME &&
         !!toolInput && (
