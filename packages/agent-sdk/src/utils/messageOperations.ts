@@ -1,5 +1,10 @@
 import { randomUUID } from "crypto";
-import type { Message, Usage, ToolBlock } from "../types/index.js";
+import type {
+  Message,
+  Usage,
+  ToolBlock,
+  TaskNotificationBlock,
+} from "../types/index.js";
 import { MessageSource } from "../types/index.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
@@ -584,3 +589,38 @@ export function getMessageContent(message: Message): string {
 
   return "";
 }
+
+export interface AddNotificationMessageParams {
+  messages: Message[];
+  taskId: string;
+  taskType: "shell" | "agent";
+  status: "completed" | "failed" | "killed";
+  summary: string;
+  outputFile?: string;
+}
+
+export const addNotificationMessageToMessages = ({
+  messages,
+  taskId,
+  taskType,
+  status,
+  summary,
+  outputFile,
+}: AddNotificationMessageParams): Message[] => {
+  const block: TaskNotificationBlock = {
+    type: "task_notification",
+    taskId,
+    taskType,
+    status,
+    summary,
+    ...(outputFile !== undefined && { outputFile }),
+  };
+
+  const notificationMessage: Message = {
+    id: generateMessageId(),
+    role: "user",
+    blocks: [block],
+  };
+
+  return [...messages, notificationMessage];
+};

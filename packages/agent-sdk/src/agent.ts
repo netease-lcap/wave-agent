@@ -39,6 +39,7 @@ import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
 import { btw } from "./services/aiService.js";
 import { convertMessagesForAPI } from "./utils/convertMessagesForAPI.js";
+import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { InitializationService } from "./services/initializationService.js";
 import { InteractionService } from "./services/interactionService.js";
 import { ConfigurationService } from "./services/configurationService.js";
@@ -450,9 +451,16 @@ export class Agent {
     if (notifications.length === 0) return;
 
     for (const notification of notifications) {
-      this.messageManager.addUserMessage({
-        content: notification,
-      });
+      const block = parseTaskNotificationXml(notification);
+      if (block) {
+        this.messageManager.addNotificationMessage({
+          taskId: block.taskId,
+          taskType: block.taskType,
+          status: block.status,
+          summary: block.summary,
+          outputFile: block.outputFile,
+        });
+      }
     }
 
     // Trigger AI to process the notifications

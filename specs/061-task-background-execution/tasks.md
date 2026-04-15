@@ -108,7 +108,35 @@
 
 ---
 
-## Phase 7: Polish & Cross-Cutting Concerns
+## Phase 8: User Story 6 - Task Completion Notifications (Priority: P1)
+
+**Goal**: Notify users in chat when background tasks complete, fail, or are killed
+
+**Independent Test**: Start a background task, wait for it to complete, and verify that a notification appears in the chat with the task status and summary.
+
+### Tests for User Story 6 (REQUIRED) ⚠️
+
+- [ ] T029 [P] [US6] Tests for `taskNotificationToXml` and `parseTaskNotificationXml` in `packages/agent-sdk/tests/utils/notificationXml.test.ts`
+- [ ] T030 [P] [US6] Test for `addNotificationMessageToMessages` in `packages/agent-sdk/tests/utils/messageOperations.test.ts`
+- [ ] T031 [P] [US6] Test for `TaskNotificationMessage` component in `packages/code/tests/components/TaskNotificationMessage.test.tsx`
+
+### Implementation for User Story 6
+
+- [x] T032 [US6] Add `TaskNotificationBlock` type to `packages/agent-sdk/src/types/messaging.ts`
+- [x] T033 [US6] Create `notificationXml.ts` helpers in `packages/agent-sdk/src/utils/notificationXml.ts`
+- [x] T034 [US6] Add `addNotificationMessageToMessages` to `packages/agent-sdk/src/utils/messageOperations.ts`
+- [x] T035 [US6] Add `addNotificationMessage` to `MessageManager` with `onNotificationMessageAdded` callback
+- [x] T036 [US6] Update `agent.ts` `processPendingNotifications()` to use structured blocks
+- [x] T037 [US6] Update `aiManager.ts` notification injection to use structured blocks
+- [x] T038 [US6] Update `convertMessagesForAPI.ts` to convert `task_notification` blocks to XML
+- [x] T039 [US6] Create `TaskNotificationMessage` component in `packages/code/src/components/`
+- [x] T040 [US6] Update `MessageBlockItem` to render `task_notification` blocks
+
+**Checkpoint**: Task completion notifications are displayed in chat with colored status indicators.
+
+---
+
+## Phase 9: Polish & Cross-Cutting Concerns
 
 **Purpose**: Improvements that affect multiple user stories
 
@@ -134,6 +162,7 @@
 - **User Story 2 (P1)**: Depends on US1 (needs tasks to get output from)
 - **User Story 3 (P2)**: Depends on US1 (needs tasks to stop)
 - **User Story 4 (P2)**: Depends on US1/US2/US3 for full functionality
+- **User Story 6 (P1)**: Depends on US1 (needs tasks to notify about)
 
 ### Parallel Opportunities
 

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `061-task-background-execution`  
 **Created**: 2026-02-09  
-**Status**: Phase 2 Planning Complete
+**Status**: All phases implemented, tests pending for notifications
 
 ## Technical Context
 
@@ -59,6 +59,16 @@
 - Remove `/bashes` command.
 - Implement Ctrl-B backgrounding logic in `InputManager` and `Agent`.
 - Update UI components in `packages/code` to handle the new task types and show Ctrl-B hint.
+
+### Step 3.5: Task Completion Notifications
+- Add `TaskNotificationBlock` type to `packages/agent-sdk/src/types/messaging.ts`.
+- Create `notificationXml.ts` helpers for XML serialization/parsing.
+- Add `addNotificationMessageToMessages` to `messageOperations.ts`.
+- Add `addNotificationMessage` to `MessageManager` with callback.
+- Update `agent.ts` and `aiManager.ts` to process notifications as structured blocks.
+- Update `convertMessagesForAPI.ts` to convert `TaskNotificationBlock` back to XML.
+- Create `TaskNotificationMessage` component for CLI rendering.
+- Update `MessageBlockItem` to render notification blocks.
 
 ### Step 4: Verification
 - Run `pnpm build` for `agent-sdk`.

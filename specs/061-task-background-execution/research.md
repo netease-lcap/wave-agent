@@ -25,7 +25,13 @@ We will implement a unified `BackgroundTaskManager` (or extend `BackgroundBashMa
 - **`/tasks` Command**: Implement in `packages/agent-sdk/src/managers/slashCommandManager.ts` as a built-in command. It will fetch all tasks from the unified manager and format them for display.
 - **`/bashes` Removal**: Remove from `slashCommandManager.ts` (if it exists there) or ensure it's no longer registered.
 
-#### 4. Data Model
+#### 4. Task Completion Notifications
+- When a background task completes, fails, or is killed, the system enqueues an XML notification string.
+- The notification is parsed into a `TaskNotificationBlock` and added as a user message.
+- The block is rendered in the CLI as a compact status line with a colored dot.
+- For the AI, the block is serialized back to XML via `convertMessagesForAPI`.
+
+#### 5. Data Model
 - **`BackgroundTask` Interface**:
   ```typescript
   interface BackgroundTask {

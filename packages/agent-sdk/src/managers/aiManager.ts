@@ -1,6 +1,7 @@
 import { type CallAgentOptions } from "../services/aiService.js";
 import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
+import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import * as fs from "node:fs/promises";
 import type {
@@ -912,9 +913,16 @@ export class AIManager {
         if (notificationQueue && notificationQueue.hasPending()) {
           const notifications = notificationQueue.dequeueAll();
           for (const notification of notifications) {
-            this.messageManager.addUserMessage({
-              content: notification,
-            });
+            const block = parseTaskNotificationXml(notification);
+            if (block) {
+              this.messageManager.addNotificationMessage({
+                taskId: block.taskId,
+                taskType: block.taskType,
+                status: block.status,
+                summary: block.summary,
+                outputFile: block.outputFile,
+              });
+            }
           }
           // Recursively process the notifications
           await this.sendAIMessage({

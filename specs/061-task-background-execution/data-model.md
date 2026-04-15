@@ -27,3 +27,31 @@ Represents any operation running asynchronously in the background.
 ## Validation Rules
 - `task_id` must follow the pattern `task_\d+`.
 - `TaskStop` can only be called on tasks in the `running` state.
+
+## Notification Entities
+
+### TaskNotificationBlock
+Represents a background task completion notification displayed in the chat UI.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `taskId` | `string` | ID of the background task |
+| `taskType` | `'shell' \| 'agent'` | Type of the completed task |
+| `status` | `'completed' \| 'failed' \| 'killed'` | Final state of the task |
+| `summary` | `string` | Human-readable summary message |
+| `outputFile` | `string?` | Path to the task's output log file (shell tasks only) |
+
+### XML Serialization Format
+Task notifications are serialized as XML when sent to the AI:
+
+```xml
+<task-notification>
+<task-id>task_1</task-id>
+<task-type>shell</task-type>
+<output-file>/tmp/task_1_output.log</output-file>
+<status>completed</status>
+<summary>Command "ls -la" completed with exit code 0</summary>
+</task-notification>
+```
+
+The `output-file` tag is only included for shell tasks.

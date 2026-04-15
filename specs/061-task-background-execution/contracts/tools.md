@@ -24,3 +24,19 @@ Terminates a running background task.
 **Returns:**
 - `success` (boolean): Whether the task was stopped.
 - `message` (string): Status message.
+
+---
+
+## Task Completion Notifications
+
+When a background task completes, fails, or is killed, the system injects a structured notification into the chat.
+
+**Notification Format (as displayed to user):**
+- `⬤ {summary}` with colored dot (green = completed, red = failed, yellow = killed)
+
+**Notification Format (as sent to AI):**
+- XML format matching the serialization in the original notification queue
+
+**Triggered By:**
+- `BackgroundTaskManager`: When shell process exits
+- `SubagentManager`: When subagent AI loop finishes or errors
