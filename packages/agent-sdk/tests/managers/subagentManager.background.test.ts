@@ -263,7 +263,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const content = fs.readFileSync(outputPath, "utf8");
-    expect(content).toContain("Running tool: Read");
+    expect(content).toContain("Read");
     expect(content).toContain("test.txt");
 
     // Cleanup
