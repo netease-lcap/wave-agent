@@ -97,8 +97,8 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **Execution flow**: Order and dependency requirements
 
 6. Execute implementation following the task plan:
-   - **Phase-by-phase execution**: Complete each phase before moving to the next
-   - **Respect dependencies**: Run sequential tasks in order, parallel tasks [P] can run together  
+   - **Phase-by-phase execution**: Complete each phase before moving to the next. After the Foundational phase (Phase 2), user story phases (Phase 3+) may be executed sequentially in priority order (P1 → P2 → P3) or in parallel if resources allow (per tasks-template.md "Parallel Team Strategy").
+   - **Respect dependencies**: Run sequential tasks in order, parallel tasks [P] can run together. User stories depend on Foundational phase completion but are otherwise independent.
    - **Follow TDD approach**: Execute test tasks before their corresponding implementation tasks
    - **File-based coordination**: Tasks affecting the same files must run sequentially
    - **Validation checkpoints**: Verify each phase completion before proceeding
