@@ -826,4 +826,106 @@ describe("AIManager", () => {
       expect(mockMessageManager.touchFile).not.toHaveBeenCalled();
     });
   });
+
+  describe("setIsLoading", () => {
+    it("should call onLoadingChange callback when loading state changes", async () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      const onLoadingChange = vi.fn();
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+        resolveLanguage: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+      } as unknown as Record<string, unknown>);
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+      });
+      container.register("AgentOptions", {
+        callbacks: { onLoadingChange },
+      });
+
+      const testAIManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      testAIManager.setIsLoading(true);
+      expect(onLoadingChange).toHaveBeenCalledWith(true);
+
+      testAIManager.setIsLoading(false);
+      expect(onLoadingChange).toHaveBeenCalledWith(false);
+    });
+
+    it("should handle missing onLoadingChange callback gracefully", () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+        resolveLanguage: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+      } as unknown as Record<string, unknown>);
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+      });
+      container.register("AgentOptions", {
+        callbacks: {},
+      });
+
+      const testAIManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      // Should not throw
+      testAIManager.setIsLoading(true);
+      expect(testAIManager.isLoading).toBe(true);
+    });
+  });
 });
