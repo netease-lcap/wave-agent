@@ -81,6 +81,24 @@ As a user running a long-running bash command or a subagent task in the foregrou
 
 ---
 
+### User Story 6 - Task Completion Notifications (Priority: P1)
+
+As a user, I want to be automatically notified in the chat when a background task completes, fails, or is killed, so that I know the result without having to manually check.
+
+**Why this priority**: Without automatic notifications, users must poll for task status or remember to check outputs, defeating the purpose of background execution.
+
+**Independent Test**: Start a background task, wait for it to complete, and verify that a notification appears in the chat showing the task status and summary.
+
+**Acceptance Scenarios**:
+
+1. **Given** a background task is running, **When** the task completes successfully, **Then** a notification should appear in the chat with a green indicator and a summary message.
+2. **Given** a background task is running, **When** the task fails, **Then** a notification should appear in the chat with a red indicator and an error summary.
+3. **Given** a background task is running, **When** the task is killed by the user, **Then** a notification should appear in the chat with a yellow indicator and a summary.
+4. **Given** multiple background tasks complete while the agent is idle, **Then** all notifications should appear in the chat.
+5. **Given** a background task completes while the agent is actively responding, **Then** the notification should be queued and displayed after the current response finishes.
+
+---
+
 ### Edge Cases
 
 - **Invalid Task ID**: How does the system handle `TaskOutput` or `TaskStop` requests with an ID that doesn't exist? (Expected: Error message indicating the task was not found).
@@ -113,8 +131,16 @@ As a user running a long-running bash command or a subagent task in the foregrou
 - **FR-020**: When Ctrl-B is pressed during a Bash or Task tool execution, the system MUST transition the tool's foreground stage to "end" and continue it in the background.
 - **FR-021**: The result of a backgrounded tool MUST be set to "Command was manually backgrounded by user with ID [ID]".
 - **FR-022**: The system MUST NOT background bash commands that were initiated directly by the user using the `!` prefix when Ctrl-B is pressed.
+- **FR-023**: When a background task completes, fails, or is killed, the system MUST enqueue a task completion notification.
+- **FR-024**: Task completion notifications MUST be rendered in the chat as structured blocks (not raw XML), with a colored indicator: green for completed, red for failed, yellow for killed.
+- **FR-025**: The AI MUST receive task completion notifications in the original XML format (`<task-notification>...`) so it can parse and respond to them.
+- **FR-026**: Task completion notifications MUST be processed immediately when the agent is idle, and queued when the agent is busy.
 
 ### Key Entities *(include if feature involves data)*
 
 - **Task**: Represents an execution unit (shell command or agent subtask).
     - Attributes: `task_id` (unique identifier), `status` (pending, running, completed, failed, stopped), `output` (accumulated logs/results), `type` (shell, agent), `outputPath` (optional path to real-time log file).
+- **TaskNotificationBlock**: A structured message block representing a background task completion notification in the chat.
+    - Attributes: `taskId`, `taskType` ("shell" | "agent"), `status` ("completed" | "failed" | "killed"), `summary`, `outputFile?` (for shell tasks).
+    - Serialized as XML (`<task-notification>...</task-notification>`) when sent to the AI API.
+    - Rendered as a compact status line (colored dot + summary) in the CLI UI.

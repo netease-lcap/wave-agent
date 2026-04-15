@@ -16,6 +16,7 @@ export * from "./utils/fileSearch.js";
 export * from "./utils/globalLogger.js";
 export * from "./utils/mcpUtils.js";
 export * from "./utils/messageOperations.js";
+export * from "./utils/notificationXml.js";
 export * from "./utils/path.js";
 export * from "./utils/promptHistory.js";
 export * from "./utils/stringUtils.js";

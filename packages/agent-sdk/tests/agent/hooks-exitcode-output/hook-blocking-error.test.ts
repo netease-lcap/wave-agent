@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { HookManager } from "@/managers/hookManager.js";
-import { createMockToolManager } from "../../helpers/mockFactories.js";
 import type { MessageBlock } from "@/types/messaging.js";
 
 // Type guard helper function
@@ -15,12 +14,21 @@ function hasContent(
 // Mock AI service directly in this file
 vi.mock("@/services/aiService");
 
-// Get access to the mocked tool manager
-const { instance: mockToolManagerInstance, execute: mockToolExecute } =
-  createMockToolManager();
+// Create mock functions at module scope for the factory pattern
+const mockToolExecute = vi.fn();
+
 vi.mock("@/managers/toolManager", () => ({
   ToolManager: vi.fn().mockImplementation(function () {
-    return mockToolManagerInstance;
+    return {
+      execute: mockToolExecute,
+      list: vi.fn(() => []),
+      getTools: vi.fn(() => []),
+      getToolsConfig: vi.fn(() => []),
+      getPermissionMode: vi.fn(),
+      setPermissionMode: vi.fn(),
+      initializeBuiltInTools: vi.fn(),
+      getPermissionManager: vi.fn(),
+    };
   }),
 }));
 

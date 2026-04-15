@@ -1,5 +1,6 @@
 import type { Message } from "../types/index.js";
 import { convertImageToBase64 } from "./messageOperations.js";
+import { taskNotificationToXml } from "./notificationXml.js";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import { stripAnsiColors } from "./stringUtils.js";
 import {
@@ -237,6 +238,14 @@ export function convertMessagesForAPI(
           contentParts.push({
             type: "text",
             text: `<local-command-stdout>\n${stripAnsiColors(block.result)}\n</local-command-stdout>`,
+          });
+        }
+
+        // If there is a task notification block, convert it back to XML
+        if (block.type === "task_notification") {
+          contentParts.push({
+            type: "text",
+            text: taskNotificationToXml(block),
           });
         }
       });

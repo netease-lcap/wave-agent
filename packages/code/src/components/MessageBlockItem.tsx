@@ -7,6 +7,7 @@ import { ToolDisplay } from "./ToolDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
 import { Markdown } from "./Markdown.js";
+import { TaskNotificationMessage } from "./TaskNotificationMessage.js";
 
 export interface MessageBlockItemProps {
   block: MessageBlock;
@@ -77,6 +78,10 @@ export const MessageBlockItem = ({
 
       {block.type === "reasoning" && (
         <ReasoningDisplay block={block} isExpanded={isExpanded} />
+      )}
+
+      {block.type === "task_notification" && (
+        <TaskNotificationMessage block={block} />
       )}
     </Box>
   );

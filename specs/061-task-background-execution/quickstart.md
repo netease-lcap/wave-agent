@@ -41,3 +41,12 @@ List all tasks:
 ```bash
 /tasks
 ```
+
+## Task Completion Notifications
+
+When a background task finishes, you'll see a notification in the chat automatically:
+- ✅ Green dot: Task completed successfully
+- ❌ Red dot: Task failed
+- ⚠️ Yellow dot: Task was killed
+
+No need to poll - the system notifies you when the task is done.

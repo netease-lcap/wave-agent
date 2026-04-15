@@ -9,8 +9,10 @@ import {
   completeBangInMessage,
   removeLastUserMessage,
   addToolBlockToMessageInMessages,
+  addNotificationMessageToMessages,
   UserMessageParams,
   type AgentToolBlockUpdateParams,
+  type AddNotificationMessageParams,
   generateMessageId,
 } from "../utils/messageOperations.js";
 import type { Message, Usage } from "../types/index.js";
@@ -56,6 +58,13 @@ export interface MessageManagerCallbacks {
   onFileHistoryBlockAdded?: (
     snapshots: import("../types/reversion.js").FileSnapshot[],
   ) => void;
+  // Notification callback
+  onNotificationMessageAdded?: (params: {
+    taskId: string;
+    taskType: "shell" | "agent";
+    status: "completed" | "failed" | "killed";
+    summary: string;
+  }) => void;
 }
 
 import { logger } from "../utils/globalLogger.js";
@@ -585,6 +594,22 @@ export class MessageManager {
     });
     this.setMessages(updatedMessages);
     this.callbacks.onCompleteBangMessage?.(command, exitCode);
+  }
+
+  public addNotificationMessage(
+    params: Omit<AddNotificationMessageParams, "messages">,
+  ): void {
+    const newMessages = addNotificationMessageToMessages({
+      messages: this.messages,
+      ...params,
+    });
+    this.setMessages(newMessages);
+    this.callbacks.onNotificationMessageAdded?.({
+      taskId: params.taskId,
+      taskType: params.taskType,
+      status: params.status,
+      summary: params.summary,
+    });
   }
 
   /**

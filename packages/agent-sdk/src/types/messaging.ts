@@ -27,7 +27,8 @@ export type MessageBlock =
   | BangBlock
   | CompressBlock
   | ReasoningBlock
-  | FileHistoryBlock;
+  | FileHistoryBlock
+  | TaskNotificationBlock;
 
 export interface TextBlock {
   type: "text";
@@ -98,4 +99,13 @@ export interface ReasoningBlock {
 export interface FileHistoryBlock {
   type: "file_history";
   snapshots: import("./reversion.js").FileSnapshot[];
+}
+
+export interface TaskNotificationBlock {
+  type: "task_notification";
+  taskId: string;
+  taskType: "shell" | "agent";
+  status: "completed" | "failed" | "killed";
+  summary: string;
+  outputFile?: string;
 }
