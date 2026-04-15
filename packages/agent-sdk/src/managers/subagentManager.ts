@@ -86,6 +86,7 @@ export interface SubagentManagerOptions {
 
 export class SubagentManager {
   private instances = new Map<string, SubagentInstance>();
+  private subagentPermissionManagers = new Map<string, PermissionManager>();
   private cachedConfigurations: SubagentConfiguration[] | null = null;
 
   private workdir: string;
@@ -111,6 +112,47 @@ export class SubagentManager {
    */
   async initialize(): Promise<void> {
     await this.loadConfigurations();
+
+    // Hook into parent PermissionManager's update methods to propagate rules to subagents
+    const parentPm = this.container.get<PermissionManager>("PermissionManager");
+    if (
+      parentPm &&
+      typeof parentPm.updateAllowedRules === "function" &&
+      typeof parentPm.updateDeniedRules === "function" &&
+      typeof parentPm.updateAdditionalDirectories === "function"
+    ) {
+      const origUpdateAllowed = parentPm.updateAllowedRules.bind(parentPm);
+      const origUpdateDenied = parentPm.updateDeniedRules.bind(parentPm);
+      const origUpdateDirs =
+        parentPm.updateAdditionalDirectories.bind(parentPm);
+
+      parentPm.updateAllowedRules = (rules: string[]) => {
+        origUpdateAllowed(rules);
+        this.syncPermissionRulesToSubagents();
+      };
+      parentPm.updateDeniedRules = (rules: string[]) => {
+        origUpdateDenied(rules);
+        this.syncPermissionRulesToSubagents();
+      };
+      parentPm.updateAdditionalDirectories = (directories: string[]) => {
+        origUpdateDirs(directories);
+        this.syncPermissionRulesToSubagents();
+      };
+    }
+  }
+
+  /**
+   * Sync parent permission rules to all running subagents
+   */
+  private syncPermissionRulesToSubagents(): void {
+    const parentPm = this.container.get<PermissionManager>("PermissionManager");
+    if (!parentPm) return;
+
+    for (const [, pm] of this.subagentPermissionManagers) {
+      pm.updateAllowedRules(parentPm.getAllowedRules());
+      pm.updateDeniedRules(parentPm.getDeniedRules());
+      pm.updateAdditionalDirectories(parentPm.getAdditionalDirectories());
+    }
   }
 
   /**
@@ -202,6 +244,9 @@ export class SubagentManager {
       planFilePath: parentPermissionManager?.getPlanFilePath(),
     });
     subagentContainer.register("PermissionManager", subagentPermissionManager);
+
+    // Track this subagent's PermissionManager for rule sync
+    this.subagentPermissionManagers.set(subagentId, subagentPermissionManager);
 
     // Add temporary permission rules if provided
     if (parameters.allowedTools) {
@@ -599,6 +644,7 @@ export class SubagentManager {
         instance.status === "aborted")
     ) {
       this.instances.delete(subagentId);
+      this.subagentPermissionManagers.delete(subagentId);
     }
   }
 
