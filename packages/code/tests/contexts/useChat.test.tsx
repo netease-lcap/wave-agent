@@ -1050,6 +1050,9 @@ describe("ChatProvider", () => {
       expect(lastValue).toBeDefined();
     });
 
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
     // Mock sendMessage to not resolve immediately
     let resolveSendMessage: (value: void | PromiseLike<void>) => void;
     const sendMessagePromise = new Promise<void>((resolve) => {
@@ -1057,8 +1060,11 @@ describe("ChatProvider", () => {
     });
     mockAgent.sendMessage.mockReturnValue(sendMessagePromise);
 
-    // Send first message to set isLoading to true
+    // Send first message - agent callback will set isLoading to true
     const firstSendMessage = lastValue?.sendMessage("First message");
+
+    // Simulate agent setting isLoading
+    callbacks.onLoadingChange!(true);
 
     await vi.waitFor(() => {
       expect(lastValue?.isLoading).toBe(true);
@@ -1081,6 +1087,7 @@ describe("ChatProvider", () => {
     });
 
     // Cleanup
+    callbacks.onLoadingChange!(false);
     resolveSendMessage!();
     await firstSendMessage;
   });

@@ -14,6 +14,7 @@ import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
+import type { NotificationQueue } from "./notificationQueue.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
@@ -178,6 +179,11 @@ export class AIManager {
 
   public setIsLoading(isLoading: boolean): void {
     this.isLoading = isLoading;
+    const options =
+      this.container.get<import("../types/agent.js").AgentOptions>(
+        "AgentOptions",
+      );
+    options?.callbacks?.onLoadingChange?.(isLoading);
   }
 
   public abortAIMessage(): void {
@@ -340,6 +346,14 @@ export class AIManager {
       return;
     }
 
+    // Set loading state early for the initial call, before any async work
+    if (recursionDepth === 0) {
+      this.setIsLoading(true);
+      if (allowedRules && allowedRules.length > 0) {
+        this.permissionManager?.addTemporaryRules(allowedRules);
+      }
+    }
+
     // Scan for file mentions in the last user message
     if (recursionDepth === 0) {
       const messages = this.messageManager.getMessages();
@@ -378,14 +392,6 @@ export class AIManager {
       // Reuse existing controllers for recursive calls
       abortController = this.abortController!;
       toolAbortController = this.toolAbortController!;
-    }
-
-    // Only set loading state for the initial call
-    if (recursionDepth === 0) {
-      this.setIsLoading(true);
-      if (allowedRules && allowedRules.length > 0) {
-        this.permissionManager?.addTemporaryRules(allowedRules);
-      }
     }
 
     // Get recent message history
@@ -899,44 +905,65 @@ export class AIManager {
         // Set loading to false first
         this.setIsLoading(false);
 
-        // Clear temporary rules
-        this.permissionManager?.clearTemporaryRules();
-
-        // Clear abort controllers
-        this.abortController = null;
-        this.toolAbortController = null;
-
-        // Execute Stop/SubagentStop hooks only if the operation was not aborted
-        const isCurrentlyAborted =
-          abortController.signal.aborted || toolAbortController.signal.aborted;
-
-        if (!isCurrentlyAborted) {
-          // Record committed snapshots to message history for the final turn
-          if (this.reversionManager) {
-            const snapshots =
-              this.reversionManager.getAndClearCommittedSnapshots();
-            if (snapshots.length > 0) {
-              this.messageManager.addFileHistoryBlock(snapshots);
-            }
-          }
-
-          const shouldContinue = await this.executeStopHooks();
-
-          // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),
-          // restart the AI conversation cycle
-          if (shouldContinue) {
-            logger?.info(
-              `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
-            );
-
-            // Restart the conversation to let AI fix the issues
-            // Use recursionDepth = 0 to set loading false again for continuation
-            await this.sendAIMessage({
-              recursionDepth: 0,
-              model,
-              allowedRules,
-              maxTokens,
+        // Inject pending notifications from background tasks
+        const notificationQueue = this.container.has("NotificationQueue")
+          ? this.container.get<NotificationQueue>("NotificationQueue")
+          : undefined;
+        if (notificationQueue && notificationQueue.hasPending()) {
+          const notifications = notificationQueue.dequeueAll();
+          for (const notification of notifications) {
+            this.messageManager.addUserMessage({
+              content: notification,
             });
+          }
+          // Recursively process the notifications
+          await this.sendAIMessage({
+            recursionDepth: 0,
+            model,
+            allowedRules,
+            maxTokens,
+          });
+        } else {
+          // Clear temporary rules
+          this.permissionManager?.clearTemporaryRules();
+
+          // Clear abort controllers
+          this.abortController = null;
+          this.toolAbortController = null;
+
+          // Execute Stop/SubagentStop hooks only if the operation was not aborted
+          const isCurrentlyAborted =
+            abortController.signal.aborted ||
+            toolAbortController.signal.aborted;
+
+          if (!isCurrentlyAborted) {
+            // Record committed snapshots to message history for the final turn
+            if (this.reversionManager) {
+              const snapshots =
+                this.reversionManager.getAndClearCommittedSnapshots();
+              if (snapshots.length > 0) {
+                this.messageManager.addFileHistoryBlock(snapshots);
+              }
+            }
+
+            const shouldContinue = await this.executeStopHooks();
+
+            // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),
+            // restart the AI conversation cycle
+            if (shouldContinue) {
+              logger?.info(
+                `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
+              );
+
+              // Restart the conversation to let AI fix the issues
+              // Use recursionDepth = 0 to set loading false again for continuation
+              await this.sendAIMessage({
+                recursionDepth: 0,
+                model,
+                allowedRules,
+                maxTokens,
+              });
+            }
           }
         }
       }

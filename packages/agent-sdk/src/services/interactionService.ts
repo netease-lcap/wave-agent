@@ -7,6 +7,7 @@ import type { ConfigurationService } from "./configurationService.js";
 import type { AIManager } from "../managers/aiManager.js";
 import type { SubagentManager } from "../managers/subagentManager.js";
 import type { TaskManager } from "./taskManager.js";
+import type { NotificationQueue } from "../managers/notificationQueue.js";
 
 export interface InteractionContext {
   messageManager: MessageManager;
@@ -56,6 +57,23 @@ export class InteractionService {
 
         // If command doesn't exist, continue as normal message processing
         // Don't add to history, let normal message processing logic below handle it
+      }
+
+      // Inject pending notifications from background tasks
+      const notificationQueue = context.aiManager["container"].has(
+        "NotificationQueue",
+      )
+        ? context.aiManager["container"].get<NotificationQueue>(
+            "NotificationQueue",
+          )
+        : undefined;
+      if (notificationQueue && notificationQueue.hasPending()) {
+        const notifications = notificationQueue.dequeueAll();
+        for (const notification of notifications) {
+          messageManager.addUserMessage({
+            content: notification,
+          });
+        }
       }
 
       // Handle normal AI message

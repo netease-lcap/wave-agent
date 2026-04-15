@@ -1,6 +1,7 @@
 import { Container } from "./container.js";
 import { ForegroundTaskManager } from "../managers/foregroundTaskManager.js";
 import { BackgroundTaskManager } from "../managers/backgroundTaskManager.js";
+import { NotificationQueue } from "../managers/notificationQueue.js";
 import { TaskManager } from "../services/taskManager.js";
 import { MessageManager } from "../managers/messageManager.js";
 import { AIManager } from "../managers/aiManager.js";
@@ -75,6 +76,9 @@ export function setupAgentContainer(
   const callbacks = options.callbacks || {};
   const container = new Container();
   container.register("AgentOptions", options);
+
+  const notificationQueue = new NotificationQueue();
+  container.register("NotificationQueue", notificationQueue);
 
   const foregroundTaskManager = new ForegroundTaskManager(container);
   container.register("ForegroundTaskManager", foregroundTaskManager);

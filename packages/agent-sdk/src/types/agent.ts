@@ -95,4 +95,5 @@ export interface AgentCallbacks
   onBackgroundCurrentTask?: () => void;
   onModelChange?: (model: string) => void;
   onConfiguredModelsChange?: (models: string[]) => void;
+  onLoadingChange?: (loading: boolean) => void;
 }
