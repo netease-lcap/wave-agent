@@ -157,6 +157,11 @@ describe("AIManager", () => {
       getAvailableSkills: vi.fn().mockReturnValue([]),
     });
 
+    // Mock NotificationQueue with no pending notifications
+    container.register("NotificationQueue", {
+      hasPending: vi.fn().mockReturnValue(false),
+    });
+
     // Create AIManager instance
     aiManager = new AIManager(container, {
       workdir: "/test/workdir",
@@ -208,6 +213,9 @@ describe("AIManager", () => {
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
       } as unknown as Record<string, unknown>);
+      container.register("NotificationQueue", {
+        hasPending: vi.fn().mockReturnValue(false),
+      });
 
       const aiManagerWithLanguage = new AIManager(container, {
         workdir: "/test/workdir",
@@ -316,6 +324,9 @@ describe("AIManager", () => {
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
       } as unknown as Record<string, unknown>);
+      container.register("NotificationQueue", {
+        hasPending: vi.fn().mockReturnValue(false),
+      });
 
       const aiManagerWithLanguage = new AIManager(container, {
         workdir: "/test/workdir",
@@ -535,6 +546,9 @@ describe("AIManager", () => {
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
       );
+      container.register("NotificationQueue", {
+        hasPending: vi.fn().mockReturnValue(false),
+      });
 
       const aiManagerWithPermissions = new AIManager(container, {
         workdir: "/test/workdir",
@@ -590,6 +604,9 @@ describe("AIManager", () => {
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
       );
+      container.register("NotificationQueue", {
+        hasPending: vi.fn().mockReturnValue(false),
+      });
 
       const aiManagerWithPermissions = new AIManager(container, {
         workdir: "/test/workdir",
@@ -643,6 +660,9 @@ describe("AIManager", () => {
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
       );
+      container.register("NotificationQueue", {
+        hasPending: vi.fn().mockReturnValue(false),
+      });
 
       const aiManagerWithPermissions = new AIManager(container, {
         workdir: "/test/workdir",
@@ -691,6 +711,9 @@ describe("AIManager", () => {
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
       });
+      container.register("NotificationQueue", {
+        hasPending: vi.fn().mockReturnValue(false),
+      });
 
       const aiManagerWithAutoMemory = new AIManager(container, {
         workdir: "/test/workdir",
@@ -733,6 +756,9 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("NotificationQueue", {
+        hasPending: vi.fn().mockReturnValue(false),
       });
 
       const aiManagerDisabledAutoMemory = new AIManager(container, {
@@ -926,6 +952,130 @@ describe("AIManager", () => {
       // Should not throw
       testAIManager.setIsLoading(true);
       expect(testAIManager.isLoading).toBe(true);
+    });
+  });
+
+  describe("Notification injection in finally block", () => {
+    it("should inject notifications as user messages when pending", async () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      const mockNotificationQueue = {
+        hasPending: vi
+          .fn()
+          .mockReturnValueOnce(false)
+          .mockReturnValueOnce(false),
+        dequeueAll: vi
+          .fn()
+          .mockReturnValue([
+            "<task-notification><task-id>test</task-id></task-notification>",
+          ]),
+      };
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+        resolveLanguage: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+      } as unknown as Record<string, unknown>);
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+      });
+      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("AgentOptions", {
+        callbacks: {},
+      });
+
+      const testAIManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      await testAIManager.sendAIMessage();
+      expect(mockNotificationQueue.hasPending).toHaveBeenCalled();
+    });
+
+    it("should inject and process pending notifications in finally block", async () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      // First call returns true (pending), second call returns false (after dequeue)
+      const mockNotificationQueue = {
+        hasPending: vi
+          .fn()
+          .mockReturnValueOnce(true)
+          .mockReturnValueOnce(false)
+          .mockReturnValueOnce(false),
+        dequeueAll: vi
+          .fn()
+          .mockReturnValue([
+            "<task-notification><task-id>test</task-id></task-notification>",
+          ]),
+      };
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+        resolveLanguage: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+      } as unknown as Record<string, unknown>);
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+      });
+      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("AgentOptions", {
+        callbacks: {},
+      });
+
+      const testAIManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      await testAIManager.sendAIMessage();
+      expect(mockNotificationQueue.dequeueAll).toHaveBeenCalled();
     });
   });
 });

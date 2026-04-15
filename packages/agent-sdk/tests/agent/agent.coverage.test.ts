@@ -5,7 +5,21 @@ import { createMockToolManager } from "../helpers/mockFactories.js";
 import * as fs from "fs/promises";
 
 // Mock dependencies
-vi.mock("@/services/aiService");
+vi.mock("@/services/aiService", () => ({
+  callAgent: vi.fn().mockResolvedValue({
+    content: "test response",
+    usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+    tool_calls: [],
+  }),
+  compressMessages: vi.fn().mockResolvedValue({
+    content: "compressed",
+    usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+  }),
+  isClaudeModel: vi.fn().mockReturnValue(false),
+  transformMessagesForClaudeCache: vi.fn((m) => m),
+  addCacheControlToLastTool: vi.fn((t) => t),
+  extendUsageWithCacheMetrics: vi.fn((u) => u),
+}));
 vi.mock("@/services/session", async () => {
   const actual = await vi.importActual("@/services/session");
   return {
@@ -88,6 +102,49 @@ describe("Agent - Branch Coverage", () => {
 
     it("should return null for background task output if task not found", () => {
       expect(agent.getBackgroundTaskOutput("non-existent")).toBeNull();
+    });
+
+    it("should have notification queue wired up", async () => {
+      // Verify the notification queue exists and has the expected interface
+      const notificationQueue = (
+        agent as unknown as {
+          notificationQueue: {
+            enqueue: (n: string) => void;
+            dequeueAll: () => string[];
+            hasPending: () => boolean;
+            onNotificationsEnqueued?: () => void;
+          };
+        }
+      ).notificationQueue;
+
+      expect(notificationQueue).toBeDefined();
+      expect(typeof notificationQueue.enqueue).toBe("function");
+      expect(typeof notificationQueue.dequeueAll).toBe("function");
+      expect(typeof notificationQueue.hasPending).toBe("function");
+      expect(typeof notificationQueue.onNotificationsEnqueued).toBe("function");
+    });
+
+    it("should trigger notification callback when agent is idle", async () => {
+      // Enqueue a notification - this should trigger the onNotificationsEnqueued
+      // callback, which calls processPendingNotifications since agent is idle
+      const notificationQueue = (
+        agent as unknown as {
+          notificationQueue: {
+            enqueue: (n: string) => void;
+            hasPending: () => boolean;
+            onNotificationsEnqueued?: () => void;
+          };
+        }
+      ).notificationQueue;
+
+      // Manually call the callback to exercise the branches
+      notificationQueue.onNotificationsEnqueued!();
+
+      // Give time for the async processPendingNotifications to run
+      await new Promise((r) => setTimeout(r, 10));
+
+      // The notification should have been processed (queue is empty since no items)
+      expect(notificationQueue.hasPending()).toBe(false);
     });
 
     it("should handle restoreSession with same sessionId", async () => {
