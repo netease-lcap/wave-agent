@@ -370,4 +370,139 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       fs.unlinkSync(outputPath);
     }
   });
+
+  it("should handle background completion without NotificationQueue", async () => {
+    // Create a container without NotificationQueue
+    const noNotifyContainer = new Container();
+
+    const noNotifyToolManager = {
+      list: vi.fn(() => [{ name: "Read" }]),
+      getPermissionManager: vi.fn(),
+    } as unknown as ToolManager;
+
+    const noNotifyBgTaskManager = {
+      generateId: vi.fn().mockReturnValue("task_456"),
+      addTask: vi.fn(),
+      getTask: vi.fn().mockReturnValue({
+        id: "task_456",
+        status: "running",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+        endTime: 0,
+        runtime: 0,
+      }),
+    } as unknown as BackgroundTaskManager;
+
+    const noNotifyTaskManager = {
+      on: vi.fn(),
+      listTasks: vi.fn().mockResolvedValue([]),
+      getTaskListId: vi.fn().mockReturnValue("test-task-list"),
+    } as unknown as TaskManager;
+
+    noNotifyContainer.register("ToolManager", noNotifyToolManager);
+    noNotifyContainer.register("TaskManager", noNotifyTaskManager);
+    noNotifyContainer.register("BackgroundTaskManager", noNotifyBgTaskManager);
+
+    noNotifyContainer.register("ConfigurationService", {
+      resolveGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
+      resolveModelConfig: () => ({
+        model: "test-model",
+        fastModel: "test-fast-model",
+      }),
+      resolveMaxInputTokens: () => 1000,
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => "en",
+    });
+
+    const manager = new SubagentManager(noNotifyContainer, {
+      workdir: "/test",
+      stream: false,
+    });
+
+    const instance = await manager.createInstance(testConfig, {
+      description: "d",
+      prompt: "p",
+      subagent_type: "t",
+    });
+
+    await manager.backgroundInstance(instance.subagentId);
+
+    vi.mocked(instance.messageManager.getMessages).mockReturnValue([
+      { role: "assistant", blocks: [{ type: "text", content: "Done" }] },
+    ] as unknown as ReturnType<typeof instance.messageManager.getMessages>);
+
+    // Should not throw even without NotificationQueue
+    await manager.executeAgent(instance, "test prompt");
+  });
+
+  it("should handle background error without NotificationQueue", async () => {
+    const noNotifyContainer = new Container();
+
+    const noNotifyToolManager = {
+      list: vi.fn(() => [{ name: "Read" }]),
+      getPermissionManager: vi.fn(),
+    } as unknown as ToolManager;
+
+    const noNotifyBgTaskManager = {
+      generateId: vi.fn().mockReturnValue("task_789"),
+      addTask: vi.fn(),
+      getTask: vi.fn().mockReturnValue({
+        id: "task_789",
+        status: "running",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+        endTime: 0,
+        runtime: 0,
+      }),
+    } as unknown as BackgroundTaskManager;
+
+    const noNotifyTaskManager = {
+      on: vi.fn(),
+      listTasks: vi.fn().mockResolvedValue([]),
+      getTaskListId: vi.fn().mockReturnValue("test-task-list"),
+    } as unknown as TaskManager;
+
+    noNotifyContainer.register("ToolManager", noNotifyToolManager);
+    noNotifyContainer.register("TaskManager", noNotifyTaskManager);
+    noNotifyContainer.register("BackgroundTaskManager", noNotifyBgTaskManager);
+
+    noNotifyContainer.register("ConfigurationService", {
+      resolveGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
+      resolveModelConfig: () => ({
+        model: "test-model",
+        fastModel: "test-fast-model",
+      }),
+      resolveMaxInputTokens: () => 1000,
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => "en",
+    });
+
+    const manager = new SubagentManager(noNotifyContainer, {
+      workdir: "/test",
+      stream: false,
+    });
+
+    const instance = await manager.createInstance(testConfig, {
+      description: "d",
+      prompt: "p",
+      subagent_type: "t",
+    });
+
+    await manager.backgroundInstance(instance.subagentId);
+
+    // Mock AI to throw error
+    const aiManager = (instance as unknown as { aiManager: AIManager })
+      .aiManager;
+    vi.spyOn(aiManager, "sendAIMessage").mockRejectedValue(
+      new Error("AI Error"),
+    );
+    vi.mocked(instance.messageManager.getMessages).mockReturnValue([]);
+
+    // Should not throw from notification code, only the AI error
+    await expect(manager.executeAgent(instance, "test prompt")).rejects.toThrow(
+      "AI Error",
+    );
+  });
 });

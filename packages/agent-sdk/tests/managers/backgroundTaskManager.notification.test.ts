@@ -105,4 +105,53 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     // Should not throw
     noNotifyManager.startShell("echo test");
   });
+
+  it("should handle task completion without NotificationQueue", () => {
+    const noNotifyContainer = new Container();
+    const noNotifyManager = new BackgroundTaskManager(noNotifyContainer, {
+      workdir: "/test/workdir",
+    });
+
+    noNotifyManager.startShell("echo test");
+
+    // Simulate task exit - should not throw
+    const exitHandler = handlers.get("exit");
+    exitHandler?.(0);
+
+    const tasks = noNotifyManager.getAllTasks();
+    expect(tasks[0].status).toBe("completed");
+  });
+
+  it("should handle task error without NotificationQueue", () => {
+    const noNotifyContainer = new Container();
+    const noNotifyManager = new BackgroundTaskManager(noNotifyContainer, {
+      workdir: "/test/workdir",
+    });
+
+    noNotifyManager.startShell("echo test");
+
+    // Simulate process error - should not throw
+    const errorHandler = handlers.get("error");
+    errorHandler?.(new Error("spawn error"));
+
+    const tasks = noNotifyManager.getAllTasks();
+    expect(tasks[0].status).toBe("failed");
+  });
+
+  it("should handle task kill without NotificationQueue", () => {
+    const noNotifyContainer = new Container();
+    const noNotifyManager = new BackgroundTaskManager(noNotifyContainer, {
+      workdir: "/test/workdir",
+    });
+
+    noNotifyManager.startShell("sleep 999");
+    const tasks = noNotifyManager.getAllTasks();
+    const taskId = tasks[0].id;
+
+    // Stop task - should not throw
+    noNotifyManager.stopTask(taskId);
+
+    const updatedTasks = noNotifyManager.getAllTasks();
+    expect(updatedTasks[0].status).toBe("killed");
+  });
 });
