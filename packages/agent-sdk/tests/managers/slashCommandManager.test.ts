@@ -667,5 +667,26 @@ describe("SlashCommandManager", () => {
 
       expect(mockSubagentManager.cleanupInstance).toHaveBeenCalled();
     });
+
+    it("should include args in content field for custom command execution", async () => {
+      // Register a custom command
+      const customCommand = {
+        id: "test-args",
+        name: "test-args",
+        content: "Test content",
+      };
+
+      slashCommandManager.registerPluginCommands("test", [
+        customCommand,
+      ] as CustomSlashCommand[]);
+
+      const cmd = slashCommandManager.getCommand("test:test-args");
+      await cmd?.handler("arg1 arg2");
+
+      const messages = messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      const textBlock = lastMessage.blocks[0] as TextBlock;
+      expect(textBlock.content).toBe("/test:test-args arg1 arg2");
+    });
   });
 });

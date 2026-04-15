@@ -350,6 +350,7 @@ export class SlashCommandManager {
             namespacedName,
             processedContent,
             command.config,
+            args,
           );
         },
       });
@@ -486,6 +487,7 @@ export class SlashCommandManager {
     commandName: string,
     content: string,
     config?: { model?: string; allowedTools?: string[] },
+    args?: string,
   ): Promise<void> {
     try {
       // Parse bash commands from the content
@@ -493,7 +495,7 @@ export class SlashCommandManager {
 
       // Add user message immediately so text block shows before bash execution
       const messageId = this.messageManager.addUserMessage({
-        content: `/${commandName}`,
+        content: `/${commandName}${args ? ` ${args}` : ""}`,
         customCommandContent: processedContent,
       });
 
