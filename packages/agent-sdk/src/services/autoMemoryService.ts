@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { Container } from "../utils/container.js";
 import { MessageManager } from "../managers/messageManager.js";
-import { SubagentManager } from "../managers/subagentManager.js";
+import { ForkedAgentManager } from "../managers/forkedAgentManager.js";
 import { MemoryService } from "./memory.js";
 import { ConfigurationService } from "./configurationService.js";
 import { logger } from "../utils/globalLogger.js";
@@ -24,8 +24,8 @@ export class AutoMemoryService {
     return this.container.get<MessageManager>("MessageManager")!;
   }
 
-  private get subagentManager(): SubagentManager {
-    return this.container.get<SubagentManager>("SubagentManager")!;
+  private get forkedAgentManager(): ForkedAgentManager {
+    return this.container.get<ForkedAgentManager>("ForkedAgentManager")!;
   }
 
   private get memoryService(): MemoryService {
@@ -143,8 +143,13 @@ export class AutoMemoryService {
       }
     }
 
-    // Fork the general-purpose agent with restricted tool access
-    const instance = await this.subagentManager.forkAgent(
+    const prompt = buildAutoMemoryExtractionPrompt(
+      newMessageCount,
+      existingMemoriesManifest,
+    );
+
+    // Execute the forked agent in background (fire-and-forget, decoupled from BackgroundTaskManager)
+    await this.forkedAgentManager.forkAndExecute(
       "general-purpose",
       messages,
       {
@@ -159,19 +164,7 @@ export class AutoMemoryService {
         model: "fastModel", // Use fast model for background tasks to reduce latency and cost
         permissionModeOverride: "dontAsk", // Auto-deny out-of-scope writes without prompting user
       },
-    );
-
-    const prompt = buildAutoMemoryExtractionPrompt(
-      newMessageCount,
-      existingMemoriesManifest,
-    );
-
-    // Execute in background so it doesn't block the main conversation flow
-    await this.subagentManager.executeAgent(
-      instance,
       `${prompt}\n\nThe memory directory for this project is: ${memoryDir}`,
-      undefined,
-      true, // runInBackground
     );
 
     logger.debug("Auto-memory extraction started in background.");

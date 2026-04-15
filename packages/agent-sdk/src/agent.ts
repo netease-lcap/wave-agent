@@ -3,6 +3,7 @@ import { MessageManager } from "./managers/messageManager.js";
 import { AIManager } from "./managers/aiManager.js";
 import { ToolManager } from "./managers/toolManager.js";
 import { SubagentManager } from "./managers/subagentManager.js";
+import { ForkedAgentManager } from "./managers/forkedAgentManager.js";
 import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BangManager } from "./managers/bangManager.js";
@@ -56,6 +57,7 @@ export class Agent {
   private permissionManager: PermissionManager; // Add permission manager instance
   private planManager: PlanManager; // Add plan manager instance
   private subagentManager: SubagentManager; // Add subagent manager instance
+  private forkedAgentManager: ForkedAgentManager; // Add forked agent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
@@ -185,6 +187,7 @@ export class Agent {
     this.toolManager = this.container.get("ToolManager")!;
     this.liveConfigManager = this.container.get("LiveConfigManager")!;
     this.subagentManager = this.container.get("SubagentManager")!;
+    this.forkedAgentManager = this.container.get("ForkedAgentManager")!;
     this.aiManager = this.container.get("AIManager")!;
     this.slashCommandManager = this.container.get("SlashCommandManager")!;
     this.pluginManager = this.container.get("PluginManager")!;
@@ -491,6 +494,8 @@ export class Agent {
     }
     // Cleanup subagent manager
     this.subagentManager.cleanup();
+    // Cleanup forked agent manager
+    this.forkedAgentManager.cleanup();
     // Cleanup skill manager
     await this.skillManager.destroy();
     // Cleanup live configuration reload
