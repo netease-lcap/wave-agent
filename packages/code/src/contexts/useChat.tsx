@@ -375,6 +375,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onConfiguredModelsChange: (models) => {
           setConfiguredModels(models);
         },
+        onLoadingChange: (loading) => {
+          setIsLoading(loading);
+        },
       };
 
       try {
@@ -527,18 +530,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           }
         }
 
-        // Set loading state
-        setIsLoading(true);
-
         try {
           await agentRef.current?.sendMessage(expandedContent, images);
-        } finally {
-          // Clear loading state
-          setIsLoading(false);
+        } catch (error) {
+          console.error("Failed to send message:", error);
         }
       } catch (error) {
         console.error("Failed to send message:", error);
-        // Loading state will be automatically updated by the useEffect that watches messages
       }
     },
     [isLoading, isCommandRunning],

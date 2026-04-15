@@ -2,10 +2,15 @@ import { spawn, type ChildProcess } from "child_process";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
-import { BackgroundTask, BackgroundShell } from "../types/processes.js";
+import {
+  BackgroundTask,
+  BackgroundShell,
+  BackgroundSubagent,
+} from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
+import { NotificationQueue } from "./notificationQueue.js";
 
 export interface BackgroundTaskManagerCallbacks {
   onBackgroundTasksChange?: (tasks: BackgroundTask[]) => void;
@@ -28,6 +33,10 @@ export class BackgroundTaskManager {
   ) {
     this.callbacks = options.callbacks || {};
     this.workdir = options.workdir;
+  }
+
+  private get notificationQueue(): NotificationQueue {
+    return this.container.get<NotificationQueue>("NotificationQueue")!;
   }
 
   private notifyTasksChange(): void {
@@ -153,6 +162,18 @@ export class BackgroundTaskManager {
       shell.endTime = Date.now();
       shell.runtime = shell.endTime - startTime;
       this.notifyTasksChange();
+
+      // Enqueue completion notification
+      const notificationQueue = this.container.has("NotificationQueue")
+        ? this.container.get<NotificationQueue>("NotificationQueue")
+        : undefined;
+      if (notificationQueue) {
+        const statusStr = shell.status;
+        const summary = `Command "${command}" ${statusStr} with exit code ${code ?? 0}`;
+        notificationQueue.enqueue(
+          `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>${statusStr}</status>\n<summary>${summary}</summary>\n</task-notification>`,
+        );
+      }
     };
 
     const onError = (error: Error) => {
@@ -170,6 +191,17 @@ export class BackgroundTaskManager {
       shell.endTime = Date.now();
       shell.runtime = shell.endTime - startTime;
       this.notifyTasksChange();
+
+      // Enqueue error notification
+      const notificationQueue = this.container.has("NotificationQueue")
+        ? this.container.get<NotificationQueue>("NotificationQueue")
+        : undefined;
+      if (notificationQueue) {
+        const summary = `Command "${command}" failed with error: ${stripAnsiColors(error.message)}`;
+        notificationQueue.enqueue(
+          `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+        );
+      }
     };
 
     child.stdout?.on("data", onStdout);
@@ -278,6 +310,18 @@ export class BackgroundTaskManager {
       shell.endTime = Date.now();
       shell.runtime = shell.endTime - startTime;
       this.notifyTasksChange();
+
+      // Enqueue completion notification
+      const notificationQueue = this.container.has("NotificationQueue")
+        ? this.container.get<NotificationQueue>("NotificationQueue")
+        : undefined;
+      if (notificationQueue) {
+        const statusStr = shell.status;
+        const summary = `Command "${command}" ${statusStr} with exit code ${code ?? 0}`;
+        notificationQueue.enqueue(
+          `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>${statusStr}</status>\n<summary>${summary}</summary>\n</task-notification>`,
+        );
+      }
     });
 
     child.on("error", (error) => {
@@ -292,6 +336,17 @@ export class BackgroundTaskManager {
       shell.endTime = Date.now();
       shell.runtime = shell.endTime - startTime;
       this.notifyTasksChange();
+
+      // Enqueue error notification
+      const notificationQueue = this.container.has("NotificationQueue")
+        ? this.container.get<NotificationQueue>("NotificationQueue")
+        : undefined;
+      if (notificationQueue) {
+        const summary = `Command "${command}" failed with error: ${stripAnsiColors(error.message)}`;
+        notificationQueue.enqueue(
+          `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+        );
+      }
     });
 
     return id;
@@ -371,6 +426,22 @@ export class BackgroundTaskManager {
     task.endTime = Date.now();
     task.runtime = task.endTime - task.startTime;
     this.notifyTasksChange();
+
+    // Enqueue killed notification
+    const notificationQueue = this.container.has("NotificationQueue")
+      ? this.container.get<NotificationQueue>("NotificationQueue")
+      : undefined;
+    if (notificationQueue) {
+      const description = (task as BackgroundSubagent).description || "";
+      const command = (task as BackgroundShell).command || "";
+      const summary =
+        task.type === "subagent"
+          ? `Agent task "${description}" was stopped`
+          : `Command "${command}" was stopped`;
+      notificationQueue.enqueue(
+        `<task-notification>\n<task-id>${id}</task-id>\n<task-type>${task.type}</task-type>\n<status>killed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+      );
+    }
     return true;
   }
 

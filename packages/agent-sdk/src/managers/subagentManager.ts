@@ -13,6 +13,7 @@ import {
   createAbortPromise,
 } from "../utils/abortUtils.js";
 import { BackgroundTaskManager } from "./backgroundTaskManager.js";
+import { NotificationQueue } from "./notificationQueue.js";
 import { logger } from "../utils/globalLogger.js";
 import {
   UserMessageParams,
@@ -220,6 +221,23 @@ export class SubagentManager {
     // Create a child container for the subagent to isolate its managers
     const subagentContainer = this.container.createChild();
 
+    // Register a modified AgentOptions without onLoadingChange to prevent subagent loading
+    // from affecting the parent agent's loading state
+    const parentOptions =
+      this.container.get<import("../types/agent.js").AgentOptions>(
+        "AgentOptions",
+      );
+    if (parentOptions) {
+      const subagentOptions: import("../types/agent.js").AgentOptions = {
+        ...parentOptions,
+        callbacks: {
+          ...parentOptions.callbacks,
+          onLoadingChange: undefined,
+        },
+      };
+      subagentContainer.register("AgentOptions", subagentOptions);
+    }
+
     // Create isolated PermissionManager for the subagent
     const { PermissionManager } = await import("./permissionManager.js");
     const parentPermissionManager =
@@ -379,6 +397,17 @@ export class SubagentManager {
               task.endTime = Date.now();
               task.runtime = task.endTime - startTime;
             }
+
+            // Enqueue completion notification
+            const notificationQueue = this.container.has("NotificationQueue")
+              ? this.container.get<NotificationQueue>("NotificationQueue")
+              : undefined;
+            if (notificationQueue) {
+              const summary = `Agent task "${instance.description}" completed`;
+              notificationQueue.enqueue(
+                `<task-notification>\n<task-id>${taskId}</task-id>\n<task-type>agent</task-type>\n<status>completed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+              );
+            }
           } catch (error) {
             const task = backgroundTaskManager?.getTask(taskId);
             if (task) {
@@ -387,6 +416,19 @@ export class SubagentManager {
                 error instanceof Error ? error.message : String(error);
               task.endTime = Date.now();
               task.runtime = task.endTime - startTime;
+            }
+
+            // Enqueue error notification
+            const notificationQueue = this.container.has("NotificationQueue")
+              ? this.container.get<NotificationQueue>("NotificationQueue")
+              : undefined;
+            if (notificationQueue) {
+              const errorMsg =
+                error instanceof Error ? error.message : String(error);
+              const summary = `Agent task "${instance.description}" failed: ${errorMsg}`;
+              notificationQueue.enqueue(
+                `<task-notification>\n<task-id>${taskId}</task-id>\n<task-type>agent</task-type>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+              );
             }
           }
         })();
@@ -531,6 +573,17 @@ export class SubagentManager {
             task.runtime = task.endTime - task.startTime;
           }
         }
+
+        // Enqueue completion notification
+        const notificationQueue = this.container.has("NotificationQueue")
+          ? this.container.get<NotificationQueue>("NotificationQueue")
+          : undefined;
+        if (notificationQueue) {
+          const summary = `Agent task "${instance.description}" completed`;
+          notificationQueue.enqueue(
+            `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>completed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+          );
+        }
       }
 
       return response || "Agent completed with no text response";
@@ -554,6 +607,19 @@ export class SubagentManager {
           if (task.startTime) {
             task.runtime = task.endTime - task.startTime;
           }
+        }
+
+        // Enqueue error notification
+        const notificationQueue = this.container.has("NotificationQueue")
+          ? this.container.get<NotificationQueue>("NotificationQueue")
+          : undefined;
+        if (notificationQueue) {
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
+          const summary = `Agent task "${instance.description}" failed: ${errorMsg}`;
+          notificationQueue.enqueue(
+            `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+          );
         }
       }
       throw error;

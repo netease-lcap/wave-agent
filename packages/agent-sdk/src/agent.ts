@@ -9,6 +9,7 @@ import { LspManager } from "./managers/lspManager.js";
 import { BangManager } from "./managers/bangManager.js";
 import { CronManager } from "./managers/cronManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
+import { NotificationQueue } from "./managers/notificationQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { HookManager } from "./managers/hookManager.js";
@@ -64,6 +65,7 @@ export class Agent {
   private cronManager: CronManager; // Add cron manager instance
   private hookManager: HookManager; // Add hooks manager instance
   private reversionManager: ReversionManager;
+  private notificationQueue: NotificationQueue; // Add notification queue instance
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private taskManager: TaskManager;
@@ -193,6 +195,17 @@ export class Agent {
     this.pluginManager = this.container.get("PluginManager")!;
     this.bangManager = this.container.get("BangManager")!;
     this.cronManager = this.container.get("CronManager")!;
+    this.notificationQueue = this.container.get("NotificationQueue")!;
+
+    // Wire up notification queue to trigger AI when notifications arrive while idle
+    this.notificationQueue.onNotificationsEnqueued = () => {
+      // If the AI is NOT loading (idle), trigger a new AI cycle to process notifications
+      if (!this.aiManager.isLoading) {
+        this.processPendingNotifications().catch((error) => {
+          this.logger?.error("Failed to process pending notifications:", error);
+        });
+      }
+    };
 
     // Set initial permission mode if provided
     if (options.permissionMode) {
@@ -426,6 +439,24 @@ export class Agent {
 
   public abortAIMessage(): void {
     this.aiManager.abortAIMessage();
+  }
+
+  /**
+   * Process pending background task notifications by injecting them as user messages
+   * and triggering a new AI response cycle.
+   */
+  private async processPendingNotifications(): Promise<void> {
+    const notifications = this.notificationQueue.dequeueAll();
+    if (notifications.length === 0) return;
+
+    for (const notification of notifications) {
+      this.messageManager.addUserMessage({
+        content: notification,
+      });
+    }
+
+    // Trigger AI to process the notifications
+    await this.aiManager.sendAIMessage({ recursionDepth: 0 });
   }
 
   /** Execute bash command (bang command) */
