@@ -27,7 +27,6 @@ export interface PathEncodingOptions {
   pathSeparatorReplacement?: string; // Default: '-'
   spaceReplacement?: string; // Default: '_'
   invalidCharReplacement?: string; // Default: '_'
-  preserveCase?: boolean; // Default: false (convert to lowercase)
   hashLength?: number; // Default: 8 characters
 }
 
@@ -65,7 +64,6 @@ export class PathEncoder {
       pathSeparatorReplacement: options.pathSeparatorReplacement ?? "-",
       spaceReplacement: options.spaceReplacement ?? "_",
       invalidCharReplacement: options.invalidCharReplacement ?? "_",
-      preserveCase: options.preserveCase ?? false,
       hashLength: options.hashLength ?? 8,
     };
     this.constraints = this.getFilesystemConstraints();
@@ -109,10 +107,7 @@ export class PathEncoder {
       this.options.invalidCharReplacement,
     );
 
-    // Convert to lowercase unless preserveCase is true
-    if (!this.options.preserveCase) {
-      encoded = encoded.toLowerCase();
-    }
+    // Case is preserved
 
     // Handle length limit with hash
     if (encoded.length > this.options.maxLength) {

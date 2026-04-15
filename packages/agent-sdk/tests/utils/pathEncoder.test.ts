@@ -40,7 +40,6 @@ describe("PathEncoder", () => {
         pathSeparatorReplacement: "_",
         spaceReplacement: "-",
         invalidCharReplacement: "X",
-        preserveCase: true,
         hashLength: 12,
       };
       const encoder = new PathEncoder(customOptions);
@@ -81,14 +80,8 @@ describe("PathEncoder", () => {
       expect(result).toBe("home-user-my_project");
     });
 
-    it("should convert to lowercase by default", async () => {
-      const result = await pathEncoder.encode("/HOME/USER/PROJECT");
-      expect(result).toBe("home-user-project");
-    });
-
-    it("should preserve case when preserveCase option is true", async () => {
-      const encoder = new PathEncoder({ preserveCase: true });
-      const result = await encoder.encode("/HOME/User/Project");
+    it("should preserve case by default", async () => {
+      const result = await pathEncoder.encode("/HOME/User/Project");
       expect(result).toBe("HOME-User-Project");
     });
 
@@ -117,7 +110,7 @@ describe("PathEncoder", () => {
       // Mock realpath to return the input path directly (no resolution)
       vi.mocked(realpath).mockResolvedValue("C:\\Users\\John\\Project");
       const result = await pathEncoder.encode("C:\\Users\\John\\Project");
-      expect(result).toBe("c:-users-john-project");
+      expect(result).toBe("C:-Users-John-Project");
     });
 
     it("should truncate long paths and add hash", async () => {
@@ -133,7 +126,6 @@ describe("PathEncoder", () => {
         pathSeparatorReplacement: "_",
         spaceReplacement: "-",
         invalidCharReplacement: "X",
-        preserveCase: true,
       });
 
       vi.mocked(realpath).mockResolvedValue("/Home/User/My Project");
