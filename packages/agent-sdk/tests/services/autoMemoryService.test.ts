@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AutoMemoryService } from "@/services/autoMemoryService.js";
 import { Container } from "@/utils/container.js";
 import type { MessageManager } from "@/managers/messageManager.js";
-import type { SubagentManager } from "@/managers/subagentManager.js";
+import type { ForkedAgentManager } from "@/managers/forkedAgentManager.js";
 import type { MemoryService } from "@/services/memory.js";
 import type { ConfigurationService } from "@/services/configurationService.js";
 
 vi.mock("@/managers/messageManager.js");
-vi.mock("@/managers/subagentManager.js");
+vi.mock("@/managers/forkedAgentManager.js");
 vi.mock("@/services/memory.js");
 vi.mock("@/services/configurationService.js");
 
@@ -17,9 +17,8 @@ describe("AutoMemoryService", () => {
   let mockMessageManager: {
     getMessages: ReturnType<typeof vi.fn>;
   };
-  let mockSubagentManager: {
-    forkAgent: ReturnType<typeof vi.fn>;
-    executeAgent: ReturnType<typeof vi.fn>;
+  let mockForkedAgentManager: {
+    forkAndExecute: ReturnType<typeof vi.fn>;
   };
   let mockMemoryService: {
     getAutoMemoryDirectory: ReturnType<typeof vi.fn>;
@@ -37,9 +36,8 @@ describe("AutoMemoryService", () => {
     mockMessageManager = {
       getMessages: vi.fn().mockReturnValue([]),
     };
-    mockSubagentManager = {
-      forkAgent: vi.fn().mockResolvedValue({ subagentId: "test-id" }),
-      executeAgent: vi.fn().mockResolvedValue("task-id"),
+    mockForkedAgentManager = {
+      forkAndExecute: vi.fn().mockResolvedValue("fork-id"),
     };
     mockMemoryService = {
       getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/memory"),
@@ -55,8 +53,8 @@ describe("AutoMemoryService", () => {
       mockMessageManager as unknown as MessageManager,
     );
     container.register(
-      "SubagentManager",
-      mockSubagentManager as unknown as SubagentManager,
+      "ForkedAgentManager",
+      mockForkedAgentManager as unknown as ForkedAgentManager,
     );
     container.register(
       "MemoryService",
@@ -73,7 +71,7 @@ describe("AutoMemoryService", () => {
   it("should not run if auto-memory is disabled", async () => {
     mockConfigurationService.resolveAutoMemoryEnabled.mockReturnValue(false);
     await autoMemoryService.onTurnEnd("/workdir");
-    expect(mockSubagentManager.forkAgent).not.toHaveBeenCalled();
+    expect(mockForkedAgentManager.forkAndExecute).not.toHaveBeenCalled();
   });
 
   it("should respect throttling frequency", async () => {
@@ -84,11 +82,11 @@ describe("AutoMemoryService", () => {
 
     // Turn 1
     await autoMemoryService.onTurnEnd("/workdir");
-    expect(mockSubagentManager.forkAgent).not.toHaveBeenCalled();
+    expect(mockForkedAgentManager.forkAndExecute).not.toHaveBeenCalled();
 
     // Turn 2
     await autoMemoryService.onTurnEnd("/workdir");
-    expect(mockSubagentManager.forkAgent).toHaveBeenCalled();
+    expect(mockForkedAgentManager.forkAndExecute).toHaveBeenCalled();
   });
 
   it("should skip extraction if manual memory write is detected", async () => {
@@ -111,7 +109,7 @@ describe("AutoMemoryService", () => {
     mockMessageManager.getMessages.mockReturnValue(messages);
 
     await autoMemoryService.onTurnEnd("/workdir");
-    expect(mockSubagentManager.forkAgent).not.toHaveBeenCalled();
+    expect(mockForkedAgentManager.forkAndExecute).not.toHaveBeenCalled();
   });
 
   it("should run extraction if no manual memory write is detected", async () => {
@@ -131,7 +129,7 @@ describe("AutoMemoryService", () => {
     mockMessageManager.getMessages.mockReturnValue(messages);
 
     await autoMemoryService.onTurnEnd("/workdir");
-    expect(mockSubagentManager.forkAgent).toHaveBeenCalled();
+    expect(mockForkedAgentManager.forkAndExecute).toHaveBeenCalled();
   });
 
   it("should properly identify recent messages since last extraction", async () => {
@@ -142,7 +140,7 @@ describe("AutoMemoryService", () => {
 
     // Turn 1
     await autoMemoryService.onTurnEnd("/workdir");
-    expect(mockSubagentManager.forkAgent).toHaveBeenCalledTimes(1);
+    expect(mockForkedAgentManager.forkAndExecute).toHaveBeenCalledTimes(1);
 
     const turn2Messages = [
       ...turn1Messages,
@@ -162,7 +160,7 @@ describe("AutoMemoryService", () => {
 
     // Turn 2 should skip due to manual write in msg2
     await autoMemoryService.onTurnEnd("/workdir");
-    expect(mockSubagentManager.forkAgent).toHaveBeenCalledTimes(1);
+    expect(mockForkedAgentManager.forkAndExecute).toHaveBeenCalledTimes(1);
 
     const turn3Messages = [
       ...turn2Messages,
@@ -173,6 +171,6 @@ describe("AutoMemoryService", () => {
 
     // Turn 3 should run because msg3 and msg4 don't have memory writes
     await autoMemoryService.onTurnEnd("/workdir");
-    expect(mockSubagentManager.forkAgent).toHaveBeenCalledTimes(2);
+    expect(mockForkedAgentManager.forkAndExecute).toHaveBeenCalledTimes(2);
   });
 });

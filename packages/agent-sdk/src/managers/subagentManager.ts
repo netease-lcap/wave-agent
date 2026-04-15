@@ -311,43 +311,6 @@ export class SubagentManager {
   }
 
   /**
-   * Create a new subagent instance initialized with a copy of the current message history.
-   * This is used for background tasks like auto-memory extraction.
-   */
-  async forkAgent(
-    subagentType: string,
-    messages: Message[],
-    parameters: {
-      description: string;
-      allowedTools?: string[];
-      model?: string;
-      permissionModeOverride?: PermissionMode;
-    },
-    onUpdate?: () => void,
-  ): Promise<SubagentInstance> {
-    const configuration = await this.findSubagent(subagentType);
-    if (!configuration) {
-      throw new Error(`Subagent type ${subagentType} not found`);
-    }
-
-    const instance = await this.createInstance(
-      configuration,
-      {
-        ...parameters,
-        subagent_type: subagentType,
-        prompt: "", // Forked agents start with history
-      },
-      false,
-      onUpdate,
-    );
-
-    // Initialize the message manager with provided messages
-    instance.messageManager.setMessages(messages);
-
-    return instance;
-  }
-
-  /**
    * Execute agent using subagent instance
    *
    * IMPORTANT: This method automatically filters out the Agent tool from allowedTools

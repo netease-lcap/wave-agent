@@ -50,16 +50,21 @@ specs/018-memory-management/
 packages/agent-sdk/
 ├── src/
 │   ├── services/
-│   │   ├── memory.ts           # Memory I/O service
-│   │   └── MemoryRuleService.ts # Parsing and glob matching logic
+│   │   ├── memory.ts             # Memory I/O service
+│   │   ├── MemoryRuleService.ts  # Parsing and glob matching logic
+│   │   └── autoMemoryService.ts  # Auto-memory extraction lifecycle
 │   ├── managers/
-│   │   ├── aiManager.ts        # Inject memory into prompt
-│   │   └── MemoryRuleManager.ts # Discovery and lifecycle of memory rules
-│   ├── types.ts                # MemoryRule and Frontmatter types
-│   └── agent.ts                # Integration of MemoryRuleManager into agent loop
+│   │   ├── aiManager.ts          # Inject memory into prompt
+│   │   ├── MemoryRuleManager.ts  # Discovery and lifecycle of memory rules
+│   │   └── forkedAgentManager.ts # Forked agent lifecycle (decoupled from BackgroundTaskManager)
+│   ├── types.ts                  # MemoryRule and Frontmatter types
+│   └── agent.ts                  # Integration of MemoryRuleManager into agent loop
 └── tests/
+    ├── managers/
+    │   └── forkedAgentManager.test.ts
     └── services/
-        └── memory.test.ts
+        ├── memory.test.ts
+        └── autoMemoryService.test.ts
 
 packages/code/
 ├── src/

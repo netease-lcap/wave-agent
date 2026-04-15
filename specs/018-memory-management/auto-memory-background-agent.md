@@ -156,56 +156,88 @@ minSessions: 5    // Sessions since last consolidation
 // 5. Rollback lock on failure
 ```
 
-## Wave Implementation Considerations
+## Wave Implementation
 
-### 1. Forked Agent Pattern
+### 1. ForkedAgentManager
 
-We need a similar mechanism to run a subagent at turn end:
+Auto-memory uses `ForkedAgentManager` — an independent manager for forked agent lifecycle, decoupled from `BackgroundTaskManager`.
 
 ```typescript
-// Conceptual API
-interface ForkedAgentOptions {
-  promptMessages: Message[]
-  cacheSafeParams: CacheSafeParams  // Share prompt cache
-  canUseTool: CanUseToolFn          // Restrict tools
-  maxTurns: number                  // Prevent runaway
-  skipTranscript: boolean           // Don't record to main transcript
+// packages/agent-sdk/src/managers/forkedAgentManager.ts
+
+// Fire-and-forget execution at turn end
+await this.forkedAgentManager.forkAndExecute(
+  "general-purpose",
+  messages,           // Full conversation history
+  {
+    description: "Auto-memory extraction background agent",
+    allowedTools: [
+      "Read", "Glob", "Grep",
+      `Write(${memoryDir}/**/*)`,
+      `Edit(${memoryDir}/**/*)`,
+    ],
+    model: "fastModel",
+    permissionModeOverride: "dontAsk",
+  },
+  extractionPrompt,   // The extraction prompt
+);
+```
+
+Key properties:
+- **Does NOT interact with `BackgroundTaskManager`** — no task entries, no UI notifications
+- **Own log files** at `os.tmpdir()/wave-forked-agent-<id>.log`
+- **Fire-and-forget** — returns immediately, caller is not blocked
+- **Provides `stop()`, `cleanup()`, `getActiveForks()`** for lifecycle management
+
+### 2. AutoMemoryService Flow
+
+```typescript
+// packages/agent-sdk/src/services/autoMemoryService.ts
+
+// 1. OnTurnEnd called after each conversation turn
+async onTurnEnd(workdir: string) {
+  // Throttle: check frequency
+  if (turnsSinceLastExtraction < frequency) return;
+
+  // Mutual exclusion: skip if main agent wrote memories
+  if (hasManualMemoryWrite(recentMessages, memoryDir)) return;
+
+  // Fire-and-forget forked agent extraction
+  await forkedAgentManager.forkAndExecute(...);
 }
 ```
 
-### 2. Tool Restriction System
+### 3. DI Registration
 
-Need a `canUseTool` callback system to restrict subagent tools:
+`ForkedAgentManager` is registered in `containerSetup.ts` after `SubagentManager`:
 
 ```typescript
-type CanUseToolFn = (
-  tool: Tool,
-  input: Record<string, unknown>
-) => Promise<PermissionResult>
+// packages/agent-sdk/src/utils/containerSetup.ts
+const subagentManager = new SubagentManager(container, {...});
+container.register("SubagentManager", subagentManager);
+
+const forkedAgentManager = new ForkedAgentManager(container);
+container.register("ForkedAgentManager", forkedAgentManager);
 ```
 
-### 3. Cursor Tracking
-
-Track which messages have been processed:
+`AutoMemoryService` retrieves it from the container:
 
 ```typescript
-let lastMemoryMessageUuid: string | undefined
-
-// On successful extraction
-lastMemoryMessageUuid = messages.at(-1)?.uuid
+private get forkedAgentManager(): ForkedAgentManager {
+  return this.container.get<ForkedAgentManager>("ForkedAgentManager")!;
+}
 ```
 
-### 4. Throttling
+### 4. Agent Lifecycle
 
-Avoid running every turn:
+`ForkedAgentManager` is stored on the `Agent` class and cleaned up on `destroy()`:
 
 ```typescript
-let turnsSinceLastExtraction = 0
-const threshold = getFeatureValue('throttle_gate', 1)
+// packages/agent-sdk/src/agent.ts
+this.forkedAgentManager = this.container.get("ForkedAgentManager")!;
 
-turnsSinceLastExtraction++
-if (turnsSinceLastExtraction < threshold) return
-turnsSinceLastExtraction = 0
+// In destroy():
+this.forkedAgentManager.cleanup();
 ```
 
 ## References
@@ -214,3 +246,6 @@ turnsSinceLastExtraction = 0
 - Memory types: `src/memdir/memoryTypes.ts`
 - Path resolution: `src/memdir/paths.ts`
 - Forked agent: `src/utils/forkedAgent.ts`
+- Wave `ForkedAgentManager`: `packages/agent-sdk/src/managers/forkedAgentManager.ts`
+- Wave `AutoMemoryService`: `packages/agent-sdk/src/services/autoMemoryService.ts`
+- Wave DI setup: `packages/agent-sdk/src/utils/containerSetup.ts`
