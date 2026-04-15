@@ -684,12 +684,11 @@ export class SubagentManager {
 
             // Log tool execution to file
             if (instance.logStream) {
-              const compactParams = (params.parameters || "{}").substring(
-                0,
-                100,
-              );
+              const displayParams =
+                params.compactParams ||
+                (params.parameters || "{}").substring(0, 100);
               instance.logStream.write(
-                `[${new Date().toISOString()}] Running tool: ${params.name} with params: ${compactParams}${compactParams.length >= 100 ? "..." : ""}\n`,
+                `[${new Date().toISOString()}] ${params.name}${displayParams ? ` ${displayParams}` : ""}\n`,
               );
             }
           }
