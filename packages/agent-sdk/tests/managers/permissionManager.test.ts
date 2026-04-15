@@ -2416,4 +2416,45 @@ describe("PermissionManager", () => {
       expect(result.behavior).toBe("allow");
     });
   });
+
+  describe("sort command", () => {
+    it("should allow 'sort' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "sort" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'sort -n file.txt' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "sort -n file.txt" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow 'sort file.txt | head' by default", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "sort file.txt | head" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should expand 'sort' to empty rules (safe command)", () => {
+      const workdir = "/home/user/project";
+      const rules = permissionManager.expandBashRule("sort file.txt", workdir);
+      expect(rules).toEqual([]);
+    });
+  });
 });

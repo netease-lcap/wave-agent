@@ -97,3 +97,6 @@
 - [x] T078 Add `find` to `SAFE_COMMANDS` list in `PermissionManager`.
 - [x] T079 Add `Bash(find*)` to `DEFAULT_ALLOWED_RULES` with safety checks.
 - [x] T080 Verify `find` command safety through unit tests.
+
+## Phase 18: Add sort to Safe Commands
+- [x] T081 Add `sort` to `SAFE_COMMANDS` and `DEFAULT_ALLOWED_RULES`.
