@@ -157,6 +157,7 @@ export class AutoMemoryService {
           `Edit(${memoryDir}/**/*)`,
         ],
         model: "fastModel", // Use fast model for background tasks to reduce latency and cost
+        permissionModeOverride: "default", // Force default mode to prevent acceptEdits bypass
       },
     );
 

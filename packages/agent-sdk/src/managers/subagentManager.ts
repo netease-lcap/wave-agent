@@ -21,6 +21,7 @@ import {
 
 import { Container } from "../utils/container.js";
 import type { PermissionManager } from "./permissionManager.js";
+import type { PermissionMode } from "../types/permissions.js";
 import { ConfigurationService } from "../services/configurationService.js";
 
 export interface SubagentManagerCallbacks {
@@ -159,6 +160,7 @@ export class SubagentManager {
       allowedTools?: string[];
       model?: string;
       stream?: boolean;
+      permissionModeOverride?: PermissionMode;
     },
     runInBackground?: boolean,
     onUpdate?: () => void,
@@ -183,6 +185,7 @@ export class SubagentManager {
     const subagentPermissionManager = new PermissionManager(subagentContainer, {
       workdir: this.workdir,
       configuredPermissionMode:
+        parameters.permissionModeOverride ??
         parentPermissionManager?.getConfiguredPermissionMode(),
       allowedRules: parentPermissionManager?.getAllowedRules(),
       deniedRules: parentPermissionManager?.getDeniedRules(),
@@ -273,6 +276,7 @@ export class SubagentManager {
       description: string;
       allowedTools?: string[];
       model?: string;
+      permissionModeOverride?: PermissionMode;
     },
     onUpdate?: () => void,
   ): Promise<SubagentInstance> {
