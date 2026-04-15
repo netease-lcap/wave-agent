@@ -50,6 +50,7 @@ const SAFE_COMMANDS = [
   "wc",
   "sleep",
   "find",
+  "sort",
 ];
 
 const DEFAULT_ALLOWED_RULES = [
@@ -867,6 +868,7 @@ export class PermissionManager {
                   cmd === "tail" ||
                   cmd === "wc" ||
                   cmd === "sleep" ||
+                  cmd === "sort" ||
                   (cmd === "find" && !isDangerousFind(part))
                 ) {
                   return true;
