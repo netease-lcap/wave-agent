@@ -49,8 +49,14 @@ export class InteractionService {
           slashCommandManager.parseAndValidateSlashCommand(command);
 
         if (isValid && commandId !== undefined) {
-          // Execute valid slash command
-          await slashCommandManager.executeCommand(commandId, args);
+          // Set loading state to prevent concurrent commands
+          aiManager.setIsLoading(true);
+          try {
+            // Execute valid slash command
+            await slashCommandManager.executeCommand(commandId, args);
+          } finally {
+            aiManager.setIsLoading(false);
+          }
 
           return;
         }

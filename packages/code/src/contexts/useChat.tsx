@@ -499,7 +499,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       if (!hasTextContent && !hasImageAttachments) return;
 
-      if (isLoading || isCommandRunning) {
+      if (agentRef.current?.isLoading || isCommandRunning) {
         setQueuedMessages((prev) => [
           ...prev,
           { content, images, longTextMap },
@@ -539,7 +539,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         console.error("Failed to send message:", error);
       }
     },
-    [isLoading, isCommandRunning],
+    [isCommandRunning],
   );
 
   const askBtw = useCallback(async (question: string) => {
@@ -551,7 +551,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Process queued messages when idle
   useEffect(() => {
-    if (!isLoading && !isCommandRunning && queuedMessages.length > 0) {
+    if (
+      !agentRef.current?.isLoading &&
+      !isCommandRunning &&
+      queuedMessages.length > 0
+    ) {
       const nextMessage = queuedMessages[0];
       setQueuedMessages((prev) => prev.slice(1));
       sendMessage(
