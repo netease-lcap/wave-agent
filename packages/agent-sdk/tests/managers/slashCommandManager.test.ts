@@ -58,6 +58,8 @@ describe("SlashCommandManager", () => {
     aiManager = {
       sendAIMessage: vi.fn(),
       abortAIMessage: vi.fn(),
+      setIsLoading: vi.fn(),
+      isLoading: false,
     } as unknown as AIManager;
 
     // Create mock BackgroundTaskManager
@@ -554,8 +556,8 @@ describe("SlashCommandManager", () => {
         }),
       );
 
-      // Verify that main agent is NOT triggered
-      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
+      // Verify that main agent is triggered to process the tool result
+      expect(aiManager.sendAIMessage).toHaveBeenCalled();
     });
 
     it("should set success:true on tool block when forked skill completes", async () => {
