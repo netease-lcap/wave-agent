@@ -175,6 +175,7 @@ await this.forkedAgentManager.forkAndExecute(
       "Read", "Glob", "Grep",
       `Write(${memoryDir}/**/*)`,
       `Edit(${memoryDir}/**/*)`,
+      `Bash(rm ${memoryDir}/**/*)`,
     ],
     model: "fastModel",
     permissionModeOverride: "dontAsk",
