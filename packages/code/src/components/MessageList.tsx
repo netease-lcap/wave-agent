@@ -42,18 +42,16 @@ export const MessageList = React.memo(
         (b.stage === "running" ||
           b.stage === "streaming" ||
           b.stage === "start")) ||
-      (b.type === "bang" && b.stage === "running");
+      (b.type === "bang" && b.stage === "running") ||
+      (b.type === "reasoning" && b.stage === "streaming");
 
     // Flatten messages into blocks with metadata
-    // Filter out streaming text/reasoning blocks to avoid frequent height changes
+    // Filter out streaming text blocks to avoid frequent height changes,
+    // but allow streaming reasoning blocks (rendered as truncated gray text)
     const allBlocks = visibleMessages.flatMap((message, messageIndex) => {
       return message.blocks
         .filter(
-          (block) =>
-            !(
-              (block.type === "text" || block.type === "reasoning") &&
-              block.stage === "streaming"
-            ),
+          (block) => !(block.type === "text" && block.stage === "streaming"),
         )
         .map((block, blockIndex) => ({
           block,
