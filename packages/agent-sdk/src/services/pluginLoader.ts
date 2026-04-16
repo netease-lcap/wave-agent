@@ -10,6 +10,7 @@ import {
 } from "../types/index.js";
 import { scanCommandsDirectory } from "../utils/customCommands.js";
 import { parseSkillFile } from "../utils/skillParser.js";
+import { resolveMcpConfig } from "../managers/mcpManager.js";
 
 export class PluginLoader {
   /**
@@ -136,7 +137,7 @@ export class PluginLoader {
     const mcpPath = path.join(pluginPath, ".mcp.json");
     try {
       const content = await fs.readFile(mcpPath, "utf-8");
-      return JSON.parse(content) as McpConfig;
+      return resolveMcpConfig(JSON.parse(content)) as McpConfig;
     } catch {
       return undefined;
     }
