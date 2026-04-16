@@ -499,7 +499,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       if (!hasTextContent && !hasImageAttachments) return;
 
-      if (isLoading || isCommandRunning) {
+      // Check agent's actual loading state synchronously to avoid race condition
+      // React state (isLoading) updates asynchronously, so rapid messages bypass the queue
+      const isAgentBusy =
+        agentRef.current?.isLoading || agentRef.current?.isCommandRunning;
+      if (isAgentBusy) {
         setQueuedMessages((prev) => [
           ...prev,
           { content, images, longTextMap },
@@ -539,7 +543,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         console.error("Failed to send message:", error);
       }
     },
-    [isLoading, isCommandRunning],
+    [],
   );
 
   const askBtw = useCallback(async (question: string) => {
