@@ -286,6 +286,7 @@ export class SlashCommandManager {
             }
 
             // Non-forked skill: execute and trigger AI response
+            this.aiManager.setIsLoading(true);
             const result = await this.skillManager.executeSkill({
               skill_name: skill.name,
               args,
@@ -303,10 +304,9 @@ export class SlashCommandManager {
               allowedRules: result.allowedTools,
             });
           } catch (error) {
-            logger?.error(
-              `Failed to execute skill command '${skill.name}':`,
-              error,
-            );
+            this.aiManager.setIsLoading(false);
+
+            logger?.error(error);
             this.messageManager.addErrorBlock(
               `Failed to execute skill command '${skill.name}': ${
                 error instanceof Error ? error.message : String(error)

@@ -20,6 +20,7 @@ describe("SlashCommandManager model override", () => {
 
     aiManager = {
       sendAIMessage: vi.fn(),
+      setIsLoading: vi.fn(),
       abortAIMessage: vi.fn(),
     } as unknown as AIManager;
 
