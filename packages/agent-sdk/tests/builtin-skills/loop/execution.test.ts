@@ -24,6 +24,7 @@ describe("/loop execution integration", () => {
 
     aiManager = {
       sendAIMessage: vi.fn().mockResolvedValue(undefined),
+      setIsLoading: vi.fn(),
       abortAIMessage: vi.fn(),
     } as unknown as AIManager;
 
