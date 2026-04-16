@@ -307,6 +307,22 @@ export class SubagentManager {
     });
     subagentContainer.register("AIManager", aiManager);
 
+    // Create isolated NotificationQueue for the subagent/forked agent
+    const subagentNotificationQueue = new NotificationQueue();
+    subagentContainer.register("NotificationQueue", subagentNotificationQueue);
+
+    // Create isolated BackgroundTaskManager for the subagent/forked agent
+    const subagentBackgroundTaskManager = new BackgroundTaskManager(
+      subagentContainer,
+      {
+        workdir: this.workdir,
+      },
+    );
+    subagentContainer.register(
+      "BackgroundTaskManager",
+      subagentBackgroundTaskManager,
+    );
+
     const instance: SubagentInstance = {
       subagentId,
       configuration,
