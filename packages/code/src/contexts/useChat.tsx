@@ -165,6 +165,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       longTextMap?: Record<string, string>;
     }>
   >([]);
+  const queuedMessagesRef = useRef(queuedMessages);
+  useEffect(() => {
+    queuedMessagesRef.current = queuedMessages;
+  }, [queuedMessages]);
 
   const [messages, setMessages] = useState<Message[]>([]);
 
@@ -549,14 +553,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return await agentRef.current.askBtw(question);
   }, []);
 
-  // Process queued messages when idle
+  // Process queued messages when idle - only trigger on loading/command state changes
   useEffect(() => {
     if (
-      !agentRef.current?.isLoading &&
+      !isLoading &&
       !isCommandRunning &&
-      queuedMessages.length > 0
+      queuedMessagesRef.current.length > 0
     ) {
-      const nextMessage = queuedMessages[0];
+      const nextMessage = queuedMessagesRef.current[0];
       setQueuedMessages((prev) => prev.slice(1));
       sendMessage(
         nextMessage.content,
@@ -564,7 +568,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         nextMessage.longTextMap,
       );
     }
-  }, [isLoading, isCommandRunning, queuedMessages, sendMessage]);
+  }, [isLoading, isCommandRunning, sendMessage]);
 
   // Unified interrupt method, interrupt both AI messages and command execution
   const abortMessage = useCallback(() => {
