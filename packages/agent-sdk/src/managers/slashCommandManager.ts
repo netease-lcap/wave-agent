@@ -248,6 +248,8 @@ export class SlashCommandManager {
                   },
                 );
 
+                // Show loading while subagent runs
+                this.aiManager.setIsLoading(true);
                 try {
                   const result = await this.subagentManager.executeAgent(
                     instance,
@@ -263,6 +265,9 @@ export class SlashCommandManager {
                     stage: "end",
                     success: true,
                   });
+
+                  // Trigger AI to process the tool result
+                  await this.aiManager.sendAIMessage();
                 } finally {
                   this.subagentManager.cleanupInstance(instance.subagentId);
                 }
