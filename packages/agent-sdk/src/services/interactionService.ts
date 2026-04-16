@@ -49,14 +49,11 @@ export class InteractionService {
           slashCommandManager.parseAndValidateSlashCommand(command);
 
         if (isValid && commandId !== undefined) {
-          // Set loading state to prevent concurrent commands
-          aiManager.setIsLoading(true);
-          try {
-            // Execute valid slash command
-            await slashCommandManager.executeCommand(commandId, args);
-          } finally {
-            aiManager.setIsLoading(false);
-          }
+          // Execute valid slash command
+          // Note: executeCommand and its handlers (e.g., skill commands) manage
+          // isLoading internally. Setting it here would cause sendAIMessage() to
+          // return early due to the isLoading guard at aiManager.ts:357.
+          await slashCommandManager.executeCommand(commandId, args);
 
           return;
         }
