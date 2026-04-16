@@ -261,6 +261,7 @@ export class SlashCommandManager {
                     messageId,
                     result,
                     stage: "end",
+                    success: true,
                   });
                 } finally {
                   this.subagentManager.cleanupInstance(instance.subagentId);
@@ -271,6 +272,7 @@ export class SlashCommandManager {
                   id: toolBlockId,
                   messageId,
                   stage: "end",
+                  success: false,
                   error: error instanceof Error ? error.message : String(error),
                 });
                 throw error; // Re-throw to be caught by outer catch for logging/error block
