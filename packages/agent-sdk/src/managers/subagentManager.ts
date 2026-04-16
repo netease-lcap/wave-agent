@@ -399,6 +399,7 @@ export class SubagentManager {
         instance.backgroundTaskId = taskId;
 
         // Execute in background
+        // Note: notification enqueueing is handled by internalExecute when instance.backgroundTaskId is set
         (async () => {
           try {
             const result = await this.internalExecute(
@@ -413,17 +414,6 @@ export class SubagentManager {
               task.endTime = Date.now();
               task.runtime = task.endTime - startTime;
             }
-
-            // Enqueue completion notification
-            const notificationQueue = this.container.has("NotificationQueue")
-              ? this.container.get<NotificationQueue>("NotificationQueue")
-              : undefined;
-            if (notificationQueue) {
-              const summary = `Agent task "${instance.description}" completed`;
-              notificationQueue.enqueue(
-                `<task-notification>\n<task-id>${taskId}</task-id>\n<task-type>agent</task-type>\n<status>completed</status>\n<summary>${summary}</summary>\n</task-notification>`,
-              );
-            }
           } catch (error) {
             const task = backgroundTaskManager?.getTask(taskId);
             if (task) {
@@ -432,19 +422,6 @@ export class SubagentManager {
                 error instanceof Error ? error.message : String(error);
               task.endTime = Date.now();
               task.runtime = task.endTime - startTime;
-            }
-
-            // Enqueue error notification
-            const notificationQueue = this.container.has("NotificationQueue")
-              ? this.container.get<NotificationQueue>("NotificationQueue")
-              : undefined;
-            if (notificationQueue) {
-              const errorMsg =
-                error instanceof Error ? error.message : String(error);
-              const summary = `Agent task "${instance.description}" failed: ${errorMsg}`;
-              notificationQueue.enqueue(
-                `<task-notification>\n<task-id>${taskId}</task-id>\n<task-type>agent</task-type>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
-              );
             }
           }
         })();
