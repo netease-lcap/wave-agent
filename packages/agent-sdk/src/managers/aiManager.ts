@@ -48,6 +48,7 @@ export interface AIManagerOptions {
 export class AIManager {
   public isLoading: boolean = false;
   private abortController: AbortController | null = null;
+  onLoadingChange?: (loading: boolean) => void;
   private toolAbortController: AbortController | null = null;
   private workdir: string;
   private systemPrompt?: string;
@@ -191,6 +192,7 @@ export class AIManager {
 
   public setIsLoading(isLoading: boolean): void {
     this.isLoading = isLoading;
+    this.onLoadingChange?.(isLoading);
     const options =
       this.container.get<import("../types/agent.js").AgentOptions>(
         "AgentOptions",

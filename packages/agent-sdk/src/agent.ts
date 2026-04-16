@@ -10,6 +10,7 @@ import { BangManager } from "./managers/bangManager.js";
 import { CronManager } from "./managers/cronManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { NotificationQueue } from "./managers/notificationQueue.js";
+import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { HookManager } from "./managers/hookManager.js";
@@ -67,6 +68,7 @@ export class Agent {
   private hookManager: HookManager; // Add hooks manager instance
   private reversionManager: ReversionManager;
   private notificationQueue: NotificationQueue; // Add notification queue instance
+  private messageQueue: MessageQueue; // Add message queue instance
   private pendingNotificationPromises: Promise<void>[] = []; // Track pending notification processing
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
@@ -198,6 +200,7 @@ export class Agent {
     this.bangManager = this.container.get("BangManager")!;
     this.cronManager = this.container.get("CronManager")!;
     this.notificationQueue = this.container.get("NotificationQueue")!;
+    this.messageQueue = this.container.get("MessageQueue")!;
 
     // Wire up notification queue to trigger AI when notifications arrive while idle
     this.notificationQueue.onNotificationsEnqueued = () => {
@@ -220,6 +223,36 @@ export class Agent {
       this.workdir = newCwd;
       this.options.callbacks?.onWorkdirChange?.(newCwd);
     });
+
+    // Wire up message queue to process when agent becomes idle
+    this.messageQueue.onMessageEnqueued = () => {
+      // If the AI is NOT loading and command is not running, trigger dequeue
+      if (!this.aiManager.isLoading && !this.isCommandRunning) {
+        this.processQueuedMessage().catch((error) => {
+          this.logger?.error("Failed to process queued message:", error);
+        });
+      }
+    };
+
+    // Wire up AI loading changes to process queue when AI becomes idle
+    this.aiManager.onLoadingChange = (loading: boolean) => {
+      if (!loading && !this.isCommandRunning) {
+        this.processQueuedMessage().catch((error) => {
+          this.logger?.error("Failed to process queued message:", error);
+        });
+      }
+    };
+
+    // Wire up bang manager callback for command running changes
+    this.bangManager.onCommandRunningChange = (running: boolean) => {
+      this.options.callbacks?.onCommandRunningChange?.(running);
+      // When command stops and AI is idle, process queue
+      if (!running && !this.aiManager.isLoading) {
+        this.processQueuedMessage().catch((error) => {
+          this.logger?.error("Failed to process queued message:", error);
+        });
+      }
+    };
 
     // Set initial permission mode if provided
     if (options.permissionMode) {
@@ -290,6 +323,24 @@ export class Agent {
   /** Get bash command execution status */
   public get isCommandRunning(): boolean {
     return this.bangManager?.isCommandRunning ?? false;
+  }
+
+  /** Get queued messages */
+  public get queuedMessages(): QueuedMessage[] {
+    return this.messageQueue.getQueue();
+  }
+
+  /**
+   * Process the next queued message when the agent becomes idle.
+   * Dequeues the next message and sends it.
+   */
+  private async processQueuedMessage(): Promise<void> {
+    const next = this.messageQueue.dequeue();
+    if (!next) return;
+
+    this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+
+    await this.sendMessage(next.content, next.images);
   }
 
   /** Get background bash shell output */
@@ -504,6 +555,8 @@ export class Agent {
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
+    this.messageQueue.clear();
+    this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
   }
 
   /** Interrupt bash command execution */
@@ -635,6 +688,13 @@ export class Agent {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
   ): Promise<void> {
+    // If the agent is busy, enqueue the message
+    if (this.aiManager.isLoading || this.isCommandRunning) {
+      this.messageQueue.enqueue({ content, images });
+      this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+      return;
+    }
+
     await InteractionService.sendMessage(
       {
         messageManager: this.messageManager,

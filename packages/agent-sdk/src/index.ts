@@ -8,6 +8,7 @@ export * from "./constants/tools.js";
 export * from "./agent.js";
 export * from "./core/plugin.js";
 export * from "./managers/cronManager.js";
+export * from "./managers/messageQueue.js";
 
 // Export all utilities
 export * from "./utils/bashParser.js";

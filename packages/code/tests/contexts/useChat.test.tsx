@@ -1053,45 +1053,24 @@ describe("ChatProvider", () => {
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
 
-    // Mock sendMessage to not resolve immediately
-    let resolveSendMessage: (value: void | PromiseLike<void>) => void;
-    const sendMessagePromise = new Promise<void>((resolve) => {
-      resolveSendMessage = resolve;
-    });
-    mockAgent.sendMessage.mockReturnValue(sendMessagePromise);
-
-    // Send first message
-    const firstSendMessage = lastValue?.sendMessage("First message");
-
-    // Simulate agent setting isLoading to true (as the SDK does synchronously)
-    mockAgent.isLoading = true;
-    callbacks.onLoadingChange!(true);
-
-    await vi.waitFor(() => {
-      expect(lastValue?.isLoading).toBe(true);
-    });
-
-    // Send second message to queue it
-    lastValue?.sendMessage("Second message");
+    // Simulate the SDK enqueueing a message (agent.sendMessage called while busy)
+    callbacks.onQueuedMessagesChange!([{ content: "Second message" }]);
 
     await vi.waitFor(() => {
       expect(lastValue?.queuedMessages).toHaveLength(1);
       expect(lastValue?.queuedMessages[0].content).toBe("Second message");
     });
 
-    // Call abortMessage
+    // Call abortMessage (SDK clears queue and fires onQueuedMessagesChange)
     lastValue?.abortMessage();
+
+    // Simulate the SDK firing the callback after clearing
+    callbacks.onQueuedMessagesChange!([]);
 
     await vi.waitFor(() => {
       expect(lastValue?.queuedMessages).toHaveLength(0);
       expect(mockAgent.abortMessage).toHaveBeenCalled();
     });
-
-    // Cleanup
-    mockAgent.isLoading = false;
-    callbacks.onLoadingChange!(false);
-    resolveSendMessage!();
-    await firstSendMessage;
   });
 
   it("throttles onMessagesChange updates", async () => {
@@ -1197,7 +1176,7 @@ describe("ChatProvider", () => {
     });
   });
 
-  it("dequeue queued messages one at a time, not concurrently", async () => {
+  it("displays queued messages from SDK via onQueuedMessagesChange callback", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1212,43 +1191,19 @@ describe("ChatProvider", () => {
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
 
-    // Mock sendMessage to block until we resolve it
-    let resolveFirst: (value: void) => void;
-    const firstSendPromise = new Promise<void>((resolve) => {
-      resolveFirst = resolve;
-    });
-    mockAgent.sendMessage.mockImplementation(async () => {
-      await firstSendPromise;
-    });
-
-    // Send first message
-    lastValue?.sendMessage("msg1");
-
-    // Simulate what the agent SDK does: set isLoading to true FIRST, then fire callback
-    mockAgent.isLoading = true;
-    callbacks.onLoadingChange!(true);
-
-    // Send second message while isLoading is true - should be queued
-    lastValue?.sendMessage("msg2");
+    // Simulate the SDK queueing a message (via onQueuedMessagesChange)
+    callbacks.onQueuedMessagesChange!([{ content: "msg2" }]);
 
     await vi.waitFor(() => {
       expect(lastValue?.queuedMessages).toHaveLength(1);
       expect(lastValue?.queuedMessages[0].content).toBe("msg2");
     });
 
-    // Only the first message should have been sent
-    expect(mockAgent.sendMessage).toHaveBeenCalledTimes(1);
+    // Simulate the SDK dequeuing (message sent, queue emptied)
+    callbacks.onQueuedMessagesChange!([]);
 
-    // Now simulate the first message completing
-    // Agent SDK: set isLoading to false FIRST, then fire callback
-    mockAgent.isLoading = false;
-    callbacks.onLoadingChange!(false);
-    resolveFirst!();
-
-    // The queued message should now dequeue
     await vi.waitFor(() => {
-      expect(mockAgent.sendMessage).toHaveBeenCalledTimes(2);
-      expect(mockAgent.sendMessage).toHaveBeenCalledWith("msg2", undefined);
+      expect(lastValue?.queuedMessages).toHaveLength(0);
     });
   });
 

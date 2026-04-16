@@ -15,6 +15,7 @@ export class BangManager {
   private workdir: string;
   public isCommandRunning = false;
   private currentProcess: ChildProcess | null = null;
+  onCommandRunningChange?: (running: boolean) => void;
 
   constructor(
     private container: Container,
@@ -29,6 +30,7 @@ export class BangManager {
 
   private setCommandRunning(isRunning: boolean): void {
     this.isCommandRunning = isRunning;
+    this.onCommandRunningChange?.(isRunning);
   }
 
   public async executeCommand(command: string): Promise<number> {
