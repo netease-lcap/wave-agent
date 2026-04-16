@@ -208,6 +208,12 @@ export class Agent {
       }
     };
 
+    // Wire up CWD change callback from AIManager to sync Agent's workdir
+    this.aiManager.setOnCwdChange((newCwd) => {
+      this.workdir = newCwd;
+      this.options.callbacks?.onWorkdirChange?.(newCwd);
+    });
+
     // Set initial permission mode if provided
     if (options.permissionMode) {
       this.setPermissionMode(options.permissionMode);
@@ -238,6 +244,15 @@ export class Agent {
   /** Get working directory */
   public get workingDirectory(): string {
     return this.workdir;
+  }
+
+  /**
+   * Set the working directory
+   * @param newCwd - The new working directory
+   */
+  public setWorkdir(newCwd: string): void {
+    this.workdir = newCwd;
+    this.options.callbacks?.onWorkdirChange?.(newCwd);
   }
 
   /** Get project memory content */

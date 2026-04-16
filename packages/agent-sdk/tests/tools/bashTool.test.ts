@@ -97,11 +97,15 @@ describe("bashTool", () => {
       expect(result.success).toBe(true);
       expect(result.content).toBe("test output");
       expect(result.shortResult).toBe("test output");
-      expect(mockSpawn).toHaveBeenCalledWith("echo hello", {
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+      const spawnCallArgs = mockSpawn.mock.calls[0];
+      expect(typeof spawnCallArgs[0]).toBe("string");
+      expect(spawnCallArgs[0]).toContain("echo hello");
+      expect(spawnCallArgs[0]).toContain("pwd -P");
+      expect(spawnCallArgs[1]).toMatchObject({
         shell: true,
         stdio: "pipe",
         cwd: "/test/workdir",
-        env: expect.any(Object),
       });
     });
 

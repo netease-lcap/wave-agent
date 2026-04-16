@@ -230,7 +230,14 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 
     // Foreground execution (original behavior)
     return new Promise((resolve) => {
-      const child: ChildProcess = spawn(command, {
+      // Create a temporary file to store the CWD
+      const tempCwdFile = path.join(
+        os.tmpdir(),
+        `wave_cwd_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.tmp`,
+      );
+      const wrappedCommand = `${command} && pwd -P >| ${tempCwdFile}`;
+
+      const child: ChildProcess = spawn(wrappedCommand, {
         shell: true,
         stdio: "pipe",
         cwd: context.workdir,
@@ -401,7 +408,7 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
         }
       });
 
-      child.on("exit", (code) => {
+      child.on("exit", async (code) => {
         isFinished = true;
         if (context.foregroundTaskManager) {
           context.foregroundTaskManager.unregisterForegroundTask(
@@ -412,6 +419,36 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
         if (!isAborted && !isBackgrounded) {
           if (timeoutHandle) {
             clearTimeout(timeoutHandle);
+          }
+
+          // Read the new CWD from the temporary file
+          let newCwd: string | undefined;
+          try {
+            if (fs.existsSync(tempCwdFile)) {
+              newCwd = fs.readFileSync(tempCwdFile, "utf8").trim();
+              // Validate the path exists before calling the callback
+              fs.accessSync(newCwd, fs.constants.F_OK);
+            }
+          } catch (fileError) {
+            logger.warn(
+              `Could not read or validate new CWD from temp file ${tempCwdFile}:`,
+              fileError,
+            );
+            newCwd = undefined;
+          } finally {
+            // Ensure temp file is cleaned up even if reading fails
+            try {
+              if (fs.existsSync(tempCwdFile)) {
+                fs.unlinkSync(tempCwdFile);
+              }
+            } catch (fileError) {
+              logger.error("Failed to clean up temp CWD file:", fileError);
+            }
+          }
+
+          // If CWD changed, call the onCwdChange callback
+          if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
+            context.onCwdChange(newCwd);
           }
 
           const exitCode = code ?? 0;
