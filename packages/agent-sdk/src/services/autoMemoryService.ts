@@ -160,6 +160,7 @@ export class AutoMemoryService {
           "Grep",
           `Write(${memoryDir}/**/*)`,
           `Edit(${memoryDir}/**/*)`,
+          `Bash(rm ${memoryDir}/**/*)`,
         ],
         model: "fastModel", // Use fast model for background tasks to reduce latency and cost
         permissionModeOverride: "dontAsk", // Auto-deny out-of-scope writes without prompting user
