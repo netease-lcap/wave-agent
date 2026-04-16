@@ -140,6 +140,7 @@ export const addUserMessageToMessages = ({
   const textBlock = {
     type: "text" as const,
     content,
+    stage: "end" as const,
     ...(customCommandContent && { customCommandContent }),
     ...(source && { source }),
   };
