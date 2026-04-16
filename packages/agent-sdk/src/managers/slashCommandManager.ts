@@ -266,13 +266,6 @@ export class SlashCommandManager {
                     success: true,
                   });
 
-                  // Set isLoading to false before triggering AI response, because:
-                  // 1. The subagent has its own isolated isLoading state (not linked to parent)
-                  // 2. The parent's isLoading is still true from line above
-                  // 3. sendAIMessage() has an early return if isLoading is true (aiManager.ts:358-360)
-                  // 4. Without this, sendAIMessage() would return immediately without executing
-                  this.aiManager.setIsLoading(false);
-
                   // Trigger AI to process the tool result
                   await this.aiManager.sendAIMessage();
                 } finally {
@@ -504,6 +497,9 @@ export class SlashCommandManager {
     args?: string,
   ): Promise<void> {
     try {
+      // Set loading early so UI shows feedback during bash execution
+      this.aiManager.setIsLoading(true);
+
       // Parse bash commands from the content
       const { commands, processedContent } = parseBashCommands(content);
 
@@ -533,6 +529,8 @@ export class SlashCommandManager {
         allowedRules: config?.allowedTools,
       });
     } catch (error) {
+      this.aiManager.setIsLoading(false);
+
       logger?.error(
         `Failed to execute custom command '${commandName}':`,
         error,
