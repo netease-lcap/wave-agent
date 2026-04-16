@@ -550,11 +550,81 @@ describe("SlashCommandManager", () => {
           messageId,
           result: "Subagent result",
           stage: "end",
+          success: true,
         }),
       );
 
       // Verify that main agent is NOT triggered
       expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
+    });
+
+    it("should set success:true on tool block when forked skill completes", async () => {
+      const skillMetadata = {
+        name: "fork-skill",
+        description: "Forked skill",
+        userInvocable: true,
+        context: "fork",
+      };
+
+      vi.mocked(mockSkillManager.prepareSkill).mockResolvedValue({
+        content: "Forked skill content",
+        skill: {
+          name: "fork-skill",
+          description: "Forked skill",
+          type: "personal",
+          skillPath: "",
+          context: "fork",
+          content: "",
+          frontmatter: { name: "fork-skill", description: "Forked skill" },
+          isValid: true,
+          errors: [],
+        } as Skill,
+      });
+
+      slashCommandManager.registerSkillCommands([
+        skillMetadata,
+      ] as unknown as SkillMetadata[]);
+
+      const cmd = slashCommandManager.getCommand("fork-skill");
+      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+
+      await cmd?.handler();
+
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: expect.any(String),
+          result: "Subagent result",
+          stage: "end",
+          success: true,
+        }),
+      );
+    });
+
+    it("should set success:false on tool block when forked skill errors", async () => {
+      const skillMetadata = {
+        name: "fork-skill",
+        context: "fork",
+      };
+      slashCommandManager.registerSkillCommands([
+        skillMetadata,
+      ] as unknown as SkillMetadata[]);
+
+      const cmd = slashCommandManager.getCommand("fork-skill");
+      const updateToolBlockSpy = vi.spyOn(messageManager, "updateToolBlock");
+
+      vi.spyOn(mockSubagentManager, "executeAgent").mockRejectedValue(
+        new Error("Execution failed"),
+      );
+
+      await cmd?.handler();
+
+      expect(updateToolBlockSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: expect.any(String),
+          stage: "end",
+          error: "Execution failed",
+        }),
+      );
     });
 
     it("should handle error when no Agent configuration is found", async () => {
@@ -604,6 +674,7 @@ describe("SlashCommandManager", () => {
         expect.objectContaining({
           id: expect.any(String),
           stage: "end",
+          success: false,
           error: "Creation failed",
         }),
       );
@@ -632,6 +703,7 @@ describe("SlashCommandManager", () => {
         expect.objectContaining({
           id: expect.any(String),
           stage: "end",
+          success: false,
           error: "Execution failed",
         }),
       );
