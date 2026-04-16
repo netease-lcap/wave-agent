@@ -96,4 +96,5 @@ export interface AgentCallbacks
   onModelChange?: (model: string) => void;
   onConfiguredModelsChange?: (models: string[]) => void;
   onLoadingChange?: (loading: boolean) => void;
+  onWorkdirChange?: (newCwd: string) => void;
 }

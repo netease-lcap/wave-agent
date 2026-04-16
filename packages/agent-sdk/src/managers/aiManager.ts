@@ -31,6 +31,7 @@ import { logger } from "../utils/globalLogger.js";
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
   onUsageAdded?: (usage: Usage) => void;
+  onCwdChange?: (newCwd: string) => void;
 }
 
 export interface AIManagerOptions {
@@ -53,6 +54,7 @@ export class AIManager {
   private subagentType?: string; // Store subagent type for hook context
   private stream: boolean; // Streaming mode flag
   private modelOverride?: string;
+  private _onCwdChange?: (newCwd: string) => void; // Store callback for CWD changes
 
   // Service overrides
   constructor(
@@ -65,6 +67,7 @@ export class AIManager {
     this.stream = options.stream ?? true; // Default to true if not specified
     this.callbacks = options.callbacks ?? {};
     this.modelOverride = options.modelOverride;
+    this._onCwdChange = options.callbacks?.onCwdChange; // Initialize onCwdChange
   }
 
   private get toolManager(): ToolManager {
@@ -155,6 +158,14 @@ export class AIManager {
 
   public getAutoMemoryEnabled(): boolean {
     return this.configurationService.resolveAutoMemoryEnabled();
+  }
+
+  public getWorkdir(): string {
+    return this.workdir;
+  }
+
+  public setOnCwdChange(callback: (newCwd: string) => void): void {
+    this._onCwdChange = callback;
   }
 
   private isCompressing: boolean = false;
@@ -719,6 +730,28 @@ export class AIManager {
                     result,
                     stage: "running", // Keep it in running stage while updating result
                   });
+                },
+                onCwdChange: async (newCwd: string) => {
+                  const oldCwd = this.workdir;
+                  this.workdir = newCwd;
+                  this._onCwdChange?.(newCwd);
+                  if (this.hookManager) {
+                    const sessionId = this.messageManager.getSessionId();
+                    const transcriptPath =
+                      this.messageManager.getTranscriptPath();
+                    const env = Object.fromEntries(
+                      Object.entries(process.env).filter(
+                        (e) => e[1] !== undefined,
+                      ),
+                    ) as Record<string, string>;
+                    await this.hookManager.executeCwdChangedHooks(
+                      oldCwd,
+                      newCwd,
+                      sessionId,
+                      transcriptPath,
+                      env,
+                    );
+                  }
                 },
               };
 

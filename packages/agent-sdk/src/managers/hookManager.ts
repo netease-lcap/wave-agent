@@ -639,7 +639,8 @@ export class HookManager {
       event === "UserPromptSubmit" ||
       event === "Stop" ||
       event === "SubagentStop" ||
-      event === "WorktreeCreate"
+      event === "WorktreeCreate" ||
+      event === "CwdChanged"
     ) {
       return true;
     }
@@ -739,6 +740,7 @@ export class HookManager {
           SubagentStop: 0,
           PermissionRequest: 0,
           WorktreeCreate: 0,
+          CwdChanged: 0,
         },
       };
     }
@@ -751,6 +753,7 @@ export class HookManager {
       SubagentStop: 0,
       PermissionRequest: 0,
       WorktreeCreate: 0,
+      CwdChanged: 0,
     };
 
     let totalConfigs = 0;
@@ -773,6 +776,35 @@ export class HookManager {
       totalCommands,
       eventBreakdown,
     };
+  }
+
+  /**
+   * Execute CwdChanged hooks.
+   */
+  async executeCwdChangedHooks(
+    oldCwd: string,
+    newCwd: string,
+    sessionId: string,
+    transcriptPath: string,
+    env: Record<string, string>,
+  ): Promise<HookExecutionResult[]> {
+    const context: ExtendedHookExecutionContext = {
+      event: "CwdChanged",
+      projectDir: this.workdir,
+      timestamp: new Date(),
+      sessionId,
+      transcriptPath,
+      cwd: newCwd,
+      oldCwd,
+      newCwd,
+      env,
+    };
+    const results = await this.executeHooks("CwdChanged", context);
+    if (results.length > 0) {
+      // For CwdChanged hooks, we don't block, just log errors
+      this.processHookResults("CwdChanged", results);
+    }
+    return results;
   }
 
   /**
