@@ -654,6 +654,25 @@ export class MessageManager {
     const lastMessage = this.messages[this.messages.length - 1];
     if (lastMessage.role !== "assistant") return;
 
+    // Finalize any streaming reasoning blocks before text content arrives
+    const reasoningIndex = lastMessage.blocks.findIndex(
+      (block) =>
+        block.type === "reasoning" &&
+        (block as { stage?: string }).stage === "streaming",
+    );
+    if (reasoningIndex >= 0) {
+      const reasoningBlock = lastMessage.blocks[reasoningIndex] as {
+        type: "reasoning";
+        content: string;
+        stage?: string;
+      };
+      lastMessage.blocks[reasoningIndex] = {
+        type: "reasoning" as const,
+        content: reasoningBlock.content,
+        stage: "end" as const,
+      };
+    }
+
     // Get the current content to calculate the chunk
     const textBlockIndex = lastMessage.blocks.findIndex(
       (block) => block.type === "text",
@@ -704,6 +723,25 @@ export class MessageManager {
 
     const lastMessage = this.messages[this.messages.length - 1];
     if (lastMessage.role !== "assistant") return;
+
+    // Finalize any streaming text blocks before reasoning content arrives
+    const textIndex = lastMessage.blocks.findIndex(
+      (block) =>
+        block.type === "text" &&
+        (block as { stage?: string }).stage === "streaming",
+    );
+    if (textIndex >= 0) {
+      const textBlock = lastMessage.blocks[textIndex] as {
+        type: "text";
+        content: string;
+        stage?: string;
+      };
+      lastMessage.blocks[textIndex] = {
+        type: "text" as const,
+        content: textBlock.content,
+        stage: "end" as const,
+      };
+    }
 
     // Get the current reasoning content to calculate the chunk
     const reasoningBlockIndex = lastMessage.blocks.findIndex(
