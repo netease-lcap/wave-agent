@@ -1060,10 +1060,13 @@ describe("ChatProvider", () => {
     });
     mockAgent.sendMessage.mockReturnValue(sendMessagePromise);
 
-    // Send first message - agent callback will set isLoading to true
+    // Send first message
     const firstSendMessage = lastValue?.sendMessage("First message");
 
-    // Simulate agent setting isLoading
+    // Set mock agent isLoading so subsequent messages get queued
+    mockAgent.isLoading = true;
+
+    // Simulate agent setting isLoading (for React state sync)
     callbacks.onLoadingChange!(true);
 
     await vi.waitFor(() => {
