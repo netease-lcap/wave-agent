@@ -762,5 +762,68 @@ describe("SlashCommandManager", () => {
       const textBlock = lastMessage.blocks[0] as TextBlock;
       expect(textBlock.content).toBe("/test:test-args arg1 arg2");
     });
+
+    it("should set isLoading to false after forked skill completes before calling sendAIMessage", async () => {
+      // Forked slash commands need to reset isLoading before calling sendAIMessage
+      // because sendAIMessage() has an early return guard when isLoading is true
+      const skillMetadata = {
+        name: "fork-skill",
+        description: "Forked skill",
+        userInvocable: true,
+        context: "fork",
+      };
+
+      vi.mocked(mockSkillManager.prepareSkill).mockResolvedValue({
+        content: "Forked skill content",
+        skill: {
+          name: "fork-skill",
+          description: "Forked skill",
+          type: "personal",
+          skillPath: "",
+          context: "fork",
+          content: "",
+          frontmatter: { name: "fork-skill", description: "Forked skill" },
+          isValid: true,
+          errors: [],
+        } as Skill,
+      });
+
+      slashCommandManager.registerSkillCommands([
+        skillMetadata,
+      ] as unknown as SkillMetadata[]);
+
+      const cmd = slashCommandManager.getCommand("fork-skill");
+      await cmd?.handler();
+
+      // Verify setIsLoading is called with both true and false
+      const setIsLoadingCalls = vi.mocked(aiManager.setIsLoading).mock.calls;
+      expect(setIsLoadingCalls).toContainEqual([true]);
+      expect(setIsLoadingCalls).toContainEqual([false]);
+
+      // Verify sendAIMessage was called (proves the early return guard was not hit)
+      expect(aiManager.sendAIMessage).toHaveBeenCalled();
+
+      // Verify setIsLoading(false) was called before sendAIMessage
+      // by checking mock invocation order
+      const setIsLoadingMock = aiManager.setIsLoading as ReturnType<
+        typeof vi.fn
+      >;
+      const sendAIMessageMock = aiManager.sendAIMessage as ReturnType<
+        typeof vi.fn
+      >;
+
+      // Find the order of setIsLoading(false) call
+      const setIsLoadingFalseOrder =
+        setIsLoadingMock.mock.invocationCallOrder.find(
+          (order, i) => setIsLoadingCalls[i]?.[0] === false,
+        );
+
+      // Find the order of sendAIMessage call
+      const sendAIMessageOrder = sendAIMessageMock.mock.invocationCallOrder[0];
+
+      expect(setIsLoadingFalseOrder).toBeDefined();
+      expect(sendAIMessageOrder).toBeDefined();
+      expect(setIsLoadingFalseOrder!).toBeLessThan(sendAIMessageOrder!);
+    });
   });
 });
