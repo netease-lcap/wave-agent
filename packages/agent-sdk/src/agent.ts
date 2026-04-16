@@ -67,6 +67,7 @@ export class Agent {
   private hookManager: HookManager; // Add hooks manager instance
   private reversionManager: ReversionManager;
   private notificationQueue: NotificationQueue; // Add notification queue instance
+  private pendingNotificationPromises: Promise<void>[] = []; // Track pending notification processing
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private taskManager: TaskManager;
@@ -202,9 +203,15 @@ export class Agent {
     this.notificationQueue.onNotificationsEnqueued = () => {
       // If the AI is NOT loading (idle), trigger a new AI cycle to process notifications
       if (!this.aiManager.isLoading) {
-        this.processPendingNotifications().catch((error) => {
-          this.logger?.error("Failed to process pending notifications:", error);
-        });
+        const pendingPromise = this.processPendingNotifications().catch(
+          (error) => {
+            this.logger?.error(
+              "Failed to process pending notifications:",
+              error,
+            );
+          },
+        );
+        this.pendingNotificationPromises.push(pendingPromise);
       }
     };
 
@@ -533,6 +540,17 @@ export class Agent {
 
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
+    // Clear notification callback first to prevent any late triggers from
+    // starting async work during teardown
+    this.notificationQueue.onNotificationsEnqueued = undefined;
+
+    // Await any pending notification processing to prevent race conditions
+    // with test teardown (e.g., V8 coverage stream cleanup)
+    if (this.pendingNotificationPromises.length > 0) {
+      await Promise.allSettled(this.pendingNotificationPromises);
+      this.pendingNotificationPromises = [];
+    }
+
     await this.messageManager.saveSession();
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();
