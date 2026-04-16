@@ -355,11 +355,6 @@ export class AIManager {
   ): Promise<void> {
     const { recursionDepth = 0, model, allowedRules, maxTokens } = options;
 
-    // Only check isLoading for the initial call (recursionDepth === 0)
-    if (recursionDepth === 0 && this.isLoading) {
-      return;
-    }
-
     // Set loading state early for the initial call, before any async work
     if (recursionDepth === 0) {
       this.setIsLoading(true);

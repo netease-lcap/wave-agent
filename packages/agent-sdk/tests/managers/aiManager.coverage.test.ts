@@ -135,14 +135,15 @@ describe("AIManager - Coverage", () => {
     vi.clearAllMocks();
   });
 
-  it("should early return when isLoading at depth 0", async () => {
+  it("should not early return when isLoading at depth 0", async () => {
     const aiManager = new AIManager(makeContainer(), {
       workdir: "/test",
       stream: false,
     });
     (aiManager as unknown as { isLoading: boolean }).isLoading = true;
     await aiManager.sendAIMessage();
-    expect(aiService.callAgent).not.toHaveBeenCalled();
+    // sendAIMessage no longer guards against isLoading - it proceeds regardless
+    expect(aiService.callAgent).toHaveBeenCalled();
   });
 
   it("should handle reversionManager with snapshots", async () => {
@@ -328,14 +329,12 @@ describe("AIManager - Coverage", () => {
 
   it("should handle user message with file mention", async () => {
     const mm = mockMsgManager({
-      getMessages: vi
-        .fn()
-        .mockReturnValue([
-          {
-            role: "user",
-            blocks: [{ type: "text", content: "@src/index.ts" }],
-          },
-        ]),
+      getMessages: vi.fn().mockReturnValue([
+        {
+          role: "user",
+          blocks: [{ type: "text", content: "@src/index.ts" }],
+        },
+      ]),
     });
     const aiManager = new AIManager(makeContainer({ MessageManager: mm }), {
       workdir: "/test",

@@ -50,9 +50,9 @@ export class InteractionService {
 
         if (isValid && commandId !== undefined) {
           // Execute valid slash command
-          // Note: executeCommand and its handlers (e.g., skill commands) manage
-          // isLoading internally. Setting it here would cause sendAIMessage() to
-          // return early due to the isLoading guard at aiManager.ts:357.
+          // Note: executeCommand sets isLoading early (e.g., custom commands set it
+          // before bash execution). sendAIMessage() no longer guards against isLoading,
+          // so callers can safely set it early without blocking subsequent AI calls.
           await slashCommandManager.executeCommand(commandId, args);
 
           return;
