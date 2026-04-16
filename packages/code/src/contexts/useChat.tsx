@@ -17,6 +17,7 @@ import type {
   SlashCommand,
   PermissionDecision,
   PermissionMode,
+  QueuedMessage,
 } from "wave-agent-sdk";
 import {
   Agent,
@@ -41,11 +42,7 @@ export interface ChatContextType {
   isExpanded: boolean;
   isTaskListVisible: boolean;
   setIsTaskListVisible: (visible: boolean) => void;
-  queuedMessages: Array<{
-    content: string;
-    images?: Array<{ path: string; mimeType: string }>;
-    longTextMap?: Record<string, string>;
-  }>;
+  queuedMessages: QueuedMessage[];
   // AI functionality
   sessionId: string;
   sendMessage: (
@@ -158,18 +155,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const [isTaskListVisible, setIsTaskListVisible] = useState(true);
 
-  const [queuedMessages, setQueuedMessages] = useState<
-    Array<{
-      content: string;
-      images?: Array<{ path: string; mimeType: string }>;
-      longTextMap?: Record<string, string>;
-    }>
-  >([]);
-  const queuedMessagesRef = useRef(queuedMessages);
-  useEffect(() => {
-    queuedMessagesRef.current = queuedMessages;
-  }, [queuedMessages]);
-
   const [messages, setMessages] = useState<Message[]>([]);
 
   const throttledSetMessages = useMemo(
@@ -220,6 +205,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [isCompressing, setIsCompressing] = useState(false);
   const [currentModel, setCurrentModelState] = useState("");
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
 
   // MCP State
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
@@ -382,6 +368,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onLoadingChange: (loading) => {
           setIsLoading(loading);
         },
+        onCommandRunningChange: (running) => {
+          setIsCommandRunning(running);
+        },
+        onQueuedMessagesChange: (messages) => {
+          setQueuedMessages([...messages]);
+        },
       };
 
       try {
@@ -503,14 +495,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       if (!hasTextContent && !hasImageAttachments) return;
 
-      if (agentRef.current?.isLoading || isCommandRunning) {
-        setQueuedMessages((prev) => [
-          ...prev,
-          { content, images, longTextMap },
-        ]);
-        return;
-      }
-
       try {
         const expandedContent = longTextMap
           ? expandLongTextPlaceholders(content, longTextMap)
@@ -543,7 +527,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         console.error("Failed to send message:", error);
       }
     },
-    [isCommandRunning],
+    [],
   );
 
   const askBtw = useCallback(async (question: string) => {
@@ -553,26 +537,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return await agentRef.current.askBtw(question);
   }, []);
 
-  // Process queued messages when idle - only trigger on loading/command state changes
-  useEffect(() => {
-    if (
-      !isLoading &&
-      !isCommandRunning &&
-      queuedMessagesRef.current.length > 0
-    ) {
-      const nextMessage = queuedMessagesRef.current[0];
-      setQueuedMessages((prev) => prev.slice(1));
-      sendMessage(
-        nextMessage.content,
-        nextMessage.images,
-        nextMessage.longTextMap,
-      );
-    }
-  }, [isLoading, isCommandRunning, sendMessage]);
-
   // Unified interrupt method, interrupt both AI messages and command execution
   const abortMessage = useCallback(() => {
-    setQueuedMessages([]);
     agentRef.current?.abortMessage();
   }, []);
 

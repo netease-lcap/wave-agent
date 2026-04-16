@@ -1,4 +1,5 @@
 import type { ClientOptions } from "openai";
+import type { QueuedMessage } from "../managers/messageQueue.js";
 import type {
   Message,
   Logger,
@@ -96,5 +97,7 @@ export interface AgentCallbacks
   onModelChange?: (model: string) => void;
   onConfiguredModelsChange?: (models: string[]) => void;
   onLoadingChange?: (loading: boolean) => void;
+  onCommandRunningChange?: (running: boolean) => void;
   onWorkdirChange?: (newCwd: string) => void;
+  onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
 }
