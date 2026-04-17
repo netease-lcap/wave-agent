@@ -503,7 +503,7 @@ describe("HookManager Coverage", () => {
 
   describe("registerPluginHooks", () => {
     it("should initialize configuration if it doesn't exist", () => {
-      manager.registerPluginHooks({
+      manager.registerPluginHooks("/test/plugin", {
         UserPromptSubmit: [
           {
             hooks: [{ type: "command" as const, command: "echo plugin-hook" }],
@@ -511,6 +511,47 @@ describe("HookManager Coverage", () => {
         ],
       });
       expect(manager.getConfiguration()?.UserPromptSubmit).toHaveLength(1);
+    });
+
+    it("should stamp pluginRoot on hook commands", () => {
+      manager.registerPluginHooks("/my/plugin/root", {
+        PreToolUse: [
+          {
+            hooks: [{ type: "command" as const, command: "echo test" }],
+          },
+        ],
+      });
+      const config = manager.getConfiguration();
+      const hook = config?.PreToolUse?.[0]?.hooks?.[0];
+      expect(hook?.pluginRoot).toBe("/my/plugin/root");
+    });
+
+    it("should pass WAVE_PLUGIN_ROOT in env to executeCommand for plugin hooks", async () => {
+      manager.registerPluginHooks("/my/plugin/root", {
+        UserPromptSubmit: [
+          {
+            hooks: [{ type: "command" as const, command: "echo plugin" }],
+          },
+        ],
+      });
+
+      const context = {
+        event: "UserPromptSubmit" as const,
+        projectDir: "/test/workdir",
+        timestamp: new Date(),
+      };
+
+      await manager.executeHooks("UserPromptSubmit", context);
+
+      expect(mockExecuteCommand).toHaveBeenCalledWith(
+        "echo plugin",
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WAVE_PLUGIN_ROOT: "/my/plugin/root",
+          }),
+        }),
+        undefined,
+      );
     });
   });
 

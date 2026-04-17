@@ -417,6 +417,34 @@ describe("McpManager", () => {
 
       expect(result).toBe(false);
     });
+
+    it("should inject WAVE_PLUGIN_ROOT into env for plugin-owned stdio servers", async () => {
+      const pluginConfig = {
+        mcpServers: {
+          "plugin-server": {
+            command: "npx",
+            args: ["plugin-mcp"],
+            pluginRoot: "/path/to/plugin",
+          },
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(pluginConfig));
+      await mcpManager.loadConfig();
+
+      await mcpManager.connectServer("plugin-server");
+
+      expect(StdioClientTransport).toHaveBeenCalledWith({
+        command: "npx",
+        args: ["plugin-mcp"],
+        env: {
+          ...process.env,
+          WAVE_PLUGIN_ROOT: "/path/to/plugin",
+        },
+        cwd: "/test/workdir",
+        stderr: "pipe",
+      });
+    });
   });
 
   describe("disconnectServer", () => {

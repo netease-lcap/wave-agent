@@ -90,9 +90,13 @@ export class LspManager implements ILspManager {
     );
 
     try {
+      const env = { ...process.env, ...config.env };
+      if (config.pluginRoot) {
+        env.WAVE_PLUGIN_ROOT = config.pluginRoot;
+      }
       const proc = spawn(config.command, config.args || [], {
         cwd: config.workspaceFolder || this.workdir,
-        env: { ...process.env, ...config.env },
+        env,
         stdio: ["pipe", "pipe", "pipe"],
       });
 

@@ -400,4 +400,29 @@ describe("LspManager (Mocked)", () => {
     expect(result.success).toBe(true);
     expect(JSON.parse(result.content)).toEqual({ uri: "file://test" });
   });
+
+  it("should inject WAVE_PLUGIN_ROOT into env for plugin-owned LSP servers", async () => {
+    const { stdin, stdout } = setupMockProcess();
+    respondToInitialize(stdin, stdout);
+
+    lspManager.registerServer("typescript", {
+      command: "typescript-language-server",
+      args: ["--stdio"],
+      extensionToLanguage: { ".ts": "typescript" },
+      pluginRoot: "/path/to/plugin",
+      shutdownTimeout: 1,
+    });
+
+    await lspManager.getProcessForFile("/mock/workdir/test.ts");
+
+    expect(spawn).toHaveBeenCalledWith(
+      "typescript-language-server",
+      ["--stdio"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          WAVE_PLUGIN_ROOT: "/path/to/plugin",
+        }),
+      }),
+    );
+  });
 });

@@ -348,13 +348,17 @@ export class McpManager {
           logger?.info(`Connected to MCP server ${name} using SSE (fallback)`);
         }
       } else if (server.config.command) {
+        const env: Record<string, string> = {
+          ...(process.env as Record<string, string>),
+          ...(server.config.env || {}),
+        };
+        if (server.config.pluginRoot) {
+          env.WAVE_PLUGIN_ROOT = server.config.pluginRoot;
+        }
         transport = new StdioClientTransport({
           command: server.config.command,
           args: server.config.args || [],
-          env: {
-            ...(process.env as Record<string, string>),
-            ...(server.config.env || {}),
-          },
+          env,
           cwd: this.workdir, // Use the agent's workdir as the process working directory
           stderr: "pipe", // Pipe stderr to capture it
         });

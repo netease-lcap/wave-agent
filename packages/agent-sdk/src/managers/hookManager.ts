@@ -166,9 +166,20 @@ export class HookManager {
             ? { timeout: hookCommand.timeout * 1000 }
             : undefined;
 
+          // Build execution context with WAVE_PLUGIN_ROOT if this is a plugin hook
+          const execContext: typeof context = hookCommand.pluginRoot
+            ? {
+                ...context,
+                env: {
+                  ...("env" in context ? (context.env ?? {}) : {}),
+                  WAVE_PLUGIN_ROOT: hookCommand.pluginRoot,
+                },
+              }
+            : context;
+
           if (hookCommand.async) {
             // Execute async command without awaiting
-            executeCommand(hookCommand.command, context, options).catch(
+            executeCommand(hookCommand.command, execContext, options).catch(
               (error) => {
                 const errorMessage =
                   error instanceof Error
@@ -185,7 +196,7 @@ export class HookManager {
 
           const result = await executeCommand(
             hookCommand.command,
-            context,
+            execContext,
             options,
           );
           results.push(result);
@@ -810,11 +821,24 @@ export class HookManager {
   /**
    * Register hooks provided by a plugin
    */
-  registerPluginHooks(hooks: PartialHookConfiguration): void {
+  registerPluginHooks(
+    pluginRoot: string,
+    hooks: PartialHookConfiguration,
+  ): void {
     if (!this.configuration) {
       this.configuration = {};
     }
 
-    this.mergeHooksConfiguration(this.configuration, hooks);
+    // Stamp pluginRoot on each hook command
+    const stampedHooks: PartialHookConfiguration = {};
+    for (const [event, configs] of Object.entries(hooks)) {
+      if (!isValidHookEvent(event)) continue;
+      stampedHooks[event] = configs.map((config) => ({
+        ...config,
+        hooks: config.hooks.map((cmd) => ({ ...cmd, pluginRoot })),
+      }));
+    }
+
+    this.mergeHooksConfiguration(this.configuration, stampedHooks);
   }
 }

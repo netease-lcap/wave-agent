@@ -29,6 +29,7 @@ export interface HookCommand {
   command: string;
   async?: boolean;
   timeout?: number; // seconds
+  pluginRoot?: string; // Plugin directory path for plugin-originated hooks
 }
 
 // Hook event configuration with optional pattern matching
@@ -127,6 +128,10 @@ export function isValidHookCommand(cmd: unknown): cmd is HookCommand {
   }
 
   if ("timeout" in hookCmd && typeof hookCmd.timeout !== "number") {
+    return false;
+  }
+
+  if ("pluginRoot" in hookCmd && typeof hookCmd.pluginRoot !== "string") {
     return false;
   }
 
