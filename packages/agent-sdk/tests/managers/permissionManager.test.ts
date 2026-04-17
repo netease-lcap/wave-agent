@@ -21,11 +21,20 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   },
 }));
 
+function createContainer(workdir?: string): Container {
+  const c = new Container();
+  if (workdir) {
+    c.register("Workdir", workdir);
+  }
+  return c;
+}
+
 describe("PermissionManager", () => {
   let permissionManager: PermissionManager;
   const container = new Container();
 
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
     // Create mock Logger
 
@@ -246,9 +255,8 @@ describe("PermissionManager", () => {
       it("should allow file operations in auto-memory directory (Safe Zone)", async () => {
         const workdir = "/home/user/project";
         const autoMemoryDir = "/home/user/.wave/projects/encoded/memory";
-        const container = new Container();
+        const container = createContainer(workdir);
         const manager = new PermissionManager(container, {
-          workdir,
           additionalDirectories: [autoMemoryDir],
         });
 
@@ -265,10 +273,8 @@ describe("PermissionManager", () => {
       it("should allow file operations in system additional directories", async () => {
         const workdir = "/home/user/project";
         const systemDir = "/home/user/system-safe";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         manager.addSystemAdditionalDirectory(systemDir);
 
@@ -284,10 +290,8 @@ describe("PermissionManager", () => {
 
       it("should deny file operations outside Safe Zone in acceptEdits mode", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Write",
@@ -483,7 +487,8 @@ describe("PermissionManager", () => {
       const workdir = "/home/user/project";
 
       it("should match absolute path against relative pattern if inside workdir", async () => {
-        const manager = new PermissionManager(container, { workdir });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
         manager.updateDeniedRules(["Read(src/**)"]);
 
         const context: ToolPermissionContext = {
@@ -500,7 +505,8 @@ describe("PermissionManager", () => {
       });
 
       it("should NOT match absolute path against relative pattern if outside workdir", async () => {
-        const manager = new PermissionManager(container, { workdir });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
         manager.updateDeniedRules(["Read(src/**)"]);
 
         const context: ToolPermissionContext = {
@@ -515,7 +521,8 @@ describe("PermissionManager", () => {
       });
 
       it("should still match absolute pattern against absolute path", async () => {
-        const manager = new PermissionManager(container, { workdir });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
         const absolutePattern = "/home/user/project/src/**";
         manager.updateDeniedRules([`Read(${absolutePattern})`]);
 
@@ -533,7 +540,8 @@ describe("PermissionManager", () => {
       });
 
       it("should match relative path against relative pattern", async () => {
-        const manager = new PermissionManager(container, { workdir });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
         manager.updateDeniedRules(["Read(src/**)"]);
 
         const context: ToolPermissionContext = {
@@ -653,10 +661,8 @@ describe("PermissionManager", () => {
       it("should allow file tools in acceptEdits mode inside Safe Zone", async () => {
         const fileTools = ["Edit", "Write"];
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         for (const toolName of fileTools) {
           const context: ToolPermissionContext = {
@@ -686,10 +692,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir in acceptEdits mode inside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -703,10 +707,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir with multiple paths in acceptEdits mode inside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -720,10 +722,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir -p in acceptEdits mode inside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -737,10 +737,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir --parents in acceptEdits mode inside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -754,10 +752,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir with multiple flags in acceptEdits mode inside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -771,10 +767,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir with quoted paths in acceptEdits mode inside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -791,10 +785,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir with mixed quoted and unquoted paths in acceptEdits mode inside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -808,10 +800,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir with flags and mixed quoted/unquoted paths in acceptEdits mode inside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -825,10 +815,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir with flags, quoted paths and .. in acceptEdits mode inside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -842,10 +830,8 @@ describe("PermissionManager", () => {
 
       it("should deny mkdir in acceptEdits mode outside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -860,9 +846,8 @@ describe("PermissionManager", () => {
       it("should allow mkdir in acceptEdits mode inside additionalDirectories", async () => {
         const workdir = "/home/user/project";
         const additionalDir = "/home/user/additional";
-        const container = new Container();
+        const container = createContainer(workdir);
         const manager = new PermissionManager(container, {
-          workdir,
           additionalDirectories: [additionalDir],
         });
 
@@ -879,10 +864,8 @@ describe("PermissionManager", () => {
       it("should allow mkdir in acceptEdits mode inside systemAdditionalDirectories", async () => {
         const workdir = "/home/user/project";
         const systemDir = "/home/user/system";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
         manager.addSystemAdditionalDirectory(systemDir);
 
         const context: ToolPermissionContext = {
@@ -898,9 +881,8 @@ describe("PermissionManager", () => {
       it("should allow mkdir in acceptEdits mode inside autoMemoryDir", async () => {
         const workdir = "/home/user/project";
         const autoMemoryDir = "/home/user/.wave/projects/encoded/memory";
-        const container = new Container();
+        const container = createContainer(workdir);
         const manager = new PermissionManager(container, {
-          workdir,
           additionalDirectories: [autoMemoryDir],
         });
 
@@ -916,10 +898,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir in acceptEdits mode inside workdir", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -933,10 +913,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir in acceptEdits mode inside workdir with relative path", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -950,10 +928,8 @@ describe("PermissionManager", () => {
 
       it("should allow mkdir in acceptEdits mode inside workdir with .. path", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -967,10 +943,8 @@ describe("PermissionManager", () => {
 
       it("should deny mkdir in acceptEdits mode outside workdir with .. path", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -984,10 +958,8 @@ describe("PermissionManager", () => {
 
       it("should deny mkdir in acceptEdits mode if any path is outside Safe Zone", async () => {
         const workdir = "/home/user/project";
-        const container = new Container();
-        const manager = new PermissionManager(container, {
-          workdir,
-        });
+        const container = createContainer(workdir);
+        const manager = new PermissionManager(container);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -2455,6 +2427,153 @@ describe("PermissionManager", () => {
       const workdir = "/home/user/project";
       const rules = permissionManager.expandBashRule("sort file.txt", workdir);
       expect(rules).toEqual([]);
+    });
+  });
+
+  describe("dynamic workdir changes", () => {
+    it("should match previously granted relative rule after workdir changes and returns to original", async () => {
+      const workdir = "/a";
+      const container = createContainer(workdir);
+      const manager = new PermissionManager(container);
+      manager.updateDeniedRules(["Read(src/**)"]);
+
+      // Verify rule matches with initial workdir
+      const context1: ToolPermissionContext = {
+        toolName: "Read",
+        permissionMode: "default",
+        toolInput: { file_path: "/a/src/main.ts" },
+      };
+
+      expect(await manager.checkPermission(context1)).toMatchObject({
+        behavior: "deny",
+      });
+
+      // Change workdir to /a/b
+      container.register("Workdir", "/a/b");
+
+      // Change back to /a
+      container.register("Workdir", "/a");
+
+      // Permission for src/main.ts should still be remembered
+      const context2: ToolPermissionContext = {
+        toolName: "Read",
+        permissionMode: "default",
+        toolInput: { file_path: "/a/src/main.ts" },
+      };
+
+      expect(await manager.checkPermission(context2)).toMatchObject({
+        behavior: "deny",
+      });
+    });
+
+    it("should resolve relative paths against current workdir, not initial workdir", async () => {
+      const workdir = "/a";
+      const container = createContainer(workdir);
+      const manager = new PermissionManager(container);
+      manager.updateDeniedRules(["Read(src/**)"]);
+
+      // Change workdir to /b
+      container.register("Workdir", "/b");
+
+      // Read(/b/src/main.ts) should be denied (matches rule with current workdir)
+      const context1: ToolPermissionContext = {
+        toolName: "Read",
+        permissionMode: "default",
+        toolInput: { file_path: "/b/src/main.ts" },
+      };
+
+      expect(await manager.checkPermission(context1)).toMatchObject({
+        behavior: "deny",
+      });
+
+      // Read(/a/src/main.ts) should be allowed (no longer inside workdir, unrestricted)
+      const context2: ToolPermissionContext = {
+        toolName: "Read",
+        permissionMode: "default",
+        toolInput: { file_path: "/a/src/main.ts" },
+      };
+
+      // Read is unrestricted, so outside workdir it should be allowed
+      expect(await manager.checkPermission(context2)).toMatchObject({
+        behavior: "allow",
+      });
+    });
+
+    it("should use current workdir in isInsideSafeZone after dynamic change", async () => {
+      const workdir = "/a";
+      const container = createContainer(workdir);
+      const manager = new PermissionManager(container, {
+        configuredPermissionMode: "acceptEdits",
+      });
+
+      // File /a/test.txt is inside safe zone
+      const context1: ToolPermissionContext = {
+        toolName: "Write",
+        permissionMode: "acceptEdits",
+        toolInput: { file_path: "/a/test.txt" },
+      };
+
+      expect(await manager.checkPermission(context1)).toMatchObject({
+        behavior: "allow",
+      });
+
+      // Update workdir to /c
+      container.register("Workdir", "/c");
+
+      // File /a/test.txt should no longer be inside workdir safe zone
+      const context2: ToolPermissionContext = {
+        toolName: "Write",
+        permissionMode: "acceptEdits",
+        toolInput: { file_path: "/a/test.txt" },
+      };
+
+      expect(await manager.checkPermission(context2)).toMatchObject({
+        behavior: "deny",
+      });
+
+      // File /c/test.txt should be inside the new safe zone
+      const context3: ToolPermissionContext = {
+        toolName: "Write",
+        permissionMode: "acceptEdits",
+        toolInput: { file_path: "/c/test.txt" },
+      };
+
+      expect(await manager.checkPermission(context3)).toMatchObject({
+        behavior: "allow",
+      });
+    });
+
+    it("should resolve workdir from parent container in subagent PermissionManager", () => {
+      const parentContainer = createContainer("/a");
+
+      // Child container should resolve Workdir from parent
+      const childContainer = parentContainer.createChild();
+      expect(childContainer.get<string>("Workdir")).toBe("/a");
+
+      // Parent updates Workdir to /b
+      parentContainer.register("Workdir", "/b");
+
+      // Child container should resolve Workdir=/b
+      expect(childContainer.get<string>("Workdir")).toBe("/b");
+    });
+
+    it("should update additionalDirectories resolution when workdir changes", () => {
+      const workdir = "/a";
+      const container = createContainer(workdir);
+      const manager = new PermissionManager(container);
+
+      // Add relative additional directory
+      manager.updateAdditionalDirectories(["./config"]);
+
+      // Should resolve relative to /a
+      expect(manager.getAdditionalDirectories()).toContain("/a/config");
+
+      // Change workdir
+      container.register("Workdir", "/b");
+
+      // Add another relative directory - should now resolve to /b
+      manager.updateAdditionalDirectories(["./data"]);
+      expect(manager.getAdditionalDirectories()).toContain("/b/data");
     });
   });
 });

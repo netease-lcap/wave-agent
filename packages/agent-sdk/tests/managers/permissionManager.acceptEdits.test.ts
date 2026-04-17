@@ -20,9 +20,9 @@ describe("PermissionManager - acceptEdits mode", () => {
     it("should automatically allow 'Edit', 'Write' tools inside Safe Zone", async () => {
       const autoAcceptedTools = ["Edit", "Write"];
       const workdir = "/home/user/project";
-      const manager = new PermissionManager(container, {
-        workdir,
-      });
+      const container = new Container();
+      container.register("Workdir", workdir);
+      const manager = new PermissionManager(container);
 
       for (const toolName of autoAcceptedTools) {
         const context: ToolPermissionContext = {

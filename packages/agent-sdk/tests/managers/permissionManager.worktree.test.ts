@@ -13,6 +13,14 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   },
 }));
 
+function createContainer(workdir?: string): Container {
+  const c = new Container();
+  if (workdir) {
+    c.register("Workdir", workdir);
+  }
+  return c;
+}
+
 describe("PermissionManager Worktree Safety", () => {
   let container: Container;
   const workdir = "/home/user/project/worktrees/feat-1";
@@ -21,13 +29,13 @@ describe("PermissionManager Worktree Safety", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    container = new Container();
+    container = createContainer(workdir);
     container.register("WorktreeName", worktreeName);
     container.register("MainRepoRoot", mainRepoRoot);
   });
 
   it("should allow Write to a file inside the worktree", async () => {
-    const manager = new PermissionManager(container, { workdir });
+    const manager = new PermissionManager(container);
     const context: ToolPermissionContext = {
       toolName: "Write",
       permissionMode: "acceptEdits",
@@ -39,7 +47,7 @@ describe("PermissionManager Worktree Safety", () => {
   });
 
   it("should auto-deny Write to a file in the main repo (outside worktree)", async () => {
-    const manager = new PermissionManager(container, { workdir });
+    const manager = new PermissionManager(container);
     const context: ToolPermissionContext = {
       toolName: "Write",
       permissionMode: "acceptEdits",
@@ -55,7 +63,7 @@ describe("PermissionManager Worktree Safety", () => {
   });
 
   it("should auto-deny Edit to a file in the main repo (outside worktree)", async () => {
-    const manager = new PermissionManager(container, { workdir });
+    const manager = new PermissionManager(container);
     const context: ToolPermissionContext = {
       toolName: "Edit",
       permissionMode: "acceptEdits",
@@ -71,7 +79,7 @@ describe("PermissionManager Worktree Safety", () => {
 
   it("should allow Write to the plan file outside the main repo in plan mode", async () => {
     const planFilePath = "/home/user/.wave/plans/plan.md";
-    const manager = new PermissionManager(container, { workdir, planFilePath });
+    const manager = new PermissionManager(container, { planFilePath });
     const context: ToolPermissionContext = {
       toolName: "Write",
       permissionMode: "plan",
@@ -84,7 +92,7 @@ describe("PermissionManager Worktree Safety", () => {
 
   it("should auto-deny Write to a non-plan file in the main repo in plan mode", async () => {
     const planFilePath = path.join(mainRepoRoot, "plan.md");
-    const manager = new PermissionManager(container, { workdir, planFilePath });
+    const manager = new PermissionManager(container, { planFilePath });
     const context: ToolPermissionContext = {
       toolName: "Write",
       permissionMode: "plan",
@@ -101,7 +109,7 @@ describe("PermissionManager Worktree Safety", () => {
   });
 
   it("should allow Write to a file outside the main repo (normal Safe Zone check applies)", async () => {
-    const manager = new PermissionManager(container, { workdir });
+    const manager = new PermissionManager(container);
     const context: ToolPermissionContext = {
       toolName: "Write",
       permissionMode: "acceptEdits",
@@ -115,10 +123,8 @@ describe("PermissionManager Worktree Safety", () => {
   });
 
   it("should not auto-deny if not in a worktree session", async () => {
-    const emptyContainer = new Container();
-    const manager = new PermissionManager(emptyContainer, {
-      workdir: mainRepoRoot,
-    });
+    const emptyContainer = createContainer(mainRepoRoot);
+    const manager = new PermissionManager(emptyContainer);
     const context: ToolPermissionContext = {
       toolName: "Write",
       permissionMode: "acceptEdits",

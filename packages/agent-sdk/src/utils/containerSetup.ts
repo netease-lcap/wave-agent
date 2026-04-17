@@ -77,6 +77,7 @@ export function setupAgentContainer(
   const callbacks = options.callbacks || {};
   const container = new Container();
   container.register("AgentOptions", options);
+  container.register("Workdir", workdir);
 
   const notificationQueue = new NotificationQueue();
   container.register("NotificationQueue", notificationQueue);
@@ -151,7 +152,6 @@ export function setupAgentContainer(
   container.register("LspManager", lspManager);
 
   const permissionManager = new PermissionManager(container, {
-    workdir,
     instanceAllowedRules: options.allowedTools,
     instanceDeniedRules: options.disallowedTools,
   });

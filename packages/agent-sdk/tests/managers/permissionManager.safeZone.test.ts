@@ -13,10 +13,10 @@ describe("PermissionManager Safe Zone", () => {
 
   beforeEach(() => {
     container = new Container();
+    container.register("Workdir", workdir);
 
     permissionManager = new PermissionManager(container, {
       additionalDirectories: [additionalDir],
-      workdir,
     });
 
     // Mock fs.realpathSync for path safety checks

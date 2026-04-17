@@ -243,7 +243,6 @@ export class SubagentManager {
     const parentPermissionManager =
       this.container.get<PermissionManager>("PermissionManager");
     const subagentPermissionManager = new PermissionManager(subagentContainer, {
-      workdir: this.workdir,
       configuredPermissionMode:
         parameters.permissionModeOverride ??
         parentPermissionManager?.getConfiguredPermissionMode(),

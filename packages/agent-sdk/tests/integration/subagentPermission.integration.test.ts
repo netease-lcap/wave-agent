@@ -45,6 +45,8 @@ describe("Subagent Permission Integration", () => {
       resolveLanguage: () => undefined,
     });
 
+    container.register("Workdir", "/tmp/test");
+
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
       stream: false,
@@ -101,9 +103,7 @@ describe("Subagent Permission Integration", () => {
   });
 
   it("should verify that subagent's PermissionManager is isolated from parent", async () => {
-    const parentPermissionManager = new PermissionManager(container, {
-      workdir: "/tmp/test",
-    });
+    const parentPermissionManager = new PermissionManager(container, {});
     container.register("PermissionManager", parentPermissionManager);
 
     const mockConfig: SubagentConfiguration = {
@@ -147,7 +147,6 @@ describe("Subagent Permission Integration", () => {
 
   it("should inherit all permission settings from parent PermissionManager", async () => {
     const parentPermissionManager = new PermissionManager(container, {
-      workdir: "/tmp/test",
       configuredPermissionMode: "acceptEdits",
       allowedRules: ["git:*"],
       deniedRules: ["Bash(rm *)"],
@@ -194,7 +193,6 @@ describe("Subagent Permission Integration", () => {
 
   it("should inherit instance-specific permission rules from parent PermissionManager", async () => {
     const parentPermissionManager = new PermissionManager(container, {
-      workdir: "/tmp/test",
       instanceAllowedRules: ["Bash(ls)"],
       instanceDeniedRules: ["Bash(rm *)"],
     });

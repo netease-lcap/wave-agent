@@ -113,8 +113,6 @@ export interface PermissionManagerOptions {
   additionalDirectories?: string[];
   /** System additional directories (persistent across reloads) */
   systemAdditionalDirectories?: string[];
-  /** The main working directory */
-  workdir?: string;
   /** Path to the current plan file */
   planFilePath?: string;
   /** Optional logger */
@@ -130,7 +128,6 @@ export class PermissionManager {
   private temporaryRules: string[] = [];
   private additionalDirectories: string[] = [];
   private systemAdditionalDirectories: string[] = [];
-  private workdir?: string;
   private planFilePath?: string;
   private worktreeName?: string;
   private mainRepoRoot?: string;
@@ -146,7 +143,6 @@ export class PermissionManager {
     this.deniedRules = options.deniedRules || [];
     this.instanceAllowedRules = options.instanceAllowedRules || [];
     this.instanceDeniedRules = options.instanceDeniedRules || [];
-    this.workdir = options.workdir;
     this.planFilePath = options.planFilePath;
     this._logger = options.logger;
     this.updateAdditionalDirectories(options.additionalDirectories || []);
@@ -156,6 +152,13 @@ export class PermissionManager {
 
     this.worktreeName = this.container.get<string>("WorktreeName");
     this.mainRepoRoot = this.container.get<string>("MainRepoRoot");
+  }
+
+  /**
+   * Resolve the working directory from the DI container
+   */
+  private getWorkdir(): string | undefined {
+    return this.container.get<string>("Workdir");
   }
 
   /**
@@ -272,9 +275,10 @@ export class PermissionManager {
    * Update the additional directories (e.g., when configuration reloads)
    */
   updateAdditionalDirectories(directories: string[]): void {
+    const workdir = this.getWorkdir();
     this.additionalDirectories = directories.map((dir) => {
-      if (this.workdir && !path.isAbsolute(dir)) {
-        return path.resolve(this.workdir, dir);
+      if (workdir && !path.isAbsolute(dir)) {
+        return path.resolve(workdir, dir);
       }
       return path.resolve(dir);
     });
@@ -284,21 +288,15 @@ export class PermissionManager {
    * Add a system-level additional directory that is persistent across configuration reloads
    */
   public addSystemAdditionalDirectory(directory: string): void {
+    const workdir = this.getWorkdir();
     const resolvedPath =
-      this.workdir && !path.isAbsolute(directory)
-        ? path.resolve(this.workdir, directory)
+      workdir && !path.isAbsolute(directory)
+        ? path.resolve(workdir, directory)
         : path.resolve(directory);
 
     if (!this.systemAdditionalDirectories.includes(resolvedPath)) {
       this.systemAdditionalDirectories.push(resolvedPath);
     }
-  }
-
-  /**
-   * Update the working directory
-   */
-  updateWorkdir(workdir: string): void {
-    this.workdir = workdir;
   }
 
   /**
@@ -322,7 +320,7 @@ export class PermissionManager {
     targetPath: string,
     workdir?: string,
   ): { isInside: boolean; resolvedPath: string } {
-    const effectiveWorkdir = workdir || this.workdir;
+    const effectiveWorkdir = workdir || this.getWorkdir();
 
     // Resolve the target path relative to effectiveWorkdir if it's not absolute
     const absolutePath =
@@ -432,21 +430,25 @@ export class PermissionManager {
     }
 
     // 0. Check worktree safety for Write and Edit tools
+    const currentWorkdir = this.getWorkdir();
     if (
       this.worktreeName &&
       this.mainRepoRoot &&
-      this.workdir &&
+      currentWorkdir &&
       (context.toolName === WRITE_TOOL_NAME ||
         context.toolName === EDIT_TOOL_NAME)
     ) {
       const targetPath = context.toolInput?.file_path as string | undefined;
       if (targetPath) {
-        const absoluteTargetPath = path.resolve(this.workdir, targetPath);
+        const absoluteTargetPath = path.resolve(currentWorkdir, targetPath);
         const isInsideMainRepo = isPathInside(
           absoluteTargetPath,
           this.mainRepoRoot,
         );
-        const isInsideWorktree = isPathInside(absoluteTargetPath, this.workdir);
+        const isInsideWorktree = isPathInside(
+          absoluteTargetPath,
+          currentWorkdir,
+        );
 
         // If it's inside the main repo but NOT inside the current worktree
         if (isInsideMainRepo && !isInsideWorktree) {
@@ -455,11 +457,11 @@ export class PermissionManager {
             targetPath,
             worktreeName: this.worktreeName,
             mainRepoRoot: this.mainRepoRoot,
-            workdir: this.workdir,
+            workdir: currentWorkdir,
           });
           return {
             behavior: "deny",
-            message: `Access denied: You are currently in a worktree session ("${this.worktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${this.workdir}`,
+            message: `Access denied: You are currently in a worktree session ("${this.worktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${currentWorkdir}`,
           };
         }
       }
@@ -808,12 +810,13 @@ export class PermissionManager {
         }
 
         // If direct match fails, try matching relative path if targetPath is absolute and pattern is relative
+        const currentWorkdir = this.getWorkdir();
         if (
           path.isAbsolute(targetPath) &&
           !path.isAbsolute(pattern) &&
-          this.workdir
+          currentWorkdir
         ) {
-          const relativePath = path.relative(this.workdir, targetPath);
+          const relativePath = path.relative(currentWorkdir, targetPath);
           // Ensure the path is not outside the workdir (doesn't start with ..)
           if (
             !relativePath.startsWith("..") &&
@@ -1056,7 +1059,8 @@ export class PermissionManager {
    * @param rule - The rule to add (e.g., "Bash(ls)")
    */
   public async addPermissionRule(rule: string): Promise<void> {
-    if (!this.workdir) {
+    const workdir = this.getWorkdir();
+    if (!workdir) {
       throw new Error("Working directory not set in PermissionManager");
     }
 
@@ -1065,7 +1069,7 @@ export class PermissionManager {
     const bashMatch = rule.match(/^Bash\((.*)\)$/);
     if (bashMatch) {
       const command = bashMatch[1];
-      rulesToAdd = this.expandBashRule(command, this.workdir);
+      rulesToAdd = this.expandBashRule(command, workdir);
     }
 
     const configurationService = this.container.get<ConfigurationService>(
@@ -1085,7 +1089,7 @@ export class PermissionManager {
         // 3. Persist to settings.local.json
         try {
           if (configurationService) {
-            await configurationService.addAllowedRule(this.workdir, ruleToAdd);
+            await configurationService.addAllowedRule(workdir, ruleToAdd);
             this._logger?.debug("Persistent permission rule added", {
               rule: ruleToAdd,
             });

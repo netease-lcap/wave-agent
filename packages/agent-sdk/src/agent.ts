@@ -221,6 +221,7 @@ export class Agent {
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {
       this.workdir = newCwd;
+      this.container.register("Workdir", newCwd);
       this.options.callbacks?.onWorkdirChange?.(newCwd);
     });
 
@@ -292,6 +293,7 @@ export class Agent {
    */
   public setWorkdir(newCwd: string): void {
     this.workdir = newCwd;
+    this.container.register("Workdir", newCwd);
     this.options.callbacks?.onWorkdirChange?.(newCwd);
   }
 
