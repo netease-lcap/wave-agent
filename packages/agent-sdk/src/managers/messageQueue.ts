@@ -29,4 +29,13 @@ export class MessageQueue {
   getQueue(): QueuedMessage[] {
     return [...this.queue];
   }
+
+  removeAt(index: number): boolean {
+    if (index < 0 || index >= this.queue.length) {
+      return false;
+    }
+    this.queue.splice(index, 1);
+    this.onMessageEnqueued?.();
+    return true;
+  }
 }
