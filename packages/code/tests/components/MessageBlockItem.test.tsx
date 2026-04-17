@@ -135,4 +135,110 @@ describe("MessageBlockItem Component", () => {
       expect(lastFrame()).toContain("MOCKED_REASONING");
     });
   });
+
+  describe("Text Block Streaming", () => {
+    const createAssistantMessage = (): Message => ({
+      id: "test-id",
+      role: "assistant",
+      blocks: [],
+    });
+
+    it("should show last 30 chars with ellipsis when streaming and content is long", () => {
+      const message: Message = createAssistantMessage();
+      const block: MessageBlock = {
+        type: "text",
+        content:
+          "This is a very long streaming message that should be truncated",
+        stage: "streaming",
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={false} />,
+      );
+      const frame = lastFrame();
+      expect(frame).toContain("…");
+      expect(frame).toContain("that should be truncated");
+    });
+
+    it("should show full content when streaming and content is short", () => {
+      const message: Message = createAssistantMessage();
+      const block: MessageBlock = {
+        type: "text",
+        content: "short",
+        stage: "streaming",
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={false} />,
+      );
+      expect(lastFrame()).toContain("short");
+    });
+
+    it("should flatten newlines when streaming", () => {
+      const message: Message = createAssistantMessage();
+      const block: MessageBlock = {
+        type: "text",
+        content: "line1\nline2\nline3\nthis is the end of the stream",
+        stage: "streaming",
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={false} />,
+      );
+      const frame = lastFrame();
+      // Newlines should be replaced with literal \n in the displayed text
+      expect(frame).toContain("end of the stream");
+      expect(frame).toContain("…");
+    });
+
+    it("should use Markdown when stage is not streaming", () => {
+      const message: Message = createAssistantMessage();
+      const block: MessageBlock = {
+        type: "text",
+        content: "**bold** text",
+        stage: "end",
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={false} />,
+      );
+      expect(lastFrame()).toContain("**bold** text");
+    });
+
+    it("should use Markdown when stage is undefined", () => {
+      const message: Message = createAssistantMessage();
+      const block: MessageBlock = {
+        type: "text",
+        content: "**bold** text",
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={false} />,
+      );
+      expect(lastFrame()).toContain("**bold** text");
+    });
+
+    it("should show full content when user message is streaming", () => {
+      const message: Message = { id: "test-id", role: "user", blocks: [] };
+      const block: MessageBlock = {
+        type: "text",
+        content: "user streaming content that is very long",
+        stage: "streaming",
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={false} />,
+      );
+      expect(lastFrame()).toContain("user streaming content that is very long");
+    });
+
+    it("should show full content when expanded and streaming", () => {
+      const message: Message = createAssistantMessage();
+      const block: MessageBlock = {
+        type: "text",
+        content: "expanded streaming content that is very long",
+        stage: "streaming",
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={true} />,
+      );
+      expect(lastFrame()).toContain(
+        "expanded streaming content that is very long",
+      );
+    });
+  });
 });

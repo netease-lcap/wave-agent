@@ -23,6 +23,7 @@ The component switches on `block.type` to render the appropriate UI:
 
 - **text**:
   - If `message.role === "user"` or `isExpanded`, renders as plain text (with background for user messages).
+  - If `block.stage === "streaming"` (assistant, collapsed), shows last 30 characters with gray color and truncation (matching tool/reasoning streaming behavior).
   - Otherwise, renders using the `Markdown` component.
   - Supports `HOOK` source prefix (`~ `).
 - **slash**: Delegates to `SlashDisplay`.
