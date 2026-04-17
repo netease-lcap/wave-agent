@@ -367,6 +367,30 @@ describe("SkillManager", () => {
       expect(metadata?.pluginName).toBe("test-plugin");
     });
 
+    it("should preserve pluginRoot from plugin skills", async () => {
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+
+      const pluginSkill: Skill = {
+        name: "plugin-skill",
+        description: "from plugin",
+        type: "personal",
+        skillPath: "/plugin/root/skills/my-skill",
+        pluginRoot: "/plugin/root",
+        content: "content",
+        frontmatter: { name: "plugin-skill", description: "from plugin" },
+        isValid: true,
+        errors: [],
+      };
+
+      skillManager.registerPluginSkills("test-plugin", [pluginSkill]);
+
+      const metadata = skillManager.getSkillMetadata(
+        "test-plugin:plugin-skill",
+      );
+      expect(metadata?.pluginRoot).toBe("/plugin/root");
+    });
+
     it("should namespace skill names from plugins", async () => {
       // Initialize first
       vi.mocked(readdir).mockResolvedValue([]);
@@ -550,6 +574,31 @@ describe("SkillManager", () => {
       });
 
       expect(result.content).toContain("Skill is at /path/to/skill");
+    });
+
+    it("should substitute ${WAVE_PLUGIN_ROOT} with the skill's plugin root path", async () => {
+      const mockSkill: Skill = {
+        name: "plugin-skill",
+        description: "A plugin skill",
+        type: "personal",
+        skillPath: "/plugin/root/skills/plugin-skill",
+        pluginRoot: "/plugin/root",
+        content:
+          "---\nname: plugin-skill\ndescription: A plugin skill\n---\n\nPlugin root is ${WAVE_PLUGIN_ROOT}",
+        frontmatter: { name: "plugin-skill", description: "A plugin skill" },
+        isValid: true,
+        errors: [],
+      };
+
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+      skillManager.registerPluginSkills("test-plugin", [mockSkill]);
+
+      const result = await skillManager.executeSkill({
+        skill_name: "test-plugin:plugin-skill",
+      });
+
+      expect(result.content).toContain("Plugin root is /plugin/root");
     });
   });
 

@@ -171,7 +171,8 @@ export class PluginManager {
 
       if (this.lspManager && plugin.lspConfig) {
         for (const [language, config] of Object.entries(plugin.lspConfig)) {
-          this.lspManager.registerServer(language, config);
+          const configWithPluginRoot = { ...config, pluginRoot: plugin.path };
+          this.lspManager.registerServer(language, configWithPluginRoot);
         }
       }
 
@@ -179,12 +180,13 @@ export class PluginManager {
         for (const [name, config] of Object.entries(
           plugin.mcpConfig.mcpServers,
         )) {
-          this.mcpManager.addServer(name, config);
+          const configWithPluginRoot = { ...config, pluginRoot: plugin.path };
+          this.mcpManager.addServer(name, configWithPluginRoot);
         }
       }
 
       if (this.hookManager && plugin.hooksConfig) {
-        this.hookManager.registerPluginHooks(plugin.hooksConfig);
+        this.hookManager.registerPluginHooks(plugin.path, plugin.hooksConfig);
       }
 
       this.plugins.set(manifest.name, plugin);

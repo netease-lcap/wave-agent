@@ -149,15 +149,16 @@ describe("PluginManager", () => {
         "test-plugin",
         skills,
       );
-      expect(mockLspManager.registerServer).toHaveBeenCalledWith(
-        "go",
-        lspConfig.go,
-      );
-      expect(mockMcpManager.addServer).toHaveBeenCalledWith(
-        "test",
-        mcpConfig.mcpServers.test,
-      );
+      expect(mockLspManager.registerServer).toHaveBeenCalledWith("go", {
+        ...lspConfig.go,
+        pluginRoot: "/test/workdir/plugins/test-plugin",
+      });
+      expect(mockMcpManager.addServer).toHaveBeenCalledWith("test", {
+        ...mcpConfig.mcpServers.test,
+        pluginRoot: "/test/workdir/plugins/test-plugin",
+      });
       expect(mockHookManager.registerPluginHooks).toHaveBeenCalledWith(
+        "/test/workdir/plugins/test-plugin",
         hooksConfig,
       );
 

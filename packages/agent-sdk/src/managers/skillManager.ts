@@ -443,6 +443,14 @@ export class SkillManager extends EventEmitter {
     // 2. Substitute ${WAVE_SKILL_DIR} with the skill's directory path
     mainContent = mainContent.replace(/\$\{WAVE_SKILL_DIR\}/g, skill.skillPath);
 
+    // 3. Substitute ${WAVE_PLUGIN_ROOT} with the skill's plugin root path
+    if (skill.pluginRoot) {
+      mainContent = mainContent.replace(
+        /\$\{WAVE_PLUGIN_ROOT\}/g,
+        skill.pluginRoot,
+      );
+    }
+
     return header + description + skillPath + mainContent;
   }
 
@@ -493,6 +501,7 @@ export class SkillManager extends EventEmitter {
         disableModelInvocation: skill.disableModelInvocation,
         userInvocable: skill.userInvocable,
         pluginName,
+        pluginRoot: skill.pluginRoot,
       };
       // Update the skill object itself to have the namespaced name
       skill.name = namespacedName;

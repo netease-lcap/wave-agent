@@ -9,6 +9,8 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /** Internal: plugin directory path when the server is registered by a plugin */
+  pluginRoot?: string;
 }
 
 export interface McpConfig {

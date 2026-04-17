@@ -15,6 +15,8 @@ export interface LspServerConfig {
   shutdownTimeout?: number;
   restartOnCrash?: boolean;
   maxRestarts?: number;
+  /** Internal: plugin directory path when the server is registered by a plugin */
+  pluginRoot?: string;
 }
 
 export interface LspConfig {

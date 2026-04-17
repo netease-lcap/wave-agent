@@ -95,6 +95,7 @@ export class PluginLoader {
               skills.push({
                 ...parsed.skillMetadata,
                 type: "project", // Plugin skills are treated as project skills
+                pluginRoot: pluginPath,
                 content: parsed.content,
                 frontmatter: parsed.frontmatter,
                 isValid: parsed.isValid,

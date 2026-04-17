@@ -222,6 +222,31 @@ describe("PluginLoader", () => {
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe("skill1");
       expect(result[0].type).toBe("project");
+      expect(result[0].pluginRoot).toBe(mockPluginPath);
+    });
+
+    it("should set pluginRoot on loaded skills", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        { name: "skill1", isDirectory: () => true },
+      ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
+      vi.mocked(fs.stat).mockResolvedValue(
+        {} as unknown as Awaited<ReturnType<typeof fs.stat>>,
+      );
+      vi.mocked(parseSkillFile).mockReturnValue({
+        isValid: true,
+        skillMetadata: {
+          name: "skill1",
+          description: "Skill 1",
+          skillPath: "/my/plugin/skills/skill1",
+        },
+        content: "content",
+        frontmatter: { name: "skill1", description: "Skill 1" },
+        validationErrors: [],
+      } as unknown as ReturnType<typeof parseSkillFile>);
+
+      const result = await PluginLoader.loadSkills("/my/plugin");
+
+      expect(result[0].pluginRoot).toBe("/my/plugin");
     });
 
     it("should return empty array if skills directory does not exist", async () => {
