@@ -25,18 +25,12 @@ const ExampleApp: React.FC = () => {
   );
   const [cancelled, setCancelled] = React.useState(false);
 
-  const [aborted, setAborted] = React.useState(false);
-
   const handleDecision = (decision: PermissionDecision) => {
     setDecision(decision);
   };
 
   const handleCancel = () => {
     setCancelled(true);
-  };
-
-  const handleAbort = () => {
-    setAborted(true);
   };
 
   if (decision) {
@@ -51,10 +45,10 @@ const ExampleApp: React.FC = () => {
     );
   }
 
-  if (cancelled || aborted) {
+  if (cancelled) {
     return (
       <Box padding={1}>
-        <Text color="red">Operation {cancelled ? "cancelled" : "aborted"}</Text>
+        <Text color="red">Operation cancelled</Text>
       </Box>
     );
   }
@@ -70,7 +64,6 @@ const ExampleApp: React.FC = () => {
           toolName="Edit"
           onDecision={handleDecision}
           onCancel={handleCancel}
-          onAbort={handleAbort}
         />
       </Box>
     </Box>

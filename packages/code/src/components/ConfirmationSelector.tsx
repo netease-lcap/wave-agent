@@ -25,7 +25,6 @@ export interface ConfirmationSelectorProps {
   isExpanded?: boolean;
   onDecision: (decision: PermissionDecision) => void;
   onCancel: () => void;
-  onAbort: () => void;
 }
 
 interface ConfirmationState {
@@ -43,7 +42,6 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   isExpanded = false,
   onDecision,
   onCancel,
-  onAbort,
 }) => {
   const [state, setState] = useState<ConfirmationState>({
     selectedOption: toolName === EXIT_PLAN_MODE_TOOL_NAME ? "clear" : "allow",
@@ -107,7 +105,6 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   useInput((input, key) => {
     if (key.escape) {
       onCancel();
-      onAbort();
       return;
     }
 

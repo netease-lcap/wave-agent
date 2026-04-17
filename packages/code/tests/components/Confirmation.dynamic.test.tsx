@@ -26,7 +26,6 @@ const Confirmation = (
 describe("Confirmation Dynamic Actions", () => {
   const mockOnDecision = vi.fn();
   const mockOnCancel = vi.fn();
-  const mockOnAbort = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -39,7 +38,6 @@ describe("Confirmation Dynamic Actions", () => {
         toolInput={{ command: "pwd", description: "Show current directory" }}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -59,7 +57,6 @@ describe("Confirmation Dynamic Actions", () => {
         }}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -78,7 +75,6 @@ describe("Confirmation Dynamic Actions", () => {
         }}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -94,7 +90,6 @@ describe("Confirmation Dynamic Actions", () => {
         toolInput={{ some_param: "value" }}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -109,7 +104,6 @@ describe("Confirmation Dynamic Actions", () => {
         toolName="Bash"
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -125,7 +119,6 @@ describe("Confirmation Dynamic Actions", () => {
         toolInput={{ old_string: "old", new_string: "new" }}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 

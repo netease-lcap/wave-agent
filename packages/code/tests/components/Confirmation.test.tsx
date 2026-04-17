@@ -23,13 +23,11 @@ import type { PermissionDecision } from "wave-agent-sdk";
 describe("Confirmation", () => {
   let mockOnDecision: Mock<(decision: PermissionDecision) => void>;
   let mockOnCancel: Mock<() => void>;
-  let mockOnAbort: Mock<() => void>;
   let consoleSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     mockOnDecision = vi.fn<(decision: PermissionDecision) => void>();
     mockOnCancel = vi.fn<() => void>();
-    mockOnAbort = vi.fn<() => void>();
 
     // Mock console methods to suppress output during testing
     consoleSpy = vi.spyOn(console, "log").mockImplementation(function () {});
@@ -60,7 +58,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -80,7 +77,6 @@ describe("Confirmation", () => {
           toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -101,7 +97,6 @@ describe("Confirmation", () => {
           toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -121,7 +116,6 @@ describe("Confirmation", () => {
           toolName="Bash"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -142,7 +136,6 @@ describe("Confirmation", () => {
           toolInput={{ command: "ls -la" }}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -169,7 +162,6 @@ describe("Confirmation", () => {
           hidePersistentOption={true}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -190,7 +182,6 @@ describe("Confirmation", () => {
           toolInput={{ arg1: "val1", arg2: 42 }}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -215,7 +206,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -249,7 +239,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -293,7 +282,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -317,7 +305,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -341,7 +328,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -371,7 +357,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -406,7 +391,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -445,7 +429,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -490,7 +473,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -525,7 +507,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -556,7 +537,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -609,7 +589,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -632,7 +611,6 @@ describe("Confirmation", () => {
           toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -658,13 +636,12 @@ describe("Confirmation", () => {
       } as PermissionDecision);
     });
 
-    it("should call onCancel and onAbort callbacks on ESC", async () => {
+    it("should call onCancel callback on ESC without calling onDecision", async () => {
       const { stdin, lastFrame } = render(
         <Confirmation
           toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -676,7 +653,6 @@ describe("Confirmation", () => {
       await vi.waitFor(() => {
         expect(mockOnCancel).toHaveBeenCalledTimes(1);
       });
-      expect(mockOnAbort).toHaveBeenCalledTimes(1);
       expect(mockOnDecision).not.toHaveBeenCalled();
     });
 
@@ -686,7 +662,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -722,7 +697,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -759,7 +733,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -792,7 +765,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -831,7 +803,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -858,7 +829,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -883,7 +853,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -927,7 +896,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -963,7 +931,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -986,7 +953,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1025,7 +991,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1071,7 +1036,6 @@ describe("Confirmation", () => {
           toolInput={mockQuestions as unknown as Record<string, unknown>}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1093,7 +1057,6 @@ describe("Confirmation", () => {
           toolInput={mockQuestions as unknown as Record<string, unknown>}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1126,7 +1089,6 @@ describe("Confirmation", () => {
           toolInput={mockQuestions as unknown as Record<string, unknown>}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1171,7 +1133,6 @@ describe("Confirmation", () => {
           toolInput={mockQuestions as unknown as Record<string, unknown>}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1220,7 +1181,6 @@ describe("Confirmation", () => {
           toolInput={mockQuestions as unknown as Record<string, unknown>}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1268,7 +1228,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1304,7 +1263,6 @@ describe("Confirmation", () => {
           planContent="My Plan"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1323,7 +1281,6 @@ describe("Confirmation", () => {
           planContent="My Plan"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1350,7 +1307,6 @@ describe("Confirmation", () => {
           planContent="My Plan"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
       stdin2.write("\u001b[B"); // Down to manually approve
@@ -1376,7 +1332,6 @@ describe("Confirmation", () => {
           planContent="My Plan"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
       stdin3.write("\u001b[B"); // Down to manually approve
@@ -1410,7 +1365,6 @@ describe("Confirmation", () => {
           suggestedPrefix="ls"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1429,7 +1383,6 @@ describe("Confirmation", () => {
           suggestedPrefix="ls"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1461,7 +1414,6 @@ describe("Confirmation", () => {
           toolInput={{ command: "ls -la" }}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1492,7 +1444,6 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1541,7 +1492,6 @@ describe("Confirmation", () => {
           hidePersistentOption={true}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 
@@ -1584,7 +1534,6 @@ describe("Confirmation", () => {
           toolInput={localMockQuestions as unknown as Record<string, unknown>}
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
         />,
       );
 

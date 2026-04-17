@@ -16,13 +16,11 @@ import type { PermissionDecision } from "wave-agent-sdk";
 describe("Confirmation Tab Navigation", () => {
   let mockOnDecision: Mock<(decision: PermissionDecision) => void>;
   let mockOnCancel: Mock<() => void>;
-  let mockOnAbort: Mock<() => void>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     mockOnDecision = vi.fn<(decision: PermissionDecision) => void>();
     mockOnCancel = vi.fn<() => void>();
-    mockOnAbort = vi.fn<() => void>();
     vi.clearAllMocks();
   });
 
@@ -36,7 +34,6 @@ describe("Confirmation Tab Navigation", () => {
         toolName="Edit"
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -54,7 +51,6 @@ describe("Confirmation Tab Navigation", () => {
         toolName="Edit"
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -96,7 +92,6 @@ describe("Confirmation Tab Navigation", () => {
         toolInput={mockQuestions as unknown as Record<string, unknown>}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -134,7 +129,6 @@ describe("Confirmation Tab Navigation", () => {
         toolInput={mockQuestions as unknown as Record<string, unknown>}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -174,7 +168,6 @@ describe("Confirmation Tab Navigation", () => {
         toolInput={mockQuestions as unknown as Record<string, unknown>}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -215,7 +208,6 @@ describe("Confirmation Tab Navigation", () => {
         toolInput={mockQuestions as unknown as Record<string, unknown>}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -258,7 +250,6 @@ describe("Confirmation Tab Navigation", () => {
         toolInput={mockQuestions as unknown as Record<string, unknown>}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -277,7 +268,6 @@ describe("Confirmation Tab Navigation", () => {
         toolName="Edit"
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -305,7 +295,6 @@ describe("Confirmation Tab Navigation", () => {
         toolInput={mockQuestions as unknown as Record<string, unknown>}
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
