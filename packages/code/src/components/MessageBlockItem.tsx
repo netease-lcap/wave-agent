@@ -38,6 +38,13 @@ export const MessageBlockItem = ({
             >
               {block.content}
             </Text>
+          ) : block.stage === "streaming" ? (
+            <Text color="gray" wrap="truncate-end">
+              {(() => {
+                const flat = block.content.replace(/\n/g, "\\n");
+                return flat.length > 30 ? `…${flat.slice(-30)}` : flat;
+              })()}
+            </Text>
           ) : (
             <Markdown>{block.content}</Markdown>
           )}

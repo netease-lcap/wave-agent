@@ -45,10 +45,12 @@ As a user, I want different types of content (text, code, errors, images, tool c
 **Independent Test**: Render a message containing one of each block type and verify they all display correctly.
 
 **Acceptance Scenarios**:
-1. **Given** a text block, **When** rendered, **Then** it is displayed as markdown or plain text depending on the context.
-2. **Given** an error block, **When** rendered, **Then** it is displayed in red with an "Error:" prefix.
-3. **Given** a tool block, **When** rendered, **Then** it uses a specialized `ToolDisplay` component.
-4. **Given** an image block, **When** rendered, **Then** it shows a placeholder or summary of the image.
+1. **Given** a text block with `stage === "streaming"`, **When** rendered in collapsed mode, **Then** it shows the last 30 characters with gray color and truncation (matching tool and reasoning block streaming behavior).
+2. **Given** a text block with `stage !== "streaming"` (e.g., `end` or undefined), **When** rendered, **Then** it is displayed using Markdown rendering.
+3. **Given** a text block in a user message, **When** rendered, **Then** it shows full content regardless of stage.
+4. **Given** an error block, **When** rendered, **Then** it is displayed in red with an "Error:" prefix.
+5. **Given** a tool block, **When** rendered, **Then** it uses a specialized `ToolDisplay` component.
+6. **Given** an image block, **When** rendered, **Then** it shows a placeholder or summary of the image.
 
 ---
 

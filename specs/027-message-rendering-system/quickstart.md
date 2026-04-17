@@ -13,7 +13,7 @@ The top-level component that renders the entire conversation.
 
 ### MessageBlockItem
 A dispatcher component that renders individual blocks based on their type:
-- **Text**: Rendered as Markdown or plain text.
+- **Text**: Rendered as Markdown when complete, last 30 chars with gray color when streaming (matching tool/reasoning behavior), or plain text for user messages.
 - **Tool**: Displays tool parameters and results.
 - **Bang**: Displays shell command output.
 - **Error**: Displays error messages in red.
