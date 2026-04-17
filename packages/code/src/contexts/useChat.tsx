@@ -508,12 +508,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         ) {
           const command = expandedContent.substring(1).trim();
           if (command) {
-            setIsCommandRunning(true);
-            try {
-              await agentRef.current?.bang(command);
-            } finally {
-              setIsCommandRunning(false);
-            }
+            await agentRef.current?.bang(command);
             return;
           }
         }

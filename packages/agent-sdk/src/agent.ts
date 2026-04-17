@@ -332,7 +332,7 @@ export class Agent {
 
   /**
    * Process the next queued message when the agent becomes idle.
-   * Dequeues the next message and sends it.
+   * Dequeues the next message and handles it based on type.
    */
   private async processQueuedMessage(): Promise<void> {
     const next = this.messageQueue.dequeue();
@@ -340,7 +340,12 @@ export class Agent {
 
     this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
 
-    await this.sendMessage(next.content, next.images);
+    if (next.type === "bang") {
+      await this.bangManager?.executeCommand(next.content);
+      await this.messageManager.saveSession();
+    } else {
+      await this.sendMessage(next.content, next.images);
+    }
   }
 
   /** Get background bash shell output */
@@ -542,6 +547,13 @@ export class Agent {
 
   /** Execute bash command (bang command) */
   public async bang(command: string): Promise<void> {
+    // If the agent is busy, enqueue the bang command
+    if (this.aiManager.isLoading || this.isCommandRunning) {
+      this.messageQueue.enqueue({ type: "bang", content: command });
+      this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+      return;
+    }
+
     await this.bangManager?.executeCommand(command);
     await this.messageManager.saveSession();
   }
