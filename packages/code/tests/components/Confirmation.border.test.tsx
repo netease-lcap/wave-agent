@@ -24,12 +24,10 @@ const Confirmation = (
 describe("Confirmation Border", () => {
   let mockOnDecision: Mock<(decision: PermissionDecision) => void>;
   let mockOnCancel: Mock<() => void>;
-  let mockOnAbort: Mock<() => void>;
 
   beforeEach(() => {
     mockOnDecision = vi.fn<(decision: PermissionDecision) => void>();
     mockOnCancel = vi.fn<() => void>();
-    mockOnAbort = vi.fn<() => void>();
     vi.clearAllMocks();
   });
 
@@ -39,7 +37,6 @@ describe("Confirmation Border", () => {
         toolName="Edit"
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 
@@ -72,7 +69,6 @@ describe("Confirmation Border", () => {
         planContent="**Test** Plan Content"
         onDecision={mockOnDecision}
         onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
       />,
     );
 

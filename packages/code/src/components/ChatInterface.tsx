@@ -133,7 +133,6 @@ export const ChatInterface: React.FC = () => {
             isExpanded={isExpanded}
             onDecision={handleConfirmationDecision}
             onCancel={handleConfirmationCancel}
-            onAbort={abortMessage}
           />
         </>
       )}
