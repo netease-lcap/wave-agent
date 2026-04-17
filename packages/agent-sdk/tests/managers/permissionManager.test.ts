@@ -11,6 +11,7 @@ import type {
 } from "../../src/types/permissions.js";
 import { Container } from "../../src/utils/container.js";
 import { logger } from "../../src/utils/globalLogger.js";
+import type { ConfigurationService } from "../../src/services/configurationService.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
@@ -2574,6 +2575,124 @@ describe("PermissionManager", () => {
       // Add another relative directory - should now resolve to /b
       manager.updateAdditionalDirectories(["./data"]);
       expect(manager.getAdditionalDirectories()).toContain("/b/data");
+    });
+  });
+
+  describe("addPermissionRule method", () => {
+    it("should use original workdir for persistence when adding a rule", async () => {
+      const originalWorkdir = "/home/user/project";
+      const mockConfigService = {
+        addAllowedRule: vi.fn().mockResolvedValue(undefined),
+      } as unknown as ConfigurationService;
+
+      const container = createContainer(originalWorkdir);
+      container.register("ConfigurationService", mockConfigService);
+
+      const manager = new PermissionManager(container);
+
+      await manager.addPermissionRule("Bash(npm test*)");
+
+      // expandBashRule converts "npm test*" to "npm test**" (smart prefix)
+      expect(mockConfigService.addAllowedRule).toHaveBeenCalledWith(
+        originalWorkdir,
+        "Bash(npm test**)",
+      );
+    });
+
+    it("should use original workdir even after dynamic workdir change", async () => {
+      const originalWorkdir = "/home/user/project";
+      const mockConfigService = {
+        addAllowedRule: vi.fn().mockResolvedValue(undefined),
+      } as unknown as ConfigurationService;
+
+      const container = createContainer(originalWorkdir);
+      container.register("ConfigurationService", mockConfigService);
+
+      const manager = new PermissionManager(container);
+
+      // Simulate cd to a subdirectory
+      container.register("Workdir", "/home/user/project/frontend");
+
+      await manager.addPermissionRule("Bash(npm install*)");
+
+      // Should still use the original workdir for persistence
+      expect(mockConfigService.addAllowedRule).toHaveBeenCalledWith(
+        originalWorkdir,
+        "Bash(npm install**)",
+      );
+    });
+
+    it("should use original workdir when workdir changes multiple times", async () => {
+      const originalWorkdir = "/home/user/project";
+      const mockConfigService = {
+        addAllowedRule: vi.fn().mockResolvedValue(undefined),
+      } as unknown as ConfigurationService;
+
+      const container = createContainer(originalWorkdir);
+      container.register("ConfigurationService", mockConfigService);
+
+      const manager = new PermissionManager(container);
+
+      container.register("Workdir", "/home/user/project/frontend");
+      container.register("Workdir", "/home/user/project/backend");
+      container.register("Workdir", "/home/user/project/docs");
+
+      await manager.addPermissionRule("Bash(mkdir test)");
+
+      expect(mockConfigService.addAllowedRule).toHaveBeenCalledWith(
+        originalWorkdir,
+        "Bash(mkdir test)",
+      );
+    });
+
+    it("should throw error if original workdir is not set", async () => {
+      const container = new Container();
+      // ConfigurationService not needed for this test
+      const manager = new PermissionManager(container);
+
+      await expect(manager.addPermissionRule("Bash(ls)")).rejects.toThrow(
+        "Working directory not set in PermissionManager",
+      );
+    });
+
+    it("should not add duplicate rules to internal state", async () => {
+      const originalWorkdir = "/home/user/project";
+      const mockConfigService = {
+        addAllowedRule: vi.fn().mockResolvedValue(undefined),
+      } as unknown as ConfigurationService;
+
+      const container = createContainer(originalWorkdir);
+      container.register("ConfigurationService", mockConfigService);
+
+      const manager = new PermissionManager(container);
+      // Add a rule that will be expanded to "Bash(npm test**)"
+      await manager.addPermissionRule("Bash(npm test*)");
+
+      // First call should persist
+      expect(mockConfigService.addAllowedRule).toHaveBeenCalledTimes(1);
+
+      // Add the same rule again - should NOT call addAllowedRule again
+      vi.mocked(mockConfigService.addAllowedRule).mockClear();
+      await manager.addPermissionRule("Bash(npm test*)");
+
+      expect(mockConfigService.addAllowedRule).not.toHaveBeenCalled();
+    });
+
+    it("should not add rules that are already in default allowed rules", async () => {
+      const originalWorkdir = "/home/user/project";
+      const mockConfigService = {
+        addAllowedRule: vi.fn().mockResolvedValue(undefined),
+      } as unknown as ConfigurationService;
+
+      const container = createContainer(originalWorkdir);
+      container.register("ConfigurationService", mockConfigService);
+
+      const manager = new PermissionManager(container);
+
+      // "Bash(ls*)" is in DEFAULT_ALLOWED_RULES, so should not be added
+      await manager.addPermissionRule("Bash(ls*)");
+
+      expect(mockConfigService.addAllowedRule).not.toHaveBeenCalled();
     });
   });
 });

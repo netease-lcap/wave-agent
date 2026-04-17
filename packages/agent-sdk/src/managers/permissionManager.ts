@@ -131,6 +131,7 @@ export class PermissionManager {
   private planFilePath?: string;
   private worktreeName?: string;
   private mainRepoRoot?: string;
+  private originalWorkdir?: string;
   private onConfiguredPermissionModeChange?: (mode: PermissionMode) => void;
   private _logger?: Logger;
 
@@ -152,6 +153,7 @@ export class PermissionManager {
 
     this.worktreeName = this.container.get<string>("WorktreeName");
     this.mainRepoRoot = this.container.get<string>("MainRepoRoot");
+    this.originalWorkdir = this.container.get<string>("Workdir");
   }
 
   /**
@@ -1059,7 +1061,7 @@ export class PermissionManager {
    * @param rule - The rule to add (e.g., "Bash(ls)")
    */
   public async addPermissionRule(rule: string): Promise<void> {
-    const workdir = this.getWorkdir();
+    const workdir = this.originalWorkdir;
     if (!workdir) {
       throw new Error("Working directory not set in PermissionManager");
     }
