@@ -333,6 +333,19 @@ export class Agent {
   }
 
   /**
+   * Remove a queued message by index
+   * @param index - The index of the message to remove
+   * @returns true if the message was removed, false if the index was out of bounds
+   */
+  public removeQueuedMessage(index: number): boolean {
+    const removed = this.messageQueue.removeAt(index);
+    if (removed) {
+      this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+    }
+    return removed;
+  }
+
+  /**
    * Process the next queued message when the agent becomes idle.
    * Dequeues the next message and handles it based on type.
    */
