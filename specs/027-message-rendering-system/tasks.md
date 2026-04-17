@@ -34,3 +34,8 @@
 
 - [X] T013 Run `pnpm run type-check` and `pnpm lint`
 - [X] T014 Manually verify rendering with various block types and long histories
+
+## Phase 6: Streaming Text Block Visibility
+
+- [X] T016 [P] Update MessageList to include streaming text blocks instead of filtering them out
+- [X] T017 Add test for streaming text block visibility in MessageList

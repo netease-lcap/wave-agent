@@ -43,23 +43,19 @@ export const MessageList = React.memo(
           b.stage === "streaming" ||
           b.stage === "start")) ||
       (b.type === "bang" && b.stage === "running") ||
-      (b.type === "reasoning" && b.stage === "streaming");
+      (b.type === "reasoning" && b.stage === "streaming") ||
+      (b.type === "text" && b.stage === "streaming");
 
     // Flatten messages into blocks with metadata
-    // Filter out streaming text blocks to avoid frequent height changes,
-    // but allow streaming reasoning blocks (rendered as truncated gray text)
+    // Include streaming text blocks (rendered as truncated gray text)
     const allBlocks = visibleMessages.flatMap((message, messageIndex) => {
-      return message.blocks
-        .filter(
-          (block) => !(block.type === "text" && block.stage === "streaming"),
-        )
-        .map((block, blockIndex) => ({
-          block,
-          message,
-          messageIndex,
-          // Unique key for each block to help Static component
-          key: `${message.id}-${blockIndex}`,
-        }));
+      return message.blocks.map((block, blockIndex) => ({
+        block,
+        message,
+        messageIndex,
+        // Unique key for each block to help Static component
+        key: `${message.id}-${blockIndex}`,
+      }));
     });
 
     // Find message indices that have any running/streaming block

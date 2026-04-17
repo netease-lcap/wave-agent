@@ -68,7 +68,7 @@ As a user, I want different types of content (text, code, errors, images, tool c
 - **FR-002**: System MUST flatten messages into individual `MessageBlock` items for rendering.
 - **FR-003**: System MUST use Ink's `Static` component for rendering historical (non-dynamic) message blocks.
 - **FR-004**: System MUST identify "dynamic" blocks and render them outside the `Static` component.
-- **FR-004.1**: A block is dynamic IF `forceStatic` is false AND `isExpanded` is false AND the block belongs to the last message AND the message contains at least one active block (`tool` in `running`/`streaming`/`start` stage, or `bang` in `running` stage) AND the block itself is not a completed `text` or `reasoning` block (`stage === "end"`).
+- **FR-004.1**: A block is dynamic IF `forceStatic` is false AND `isExpanded` is false AND the block belongs to the last message AND the message contains at least one active block (`tool` in `running`/`streaming`/`start` stage, `bang` in `running` stage, or `text` in `streaming` stage) AND the block itself is not a completed `text` or `reasoning` block (`stage === "end"`).
 - **FR-004.2**: All other blocks MUST be rendered as static content, including text/reasoning blocks with `stage === "end"` even when other blocks in the same message are still active.
 - **FR-004.3**: Blocks not in the last message MUST always be static, regardless of whether their message contains active blocks.
 - **FR-005**: System MUST support a "welcome message" at the top of the message list showing version and environment info.
