@@ -437,7 +437,10 @@ describe("ChatProvider", () => {
   });
 
   it("handles bypassPermissions prop", async () => {
-    const onHookValue = () => {};
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
 
     renderWithProvider(onHookValue, { bypassPermissions: true });
 
@@ -445,10 +448,51 @@ describe("ChatProvider", () => {
       expect(Agent.create).toHaveBeenCalledWith(
         expect.objectContaining({
           permissionMode: "bypassPermissions",
-          canUseTool: undefined,
         }),
       );
     });
+
+    // canUseTool callback should still be provided so it can be used
+    // when the user switches to another permission mode
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    expect(agentCreateArgs.canUseTool).toBeDefined();
+    expect(lastValue?.permissionMode).toBe("bypassPermissions");
+  });
+
+  it("provides canUseTool callback when started with bypassPermissions so mode switching works", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue, { bypassPermissions: true });
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    // Verify callback is defined even when bypassPermissions is true
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const canUseTool = agentCreateArgs.canUseTool;
+    expect(canUseTool).toBeDefined();
+
+    // Simulate calling the callback as would happen when permissionMode is
+    // changed from bypassPermissions to acceptEdits and a restricted tool
+    // (Bash) needs confirmation
+    const decisionPromise = canUseTool!({
+      toolName: "Bash",
+      toolInput: { command: "ls -la" },
+      permissionMode: "acceptEdits",
+    });
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isConfirmationVisible).toBe(true);
+    });
+
+    // Accept the confirmation to resolve the promise
+    lastValue?.handleConfirmationDecision({ behavior: "allow" });
+    const decision = await decisionPromise;
+    expect(decision).toEqual({ behavior: "allow" });
   });
 
   it("handles pluginDirs prop", async () => {
