@@ -6,7 +6,7 @@
     - Manual memoization: Rejected because `<Static>` is the idiomatic way in Ink to handle append-only lists that don't change.
 
 ## Decision: Dynamic Rendering for Active Blocks
-- **Rationale**: Active tool calls, running commands, and streaming text need to update their display in real-time. These cannot be rendered inside `<Static>`. We separate them into a "dynamic" section that re-renders normally.
+- **Rationale**: Active tool calls, running commands, and streaming text/reasoning need to update their display in real-time. These cannot be rendered inside `<Static>`. We separate them into a "dynamic" section that re-renders normally.
 - **Alternatives considered**: 
     - Re-rendering the whole list: Rejected due to performance issues with long histories.
 

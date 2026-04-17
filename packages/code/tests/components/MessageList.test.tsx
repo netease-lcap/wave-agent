@@ -194,5 +194,28 @@ describe("MessageList Component", () => {
       // Should NOT show hidden message
       expect(output).not.toContain("Hidden - Message 2");
     });
+
+    it("should include streaming text blocks instead of filtering them out", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          blocks: [
+            {
+              type: "text",
+              content: "streaming content",
+              stage: "streaming",
+            },
+          ],
+        },
+      ];
+
+      const { lastFrame } = render(<MessageList messages={messages} />);
+
+      const output = lastFrame();
+
+      // Streaming text block should be visible (truncated to last 30 chars)
+      expect(output).toContain("streaming content");
+    });
   });
 });
