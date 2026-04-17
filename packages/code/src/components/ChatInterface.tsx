@@ -109,6 +109,7 @@ export const ChatInterface: React.FC = () => {
             <Static items={[{ key: "confirmation-details" }]}>
               {() => (
                 <ConfirmationDetails
+                  key="confirmation-details"
                   toolName={confirmingTool!.name}
                   toolInput={confirmingTool!.input}
                   planContent={confirmingTool!.planContent}
