@@ -1,4 +1,5 @@
 export interface QueuedMessage {
+  type?: "message" | "bang";
   content: string;
   images?: Array<{ path: string; mimeType: string }>;
   longTextMap?: Record<string, string>;
