@@ -425,4 +425,51 @@ describe("LspManager (Mocked)", () => {
       }),
     );
   });
+
+  it("should substitute ${WAVE_PLUGIN_ROOT} in command/args for plugin-owned LSP servers", async () => {
+    const { stdin, stdout } = setupMockProcess();
+    respondToInitialize(stdin, stdout);
+
+    lspManager.registerServer("typescript", {
+      command: "${WAVE_PLUGIN_ROOT}/bin/typescript-language-server",
+      args: ["--stdio", "--config", "${WAVE_PLUGIN_ROOT}/config.json"],
+      extensionToLanguage: { ".ts": "typescript" },
+      pluginRoot: "/path/to/plugin",
+      env: { CUSTOM_PATH: "${WAVE_PLUGIN_ROOT}/custom" },
+      shutdownTimeout: 1,
+    });
+
+    await lspManager.getProcessForFile("/mock/workdir/test.ts");
+
+    expect(spawn).toHaveBeenCalledWith(
+      "/path/to/plugin/bin/typescript-language-server",
+      ["--stdio", "--config", "/path/to/plugin/config.json"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          WAVE_PLUGIN_ROOT: "/path/to/plugin",
+          CUSTOM_PATH: "/path/to/plugin/custom",
+        }),
+      }),
+    );
+  });
+
+  it("should not substitute ${WAVE_PLUGIN_ROOT} for non-plugin LSP servers", async () => {
+    const { stdin, stdout } = setupMockProcess();
+    respondToInitialize(stdin, stdout);
+
+    lspManager.registerServer("typescript", {
+      command: "${WAVE_PLUGIN_ROOT}/bin/typescript-language-server",
+      args: ["--stdio"],
+      extensionToLanguage: { ".ts": "typescript" },
+      shutdownTimeout: 1,
+    });
+
+    await lspManager.getProcessForFile("/mock/workdir/test.ts");
+
+    expect(spawn).toHaveBeenCalledWith(
+      "${WAVE_PLUGIN_ROOT}/bin/typescript-language-server",
+      ["--stdio"],
+      expect.any(Object),
+    );
+  });
 });

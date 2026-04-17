@@ -352,12 +352,31 @@ export class McpManager {
           ...(process.env as Record<string, string>),
           ...(server.config.env || {}),
         };
+
+        // For plugin servers, substitute ${WAVE_PLUGIN_ROOT} in command/args/env
+        // (same pattern as Claude Code's substitutePluginVariables)
+        let command = server.config.command;
+        let args = server.config.args || [];
         if (server.config.pluginRoot) {
           env.WAVE_PLUGIN_ROOT = server.config.pluginRoot;
+          command = command.replace(
+            /\$\{WAVE_PLUGIN_ROOT\}/g,
+            server.config.pluginRoot,
+          );
+          args = args.map((arg) =>
+            arg.replace(/\$\{WAVE_PLUGIN_ROOT\}/g, server.config.pluginRoot!),
+          );
+          // Also expand WAVE_PLUGIN_ROOT in user-provided env values
+          for (const [key, value] of Object.entries(server.config.env || {})) {
+            env[key] = value.replace(
+              /\$\{WAVE_PLUGIN_ROOT\}/g,
+              server.config.pluginRoot!,
+            );
+          }
         }
         transport = new StdioClientTransport({
-          command: server.config.command,
-          args: server.config.args || [],
+          command,
+          args,
           env,
           cwd: this.workdir, // Use the agent's workdir as the process working directory
           stderr: "pipe", // Pipe stderr to capture it

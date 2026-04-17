@@ -167,6 +167,7 @@ export class HookManager {
             : undefined;
 
           // Build execution context with WAVE_PLUGIN_ROOT if this is a plugin hook
+          let command = hookCommand.command;
           const execContext: typeof context = hookCommand.pluginRoot
             ? {
                 ...context,
@@ -177,28 +178,30 @@ export class HookManager {
               }
             : context;
 
+          // Substitute ${WAVE_PLUGIN_ROOT} in the command string (same pattern as Claude Code)
+          if (hookCommand.pluginRoot) {
+            command = command.replace(
+              /\$\{WAVE_PLUGIN_ROOT\}/g,
+              hookCommand.pluginRoot,
+            );
+          }
+
           if (hookCommand.async) {
             // Execute async command without awaiting
-            executeCommand(hookCommand.command, execContext, options).catch(
-              (error) => {
-                const errorMessage =
-                  error instanceof Error
-                    ? error.message
-                    : "Unknown execution error";
-                logger?.error(
-                  `[HookManager] Async hook command ${commandIndex + 1} failed: ${errorMessage}`,
-                );
-              },
-            );
+            executeCommand(command, execContext, options).catch((error) => {
+              const errorMessage =
+                error instanceof Error
+                  ? error.message
+                  : "Unknown execution error";
+              logger?.error(
+                `[HookManager] Async hook command ${commandIndex + 1} failed: ${errorMessage}`,
+              );
+            });
             // Async hooks are not included in results to prevent blocking
             continue;
           }
 
-          const result = await executeCommand(
-            hookCommand.command,
-            execContext,
-            options,
-          );
+          const result = await executeCommand(command, execContext, options);
           results.push(result);
 
           // Continue with next command even if this one fails

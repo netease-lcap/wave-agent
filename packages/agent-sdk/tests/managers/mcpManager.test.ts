@@ -445,6 +445,76 @@ describe("McpManager", () => {
         stderr: "pipe",
       });
     });
+
+    it("should substitute ${WAVE_PLUGIN_ROOT} in command for plugin-owned stdio servers", async () => {
+      const pluginConfig: McpServerConfig = {
+        command: "${WAVE_PLUGIN_ROOT}/bin/mcp-server",
+        args: ["--config", "${WAVE_PLUGIN_ROOT}/config.json"],
+        pluginRoot: "/path/to/plugin",
+      };
+      mcpManager.addServer("plugin-server", pluginConfig);
+
+      await mcpManager.connectServer("plugin-server");
+
+      expect(StdioClientTransport).toHaveBeenCalledWith({
+        command: "/path/to/plugin/bin/mcp-server",
+        args: ["--config", "/path/to/plugin/config.json"],
+        env: {
+          ...process.env,
+          WAVE_PLUGIN_ROOT: "/path/to/plugin",
+        },
+        cwd: "/test/workdir",
+        stderr: "pipe",
+      });
+    });
+
+    it("should substitute ${WAVE_PLUGIN_ROOT} in env values for plugin-owned stdio servers", async () => {
+      const pluginConfig: McpServerConfig = {
+        command: "npx",
+        args: ["plugin-mcp"],
+        env: {
+          CONFIG_PATH: "${WAVE_PLUGIN_ROOT}/config/server.json",
+          OTHER_VAR: "static-value",
+        },
+        pluginRoot: "/path/to/plugin",
+      };
+      mcpManager.addServer("plugin-server", pluginConfig);
+
+      await mcpManager.connectServer("plugin-server");
+
+      expect(StdioClientTransport).toHaveBeenCalledWith({
+        command: "npx",
+        args: ["plugin-mcp"],
+        env: {
+          ...process.env,
+          WAVE_PLUGIN_ROOT: "/path/to/plugin",
+          CONFIG_PATH: "/path/to/plugin/config/server.json",
+          OTHER_VAR: "static-value",
+        },
+        cwd: "/test/workdir",
+        stderr: "pipe",
+      });
+    });
+
+    it("should not substitute ${WAVE_PLUGIN_ROOT} for non-plugin stdio servers", async () => {
+      const nonPluginConfig: McpServerConfig = {
+        command: "${WAVE_PLUGIN_ROOT}/bin/mcp-server",
+        args: ["${WAVE_PLUGIN_ROOT}/arg"],
+      };
+      mcpManager.addServer("non-plugin-server", nonPluginConfig);
+
+      await mcpManager.connectServer("non-plugin-server");
+
+      expect(StdioClientTransport).toHaveBeenCalledWith({
+        command: "${WAVE_PLUGIN_ROOT}/bin/mcp-server",
+        args: ["${WAVE_PLUGIN_ROOT}/arg"],
+        env: {
+          ...process.env,
+        },
+        cwd: "/test/workdir",
+        stderr: "pipe",
+      });
+    });
   });
 
   describe("disconnectServer", () => {

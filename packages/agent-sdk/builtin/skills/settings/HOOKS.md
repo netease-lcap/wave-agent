@@ -90,6 +90,31 @@ Hooks can communicate status and control Wave's behavior using exit codes:
 
 Hook configurations support **live reload**. When you modify hooks in `settings.json`, the changes take effect immediately without restarting Wave.
 
+## Plugin Hooks
+
+When hooks are registered via a **plugin**, Wave automatically:
+
+1. Substitutes `${WAVE_PLUGIN_ROOT}` with the plugin's directory path in the command string
+2. Injects `WAVE_PLUGIN_ROOT` as an environment variable into the hook process
+
+```json
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "command": "${WAVE_PLUGIN_ROOT}/scripts/setup-worktree.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The shell also receives `WAVE_PLUGIN_ROOT` as an env var, so `$WAVE_PLUGIN_ROOT` works in the hook script itself.
+
 ## Best Practices
 
 - **Keep hooks fast**: Long-running hooks can slow down your workflow unless they are `async`.

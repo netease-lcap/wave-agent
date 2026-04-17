@@ -91,10 +91,27 @@ export class LspManager implements ILspManager {
 
     try {
       const env = { ...process.env, ...config.env };
+
+      // For plugin servers, substitute ${WAVE_PLUGIN_ROOT} in command/args/env
+      let command = config.command;
+      let args = config.args || [];
       if (config.pluginRoot) {
         env.WAVE_PLUGIN_ROOT = config.pluginRoot;
+        command = command.replace(/\$\{WAVE_PLUGIN_ROOT\}/g, config.pluginRoot);
+        args = args.map((arg) =>
+          arg.replace(/\$\{WAVE_PLUGIN_ROOT\}/g, config.pluginRoot!),
+        );
+        // Also expand WAVE_PLUGIN_ROOT in user-provided env values
+        if (config.env) {
+          for (const [key, value] of Object.entries(config.env)) {
+            env[key] = value.replace(
+              /\$\{WAVE_PLUGIN_ROOT\}/g,
+              config.pluginRoot!,
+            );
+          }
+        }
       }
-      const proc = spawn(config.command, config.args || [], {
+      const proc = spawn(command, args, {
         cwd: config.workspaceFolder || this.workdir,
         env,
         stdio: ["pipe", "pipe", "pipe"],
