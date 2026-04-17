@@ -262,6 +262,15 @@ export class SubagentManager {
     });
     subagentContainer.register("PermissionManager", subagentPermissionManager);
 
+    // Register the permission mode override in the subagent container so it
+    // shadows the inherited parent value during tool execution
+    if (parameters.permissionModeOverride) {
+      subagentContainer.register(
+        "PermissionMode",
+        parameters.permissionModeOverride,
+      );
+    }
+
     // Track this subagent's PermissionManager for rule sync
     this.subagentPermissionManagers.set(subagentId, subagentPermissionManager);
 
