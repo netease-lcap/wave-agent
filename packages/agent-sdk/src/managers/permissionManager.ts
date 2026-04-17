@@ -277,7 +277,7 @@ export class PermissionManager {
    * Update the additional directories (e.g., when configuration reloads)
    */
   updateAdditionalDirectories(directories: string[]): void {
-    const workdir = this.getWorkdir();
+    const workdir = this.originalWorkdir;
     this.additionalDirectories = directories.map((dir) => {
       if (workdir && !path.isAbsolute(dir)) {
         return path.resolve(workdir, dir);
@@ -290,7 +290,7 @@ export class PermissionManager {
    * Add a system-level additional directory that is persistent across configuration reloads
    */
   public addSystemAdditionalDirectory(directory: string): void {
-    const workdir = this.getWorkdir();
+    const workdir = this.originalWorkdir;
     const resolvedPath =
       workdir && !path.isAbsolute(directory)
         ? path.resolve(workdir, directory)
@@ -322,7 +322,7 @@ export class PermissionManager {
     targetPath: string,
     workdir?: string,
   ): { isInside: boolean; resolvedPath: string } {
-    const effectiveWorkdir = workdir || this.getWorkdir();
+    const effectiveWorkdir = this.originalWorkdir || workdir;
 
     // Resolve the target path relative to effectiveWorkdir if it's not absolute
     const absolutePath =

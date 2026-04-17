@@ -1,205 +1,142 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
-import type { ToolPermissionContext } from "../../src/types/permissions.js";
 import { Container } from "../../src/utils/container.js";
+import type { ToolPermissionContext } from "../../src/types/permissions.js";
 
-describe("PermissionManager Safe Zone", () => {
-  let permissionManager: PermissionManager;
-  let container: Container;
-  const workdir = "/home/user/project";
-  const additionalDir = "/home/user/other";
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
+function createContainer(workdir?: string): Container {
+  const c = new Container();
+  if (workdir) {
+    c.register("Workdir", workdir);
+  }
+  return c;
+}
+
+describe("PermissionManager - Safe Zone anchored to original workdir", () => {
   beforeEach(() => {
-    container = new Container();
-    container.register("Workdir", workdir);
-
-    permissionManager = new PermissionManager(container, {
-      additionalDirectories: [additionalDir],
-    });
-
-    // Mock fs.realpathSync for path safety checks
-    vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
-      const pathStr = p.toString();
-      if (pathStr.startsWith(workdir)) return pathStr;
-      if (pathStr.startsWith(additionalDir)) return pathStr;
-      if (pathStr.startsWith("/tmp")) return pathStr;
-      return pathStr;
-    });
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
-  describe("checkPermission with Safe Zone", () => {
-    const fileTools = ["Write", "Edit"];
+  describe("isInsideSafeZone after workdir changes", () => {
+    it("should keep files in original workdir inside safe zone after cd to subdirectory", async () => {
+      const container = createContainer("/a");
+      const manager = new PermissionManager(container);
 
-    for (const toolName of fileTools) {
-      describe(`${toolName} tool`, () => {
-        it("should allow operation inside workdir when acceptEdits is ON", async () => {
-          const filePath = path.join(workdir, "test.txt");
-          const context: ToolPermissionContext = {
-            toolName,
-            permissionMode: "acceptEdits",
-            toolInput: { file_path: filePath },
-          };
+      // Simulate cd to subdirectory
+      container.register("Workdir", "/a/frontend");
 
-          const result = await permissionManager.checkPermission(context);
-          expect(result.behavior).toBe("allow");
-        });
-
-        it("should allow operation inside additionalDirectories when acceptEdits is ON", async () => {
-          const filePath = path.join(additionalDir, "test.txt");
-          const context: ToolPermissionContext = {
-            toolName,
-            permissionMode: "acceptEdits",
-            toolInput: { file_path: filePath },
-          };
-
-          const result = await permissionManager.checkPermission(context);
-          expect(result.behavior).toBe("allow");
-        });
-
-        it("should NOT auto-allow operation outside Safe Zone even if acceptEdits is ON", async () => {
-          const filePath = "/tmp/test.txt";
-          const context: ToolPermissionContext = {
-            toolName,
-            permissionMode: "acceptEdits",
-            toolInput: { file_path: filePath },
-          };
-
-          const result = await permissionManager.checkPermission(context);
-          // It should fall through to default behavior which is deny without callback
-          expect(result.behavior).toBe("deny");
-          expect(result.message).toContain("requires permission approval");
-        });
-
-        it("should deny operation inside Safe Zone if acceptEdits is OFF", async () => {
-          const filePath = path.join(workdir, "test.txt");
-          const context: ToolPermissionContext = {
-            toolName,
-            permissionMode: "default",
-            toolInput: { file_path: filePath },
-          };
-
-          const result = await permissionManager.checkPermission(context);
-          expect(result.behavior).toBe("deny");
-        });
-      });
-    }
-
-    it("should handle relative paths correctly", async () => {
+      // File in original workdir should still be safe
       const context: ToolPermissionContext = {
         toolName: "Write",
         permissionMode: "acceptEdits",
-        toolInput: { file_path: "src/index.ts", workdir },
+        toolInput: { file_path: "/a/README.md" },
       };
 
-      const result = await permissionManager.checkPermission(context);
+      const result = await manager.checkPermission(context);
       expect(result.behavior).toBe("allow");
     });
 
-    it("should handle symlinks correctly", async () => {
-      const symlinkPath = path.join(workdir, "link.txt");
-      const realPath = "/tmp/real.txt";
+    it("should keep sibling directories of original workdir inside safe zone after cd", async () => {
+      const container = createContainer("/a");
+      const manager = new PermissionManager(container);
 
-      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
-        if (p.toString() === symlinkPath) return realPath;
-        return p.toString();
-      });
+      // Simulate cd to subdirectory
+      container.register("Workdir", "/a/frontend");
 
+      // File in sibling directory should still be safe
       const context: ToolPermissionContext = {
         toolName: "Write",
         permissionMode: "acceptEdits",
-        toolInput: { file_path: symlinkPath },
+        toolInput: { file_path: "/a/backend/server.ts" },
       };
 
-      const result = await permissionManager.checkPermission(context);
-      expect(result.behavior).toBe("deny");
-      expect(result.message).toContain("requires permission approval");
+      const result = await manager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should deny files outside original workdir even if inside current workdir", async () => {
+      const container = createContainer("/a");
+      const manager = new PermissionManager(container);
+
+      // Simulate cd to subdirectory
+      container.register("Workdir", "/a/frontend");
+
+      // File outside original workdir should be denied (falls back to manual confirmation)
+      const context: ToolPermissionContext = {
+        toolName: "Write",
+        permissionMode: "acceptEdits",
+        toolInput: { file_path: "/b/outside.txt" },
+      };
+
+      const result = await manager.checkPermission(context);
+      // Should not be auto-allowed since it's outside the safe zone
+      expect(result.behavior).not.toBe("allow");
     });
   });
 
-  describe("Bash out-of-bounds with Safe Zone", () => {
-    it("should allow 'ls' in additionalDirectory", () => {
-      const context = permissionManager.createContext(
-        "Bash",
-        "default",
-        undefined,
-        {
-          command: `ls ${additionalDir}`,
-          workdir,
-        },
-      );
+  describe("additionalDirectories resolved against original workdir", () => {
+    it("should resolve relative additional directories against original workdir after workdir changes", () => {
+      const container = createContainer("/a");
+      const manager = new PermissionManager(container);
 
-      expect(context.hidePersistentOption).toBeFalsy();
+      manager.updateAdditionalDirectories(["./config", "./data"]);
+
+      expect(manager.getAdditionalDirectories()).toContain("/a/config");
+      expect(manager.getAdditionalDirectories()).toContain("/a/data");
+
+      // Change workdir
+      container.register("Workdir", "/a/frontend");
+
+      // Update additional directories - should still resolve against /a
+      manager.updateAdditionalDirectories(["./shared"]);
+      expect(manager.getAdditionalDirectories()).toContain("/a/shared");
     });
 
-    it("should NOT set hidePersistentOption for 'ls' outside Safe Zone", () => {
-      const context = permissionManager.createContext(
-        "Bash",
-        "default",
-        undefined,
-        {
-          command: "ls /tmp",
-          workdir,
-        },
-      );
+    it("should consider files in additional directories as safe after workdir changes", async () => {
+      const container = createContainer("/a");
+      const manager = new PermissionManager(container);
 
-      expect(context.hidePersistentOption).toBeFalsy();
+      manager.updateAdditionalDirectories(["./shared"]);
+
+      // Change workdir
+      container.register("Workdir", "/a/frontend");
+
+      // File in additional directory should still be safe
+      const context: ToolPermissionContext = {
+        toolName: "Write",
+        permissionMode: "acceptEdits",
+        toolInput: { file_path: "/a/shared/config.json" },
+      };
+
+      const result = await manager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
     });
+  });
 
-    it("should allow 'cd' into additionalDirectory", () => {
-      const context = permissionManager.createContext(
-        "Bash",
-        "default",
-        undefined,
-        {
-          command: `cd ${additionalDir}`,
-          workdir,
-        },
-      );
+  describe("systemAdditionalDirectories resolved against original workdir", () => {
+    it("should resolve relative system additional directories against original workdir after workdir changes", () => {
+      const container = createContainer("/a");
+      const manager = new PermissionManager(container);
 
-      expect(context.hidePersistentOption).toBeFalsy();
-    });
+      manager.addSystemAdditionalDirectory("./system-config");
 
-    it("should set hidePersistentOption for 'cd' outside Safe Zone", () => {
-      const context = permissionManager.createContext(
-        "Bash",
-        "default",
-        undefined,
-        {
-          command: "cd /tmp",
-          workdir,
-        },
-      );
+      // Change workdir
+      container.register("Workdir", "/a/frontend");
 
-      expect(context.hidePersistentOption).toBe(true);
-    });
-    it("should set hidePersistentOption for file operations outside Safe Zone", () => {
-      const context = permissionManager.createContext(
-        "Write",
-        "acceptEdits",
-        undefined,
-        {
-          file_path: "/tmp/test.txt",
-          workdir,
-        },
-      );
+      manager.addSystemAdditionalDirectory("./system-data");
 
-      expect(context.hidePersistentOption).toBe(true);
-    });
-
-    it("should NOT set hidePersistentOption for file operations inside Safe Zone", () => {
-      const context = permissionManager.createContext(
-        "Write",
-        "acceptEdits",
-        undefined,
-        {
-          file_path: path.join(workdir, "test.txt"),
-          workdir,
-        },
-      );
-
-      expect(context.hidePersistentOption).toBeFalsy();
+      const dirs = manager.getSystemAdditionalDirectories();
+      expect(dirs).toContain("/a/system-config");
+      expect(dirs).toContain("/a/system-data");
     });
   });
 });

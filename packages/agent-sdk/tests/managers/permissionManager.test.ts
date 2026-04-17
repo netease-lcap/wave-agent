@@ -2500,7 +2500,7 @@ describe("PermissionManager", () => {
       });
     });
 
-    it("should use current workdir in isInsideSafeZone after dynamic change", async () => {
+    it("should keep original workdir as safe zone after dynamic workdir change", async () => {
       const workdir = "/a";
       const container = createContainer(workdir);
       const manager = new PermissionManager(container, {
@@ -2521,7 +2521,7 @@ describe("PermissionManager", () => {
       // Update workdir to /c
       container.register("Workdir", "/c");
 
-      // File /a/test.txt should no longer be inside workdir safe zone
+      // File /a/test.txt should still be inside safe zone (anchored to original workdir)
       const context2: ToolPermissionContext = {
         toolName: "Write",
         permissionMode: "acceptEdits",
@@ -2529,10 +2529,10 @@ describe("PermissionManager", () => {
       };
 
       expect(await manager.checkPermission(context2)).toMatchObject({
-        behavior: "deny",
+        behavior: "allow",
       });
 
-      // File /c/test.txt should be inside the new safe zone
+      // File /c/test.txt should NOT be inside safe zone (not in original workdir)
       const context3: ToolPermissionContext = {
         toolName: "Write",
         permissionMode: "acceptEdits",
@@ -2540,7 +2540,7 @@ describe("PermissionManager", () => {
       };
 
       expect(await manager.checkPermission(context3)).toMatchObject({
-        behavior: "allow",
+        behavior: "deny",
       });
     });
 
@@ -2558,7 +2558,7 @@ describe("PermissionManager", () => {
       expect(childContainer.get<string>("Workdir")).toBe("/b");
     });
 
-    it("should update additionalDirectories resolution when workdir changes", () => {
+    it("should resolve additionalDirectories against original workdir even when workdir changes", () => {
       const workdir = "/a";
       const container = createContainer(workdir);
       const manager = new PermissionManager(container);
@@ -2566,15 +2566,15 @@ describe("PermissionManager", () => {
       // Add relative additional directory
       manager.updateAdditionalDirectories(["./config"]);
 
-      // Should resolve relative to /a
+      // Should resolve relative to /a (original workdir)
       expect(manager.getAdditionalDirectories()).toContain("/a/config");
 
       // Change workdir
       container.register("Workdir", "/b");
 
-      // Add another relative directory - should now resolve to /b
+      // Add another relative directory - should still resolve to /a (original workdir)
       manager.updateAdditionalDirectories(["./data"]);
-      expect(manager.getAdditionalDirectories()).toContain("/b/data");
+      expect(manager.getAdditionalDirectories()).toContain("/a/data");
     });
   });
 
