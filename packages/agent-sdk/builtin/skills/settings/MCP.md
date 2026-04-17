@@ -63,6 +63,28 @@ For example, if you have a server named `sqlite` with a tool named `query`, it w
 
 By default, MCP tools require user permission before execution. When you grant permission, you can choose to "Allow always" for a specific tool. These persistent rules are stored in your `settings.json` under the `permissions` field.
 
+## Plugin MCP Servers
+
+When MCP servers are registered via a **plugin**, Wave automatically injects the `WAVE_PLUGIN_ROOT` environment variable into the server process. Additionally, `${WAVE_PLUGIN_ROOT}` in the `command`, `args`, and `env` fields is substituted with the plugin's directory path before the server is spawned (matching Claude Code's `${CLAUDE_PLUGIN_ROOT}` behavior).
+
+```json
+{
+  "mcpServers": {
+    "my-plugin-server": {
+      "command": "${WAVE_PLUGIN_ROOT}/bin/mcp-server",
+      "args": ["--config", "${WAVE_PLUGIN_ROOT}/config/server.json"]
+    }
+  }
+}
+```
+
+Your MCP server code can also read `WAVE_PLUGIN_ROOT` as an environment variable:
+
+```ts
+// Inside your MCP server (e.g., a Node.js script)
+const pluginRoot = process.env.WAVE_PLUGIN_ROOT;
+```
+
 ## Troubleshooting
 
 - **Server Connection**: If a server fails to connect, Wave will log an error. You can check the status of MCP servers by asking the agent.

@@ -91,7 +91,10 @@ For detailed guidance on creating skills, see [SKILLS.md](${WAVE_SKILL_DIR}/SKIL
 Delegate tasks to specialized AI personalities.
 For detailed guidance on creating subagents, see [SUBAGENTS.md](${WAVE_SKILL_DIR}/SUBAGENTS.md).
 
-### 9. Other Settings
+### 9. Plugins
+Enable or disable plugins via `enabledPlugins`. Plugin skills, hooks, MCP servers, and LSP servers can reference their parent plugin's directory using the `${WAVE_PLUGIN_ROOT}` placeholder. Wave substitutes `${WAVE_PLUGIN_ROOT}` with the plugin's directory path at load time (same as `${WAVE_SKILL_DIR}`), and also injects `WAVE_PLUGIN_ROOT` as an environment variable into the spawned process.
+
+### 10. Other Settings
 - `language`: Preferred language for agent communication (e.g., `"en"`, `"zh"`).
 - `autoMemoryEnabled`: Enable or disable auto-memory (default: `true`).
 - `autoMemoryFrequency`: Frequency of auto-memory extraction turns (default: `1`).

@@ -80,3 +80,8 @@ As a user, I want detailed documentation for complex hook configurations to be a
 - The `settings` skill will be implemented as a builtin skill.
 - The skill will use the existing `ConfigurationService` for reading and writing settings.
 - "Complex hooks config" refers to advanced usage of the `hooks` field in `settings.json`.
+
+### Template Placeholders
+
+- **`${WAVE_SKILL_DIR}`**: Template placeholder resolved to the skill's directory path. Available in all skills (builtin, personal, project, plugin).
+- **`${WAVE_PLUGIN_ROOT}`**: Template placeholder resolved to the plugin's root directory. Available in plugin-originated skills, hooks, MCP servers, and LSP servers. Wave substitutes this at load time, and also injects `WAVE_PLUGIN_ROOT` as a real environment variable into the spawned process.

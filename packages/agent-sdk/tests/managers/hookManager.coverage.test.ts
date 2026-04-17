@@ -553,6 +553,68 @@ describe("HookManager Coverage", () => {
         undefined,
       );
     });
+
+    it("should substitute ${WAVE_PLUGIN_ROOT} in plugin hook command string", async () => {
+      manager.registerPluginHooks("/my/plugin/root", {
+        UserPromptSubmit: [
+          {
+            hooks: [
+              {
+                type: "command" as const,
+                command: "${WAVE_PLUGIN_ROOT}/scripts/hook.sh",
+              },
+            ],
+          },
+        ],
+      });
+
+      const context = {
+        event: "UserPromptSubmit" as const,
+        projectDir: "/test/workdir",
+        timestamp: new Date(),
+      };
+
+      await manager.executeHooks("UserPromptSubmit", context);
+
+      expect(mockExecuteCommand).toHaveBeenCalledWith(
+        "/my/plugin/root/scripts/hook.sh",
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WAVE_PLUGIN_ROOT: "/my/plugin/root",
+          }),
+        }),
+        undefined,
+      );
+    });
+
+    it("should not substitute ${WAVE_PLUGIN_ROOT} for non-plugin hooks", async () => {
+      manager.loadConfiguration({
+        UserPromptSubmit: [
+          {
+            hooks: [
+              {
+                type: "command" as const,
+                command: "${WAVE_PLUGIN_ROOT}/scripts/hook.sh",
+              },
+            ],
+          },
+        ],
+      });
+
+      const context = {
+        event: "UserPromptSubmit" as const,
+        projectDir: "/test/workdir",
+        timestamp: new Date(),
+      };
+
+      await manager.executeHooks("UserPromptSubmit", context);
+
+      expect(mockExecuteCommand).toHaveBeenCalledWith(
+        "${WAVE_PLUGIN_ROOT}/scripts/hook.sh",
+        expect.any(Object),
+        undefined,
+      );
+    });
   });
 
   describe("validateEventConfig", () => {
