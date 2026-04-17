@@ -378,27 +378,25 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       try {
         // Create the permission callback inside the try block to access showConfirmation
-        const permissionCallback = bypassPermissions
-          ? undefined
-          : async (
-              context: ToolPermissionContext,
-            ): Promise<PermissionDecision> => {
-              try {
-                return await showConfirmation(
-                  context.toolName,
-                  context.toolInput,
-                  context.suggestedPrefix,
-                  context.hidePersistentOption,
-                  context.planContent,
-                );
-              } catch {
-                // If confirmation was cancelled or failed, deny the operation
-                return {
-                  behavior: "deny",
-                  message: OPERATION_CANCELLED_BY_USER,
-                };
-              }
+        const permissionCallback = async (
+          context: ToolPermissionContext,
+        ): Promise<PermissionDecision> => {
+          try {
+            return await showConfirmation(
+              context.toolName,
+              context.toolInput,
+              context.suggestedPrefix,
+              context.hidePersistentOption,
+              context.planContent,
+            );
+          } catch {
+            // If confirmation was cancelled or failed, deny the operation
+            return {
+              behavior: "deny",
+              message: OPERATION_CANCELLED_BY_USER,
             };
+          }
+        };
 
         const agent = await Agent.create({
           callbacks,

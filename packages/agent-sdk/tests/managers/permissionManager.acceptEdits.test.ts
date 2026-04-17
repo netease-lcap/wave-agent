@@ -73,6 +73,52 @@ describe("PermissionManager - acceptEdits mode", () => {
     });
   });
 
+  describe("mode switching from bypassPermissions to acceptEdits", () => {
+    it("should use callback for Bash when mode changes from bypassPermissions to acceptEdits", async () => {
+      const mockCallback = vi.fn().mockResolvedValue({
+        behavior: "allow",
+      }) as unknown as PermissionCallback;
+
+      // In bypassPermissions mode, Bash is allowed regardless of callback
+      const bypassContext: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "bypassPermissions",
+        canUseToolCallback: mockCallback,
+      };
+      const bypassResult =
+        await permissionManager.checkPermission(bypassContext);
+      expect(bypassResult).toEqual({ behavior: "allow" });
+      // Callback should NOT be called in bypassPermissions mode
+      expect(vi.mocked(mockCallback)).not.toHaveBeenCalled();
+
+      // After switching to acceptEdits mode, Bash is not auto-accepted,
+      // so the callback should be invoked
+      vi.mocked(mockCallback).mockClear();
+      const acceptEditsContext: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "acceptEdits",
+        canUseToolCallback: mockCallback,
+      };
+      const acceptEditsResult =
+        await permissionManager.checkPermission(acceptEditsContext);
+      expect(acceptEditsResult).toEqual({ behavior: "allow" });
+      expect(vi.mocked(mockCallback)).toHaveBeenCalled();
+    });
+
+    it("should deny Bash in acceptEdits mode when callback is not provided", async () => {
+      // Without a callback, acceptEdits mode falls through to deny with a warning
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "acceptEdits",
+        // canUseToolCallback is undefined
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+      expect(result.message).toContain("requires permission approval");
+    });
+  });
+
   describe("resolveEffectivePermissionMode with acceptEdits", () => {
     it("should correctly resolve effective mode when acceptEdits is set as configured default", () => {
       const manager = new PermissionManager(container, {
