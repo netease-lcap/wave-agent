@@ -224,8 +224,8 @@ describe("ConfirmationSelector Esc Integration", () => {
       expect(lastValue?.isConfirmationVisible).toBe(false);
     });
 
-    // CRITICAL: Esc cancel must not affect background bash processes
-    expect(mockAgent.abortMessage).not.toHaveBeenCalled();
+    // CRITICAL: Esc cancel MUST call abortMessage to stop the AI execution cycle
+    expect(mockAgent.abortMessage).toHaveBeenCalled();
   });
 
   it("Esc on ExitPlanMode ConfirmationSelector should only cancel, not abort", async () => {
@@ -263,7 +263,7 @@ describe("ConfirmationSelector Esc Integration", () => {
       expect(lastValue?.isConfirmationVisible).toBe(false);
     });
 
-    expect(mockAgent.abortMessage).not.toHaveBeenCalled();
+    expect(mockAgent.abortMessage).toHaveBeenCalled();
   });
 
   it("Confirming via handleConfirmationDecision should NOT call abortMessage", async () => {

@@ -613,6 +613,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     if (currentConfirmation) {
       currentConfirmation.reject();
     }
+    agentRef.current?.abortMessage();
     hideConfirmation();
   }, [currentConfirmation, hideConfirmation]);
 

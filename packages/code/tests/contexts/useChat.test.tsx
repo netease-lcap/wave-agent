@@ -793,6 +793,7 @@ describe("ChatProvider", () => {
     await vi.waitFor(() => {
       expect(lastValue?.isConfirmationVisible).toBe(false);
     });
+    expect(mockAgent.abortMessage).toHaveBeenCalled();
   });
 
   it("toggles isExpanded with Ctrl+O", async () => {
