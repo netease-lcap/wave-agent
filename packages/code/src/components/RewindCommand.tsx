@@ -2,7 +2,6 @@ import React, { useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { getMessageContent } from "wave-agent-sdk";
-import { rewindReducer } from "../reducers/index.js";
 
 export interface RewindCommandProps {
   messages: Message[];
@@ -12,6 +11,39 @@ export interface RewindCommandProps {
     messages: Message[];
     sessionIds: string[];
   }>;
+}
+
+interface RewindState {
+  messages: Message[];
+  isLoading: boolean;
+  selectedIndex: number;
+}
+
+type RewindAction =
+  | { type: "SET_MESSAGES"; messages: Message[] }
+  | { type: "SET_LOADING"; isLoading: boolean }
+  | { type: "NAVIGATE_UP" }
+  | { type: "NAVIGATE_DOWN"; max: number }
+  | { type: "RESET_INDEX"; index: number };
+
+function rewindReducer(state: RewindState, action: RewindAction): RewindState {
+  switch (action.type) {
+    case "SET_MESSAGES":
+      return { ...state, messages: action.messages, isLoading: false };
+    case "SET_LOADING":
+      return { ...state, isLoading: action.isLoading };
+    case "NAVIGATE_UP":
+      return { ...state, selectedIndex: Math.max(0, state.selectedIndex - 1) };
+    case "NAVIGATE_DOWN":
+      return {
+        ...state,
+        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
+      };
+    case "RESET_INDEX":
+      return { ...state, selectedIndex: action.index };
+    default:
+      return state;
+  }
 }
 
 export const RewindCommand: React.FC<RewindCommandProps> = ({

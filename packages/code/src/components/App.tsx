@@ -10,7 +10,35 @@ import {
   getDefaultRemoteBranch,
 } from "wave-agent-sdk";
 import { BaseAppProps } from "../types.js";
-import { appReducer } from "../reducers/index.js";
+
+interface AppState {
+  isExiting: boolean;
+  worktreeStatus: {
+    hasUncommittedChanges: boolean;
+    hasNewCommits: boolean;
+  } | null;
+}
+
+type AppAction =
+  | {
+      type: "START_EXIT";
+      worktreeStatus: {
+        hasUncommittedChanges: boolean;
+        hasNewCommits: boolean;
+      };
+    }
+  | { type: "CANCEL_EXIT" };
+
+function appReducer(state: AppState, action: AppAction): AppState {
+  switch (action.type) {
+    case "START_EXIT":
+      return { isExiting: true, worktreeStatus: action.worktreeStatus };
+    case "CANCEL_EXIT":
+      return { isExiting: false, worktreeStatus: state.worktreeStatus };
+    default:
+      return state;
+  }
+}
 
 interface AppProps extends BaseAppProps {
   restoreSessionId?: string;
