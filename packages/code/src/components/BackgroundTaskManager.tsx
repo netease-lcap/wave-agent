@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useReducer } from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { useChat } from "../contexts/useChat.js";
 import { getLastLines } from "wave-agent-sdk";
@@ -14,73 +14,6 @@ interface Task {
   outputPath?: string;
 }
 
-interface DetailOutput {
-  stdout: string;
-  stderr: string;
-  status: string;
-  outputPath?: string;
-}
-
-interface TaskManagerState {
-  selectedIndex: number;
-  viewMode: "list" | "detail";
-  detailTaskId: string | null;
-  detailOutput: DetailOutput | null;
-}
-
-type TaskManagerAction =
-  | { type: "SELECT_TASK"; taskId: string }
-  | { type: "GO_BACK_TO_LIST" }
-  | { type: "SET_DETAIL_OUTPUT"; output: DetailOutput | null }
-  | { type: "NAVIGATE_UP" }
-  | { type: "NAVIGATE_DOWN"; max: number };
-
-function taskManagerReducer(
-  state: TaskManagerState,
-  action: TaskManagerAction,
-): TaskManagerState {
-  switch (action.type) {
-    case "SELECT_TASK":
-      return {
-        ...state,
-        viewMode: "detail",
-        detailTaskId: action.taskId,
-        detailOutput: null,
-      };
-    case "GO_BACK_TO_LIST":
-      return {
-        ...state,
-        viewMode: "list",
-        detailTaskId: null,
-        detailOutput: null,
-      };
-    case "SET_DETAIL_OUTPUT":
-      return {
-        ...state,
-        detailOutput: action.output,
-      };
-    case "NAVIGATE_UP":
-      return {
-        ...state,
-        selectedIndex: Math.max(0, state.selectedIndex - 1),
-      };
-    case "NAVIGATE_DOWN":
-      return {
-        ...state,
-        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
-      };
-    default:
-      return state;
-  }
-}
-
-const initialState: TaskManagerState = {
-  selectedIndex: 0,
-  viewMode: "list",
-  detailTaskId: null,
-  detailOutput: null,
-};
-
 export interface BackgroundTaskManagerProps {
   onCancel: () => void;
 }
@@ -90,10 +23,17 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
 }) => {
   const { backgroundTasks, getBackgroundTaskOutput, stopBackgroundTask } =
     useChat();
-  const MAX_VISIBLE_ITEMS = 3;
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [state, dispatch] = useReducer(taskManagerReducer, initialState);
-  const { selectedIndex, viewMode, detailTaskId, detailOutput } = state;
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const MAX_VISIBLE_ITEMS = 3;
+  const [viewMode, setViewMode] = useState<"list" | "detail">("list");
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [detailOutput, setDetailOutput] = useState<{
+    stdout: string;
+    stderr: string;
+    status: string;
+    outputPath?: string;
+  } | null>(null);
 
   // Convert backgroundTasks to local Task format
   useEffect(() => {
@@ -115,7 +55,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
   useEffect(() => {
     if (viewMode === "detail" && detailTaskId) {
       const output = getBackgroundTaskOutput(detailTaskId);
-      dispatch({ type: "SET_DETAIL_OUTPUT", output });
+      setDetailOutput(output);
     }
   }, [viewMode, detailTaskId, getBackgroundTaskOutput]);
 
@@ -151,7 +91,8 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
       if (key.return) {
         if (tasks.length > 0 && selectedIndex < tasks.length) {
           const selectedTask = tasks[selectedIndex];
-          dispatch({ type: "SELECT_TASK", taskId: selectedTask.id });
+          setDetailTaskId(selectedTask.id);
+          setViewMode("detail");
         }
         return;
       }
@@ -162,12 +103,12 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
       }
 
       if (key.upArrow) {
-        dispatch({ type: "NAVIGATE_UP" });
+        setSelectedIndex(Math.max(0, selectedIndex - 1));
         return;
       }
 
       if (key.downArrow) {
-        dispatch({ type: "NAVIGATE_DOWN", max: tasks.length - 1 });
+        setSelectedIndex(Math.min(tasks.length - 1, selectedIndex + 1));
         return;
       }
 
@@ -181,7 +122,9 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     } else if (viewMode === "detail") {
       // Detail mode navigation
       if (key.escape) {
-        dispatch({ type: "GO_BACK_TO_LIST" });
+        setViewMode("list");
+        setDetailTaskId(null);
+        setDetailOutput(null);
         return;
       }
 
@@ -198,7 +141,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
   if (viewMode === "detail" && detailTaskId && detailOutput) {
     const task = tasks.find((t) => t.id === detailTaskId);
     if (!task) {
-      dispatch({ type: "GO_BACK_TO_LIST" });
+      setViewMode("list");
       return null;
     }
 

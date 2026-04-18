@@ -1,4 +1,4 @@
-import React, { useReducer } from "react";
+import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { getMessageContent } from "wave-agent-sdk";
@@ -13,71 +13,42 @@ export interface RewindCommandProps {
   }>;
 }
 
-interface RewindState {
-  messages: Message[];
-  isLoading: boolean;
-  selectedIndex: number;
-}
-
-type RewindAction =
-  | { type: "SET_MESSAGES"; messages: Message[] }
-  | { type: "SET_LOADING"; isLoading: boolean }
-  | { type: "NAVIGATE_UP" }
-  | { type: "NAVIGATE_DOWN"; max: number }
-  | { type: "RESET_INDEX"; index: number };
-
-function rewindReducer(state: RewindState, action: RewindAction): RewindState {
-  switch (action.type) {
-    case "SET_MESSAGES":
-      return { ...state, messages: action.messages, isLoading: false };
-    case "SET_LOADING":
-      return { ...state, isLoading: action.isLoading };
-    case "NAVIGATE_UP":
-      return { ...state, selectedIndex: Math.max(0, state.selectedIndex - 1) };
-    case "NAVIGATE_DOWN":
-      return {
-        ...state,
-        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
-      };
-    case "RESET_INDEX":
-      return { ...state, selectedIndex: action.index };
-    default:
-      return state;
-  }
-}
-
 export const RewindCommand: React.FC<RewindCommandProps> = ({
   messages: initialMessages,
   onSelect,
   onCancel,
   getFullMessageThread,
 }) => {
-  const [state, dispatch] = useReducer(rewindReducer, {
-    messages: initialMessages,
-    isLoading: !!getFullMessageThread,
-    selectedIndex: 0,
-  });
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [isLoading, setIsLoading] = useState(!!getFullMessageThread);
 
   React.useEffect(() => {
     if (getFullMessageThread) {
       getFullMessageThread().then(({ messages: fullMessages }) => {
-        dispatch({ type: "SET_MESSAGES", messages: fullMessages });
+        setMessages(fullMessages);
+        setIsLoading(false);
       });
     }
   }, [getFullMessageThread]);
 
   // Filter user messages as checkpoints, excluding meta messages
-  const checkpoints = state.messages
+  const checkpoints = messages
     .map((msg, index) => ({ msg, index }))
     .filter(({ msg }) => msg.role === "user" && !msg.isMeta);
 
   const MAX_VISIBLE_ITEMS = 3;
+  const [selectedIndex, setSelectedIndex] = useState(checkpoints.length - 1);
+
+  // Update selectedIndex when checkpoints change (after loading full thread)
+  React.useEffect(() => {
+    setSelectedIndex(checkpoints.length - 1);
+  }, [checkpoints.length]);
 
   // Calculate visible window
   const startIndex = Math.max(
     0,
     Math.min(
-      state.selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
       Math.max(0, checkpoints.length - MAX_VISIBLE_ITEMS),
     ),
   );
@@ -88,8 +59,8 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
 
   useInput((input, key) => {
     if (key.return) {
-      if (checkpoints.length > 0 && state.selectedIndex >= 0) {
-        onSelect(checkpoints[state.selectedIndex].index);
+      if (checkpoints.length > 0 && selectedIndex >= 0) {
+        onSelect(checkpoints[selectedIndex].index);
       }
       return;
     }
@@ -100,17 +71,17 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
     }
 
     if (key.upArrow) {
-      dispatch({ type: "NAVIGATE_UP" });
+      setSelectedIndex(Math.max(0, selectedIndex - 1));
       return;
     }
 
     if (key.downArrow) {
-      dispatch({ type: "NAVIGATE_DOWN", max: checkpoints.length - 1 });
+      setSelectedIndex(Math.min(checkpoints.length - 1, selectedIndex + 1));
       return;
     }
   });
 
-  if (state.isLoading) {
+  if (isLoading) {
     return (
       <Box
         flexDirection="column"
@@ -160,7 +131,7 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
       <Box flexDirection="column">
         {visibleCheckpoints.map((checkpoint, index) => {
           const actualIndex = startIndex + index;
-          const isSelected = actualIndex === state.selectedIndex;
+          const isSelected = actualIndex === selectedIndex;
           const content = getMessageContent(checkpoint.msg)
             .replace(/\n/g, "\\n")
             .substring(0, 60);

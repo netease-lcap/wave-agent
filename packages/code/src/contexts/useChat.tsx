@@ -6,7 +6,6 @@ import React, {
   useEffect,
   useState,
   useMemo,
-  useReducer,
 } from "react";
 import { useInput, useStdout } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
@@ -134,242 +133,6 @@ export interface ChatProviderProps extends BaseAppProps {
   children: React.ReactNode;
 }
 
-// --- Reducer Types & Functions ---
-
-// 1. Agent Reducer
-interface AgentState {
-  messages: Message[];
-  isLoading: boolean;
-  isCommandRunning: boolean;
-  isCompressing: boolean;
-  latestTotalTokens: number;
-}
-
-type AgentAction =
-  | { type: "SET_MESSAGES"; messages: Message[] }
-  | { type: "SET_LOADING"; isLoading: boolean }
-  | { type: "SET_COMMAND_RUNNING"; isCommandRunning: boolean }
-  | { type: "SET_COMPRESSING"; isCompressing: boolean }
-  | { type: "SET_TOKENS"; latestTotalTokens: number }
-  | {
-      type: "SET_AGENT_STATE";
-      messages: Message[];
-      isLoading: boolean;
-      isCommandRunning: boolean;
-      isCompressing: boolean;
-      latestTotalTokens: number;
-    };
-
-function agentReducer(state: AgentState, action: AgentAction): AgentState {
-  switch (action.type) {
-    case "SET_MESSAGES":
-      return { ...state, messages: action.messages };
-    case "SET_LOADING":
-      return { ...state, isLoading: action.isLoading };
-    case "SET_COMMAND_RUNNING":
-      return { ...state, isCommandRunning: action.isCommandRunning };
-    case "SET_COMPRESSING":
-      return { ...state, isCompressing: action.isCompressing };
-    case "SET_TOKENS":
-      return { ...state, latestTotalTokens: action.latestTotalTokens };
-    case "SET_AGENT_STATE":
-      return {
-        messages: action.messages,
-        isLoading: action.isLoading,
-        isCommandRunning: action.isCommandRunning,
-        isCompressing: action.isCompressing,
-        latestTotalTokens: action.latestTotalTokens,
-      };
-    default:
-      return state;
-  }
-}
-
-// 2. Session Reducer
-interface SessionState {
-  sessionId: string;
-  workingDirectory: string;
-  currentModel: string;
-  configuredModels: string[];
-}
-
-type SessionAction =
-  | { type: "SET_SESSION_ID"; sessionId: string }
-  | { type: "SET_WORKING_DIRECTORY"; workingDirectory: string }
-  | { type: "SET_CURRENT_MODEL"; currentModel: string }
-  | { type: "SET_CONFIGURED_MODELS"; configuredModels: string[] }
-  | {
-      type: "SET_SESSION_STATE";
-      sessionId: string;
-      workingDirectory: string;
-      currentModel: string;
-      configuredModels: string[];
-    };
-
-function sessionReducer(
-  state: SessionState,
-  action: SessionAction,
-): SessionState {
-  switch (action.type) {
-    case "SET_SESSION_ID":
-      return { ...state, sessionId: action.sessionId };
-    case "SET_WORKING_DIRECTORY":
-      return { ...state, workingDirectory: action.workingDirectory };
-    case "SET_CURRENT_MODEL":
-      return { ...state, currentModel: action.currentModel };
-    case "SET_CONFIGURED_MODELS":
-      return { ...state, configuredModels: action.configuredModels };
-    case "SET_SESSION_STATE":
-      return {
-        sessionId: action.sessionId,
-        workingDirectory: action.workingDirectory,
-        currentModel: action.currentModel,
-        configuredModels: action.configuredModels,
-      };
-    default:
-      return state;
-  }
-}
-
-// 3. Confirmation Reducer
-interface ConfirmationItem {
-  toolName: string;
-  toolInput?: Record<string, unknown>;
-  suggestedPrefix?: string;
-  hidePersistentOption?: boolean;
-  planContent?: string;
-  resolver: (decision: PermissionDecision) => void;
-  reject: () => void;
-}
-
-interface ConfirmationState {
-  isConfirmationVisible: boolean;
-  confirmingTool:
-    | {
-        name: string;
-        input?: Record<string, unknown>;
-        suggestedPrefix?: string;
-        hidePersistentOption?: boolean;
-        planContent?: string;
-      }
-    | undefined;
-  confirmationQueue: ConfirmationItem[];
-  currentConfirmation: ConfirmationItem | null;
-}
-
-type ConfirmationAction =
-  | { type: "SHOW_CONFIRMATION"; item: ConfirmationItem }
-  | { type: "PROCESS_NEXT" }
-  | { type: "HIDE_CONFIRMATION" }
-  | { type: "CANCEL_CONFIRMATION" }
-  | { type: "SET_CONFIRMATION_DECISION"; decision: PermissionDecision };
-
-function confirmationReducer(
-  state: ConfirmationState,
-  action: ConfirmationAction,
-): ConfirmationState {
-  switch (action.type) {
-    case "SHOW_CONFIRMATION": {
-      const newQueue = [...state.confirmationQueue, action.item];
-      // If nothing is currently visible, show this one immediately
-      if (!state.isConfirmationVisible) {
-        const item = action.item;
-        return {
-          ...state,
-          confirmationQueue: newQueue.slice(1),
-          currentConfirmation: item,
-          confirmingTool: {
-            name: item.toolName,
-            input: item.toolInput,
-            suggestedPrefix: item.suggestedPrefix,
-            hidePersistentOption: item.hidePersistentOption,
-            planContent: item.planContent,
-          },
-          isConfirmationVisible: true,
-        };
-      }
-      return { ...state, confirmationQueue: newQueue };
-    }
-    case "PROCESS_NEXT": {
-      if (state.confirmationQueue.length > 0 && !state.isConfirmationVisible) {
-        const next = state.confirmationQueue[0];
-        return {
-          ...state,
-          confirmationQueue: state.confirmationQueue.slice(1),
-          currentConfirmation: next,
-          confirmingTool: {
-            name: next.toolName,
-            input: next.toolInput,
-            suggestedPrefix: next.suggestedPrefix,
-            hidePersistentOption: next.hidePersistentOption,
-            planContent: next.planContent,
-          },
-          isConfirmationVisible: true,
-        };
-      }
-      return state;
-    }
-    case "HIDE_CONFIRMATION":
-      return {
-        ...state,
-        isConfirmationVisible: false,
-        confirmingTool: undefined,
-        currentConfirmation: null,
-      };
-    case "SET_CONFIRMATION_DECISION": {
-      if (state.currentConfirmation) {
-        state.currentConfirmation.resolver(action.decision);
-      }
-      return {
-        ...state,
-        isConfirmationVisible: false,
-        confirmingTool: undefined,
-        currentConfirmation: null,
-      };
-    }
-    case "CANCEL_CONFIRMATION": {
-      if (state.currentConfirmation) {
-        state.currentConfirmation.reject();
-      }
-      return {
-        ...state,
-        isConfirmationVisible: false,
-        confirmingTool: undefined,
-        currentConfirmation: null,
-      };
-    }
-    default:
-      return state;
-  }
-}
-
-// 4. UI Reducer
-interface UIState {
-  isExpanded: boolean;
-  isTaskListVisible: boolean;
-}
-
-type UIAction =
-  | { type: "TOGGLE_EXPANDED" }
-  | { type: "SET_EXPANDED"; isExpanded: boolean }
-  | { type: "TOGGLE_TASK_LIST" }
-  | { type: "SET_TASK_LIST_VISIBLE"; isTaskListVisible: boolean };
-
-function uiReducer(state: UIState, action: UIAction): UIState {
-  switch (action.type) {
-    case "TOGGLE_EXPANDED":
-      return { ...state, isExpanded: !state.isExpanded };
-    case "SET_EXPANDED":
-      return { ...state, isExpanded: action.isExpanded };
-    case "TOGGLE_TASK_LIST":
-      return { ...state, isTaskListVisible: !state.isTaskListVisible };
-    case "SET_TASK_LIST_VISIBLE":
-      return { ...state, isTaskListVisible: action.isTaskListVisible };
-    default:
-      return state;
-  }
-}
-
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   bypassPermissions,
@@ -386,76 +149,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const { restoreSessionId, continueLastSession } = useAppConfig();
   const { stdout } = useStdout();
 
-  // --- Reducer-based State ---
+  // Message Display State
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isExpandedRef = useRef(isExpanded);
 
-  const [agentState, agentDispatch] = useReducer(agentReducer, {
-    messages: [],
-    isLoading: false,
-    isCommandRunning: false,
-    isCompressing: false,
-    latestTotalTokens: 0,
-  });
+  const [isTaskListVisible, setIsTaskListVisible] = useState(true);
 
-  const [sessionState, sessionDispatch] = useReducer(sessionReducer, {
-    sessionId: "",
-    workingDirectory: "",
-    currentModel: "",
-    configuredModels: [],
-  });
-
-  const [confirmationState, confirmationDispatch] = useReducer(
-    confirmationReducer,
-    {
-      isConfirmationVisible: false,
-      confirmingTool: undefined,
-      confirmationQueue: [],
-      currentConfirmation: null,
-    },
-  );
-
-  const [uiState, uiDispatch] = useReducer(uiReducer, {
-    isExpanded: false,
-    isTaskListVisible: true,
-  });
-
-  // --- Standalone useState (per plan) ---
-
-  const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
-    initialPermissionMode ||
-      (bypassPermissions ? "bypassPermissions" : "default"),
-  );
-
-  const [remountKey, setRemountKey] = useState(0);
-  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
-  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
-  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
-  const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-
-  const prevSessionId = useRef<string | null>(null);
-
-  const agentRef = useRef<Agent | null>(null);
-
-  // --- Refs for reducer dispatch in throttles ---
-
-  const agentDispatchRef = useRef(agentDispatch);
-  useEffect(() => {
-    agentDispatchRef.current = agentDispatch;
-  }, [agentDispatch]);
-
-  const isExpandedRef = useRef(uiState.isExpanded);
-
-  // --- Throttled callbacks ---
+  const [messages, setMessages] = useState<Message[]>([]);
 
   const throttledSetMessages = useMemo(
     () =>
       throttle(
         () => {
           if (!isExpandedRef.current && agentRef.current) {
-            agentDispatchRef.current({
-              type: "SET_MESSAGES",
-              messages: [...agentRef.current.messages],
-            });
+            setMessages([...agentRef.current.messages]);
           }
         },
         300,
@@ -468,10 +175,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     () =>
       throttle(
         ((tokens: number) => {
-          agentDispatchRef.current({
-            type: "SET_TOKENS",
-            latestTotalTokens: tokens,
-          });
+          setlatestTotalTokens(tokens);
         }) as (...args: unknown[]) => void,
         300,
         { leading: true, trailing: true },
@@ -480,12 +184,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   );
 
   useEffect(() => {
-    isExpandedRef.current = uiState.isExpanded;
-    if (uiState.isExpanded) {
+    isExpandedRef.current = isExpanded;
+    if (isExpanded) {
       throttledSetMessages.cancel();
       throttledSetTokens.cancel();
     }
-  }, [uiState.isExpanded, throttledSetMessages, throttledSetTokens]);
+  }, [isExpanded, throttledSetMessages, throttledSetTokens]);
 
   useEffect(() => {
     return () => {
@@ -493,6 +197,69 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       throttledSetTokens.cancel();
     };
   }, [throttledSetMessages, throttledSetTokens]);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [latestTotalTokens, setlatestTotalTokens] = useState(0);
+  const [sessionId, setSessionId] = useState("");
+  const [isCommandRunning, setIsCommandRunning] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [currentModel, setCurrentModelState] = useState("");
+  const [configuredModels, setConfiguredModels] = useState<string[]>([]);
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
+
+  // MCP State
+  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+
+  // Background tasks state
+  const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
+  // Tasks state
+  const [tasks, setTasks] = useState<Task[]>([]);
+
+  // Command state
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
+
+  // Permission state
+  const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
+    initialPermissionMode ||
+      (bypassPermissions ? "bypassPermissions" : "default"),
+  );
+
+  // Confirmation state with queue-based architecture
+  const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
+  const [confirmingTool, setConfirmingTool] = useState<
+    | {
+        name: string;
+        input?: Record<string, unknown>;
+        suggestedPrefix?: string;
+        hidePersistentOption?: boolean;
+        planContent?: string;
+      }
+    | undefined
+  >();
+  const [confirmationQueue, setConfirmationQueue] = useState<
+    Array<{
+      toolName: string;
+      toolInput?: Record<string, unknown>;
+      suggestedPrefix?: string;
+      hidePersistentOption?: boolean;
+      planContent?: string;
+      resolver: (decision: PermissionDecision) => void;
+      reject: () => void;
+    }>
+  >([]);
+  const [currentConfirmation, setCurrentConfirmation] = useState<{
+    toolName: string;
+    toolInput?: Record<string, unknown>;
+    suggestedPrefix?: string;
+    hidePersistentOption?: boolean;
+    planContent?: string;
+    resolver: (decision: PermissionDecision) => void;
+    reject: () => void;
+  } | null>(null);
+
+  // Remount state
+  const [remountKey, setRemountKey] = useState(0);
+  const prevSessionId = useRef<string | null>(null);
 
   const requestRemount = useMemo(
     () =>
@@ -519,21 +286,25 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   useEffect(() => {
     if (
       prevSessionId.current &&
-      sessionState.sessionId &&
-      prevSessionId.current !== sessionState.sessionId
+      sessionId &&
+      prevSessionId.current !== sessionId
     ) {
       requestRemount();
     }
-    if (sessionState.sessionId) {
-      prevSessionId.current = sessionState.sessionId;
+    if (sessionId) {
+      prevSessionId.current = sessionId;
     }
-  }, [sessionState.sessionId, requestRemount]);
+  }, [sessionId, requestRemount]);
+
+  // Status metadata state
+  const [workingDirectory, setWorkingDirectory] = useState("");
 
   const allowBypassInCycle =
     !!bypassPermissions || initialPermissionMode === "bypassPermissions";
 
-  // --- Permission confirmation methods with queue support ---
+  const agentRef = useRef<Agent | null>(null);
 
+  // Permission confirmation methods with queue support
   const showConfirmation = useCallback(
     async (
       toolName: string,
@@ -543,7 +314,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       planContent?: string,
     ): Promise<PermissionDecision> => {
       return new Promise<PermissionDecision>((resolve, reject) => {
-        const queueItem: ConfirmationItem = {
+        const queueItem = {
           toolName,
           toolInput,
           suggestedPrefix,
@@ -553,7 +324,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           reject,
         };
 
-        confirmationDispatch({ type: "SHOW_CONFIRMATION", item: queueItem });
+        setConfirmationQueue((prev) => [...prev, queueItem]);
+        // processNextConfirmation will be called via useEffect
       });
     },
     [],
@@ -570,16 +342,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setMcpServers([...servers]);
         },
         onSessionIdChange: (sessionId) => {
-          sessionDispatch({ type: "SET_SESSION_ID", sessionId });
+          setSessionId(sessionId);
         },
         onLatestTotalTokensChange: (tokens) => {
           throttledSetTokens(tokens);
         },
         onCompressionStateChange: (isCompressingState) => {
-          agentDispatch({
-            type: "SET_COMPRESSING",
-            isCompressing: isCompressingState,
-          });
+          setIsCompressing(isCompressingState);
         },
         onBackgroundTasksChange: (tasks) => {
           setBackgroundTasks([...tasks]);
@@ -590,17 +359,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
         },
-        onModelChange: (currentModel) => {
-          sessionDispatch({ type: "SET_CURRENT_MODEL", currentModel });
+        onModelChange: (model) => {
+          setCurrentModelState(model);
         },
-        onConfiguredModelsChange: (configuredModels) => {
-          sessionDispatch({ type: "SET_CONFIGURED_MODELS", configuredModels });
+        onConfiguredModelsChange: (models) => {
+          setConfiguredModels(models);
         },
-        onLoadingChange: (isLoading) => {
-          agentDispatch({ type: "SET_LOADING", isLoading });
+        onLoadingChange: (loading) => {
+          setIsLoading(loading);
         },
-        onCommandRunningChange: (isCommandRunning) => {
-          agentDispatch({ type: "SET_COMMAND_RUNNING", isCommandRunning });
+        onCommandRunningChange: (running) => {
+          setIsCommandRunning(running);
         },
         onQueuedMessagesChange: (messages) => {
           setQueuedMessages([...messages]);
@@ -651,37 +420,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
         agentRef.current = agent;
 
-        // Get initial state (individual dispatches to match original setState behavior)
-        sessionDispatch({ type: "SET_SESSION_ID", sessionId: agent.sessionId });
-        agentDispatch({ type: "SET_MESSAGES", messages: agent.messages });
-        agentDispatch({ type: "SET_LOADING", isLoading: agent.isLoading });
-        agentDispatch({
-          type: "SET_TOKENS",
-          latestTotalTokens: agent.latestTotalTokens,
-        });
-        agentDispatch({
-          type: "SET_COMMAND_RUNNING",
-          isCommandRunning: agent.isCommandRunning,
-        });
-        agentDispatch({
-          type: "SET_COMPRESSING",
-          isCompressing: agent.isCompressing,
-        });
+        // Get initial state
+        setSessionId(agent.sessionId);
+        setMessages(agent.messages);
+        setIsLoading(agent.isLoading);
+        setlatestTotalTokens(agent.latestTotalTokens);
+        setIsCommandRunning(agent.isCommandRunning);
+        setIsCompressing(agent.isCompressing);
         setPermissionModeState(agent.getPermissionMode());
-        sessionDispatch({
-          type: "SET_WORKING_DIRECTORY",
-          workingDirectory: agent.workingDirectory,
-        });
-        sessionDispatch({
-          type: "SET_CURRENT_MODEL",
-          currentModel: agent.getModelConfig().model,
-        });
-        sessionDispatch({
-          type: "SET_CONFIGURED_MODELS",
-          configuredModels: agent.getConfiguredModels(),
-        });
-
-        setPermissionModeState(agent.getPermissionMode());
+        setWorkingDirectory(agent.workingDirectory);
+        setCurrentModelState(agent.getModelConfig().model);
+        setConfiguredModels(agent.getConfiguredModels());
 
         // Get initial MCP servers state
         const mcpServers = agent.getMcpServers?.() || [];
@@ -822,30 +571,50 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return agentRef.current.hasSlashCommand(commandId);
   }, []);
 
-  // Process queue when confirmation is hidden
-  useEffect(() => {
-    if (!confirmationState.isConfirmationVisible) {
-      confirmationDispatch({ type: "PROCESS_NEXT" });
+  // Queue processing helper
+  const processNextConfirmation = useCallback(() => {
+    if (confirmationQueue.length > 0 && !isConfirmationVisible) {
+      const next = confirmationQueue[0];
+      setCurrentConfirmation(next);
+      setConfirmingTool({
+        name: next.toolName,
+        input: next.toolInput,
+        suggestedPrefix: next.suggestedPrefix,
+        hidePersistentOption: next.hidePersistentOption,
+        planContent: next.planContent,
+      });
+      setIsConfirmationVisible(true);
+      setConfirmationQueue((prev) => prev.slice(1));
     }
-  }, [
-    confirmationState.isConfirmationVisible,
-    confirmationState.confirmationQueue,
-  ]);
+  }, [confirmationQueue, isConfirmationVisible]);
+
+  // Process queue when queue changes or confirmation is hidden
+  useEffect(() => {
+    processNextConfirmation();
+  }, [processNextConfirmation]);
 
   const hideConfirmation = useCallback(() => {
-    confirmationDispatch({ type: "HIDE_CONFIRMATION" });
+    setIsConfirmationVisible(false);
+    setConfirmingTool(undefined);
+    setCurrentConfirmation(null);
   }, []);
 
   const handleConfirmationDecision = useCallback(
     (decision: PermissionDecision) => {
-      confirmationDispatch({ type: "SET_CONFIRMATION_DECISION", decision });
+      if (currentConfirmation) {
+        currentConfirmation.resolver(decision);
+      }
+      hideConfirmation();
     },
-    [],
+    [currentConfirmation, hideConfirmation],
   );
 
   const handleConfirmationCancel = useCallback(() => {
-    confirmationDispatch({ type: "CANCEL_CONFIRMATION" });
-  }, []);
+    if (currentConfirmation) {
+      currentConfirmation.reject();
+    }
+    hideConfirmation();
+  }, [currentConfirmation, hideConfirmation]);
 
   const backgroundCurrentTask = useCallback(() => {
     agentRef.current?.backgroundCurrentTask();
@@ -896,7 +665,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const setModel = useCallback((model: string) => {
     if (agentRef.current) {
       agentRef.current.setModel(model);
-      sessionDispatch({ type: "SET_CURRENT_MODEL", currentModel: model });
+      setCurrentModelState(model);
     }
   }, []);
 
@@ -904,8 +673,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
       // Clear terminal screen when expanded state changes
+      // Use ref to get the current value to avoid stale closure
       const nextExpanded = !isExpandedRef.current;
-      uiDispatch({ type: "SET_EXPANDED", isExpanded: nextExpanded });
+      setIsExpanded(nextExpanded);
       isExpandedRef.current = nextExpanded;
 
       if (nextExpanded) {
@@ -915,10 +685,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       } else {
         // Transitioning to COLLAPSED: Restore from agent's actual state
         if (agentRef.current) {
-          agentDispatch({
-            type: "SET_MESSAGES",
-            messages: [...agentRef.current.messages],
-          });
+          setMessages([...agentRef.current.messages]);
         }
       }
       // Force remount to re-render Static items with new isExpanded state
@@ -926,42 +693,35 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
 
     if (key.ctrl && input === "t") {
-      uiDispatch({ type: "TOGGLE_TASK_LIST" });
+      setIsTaskListVisible((prev) => !prev);
     }
 
     // Handle ESC key to cancel confirmation
     if (key.escape) {
-      if (confirmationState.isConfirmationVisible) {
+      if (isConfirmationVisible) {
         handleConfirmationCancel();
       }
     }
   });
 
   const contextValue: ChatContextType = {
-    messages: agentState.messages,
-    isLoading: agentState.isLoading,
-    isCommandRunning: agentState.isCommandRunning,
-    isExpanded: uiState.isExpanded,
-    isTaskListVisible: uiState.isTaskListVisible,
-    setIsTaskListVisible: useCallback(
-      (visible: boolean) =>
-        uiDispatch({
-          type: "SET_TASK_LIST_VISIBLE",
-          isTaskListVisible: visible,
-        }),
-      [],
-    ),
+    messages,
+    isLoading,
+    isCommandRunning,
+    isExpanded,
+    isTaskListVisible,
+    setIsTaskListVisible,
     queuedMessages,
-    sessionId: sessionState.sessionId,
+    sessionId,
     sendMessage,
     askBtw,
     abortMessage,
-    latestTotalTokens: agentState.latestTotalTokens,
-    currentModel: sessionState.currentModel,
-    configuredModels: sessionState.configuredModels,
+    latestTotalTokens,
+    currentModel,
+    configuredModels,
     getConfiguredModels,
     setModel,
-    isCompressing: agentState.isCompressing,
+    isCompressing,
     mcpServers,
     connectMcpServer,
     disconnectMcpServer,
@@ -974,9 +734,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     permissionMode,
     setPermissionMode,
     allowBypassInCycle,
-    isConfirmationVisible: confirmationState.isConfirmationVisible,
-    hasPendingConfirmations: confirmationState.confirmationQueue.length > 0,
-    confirmingTool: confirmationState.confirmingTool,
+    isConfirmationVisible,
+    hasPendingConfirmations: confirmationQueue.length > 0,
+    confirmingTool,
     showConfirmation,
     hideConfirmation,
     handleConfirmationDecision,
@@ -989,7 +749,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
     getGatewayConfig,
     getModelConfig,
-    workingDirectory: sessionState.workingDirectory,
+    workingDirectory,
     version,
     workdir,
   };
