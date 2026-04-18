@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useReducer, useRef, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
 
@@ -8,23 +8,63 @@ const SCOPES = [
   { id: "local", label: "Install for you, in this repo only (local scope)" },
 ] as const;
 
+type PluginDetailState = {
+  selectedScopeIndex: number;
+  selectedActionIndex: number;
+};
+
+type PluginDetailAction =
+  | { type: "NAVIGATE_UP"; maxScope: number; maxAction: number }
+  | { type: "NAVIGATE_DOWN"; maxScope: number; maxAction: number }
+  | { type: "RESET" };
+
+function pluginDetailReducer(
+  state: PluginDetailState,
+  action: PluginDetailAction,
+): PluginDetailState {
+  switch (action.type) {
+    case "NAVIGATE_UP":
+      return {
+        selectedScopeIndex:
+          state.selectedScopeIndex > 0
+            ? state.selectedScopeIndex - 1
+            : action.maxScope,
+        selectedActionIndex:
+          state.selectedActionIndex > 0
+            ? state.selectedActionIndex - 1
+            : action.maxAction,
+      };
+    case "NAVIGATE_DOWN":
+      return {
+        selectedScopeIndex:
+          state.selectedScopeIndex < action.maxScope
+            ? state.selectedScopeIndex + 1
+            : 0,
+        selectedActionIndex:
+          state.selectedActionIndex < action.maxAction
+            ? state.selectedActionIndex + 1
+            : 0,
+      };
+    case "RESET":
+      return { selectedScopeIndex: 0, selectedActionIndex: 0 };
+    default:
+      return state;
+  }
+}
+
 export const PluginDetail: React.FC = () => {
   const { state, discoverablePlugins, installedPlugins, actions } =
     usePluginManagerContext();
-  const [selectedScopeIndex, setSelectedScopeIndex] = useState(0);
-  const [selectedActionIndex, setSelectedActionIndex] = useState(0);
+  const [navState, dispatch] = useReducer(pluginDetailReducer, {
+    selectedScopeIndex: 0,
+    selectedActionIndex: 0,
+  });
 
-  // Keep refs in sync with state to avoid stale closures in useInput
-  const selectedScopeIndexRef = useRef(selectedScopeIndex);
-  const selectedActionIndexRef = useRef(selectedActionIndex);
-
+  // Keep a ref for useInput callback to read current state during async
+  const navStateRef = useRef(navState);
   useEffect(() => {
-    selectedScopeIndexRef.current = selectedScopeIndex;
-  }, [selectedScopeIndex]);
-
-  useEffect(() => {
-    selectedActionIndexRef.current = selectedActionIndex;
-  }, [selectedActionIndex]);
+    navStateRef.current = navState;
+  }, [navState]);
 
   const plugin =
     discoverablePlugins.find(
@@ -48,22 +88,21 @@ export const PluginDetail: React.FC = () => {
       );
       actions.setView(isFromDiscover ? "DISCOVER" : "INSTALLED");
     } else if (key.upArrow) {
-      setSelectedActionIndex((prev) =>
-        prev > 0 ? prev - 1 : INSTALLED_ACTIONS.length - 1,
-      );
-      setSelectedScopeIndex((prev) =>
-        prev > 0 ? prev - 1 : SCOPES.length - 1,
-      );
+      dispatch({
+        type: "NAVIGATE_UP",
+        maxScope: SCOPES.length - 1,
+        maxAction: INSTALLED_ACTIONS.length - 1,
+      });
     } else if (key.downArrow) {
-      setSelectedActionIndex((prev) =>
-        prev < INSTALLED_ACTIONS.length - 1 ? prev + 1 : 0,
-      );
-      setSelectedScopeIndex((prev) =>
-        prev < SCOPES.length - 1 ? prev + 1 : 0,
-      );
+      dispatch({
+        type: "NAVIGATE_DOWN",
+        maxScope: SCOPES.length - 1,
+        maxAction: INSTALLED_ACTIONS.length - 1,
+      });
     } else if (key.return && plugin && !state.isLoading) {
+      const current = navStateRef.current;
       if (isInstalledAndEnabled) {
-        const action = INSTALLED_ACTIONS[selectedActionIndexRef.current].id;
+        const action = INSTALLED_ACTIONS[current.selectedActionIndex].id;
         if (action === "uninstall") {
           actions.uninstallPlugin(plugin.name, plugin.marketplace);
         } else {
@@ -73,7 +112,7 @@ export const PluginDetail: React.FC = () => {
         actions.installPlugin(
           plugin.name,
           plugin.marketplace,
-          SCOPES[selectedScopeIndexRef.current].id,
+          SCOPES[current.selectedScopeIndex].id,
         );
       }
     }
@@ -121,14 +160,14 @@ export const PluginDetail: React.FC = () => {
               <Text
                 key={action.id}
                 color={
-                  index === selectedActionIndex
+                  index === navState.selectedActionIndex
                     ? state.isLoading
                       ? "gray"
                       : "yellow"
                     : undefined
                 }
               >
-                {index === selectedActionIndex ? "> " : "  "}
+                {index === navState.selectedActionIndex ? "> " : "  "}
                 {action.label}
               </Text>
             ))}
@@ -147,14 +186,14 @@ export const PluginDetail: React.FC = () => {
               <Text
                 key={scope.id}
                 color={
-                  index === selectedScopeIndex
+                  index === navState.selectedScopeIndex
                     ? state.isLoading
                       ? "gray"
                       : "green"
                     : undefined
                 }
               >
-                {index === selectedScopeIndex ? "> " : "  "}
+                {index === navState.selectedScopeIndex ? "> " : "  "}
                 {scope.label}
               </Text>
             ))}

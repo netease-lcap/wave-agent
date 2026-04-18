@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useReducer, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import { McpServerStatus } from "wave-agent-sdk";
 
@@ -9,33 +9,59 @@ export interface McpManagerProps {
   onDisconnectServer: (serverName: string) => Promise<boolean>;
 }
 
+interface McpManagerState {
+  selectedIndex: number;
+  viewMode: "list" | "detail";
+}
+
+type McpManagerAction =
+  | { type: "NAVIGATE_UP" }
+  | { type: "NAVIGATE_DOWN"; max: number }
+  | { type: "SELECT_DETAIL" }
+  | { type: "GO_TO_LIST" };
+
+function mcpManagerReducer(
+  state: McpManagerState,
+  action: McpManagerAction,
+): McpManagerState {
+  switch (action.type) {
+    case "NAVIGATE_UP":
+      return { ...state, selectedIndex: Math.max(0, state.selectedIndex - 1) };
+    case "NAVIGATE_DOWN":
+      return {
+        ...state,
+        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
+      };
+    case "SELECT_DETAIL":
+      return { ...state, viewMode: "detail" };
+    case "GO_TO_LIST":
+      return { ...state, viewMode: "list" };
+    default:
+      return state;
+  }
+}
+
 export const McpManager: React.FC<McpManagerProps> = ({
   onCancel,
   servers,
   onConnectServer,
   onDisconnectServer,
 }) => {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [viewMode, setViewMode] = useState<"list" | "detail">("list");
+  const [state, dispatch] = useReducer(mcpManagerReducer, {
+    selectedIndex: 0,
+    viewMode: "list",
+  });
 
-  // Keep ref in sync with state to avoid stale closures in useInput
-  const selectedIndexRef = useRef(selectedIndex);
-  const viewModeRef = useRef(viewMode);
-
-  useEffect(() => {
-    selectedIndexRef.current = selectedIndex;
-  }, [selectedIndex]);
-
-  useEffect(() => {
-    viewModeRef.current = viewMode;
-  }, [viewMode]);
+  // Keep ref in sync with state for async handlers in useInput
+  const selectedIndexRef = useRef(state.selectedIndex);
+  selectedIndexRef.current = state.selectedIndex;
 
   // Dynamically calculate selectedServer based on selectedIndex and servers
   const selectedServer =
-    viewMode === "detail" &&
+    state.viewMode === "detail" &&
     servers.length > 0 &&
-    selectedIndex < servers.length
-      ? servers[selectedIndex]
+    state.selectedIndex < servers.length
+      ? servers[state.selectedIndex]
       : null;
 
   const formatTime = (timestamp: number): string => {
@@ -78,15 +104,15 @@ export const McpManager: React.FC<McpManagerProps> = ({
 
   useInput((input, key) => {
     if (key.return) {
-      if (viewModeRef.current === "list") {
-        setViewMode("detail");
+      if (state.viewMode === "list") {
+        dispatch({ type: "SELECT_DETAIL" });
       }
       return;
     }
 
     if (key.escape) {
-      if (viewModeRef.current === "detail") {
-        setViewMode("list");
+      if (state.viewMode === "detail") {
+        dispatch({ type: "GO_TO_LIST" });
       } else {
         onCancel();
       }
@@ -94,12 +120,12 @@ export const McpManager: React.FC<McpManagerProps> = ({
     }
 
     if (key.upArrow) {
-      setSelectedIndex((prev) => Math.max(0, prev - 1));
+      dispatch({ type: "NAVIGATE_UP" });
       return;
     }
 
     if (key.downArrow) {
-      setSelectedIndex((prev) => Math.min(servers.length - 1, prev + 1));
+      dispatch({ type: "NAVIGATE_DOWN", max: servers.length - 1 });
       return;
     }
 
@@ -124,7 +150,7 @@ export const McpManager: React.FC<McpManagerProps> = ({
     }
   });
 
-  if (viewMode === "detail" && selectedServer) {
+  if (state.viewMode === "detail" && selectedServer) {
     return (
       <Box
         flexDirection="column"
@@ -273,10 +299,10 @@ export const McpManager: React.FC<McpManagerProps> = ({
       {servers.map((server, index) => (
         <Box key={server.name} flexDirection="column">
           <Text
-            color={index === selectedIndex ? "black" : "white"}
-            backgroundColor={index === selectedIndex ? "cyan" : undefined}
+            color={index === state.selectedIndex ? "black" : "white"}
+            backgroundColor={index === state.selectedIndex ? "cyan" : undefined}
           >
-            {index === selectedIndex ? "▶ " : "  "}
+            {index === state.selectedIndex ? "▶ " : "  "}
             {index + 1}.{" "}
             <Text color={getStatusColor(server.status)}>
               {getStatusIcon(server.status)}
@@ -286,7 +312,7 @@ export const McpManager: React.FC<McpManagerProps> = ({
               <Text color="green"> · {server.toolCount} tools</Text>
             )}
           </Text>
-          {index === selectedIndex && (
+          {index === state.selectedIndex && (
             <Box marginLeft={4} flexDirection="column">
               <Text color="gray" dimColor>
                 {server.config.command}
@@ -305,11 +331,11 @@ export const McpManager: React.FC<McpManagerProps> = ({
       <Box marginTop={1}>
         <Text dimColor>
           ↑/↓ to select · Enter to view ·{" "}
-          {servers[selectedIndex]?.status === "disconnected" ||
-          servers[selectedIndex]?.status === "error"
+          {servers[state.selectedIndex]?.status === "disconnected" ||
+          servers[state.selectedIndex]?.status === "error"
             ? "c to connect · "
             : ""}
-          {servers[selectedIndex]?.status === "connected"
+          {servers[state.selectedIndex]?.status === "connected"
             ? "d to disconnect · "
             : ""}
           Esc to close
