@@ -1,4 +1,4 @@
-import React, { useReducer, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useInput } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
 import { ChatProvider } from "../contexts/useChat.js";
@@ -10,35 +10,6 @@ import {
   getDefaultRemoteBranch,
 } from "wave-agent-sdk";
 import { BaseAppProps } from "../types.js";
-
-interface AppState {
-  isExiting: boolean;
-  worktreeStatus: {
-    hasUncommittedChanges: boolean;
-    hasNewCommits: boolean;
-  } | null;
-}
-
-type AppAction =
-  | {
-      type: "START_EXIT";
-      worktreeStatus: {
-        hasUncommittedChanges: boolean;
-        hasNewCommits: boolean;
-      };
-    }
-  | { type: "CANCEL_EXIT" };
-
-function appReducer(state: AppState, action: AppAction): AppState {
-  switch (action.type) {
-    case "START_EXIT":
-      return { isExiting: true, worktreeStatus: action.worktreeStatus };
-    case "CANCEL_EXIT":
-      return { isExiting: false, worktreeStatus: state.worktreeStatus };
-    default:
-      return state;
-  }
-}
 
 interface AppProps extends BaseAppProps {
   restoreSessionId?: string;
@@ -63,10 +34,11 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   model,
   onExit,
 }) => {
-  const [state, dispatch] = useReducer(appReducer, {
-    isExiting: false,
-    worktreeStatus: null,
-  });
+  const [isExiting, setIsExiting] = useState(false);
+  const [worktreeStatus, setWorktreeStatus] = useState<{
+    hasUncommittedChanges: boolean;
+    hasNewCommits: boolean;
+  } | null>(null);
 
   const handleSignal = useCallback(async () => {
     if (worktreeSession) {
@@ -76,13 +48,11 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       const hasCommits = hasNewCommits(cwd, baseBranch);
 
       if (hasChanges || hasCommits) {
-        dispatch({
-          type: "START_EXIT",
-          worktreeStatus: {
-            hasUncommittedChanges: hasChanges,
-            hasNewCommits: hasCommits,
-          },
+        setWorktreeStatus({
+          hasUncommittedChanges: hasChanges,
+          hasNewCommits: hasCommits,
         });
+        setIsExiting(true);
       } else {
         onExit(true);
       }
@@ -110,16 +80,16 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
     };
   }, [handleSignal]);
 
-  if (state.isExiting && worktreeSession && state.worktreeStatus) {
+  if (isExiting && worktreeSession && worktreeStatus) {
     return (
       <WorktreeExitPrompt
         name={worktreeSession.name}
         path={worktreeSession.path}
-        hasUncommittedChanges={state.worktreeStatus.hasUncommittedChanges}
-        hasNewCommits={state.worktreeStatus.hasNewCommits}
+        hasUncommittedChanges={worktreeStatus.hasUncommittedChanges}
+        hasNewCommits={worktreeStatus.hasNewCommits}
         onKeep={() => onExit(false)}
         onRemove={() => onExit(true)}
-        onCancel={() => dispatch({ type: "CANCEL_EXIT" })}
+        onCancel={() => setIsExiting(false)}
       />
     );
   }

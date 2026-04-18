@@ -1,4 +1,4 @@
-import React, { useReducer, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { PromptHistoryManager, type PromptEntry } from "wave-agent-sdk";
 
@@ -8,69 +8,43 @@ export interface HistorySearchProps {
   onCancel: () => void;
 }
 
-type HistoryState = {
-  selectedIndex: number;
-  entries: PromptEntry[];
-};
-
-type HistoryAction =
-  | { type: "SET_ENTRIES"; entries: PromptEntry[] }
-  | { type: "NAVIGATE_UP" }
-  | { type: "NAVIGATE_DOWN"; max: number };
-
-function historyReducer(
-  state: HistoryState,
-  action: HistoryAction,
-): HistoryState {
-  switch (action.type) {
-    case "SET_ENTRIES":
-      return { selectedIndex: 0, entries: action.entries };
-    case "NAVIGATE_UP":
-      return { ...state, selectedIndex: Math.max(0, state.selectedIndex - 1) };
-    case "NAVIGATE_DOWN":
-      return {
-        ...state,
-        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
-      };
-    default:
-      return state;
-  }
-}
-
 export const HistorySearch: React.FC<HistorySearchProps> = ({
   searchQuery,
   onSelect,
   onCancel,
 }) => {
   const MAX_VISIBLE_ITEMS = 5;
-  const [state, dispatch] = useReducer(historyReducer, {
-    selectedIndex: 0,
-    entries: [],
-  });
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [entries, setEntries] = useState<PromptEntry[]>([]);
 
-  // Keep a ref for useInput callback since it needs to read entries during async
-  const stateRef = useRef(state);
+  const entriesRef = React.useRef<PromptEntry[]>([]);
+  const selectedIndexRef = React.useRef(0);
+
   useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+    entriesRef.current = entries;
+  }, [entries]);
+
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
 
   useEffect(() => {
     const fetchHistory = async () => {
       const results = await PromptHistoryManager.searchHistory(searchQuery);
       const limitedResults = results.slice(0, 20);
-      dispatch({ type: "SET_ENTRIES", entries: limitedResults });
+      setEntries(limitedResults); // Limit to 20 results
+      setSelectedIndex(0);
     };
     fetchHistory();
   }, [searchQuery]);
 
   useInput((input, key) => {
     if (key.return) {
-      const current = stateRef.current;
       if (
-        current.entries.length > 0 &&
-        current.selectedIndex < current.entries.length
+        entriesRef.current.length > 0 &&
+        selectedIndexRef.current < entriesRef.current.length
       ) {
-        onSelect(current.entries[current.selectedIndex]);
+        onSelect(entriesRef.current[selectedIndexRef.current]);
       }
       return;
     }
@@ -81,20 +55,19 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
     }
 
     if (key.upArrow) {
-      dispatch({ type: "NAVIGATE_UP" });
+      setSelectedIndex((prev) => Math.max(0, prev - 1));
       return;
     }
 
     if (key.downArrow) {
-      dispatch({
-        type: "NAVIGATE_DOWN",
-        max: stateRef.current.entries.length - 1,
-      });
+      setSelectedIndex((prev) =>
+        Math.min(entriesRef.current.length - 1, prev + 1),
+      );
       return;
     }
   });
 
-  if (state.entries.length === 0) {
+  if (entries.length === 0) {
     return (
       <Box
         flexDirection="column"
@@ -133,11 +106,11 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   const startIndex = Math.max(
     0,
     Math.min(
-      state.selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
-      Math.max(0, state.entries.length - MAX_VISIBLE_ITEMS),
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, entries.length - MAX_VISIBLE_ITEMS),
     ),
   );
-  const visibleEntries = state.entries.slice(
+  const visibleEntries = entries.slice(
     startIndex,
     startIndex + MAX_VISIBLE_ITEMS,
   );
@@ -161,7 +134,7 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
       <Box flexDirection="column">
         {visibleEntries.map((entry, index) => {
           const actualIndex = startIndex + index;
-          const isSelected = actualIndex === state.selectedIndex;
+          const isSelected = actualIndex === selectedIndex;
           return (
             <Box
               key={actualIndex}

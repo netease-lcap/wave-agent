@@ -1,4 +1,4 @@
-import React, { useReducer } from "react";
+import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { SlashCommand } from "wave-agent-sdk";
 import { AVAILABLE_COMMANDS } from "../constants/commands.js";
@@ -8,43 +8,14 @@ export interface HelpViewProps {
   commands?: SlashCommand[];
 }
 
-type HelpState = {
-  activeTab: "general" | "commands" | "custom-commands";
-  selectedIndex: number;
-};
-
-type HelpAction =
-  | { type: "NEXT_TAB"; tabs: ("general" | "commands" | "custom-commands")[] }
-  | { type: "NAVIGATE_UP" }
-  | { type: "NAVIGATE_DOWN"; max: number };
-
-function helpReducer(state: HelpState, action: HelpAction): HelpState {
-  switch (action.type) {
-    case "NEXT_TAB": {
-      const currentIndex = action.tabs.indexOf(state.activeTab);
-      const nextIndex = (currentIndex + 1) % action.tabs.length;
-      return { activeTab: action.tabs[nextIndex], selectedIndex: 0 };
-    }
-    case "NAVIGATE_UP":
-      return { ...state, selectedIndex: Math.max(0, state.selectedIndex - 1) };
-    case "NAVIGATE_DOWN":
-      return {
-        ...state,
-        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
-      };
-    default:
-      return state;
-  }
-}
-
 export const HelpView: React.FC<HelpViewProps> = ({
   onCancel,
   commands = [],
 }) => {
-  const [state, dispatch] = useReducer(helpReducer, {
-    activeTab: "general",
-    selectedIndex: 0,
-  });
+  const [activeTab, setActiveTab] = useState<
+    "general" | "commands" | "custom-commands"
+  >("general");
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const MAX_VISIBLE_ITEMS = 10;
 
   const tabs: ("general" | "commands" | "custom-commands")[] = [
@@ -62,20 +33,24 @@ export const HelpView: React.FC<HelpViewProps> = ({
     }
 
     if (key.tab) {
-      dispatch({ type: "NEXT_TAB", tabs });
+      setActiveTab((prev) => {
+        const currentIndex = tabs.indexOf(prev);
+        const nextIndex = (currentIndex + 1) % tabs.length;
+        return tabs[nextIndex];
+      });
+      setSelectedIndex(0);
       return;
     }
 
-    if (
-      state.activeTab === "commands" ||
-      state.activeTab === "custom-commands"
-    ) {
+    if (activeTab === "commands" || activeTab === "custom-commands") {
       const currentCommands =
-        state.activeTab === "commands" ? AVAILABLE_COMMANDS : commands;
+        activeTab === "commands" ? AVAILABLE_COMMANDS : commands;
       if (key.upArrow) {
-        dispatch({ type: "NAVIGATE_UP" });
+        setSelectedIndex((prev) => Math.max(0, prev - 1));
       } else if (key.downArrow) {
-        dispatch({ type: "NAVIGATE_DOWN", max: currentCommands.length - 1 });
+        setSelectedIndex((prev) =>
+          Math.min(currentCommands.length - 1, prev + 1),
+        );
       }
     }
   });
@@ -99,11 +74,11 @@ export const HelpView: React.FC<HelpViewProps> = ({
 
   // Calculate visible window for commands
   const currentCommands =
-    state.activeTab === "commands" ? AVAILABLE_COMMANDS : commands;
+    activeTab === "commands" ? AVAILABLE_COMMANDS : commands;
   const startIndex = Math.max(
     0,
     Math.min(
-      state.selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
       Math.max(0, currentCommands.length - MAX_VISIBLE_ITEMS),
     ),
   );
@@ -114,7 +89,7 @@ export const HelpView: React.FC<HelpViewProps> = ({
 
   const footerText = [
     "Tab switch",
-    state.activeTab !== "general" && "↑↓ navigate",
+    activeTab !== "general" && "↑↓ navigate",
     "Esc close",
   ]
     .filter(Boolean)
@@ -132,31 +107,31 @@ export const HelpView: React.FC<HelpViewProps> = ({
     >
       <Box marginBottom={1} gap={2}>
         <Text
-          color={state.activeTab === "general" ? "cyan" : "gray"}
+          color={activeTab === "general" ? "cyan" : "gray"}
           bold
-          underline={state.activeTab === "general"}
+          underline={activeTab === "general"}
         >
           General
         </Text>
         <Text
-          color={state.activeTab === "commands" ? "cyan" : "gray"}
+          color={activeTab === "commands" ? "cyan" : "gray"}
           bold
-          underline={state.activeTab === "commands"}
+          underline={activeTab === "commands"}
         >
           Commands
         </Text>
         {commands.length > 0 && (
           <Text
-            color={state.activeTab === "custom-commands" ? "cyan" : "gray"}
+            color={activeTab === "custom-commands" ? "cyan" : "gray"}
             bold
-            underline={state.activeTab === "custom-commands"}
+            underline={activeTab === "custom-commands"}
           >
             Custom Commands
           </Text>
         )}
       </Box>
 
-      {state.activeTab === "general" ? (
+      {activeTab === "general" ? (
         <Box flexDirection="column">
           {helpItems.map((item, index) => (
             <Box key={index}>
@@ -171,7 +146,7 @@ export const HelpView: React.FC<HelpViewProps> = ({
         <Box flexDirection="column">
           {visibleCommands.map((command, index) => {
             const actualIndex = startIndex + index;
-            const isSelected = actualIndex === state.selectedIndex;
+            const isSelected = actualIndex === selectedIndex;
             return (
               <Box key={command.id} flexDirection="column">
                 <Text
