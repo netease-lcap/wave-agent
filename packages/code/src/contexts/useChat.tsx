@@ -30,7 +30,13 @@ import { logger } from "../utils/logger.js";
 import { throttle } from "../utils/throttle.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
 import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
-
+import {
+  agentReducer,
+  sessionReducer,
+  chatConfirmationReducer,
+  uiReducer,
+  type ConfirmationItem,
+} from "../reducers/index.js";
 import { BaseAppProps } from "../types.js";
 
 // Main Chat Context
@@ -134,242 +140,6 @@ export interface ChatProviderProps extends BaseAppProps {
   children: React.ReactNode;
 }
 
-// --- Reducer Types & Functions ---
-
-// 1. Agent Reducer
-interface AgentState {
-  messages: Message[];
-  isLoading: boolean;
-  isCommandRunning: boolean;
-  isCompressing: boolean;
-  latestTotalTokens: number;
-}
-
-type AgentAction =
-  | { type: "SET_MESSAGES"; messages: Message[] }
-  | { type: "SET_LOADING"; isLoading: boolean }
-  | { type: "SET_COMMAND_RUNNING"; isCommandRunning: boolean }
-  | { type: "SET_COMPRESSING"; isCompressing: boolean }
-  | { type: "SET_TOKENS"; latestTotalTokens: number }
-  | {
-      type: "SET_AGENT_STATE";
-      messages: Message[];
-      isLoading: boolean;
-      isCommandRunning: boolean;
-      isCompressing: boolean;
-      latestTotalTokens: number;
-    };
-
-function agentReducer(state: AgentState, action: AgentAction): AgentState {
-  switch (action.type) {
-    case "SET_MESSAGES":
-      return { ...state, messages: action.messages };
-    case "SET_LOADING":
-      return { ...state, isLoading: action.isLoading };
-    case "SET_COMMAND_RUNNING":
-      return { ...state, isCommandRunning: action.isCommandRunning };
-    case "SET_COMPRESSING":
-      return { ...state, isCompressing: action.isCompressing };
-    case "SET_TOKENS":
-      return { ...state, latestTotalTokens: action.latestTotalTokens };
-    case "SET_AGENT_STATE":
-      return {
-        messages: action.messages,
-        isLoading: action.isLoading,
-        isCommandRunning: action.isCommandRunning,
-        isCompressing: action.isCompressing,
-        latestTotalTokens: action.latestTotalTokens,
-      };
-    default:
-      return state;
-  }
-}
-
-// 2. Session Reducer
-interface SessionState {
-  sessionId: string;
-  workingDirectory: string;
-  currentModel: string;
-  configuredModels: string[];
-}
-
-type SessionAction =
-  | { type: "SET_SESSION_ID"; sessionId: string }
-  | { type: "SET_WORKING_DIRECTORY"; workingDirectory: string }
-  | { type: "SET_CURRENT_MODEL"; currentModel: string }
-  | { type: "SET_CONFIGURED_MODELS"; configuredModels: string[] }
-  | {
-      type: "SET_SESSION_STATE";
-      sessionId: string;
-      workingDirectory: string;
-      currentModel: string;
-      configuredModels: string[];
-    };
-
-function sessionReducer(
-  state: SessionState,
-  action: SessionAction,
-): SessionState {
-  switch (action.type) {
-    case "SET_SESSION_ID":
-      return { ...state, sessionId: action.sessionId };
-    case "SET_WORKING_DIRECTORY":
-      return { ...state, workingDirectory: action.workingDirectory };
-    case "SET_CURRENT_MODEL":
-      return { ...state, currentModel: action.currentModel };
-    case "SET_CONFIGURED_MODELS":
-      return { ...state, configuredModels: action.configuredModels };
-    case "SET_SESSION_STATE":
-      return {
-        sessionId: action.sessionId,
-        workingDirectory: action.workingDirectory,
-        currentModel: action.currentModel,
-        configuredModels: action.configuredModels,
-      };
-    default:
-      return state;
-  }
-}
-
-// 3. Confirmation Reducer
-interface ConfirmationItem {
-  toolName: string;
-  toolInput?: Record<string, unknown>;
-  suggestedPrefix?: string;
-  hidePersistentOption?: boolean;
-  planContent?: string;
-  resolver: (decision: PermissionDecision) => void;
-  reject: () => void;
-}
-
-interface ConfirmationState {
-  isConfirmationVisible: boolean;
-  confirmingTool:
-    | {
-        name: string;
-        input?: Record<string, unknown>;
-        suggestedPrefix?: string;
-        hidePersistentOption?: boolean;
-        planContent?: string;
-      }
-    | undefined;
-  confirmationQueue: ConfirmationItem[];
-  currentConfirmation: ConfirmationItem | null;
-}
-
-type ConfirmationAction =
-  | { type: "SHOW_CONFIRMATION"; item: ConfirmationItem }
-  | { type: "PROCESS_NEXT" }
-  | { type: "HIDE_CONFIRMATION" }
-  | { type: "CANCEL_CONFIRMATION" }
-  | { type: "SET_CONFIRMATION_DECISION"; decision: PermissionDecision };
-
-function confirmationReducer(
-  state: ConfirmationState,
-  action: ConfirmationAction,
-): ConfirmationState {
-  switch (action.type) {
-    case "SHOW_CONFIRMATION": {
-      const newQueue = [...state.confirmationQueue, action.item];
-      // If nothing is currently visible, show this one immediately
-      if (!state.isConfirmationVisible) {
-        const item = action.item;
-        return {
-          ...state,
-          confirmationQueue: newQueue.slice(1),
-          currentConfirmation: item,
-          confirmingTool: {
-            name: item.toolName,
-            input: item.toolInput,
-            suggestedPrefix: item.suggestedPrefix,
-            hidePersistentOption: item.hidePersistentOption,
-            planContent: item.planContent,
-          },
-          isConfirmationVisible: true,
-        };
-      }
-      return { ...state, confirmationQueue: newQueue };
-    }
-    case "PROCESS_NEXT": {
-      if (state.confirmationQueue.length > 0 && !state.isConfirmationVisible) {
-        const next = state.confirmationQueue[0];
-        return {
-          ...state,
-          confirmationQueue: state.confirmationQueue.slice(1),
-          currentConfirmation: next,
-          confirmingTool: {
-            name: next.toolName,
-            input: next.toolInput,
-            suggestedPrefix: next.suggestedPrefix,
-            hidePersistentOption: next.hidePersistentOption,
-            planContent: next.planContent,
-          },
-          isConfirmationVisible: true,
-        };
-      }
-      return state;
-    }
-    case "HIDE_CONFIRMATION":
-      return {
-        ...state,
-        isConfirmationVisible: false,
-        confirmingTool: undefined,
-        currentConfirmation: null,
-      };
-    case "SET_CONFIRMATION_DECISION": {
-      if (state.currentConfirmation) {
-        state.currentConfirmation.resolver(action.decision);
-      }
-      return {
-        ...state,
-        isConfirmationVisible: false,
-        confirmingTool: undefined,
-        currentConfirmation: null,
-      };
-    }
-    case "CANCEL_CONFIRMATION": {
-      if (state.currentConfirmation) {
-        state.currentConfirmation.reject();
-      }
-      return {
-        ...state,
-        isConfirmationVisible: false,
-        confirmingTool: undefined,
-        currentConfirmation: null,
-      };
-    }
-    default:
-      return state;
-  }
-}
-
-// 4. UI Reducer
-interface UIState {
-  isExpanded: boolean;
-  isTaskListVisible: boolean;
-}
-
-type UIAction =
-  | { type: "TOGGLE_EXPANDED" }
-  | { type: "SET_EXPANDED"; isExpanded: boolean }
-  | { type: "TOGGLE_TASK_LIST" }
-  | { type: "SET_TASK_LIST_VISIBLE"; isTaskListVisible: boolean };
-
-function uiReducer(state: UIState, action: UIAction): UIState {
-  switch (action.type) {
-    case "TOGGLE_EXPANDED":
-      return { ...state, isExpanded: !state.isExpanded };
-    case "SET_EXPANDED":
-      return { ...state, isExpanded: action.isExpanded };
-    case "TOGGLE_TASK_LIST":
-      return { ...state, isTaskListVisible: !state.isTaskListVisible };
-    case "SET_TASK_LIST_VISIBLE":
-      return { ...state, isTaskListVisible: action.isTaskListVisible };
-    default:
-      return state;
-  }
-}
-
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   bypassPermissions,
@@ -404,7 +174,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   });
 
   const [confirmationState, confirmationDispatch] = useReducer(
-    confirmationReducer,
+    chatConfirmationReducer,
     {
       isConfirmationVisible: false,
       confirmingTool: undefined,
