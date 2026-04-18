@@ -1,13 +1,44 @@
 import React, { useReducer, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import { McpServerStatus } from "wave-agent-sdk";
-import { mcpManagerReducer } from "../reducers/index.js";
 
 export interface McpManagerProps {
   onCancel: () => void;
   servers: McpServerStatus[];
   onConnectServer: (serverName: string) => Promise<boolean>;
   onDisconnectServer: (serverName: string) => Promise<boolean>;
+}
+
+interface McpManagerState {
+  selectedIndex: number;
+  viewMode: "list" | "detail";
+}
+
+type McpManagerAction =
+  | { type: "NAVIGATE_UP" }
+  | { type: "NAVIGATE_DOWN"; max: number }
+  | { type: "SELECT_DETAIL" }
+  | { type: "GO_TO_LIST" };
+
+function mcpManagerReducer(
+  state: McpManagerState,
+  action: McpManagerAction,
+): McpManagerState {
+  switch (action.type) {
+    case "NAVIGATE_UP":
+      return { ...state, selectedIndex: Math.max(0, state.selectedIndex - 1) };
+    case "NAVIGATE_DOWN":
+      return {
+        ...state,
+        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
+      };
+    case "SELECT_DETAIL":
+      return { ...state, viewMode: "detail" };
+    case "GO_TO_LIST":
+      return { ...state, viewMode: "list" };
+    default:
+      return state;
+  }
 }
 
 export const McpManager: React.FC<McpManagerProps> = ({

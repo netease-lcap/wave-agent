@@ -2,11 +2,39 @@ import React, { useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import type { SlashCommand } from "wave-agent-sdk";
 import { AVAILABLE_COMMANDS } from "../constants/commands.js";
-import { helpReducer } from "../reducers/index.js";
 
 export interface HelpViewProps {
   onCancel: () => void;
   commands?: SlashCommand[];
+}
+
+type HelpState = {
+  activeTab: "general" | "commands" | "custom-commands";
+  selectedIndex: number;
+};
+
+type HelpAction =
+  | { type: "NEXT_TAB"; tabs: ("general" | "commands" | "custom-commands")[] }
+  | { type: "NAVIGATE_UP" }
+  | { type: "NAVIGATE_DOWN"; max: number };
+
+function helpReducer(state: HelpState, action: HelpAction): HelpState {
+  switch (action.type) {
+    case "NEXT_TAB": {
+      const currentIndex = action.tabs.indexOf(state.activeTab);
+      const nextIndex = (currentIndex + 1) % action.tabs.length;
+      return { activeTab: action.tabs[nextIndex], selectedIndex: 0 };
+    }
+    case "NAVIGATE_UP":
+      return { ...state, selectedIndex: Math.max(0, state.selectedIndex - 1) };
+    case "NAVIGATE_DOWN":
+      return {
+        ...state,
+        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
+      };
+    default:
+      return state;
+  }
 }
 
 export const HelpView: React.FC<HelpViewProps> = ({

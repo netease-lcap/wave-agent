@@ -1,12 +1,40 @@
 import React, { useReducer, useRef, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { PromptHistoryManager, type PromptEntry } from "wave-agent-sdk";
-import { historyReducer } from "../reducers/index.js";
 
 export interface HistorySearchProps {
   searchQuery: string;
   onSelect: (entry: PromptEntry) => void;
   onCancel: () => void;
+}
+
+type HistoryState = {
+  selectedIndex: number;
+  entries: PromptEntry[];
+};
+
+type HistoryAction =
+  | { type: "SET_ENTRIES"; entries: PromptEntry[] }
+  | { type: "NAVIGATE_UP" }
+  | { type: "NAVIGATE_DOWN"; max: number };
+
+function historyReducer(
+  state: HistoryState,
+  action: HistoryAction,
+): HistoryState {
+  switch (action.type) {
+    case "SET_ENTRIES":
+      return { selectedIndex: 0, entries: action.entries };
+    case "NAVIGATE_UP":
+      return { ...state, selectedIndex: Math.max(0, state.selectedIndex - 1) };
+    case "NAVIGATE_DOWN":
+      return {
+        ...state,
+        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
+      };
+    default:
+      return state;
+  }
 }
 
 export const HistorySearch: React.FC<HistorySearchProps> = ({
