@@ -2,6 +2,10 @@ import React, { useState, useEffect, useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import { useChat } from "../contexts/useChat.js";
 import { getLastLines } from "wave-agent-sdk";
+import {
+  taskManagerReducer,
+  type TaskManagerState,
+} from "../reducers/index.js";
 
 interface Task {
   id: string;
@@ -12,66 +16,6 @@ interface Task {
   exitCode?: number;
   runtime?: number;
   outputPath?: string;
-}
-
-interface DetailOutput {
-  stdout: string;
-  stderr: string;
-  status: string;
-  outputPath?: string;
-}
-
-interface TaskManagerState {
-  selectedIndex: number;
-  viewMode: "list" | "detail";
-  detailTaskId: string | null;
-  detailOutput: DetailOutput | null;
-}
-
-type TaskManagerAction =
-  | { type: "SELECT_TASK"; taskId: string }
-  | { type: "GO_BACK_TO_LIST" }
-  | { type: "SET_DETAIL_OUTPUT"; output: DetailOutput | null }
-  | { type: "NAVIGATE_UP" }
-  | { type: "NAVIGATE_DOWN"; max: number };
-
-function taskManagerReducer(
-  state: TaskManagerState,
-  action: TaskManagerAction,
-): TaskManagerState {
-  switch (action.type) {
-    case "SELECT_TASK":
-      return {
-        ...state,
-        viewMode: "detail",
-        detailTaskId: action.taskId,
-        detailOutput: null,
-      };
-    case "GO_BACK_TO_LIST":
-      return {
-        ...state,
-        viewMode: "list",
-        detailTaskId: null,
-        detailOutput: null,
-      };
-    case "SET_DETAIL_OUTPUT":
-      return {
-        ...state,
-        detailOutput: action.output,
-      };
-    case "NAVIGATE_UP":
-      return {
-        ...state,
-        selectedIndex: Math.max(0, state.selectedIndex - 1),
-      };
-    case "NAVIGATE_DOWN":
-      return {
-        ...state,
-        selectedIndex: Math.min(action.max, state.selectedIndex + 1),
-      };
-    default:
-      return state;
-  }
 }
 
 const initialState: TaskManagerState = {

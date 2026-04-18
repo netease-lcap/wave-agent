@@ -1,56 +1,13 @@
 import React, { useReducer, useRef, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
+import { pluginDetailReducer } from "../reducers/index.js";
 
 const SCOPES = [
   { id: "project", label: "Install for all collaborators (project scope)" },
   { id: "user", label: "Install for you (user scope)" },
   { id: "local", label: "Install for you, in this repo only (local scope)" },
 ] as const;
-
-type PluginDetailState = {
-  selectedScopeIndex: number;
-  selectedActionIndex: number;
-};
-
-type PluginDetailAction =
-  | { type: "NAVIGATE_UP"; maxScope: number; maxAction: number }
-  | { type: "NAVIGATE_DOWN"; maxScope: number; maxAction: number }
-  | { type: "RESET" };
-
-function pluginDetailReducer(
-  state: PluginDetailState,
-  action: PluginDetailAction,
-): PluginDetailState {
-  switch (action.type) {
-    case "NAVIGATE_UP":
-      return {
-        selectedScopeIndex:
-          state.selectedScopeIndex > 0
-            ? state.selectedScopeIndex - 1
-            : action.maxScope,
-        selectedActionIndex:
-          state.selectedActionIndex > 0
-            ? state.selectedActionIndex - 1
-            : action.maxAction,
-      };
-    case "NAVIGATE_DOWN":
-      return {
-        selectedScopeIndex:
-          state.selectedScopeIndex < action.maxScope
-            ? state.selectedScopeIndex + 1
-            : 0,
-        selectedActionIndex:
-          state.selectedActionIndex < action.maxAction
-            ? state.selectedActionIndex + 1
-            : 0,
-      };
-    case "RESET":
-      return { selectedScopeIndex: 0, selectedActionIndex: 0 };
-    default:
-      return state;
-  }
-}
 
 export const PluginDetail: React.FC = () => {
   const { state, discoverablePlugins, installedPlugins, actions } =
