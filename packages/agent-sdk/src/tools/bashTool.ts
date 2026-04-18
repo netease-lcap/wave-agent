@@ -139,7 +139,10 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 - Do not retry failing commands in a sleep loop — diagnose the root cause.
 - If waiting for a background task you started with \`run_in_background\`, you will be notified when it completes — do not poll.
 - If you must poll an external process, use a check command (e.g. \`gh run view\`) rather than sleeping first.
-- If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.`,
+- If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
+
+# CWD management
+Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it. When you use \`cd\`, the shell working directory will be reset to the original working directory after the command completes.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -446,9 +449,13 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
             }
           }
 
-          // If CWD changed, call the onCwdChange callback
+          // If CWD changed, call the onCwdChange callback and add notification
+          let cwdChangedNotification = "";
           if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
             context.onCwdChange(newCwd);
+            if (context.originalWorkdir && newCwd !== context.originalWorkdir) {
+              cwdChangedNotification = `Shell cwd was reset to ${context.originalWorkdir}\n`;
+            }
           }
 
           const exitCode = code ?? 0;
@@ -457,7 +464,8 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 
           // Handle large output by truncation and persistence if needed
           const finalOutput =
-            combinedOutput || `Command executed with exit code: ${exitCode}`;
+            cwdChangedNotification +
+            (combinedOutput || `Command executed with exit code: ${exitCode}`);
           const content = processOutput(finalOutput);
 
           const lines = combinedOutput.trim().split("\n");

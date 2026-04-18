@@ -51,6 +51,7 @@ export class AIManager {
   onLoadingChange?: (loading: boolean) => void;
   private toolAbortController: AbortController | null = null;
   private workdir: string;
+  private originalWorkdir: string;
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
   private stream: boolean; // Streaming mode flag
@@ -63,6 +64,7 @@ export class AIManager {
     options: AIManagerOptions,
   ) {
     this.workdir = options.workdir;
+    this.originalWorkdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
     this.subagentType = options.subagentType; // Store subagent type
     this.stream = options.stream ?? true; // Default to true if not specified
@@ -165,6 +167,10 @@ export class AIManager {
     return this.workdir;
   }
 
+  public getOriginalWorkdir(): string {
+    return this.originalWorkdir;
+  }
+
   public setOnCwdChange(callback: (newCwd: string) => void): void {
     this._onCwdChange = callback;
   }
@@ -234,6 +240,7 @@ export class AIManager {
       if (toolPlugin?.formatCompactParams) {
         const context: ToolContext = {
           workdir: this.workdir,
+          originalWorkdir: this.originalWorkdir,
           taskManager: this.taskManager,
         };
         return toolPlugin.formatCompactParams(toolArgs, context);
@@ -472,6 +479,7 @@ export class AIManager {
           filteredToolPlugins,
           {
             workdir: this.workdir,
+            originalWorkdir: this.originalWorkdir,
             memory: combinedMemory,
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
@@ -710,6 +718,7 @@ export class AIManager {
                 abortSignal: toolAbortController.signal,
                 backgroundTaskManager: this.backgroundTaskManager,
                 workdir: this.workdir,
+                originalWorkdir: this.originalWorkdir,
                 messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
                 sessionId: this.messageManager.getSessionId(),
                 toolCallId: toolId,
