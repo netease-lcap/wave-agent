@@ -255,7 +255,6 @@ export class AIManager {
   private async handleTokenUsageAndCompression(
     usage: Usage | undefined,
     abortController: AbortController,
-    model?: string,
   ): Promise<void> {
     if (!usage) return;
 
@@ -291,7 +290,7 @@ export class AIManager {
             modelConfig: this.getModelConfig(),
             messages: recentChatMessages,
             abortSignal: abortController.signal,
-            model: model,
+            model: this.getModelConfig().fastModel,
           });
 
           // Handle usage tracking for compression operations
@@ -301,7 +300,7 @@ export class AIManager {
               prompt_tokens: compressionResult.usage.prompt_tokens,
               completion_tokens: compressionResult.usage.completion_tokens,
               total_tokens: compressionResult.usage.total_tokens,
-              model: model || this.getModelConfig().model,
+              model: this.getModelConfig().fastModel,
               operation_type: "compress",
             };
           }
@@ -895,11 +894,7 @@ export class AIManager {
       }
 
       // Handle token statistics and message compression
-      await this.handleTokenUsageAndCompression(
-        result.usage,
-        abortController,
-        model,
-      );
+      await this.handleTokenUsageAndCompression(result.usage, abortController);
 
       // Finalize text/reasoning blocks for the final response (no tools)
       this.messageManager.finalizeStreamingBlocks();
