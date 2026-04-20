@@ -224,9 +224,16 @@ Try to maintain your current working directory throughout the session by using a
       const { id: taskId } = backgroundTaskManager.startShell(command, timeout);
       const task = backgroundTaskManager.getTask(taskId);
       const outputPath = task?.outputPath;
+      const backgroundMsg = [
+        `Command started in background with ID: ${taskId}.`,
+        `You will be notified automatically when it completes.`,
+        outputPath
+          ? `output_file: ${outputPath}`
+          : `Use ${READ_TOOL_NAME} tool with task_id="${taskId}" to read the output.`,
+      ].join("\n");
       return {
         success: true,
-        content: `Command started in background with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ` Use ${READ_TOOL_NAME} tool with task_id="${taskId}" to monitor output.`}`,
+        content: backgroundMsg,
         shortResult: `Background process ${taskId} started`,
       };
     }
