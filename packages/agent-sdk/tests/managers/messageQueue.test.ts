@@ -77,4 +77,48 @@ describe("MessageQueue", () => {
       ]);
     });
   });
+
+  describe("clear", () => {
+    it("should clear all messages from queue", () => {
+      const queue = new MessageQueue();
+      queue.enqueue({ content: "msg1" });
+      queue.enqueue({ content: "msg2" });
+      queue.enqueue({ content: "msg3" });
+
+      queue.clear();
+
+      expect(queue.getQueue()).toHaveLength(0);
+      expect(queue.hasPending()).toBe(false);
+    });
+
+    it("should handle clearing an empty queue", () => {
+      const queue = new MessageQueue();
+      queue.clear();
+
+      expect(queue.getQueue()).toHaveLength(0);
+    });
+
+    it("should allow enqueuing after clear", () => {
+      const queue = new MessageQueue();
+      queue.enqueue({ content: "msg1" });
+      queue.clear();
+      queue.enqueue({ content: "msg2" });
+
+      expect(queue.getQueue()).toHaveLength(1);
+      expect(queue.getQueue()[0].content).toBe("msg2");
+    });
+
+    it("simulates race condition: dequeue after clear returns null", () => {
+      const queue = new MessageQueue();
+      queue.enqueue({ content: "msg1" });
+      queue.enqueue({ content: "msg2" });
+
+      // Simulate abortMessage() race fix: clear first, then dequeue
+      queue.clear();
+      const dequeued = queue.dequeue();
+
+      expect(dequeued).toBeNull();
+      expect(queue.getQueue()).toHaveLength(0);
+    });
+  });
 });

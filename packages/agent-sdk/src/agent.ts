@@ -579,11 +579,13 @@ export class Agent {
 
   /** Unified interrupt method, interrupts both AI messages and command execution */
   public abortMessage(): void {
+    // Clear queue first to prevent processQueuedMessage from dequeuing
+    // when abortAIMessage triggers onLoadingChange(false)
+    this.messageQueue.clear();
+    this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
-    this.messageQueue.clear();
-    this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
   }
 
   /** Interrupt bash command execution */
