@@ -698,10 +698,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
 
     // Handle ESC key to cancel confirmation
-    if (key.escape) {
-      if (isConfirmationVisible) {
-        handleConfirmationCancel();
-      }
+    if (key.escape && isConfirmationVisible) {
+      handleConfirmationCancel();
     }
   });
 

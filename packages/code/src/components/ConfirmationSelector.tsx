@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer, useRef } from "react";
+import React, { useEffect, useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
 import {
@@ -46,6 +46,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     alternativeText: "",
     alternativeCursorPosition: 0,
     hasUserInput: false,
+    decision: null,
   });
 
   const questions =
@@ -62,22 +63,18 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     decision: null,
   });
 
-  const pendingDecisionRef = useRef<PermissionDecision | null>(null);
-
+  // Handle decisions from reducers
   useEffect(() => {
-    if (pendingDecisionRef.current) {
-      const decision = pendingDecisionRef.current;
-      pendingDecisionRef.current = null;
-      onDecision(decision);
+    if (state.decision) {
+      onDecision(state.decision);
     }
-  });
+  }, [state.decision, onDecision]);
 
-  // Handle question state decision from reducer
   useEffect(() => {
     if (questionState.decision) {
       onDecision(questionState.decision);
     }
-  });
+  }, [questionState.decision, onDecision]);
 
   const currentQuestion = questions[questionState.currentQuestionIndex];
 
@@ -201,45 +198,49 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     }
 
     if (key.return) {
+      let decision: PermissionDecision | null = null;
       if (state.selectedOption === "clear") {
-        onDecision({
+        decision = {
           behavior: "allow",
           newPermissionMode: "acceptEdits",
           clearContext: true,
-        });
+        };
       } else if (state.selectedOption === "allow") {
         if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
-          onDecision({ behavior: "allow", newPermissionMode: "default" });
+          decision = { behavior: "allow", newPermissionMode: "default" };
         } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
-          onDecision({ behavior: "allow", newPermissionMode: "plan" });
+          decision = { behavior: "allow", newPermissionMode: "plan" };
         } else {
-          onDecision({ behavior: "allow" });
+          decision = { behavior: "allow" };
         }
       } else if (state.selectedOption === "auto") {
         if (toolName === BASH_TOOL_NAME) {
           const command = (toolInput?.command as string) || "";
           if (command.trim().startsWith("mkdir")) {
-            onDecision({ behavior: "allow", newPermissionMode: "acceptEdits" });
+            decision = { behavior: "allow", newPermissionMode: "acceptEdits" };
           } else {
             const rule = suggestedPrefix
               ? `Bash(${suggestedPrefix})`
               : `Bash(${toolInput?.command})`;
-            onDecision({ behavior: "allow", newPermissionRule: rule });
+            decision = { behavior: "allow", newPermissionRule: rule };
           }
         } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
-          onDecision({ behavior: "allow", newPermissionMode: "plan" });
+          decision = { behavior: "allow", newPermissionMode: "plan" };
         } else if (toolName.startsWith("mcp__")) {
-          onDecision({ behavior: "allow", newPermissionRule: toolName });
+          decision = { behavior: "allow", newPermissionRule: toolName };
         } else {
-          onDecision({ behavior: "allow", newPermissionMode: "acceptEdits" });
+          decision = { behavior: "allow", newPermissionMode: "acceptEdits" };
         }
       } else if (state.alternativeText.trim()) {
-        onDecision({ behavior: "deny", message: state.alternativeText.trim() });
+        decision = { behavior: "deny", message: state.alternativeText.trim() };
       } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
-        onDecision({
+        decision = {
           behavior: "deny",
           message: "User chose not to enter plan mode",
-        });
+        };
+      }
+      if (decision) {
+        dispatch({ type: "CONFIRM", decision });
       }
       return;
     }

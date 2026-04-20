@@ -6,6 +6,7 @@ import { Container } from "@/utils/container.js";
 import { AIManager } from "@/managers/aiManager.js";
 
 import type { ErrorBlock, Usage } from "@/types/index.js";
+import type { QueuedMessage } from "@/managers/messageQueue.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -358,6 +359,82 @@ describe("Agent - Abort Handling", () => {
     // For custom commands that use AI, the abort would work
     // Since sendMessage returns void, we just verify it doesn't throw
     expect(true).toBe(true); // Test passes if no exception was thrown
+  });
+
+  it("should clear message queue before aborting AI to prevent race condition", async () => {
+    const mockCallbacks = {
+      onMessagesChange: vi.fn(),
+      onLoadingChange: vi.fn(),
+      onQueuedMessagesChange: vi.fn(),
+    };
+
+    // Create Agent instance
+    const testAgent = await Agent.create({
+      apiKey: "test-key",
+      workdir: "/tmp/test-abort-queue",
+      callbacks: mockCallbacks,
+    });
+
+    // Register mock ToolManager
+    const container = (testAgent as unknown as { container: Container })
+      .container;
+    container.register("ToolManager", mockToolManagerInstance);
+
+    // Register required managers
+    container.register("McpManager", {
+      isMcpTool: vi.fn().mockReturnValue(false),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
+      getMcpToolsConfig: vi.fn().mockReturnValue([]),
+    });
+    container.register("SubagentManager", {
+      getConfigurations: vi.fn().mockReturnValue([]),
+      initialize: vi.fn().mockResolvedValue(undefined),
+    });
+    container.register("SkillManager", {
+      getAvailableSkills: vi.fn().mockReturnValue([]),
+      initialize: vi.fn().mockResolvedValue(undefined),
+    });
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+      resolveModelConfig: () => testAgent.getModelConfig(),
+      resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => testAgent.getLanguage(),
+      getEnvironmentVars: () =>
+        (
+          testAgent as unknown as {
+            configurationService: {
+              getEnvironmentVars: () => Record<string, string>;
+            };
+          }
+        ).configurationService.getEnvironmentVars(),
+    });
+
+    // Track queuedMessages changes
+    let queuedMessages: QueuedMessage[] = [];
+    mockCallbacks.onQueuedMessagesChange.mockImplementation(
+      (msgs: QueuedMessage[]) => {
+        queuedMessages = [...msgs];
+      },
+    );
+
+    // Set AI loading to true so sendMessage will enqueue instead of executing
+    const aiManager = (testAgent as unknown as { aiManager: AIManager })
+      .aiManager;
+    aiManager.setIsLoading(true);
+
+    // Enqueue messages via sendMessage (they get queued because isLoading=true)
+    await testAgent.sendMessage("queued msg 1");
+    await testAgent.sendMessage("queued msg 2");
+
+    expect(queuedMessages).toHaveLength(2);
+
+    // Now abortMessage() should clear queue BEFORE triggering onLoadingChange
+    testAgent.abortMessage();
+
+    // After abort, queue should be empty
+    expect(queuedMessages).toHaveLength(0);
+    expect(mockCallbacks.onQueuedMessagesChange).toHaveBeenCalledWith([]);
   });
 
   it("should not accumulate abort listeners when using same signal multiple times", async () => {

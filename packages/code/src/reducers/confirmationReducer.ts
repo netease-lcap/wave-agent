@@ -1,8 +1,11 @@
+import type { PermissionDecision } from "wave-agent-sdk";
+
 export interface ConfirmationState {
   selectedOption: "clear" | "auto" | "allow" | "alternative";
   alternativeText: string;
   alternativeCursorPosition: number;
   hasUserInput: boolean;
+  decision: PermissionDecision | null;
 }
 
 export type ConfirmationAction =
@@ -10,7 +13,8 @@ export type ConfirmationAction =
   | { type: "INSERT_TEXT"; text: string }
   | { type: "BACKSPACE" }
   | { type: "MOVE_CURSOR_LEFT" }
-  | { type: "MOVE_CURSOR_RIGHT" };
+  | { type: "MOVE_CURSOR_RIGHT" }
+  | { type: "CONFIRM"; decision: PermissionDecision };
 
 export function confirmationReducer(
   state: ConfirmationState,
@@ -62,6 +66,8 @@ export function confirmationReducer(
           state.alternativeCursorPosition + 1,
         ),
       };
+    case "CONFIRM":
+      return { ...state, decision: action.decision };
     default:
       return state;
   }
