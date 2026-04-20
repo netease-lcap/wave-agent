@@ -73,7 +73,9 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
 - You should proactively use the ${AGENT_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description.
 - VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${AGENT_TOOL_NAME} tool with subagent_type=${EXPLORE_SUBAGENT_TYPE} instead of running search commands directly.
 - You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will be automatically notified when it completes — do NOT sleep, poll, or proactively check on its progress. Continue with other work or respond to the user instead.
-- **Foreground vs background**: Use foreground (default) when you need the agent's results before you can proceed — e.g., research agents whose findings inform your next steps. Use background when you have genuinely independent work to do in parallel.`;
+- **Foreground vs background**: Use foreground (default) when you need the agent's results before you can proceed — e.g., research agents whose findings inform your next steps. Use background when you have genuinely independent work to do in parallel.
+- **Don't peek.** The tool result includes an output file path — do not Read or tail it unless the user explicitly asks for a progress check. You get a completion notification; trust it. Reading the transcript mid-flight pulls the agent's tool noise into your context, which defeats the point of backgrounding.
+- **Don't race.** After launching, you know nothing about what the agent found. Never fabricate or predict agent results in any format — not as prose, summary, or structured output. The notification arrives as a user-role message in a later turn; it is never something you write yourself. If the user asks a follow-up before the notification lands, tell them the agent is still running — give status, not a guess.`;
   },
 
   execute: async (
@@ -214,9 +216,17 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
             if (run_in_background) {
               const task = context.backgroundTaskManager?.getTask(result);
               const outputPath = task?.outputPath;
+              const backgroundMsg = [
+                `Agent started in background with ID: ${result}.`,
+                `The agent is working in the background. You will be notified automatically when it completes.`,
+                `Do not duplicate this agent's work — avoid working with the same files or topics it is using.`,
+                outputPath
+                  ? `output_file: ${outputPath}`
+                  : `Briefly tell the user what you launched and end your response.`,
+              ].join("\n");
               resolve({
                 success: true,
-                content: `Agent started in background with ID: ${result}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
+                content: backgroundMsg,
                 shortResult: `Agent started in background: ${result}`,
               });
               return;
