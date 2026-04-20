@@ -16,6 +16,7 @@ import {
   generateMessageId,
 } from "../utils/messageOperations.js";
 import type { Message, Usage } from "../types/index.js";
+import { getLastApiRounds } from "../utils/groupMessagesByApiRound.js";
 import { join, isAbsolute, relative } from "path";
 import {
   appendMessages,
@@ -499,8 +500,8 @@ export class MessageManager {
     compressedContent: string,
     usage?: Usage,
   ): void {
-    // Get last 3 messages to preserve
-    const lastThreeMessages = this.messages.slice(-3);
+    // Get last 2 API rounds to preserve (structurally safe boundary)
+    const lastThreeMessages = getLastApiRounds(this.messages, 2);
 
     // Create compressed message
     const compressMessage: Message = {

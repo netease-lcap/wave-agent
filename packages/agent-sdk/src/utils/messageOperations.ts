@@ -49,6 +49,7 @@ export interface UpdateToolBlockParams {
   compactParams?: string;
   parametersChunk?: string; // Incremental parameter updates for streaming
   isManuallyBackgrounded?: boolean;
+  timestamp?: number;
 }
 
 // Agent specific interfaces (without messages parameter)
