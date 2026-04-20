@@ -1,6 +1,7 @@
 import { type CallAgentOptions } from "../services/aiService.js";
 import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
+import { microcompactMessages } from "../utils/microcompact.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import * as fs from "node:fs/promises";
@@ -57,6 +58,7 @@ export class AIManager {
   private stream: boolean; // Streaming mode flag
   private modelOverride?: string;
   private _onCwdChange?: (newCwd: string) => void; // Store callback for CWD changes
+  private consecutiveCompressionFailures: number = 0;
 
   // Service overrides
   constructor(
@@ -278,6 +280,14 @@ export class AIManager {
 
       // If there are messages to compress, perform compression
       if (messagesToCompress.length > 0) {
+        // Circuit breaker: skip compression after 3 consecutive failures
+        if (this.consecutiveCompressionFailures >= 3) {
+          logger?.warn(
+            `Skipping compression: ${this.consecutiveCompressionFailures} consecutive failures`,
+          );
+          return;
+        }
+
         const recentChatMessages = convertMessagesForAPI(messagesToCompress);
 
         // Save session before compression to preserve original messages
@@ -396,8 +406,13 @@ export class AIManager {
           logger?.debug(
             `Successfully compressed ${messagesToCompress.length} messages and updated session`,
           );
+          this.consecutiveCompressionFailures = 0;
         } catch (compressError) {
-          logger?.error("Failed to compress messages:", compressError);
+          this.consecutiveCompressionFailures++;
+          logger?.error(
+            `Failed to compress messages (${this.consecutiveCompressionFailures} consecutive):`,
+            compressError,
+          );
           this.messageManager.addErrorBlock(
             `Failed to compress conversation history: ${compressError instanceof Error ? compressError.message : String(compressError)}. You may encounter context limit issues.`,
           );
@@ -486,10 +501,13 @@ export class AIManager {
       toolAbortController = this.toolAbortController!;
     }
 
-    // Get recent message history
-    const recentMessages = convertMessagesForAPI(
-      this.messageManager.getMessages(),
-    );
+    // Get recent message history with microcompact applied
+    const rawMessages = this.messageManager.getMessages();
+    const microcompactedMessages = microcompactMessages(rawMessages, {
+      timeThresholdMS: 30 * 60 * 1000, // 30 minutes
+      recentResultsToKeep: 3,
+    });
+    const recentMessages = convertMessagesForAPI(microcompactedMessages);
 
     try {
       // Get combined memory content
@@ -742,6 +760,7 @@ export class AIManager {
                   stage: "end",
                   name: toolName,
                   compactParams: "",
+                  timestamp: Date.now(),
                 });
                 return;
               }
@@ -859,6 +878,7 @@ export class AIManager {
                 shortResult: toolResult.shortResult,
                 isManuallyBackgrounded: toolResult.isManuallyBackgrounded,
                 startLineNumber: toolResult.startLineNumber,
+                timestamp: Date.now(),
               });
 
               // Execute PostToolUse hooks after successful tool completion
@@ -884,6 +904,7 @@ export class AIManager {
                 name: toolName,
                 compactParams,
                 isManuallyBackgrounded: false,
+                timestamp: Date.now(),
               });
             }
           },

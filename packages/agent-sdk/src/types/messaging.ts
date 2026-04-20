@@ -69,6 +69,7 @@ export interface ToolBlock {
   compactParams?: string; // Compact parameter display
   parametersChunk?: string; // Incremental parameter updates for streaming
   isManuallyBackgrounded?: boolean; // Whether the tool was manually backgrounded by the user
+  timestamp?: number; // Unix ms, set when tool result is finalized (stage="end")
 }
 
 export interface ImageBlock {
