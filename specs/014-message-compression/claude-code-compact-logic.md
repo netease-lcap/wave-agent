@@ -422,16 +422,19 @@ User types: /compact [optional custom instructions]
 
 ## Key Differences from Wave's Current Implementation
 
-1. **Microcompact layer**: Wave doesn't have pre-request tool result clearing
+1. **Cached microcompact**: Wave has time-based microcompact but NOT the cache-editing API path (`cache_reference` / `cache_edits`)
 2. **Session Memory compaction**: Wave doesn't have an alternative summary source
 3. **Partial compact**: Wave only has full conversation compaction
 4. **Cache sharing**: Wave doesn't reuse prompt cache for the compact API call
 5. **PTL retry**: Wave doesn't handle prompt-too-long during the compact request itself
-6. **Post-compact context restoration**: Wave's implementation is simpler - no file re-reading, skill attachments, async agent tracking
-7. **Circuit breaker**: Wave doesn't limit consecutive auto-compact failures
-8. **Message grouping by API round**: Wave's spec mentions keeping last 3 messages; Claude groups by API rounds for more precise truncation
+6. **Post-compact context restoration**: Wave now has basic context restoration (recent file reads, working directory, plan mode, skills, background tasks) but Claude's is more extensive (delta attachments, tool re-announcements, file diffing against preserved messages)
+7. **Circuit breaker**: Wave now has a circuit breaker (3 consecutive failures, same as Claude)
+8. **Message grouping by API round**: Wave now groups messages by API rounds using `groupMessagesByApiRound()` (same approach as Claude)
 9. **Reactive compact**: Wave doesn't have a reactive (error-driven) compaction path
-10. **Token estimation**: Claude uses `roughTokenCountEstimation` with 4/3 padding; Wave uses a different estimation method
+10. **Token estimation**: Claude uses `roughTokenCountEstimation` with 4/3 padding; Wave uses ~4 chars per token estimation
+11. **Snip compact**: Wave doesn't have a snip-compact mechanism to drop old compacted segments
+12. **Context collapse**: Wave doesn't have a context-collapse feature
+13. **Post-compact cleanup**: Wave doesn't have a formal post-compact cleanup pipeline (cache resets, state clearing)
 
 ## Related Prompt Files
 

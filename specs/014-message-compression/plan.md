@@ -50,12 +50,29 @@ specs/014-message-compression/
 packages/agent-sdk/
 ├── src/
 │   ├── managers/
-│   │   └── aiManager.ts        # Trigger history compression
+│   │   ├── aiManager.ts        # Trigger history compression, microcompact, circuit breaker
+│   │   └── messageManager.ts   # Compress messages, track file reads, API-round grouping
+│   ├── services/
+│   │   └── aiService.ts        # Compress API call, image stripping
+│   ├── types/
+│   │   └── messaging.ts        # ToolBlock timestamp field
+│   ├── prompts/
+│   │   └── index.ts            # COMPRESS_MESSAGES_SYSTEM_PROMPT
 │   └── utils/
-│       └── messageOperations.ts # Compression logic
+│       ├── groupMessagesByApiRound.ts  # API-round grouping
+│       ├── microcompact.ts             # Time-based tool result clearing
+│       └── messageOperations.ts        # Compression logic
 └── tests/
+    ├── agent/
+    │   ├── agent.compression.test.ts   # Compression + circuit breaker tests
+    │   └── agent.coverage.test.ts
+    ├── integration/
+    │   └── compactionFlow.test.ts      # Full pipeline integration tests
+    ├── managers/
+    │   └── messageManager.coverage.test.ts
     └── utils/
-        └── messageOperations.test.ts
+        ├── groupMessagesByApiRound.test.ts
+        └── microcompact.test.ts
 ```
 
 ## Complexity Tracking
