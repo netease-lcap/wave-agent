@@ -6,7 +6,6 @@ import {
   InputAction,
   InputManagerCallbacks,
 } from "./inputReducer.js";
-import type { MutableRefObject } from "react";
 
 export const expandLongTextPlaceholders = (
   text: string,
@@ -290,8 +289,6 @@ export const handlePasteInput = (
   dispatch: React.Dispatch<InputAction>,
   callbacks: Partial<InputManagerCallbacks>,
   input: string,
-  isPastingRef?: MutableRefObject<boolean>,
-  pasteBufferRef?: MutableRefObject<string>,
 ): void => {
   const inputString = input;
   const isPasteOperation =
@@ -300,21 +297,12 @@ export const handlePasteInput = (
     inputString.includes("\r");
 
   if (isPasteOperation) {
-    // Use ref-based check when available to avoid React state staleness
-    const isCurrentlyPasting = isPastingRef
-      ? isPastingRef.current
-      : state.isPasting;
-
-    if (!isCurrentlyPasting) {
-      if (isPastingRef) isPastingRef.current = true;
-      if (pasteBufferRef) pasteBufferRef.current = inputString;
+    if (!state.isPasting) {
       dispatch({
         type: "START_PASTE",
         payload: { buffer: inputString, cursorPosition: state.cursorPosition },
       });
     } else {
-      if (pasteBufferRef)
-        pasteBufferRef.current = pasteBufferRef.current + inputString;
       dispatch({ type: "APPEND_PASTE_BUFFER", payload: inputString });
     }
   } else {
@@ -544,8 +532,6 @@ export const handleNormalInput = async (
   input: string,
   key: Key,
   clearImages?: () => void,
-  isPastingRef?: MutableRefObject<boolean>,
-  pasteBufferRef?: MutableRefObject<string>,
 ): Promise<boolean> => {
   if (key.return) {
     await handleSubmit(state, dispatch, callbacks);
@@ -699,14 +685,7 @@ export const handleNormalInput = async (
     !("home" in key && key.home) &&
     !("end" in key && key.end)
   ) {
-    handlePasteInput(
-      state,
-      dispatch,
-      callbacks,
-      input,
-      isPastingRef,
-      pasteBufferRef,
-    );
+    handlePasteInput(state, dispatch, callbacks, input);
     return true;
   }
 
@@ -720,8 +699,6 @@ export const handleInput = async (
   input: string,
   key: Key,
   clearImages?: () => void,
-  isPastingRef?: MutableRefObject<boolean>,
-  pasteBufferRef?: MutableRefObject<string>,
 ): Promise<boolean> => {
   if (state.selectorJustUsed) {
     return true;
@@ -764,8 +741,6 @@ export const handleInput = async (
       input,
       key,
       clearImages,
-      isPastingRef,
-      pasteBufferRef,
     );
   }
 
@@ -859,8 +834,6 @@ export const handleInput = async (
       input,
       key,
       clearImages,
-      isPastingRef,
-      pasteBufferRef,
     );
   }
 };
