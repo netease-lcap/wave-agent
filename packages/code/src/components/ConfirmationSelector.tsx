@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useReducer, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
 import {
@@ -7,6 +7,11 @@ import {
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
+import {
+  confirmationReducer,
+  type ConfirmationState,
+} from "../reducers/confirmationReducer.js";
+import { questionReducer } from "../reducers/questionReducer.js";
 
 const getHeaderColor = (header: string) => {
   const colors = ["red", "green", "blue", "magenta", "cyan"] as const;
@@ -27,13 +32,6 @@ export interface ConfirmationSelectorProps {
   onCancel: () => void;
 }
 
-interface ConfirmationState {
-  selectedOption: "clear" | "auto" | "allow" | "alternative";
-  alternativeText: string;
-  alternativeCursorPosition: number;
-  hasUserInput: boolean;
-}
-
 export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   toolName,
   toolInput,
@@ -43,29 +41,25 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   onDecision,
   onCancel,
 }) => {
-  const [state, setState] = useState<ConfirmationState>({
+  const [state, dispatch] = useReducer(confirmationReducer, {
     selectedOption: toolName === EXIT_PLAN_MODE_TOOL_NAME ? "clear" : "allow",
     alternativeText: "",
     alternativeCursorPosition: 0,
     hasUserInput: false,
   });
 
-  const [questionState, setQuestionState] = useState({
+  const questions =
+    (toolInput as unknown as AskUserQuestionInput)?.questions || [];
+
+  const [questionState, questionDispatch] = useReducer(questionReducer, {
     currentQuestionIndex: 0,
     selectedOptionIndex: 0,
     selectedOptionIndices: new Set<number>(),
-    userAnswers: {} as Record<string, string>,
+    userAnswers: {},
     otherText: "",
     otherCursorPosition: 0,
-    savedStates: {} as Record<
-      number,
-      {
-        selectedOptionIndex: number;
-        selectedOptionIndices: Set<number>;
-        otherText: string;
-        otherCursorPosition: number;
-      }
-    >,
+    savedStates: {},
+    decision: null,
   });
 
   const pendingDecisionRef = useRef<PermissionDecision | null>(null);
@@ -78,8 +72,18 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     }
   });
 
-  const questions =
-    (toolInput as unknown as AskUserQuestionInput)?.questions || [];
+  // Handle question state decision from reducer
+  useEffect(() => {
+    if (questionState.decision) {
+      onDecision(questionState.decision);
+    }
+  });
+
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const questionStateRef = useRef(questionState);
+  questionStateRef.current = questionState;
+
   const currentQuestion = questions[questionState.currentQuestionIndex];
 
   const getAutoOptionText = () => {
@@ -114,230 +118,90 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       const isMultiSelect = currentQuestion.multiSelect;
 
       if (key.return) {
-        setQuestionState((prev) => {
-          const isOtherFocused =
-            prev.selectedOptionIndex === options.length - 1;
-          let answer = "";
-          if (isMultiSelect) {
-            const selectedLabels = Array.from(prev.selectedOptionIndices)
-              .filter((i) => i < currentQuestion.options.length)
-              .map((i) => currentQuestion.options[i].label);
-            const isOtherChecked = prev.selectedOptionIndices.has(
-              options.length - 1,
-            );
-            if (isOtherChecked && prev.otherText.trim()) {
-              selectedLabels.push(prev.otherText.trim());
-            }
-            answer = selectedLabels.join(", ");
-          } else {
-            if (isOtherFocused) {
-              answer = prev.otherText.trim();
-            } else {
-              answer = options[prev.selectedOptionIndex].label;
-            }
-          }
-
-          if (!answer) return prev;
-
-          const newAnswers = {
-            ...prev.userAnswers,
-            [currentQuestion.question]: answer,
-          };
-
-          if (prev.currentQuestionIndex < questions.length - 1) {
-            const nextIndex = prev.currentQuestionIndex + 1;
-            const savedStates = {
-              ...prev.savedStates,
-              [prev.currentQuestionIndex]: {
-                selectedOptionIndex: prev.selectedOptionIndex,
-                selectedOptionIndices: prev.selectedOptionIndices,
-                otherText: prev.otherText,
-                otherCursorPosition: prev.otherCursorPosition,
-              },
-            };
-
-            const nextState = savedStates[nextIndex] || {
-              selectedOptionIndex: 0,
-              selectedOptionIndices: new Set<number>(),
-              otherText: "",
-              otherCursorPosition: 0,
-            };
-
-            return {
-              ...prev,
-              currentQuestionIndex: nextIndex,
-              ...nextState,
-              userAnswers: newAnswers,
-              savedStates,
-            };
-          } else {
-            const finalAnswers = { ...newAnswers };
-            // Also collect from savedStates for any questions that were skipped via Tab
-            for (const [idxStr, s] of Object.entries(prev.savedStates)) {
-              const idx = parseInt(idxStr);
-              const q = questions[idx];
-              if (q && !finalAnswers[q.question]) {
-                const opts = [...q.options, { label: "Other" }];
-                let a = "";
-                if (q.multiSelect) {
-                  const selectedLabels = Array.from(s.selectedOptionIndices)
-                    .filter((i) => i < q.options.length)
-                    .map((i) => q.options[i].label);
-                  const isOtherChecked = s.selectedOptionIndices.has(
-                    opts.length - 1,
-                  );
-                  if (isOtherChecked && s.otherText.trim()) {
-                    selectedLabels.push(s.otherText.trim());
-                  }
-                  a = selectedLabels.join(", ");
-                } else {
-                  if (s.selectedOptionIndex === opts.length - 1) {
-                    a = s.otherText.trim();
-                  } else {
-                    a = opts[s.selectedOptionIndex].label;
-                  }
-                }
-                if (a) finalAnswers[q.question] = a;
-              }
-            }
-
-            // Only submit if all questions have been answered
-            const allAnswered = questions.every(
-              (q) => finalAnswers[q.question],
-            );
-            if (!allAnswered) return prev;
-
-            pendingDecisionRef.current = {
-              behavior: "allow",
-              message: JSON.stringify(finalAnswers),
-            };
-            return {
-              ...prev,
-              userAnswers: finalAnswers,
-            };
-          }
+        questionDispatch({
+          type: "CONFIRM_ANSWER",
+          currentQuestion,
+          options,
+          isMultiSelect: !!isMultiSelect,
+          questions,
         });
         return;
       }
 
       if (input === " ") {
-        setQuestionState((prev) => {
-          const isOtherFocused =
-            prev.selectedOptionIndex === options.length - 1;
-          if (
-            isMultiSelect &&
-            (!isOtherFocused ||
-              !prev.selectedOptionIndices.has(prev.selectedOptionIndex))
-          ) {
-            const nextIndices = new Set(prev.selectedOptionIndices);
-            if (nextIndices.has(prev.selectedOptionIndex))
-              nextIndices.delete(prev.selectedOptionIndex);
-            else nextIndices.add(prev.selectedOptionIndex);
-            return {
-              ...prev,
-              selectedOptionIndices: nextIndices,
-            };
-          }
-          return prev;
-        });
+        const isOtherFocused =
+          questionState.selectedOptionIndex === options.length - 1;
+        if (
+          isMultiSelect &&
+          (!isOtherFocused ||
+            !questionState.selectedOptionIndices.has(
+              questionState.selectedOptionIndex,
+            ))
+        ) {
+          questionDispatch({
+            type: "TOGGLE_MULTI_SELECT",
+            optionsLength: options.length,
+          });
+          return;
+        }
         // If it's other and focused, we don't return here, allowing the input handler below to handle it
       }
 
       if (key.upArrow) {
-        setQuestionState((prev) => ({
-          ...prev,
-          selectedOptionIndex: Math.max(0, prev.selectedOptionIndex - 1),
-        }));
+        questionDispatch({
+          type: "MOVE_OPTION_UP",
+          maxIndex: options.length - 1,
+        });
         return;
       }
       if (key.downArrow) {
-        setQuestionState((prev) => ({
-          ...prev,
-          selectedOptionIndex: Math.min(
-            options.length - 1,
-            prev.selectedOptionIndex + 1,
-          ),
-        }));
+        questionDispatch({
+          type: "MOVE_OPTION_DOWN",
+          maxIndex: options.length - 1,
+        });
         return;
       }
       if (key.tab) {
-        setQuestionState((prev) => {
-          const direction = key.shift ? -1 : 1;
-          let nextIndex = prev.currentQuestionIndex + direction;
-          if (nextIndex < 0) nextIndex = questions.length - 1;
-          if (nextIndex >= questions.length) nextIndex = 0;
-
-          if (nextIndex === prev.currentQuestionIndex) return prev;
-
-          const savedStates = {
-            ...prev.savedStates,
-            [prev.currentQuestionIndex]: {
-              selectedOptionIndex: prev.selectedOptionIndex,
-              selectedOptionIndices: prev.selectedOptionIndices,
-              otherText: prev.otherText,
-              otherCursorPosition: prev.otherCursorPosition,
-            },
-          };
-
-          const nextState = savedStates[nextIndex] || {
-            selectedOptionIndex: 0,
-            selectedOptionIndices: new Set<number>(),
-            otherText: "",
-            otherCursorPosition: 0,
-          };
-
-          return {
-            ...prev,
-            currentQuestionIndex: nextIndex,
-            ...nextState,
-            savedStates,
-          };
+        questionDispatch({
+          type: "CYCLE_QUESTION",
+          shift: key.shift,
+          questionCount: questions.length,
         });
         return;
       }
 
-      setQuestionState((prev) => {
-        const isOtherFocused = prev.selectedOptionIndex === options.length - 1;
-        if (isOtherFocused) {
-          if (key.leftArrow) {
-            return {
-              ...prev,
-              otherCursorPosition: Math.max(0, prev.otherCursorPosition - 1),
-            };
-          }
-          if (key.rightArrow) {
-            return {
-              ...prev,
-              otherCursorPosition: Math.min(
-                prev.otherText.length,
-                prev.otherCursorPosition + 1,
-              ),
-            };
-          }
-          if (key.backspace || key.delete) {
-            if (prev.otherCursorPosition > 0) {
-              return {
-                ...prev,
-                otherText:
-                  prev.otherText.slice(0, prev.otherCursorPosition - 1) +
-                  prev.otherText.slice(prev.otherCursorPosition),
-                otherCursorPosition: prev.otherCursorPosition - 1,
-              };
-            }
-          }
-          if (input && !key.ctrl && !key.meta) {
-            return {
-              ...prev,
-              otherText:
-                prev.otherText.slice(0, prev.otherCursorPosition) +
-                input +
-                prev.otherText.slice(prev.otherCursorPosition),
-              otherCursorPosition: prev.otherCursorPosition + input.length,
-            };
-          }
-        }
-        return prev;
-      });
+      // Always dispatch Other actions unconditionally; the reducer checks
+      // isOtherFocused from the latest state, so this works correctly even
+      // when inputs are batched before React re-renders.
+      if (key.leftArrow) {
+        questionDispatch({
+          type: "MOVE_OTHER_LEFT",
+          optionsLength: options.length,
+        });
+        return;
+      }
+      if (key.rightArrow) {
+        questionDispatch({
+          type: "MOVE_OTHER_RIGHT",
+          optionsLength: options.length,
+        });
+        return;
+      }
+      if (key.backspace || key.delete) {
+        questionDispatch({
+          type: "DELETE_OTHER",
+          optionsLength: options.length,
+        });
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        questionDispatch({
+          type: "INSERT_OTHER",
+          text: input,
+          optionsLength: options.length,
+        });
+        return;
+      }
       return;
     }
 
@@ -387,23 +251,11 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
 
     if (state.selectedOption === "alternative") {
       if (key.leftArrow) {
-        setState((prev) => ({
-          ...prev,
-          alternativeCursorPosition: Math.max(
-            0,
-            prev.alternativeCursorPosition - 1,
-          ),
-        }));
+        dispatch({ type: "MOVE_CURSOR_LEFT" });
         return;
       }
       if (key.rightArrow) {
-        setState((prev) => ({
-          ...prev,
-          alternativeCursorPosition: Math.min(
-            prev.alternativeText.length,
-            prev.alternativeCursorPosition + 1,
-          ),
-        }));
+        dispatch({ type: "MOVE_CURSOR_RIGHT" });
         return;
       }
     }
@@ -417,10 +269,10 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     if (key.upArrow) {
       const currentIndex = availableOptions.indexOf(state.selectedOption);
       if (currentIndex > 0) {
-        setState((prev) => ({
-          ...prev,
-          selectedOption: availableOptions[currentIndex - 1],
-        }));
+        dispatch({
+          type: "SELECT_OPTION",
+          option: availableOptions[currentIndex - 1],
+        });
       }
       return;
     }
@@ -428,10 +280,10 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     if (key.downArrow) {
       const currentIndex = availableOptions.indexOf(state.selectedOption);
       if (currentIndex < availableOptions.length - 1) {
-        setState((prev) => ({
-          ...prev,
-          selectedOption: availableOptions[currentIndex + 1],
-        }));
+        dispatch({
+          type: "SELECT_OPTION",
+          option: availableOptions[currentIndex + 1],
+        });
       }
       return;
     }
@@ -442,47 +294,20 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       let nextIndex = currentIndex + direction;
       if (nextIndex < 0) nextIndex = availableOptions.length - 1;
       if (nextIndex >= availableOptions.length) nextIndex = 0;
-      setState((prev) => ({
-        ...prev,
-        selectedOption: availableOptions[nextIndex],
-      }));
+      dispatch({
+        type: "SELECT_OPTION",
+        option: availableOptions[nextIndex],
+      });
       return;
     }
 
     if (input && !key.ctrl && !key.meta && !("alt" in key && key.alt)) {
-      setState((prev) => {
-        const nextText =
-          prev.alternativeText.slice(0, prev.alternativeCursorPosition) +
-          input +
-          prev.alternativeText.slice(prev.alternativeCursorPosition);
-        return {
-          ...prev,
-          selectedOption: "alternative",
-          alternativeText: nextText,
-          alternativeCursorPosition:
-            prev.alternativeCursorPosition + input.length,
-          hasUserInput: true,
-        };
-      });
+      dispatch({ type: "INSERT_TEXT", text: input });
       return;
     }
 
     if (key.backspace || key.delete) {
-      setState((prev) => {
-        if (prev.alternativeCursorPosition > 0) {
-          const nextText =
-            prev.alternativeText.slice(0, prev.alternativeCursorPosition - 1) +
-            prev.alternativeText.slice(prev.alternativeCursorPosition);
-          return {
-            ...prev,
-            selectedOption: "alternative",
-            alternativeText: nextText,
-            alternativeCursorPosition: prev.alternativeCursorPosition - 1,
-            hasUserInput: nextText.length > 0,
-          };
-        }
-        return prev;
-      });
+      dispatch({ type: "BACKSPACE" });
       return;
     }
   });
