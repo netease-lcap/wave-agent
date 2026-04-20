@@ -45,9 +45,13 @@ specs/023-long-text-placeholder/
 ```
 packages/code/
 ├── src/
-│   └── managers/
-│       └── InputManager.ts     # Handle input compression
+│   ├── managers/
+│   │   ├── inputReducer.ts     # Reducer with APPEND_PASTE_CHUNK action
+│   │   └── inputHandlers.ts    # Paste detection and handler delegation
+│   └── hooks/
+│       └── useInputManager.ts  # Paste debounce and reducer integration
 └── tests/
     └── managers/
-        └── InputManager.test.ts
+        ├── inputReducer.test.ts    # Reducer action tests
+        └── inputHandlers.test.ts   # Handler delegation tests
 ```

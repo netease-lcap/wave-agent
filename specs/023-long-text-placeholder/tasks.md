@@ -17,7 +17,7 @@
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-- [ ] T004 [P] Create unit test file for `InputManager` paste handling in `packages/code/tests/managers/InputManager.test.ts`
+- [X] T004 [P] Create unit test file for `InputManager` paste handling in `packages/code/tests/managers/InputManager.test.ts`
 
 ---
 
@@ -31,5 +31,6 @@
 
 - [X] T005 [US1] Implement paste detection and placeholder replacement in `packages/code/src/managers/InputManager.ts`
 - [X] T006 [US1] Implement placeholder expansion in `packages/code/src/managers/InputManager.ts`
+- [X] T007 [US1] Fix paste chunk loss with single reducer action (APPEND_PASTE_CHUNK)
 
 **Checkpoint**: User Story 1 is fully functional and testable independently.

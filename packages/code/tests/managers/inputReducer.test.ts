@@ -508,6 +508,62 @@ describe("inputReducer", () => {
     expect(state.pasteBuffer).toBe("");
   });
 
+  it("should handle APPEND_PASTE_CHUNK as new paste when buffer is empty", () => {
+    const state = inputReducer(initialState, {
+      type: "APPEND_PASTE_CHUNK",
+      payload: { chunk: "first chunk", cursorPosition: 3 },
+    });
+    expect(state.isPasting).toBe(true);
+    expect(state.pasteBuffer).toBe("first chunk");
+    expect(state.initialPasteCursorPosition).toBe(3);
+  });
+
+  it("should handle APPEND_PASTE_CHUNK as append when buffer is already set", () => {
+    let state = inputReducer(initialState, {
+      type: "APPEND_PASTE_CHUNK",
+      payload: { chunk: "first", cursorPosition: 0 },
+    });
+    state = inputReducer(state, {
+      type: "APPEND_PASTE_CHUNK",
+      payload: { chunk: "second", cursorPosition: 0 },
+    });
+    state = inputReducer(state, {
+      type: "APPEND_PASTE_CHUNK",
+      payload: { chunk: "third", cursorPosition: 5 },
+    });
+
+    expect(state.pasteBuffer).toBe("firstsecondthird");
+    expect(state.initialPasteCursorPosition).toBe(0); // preserved from first chunk
+  });
+
+  it("should accumulate paste chunks through rapid sequential dispatches", () => {
+    let state = inputReducer(initialState, {
+      type: "APPEND_PASTE_CHUNK",
+      payload: { chunk: "chunk1", cursorPosition: 0 },
+    });
+    state = inputReducer(state, {
+      type: "APPEND_PASTE_CHUNK",
+      payload: { chunk: "chunk2", cursorPosition: 0 },
+    });
+    state = inputReducer(state, {
+      type: "APPEND_PASTE_CHUNK",
+      payload: { chunk: "chunk3", cursorPosition: 0 },
+    });
+
+    expect(state.pasteBuffer).toBe("chunk1chunk2chunk3");
+    expect(state.isPasting).toBe(true);
+  });
+
+  it("should handle END_PASTE after APPEND_PASTE_CHUNK", () => {
+    let state = inputReducer(initialState, {
+      type: "APPEND_PASTE_CHUNK",
+      payload: { chunk: "pasted text", cursorPosition: 0 },
+    });
+    state = inputReducer(state, { type: "END_PASTE" });
+    expect(state.isPasting).toBe(false);
+    expect(state.pasteBuffer).toBe("");
+  });
+
   it("should handle ADD_IMAGE_AND_INSERT_PLACEHOLDER", () => {
     const state = inputReducer(initialState, {
       type: "ADD_IMAGE_AND_INSERT_PLACEHOLDER",
