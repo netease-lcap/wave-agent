@@ -19,6 +19,10 @@ export const useInputManager = (
   const callbacksRef = useRef(callbacks);
   const stateRef = useRef(state);
 
+  // Ref-based paste tracking to handle rapid sequential events before React state updates
+  const isPastingRef = useRef(false);
+  const pasteBufferRef = useRef("");
+
   // Update refs when they change
   useEffect(() => {
     callbacksRef.current = callbacks;
@@ -58,7 +62,7 @@ export const useInputManager = (
     }
   }, [state.showFileSelector, state.fileSearchQuery]);
 
-  // Handle paste debouncing
+  // Handle paste debouncing - sync refs back to state when paste ends
   useEffect(() => {
     if (state.isPasting) {
       const pasteDebounceDelay = parseInt(
@@ -66,14 +70,13 @@ export const useInputManager = (
         10,
       );
       const timer = setTimeout(() => {
-        const processedInput = stateRef.current.pasteBuffer.replace(
-          /\r/g,
-          "\n",
-        );
+        const processedInput = pasteBufferRef.current.replace(/\r/g, "\n");
         dispatch({
           type: "INSERT_TEXT_WITH_PLACEHOLDER",
           payload: processedInput,
         });
+        isPastingRef.current = false;
+        pasteBufferRef.current = "";
         dispatch({ type: "END_PASTE" });
         dispatch({ type: "RESET_HISTORY_NAVIGATION" });
       }, pasteDebounceDelay);
@@ -378,12 +381,37 @@ export const useInputManager = (
   }, []);
 
   const handlePasteInput = useCallback((input: string) => {
-    handlers.handlePasteInput(
-      stateRef.current,
-      dispatch,
-      callbacksRef.current,
-      input,
-    );
+    const inputString = input;
+    const isPasteOperation =
+      inputString.length > 1 ||
+      inputString.includes("\n") ||
+      inputString.includes("\r");
+
+    if (isPasteOperation) {
+      if (!isPastingRef.current) {
+        isPastingRef.current = true;
+        pasteBufferRef.current = inputString;
+        dispatch({
+          type: "START_PASTE",
+          payload: {
+            buffer: inputString,
+            cursorPosition: stateRef.current.cursorPosition,
+          },
+        });
+      } else {
+        pasteBufferRef.current = pasteBufferRef.current + inputString;
+        dispatch({ type: "APPEND_PASTE_BUFFER", payload: inputString });
+      }
+    } else {
+      let char = inputString;
+      const currentState = stateRef.current;
+      if (char === "！" && currentState.cursorPosition === 0) {
+        char = "!";
+      }
+
+      dispatch({ type: "INSERT_TEXT", payload: char });
+      handlers.processSelectorInput(currentState, dispatch, char);
+    }
   }, []);
 
   const handleSubmit = useCallback(
@@ -425,6 +453,8 @@ export const useInputManager = (
         input,
         key,
         clearImages,
+        isPastingRef,
+        pasteBufferRef,
       );
     },
     [],
