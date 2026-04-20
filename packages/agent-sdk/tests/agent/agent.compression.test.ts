@@ -528,9 +528,11 @@ describe("Agent Message Compression Tests", () => {
       content: string;
       sessionId: string;
     };
-    expect(compressBlock.content).toBe(
+    expect(compressBlock.content).toContain(
       "Compressed content: This contains summary information of previous multi-round conversations.",
     );
+    expect(compressBlock.content).toContain("[Context Restoration]");
+    expect(compressBlock.content).toContain("[Working Directory]");
 
     // Reset messagesPassedToCallAgent to capture parameters for the second call
     messagesPassedToCallAgent = [];
