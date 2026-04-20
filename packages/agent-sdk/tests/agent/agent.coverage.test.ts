@@ -178,12 +178,16 @@ describe("Agent - Branch Coverage", () => {
       aiManager.isLoading = false;
     });
 
-    it("should process notifications when queue has items", async () => {
+    it("should process pending notification promises on destroy", async () => {
+      const agent2 = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-coverage-2",
+      });
+
       const notificationQueue = (
-        agent as unknown as {
+        agent2 as unknown as {
           notificationQueue: {
             enqueue: (n: string) => void;
-            dequeueAll: () => string[];
             hasPending: () => boolean;
             onNotificationsEnqueued?: () => void;
           };
@@ -196,11 +200,16 @@ describe("Agent - Branch Coverage", () => {
       // Manually call the callback (agent is idle)
       notificationQueue.onNotificationsEnqueued!();
 
-      // Give time for the async processPendingNotifications to run
-      await new Promise((r) => setTimeout(r, 10));
+      // Use vi.waitFor to properly wait for the async processing
+      await vi.waitFor(
+        () => {
+          expect(notificationQueue.hasPending()).toBe(false);
+        },
+        { timeout: 5000 },
+      );
 
-      // The notification should have been processed (queue is empty)
-      expect(notificationQueue.hasPending()).toBe(false);
+      // Clean up before the next test
+      await agent2.destroy();
     });
 
     it("should handle restoreSession with same sessionId", async () => {
