@@ -79,11 +79,6 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     }
   });
 
-  const stateRef = useRef(state);
-  stateRef.current = state;
-  const questionStateRef = useRef(questionState);
-  questionStateRef.current = questionState;
-
   const currentQuestion = questions[questionState.currentQuestionIndex];
 
   const getAutoOptionText = () => {
