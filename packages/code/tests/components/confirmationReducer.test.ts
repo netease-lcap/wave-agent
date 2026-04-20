@@ -10,6 +10,7 @@ const initialState: ConfirmationState = {
   alternativeText: "",
   alternativeCursorPosition: 0,
   hasUserInput: false,
+  decision: null,
 };
 
 describe("confirmationReducer", () => {
@@ -163,6 +164,32 @@ describe("confirmationReducer", () => {
         type: "MOVE_CURSOR_RIGHT",
       });
       expect(result.alternativeCursorPosition).toBe(2);
+    });
+  });
+
+  describe("CONFIRM", () => {
+    it("should set the decision", () => {
+      const result = confirmationReducer(initialState, {
+        type: "CONFIRM",
+        decision: { behavior: "allow" },
+      });
+      expect(result.decision).toEqual({ behavior: "allow" });
+    });
+
+    it("should set decision with newPermissionRule", () => {
+      const result = confirmationReducer(initialState, {
+        type: "CONFIRM",
+        decision: { behavior: "allow", newPermissionRule: "Bash(test)" },
+      });
+      expect(result.decision?.newPermissionRule).toBe("Bash(test)");
+    });
+
+    it("should set decision with deny", () => {
+      const result = confirmationReducer(initialState, {
+        type: "CONFIRM",
+        decision: { behavior: "deny", message: "no" },
+      });
+      expect(result.decision).toEqual({ behavior: "deny", message: "no" });
     });
   });
 
