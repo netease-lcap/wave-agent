@@ -784,6 +784,19 @@ export async function compressMessages(
     await acquireSlot(abortSignal);
   }
 
+  // Strip images from messages before compact API call to reduce token usage
+  const cleanedMessages = messages.map((msg) => {
+    // Handle user/assistant messages with array content
+    if (Array.isArray(msg.content)) {
+      const textParts = msg.content.filter(
+        (part) => part.type === "text",
+      ) as import("openai/resources.js").ChatCompletionContentPartText[];
+      const text = textParts.map((p) => p.text).join("\n");
+      return { ...msg, content: text || "(empty message)" };
+    }
+    return msg;
+  });
+
   // Create OpenAI client with injected configuration
   const openai = new OpenAIClient({
     apiKey: gatewayConfig.apiKey,
@@ -821,7 +834,7 @@ export async function compressMessages(
             role: "system",
             content: COMPRESS_MESSAGES_SYSTEM_PROMPT,
           },
-          ...messages,
+          ...cleanedMessages,
           {
             role: "user",
             content: `Please create a detailed summary of the conversation so far.`,

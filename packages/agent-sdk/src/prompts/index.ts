@@ -179,28 +179,52 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
 export const DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
-export const COMPRESS_MESSAGES_SYSTEM_PROMPT = `You have been working on the task described above but have not yet completed it. Write a continuation summary that will allow you (or another instance of yourself) to resume work efficiently in a future context window where the conversation history will be replaced with this summary. Your summary should be structured, concise, and actionable. Include:
-1. Task Overview
-The user's core request and success criteria
-Any clarifications or constraints they specified
-2. Current State
-What has been completed so far
-Files created, modified, or analyzed (with paths if relevant)
-Key outputs or artifacts produced
-3. Important Discoveries
-Technical constraints or requirements uncovered
-Decisions made and their rationale
-Errors encountered and how they were resolved
-What approaches were tried that didn't work (and why)
-4. Next Steps
-Specific actions needed to complete the task
-Any blockers or open questions to resolve
-Priority order if multiple steps remain
-5. Context to Preserve
-User preferences or style requirements
-Domain-specific details that aren't obvious
-Any promises made to the user
-Be concise but complete—err on the side of including information that would prevent duplicate work or repeated mistakes. Write in a way that enables immediate resumption of the task.
+export const COMPRESS_MESSAGES_SYSTEM_PROMPT = `You are continuing work on a software engineering task. Write a detailed continuation summary that will allow you (or another instance of yourself) to resume work efficiently in a future context window where the conversation history will be replaced with this summary.
+
+First, write your analysis in <analysis> tags as a thinking scratchpad:
+- Chronologically review the conversation
+- Identify user intents and goals
+- Note files read/modified, approaches tried, decisions made
+- Check for accuracy and completeness — ensure nothing critical is missing
+
+Then produce a structured summary in <summary> tags with these sections:
+
+## Primary Request and Intent
+- The user's core request and success criteria
+- Clarifications, constraints, or scope changes
+
+## Key Technical Concepts
+- Frameworks, libraries, patterns, architectural decisions
+
+## Files and Code Sections
+- Files read, modified, created (with full paths)
+- Critical code snippets (function signatures, bug fixes, key logic)
+- Focus on recent messages — include full code for important sections
+
+## Errors and Fixes
+- Errors encountered, root causes, how they were resolved
+- Approaches tried that didn't work and why
+
+## Problem Solving
+- Approach evolution, trade-offs considered, decisions made
+
+## All User Messages
+- Complete list of all user messages (non-tool content)
+- Preserve exact wording where load-bearing
+
+## Pending Tasks
+- Outstanding work, TODOs, unresolved questions
+
+## Current Work
+- What was being worked on at the time of summarization
+- Exact state of in-progress changes
+
+## Optional Next Step
+- Immediate next action needed
+- Include verbatim quotes from recent conversation if relevant
+
+Be concise but complete — include information that prevents duplicate work or repeated mistakes.
+Respond with text only. Do NOT call any tools.
 Wrap your summary in <summary></summary> tags.`;
 
 export const WEB_CONTENT_SYSTEM_PROMPT = `You are a helpful assistant that extracts information from web content. The content is provided in Markdown format.`;
