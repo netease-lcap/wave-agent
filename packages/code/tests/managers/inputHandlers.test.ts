@@ -447,21 +447,39 @@ describe("inputHandlers", () => {
   });
 
   describe("handlePasteInput", () => {
-    it("should start paste for multi-char input", () => {
+    it("should dispatch APPEND_PASTE_CHUNK for multi-char input", () => {
       const state = { ...initialState, cursorPosition: 0 };
       handlePasteInput(state, dispatch, callbacks, "pasted text");
       expect(dispatch).toHaveBeenCalledWith({
-        type: "START_PASTE",
-        payload: { buffer: "pasted text", cursorPosition: 0 },
+        type: "APPEND_PASTE_CHUNK",
+        payload: { chunk: "pasted text", cursorPosition: 0 },
       });
     });
 
-    it("should append to paste buffer if already pasting", () => {
-      const state = { ...initialState, isPasting: true };
+    it("should dispatch APPEND_PASTE_CHUNK regardless of isPasting state", () => {
+      const state = { ...initialState, isPasting: true, cursorPosition: 5 };
       handlePasteInput(state, dispatch, callbacks, "more text");
       expect(dispatch).toHaveBeenCalledWith({
-        type: "APPEND_PASTE_BUFFER",
-        payload: "more text",
+        type: "APPEND_PASTE_CHUNK",
+        payload: { chunk: "more text", cursorPosition: 5 },
+      });
+    });
+
+    it("should handle paste with newline in single-char-like input", () => {
+      const state = { ...initialState, isPasting: false, cursorPosition: 0 };
+      handlePasteInput(state, dispatch, callbacks, "a\nb");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "APPEND_PASTE_CHUNK",
+        payload: { chunk: "a\nb", cursorPosition: 0 },
+      });
+    });
+
+    it("should handle paste with carriage return", () => {
+      const state = { ...initialState, isPasting: false, cursorPosition: 0 };
+      handlePasteInput(state, dispatch, callbacks, "a\rb");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "APPEND_PASTE_CHUNK",
+        payload: { chunk: "a\rb", cursorPosition: 0 },
       });
     });
 

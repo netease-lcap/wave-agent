@@ -20,3 +20,15 @@
 ### Integration Points
 - **InputManager**: Manages the `longTextMap` and placeholder replacement.
 - **PromptHistoryManager**: Preserves placeholders and their mappings in history.
+
+### Paste Chunking Issue
+Terminal paste events fire multiple keyboard events in rapid succession.
+React batches state updates asynchronously, so `state.isPasting` can be stale
+when subsequent chunks arrive. The handler would dispatch `START_PASTE` instead
+of `APPEND_PASTE_BUFFER`, overwriting the buffer.
+
+**Solution**: Replace the two-action pattern (`START_PASTE` / `APPEND_PASTE_BUFFER`)
+with a single `APPEND_PASTE_CHUNK` action. The reducer determines start vs append
+by checking if `pasteBuffer` is empty. Since `useReducer` processes dispatches
+sequentially, each dispatch sees the result of the previous one, ensuring
+all chunks accumulate correctly.

@@ -297,14 +297,12 @@ export const handlePasteInput = (
     inputString.includes("\r");
 
   if (isPasteOperation) {
-    if (!state.isPasting) {
-      dispatch({
-        type: "START_PASTE",
-        payload: { buffer: inputString, cursorPosition: state.cursorPosition },
-      });
-    } else {
-      dispatch({ type: "APPEND_PASTE_BUFFER", payload: inputString });
-    }
+    // Dispatch a single action type; the reducer determines start vs append
+    // by checking pasteBuffer, avoiding stale state issues
+    dispatch({
+      type: "APPEND_PASTE_CHUNK",
+      payload: { chunk: inputString, cursorPosition: state.cursorPosition },
+    });
   } else {
     let char = inputString;
     if (char === "！" && state.cursorPosition === 0) {

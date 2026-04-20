@@ -173,6 +173,10 @@ export type InputAction =
   | { type: "CLEAR_INPUT" }
   | { type: "START_PASTE"; payload: { buffer: string; cursorPosition: number } }
   | { type: "APPEND_PASTE_BUFFER"; payload: string }
+  | {
+      type: "APPEND_PASTE_CHUNK";
+      payload: { chunk: string; cursorPosition: number };
+    }
   | { type: "END_PASTE" }
   | {
       type: "ADD_IMAGE_AND_INSERT_PLACEHOLDER";
@@ -407,6 +411,21 @@ export function inputReducer(
         cursorPosition: 0,
         historyIndex: -1,
       };
+    case "APPEND_PASTE_CHUNK": {
+      // The reducer determines if this is a new paste or a continuation
+      // by checking if pasteBuffer is already set. This avoids the
+      // handler needing to track isPasting state, which can be stale
+      // when multiple dispatches fire before React state updates.
+      const isNewPaste = !state.pasteBuffer;
+      return {
+        ...state,
+        isPasting: true,
+        pasteBuffer: state.pasteBuffer + action.payload.chunk,
+        initialPasteCursorPosition: isNewPaste
+          ? action.payload.cursorPosition
+          : state.initialPasteCursorPosition,
+      };
+    }
     case "START_PASTE":
       return {
         ...state,
