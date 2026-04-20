@@ -15,7 +15,6 @@ import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
-import type { NotificationQueue } from "./notificationQueue.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
@@ -25,6 +24,7 @@ import type { SkillManager } from "./skillManager.js";
 import { buildSystemPrompt } from "../prompts/index.js";
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
+import type { NotificationQueue } from "./notificationQueue.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -306,9 +306,86 @@ export class AIManager {
             };
           }
 
+          // Build post-compact context restoration
+          const POST_COMPACT_TOKEN_BUDGET = 50_000;
+          const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000;
+          const POST_COMPACT_MAX_FILES_TO_RESTORE = 5;
+          const contextParts: string[] = [];
+
+          // 1. File context restoration
+          const recentFiles = this.messageManager.getRecentFileReads(
+            POST_COMPACT_MAX_FILES_TO_RESTORE,
+            POST_COMPACT_MAX_TOKENS_PER_FILE,
+          );
+          let usedTokens = 0;
+          for (const file of recentFiles) {
+            const fileTokens = Math.ceil(file.content.length / 4);
+            if (usedTokens + fileTokens > POST_COMPACT_MAX_TOKENS_PER_FILE)
+              continue;
+            if (fileTokens > 0) usedTokens += fileTokens;
+            contextParts.push(
+              `\n\n## ${file.path}\n\`\`\`\n${file.content}\n\`\`\``,
+            );
+            if (contextParts.length >= POST_COMPACT_MAX_FILES_TO_RESTORE) break;
+            if (usedTokens >= POST_COMPACT_TOKEN_BUDGET) break;
+          }
+
+          // 2. Working directory
+          contextParts.push(
+            `\n\n[Working Directory]\nCurrent working directory: ${this.workdir}`,
+          );
+
+          // 3. Plan mode context
+          const currentMode = this.permissionManager?.getCurrentEffectiveMode(
+            this.getModelConfig().permissionMode,
+          );
+          if (currentMode === "plan") {
+            const planFilePath = this.permissionManager?.getPlanFilePath();
+            if (planFilePath) {
+              let planExists = false;
+              try {
+                await fs.access(planFilePath);
+                planExists = true;
+              } catch {
+                // Plan file doesn't exist yet
+              }
+              contextParts.push(
+                `\n\n[Plan Mode]\nYou are in plan mode. Plan file: ${planFilePath} (exists: ${planExists})`,
+              );
+            }
+          }
+
+          // 4. Skills context
+          const skills =
+            this.skillManager
+              ?.getAvailableSkills()
+              .filter((s) => !s.disableModelInvocation) || [];
+          if (skills.length > 0) {
+            const skillList = skills
+              .map((s) => `- ${s.name}: ${s.description || ""}`)
+              .join("\n");
+            contextParts.push(`\n\n[Available Skills]\n${skillList}`);
+          }
+
+          // 5. Background agents status
+          const agents = this.backgroundTaskManager?.getAllTasks() || [];
+          if (agents.length > 0) {
+            const agentList = agents
+              .map((a) => `- Agent "${a.description}": ${a.status}`)
+              .join("\n");
+            contextParts.push(`\n\n[Background Tasks]\n${agentList}`);
+          }
+
+          // Merge context restoration into summary
+          const enhancedSummary =
+            compressionResult.content +
+            (contextParts.length > 0
+              ? `\n\n[Context Restoration]` + contextParts.join("")
+              : "");
+
           // Execute message reconstruction and sessionId update after compression
           this.messageManager.compressMessagesAndUpdateSession(
-            compressionResult.content,
+            enhancedSummary,
             compressionUsage,
           );
 

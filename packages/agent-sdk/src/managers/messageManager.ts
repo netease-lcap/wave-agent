@@ -89,6 +89,8 @@ export class MessageManager {
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
   private filesInContext: Set<string> = new Set(); // Track files mentioned in the conversation
+  private recentFileReads: Map<string, { content: string; timestamp: number }> =
+    new Map(); // Track file read contents
   private sessionType: "main" | "subagent";
   private subagentType?: string;
   private _usages: Usage[] = [];
@@ -266,11 +268,13 @@ export class MessageManager {
     const newMessages = messages.slice(oldLength);
     for (const message of newMessages) {
       this.addPathsFromMessage(message);
+      this.extractFileReadsFromMessage(message);
     }
 
     // Also check if the last message was updated (common for tool blocks)
     if (messages.length > 0 && messages.length === oldLength) {
       this.addPathsFromMessage(messages[messages.length - 1]);
+      this.extractFileReadsFromMessage(messages[messages.length - 1]);
     }
 
     this.callbacks.onMessagesChange?.([...messages]);
@@ -993,5 +997,62 @@ export class MessageManager {
     }
 
     return paths;
+  }
+
+  /**
+   * Extract file read contents from tool result blocks in a message.
+   */
+  private extractFileReadsFromMessage(message: Message): void {
+    for (const block of message.blocks) {
+      if (
+        block.type === "tool" &&
+        block.name === "read" &&
+        block.stage === "end" &&
+        block.result &&
+        block.parameters
+      ) {
+        let filePath: string | undefined;
+        try {
+          const params = JSON.parse(block.parameters) as Record<
+            string,
+            unknown
+          >;
+          filePath = params.file_path as string | undefined;
+        } catch {
+          // Ignore parse errors
+        }
+        if (filePath) {
+          this.recentFileReads.set(filePath, {
+            content: block.result,
+            timestamp: Date.now(),
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Get recent file read contents, sorted by timestamp (newest first).
+   * @param maxFiles - Maximum number of files to return
+   * @param maxTokensPerFile - Maximum tokens per file (~4 chars/token)
+   * @returns Array of { path, content } sorted by recency
+   */
+  public getRecentFileReads(
+    maxFiles = 5,
+    maxTokensPerFile = 5000,
+  ): Array<{ path: string; content: string }> {
+    const sorted = Array.from(this.recentFileReads.entries())
+      .sort(([, a], [, b]) => b.timestamp - a.timestamp)
+      .slice(0, maxFiles);
+
+    const result: Array<{ path: string; content: string }> = [];
+    for (const [path, { content }] of sorted) {
+      const truncated =
+        content.length > maxTokensPerFile * 4
+          ? content.slice(0, maxTokensPerFile * 4)
+          : content;
+      result.push({ path, content: truncated });
+    }
+    return result;
   }
 }
