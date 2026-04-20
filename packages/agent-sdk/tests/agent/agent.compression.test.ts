@@ -640,4 +640,152 @@ describe("Agent Message Compression Tests", () => {
     // Verify compression function was called
     expect(mockCompressMessages).toHaveBeenCalledTimes(1);
   });
+
+  it("should skip compression after 3 consecutive failures (circuit breaker)", async () => {
+    // Create message history with enough messages to trigger compression
+    const messages = generateMessages(8);
+
+    // Add a new user message to trigger AI call
+    const newUserMessage: Message = {
+      id: generateMessageId(),
+      role: "user",
+      blocks: [
+        {
+          type: "text",
+          content: "Test",
+        },
+      ],
+    };
+
+    await agent.destroy();
+    agent = await Agent.create({
+      messages: [...messages, newUserMessage],
+    });
+
+    const mockCallAgent = vi.mocked(aiService.callAgent);
+    const mockCompressMessages = vi.mocked(aiService.compressMessages);
+
+    // First three calls trigger compression but fail
+    for (let i = 0; i < 3; i++) {
+      mockCallAgent.mockImplementation(async () => ({
+        content: "Response",
+        usage: {
+          prompt_tokens: 50000,
+          completion_tokens: 20000,
+          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+        },
+      }));
+      mockCompressMessages.mockRejectedValue(new Error("Compression failed"));
+
+      await agent.sendMessage(`Message ${i + 1}`);
+    }
+
+    // Verify compression was attempted 3 times
+    expect(mockCompressMessages).toHaveBeenCalledTimes(3);
+
+    // Reset call count for the 4th call
+    mockCompressMessages.mockClear();
+
+    // Fourth call: should still trigger high token usage but compression should be skipped
+    mockCallAgent.mockImplementation(async () => ({
+      content: "Response",
+      usage: {
+        prompt_tokens: 50000,
+        completion_tokens: 20000,
+        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      },
+    }));
+    mockCompressMessages.mockResolvedValue({ content: "should not reach" });
+
+    await agent.sendMessage("Message 4");
+
+    // Compression should NOT be called due to circuit breaker
+    expect(mockCompressMessages).not.toHaveBeenCalled();
+  });
+
+  it("should reset circuit breaker counter on successful compression", async () => {
+    const messages = generateMessages(8);
+    const newUserMessage: Message = {
+      id: generateMessageId(),
+      role: "user",
+      blocks: [{ type: "text", content: "Test" }],
+    };
+
+    await agent.destroy();
+    agent = await Agent.create({
+      messages: [...messages, newUserMessage],
+    });
+
+    const mockCallAgent = vi.mocked(aiService.callAgent);
+    const mockCompressMessages = vi.mocked(aiService.compressMessages);
+
+    // First call: compression fails (counter = 1)
+    mockCallAgent.mockImplementation(async () => ({
+      content: "Response",
+      usage: {
+        prompt_tokens: 50000,
+        completion_tokens: 20000,
+        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      },
+    }));
+    mockCompressMessages.mockRejectedValue(new Error("Fail 1"));
+    await agent.sendMessage("Message 1");
+    expect(mockCompressMessages).toHaveBeenCalledTimes(1);
+
+    // Reset mock for second call
+    mockCompressMessages.mockClear();
+
+    // Second call: compression fails again (counter = 2)
+    mockCallAgent.mockImplementation(async () => ({
+      content: "Response",
+      usage: {
+        prompt_tokens: 50000,
+        completion_tokens: 20000,
+        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      },
+    }));
+    mockCompressMessages.mockRejectedValue(new Error("Fail 2"));
+    await agent.sendMessage("Message 2");
+    expect(mockCompressMessages).toHaveBeenCalledTimes(1);
+
+    // Reset mock for third call
+    mockCompressMessages.mockClear();
+
+    // Third call: compression succeeds (counter reset to 0)
+    mockCallAgent.mockImplementation(async () => ({
+      content: "Response",
+      usage: {
+        prompt_tokens: 50000,
+        completion_tokens: 20000,
+        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      },
+    }));
+    mockCompressMessages.mockResolvedValue({
+      content: "Success",
+      usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+    });
+    await agent.sendMessage("Message 3");
+    expect(mockCompressMessages).toHaveBeenCalledTimes(1);
+
+    // Reset mock for subsequent calls
+    mockCompressMessages.mockClear();
+
+    // Next 3 calls: compression fails — circuit breaker should NOT trip
+    // because the successful compression reset the counter
+    for (let i = 0; i < 3; i++) {
+      mockCallAgent.mockImplementation(async () => ({
+        content: "Response",
+        usage: {
+          prompt_tokens: 50000,
+          completion_tokens: 20000,
+          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+        },
+      }));
+      mockCompressMessages.mockRejectedValue(new Error(`Fail ${i + 1}`));
+      await agent.sendMessage(`Message after reset ${i + 1}`);
+    }
+
+    // All 3 calls should have attempted compression (circuit breaker not tripped)
+    expect(mockCompressMessages).toHaveBeenCalledTimes(3);
+  });
 });

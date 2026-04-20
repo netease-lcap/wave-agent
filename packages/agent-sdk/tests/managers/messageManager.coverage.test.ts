@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import * as sessionService from "../../src/services/session.js";
 import { Container } from "../../src/utils/container.js";
-import { TextBlock } from "../../src/types/index.js";
+import { TextBlock, Message } from "../../src/types/index.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -42,6 +42,7 @@ describe("MessageManager Coverage Improvements", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     const mockMemoryService = {
       getCombinedMemoryContent: vi.fn().mockResolvedValue("base memory"),
     };
@@ -288,5 +289,99 @@ describe("MessageManager Coverage Improvements", () => {
     expect(files).toContain("path2.ts");
     expect(files).toContain("path3.ts");
     expect(files).not.toContain(123);
+  });
+
+  it("should track file read contents from read tool blocks", () => {
+    const readResultContent = "file contents go here";
+    const msgs = [
+      {
+        id: "msg-1",
+        role: "user",
+        blocks: [{ type: "text" as const, content: "read a file" }],
+      },
+      {
+        id: "msg-2",
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool" as const,
+            name: "read",
+            stage: "end" as const,
+            parameters: JSON.stringify({ file_path: "src/index.ts" }),
+            result: readResultContent,
+          },
+        ],
+      },
+    ];
+
+    messageManager.setMessages(msgs as unknown as Message[]);
+    const fileReads = messageManager.getRecentFileReads(5);
+    expect(fileReads).toHaveLength(1);
+    expect(fileReads[0].path).toBe("src/index.ts");
+    expect(fileReads[0].content).toBe(readResultContent);
+  });
+
+  it("should not track read tool blocks that are not finalized", () => {
+    const msgs = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool" as const,
+            name: "read",
+            stage: "running" as const,
+            parameters: JSON.stringify({ file_path: "src/index.ts" }),
+            result: "partial",
+          },
+        ],
+      },
+    ];
+
+    messageManager.setMessages(msgs as unknown as Message[]);
+    const fileReads = messageManager.getRecentFileReads(5);
+    expect(fileReads).toHaveLength(0);
+  });
+
+  it("should sort file reads by recency and limit count", () => {
+    // First message with older read
+    const msgs1 = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool" as const,
+            name: "read",
+            stage: "end" as const,
+            parameters: JSON.stringify({ file_path: "old.ts" }),
+            result: "old content",
+          },
+        ],
+      },
+    ];
+    messageManager.setMessages(msgs1 as unknown as Message[]);
+
+    // Advance time and add newer read
+    vi.advanceTimersByTime(1000);
+    const msgs2 = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool" as const,
+            name: "read",
+            stage: "end" as const,
+            parameters: JSON.stringify({ file_path: "new.ts" }),
+            result: "new content",
+          },
+        ],
+      },
+    ];
+    messageManager.setMessages(msgs2 as unknown as Message[]);
+    const fileReads = messageManager.getRecentFileReads(1);
+    expect(fileReads).toHaveLength(1);
+    expect(fileReads[0].path).toBe("new.ts");
   });
 });
