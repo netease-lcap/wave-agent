@@ -17,6 +17,11 @@ vi.mock("fs", async () => {
   return {
     ...actual,
     writeFileSync: vi.fn(),
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    accessSync: vi.fn(),
+    constants: { F_OK: 0 },
   };
 });
 
@@ -504,6 +509,139 @@ describe("bashTool", () => {
 
       expect(result.success).toBe(true);
       expect(result.shortResult).toBe("... +2 lines\nline3\nline4\nline5");
+    });
+  });
+
+  describe("CWD reset when outside safe zone", () => {
+    const createMockProcess = (exitCode: number, newCwd: string) => {
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (code: number) => void) => {
+          if (event === "exit") {
+            setTimeout(() => {
+              // Simulate the temp CWD file being written
+              vi.mocked(fs.existsSync).mockReturnValue(true);
+              vi.mocked(fs.readFileSync).mockReturnValue(newCwd + "\n");
+              callback(exitCode);
+            }, 10);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      return mockProcess;
+    };
+
+    it("should accept CWD when inside safe zone", async () => {
+      const mockOnCwdChange = vi.fn();
+      const mockPermissionManager = {
+        createContext: vi.fn().mockReturnValue({}),
+        checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
+        isPathInSafeZone: vi.fn().mockReturnValue(true),
+      };
+      const testContext: ToolContext = {
+        ...context,
+        onCwdChange: mockOnCwdChange,
+        originalWorkdir: "/test/workdir",
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      };
+
+      mockSpawn.mockReturnValue(
+        createMockProcess(0, "/test/workdir/subdir") as unknown as ChildProcess,
+      );
+
+      const result = await bashTool.execute(
+        { command: "cd subdir" },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockOnCwdChange).toHaveBeenCalledWith("/test/workdir/subdir");
+      expect(result.content).not.toContain("Shell cwd was reset to");
+    });
+
+    it("should reset CWD to originalWorkdir when outside safe zone", async () => {
+      const mockOnCwdChange = vi.fn();
+      const mockPermissionManager = {
+        createContext: vi.fn().mockReturnValue({}),
+        checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
+        isPathInSafeZone: vi.fn().mockReturnValue(false),
+      };
+      const testContext: ToolContext = {
+        ...context,
+        onCwdChange: mockOnCwdChange,
+        originalWorkdir: "/test/workdir",
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      };
+
+      mockSpawn.mockReturnValue(
+        createMockProcess(
+          0,
+          "/home/liuyiqi/other-dir",
+        ) as unknown as ChildProcess,
+      );
+
+      const result = await bashTool.execute(
+        { command: "cd /home/liuyiqi/other-dir" },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockOnCwdChange).toHaveBeenCalledWith("/test/workdir");
+      expect(result.content).toContain("Shell cwd was reset to /test/workdir");
+    });
+
+    it("should accept CWD when no permissionManager (backward compatible)", async () => {
+      const mockOnCwdChange = vi.fn();
+      const testContext: ToolContext = {
+        ...context,
+        onCwdChange: mockOnCwdChange,
+        originalWorkdir: "/test/workdir",
+      };
+
+      mockSpawn.mockReturnValue(
+        createMockProcess(0, "/test/workdir/subdir") as unknown as ChildProcess,
+      );
+
+      const result = await bashTool.execute(
+        { command: "cd subdir" },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockOnCwdChange).toHaveBeenCalledWith("/test/workdir/subdir");
+    });
+
+    it("should accept CWD when outside safe zone but no originalWorkdir", async () => {
+      const mockOnCwdChange = vi.fn();
+      const mockPermissionManager = {
+        createContext: vi.fn().mockReturnValue({}),
+        checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
+        isPathInSafeZone: vi.fn().mockReturnValue(false),
+      };
+      const testContext: ToolContext = {
+        ...context,
+        onCwdChange: mockOnCwdChange,
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      };
+
+      mockSpawn.mockReturnValue(
+        createMockProcess(0, "/some/other/dir") as unknown as ChildProcess,
+      );
+
+      const result = await bashTool.execute(
+        { command: "cd /some/other/dir" },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockOnCwdChange).toHaveBeenCalledWith("/some/other/dir");
+      expect(result.content).not.toContain("Shell cwd was reset to");
     });
   });
 

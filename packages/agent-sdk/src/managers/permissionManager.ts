@@ -316,6 +316,13 @@ export class PermissionManager {
   }
 
   /**
+   * Public wrapper for isInsideSafeZone to check if a path is in the safe zone
+   */
+  public isPathInSafeZone(targetPath: string): boolean {
+    return this.isInsideSafeZone(targetPath).isInside;
+  }
+
+  /**
    * Check if a path is inside the Safe Zone (workdir + additionalDirectories)
    */
   private isInsideSafeZone(

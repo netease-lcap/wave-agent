@@ -452,9 +452,16 @@ Try to maintain your current working directory throughout the session by using a
           // If CWD changed, call the onCwdChange callback and add notification
           let cwdChangedNotification = "";
           if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
-            context.onCwdChange(newCwd);
-            if (context.originalWorkdir && newCwd !== context.originalWorkdir) {
+            const isInSafeZone =
+              context.permissionManager?.isPathInSafeZone?.(newCwd) ?? true;
+
+            if (isInSafeZone) {
+              context.onCwdChange(newCwd);
+            } else if (context.originalWorkdir) {
+              context.onCwdChange(context.originalWorkdir);
               cwdChangedNotification = `Shell cwd was reset to ${context.originalWorkdir}\n`;
+            } else {
+              context.onCwdChange(newCwd);
             }
           }
 
