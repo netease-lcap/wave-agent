@@ -197,6 +197,17 @@ describe("SubagentManager - Notification Deduplication", () => {
       subagent_type: "t",
     });
 
+    // Mock getTask to return a running task (so internalExecute enters notification block)
+    vi.mocked(mockBackgroundTaskManager.getTask).mockReturnValue({
+      id: "task_123",
+      status: "running",
+      startTime: Date.now(),
+      stdout: "",
+      stderr: "",
+      endTime: undefined,
+      runtime: undefined,
+    } as unknown as ReturnType<typeof mockBackgroundTaskManager.getTask>);
+
     // Mock getMessages to return a successful response before executeAgent runs
     vi.mocked(instance.messageManager.getMessages).mockReturnValue([
       { role: "assistant", blocks: [{ type: "text", content: "Done" }] },
@@ -230,6 +241,17 @@ describe("SubagentManager - Notification Deduplication", () => {
       prompt: "p",
       subagent_type: "t",
     });
+
+    // Mock getTask to return a running task (so internalExecute enters notification block)
+    vi.mocked(mockBackgroundTaskManager.getTask).mockReturnValue({
+      id: "task_123",
+      status: "running",
+      startTime: Date.now(),
+      stdout: "",
+      stderr: "",
+      endTime: undefined,
+      runtime: undefined,
+    } as unknown as ReturnType<typeof mockBackgroundTaskManager.getTask>);
 
     const aiManager = (instance as unknown as { aiManager: AIManager })
       .aiManager;
