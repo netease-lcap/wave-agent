@@ -8,14 +8,20 @@ import {
   InstalledPlugin,
   InstalledPluginsRegistry,
   MarketplaceManifest,
+  MarketplaceSource,
 } from "../types/marketplace.js";
 import { GitService } from "./GitService.js";
+import { ConfigurationService } from "./configurationService.js";
+import type { MarketplaceConfig, Scope } from "../types/configuration.js";
 
 /**
  * Marketplace Service
  *
  * Handles local plugin marketplace registration, plugin installation,
  * and state management for installed plugins.
+ *
+ * Marketplace declarations are now scoped (user/project/local) via settings files.
+ * known_marketplaces.json is kept as a cache for installLocation/lastUpdated metadata.
  */
 export class MarketplaceService {
   private static isLockedInProcess = false;
@@ -27,6 +33,8 @@ export class MarketplaceService {
   private cacheDir: string;
   private marketplacesDir: string;
   private gitService: GitService;
+  private configurationService: ConfigurationService;
+  private workdir: string;
   private static readonly BUILTIN_MARKETPLACE: KnownMarketplace = {
     name: "wave-plugins-official",
     source: {
@@ -36,7 +44,12 @@ export class MarketplaceService {
     autoUpdate: true,
   };
 
-  constructor() {
+  constructor(
+    workdir: string = process.cwd(),
+    configurationService: ConfigurationService = new ConfigurationService(),
+  ) {
+    this.workdir = workdir;
+    this.configurationService = configurationService;
     this.pluginsDir = getPluginsDir();
     this.knownMarketplacesPath = path.join(
       this.pluginsDir,
@@ -53,6 +66,7 @@ export class MarketplaceService {
     this.gitService = new GitService();
 
     this.ensureDirectoryStructure();
+    this.runMigration();
   }
 
   /**
@@ -69,6 +83,44 @@ export class MarketplaceService {
   }
 
   /**
+   * Backwards compatibility migration: migrate entries from known_marketplaces.json
+   * to user-level settings if they aren't already declared there.
+   */
+  private async runMigration(): Promise<void> {
+    try {
+      const cacheRegistry = await this.getCacheRegistry();
+      const scopedMarketplaces =
+        this.configurationService.getMergedMarketplaces(this.workdir);
+      const userMarketplaces = this.configurationService.getScopedMarketplaces(
+        this.workdir,
+        "user",
+      );
+
+      const entriesToMigrate = (cacheRegistry?.marketplaces ?? []).filter(
+        (m) => !scopedMarketplaces[m.name] && !userMarketplaces[m.name],
+      );
+
+      if (entriesToMigrate.length > 0) {
+        for (const m of entriesToMigrate) {
+          if (m.name === MarketplaceService.BUILTIN_MARKETPLACE.name) continue;
+          const config: MarketplaceConfig = {
+            source: m.source,
+            autoUpdate: m.autoUpdate,
+          };
+          await this.configurationService.addMarketplaceToScope(
+            this.workdir,
+            "user",
+            m.name,
+            config,
+          );
+        }
+      }
+    } catch {
+      // Migration failure should not block startup
+    }
+  }
+
+  /**
    * Check if a lock file is stale by reading its PID and checking if the process is alive.
    * Returns true if the lock is stale and safe to remove.
    */
@@ -77,15 +129,14 @@ export class MarketplaceService {
       const content = await fs.readFile(this.lockPath, "utf-8");
       const pid = parseInt(content.trim(), 10);
       if (isNaN(pid)) return true;
-      // Check if the process is still running
       try {
         process.kill(pid, 0);
-        return false; // Process exists, lock is valid
+        return false;
       } catch {
-        return true; // Process doesn't exist, lock is stale
+        return true;
       }
     } catch {
-      return true; // Can't read lock file, assume stale
+      return true;
     }
   }
 
@@ -99,7 +150,7 @@ export class MarketplaceService {
     }
 
     let lockFd: Awaited<ReturnType<typeof fs.open>> | undefined;
-    const maxRetries = 600; // 60 seconds total
+    const maxRetries = 600;
     const retryDelay = 100;
 
     for (let i = 0; i < maxRetries; i++) {
@@ -113,7 +164,6 @@ export class MarketplaceService {
           "code" in error &&
           error.code === "EEXIST"
         ) {
-          // Check for stale lock every 60 retries (every ~6 seconds)
           if (i > 0 && i % 60 === 0) {
             const stale = await this.isStaleLock();
             if (stale) {
@@ -134,7 +184,6 @@ export class MarketplaceService {
       );
     }
 
-    // Write PID into the lock file for stale lock detection
     await fs.writeFile(this.lockPath, String(process.pid), "utf-8");
 
     MarketplaceService.isLockedInProcess = true;
@@ -148,36 +197,96 @@ export class MarketplaceService {
   }
 
   /**
-   * Loads the known marketplaces registry
+   * Loads the cache registry from known_marketplaces.json
+   * Returns null if the file doesn't exist or has no parseable content (for first-run detection).
+   */
+  async getCacheRegistry(): Promise<KnownMarketplacesRegistry | null> {
+    if (!existsSync(this.knownMarketplacesPath)) {
+      return null;
+    }
+    try {
+      const content = await fs.readFile(this.knownMarketplacesPath, "utf-8");
+      if (!content.trim()) {
+        return null;
+      }
+      return JSON.parse(content);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Legacy method: loads known marketplaces with builtin injection.
+   * @deprecated Use listMarketplaces() instead, which combines scoped settings.
    */
   async getKnownMarketplaces(): Promise<KnownMarketplacesRegistry> {
-    if (!existsSync(this.knownMarketplacesPath)) {
+    const cache = await this.getCacheRegistry();
+    // If cache is null (file doesn't exist or has no parseable content), inject builtin
+    if (cache === null) {
       return {
         marketplaces: [
           {
             ...MarketplaceService.BUILTIN_MARKETPLACE,
             isBuiltin: true,
+            declaredScope: "builtin",
           },
         ],
       };
     }
-    try {
-      const content = await fs.readFile(this.knownMarketplacesPath, "utf-8");
-      if (!content.trim()) {
-        return {
-          marketplaces: [
-            {
-              ...MarketplaceService.BUILTIN_MARKETPLACE,
-              isBuiltin: true,
-            },
-          ],
-        };
-      }
-      return JSON.parse(content);
-    } catch (error) {
-      console.error("Failed to load known marketplaces:", error);
-      return { marketplaces: [] };
+    // File has valid JSON - respect user's explicit choice even if empty
+    const hasBuiltin = cache.marketplaces.some(
+      (m) => m.name === MarketplaceService.BUILTIN_MARKETPLACE.name,
+    );
+    return {
+      marketplaces: cache.marketplaces.map((m) => ({
+        ...m,
+        isBuiltin:
+          m.isBuiltin || m.name === MarketplaceService.BUILTIN_MARKETPLACE.name,
+        declaredScope: m.declaredScope ?? (hasBuiltin ? "builtin" : "user"),
+      })),
+    };
+  }
+
+  /**
+   * Updates the cache registry with metadata for a marketplace
+   */
+  private async updateCacheMarketplace(
+    name: string,
+    metadata: Partial<KnownMarketplace>,
+  ): Promise<void> {
+    const registry = await this.getCacheRegistry();
+    const marketplaces = registry?.marketplaces ?? [];
+    const existingIndex = marketplaces.findIndex((m) => m.name === name);
+    if (existingIndex >= 0) {
+      marketplaces[existingIndex] = {
+        ...marketplaces[existingIndex],
+        ...metadata,
+      };
+    } else {
+      marketplaces.push({
+        name,
+        source: metadata.source || { source: "directory", path: "" },
+        ...metadata,
+      });
     }
+    const tmpPath = `${this.knownMarketplacesPath}.tmp`;
+    await fs.writeFile(tmpPath, JSON.stringify({ marketplaces }, null, 2));
+    await fs.rename(tmpPath, this.knownMarketplacesPath);
+  }
+
+  /**
+   * Removes a marketplace from the cache registry
+   */
+  private async removeFromCache(name: string): Promise<void> {
+    const registry = await this.getCacheRegistry();
+    const marketplaces = registry?.marketplaces ?? [];
+    const filtered = marketplaces.filter((m) => m.name !== name);
+    const tmpPath = `${this.knownMarketplacesPath}.tmp`;
+    await fs.writeFile(
+      tmpPath,
+      JSON.stringify({ marketplaces: filtered }, null, 2),
+    );
+    await fs.rename(tmpPath, this.knownMarketplacesPath);
   }
 
   /**
@@ -197,17 +306,6 @@ export class MarketplaceService {
       console.error("Failed to load installed plugins:", error);
       return { plugins: [] };
     }
-  }
-
-  /**
-   * Saves the known marketplaces registry
-   */
-  async saveKnownMarketplaces(
-    registry: KnownMarketplacesRegistry,
-  ): Promise<void> {
-    const tmpPath = `${this.knownMarketplacesPath}.tmp`;
-    await fs.writeFile(tmpPath, JSON.stringify(registry, null, 2));
-    await fs.rename(tmpPath, this.knownMarketplacesPath);
   }
 
   /**
@@ -238,7 +336,6 @@ export class MarketplaceService {
     const content = await fs.readFile(manifestPath, "utf-8");
     const manifest = JSON.parse(content);
 
-    // Basic validation
     if (
       !manifest.name ||
       !manifest.plugins ||
@@ -253,25 +350,60 @@ export class MarketplaceService {
   /**
    * Resolves the local path for a marketplace
    */
-  public getMarketplacePath(marketplace: KnownMarketplace): string {
-    if (marketplace.source.source === "directory") {
-      return marketplace.source.path;
-    } else if (marketplace.source.source === "github") {
-      return path.join(this.marketplacesDir, marketplace.source.repo);
+  public getMarketplacePath(source: MarketplaceSource): string {
+    if (source.source === "directory") {
+      return source.path;
+    } else if (source.source === "github") {
+      return path.join(this.marketplacesDir, source.repo);
     } else {
-      // For general git, use a hash of the URL to avoid path issues
-      const hash = crypto
-        .createHash("md5")
-        .update(marketplace.source.url)
-        .digest("hex");
+      const hash = crypto.createHash("md5").update(source.url).digest("hex");
       return path.join(this.marketplacesDir, hash);
     }
   }
 
   /**
+   * Builds a KnownMarketplace from a scoped config, enriched with cache metadata
+   */
+  private async buildMarketplaceEntry(
+    name: string,
+    config: MarketplaceConfig,
+    cache: KnownMarketplace | undefined,
+    declaredScope: "user" | "project" | "local" | "builtin",
+  ): Promise<KnownMarketplace> {
+    return {
+      name,
+      source: config.source,
+      autoUpdate: config.autoUpdate ?? cache?.autoUpdate,
+      lastUpdated: cache?.lastUpdated,
+      isBuiltin: name === MarketplaceService.BUILTIN_MARKETPLACE.name,
+      declaredScope,
+    };
+  }
+
+  /**
+   * Finds which scope declared a marketplace (user, project, local, or builtin)
+   */
+  getMarketplaceDeclaringSource(name: string): Scope | "builtin" | null {
+    if (name === MarketplaceService.BUILTIN_MARKETPLACE.name) return "builtin";
+
+    const scopes: Scope[] = ["local", "project", "user"];
+    for (const scope of scopes) {
+      const scoped = this.configurationService.getScopedMarketplaces(
+        this.workdir,
+        scope,
+      );
+      if (scoped[name]) return scope;
+    }
+    return null;
+  }
+
+  /**
    * Adds a new marketplace (local directory, GitHub repo, or Git URL)
    */
-  async addMarketplace(input: string): Promise<KnownMarketplace> {
+  async addMarketplace(
+    input: string,
+    scope: Scope = "user",
+  ): Promise<KnownMarketplace> {
     return this.withLock(async () => {
       let marketplace: KnownMarketplace;
 
@@ -287,7 +419,6 @@ export class MarketplaceService {
           !path.isAbsolute(input) &&
           !input.startsWith("."))
       ) {
-        // Git or GitHub repo
         let urlOrRepo = input;
         let ref: string | undefined;
 
@@ -295,11 +426,11 @@ export class MarketplaceService {
           [urlOrRepo, ref] = input.split("#");
         }
 
-        const tempMarketplace: KnownMarketplace = isFullUrl
-          ? { name: "", source: { source: "git", url: urlOrRepo, ref } }
-          : { name: "", source: { source: "github", repo: urlOrRepo, ref } };
+        const tempSource: MarketplaceSource = isFullUrl
+          ? { source: "git", url: urlOrRepo, ref }
+          : { source: "github", repo: urlOrRepo, ref };
 
-        const targetPath = this.getMarketplacePath(tempMarketplace);
+        const targetPath = this.getMarketplacePath(tempSource);
 
         if (!existsSync(targetPath)) {
           try {
@@ -329,7 +460,6 @@ export class MarketplaceService {
           lastUpdated: new Date().toISOString(),
         };
       } else {
-        // Local directory format
         const absolutePath = path.resolve(input);
         let manifest: MarketplaceManifest;
         try {
@@ -348,54 +478,97 @@ export class MarketplaceService {
         };
       }
 
-      const registry = await this.getKnownMarketplaces();
+      const config: MarketplaceConfig = {
+        source: marketplace.source,
+        autoUpdate: marketplace.autoUpdate,
+      };
 
-      // Check if already exists
-      const existingIndex = registry.marketplaces.findIndex(
-        (m) => m.name === marketplace.name,
+      await this.configurationService.addMarketplaceToScope(
+        this.workdir,
+        scope,
+        marketplace.name,
+        config,
       );
-      if (existingIndex >= 0) {
-        registry.marketplaces[existingIndex] = marketplace;
-      } else {
-        registry.marketplaces.push(marketplace);
-      }
 
-      // Ensure builtin is included if we are creating the file for the first time
-      // and it hasn't been explicitly removed yet.
-      // (getKnownMarketplaces already handles the default injection)
+      // Update cache with metadata
+      await this.updateCacheMarketplace(marketplace.name, {
+        source: marketplace.source,
+        autoUpdate: marketplace.autoUpdate,
+        lastUpdated: marketplace.lastUpdated,
+      });
 
-      await this.saveKnownMarketplaces(registry);
       return marketplace;
     });
   }
 
   /**
-   * Lists all registered marketplaces
+   * Lists all registered marketplaces by combining scoped settings + built-in
    */
   async listMarketplaces(): Promise<KnownMarketplace[]> {
-    const registry = await this.getKnownMarketplaces();
-    return registry.marketplaces.map((m) => ({
-      ...m,
-      isBuiltin: m.name === MarketplaceService.BUILTIN_MARKETPLACE.name,
-    }));
+    const scopedMarketplaces = this.configurationService.getMergedMarketplaces(
+      this.workdir,
+    );
+    const cacheRegistry = await this.getCacheRegistry();
+    const cacheMap = new Map(
+      (cacheRegistry?.marketplaces ?? []).map((m) => [m.name, m]),
+    );
+
+    const result: KnownMarketplace[] = [];
+
+    // Add built-in marketplace
+    result.push({
+      ...MarketplaceService.BUILTIN_MARKETPLACE,
+      isBuiltin: true,
+      declaredScope: "builtin",
+    });
+
+    // Add all scoped marketplaces (local overrides project overrides user)
+    for (const [name, config] of Object.entries(scopedMarketplaces)) {
+      if (name === MarketplaceService.BUILTIN_MARKETPLACE.name) continue;
+      const cache = cacheMap.get(name);
+      const declaredScope = this.getMarketplaceDeclaringSource(name) as
+        | "user"
+        | "project"
+        | "local";
+      result.push(
+        await this.buildMarketplaceEntry(name, config, cache, declaredScope),
+      );
+    }
+
+    // Add cache entries not yet in scoped settings (backwards compatibility)
+    for (const [name, cache] of cacheMap.entries()) {
+      if (name === MarketplaceService.BUILTIN_MARKETPLACE.name) continue;
+      if (scopedMarketplaces[name]) continue;
+      result.push({
+        ...cache,
+        isBuiltin: false,
+        declaredScope: cache.declaredScope ?? "user",
+      });
+    }
+
+    return result;
   }
 
   /**
-   * Removes a marketplace by name
+   * Removes a marketplace by name from the specified scope
    */
-  async removeMarketplace(name: string): Promise<void> {
+  async removeMarketplace(name: string, scope?: Scope): Promise<void> {
     return this.withLock(async () => {
-      const registry = await this.getKnownMarketplaces();
-      const initialCount = registry.marketplaces.length;
-      registry.marketplaces = registry.marketplaces.filter(
-        (m) => m.name !== name,
-      );
+      const targetScope =
+        scope || this.getMarketplaceDeclaringSource(name) || "user";
 
-      if (registry.marketplaces.length === initialCount) {
-        throw new Error(`Marketplace ${name} not found`);
+      if (targetScope === "builtin") {
+        throw new Error("Cannot remove built-in marketplace");
       }
 
-      await this.saveKnownMarketplaces(registry);
+      await this.configurationService.removeMarketplaceFromScope(
+        this.workdir,
+        targetScope,
+        name,
+      );
+
+      // Also remove from cache
+      await this.removeFromCache(name);
     });
   }
 
@@ -407,10 +580,10 @@ export class MarketplaceService {
     options?: { updatePlugins?: boolean },
   ): Promise<void> {
     return this.withLock(async () => {
-      const registry = await this.getKnownMarketplaces();
+      const marketplaces = await this.listMarketplaces();
       const toUpdate = name
-        ? registry.marketplaces.filter((m) => m.name === name)
-        : registry.marketplaces;
+        ? marketplaces.filter((m) => m.name === name)
+        : marketplaces;
 
       if (name && toUpdate.length === 0) {
         throw new Error(`Marketplace ${name} not found`);
@@ -430,7 +603,7 @@ export class MarketplaceService {
               );
               continue;
             }
-            const targetPath = this.getMarketplacePath(marketplace);
+            const targetPath = this.getMarketplacePath(marketplace.source);
             if (existsSync(targetPath)) {
               await this.gitService.pull(targetPath);
             } else {
@@ -447,12 +620,16 @@ export class MarketplaceService {
               );
             }
           }
-          // For directory source, we just re-validate the manifest
           const manifest = await this.loadMarketplaceManifest(
-            this.getMarketplacePath(marketplace),
+            this.getMarketplacePath(marketplace.source),
           );
 
           marketplace.lastUpdated = new Date().toISOString();
+
+          // Update cache metadata
+          await this.updateCacheMarketplace(marketplace.name, {
+            lastUpdated: marketplace.lastUpdated,
+          });
 
           if (options?.updatePlugins) {
             const installedRegistry = await this.getInstalledPlugins();
@@ -505,8 +682,6 @@ export class MarketplaceService {
           `Some marketplaces failed to update:\n${errors.join("\n")}`,
         );
       }
-
-      await this.saveKnownMarketplaces(registry);
     });
   }
 
@@ -515,17 +690,20 @@ export class MarketplaceService {
    */
   async autoUpdateAll(): Promise<void> {
     return this.withLock(async () => {
-      const registry = await this.getKnownMarketplaces();
-      const toAutoUpdate = registry.marketplaces.filter((m) => m.autoUpdate);
+      const scopedMarketplaces =
+        this.configurationService.getMergedMarketplaces(this.workdir);
+      const toAutoUpdate = Object.entries(scopedMarketplaces)
+        .filter(([, config]) => config.autoUpdate)
+        .map(([name]) => name);
 
-      for (const marketplace of toAutoUpdate) {
+      for (const marketplaceName of toAutoUpdate) {
         try {
-          await this.updateMarketplace(marketplace.name, {
+          await this.updateMarketplace(marketplaceName, {
             updatePlugins: true,
           });
         } catch (error) {
           console.error(
-            `Auto-update failed for marketplace "${marketplace.name}":`,
+            `Auto-update failed for marketplace "${marketplaceName}":`,
             error,
           );
         }
@@ -538,13 +716,30 @@ export class MarketplaceService {
    */
   async toggleAutoUpdate(name: string, enabled: boolean): Promise<void> {
     return this.withLock(async () => {
-      const registry = await this.getKnownMarketplaces();
-      const marketplace = registry.marketplaces.find((m) => m.name === name);
-      if (!marketplace) {
+      const declaringSource = this.getMarketplaceDeclaringSource(name);
+      if (!declaringSource || declaringSource === "builtin") {
         throw new Error(`Marketplace ${name} not found`);
       }
-      marketplace.autoUpdate = enabled;
-      await this.saveKnownMarketplaces(registry);
+
+      const scoped = this.configurationService.getScopedMarketplaces(
+        this.workdir,
+        declaringSource,
+      );
+      const config = scoped[name];
+      if (!config) {
+        throw new Error(`Marketplace ${name} not found`);
+      }
+
+      config.autoUpdate = enabled;
+      await this.configurationService.addMarketplaceToScope(
+        this.workdir,
+        declaringSource,
+        name,
+        config,
+      );
+
+      // Also update cache
+      await this.updateCacheMarketplace(name, { autoUpdate: enabled });
     });
   }
 
@@ -567,7 +762,7 @@ export class MarketplaceService {
         throw new Error(`Marketplace ${marketplaceName} not found`);
       }
 
-      const marketplacePath = this.getMarketplacePath(marketplace);
+      const marketplacePath = this.getMarketplacePath(marketplace.source);
       const manifest = await this.loadMarketplaceManifest(marketplacePath);
       const pluginEntry = manifest.plugins.find((p) => p.name === pluginName);
       if (!pluginEntry) {
@@ -615,7 +810,6 @@ export class MarketplaceService {
         const pluginManifest = JSON.parse(pluginManifestContent);
         const version = pluginManifest.version || "1.0.0";
 
-        // Atomic installation
         const tmpPluginDir = path.join(
           this.tmpDir,
           `${pluginName}-${Date.now()}`,
@@ -623,7 +817,7 @@ export class MarketplaceService {
         try {
           if (isGitSource) {
             await fs.rename(pluginSrcPath, tmpPluginDir);
-            tempCloneDir = undefined; // Already moved
+            tempCloneDir = undefined;
           } else {
             await fs.cp(pluginSrcPath, tmpPluginDir, { recursive: true });
           }
@@ -665,14 +859,12 @@ export class MarketplaceService {
           await this.saveInstalledPlugins(installedRegistry);
           return installedPlugin;
         } catch (error) {
-          // Cleanup tmp dir if it exists
           if (existsSync(tmpPluginDir)) {
             await fs.rm(tmpPluginDir, { recursive: true, force: true });
           }
           throw error;
         }
       } catch (error) {
-        // Cleanup temp clone dir if it exists
         if (tempCloneDir && existsSync(tempCloneDir)) {
           await fs.rm(tempCloneDir, { recursive: true, force: true });
         }
@@ -712,16 +904,13 @@ export class MarketplaceService {
 
       const pluginToRemove = installedRegistry.plugins[pluginIndex];
 
-      // Remove from registry first
       installedRegistry.plugins.splice(pluginIndex, 1);
       await this.saveInstalledPlugins(installedRegistry);
 
-      // Check if any other project is still using this same cache path
       const isStillReferenced = installedRegistry.plugins.some(
         (p) => p.cachePath === pluginToRemove.cachePath,
       );
 
-      // Only remove cached files if no other references exist
       if (!isStillReferenced && existsSync(pluginToRemove.cachePath)) {
         await fs.rm(pluginToRemove.cachePath, { recursive: true, force: true });
       }

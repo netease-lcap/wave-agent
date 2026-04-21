@@ -11,6 +11,28 @@ vi.mock("../../src/utils/configPaths.js", () => ({
 
 vi.mock("../../src/services/GitService.js");
 
+vi.mock("../../src/services/configurationService.js", () => {
+  return {
+    ConfigurationService: class MockConfigService {
+      getMergedMarketplaces() {
+        return {};
+      }
+      getScopedMarketplaces() {
+        return {};
+      }
+      addMarketplaceToScope() {
+        return Promise.resolve();
+      }
+      removeMarketplaceFromScope() {
+        return Promise.resolve();
+      }
+      getMergedEnabledPlugins() {
+        return {};
+      }
+    },
+  };
+});
+
 vi.mock("fs", async () => {
   const actual = await vi.importActual<typeof import("fs")>("fs");
   return {

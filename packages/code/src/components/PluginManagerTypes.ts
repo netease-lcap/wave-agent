@@ -33,8 +33,14 @@ export interface PluginManagerContextType {
   actions: {
     setView: (view: ViewType) => void;
     setSelectedId: (id: string | null) => void;
-    addMarketplace: (source: string) => Promise<void>;
-    removeMarketplace: (name: string) => Promise<void>;
+    addMarketplace: (
+      source: string,
+      scope?: "user" | "project" | "local",
+    ) => Promise<void>;
+    removeMarketplace: (
+      name: string,
+      scope?: "user" | "project" | "local",
+    ) => Promise<void>;
     updateMarketplace: (name: string) => Promise<void>;
     installPlugin: (
       name: string,

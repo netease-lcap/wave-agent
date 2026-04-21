@@ -141,16 +141,16 @@ export function usePluginManager(): PluginManagerContextType {
   }, []);
 
   const addMarketplace = useCallback(
-    async (source: string) => {
+    async (source: string, scope: "user" | "project" | "local" = "user") => {
       clearPluginFeedback();
       setState((prev: PluginManagerState) => ({
         ...prev,
         isLoading: true,
       }));
       try {
-        await pluginCore.addMarketplace(source);
+        await pluginCore.addMarketplace(source, scope);
         await refresh();
-        setSuccessMessage(`Marketplace added successfully`);
+        setSuccessMessage(`Marketplace added successfully (${scope} scope)`);
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -163,14 +163,14 @@ export function usePluginManager(): PluginManagerContextType {
   );
 
   const removeMarketplace = useCallback(
-    async (name: string) => {
+    async (name: string, scope?: "user" | "project" | "local") => {
       clearPluginFeedback();
       setState((prev: PluginManagerState) => ({
         ...prev,
         isLoading: true,
       }));
       try {
-        await pluginCore.removeMarketplace(name);
+        await pluginCore.removeMarketplace(name, scope);
         await refresh();
         setSuccessMessage(`Marketplace '${name}' removed successfully`);
       } catch (error) {

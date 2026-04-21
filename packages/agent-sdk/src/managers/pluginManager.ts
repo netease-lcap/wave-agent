@@ -72,7 +72,10 @@ export class PluginManager {
         );
       }
 
-      const marketplaceService = new MarketplaceService();
+      const marketplaceService = new MarketplaceService(
+        this.workdir,
+        this.configurationService,
+      );
 
       // Trigger auto-update for marketplaces in the background
       if (!process.env.VITEST) {

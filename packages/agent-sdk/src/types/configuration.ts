@@ -9,8 +9,14 @@
 import type { HookEvent, HookEventConfig } from "./hooks.js";
 import type { PermissionMode } from "./permissions.js";
 import type { ModelConfig } from "./config.js";
+import type { MarketplaceSource } from "./marketplace.js";
 
 export type Scope = "user" | "project" | "local";
+
+export interface MarketplaceConfig {
+  source: MarketplaceSource;
+  autoUpdate?: boolean;
+}
 
 /**
  * Root configuration structure for all Wave Agent settings including hooks and environment variables
@@ -39,6 +45,8 @@ export interface WaveConfiguration {
   autoMemoryFrequency?: number;
   /** Model-specific configuration overrides */
   models?: Record<string, Partial<ModelConfig>>;
+  /** Scoped marketplace declarations */
+  marketplaces?: Record<string, MarketplaceConfig>;
 }
 
 /**

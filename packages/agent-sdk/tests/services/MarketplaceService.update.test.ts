@@ -4,6 +4,18 @@ import { MarketplaceService } from "../../src/services/MarketplaceService.js";
 
 vi.mock("../../src/services/GitService.js");
 
+vi.mock("../../src/services/configurationService.js", () => {
+  return {
+    ConfigurationService: class {
+      getMergedMarketplaces = vi.fn(() => ({}));
+      getScopedMarketplaces = vi.fn(() => ({}));
+      addMarketplaceToScope = vi.fn();
+      removeMarketplaceFromScope = vi.fn();
+      getMergedEnabledPlugins = vi.fn(() => ({}));
+    },
+  };
+});
+
 describe("MarketplaceService - Update", () => {
   let service: MarketplaceService;
 

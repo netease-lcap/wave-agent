@@ -30,7 +30,10 @@ export class PluginCore {
     this.workdir = workdir;
     this.container = new Container();
     this.configurationService = new ConfigurationService();
-    this.marketplaceService = new MarketplaceService();
+    this.marketplaceService = new MarketplaceService(
+      this.workdir,
+      this.configurationService,
+    );
 
     // Wire up ConfigurationService in the container for PluginManager to use
     this.container.register("ConfigurationService", this.configurationService);
@@ -122,7 +125,7 @@ export class PluginCore {
     for (const m of marketplaces) {
       try {
         const manifest = await this.marketplaceService.loadMarketplaceManifest(
-          this.marketplaceService.getMarketplacePath(m),
+          this.marketplaceService.getMarketplacePath(m.source),
         );
         manifest.plugins.forEach((p) => {
           const pluginId = `${p.name}@${m.name}`;
@@ -154,15 +157,18 @@ export class PluginCore {
   /**
    * Adds a new marketplace
    */
-  async addMarketplace(input: string): Promise<KnownMarketplace> {
-    return await this.marketplaceService.addMarketplace(input);
+  async addMarketplace(
+    input: string,
+    scope: Scope = "user",
+  ): Promise<KnownMarketplace> {
+    return await this.marketplaceService.addMarketplace(input, scope);
   }
 
   /**
    * Removes a marketplace by name
    */
-  async removeMarketplace(name: string): Promise<void> {
-    await this.marketplaceService.removeMarketplace(name);
+  async removeMarketplace(name: string, scope?: Scope): Promise<void> {
+    await this.marketplaceService.removeMarketplace(name, scope);
   }
 
   /**
@@ -208,7 +214,7 @@ export class PluginCore {
    * Resolves the local path for a marketplace
    */
   getMarketplacePath(marketplace: KnownMarketplace): string {
-    return this.marketplaceService.getMarketplacePath(marketplace);
+    return this.marketplaceService.getMarketplacePath(marketplace.source);
   }
 
   /**

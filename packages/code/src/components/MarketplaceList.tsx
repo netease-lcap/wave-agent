@@ -39,6 +39,10 @@ export const MarketplaceList: React.FC<MarketplaceListProps> = ({
                 {marketplace.isBuiltin && (
                   <Text color="yellow"> [Built-in]</Text>
                 )}
+                {marketplace.declaredScope &&
+                  marketplace.declaredScope !== "builtin" && (
+                    <Text color="magenta"> [{marketplace.declaredScope}]</Text>
+                  )}
               </Text>
             </Box>
             <Box marginLeft={4} flexDirection="column">

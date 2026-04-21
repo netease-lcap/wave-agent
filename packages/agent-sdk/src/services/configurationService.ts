@@ -15,6 +15,7 @@ import type {
   ConfigurationPaths,
   WaveConfiguration,
   Scope,
+  MarketplaceConfig,
 } from "../types/configuration.js";
 import {
   getAllConfigPaths,
@@ -797,6 +798,124 @@ export class ConfigurationService {
   }
 
   /**
+   * Get merged marketplaces from all scopes
+   */
+  getMergedMarketplaces(workdir: string): Record<string, MarketplaceConfig> {
+    const mergedConfig = loadMergedWaveConfig(workdir);
+    return mergedConfig?.marketplaces || {};
+  }
+
+  /**
+   * Get marketplaces at a specific scope
+   */
+  getScopedMarketplaces(
+    workdir: string,
+    scope: Scope,
+  ): Record<string, MarketplaceConfig> {
+    let configPath: string;
+    if (scope === "user") {
+      configPath = getUserConfigPaths()[0];
+    } else if (scope === "project") {
+      configPath = getProjectConfigPaths(workdir)[1];
+    } else {
+      configPath = getProjectConfigPaths(workdir)[0];
+    }
+    const config = loadWaveConfigFromFile(configPath);
+    return config?.marketplaces || {};
+  }
+
+  /**
+   * Add a marketplace to the specified scope
+   */
+  async addMarketplaceToScope(
+    workdir: string,
+    scope: Scope,
+    name: string,
+    config: MarketplaceConfig,
+  ): Promise<void> {
+    if (scope !== "user" && !existsSync(workdir)) {
+      throw new Error(`Working directory does not exist: ${workdir}`);
+    }
+
+    let configPath: string;
+    if (scope === "user") {
+      configPath = getUserConfigPaths()[0];
+    } else if (scope === "project") {
+      configPath = getProjectConfigPaths(workdir)[1];
+    } else {
+      configPath = getProjectConfigPaths(workdir)[0];
+    }
+
+    const configDir = path.dirname(configPath);
+    if (!existsSync(configDir)) {
+      await fs.mkdir(configDir, { recursive: true });
+    }
+
+    let fileConfig: WaveConfiguration = {};
+    if (existsSync(configPath)) {
+      try {
+        const content = await fs.readFile(configPath, "utf-8");
+        fileConfig = JSON.parse(content);
+      } catch {
+        // Start with empty config if file is corrupted
+      }
+    }
+
+    if (!fileConfig.marketplaces) {
+      fileConfig.marketplaces = {};
+    }
+    fileConfig.marketplaces[name] = config;
+
+    await fs.writeFile(
+      configPath,
+      JSON.stringify(fileConfig, null, 2),
+      "utf-8",
+    );
+  }
+
+  /**
+   * Remove a marketplace from the specified scope
+   */
+  async removeMarketplaceFromScope(
+    workdir: string,
+    scope: Scope,
+    name: string,
+  ): Promise<void> {
+    if (scope !== "user" && !existsSync(workdir)) {
+      throw new Error(`Working directory does not exist: ${workdir}`);
+    }
+
+    let configPath: string;
+    if (scope === "user") {
+      configPath = getUserConfigPaths()[0];
+    } else if (scope === "project") {
+      configPath = getProjectConfigPaths(workdir)[1];
+    } else {
+      configPath = getProjectConfigPaths(workdir)[0];
+    }
+
+    if (!existsSync(configPath)) {
+      return;
+    }
+
+    try {
+      const content = await fs.readFile(configPath, "utf-8");
+      const fileConfig: WaveConfiguration = JSON.parse(content);
+
+      if (fileConfig.marketplaces && name in fileConfig.marketplaces) {
+        delete fileConfig.marketplaces[name];
+        await fs.writeFile(
+          configPath,
+          JSON.stringify(fileConfig, null, 2),
+          "utf-8",
+        );
+      }
+    } catch {
+      // Ignore errors for corrupted or non-existent files
+    }
+  }
+
+  /**
    * Remove a plugin from the enabled plugins in the specified scope
    */
   async removeEnabledPlugin(
@@ -991,6 +1110,7 @@ export function loadWaveConfigFromFile(
           ? config.autoMemoryEnabled
           : undefined,
       models: config.models || undefined,
+      marketplaces: config.marketplaces || undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -1124,6 +1244,12 @@ export function loadMergedWaveConfig(
       mergedConfig.autoMemoryFrequency = config.autoMemoryFrequency;
     }
 
+    // Merge marketplaces (last one wins for same key)
+    if (config.marketplaces) {
+      if (!mergedConfig.marketplaces) mergedConfig.marketplaces = {};
+      Object.assign(mergedConfig.marketplaces, config.marketplaces);
+    }
+
     // Merge models
     if (config.models) {
       if (!mergedConfig.models) mergedConfig.models = {};
@@ -1157,6 +1283,11 @@ export function loadMergedWaveConfig(
         : undefined,
     language: mergedConfig.language,
     autoMemoryEnabled: mergedConfig.autoMemoryEnabled,
+    marketplaces:
+      mergedConfig.marketplaces &&
+      Object.keys(mergedConfig.marketplaces).length > 0
+        ? mergedConfig.marketplaces
+        : undefined,
     models:
       mergedConfig.models && Object.keys(mergedConfig.models).length > 0
         ? mergedConfig.models

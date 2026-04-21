@@ -96,21 +96,19 @@ describe("MarketplaceAddForm", () => {
       </PluginManagerContext.Provider>,
     );
 
+    stdin.write("t");
+    stdin.write("e");
     stdin.write("s");
+    stdin.write("t");
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("s");
-    });
-
-    // Wait a bit for state to settle
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain("s_");
+      expect(lastFrame()).toContain("test");
     });
 
     stdin.write("\r");
 
     await vi.waitFor(
       () => {
-        expect(mockActions.addMarketplace).toHaveBeenCalledWith("s");
+        expect(mockActions.addMarketplace).toHaveBeenCalledWith("test", "user");
       },
       { timeout: 3000 },
     );
