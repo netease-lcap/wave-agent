@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
+import { marketplaceAddFormReducer } from "../reducers/marketplaceAddFormReducer.js";
 
 const SCOPES = [
   { value: "user" as const, label: "user" },
@@ -10,31 +11,26 @@ const SCOPES = [
 
 export const MarketplaceAddForm: React.FC = () => {
   const { state, actions } = usePluginManagerContext();
-  const [source, setSource] = useState("");
-  const [scopeIndex, setScopeIndex] = useState(0);
-  const [step, setStep] = useState<"source" | "scope">("source");
-  const sourceRef = useRef(source);
-
-  // Keep ref in sync with state
-  useEffect(() => {
-    sourceRef.current = source;
-  }, [source]);
+  const [{ source, scopeIndex, step }, dispatch] = useReducer(
+    marketplaceAddFormReducer,
+    { source: "", scopeIndex: 0, step: "source" },
+  );
 
   useInput((input, key) => {
     if (key.escape) {
       if (step === "scope") {
-        setStep("source");
+        dispatch({ type: "BACK_TO_SOURCE" });
       } else {
         actions.setView("MARKETPLACES");
       }
     } else if (state.isLoading) {
       return;
     } else if (step === "source" && key.return) {
-      if (sourceRef.current.trim()) {
-        setStep("scope");
+      if (source.trim()) {
+        dispatch({ type: "SET_STEP", step: "scope" });
       }
     } else if (step === "source" && (key.backspace || key.delete)) {
-      setSource((prev) => prev.slice(0, -1));
+      dispatch({ type: "DELETE_CHAR" });
     } else if (
       step === "source" &&
       input &&
@@ -42,15 +38,21 @@ export const MarketplaceAddForm: React.FC = () => {
       !key.meta &&
       !("alt" in key && key.alt)
     ) {
-      setSource((prev) => prev + input);
+      dispatch({ type: "INSERT_CHAR", text: input });
     } else if (step === "scope") {
       if (key.upArrow) {
-        setScopeIndex((prev) => Math.max(0, prev - 1));
+        dispatch({
+          type: "SET_SCOPE_INDEX",
+          index: Math.max(0, scopeIndex - 1),
+        });
       } else if (key.downArrow) {
-        setScopeIndex((prev) => Math.min(SCOPES.length - 1, prev + 1));
+        dispatch({
+          type: "SET_SCOPE_INDEX",
+          index: Math.min(SCOPES.length - 1, scopeIndex + 1),
+        });
       } else if (key.return) {
         const scope = SCOPES[scopeIndex].value;
-        actions.addMarketplace(sourceRef.current.trim(), scope);
+        actions.addMarketplace(source.trim(), scope);
       }
     }
   });

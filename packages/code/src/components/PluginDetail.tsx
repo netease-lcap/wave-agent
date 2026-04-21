@@ -1,6 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
+import {
+  pluginDetailReducer,
+  type PluginDetailState,
+} from "../reducers/pluginDetailReducer.js";
 
 const SCOPES = [
   { id: "project", label: "Install for all collaborators (project scope)" },
@@ -11,20 +15,10 @@ const SCOPES = [
 export const PluginDetail: React.FC = () => {
   const { state, discoverablePlugins, installedPlugins, actions } =
     usePluginManagerContext();
-  const [selectedScopeIndex, setSelectedScopeIndex] = useState(0);
-  const [selectedActionIndex, setSelectedActionIndex] = useState(0);
-
-  // Keep refs in sync with state to avoid stale closures in useInput
-  const selectedScopeIndexRef = useRef(selectedScopeIndex);
-  const selectedActionIndexRef = useRef(selectedActionIndex);
-
-  useEffect(() => {
-    selectedScopeIndexRef.current = selectedScopeIndex;
-  }, [selectedScopeIndex]);
-
-  useEffect(() => {
-    selectedActionIndexRef.current = selectedActionIndex;
-  }, [selectedActionIndex]);
+  const [detailState, dispatch] = useReducer(pluginDetailReducer, {
+    selectedScopeIndex: 0,
+    selectedActionIndex: 0,
+  } as PluginDetailState);
 
   const plugin =
     discoverablePlugins.find(
@@ -48,22 +42,20 @@ export const PluginDetail: React.FC = () => {
       );
       actions.setView(isFromDiscover ? "DISCOVER" : "INSTALLED");
     } else if (key.upArrow) {
-      setSelectedActionIndex((prev) =>
-        prev > 0 ? prev - 1 : INSTALLED_ACTIONS.length - 1,
-      );
-      setSelectedScopeIndex((prev) =>
-        prev > 0 ? prev - 1 : SCOPES.length - 1,
-      );
+      dispatch({
+        type: "MOVE_ACTION_UP",
+        maxIndex: INSTALLED_ACTIONS.length - 1,
+      });
+      dispatch({ type: "MOVE_SCOPE_UP", maxIndex: SCOPES.length - 1 });
     } else if (key.downArrow) {
-      setSelectedActionIndex((prev) =>
-        prev < INSTALLED_ACTIONS.length - 1 ? prev + 1 : 0,
-      );
-      setSelectedScopeIndex((prev) =>
-        prev < SCOPES.length - 1 ? prev + 1 : 0,
-      );
+      dispatch({
+        type: "MOVE_ACTION_DOWN",
+        maxIndex: INSTALLED_ACTIONS.length - 1,
+      });
+      dispatch({ type: "MOVE_SCOPE_DOWN", maxIndex: SCOPES.length - 1 });
     } else if (key.return && plugin && !state.isLoading) {
       if (isInstalledAndEnabled) {
-        const action = INSTALLED_ACTIONS[selectedActionIndexRef.current].id;
+        const action = INSTALLED_ACTIONS[detailState.selectedActionIndex].id;
         if (action === "uninstall") {
           actions.uninstallPlugin(plugin.name, plugin.marketplace);
         } else {
@@ -73,7 +65,7 @@ export const PluginDetail: React.FC = () => {
         actions.installPlugin(
           plugin.name,
           plugin.marketplace,
-          SCOPES[selectedScopeIndexRef.current].id,
+          SCOPES[detailState.selectedScopeIndex].id,
         );
       }
     }
@@ -121,14 +113,14 @@ export const PluginDetail: React.FC = () => {
               <Text
                 key={action.id}
                 color={
-                  index === selectedActionIndex
+                  index === detailState.selectedActionIndex
                     ? state.isLoading
                       ? "gray"
                       : "yellow"
                     : undefined
                 }
               >
-                {index === selectedActionIndex ? "> " : "  "}
+                {index === detailState.selectedActionIndex ? "> " : "  "}
                 {action.label}
               </Text>
             ))}
@@ -147,14 +139,14 @@ export const PluginDetail: React.FC = () => {
               <Text
                 key={scope.id}
                 color={
-                  index === selectedScopeIndex
+                  index === detailState.selectedScopeIndex
                     ? state.isLoading
                       ? "gray"
                       : "green"
                     : undefined
                 }
               >
-                {index === selectedScopeIndex ? "> " : "  "}
+                {index === detailState.selectedScopeIndex ? "> " : "  "}
                 {scope.label}
               </Text>
             ))}
