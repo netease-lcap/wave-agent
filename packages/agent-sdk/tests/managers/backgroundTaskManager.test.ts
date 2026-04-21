@@ -27,7 +27,7 @@ describe("BackgroundTaskManager notification deduplication", () => {
   });
 
   describe("stopTask", () => {
-    it("should enqueue a killed notification for a running subagent task", () => {
+    it("should NOT enqueue a killed notification for a running subagent task", () => {
       const task: BackgroundSubagent = {
         id: "task_1",
         type: "subagent",
@@ -42,10 +42,9 @@ describe("BackgroundTaskManager notification deduplication", () => {
       const result = manager.stopTask("task_1");
 
       expect(result).toBe(true);
+      expect(task.status).toBe("killed");
       const notifications = notificationQueue.dequeueAll();
-      expect(notifications.length).toBe(1);
-      expect(notifications[0]).toContain("was stopped");
-      expect(notifications[0]).toContain("status>killed");
+      expect(notifications.length).toBe(0);
     });
 
     it("should not enqueue a killed notification for a task already stopped", () => {
@@ -105,7 +104,7 @@ describe("BackgroundTaskManager notification deduplication", () => {
   });
 
   describe("cleanup", () => {
-    it("should stop all running tasks and enqueue killed notifications", () => {
+    it("should stop all running tasks without enqueueing killed notifications", () => {
       const task1: BackgroundSubagent = {
         id: "task_1",
         type: "subagent",
@@ -143,9 +142,11 @@ describe("BackgroundTaskManager notification deduplication", () => {
 
       manager.cleanup();
 
+      expect(task1.status).toBe("killed");
+      expect(task2.status).toBe("killed");
+      expect(completedTask.status).toBe("completed");
       const notifications = notificationQueue.dequeueAll();
-      expect(notifications.length).toBe(2);
-      expect(notifications.every((n) => n.includes("was stopped"))).toBe(true);
+      expect(notifications.length).toBe(0);
     });
   });
 });
