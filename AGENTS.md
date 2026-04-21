@@ -47,3 +47,7 @@ Always use `pnpm` as the package manager.
     - Explicitly instruct the subagent to ONLY perform the tasks delegated to them.
     - Instruct them to update their assigned tasks frequently using the task management tools.
 
+## 🐛 Debugging
+
+- **Prefer temporary console.log/console.trace**: When diagnosing bugs, especially race conditions or complex flows, add temporary `console.log` or `console.trace` statements to trace execution rather than overthinking through static analysis. Run the code/tests, observe the actual output, then remove the logs once the issue is identified.
+
