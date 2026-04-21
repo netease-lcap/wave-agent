@@ -47,8 +47,8 @@ describe("MarketplaceAddForm", () => {
         <MarketplaceAddForm />
       </PluginManagerContext.Provider>,
     );
-    expect(lastFrame()).toContain("Add Marketplace");
-    expect(lastFrame()).toContain("Source (URL or Path):");
+    expect(lastFrame()).toContain("Step 1/2");
+    expect(lastFrame()).toContain("Source:");
   });
 
   it("should handle text input", async () => {
@@ -58,7 +58,6 @@ describe("MarketplaceAddForm", () => {
       </PluginManagerContext.Provider>,
     );
 
-    // Ink's useInput might need some time or specific way to trigger
     stdin.write("h");
     stdin.write("t");
     stdin.write("t");
@@ -89,7 +88,74 @@ describe("MarketplaceAddForm", () => {
     });
   });
 
-  it("should call addMarketplace when Enter is pressed with content", async () => {
+  it("should navigate to scope step after pressing Enter", async () => {
+    const { stdin, lastFrame } = render(
+      <PluginManagerContext.Provider value={mockContext}>
+        <MarketplaceAddForm />
+      </PluginManagerContext.Provider>,
+    );
+
+    stdin.write("t");
+    stdin.write("e");
+    stdin.write("s");
+    stdin.write("t");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("test");
+    });
+
+    // First Enter moves to scope step
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Step 2/2");
+    });
+  });
+
+  it("should call addMarketplace after confirming scope selection", async () => {
+    const { stdin, lastFrame } = render(
+      <PluginManagerContext.Provider value={mockContext}>
+        <MarketplaceAddForm />
+      </PluginManagerContext.Provider>,
+    );
+
+    stdin.write("t");
+    stdin.write("e");
+    stdin.write("s");
+    stdin.write("t");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("test");
+    });
+
+    // First Enter moves to scope step
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Step 2/2");
+    });
+
+    // Second Enter confirms scope and submits
+    stdin.write("\r");
+
+    await vi.waitFor(
+      () => {
+        expect(mockActions.addMarketplace).toHaveBeenCalledWith("test", "user");
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("should call setView('MARKETPLACES') when Escape is pressed on step 1", async () => {
+    const { stdin } = render(
+      <PluginManagerContext.Provider value={mockContext}>
+        <MarketplaceAddForm />
+      </PluginManagerContext.Provider>,
+    );
+
+    stdin.write("\u001B"); // Escape
+    await vi.waitFor(() => {
+      expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES");
+    });
+  });
+
+  it("should go back to source step when Escape is pressed on step 2", async () => {
     const { stdin, lastFrame } = render(
       <PluginManagerContext.Provider value={mockContext}>
         <MarketplaceAddForm />
@@ -105,25 +171,13 @@ describe("MarketplaceAddForm", () => {
     });
 
     stdin.write("\r");
-
-    await vi.waitFor(
-      () => {
-        expect(mockActions.addMarketplace).toHaveBeenCalledWith("test", "user");
-      },
-      { timeout: 3000 },
-    );
-  });
-
-  it("should call setView('MARKETPLACES') when Escape is pressed", async () => {
-    const { stdin } = render(
-      <PluginManagerContext.Provider value={mockContext}>
-        <MarketplaceAddForm />
-      </PluginManagerContext.Provider>,
-    );
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Step 2/2");
+    });
 
     stdin.write("\u001B"); // Escape
     await vi.waitFor(() => {
-      expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES");
+      expect(lastFrame()).toContain("Step 1/2");
     });
   });
 });

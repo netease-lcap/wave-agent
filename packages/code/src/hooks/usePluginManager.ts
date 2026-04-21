@@ -151,6 +151,10 @@ export function usePluginManager(): PluginManagerContextType {
         await pluginCore.addMarketplace(source, scope);
         await refresh();
         setSuccessMessage(`Marketplace added successfully (${scope} scope)`);
+        setState((prev: PluginManagerState) => ({
+          ...prev,
+          currentView: "MARKETPLACES",
+        }));
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -173,6 +177,10 @@ export function usePluginManager(): PluginManagerContextType {
         await pluginCore.removeMarketplace(name, scope);
         await refresh();
         setSuccessMessage(`Marketplace '${name}' removed successfully`);
+        setState((prev: PluginManagerState) => ({
+          ...prev,
+          currentView: "MARKETPLACES",
+        }));
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
