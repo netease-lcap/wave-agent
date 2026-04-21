@@ -15,6 +15,16 @@ function hasContent(
 // Mock AI service directly in this file
 vi.mock("@/services/aiService");
 
+// Prevent auto-memory extraction forked agents from making extra AI calls
+vi.mock("@/managers/forkedAgentManager", () => ({
+  ForkedAgentManager: vi.fn().mockImplementation(function () {
+    return {
+      forkAndExecute: vi.fn().mockResolvedValue("mock-fork-id"),
+      cleanup: vi.fn(),
+    };
+  }),
+}));
+
 describe("Hook Success Behavior (User Story 1)", () => {
   let agent: Agent;
   const mockCallbacks = {
