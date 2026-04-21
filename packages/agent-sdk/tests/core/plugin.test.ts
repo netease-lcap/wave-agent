@@ -192,10 +192,14 @@ describe("PluginCore", () => {
     await pluginCore.addMarketplace("source");
     expect(mockMarketplaceService.addMarketplace).toHaveBeenCalledWith(
       "source",
+      "user",
     );
 
     await pluginCore.removeMarketplace("m1");
-    expect(mockMarketplaceService.removeMarketplace).toHaveBeenCalledWith("m1");
+    expect(mockMarketplaceService.removeMarketplace).toHaveBeenCalledWith(
+      "m1",
+      undefined,
+    );
 
     await pluginCore.updateMarketplace("m1");
     expect(mockMarketplaceService.updateMarketplace).toHaveBeenCalledWith("m1");

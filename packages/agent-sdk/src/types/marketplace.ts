@@ -48,6 +48,8 @@ export interface KnownMarketplace {
   isBuiltin?: boolean;
   autoUpdate?: boolean;
   lastUpdated?: string;
+  /** The scope where this marketplace was declared (user, project, local, or builtin) */
+  declaredScope?: "user" | "project" | "local" | "builtin";
 }
 
 export interface KnownMarketplacesRegistry {

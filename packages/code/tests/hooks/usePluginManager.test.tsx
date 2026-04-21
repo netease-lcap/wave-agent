@@ -151,7 +151,10 @@ describe("usePluginManager", () => {
       lastValue?.actions.addMarketplace("test/repo");
 
       await vi.waitFor(() => {
-        expect(mockPluginCore.addMarketplace).toHaveBeenCalledWith("test/repo");
+        expect(mockPluginCore.addMarketplace).toHaveBeenCalledWith(
+          "test/repo",
+          "user",
+        );
         expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(2);
       });
     });

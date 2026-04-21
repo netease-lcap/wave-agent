@@ -55,6 +55,10 @@ export const MarketplaceDetail: React.FC = () => {
           {marketplace.name}
         </Text>
         {marketplace.isBuiltin && <Text dimColor> (Built-in)</Text>}
+        {marketplace.declaredScope &&
+          marketplace.declaredScope !== "builtin" && (
+            <Text dimColor> ({marketplace.declaredScope} scope)</Text>
+          )}
       </Box>
 
       <Box marginBottom={1}>

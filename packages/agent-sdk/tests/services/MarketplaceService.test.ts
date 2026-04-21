@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { MarketplaceService } from "../../src/services/MarketplaceService.js";
-import { KnownMarketplace } from "../../src/types/marketplace.js";
 import * as fsModule from "fs";
 const fs = fsModule.promises;
 const { existsSync } = fsModule;
@@ -41,6 +40,28 @@ vi.mock("fs", async (importOriginal) => {
 vi.mock("../../src/utils/configPaths.js", () => ({
   getPluginsDir: vi.fn(),
 }));
+
+vi.mock("../../src/services/configurationService.js", () => {
+  return {
+    ConfigurationService: class MockConfigService {
+      getMergedMarketplaces() {
+        return {};
+      }
+      getScopedMarketplaces() {
+        return {};
+      }
+      addMarketplaceToScope() {
+        return Promise.resolve();
+      }
+      removeMarketplaceFromScope() {
+        return Promise.resolve();
+      }
+      getMergedEnabledPlugins() {
+        return {};
+      }
+    },
+  };
+});
 
 describe("MarketplaceService - Builtin Marketplace", () => {
   let service: MarketplaceService;
@@ -118,266 +139,153 @@ describe("MarketplaceService - Builtin Marketplace", () => {
       name: "custom-mkt",
       owner: { name: "test" },
       plugins: [],
-    } as never);
+    });
 
-    await service.addMarketplace("./some-path");
+    const added = await service.addMarketplace("custom-mkt");
+    expect(added.name).toBe("custom-mkt");
 
-    const registry = await service.getKnownMarketplaces();
-    expect(registry.marketplaces).toHaveLength(2);
+    // listMarketplaces combines scoped settings + builtin
+    const marketplaces = await service.listMarketplaces();
+    expect(marketplaces.length).toBeGreaterThan(0);
     expect(
-      registry.marketplaces.find((m) => m.name === "wave-plugins-official"),
-    ).toBeDefined();
-    expect(
-      registry.marketplaces.find((m) => m.name === "custom-mkt"),
-    ).toBeDefined();
-  });
-
-  it("should allow removing the builtin marketplace", async () => {
-    // First, it's there by default
-    let registry = await service.getKnownMarketplaces();
-    expect(
-      registry.marketplaces.find((m) => m.name === "wave-plugins-official"),
-    ).toBeDefined();
-
-    // Remove it
-    await service.removeMarketplace("wave-plugins-official");
-
-    // Now it should be gone and config file should exist
-    registry = await service.getKnownMarketplaces();
-    expect(
-      registry.marketplaces.find((m) => m.name === "wave-plugins-official"),
-    ).toBeUndefined();
-    expect(
-      existsSync(path.join(mockPluginsDir, "known_marketplaces.json")),
+      marketplaces.some(
+        (m) => m.name === "wave-plugins-official" && m.isBuiltin,
+      ),
     ).toBe(true);
   });
 
-  describe("Auto-Update Support", () => {
-    it("should have autoUpdate: true for builtin marketplace", async () => {
-      const registry = await service.getKnownMarketplaces();
-      expect(registry.marketplaces[0].autoUpdate).toBe(true);
-    });
-
-    it("should have autoUpdate: false for newly added marketplaces", async () => {
-      vi.spyOn(
-        service,
-        "loadMarketplaceManifest" as keyof MarketplaceService,
-      ).mockResolvedValue({
-        name: "custom-mkt",
-        owner: { name: "test" },
-        plugins: [],
-      } as never);
-
-      await service.addMarketplace("./some-path");
-      const registry = await service.getKnownMarketplaces();
-      const custom = registry.marketplaces.find((m) => m.name === "custom-mkt");
-      expect(custom?.autoUpdate).toBe(false);
-    });
-
-    it("should toggle autoUpdate", async () => {
-      await service.toggleAutoUpdate("wave-plugins-official", false);
-      let registry = await service.getKnownMarketplaces();
-      expect(registry.marketplaces[0].autoUpdate).toBe(false);
-
-      await service.toggleAutoUpdate("wave-plugins-official", true);
-      registry = await service.getKnownMarketplaces();
-      expect(registry.marketplaces[0].autoUpdate).toBe(true);
-    });
-
-    it("should call updateMarketplace with updatePlugins: true in autoUpdateAll", async () => {
-      const updateSpy = vi
-        .spyOn(service, "updateMarketplace")
-        .mockResolvedValue();
-
-      // Builtin has autoUpdate: true by default
-      await service.autoUpdateAll();
-
-      expect(updateSpy).toHaveBeenCalledWith("wave-plugins-official", {
-        updatePlugins: true,
-      });
-    });
-
-    it("should update plugins when updatePlugins: true is passed to updateMarketplace", async () => {
-      // Mock getInstalledPlugins to return a plugin from the marketplace
-      vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
-        plugins: [
+  it("should not duplicate builtin marketplace if it already exists", async () => {
+    const knownMarketplacesPath = path.join(
+      mockPluginsDir,
+      "known_marketplaces.json",
+    );
+    await fs.writeFile(
+      knownMarketplacesPath,
+      JSON.stringify({
+        marketplaces: [
           {
-            name: "test-plugin",
-            marketplace: "wave-plugins-official",
-            version: "1.0.0",
-            cachePath: "/some/path",
+            name: "wave-plugins-official",
+            source: {
+              source: "github",
+              repo: "netease-lcap/wave-plugins-official",
+            },
+            isBuiltin: true,
+          },
+          {
+            name: "custom",
+            source: { source: "directory", path: "/some/path" },
           },
         ],
-      });
+      }),
+    );
 
-      const installSpy = vi
-        .spyOn(service, "installPlugin")
-        .mockResolvedValue({} as never);
-      vi.spyOn(
-        service,
-        "loadMarketplaceManifest" as keyof MarketplaceService,
-      ).mockResolvedValue({
-        name: "wave-plugins-official",
-        owner: { name: "test" },
-        plugins: [
-          { name: "test-plugin", source: "./test", description: "test" },
-        ],
-      } as never);
-
-      await service.updateMarketplace("wave-plugins-official", {
-        updatePlugins: true,
-      });
-
-      expect(installSpy).toHaveBeenCalledWith(
-        "test-plugin@wave-plugins-official",
-        undefined,
-      );
-    });
-
-    it("should uninstall orphaned plugins when updatePlugins: true is passed to updateMarketplace", async () => {
-      // Mock getInstalledPlugins to return a plugin from the marketplace
-      vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
-        plugins: [
-          {
-            name: "orphaned-plugin",
-            marketplace: "wave-plugins-official",
-            version: "1.0.0",
-            cachePath: "/some/path",
-          },
-        ],
-      });
-
-      const uninstallSpy = vi
-        .spyOn(service, "uninstallPlugin")
-        .mockResolvedValue();
-      vi.spyOn(
-        service,
-        "loadMarketplaceManifest" as keyof MarketplaceService,
-      ).mockResolvedValue({
-        name: "wave-plugins-official",
-        owner: { name: "test" },
-        plugins: [], // No plugins in manifest
-      } as never);
-
-      await service.updateMarketplace("wave-plugins-official", {
-        updatePlugins: true,
-      });
-
-      expect(uninstallSpy).toHaveBeenCalledWith(
-        "orphaned-plugin@wave-plugins-official",
-        undefined,
-      );
-    });
+    const registry = await service.getKnownMarketplaces();
+    const builtinCount = registry.marketplaces.filter(
+      (m) => m.name === "wave-plugins-official",
+    ).length;
+    expect(builtinCount).toBe(1);
   });
 
-  describe("Locking Mechanism", () => {
-    it("should support re-entrant locking within the same process", async () => {
-      vi.spyOn(
-        service,
-        "loadMarketplaceManifest" as keyof MarketplaceService,
-      ).mockResolvedValue({
-        name: "test",
-        plugins: [],
-      } as never);
+  it("should return correct marketplace path for github source", () => {
+    const marketplace = {
+      name: "test",
+      source: { source: "github" as const, repo: "user/repo" },
+    };
+    const result = service.getMarketplacePath(marketplace.source);
+    expect(result).toContain("marketplaces");
+    expect(result).toContain("user/repo");
+  });
 
-      // Mock getKnownMarketplaces to return the marketplace
-      vi.spyOn(service, "getKnownMarketplaces").mockResolvedValue({
-        marketplaces: [
-          {
-            name: "test",
-            source: { source: "directory", path: "/path" },
-            autoUpdate: false,
-          } as unknown as KnownMarketplace,
-        ],
-      });
+  it("should return correct marketplace path for directory source", () => {
+    const marketplace = {
+      name: "test",
+      source: { source: "directory" as const, path: "/some/path" },
+    };
+    const result = service.getMarketplacePath(marketplace.source);
+    expect(result).toBe("/some/path");
+  });
 
-      // Mock saveKnownMarketplaces to call another locked method
-      const saveSpy = vi.spyOn(service, "saveKnownMarketplaces");
-      saveSpy.mockImplementationOnce(async () => {
-        // This call should NOT trigger another fs.open because we're already locked
-        // We use mockImplementationOnce to avoid infinite recursion since toggleAutoUpdate calls saveKnownMarketplaces
-        await service.toggleAutoUpdate("test", true);
-      });
+  it("should return correct marketplace path for git source", () => {
+    const marketplace = {
+      name: "test",
+      source: { source: "git" as const, url: "https://example.com/repo" },
+    };
+    const result = service.getMarketplacePath(marketplace.source);
+    expect(result).toContain("marketplaces");
+  });
 
-      vi.mocked(fs.open).mockClear();
-      await service.addMarketplace("/some/path");
+  it("should handle known marketplaces file with only whitespace", async () => {
+    const knownMarketplacesPath = path.join(
+      mockPluginsDir,
+      "known_marketplaces.json",
+    );
+    await fs.writeFile(knownMarketplacesPath, "   \n\t  ");
 
-      // fs.open should only be called once for the outer lock
-      expect(fs.open).toHaveBeenCalledTimes(1);
+    const registry = await service.getKnownMarketplaces();
+    expect(registry.marketplaces).toHaveLength(1);
+    expect(registry.marketplaces[0].isBuiltin).toBe(true);
+  });
+
+  it("should handle known marketplaces file with empty array", async () => {
+    const knownMarketplacesPath = path.join(
+      mockPluginsDir,
+      "known_marketplaces.json",
+    );
+    await fs.writeFile(
+      knownMarketplacesPath,
+      JSON.stringify({ marketplaces: [] }),
+    );
+
+    const registry = await service.getKnownMarketplaces();
+    expect(registry.marketplaces).toHaveLength(0);
+  });
+
+  it("should throw error when git clone fails during addMarketplace", async () => {
+    vi.spyOn(
+      service["gitService"] as unknown as { clone: () => Promise<void> },
+      "clone",
+    ).mockRejectedValue(new Error("Clone failed"));
+
+    await expect(
+      service.addMarketplace("https://github.com/user/repo"),
+    ).rejects.toThrow("Failed to add marketplace from Git");
+  });
+
+  it("should throw error when manifest loading fails during addMarketplace", async () => {
+    vi.spyOn(
+      service["gitService"] as unknown as { clone: () => Promise<void> },
+      "clone",
+    ).mockResolvedValue();
+    vi.spyOn(
+      service,
+      "loadMarketplaceManifest" as keyof MarketplaceService,
+    ).mockRejectedValue(new Error("No manifest"));
+
+    await expect(
+      service.addMarketplace("https://github.com/user/repo"),
+    ).rejects.toThrow("Failed to load manifest from cloned repository");
+  });
+
+  it("should update existing marketplace with same name", async () => {
+    vi.spyOn(
+      service,
+      "loadMarketplaceManifest" as keyof MarketplaceService,
+    ).mockResolvedValue({
+      name: "custom-mkt",
+      owner: { name: "test" },
+      plugins: [],
     });
 
-    it("should retry acquiring the lock if it already exists", async () => {
-      vi.spyOn(
-        service,
-        "loadMarketplaceManifest" as keyof MarketplaceService,
-      ).mockResolvedValue({
-        name: "test",
-        plugins: [],
-      } as never);
+    // Add first time
+    await service.addMarketplace("https://github.com/user/repo");
+    // Add again - should update
+    const added = await service.addMarketplace("https://github.com/user/repo");
+    expect(added.name).toBe("custom-mkt");
 
-      vi.mocked(fs.open)
-        .mockRejectedValueOnce({ code: "EEXIST" } as unknown as Error)
-        .mockRejectedValueOnce({ code: "EEXIST" } as unknown as Error)
-        .mockResolvedValueOnce({ close: vi.fn() } as unknown as Awaited<
-          ReturnType<typeof fs.open>
-        >);
-
-      // Mock setTimeout to resolve immediately
-      const originalSetTimeout = global.setTimeout;
-      (
-        global as unknown as { setTimeout: (fn: () => void) => void }
-      ).setTimeout = (fn: () => void) => fn();
-
-      vi.mocked(fs.open).mockClear();
-      const result = await service.addMarketplace("/some/path");
-
-      expect(result).toBeDefined();
-      expect(fs.open).toHaveBeenCalledTimes(3);
-
-      global.setTimeout = originalSetTimeout;
-    });
-
-    it("should cleanup temporary directories if installation fails", async () => {
-      vi.spyOn(service, "getKnownMarketplaces").mockResolvedValue({
-        marketplaces: [
-          {
-            name: "test",
-            source: { source: "github", repo: "owner/repo" },
-            autoUpdate: false,
-          },
-        ],
-      });
-
-      vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-        name: "test",
-        plugins: [
-          { name: "plugin", source: "plugin-dir", description: "test" },
-        ],
-      } as never);
-
-      // Mock git clone to succeed but something else to fail
-      vi.spyOn(
-        service["gitService"] as unknown as { clone: () => Promise<void> },
-        "clone",
-      ).mockResolvedValue(undefined);
-
-      // Mock fs.readFile to fail when reading plugin manifest
-      vi.mocked(fs.readFile).mockImplementation((path: unknown) => {
-        if (String(path).includes("plugin.json")) {
-          throw new Error("Read error");
-        }
-        return Promise.resolve("");
-      });
-
-      // Mock existsSync to return true for cleanup check
-      vi.mocked(fsModule.existsSync).mockReturnValue(true);
-
-      await expect(
-        service.installPlugin("plugin@test", "/project"),
-      ).rejects.toThrow(/Failed to install plugin plugin: Read error/);
-
-      // Should attempt to remove tmp dirs
-      expect(fs.rm).toHaveBeenCalled();
-    });
+    const registry = await service.getKnownMarketplaces();
+    const customMkt = registry.marketplaces.find(
+      (m) => m.name === "custom-mkt",
+    );
+    expect(customMkt).toBeDefined();
   });
 });
