@@ -32,6 +32,15 @@ vi.mock("@/managers/toolManager", () => ({
   }),
 }));
 
+vi.mock("@/managers/forkedAgentManager", () => ({
+  ForkedAgentManager: vi.fn().mockImplementation(function () {
+    return {
+      forkAndExecute: vi.fn().mockResolvedValue("mock-fork-id"),
+      cleanup: vi.fn(),
+    };
+  }),
+}));
+
 describe("Hook Blocking Error Behavior (User Story 2)", () => {
   let agent: Agent;
   const mockCallbacks = {
