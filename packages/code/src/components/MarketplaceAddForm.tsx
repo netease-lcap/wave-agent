@@ -12,7 +12,7 @@ export const MarketplaceAddForm: React.FC = () => {
   const { state, actions } = usePluginManagerContext();
   const [source, setSource] = useState("");
   const [scopeIndex, setScopeIndex] = useState(0);
-  const [mode, setMode] = useState<"source" | "scope">("source");
+  const [step, setStep] = useState<"source" | "scope">("source");
   const sourceRef = useRef(source);
 
   // Keep ref in sync with state
@@ -22,69 +22,84 @@ export const MarketplaceAddForm: React.FC = () => {
 
   useInput((input, key) => {
     if (key.escape) {
-      if (mode === "scope") {
-        setMode("source");
+      if (step === "scope") {
+        setStep("source");
       } else {
         actions.setView("MARKETPLACES");
       }
     } else if (state.isLoading) {
       return;
-    } else if (input === "q" && mode === "source") {
-      setMode("scope");
-    } else if (mode === "scope") {
+    } else if (step === "source" && key.return) {
+      if (sourceRef.current.trim()) {
+        setStep("scope");
+      }
+    } else if (step === "source" && (key.backspace || key.delete)) {
+      setSource((prev) => prev.slice(0, -1));
+    } else if (
+      step === "source" &&
+      input &&
+      !key.ctrl &&
+      !key.meta &&
+      !("alt" in key && key.alt)
+    ) {
+      setSource((prev) => prev + input);
+    } else if (step === "scope") {
       if (key.upArrow) {
         setScopeIndex((prev) => Math.max(0, prev - 1));
       } else if (key.downArrow) {
         setScopeIndex((prev) => Math.min(SCOPES.length - 1, prev + 1));
       } else if (key.return) {
-        setMode("source");
-      }
-    } else if (mode === "source" && key.return) {
-      if (sourceRef.current.trim()) {
         const scope = SCOPES[scopeIndex].value;
         actions.addMarketplace(sourceRef.current.trim(), scope);
       }
-    } else if (mode === "source" && (key.backspace || key.delete)) {
-      setSource((prev) => prev.slice(0, -1));
-    } else if (mode === "source" && input.length === 1) {
-      setSource((prev) => prev + input);
     }
   });
+
+  if (step === "source") {
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold color="cyan">
+          Step 1/2: Enter marketplace source
+        </Text>
+        <Box marginTop={1}>
+          <Text>Source: </Text>
+          <Text color="yellow">{source}</Text>
+          {!state.isLoading && <Text color="yellow">_</Text>}
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>Enter to continue, Esc to cancel</Text>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold color="cyan">
-        Add Marketplace
+        Step 2/2: Select scope
       </Text>
       <Box marginTop={1}>
-        <Text>Source (URL or Path): </Text>
-        <Text color={state.isLoading || mode !== "source" ? "gray" : "yellow"}>
-          {source}
-        </Text>
-        {!state.isLoading && mode === "source" && <Text color="yellow">_</Text>}
+        <Text dimColor>Source: </Text>
+        <Text dimColor>{source}</Text>
       </Box>
-      <Box marginTop={1}>
-        <Text>Scope: </Text>
+      <Box marginTop={1} flexDirection="column">
         {SCOPES.map((s, i) => (
           <Text key={s.value} color={i === scopeIndex ? "yellow" : "dim"}>
             {i === scopeIndex ? "> " : "  "}
-            {s.label}{" "}
+            {s.label}
           </Text>
         ))}
-        <Text dimColor> (press 'q' to change)</Text>
       </Box>
       {state.isLoading && (
         <Box marginTop={1}>
-          <Text color="yellow">⌛ Adding marketplace...</Text>
+          <Text color="yellow">Adding marketplace...</Text>
         </Box>
       )}
       <Box marginTop={1}>
         <Text dimColor>
           {state.isLoading
             ? "Please wait..."
-            : mode === "scope"
-              ? "Use ↑/↓ to select, Enter to confirm, Esc to cancel"
-              : "Press Enter to add, 's' to change scope, Esc to cancel"}
+            : "Enter to confirm, \u2191/\u2193 to navigate, Esc to go back"}
         </Text>
       </Box>
     </Box>
