@@ -3,7 +3,7 @@
 ## Entities
 
 ### CompressBlock
-Used in assistant messages to store the summary of compressed history.
+Used in **user** messages to store the summary of compressed history (matching Claude Code's auto-compact behavior).
 
 | Field | Type | Description |
 |-------|------|-------------|
