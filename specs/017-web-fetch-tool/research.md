@@ -1,18 +1,21 @@
 # Research: WebFetch Tool
 
-**Branch**: `017-web-fetch-tool` | **Status**: Completed | **Date**: 2026-03-31 | **Spec**: [spec.md](./spec.md)
+**Branch**: `017-web-fetch-tool` | **Status**: Completed | **Date**: 2026-03-31 | **Updated**: 2026-04-21 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
-The `WebFetch` tool is designed to provide a simple way for the AI agent to access and analyze web content. It uses the Node.js built-in `fetch` API for network requests and the `turndown` library for HTML to Markdown conversion. The tool is read-only and does not modify any files. It includes a 15-minute cache for faster responses when repeatedly accessing the same URL.
+The `WebFetch` tool provides a simple way for the AI agent to access and analyze web content. It uses the Node.js built-in `fetch` API for network requests and the `turndown` library for HTML to Markdown conversion. The tool is read-only and does not modify any files. It includes an LRU cache with a 15-minute TTL and 50MB size limit. URL validation, security limits, automatic same-host redirect following, content truncation, honest User-Agent, and enriched output are all implemented.
 
 ## Technical Context
 
 - **Fetch API**: Node.js 18+ includes a built-in `fetch` API that is compatible with the browser's `fetch`.
 - **Turndown**: A popular library for converting HTML to Markdown. It is lightweight and easy to use.
+- **LRU Cache**: `lru-cache` provides automatic size-based eviction and TTL expiration, replacing the previous Map + setInterval approach.
 - **AI Processing**: The tool uses a specialized `processWebContent` function in `aiService` (similar to `compressMessages`) to process the extracted Markdown content with a user-provided prompt. This bypasses the full Agent infrastructure for better performance and stability.
-- **Redirect Handling**: The tool uses the `redirect: 'manual'` option in `fetch` to detect redirects and check if the host has changed.
-- **GitHub URLs**: GitHub content is often better accessed via the `gh` CLI, which handles authentication and structured data better than a generic web fetcher.
+- **Redirect Handling**: The tool uses `redirect: 'manual'` to detect redirects. Same-host and `www.`-variation redirects are followed recursively (max 10 hops). Cross-host redirects return a `REDIRECT_TO:` message.
+- **Security Limits**: 60-second fetch timeout via AbortController, 10MB content length limit, 2000-char URL limit, 100K-char Markdown truncation.
+- **URL Validation**: Rejects URLs with credentials, localhost, or single-part hostnames.
+- **User-Agent**: Honest identification as `Wave-User (+https://github.com/netease-lcap/wave-agent)`.
 
 ## Constitution Check
 
@@ -23,10 +26,11 @@ The `WebFetch` tool is designed to provide a simple way for the AI agent to acce
 5. **Documentation Minimalism**: Only necessary documentation files are created.
 6. **Quality Gates**: `type-check` and `lint` are required.
 7. **Source Code Structure**: The tool is placed in the `tools` directory of `agent-sdk`.
-8. **Data Model Minimalism**: A simple in-memory cache is used.
+8. **Data Model Minimalism**: An LRU cache with structured entries is used.
 
 ## Complexity Tracking
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
-| None | N/A | N/A |
+| lru-cache dependency | Automatic size-based eviction | Map + setInterval lacks size-based eviction |
+| AbortController for timeout | Prevents indefinite hangs | No timeout could hang the tool forever |
