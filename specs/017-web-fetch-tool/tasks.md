@@ -85,3 +85,19 @@
 
 - [X] T019 Run `pnpm run type-check` and `pnpm lint` across the monorepo
 - [X] T020 Run `quickstart.md` validation scenarios manually
+
+---
+
+## Phase 9: Security & Robustness Improvements
+
+**Purpose**: Security limits, URL validation, LRU cache upgrade, output enrichment
+
+- [X] T021 Add URL validation: max 2000 chars, reject credentials, reject localhost/single-part hostnames in `packages/agent-sdk/src/tools/webFetchTool.ts`
+- [X] T022 Add security limits: 10MB content max, 60s fetch timeout, 10 redirect max in `packages/agent-sdk/src/tools/webFetchTool.ts`
+- [X] T023 Improve redirect handling: follow same-host/www-variation redirects automatically in `packages/agent-sdk/src/tools/webFetchTool.ts`
+- [X] T024 Upgrade cache to LRU: add `lru-cache` dependency, 50MB limit, remove setInterval in `packages/agent-sdk/src/tools/webFetchTool.ts`
+- [X] T025 Add content truncation at 100K chars before AI processing in `packages/agent-sdk/src/tools/webFetchTool.ts`
+- [X] T026 Update User-Agent to honest identifier, add Accept header in `packages/agent-sdk/src/tools/webFetchTool.ts`
+- [X] T027 Enrich output with HTTP status code and content size in `packages/agent-sdk/src/tools/webFetchTool.ts`
+- [X] T028 Update tests for all new behaviors in `packages/agent-sdk/tests/tools/webFetchTool.test.ts`
+- [X] T029 Run `pnpm run type-check` and `pnpm lint` across the monorepo
