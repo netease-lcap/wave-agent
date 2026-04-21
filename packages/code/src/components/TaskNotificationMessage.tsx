@@ -20,7 +20,7 @@ export const TaskNotificationMessage = ({
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color={color}>● </Text>
+        <Text color={color}>◆ </Text>
         <Text color="white">{block.summary}</Text>
       </Box>
     </Box>
