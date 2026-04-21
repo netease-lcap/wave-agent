@@ -18,7 +18,7 @@ As an AI agent, when the conversation history becomes too long, I want to automa
 
 1. **Given** the total token count exceeds `getMaxInputTokens()`, **When** the next message is processed, **Then** the agent MUST identify messages to compress.
 2. **Given** messages are identified for compression, **When** the summarization is complete, **Then** the original messages MUST be replaced by a `compress` block followed by the last 2 API rounds of the old message list in the session.
-3. **Given** a `compress` block exists, **When** sending messages to the API, **Then** it MUST be converted to a system message with the prefix `[Compressed Message Summary]`.
+3. **Given** a `compress` block exists, **When** sending messages to the API, **Then** it MUST be converted to a **user** message (matching Claude Code's auto-compact behavior).
 
 ---
 
@@ -86,7 +86,7 @@ As an AI agent, after compression replaces conversation history, I want importan
 - **FR-002**: System MUST replace the conversation history with a single continuation summary and the last 2 API rounds of the old message list when token limits are reached.
 - **FR-003**: System MUST use the AI to generate a summary of messages identified for compression.
 - **FR-004**: System MUST replace compressed messages with a `compress` block in the session history.
-- **FR-005**: System MUST convert `compress` blocks to system messages for API calls.
+- **FR-005**: System MUST convert `compress` blocks to user-role messages for API calls.
 - **FR-006**: System MUST apply microcompact (clear old tool results) before each API call when the time threshold (>30 min) is exceeded.
 - **FR-007**: System MUST skip compression after 3 consecutive compression failures (circuit breaker).
 - **FR-008**: System MUST re-inject post-compact context (recent file reads, working directory, plan mode, skills, background tasks) into the compression summary.

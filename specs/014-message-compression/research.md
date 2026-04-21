@@ -20,4 +20,4 @@
 ### Integration Points
 - **AIManager**: Monitors tokens and calls the summarization service.
 - **MessageManager**: Updates the session with the new `compress` block.
-- **API Utilities**: Convert `compress` blocks into system messages for the AI.
+- **API Utilities**: Convert `compress` blocks into user-role messages for the AI (matching Claude Code's auto-compact behavior).
