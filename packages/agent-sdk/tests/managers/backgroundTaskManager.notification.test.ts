@@ -84,16 +84,14 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     expect(notifications[0]).toContain("spawn error");
   });
 
-  it("should enqueue notification when task is killed", () => {
+  it("should NOT enqueue notification when task is killed", () => {
     manager.startShell("sleep 999");
     const tasks = manager.getAllTasks();
     const taskId = tasks[0].id;
 
     manager.stopTask(taskId);
 
-    expect(notificationQueue.hasPending()).toBe(true);
-    const notifications = notificationQueue.dequeueAll();
-    expect(notifications[0]).toContain("<status>killed</status>");
+    expect(notificationQueue.hasPending()).toBe(false);
   });
 
   it("should not enqueue notification when NotificationQueue is not available", () => {

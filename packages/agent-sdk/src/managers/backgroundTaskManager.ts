@@ -2,11 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
-import {
-  BackgroundTask,
-  BackgroundShell,
-  BackgroundSubagent,
-} from "../types/processes.js";
+import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
@@ -427,21 +423,6 @@ export class BackgroundTaskManager {
     task.runtime = task.endTime - task.startTime;
     this.notifyTasksChange();
 
-    // Enqueue killed notification
-    const notificationQueue = this.container.has("NotificationQueue")
-      ? this.container.get<NotificationQueue>("NotificationQueue")
-      : undefined;
-    if (notificationQueue) {
-      const description = (task as BackgroundSubagent).description || "";
-      const command = (task as BackgroundShell).command || "";
-      const summary =
-        task.type === "subagent"
-          ? `Agent task "${description}" was stopped`
-          : `Command "${command}" was stopped`;
-      notificationQueue.enqueue(
-        `<task-notification>\n<task-id>${id}</task-id>\n<task-type>${task.type}</task-type>\n<status>killed</status>\n<summary>${summary}</summary>\n</task-notification>`,
-      );
-    }
     return true;
   }
 
