@@ -567,23 +567,25 @@ export class SubagentManager {
         instance.logStream?.end();
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
+          const wasAlreadyKilled = task.status === "killed";
           task.status = "completed";
           task.stdout = response || "Agent completed with no text response";
           task.endTime = Date.now();
           if (task.startTime) {
             task.runtime = task.endTime - task.startTime;
           }
-        }
-
-        // Enqueue completion notification
-        const notificationQueue = this.container.has("NotificationQueue")
-          ? this.container.get<NotificationQueue>("NotificationQueue")
-          : undefined;
-        if (notificationQueue) {
-          const summary = `Agent task "${instance.description}" completed`;
-          notificationQueue.enqueue(
-            `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>completed</status>\n<summary>${summary}</summary>\n</task-notification>`,
-          );
+          // Skip notification if task was already stopped (e.g. by main agent shutdown)
+          if (!wasAlreadyKilled) {
+            const notificationQueue = this.container.has("NotificationQueue")
+              ? this.container.get<NotificationQueue>("NotificationQueue")
+              : undefined;
+            if (notificationQueue) {
+              const summary = `Agent task "${instance.description}" completed`;
+              notificationQueue.enqueue(
+                `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>completed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+              );
+            }
+          }
         }
       }
 
@@ -602,25 +604,27 @@ export class SubagentManager {
         instance.logStream?.end();
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
+          const wasAlreadyKilled = task.status === "killed";
           task.status = "failed";
           task.stderr = error instanceof Error ? error.message : String(error);
           task.endTime = Date.now();
           if (task.startTime) {
             task.runtime = task.endTime - task.startTime;
           }
-        }
-
-        // Enqueue error notification
-        const notificationQueue = this.container.has("NotificationQueue")
-          ? this.container.get<NotificationQueue>("NotificationQueue")
-          : undefined;
-        if (notificationQueue) {
-          const errorMsg =
-            error instanceof Error ? error.message : String(error);
-          const summary = `Agent task "${instance.description}" failed: ${errorMsg}`;
-          notificationQueue.enqueue(
-            `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
-          );
+          // Skip notification if task was already stopped (e.g. by main agent shutdown)
+          if (!wasAlreadyKilled) {
+            const notificationQueue = this.container.has("NotificationQueue")
+              ? this.container.get<NotificationQueue>("NotificationQueue")
+              : undefined;
+            if (notificationQueue) {
+              const errorMsg =
+                error instanceof Error ? error.message : String(error);
+              const summary = `Agent task "${instance.description}" failed: ${errorMsg}`;
+              notificationQueue.enqueue(
+                `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+              );
+            }
+          }
         }
       }
       throw error;
