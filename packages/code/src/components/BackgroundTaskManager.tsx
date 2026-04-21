@@ -1,18 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import { useChat } from "../contexts/useChat.js";
 import { getLastLines } from "wave-agent-sdk";
-
-interface Task {
-  id: string;
-  type: string;
-  description?: string;
-  status: "running" | "completed" | "failed" | "killed";
-  startTime: number;
-  exitCode?: number;
-  runtime?: number;
-  outputPath?: string;
-}
+import {
+  backgroundTaskManagerReducer,
+  type BackgroundTaskManagerState,
+} from "../reducers/backgroundTaskManagerReducer.js";
 
 export interface BackgroundTaskManagerProps {
   onCancel: () => void;
@@ -23,22 +16,23 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
 }) => {
   const { backgroundTasks, getBackgroundTaskOutput, stopBackgroundTask } =
     useChat();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const MAX_VISIBLE_ITEMS = 3;
-  const [viewMode, setViewMode] = useState<"list" | "detail">("list");
-  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
-  const [detailOutput, setDetailOutput] = useState<{
-    stdout: string;
-    stderr: string;
-    status: string;
-    outputPath?: string;
-  } | null>(null);
+
+  const [state, dispatch] = useReducer(backgroundTaskManagerReducer, {
+    tasks: [],
+    selectedIndex: 0,
+    viewMode: "list",
+    detailTaskId: null,
+    detailOutput: null,
+  } as BackgroundTaskManagerState);
+
+  const { tasks, selectedIndex, viewMode, detailTaskId, detailOutput } = state;
 
   // Convert backgroundTasks to local Task format
   useEffect(() => {
-    setTasks(
-      backgroundTasks.map((task) => ({
+    dispatch({
+      type: "SET_TASKS",
+      tasks: backgroundTasks.map((task) => ({
         id: task.id,
         type: task.type,
         description: task.description,
@@ -48,14 +42,14 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
         runtime: task.runtime,
         outputPath: task.outputPath,
       })),
-    );
+    });
   }, [backgroundTasks]);
 
   // Load detail output for selected task
   useEffect(() => {
     if (viewMode === "detail" && detailTaskId) {
       const output = getBackgroundTaskOutput(detailTaskId);
-      setDetailOutput(output);
+      dispatch({ type: "SET_DETAIL_OUTPUT", output });
     }
   }, [viewMode, detailTaskId, getBackgroundTaskOutput]);
 
@@ -91,8 +85,8 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
       if (key.return) {
         if (tasks.length > 0 && selectedIndex < tasks.length) {
           const selectedTask = tasks[selectedIndex];
-          setDetailTaskId(selectedTask.id);
-          setViewMode("detail");
+          dispatch({ type: "SET_DETAIL_TASK_ID", id: selectedTask.id });
+          dispatch({ type: "SET_VIEW_MODE", mode: "detail" });
         }
         return;
       }
@@ -103,12 +97,18 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
       }
 
       if (key.upArrow) {
-        setSelectedIndex(Math.max(0, selectedIndex - 1));
+        dispatch({
+          type: "SELECT_INDEX",
+          index: Math.max(0, selectedIndex - 1),
+        });
         return;
       }
 
       if (key.downArrow) {
-        setSelectedIndex(Math.min(tasks.length - 1, selectedIndex + 1));
+        dispatch({
+          type: "SELECT_INDEX",
+          index: Math.min(tasks.length - 1, selectedIndex + 1),
+        });
         return;
       }
 
@@ -122,9 +122,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     } else if (viewMode === "detail") {
       // Detail mode navigation
       if (key.escape) {
-        setViewMode("list");
-        setDetailTaskId(null);
-        setDetailOutput(null);
+        dispatch({ type: "RESET_DETAIL" });
         return;
       }
 
@@ -141,7 +139,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
   if (viewMode === "detail" && detailTaskId && detailOutput) {
     const task = tasks.find((t) => t.id === detailTaskId);
     if (!task) {
-      setViewMode("list");
+      dispatch({ type: "RESET_DETAIL" });
       return null;
     }
 
