@@ -633,6 +633,19 @@ export class Agent {
       this.pendingNotificationPromises = [];
     }
 
+    // Fire SessionEnd hooks (fire-and-forget, don't block shutdown)
+    try {
+      const sessionId = this.messageManager.getSessionId();
+      const transcriptPath = this.messageManager.getTranscriptPath();
+      await this.hookManager.executeSessionEndHooks(
+        "stop",
+        sessionId,
+        transcriptPath,
+      );
+    } catch (error) {
+      this.logger?.warn(`SessionEnd hooks failed: ${(error as Error).message}`);
+    }
+
     await this.messageManager.saveSession();
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();

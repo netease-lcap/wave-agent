@@ -22,7 +22,8 @@ export type HookEvent =
   | "PermissionRequest"
   | "WorktreeCreate"
   | "CwdChanged"
-  | "SessionStart";
+  | "SessionStart"
+  | "SessionEnd";
 
 // Individual hook command configuration
 export interface HookCommand {
@@ -97,6 +98,8 @@ export class HookConfigurationError extends Error {
 
 export type SessionStartSource = "startup" | "resume" | "compact";
 
+export type SessionEndSource = "exit" | "stop" | "compact";
+
 // Type guards for runtime validation
 export function isValidHookEvent(event: string): event is HookEvent {
   return [
@@ -109,6 +112,7 @@ export function isValidHookEvent(event: string): event is HookEvent {
     "WorktreeCreate",
     "CwdChanged",
     "SessionStart",
+    "SessionEnd",
   ].includes(event);
 }
 
@@ -178,6 +182,7 @@ export interface HookJsonInput {
   new_cwd?: string; // Present for CwdChanged events
   source?: SessionStartSource; // Present for SessionStart events
   agent_type?: string; // Present for SessionStart events
+  end_source?: SessionEndSource; // Present for SessionEnd events
 }
 
 // Extended context interface for passing additional data to hook executor
@@ -195,6 +200,7 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   newCwd?: string; // New working directory (CwdChanged only)
   source?: SessionStartSource; // Session start source (SessionStart only)
   agentType?: string; // Agent type identifier (SessionStart only)
+  endSource?: SessionEndSource; // Session end source (SessionEnd only)
 }
 
 // Environment variables injected into hook processes

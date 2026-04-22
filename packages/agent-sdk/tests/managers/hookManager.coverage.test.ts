@@ -755,4 +755,80 @@ describe("HookManager Coverage", () => {
       );
     });
   });
+
+  describe("executeSessionEndHooks", () => {
+    it("should execute SessionEnd hooks and return results", async () => {
+      manager.loadConfiguration({
+        SessionEnd: [
+          { hooks: [{ type: "command" as const, command: "echo cleanup" }] },
+        ],
+      });
+      const results = await manager.executeSessionEndHooks(
+        "stop",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(results).toBeDefined();
+      expect(mockExecuteCommand).toHaveBeenCalled();
+    });
+
+    it("should pass endSource in context to hooks", async () => {
+      manager.loadConfiguration({
+        SessionEnd: [
+          { hooks: [{ type: "command" as const, command: "echo cleanup" }] },
+        ],
+      });
+      await manager.executeSessionEndHooks(
+        "compact",
+        "session-456",
+        "/path/to/transcript.json",
+      );
+      expect(mockExecuteCommand).toHaveBeenCalledWith(
+        "echo cleanup",
+        expect.objectContaining({
+          event: "SessionEnd",
+          endSource: "compact",
+        }),
+        undefined,
+      );
+    });
+
+    it("should return empty array when no hooks configured", async () => {
+      const results = await manager.executeSessionEndHooks(
+        "exit",
+        "session-789",
+        "/path/to/transcript.json",
+      );
+      expect(results).toHaveLength(0);
+    });
+  });
+
+  describe("SessionEnd in processHookResults", () => {
+    it("should handle SessionEnd blocking error (exit code 2)", () => {
+      const mockMessageManager = {
+        addUserMessage: vi.fn(),
+        addErrorBlock: vi.fn(),
+        removeLastUserMessage: vi.fn(),
+        updateToolBlock: vi.fn(),
+      };
+      const results = [
+        {
+          success: false,
+          exitCode: 2,
+          stderr: "SessionEnd cleanup failed",
+          duration: 0,
+          timedOut: false,
+        },
+      ];
+      const res = manager.processHookResults(
+        "SessionEnd",
+        results,
+        mockMessageManager as unknown as MessageManager,
+      );
+      expect(res.shouldBlock).toBe(false);
+      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+        "SessionEnd cleanup failed",
+      );
+    });
+  });
 });

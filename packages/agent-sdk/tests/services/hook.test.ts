@@ -750,4 +750,47 @@ describe("Hook Services", () => {
       expect(parsedInput.agent_type).toBe("planner");
     });
   });
+
+  describe("SessionEnd hook", () => {
+    it("should include end_source in JSON input for SessionEnd event", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const sessionEndContext: ExtendedHookExecutionContext = {
+        event: "SessionEnd",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        endSource: "stop",
+      };
+
+      const resultPromise = executeCommand("echo test", sessionEndContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(stdinData).toBeTruthy();
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("SessionEnd");
+      expect(parsedInput.end_source).toBe("stop");
+    });
+  });
 });

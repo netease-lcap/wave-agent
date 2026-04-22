@@ -12,6 +12,7 @@ import {
   type ExtendedHookExecutionContext,
   type HookExecutionResult,
   type HookValidationResult,
+  type SessionEndSource,
   HookConfigurationError,
   isValidHookEvent,
   isValidHookEventConfig,
@@ -299,6 +300,7 @@ export class HookManager {
       });
     }
     // For SessionStart, stdout is processed separately in executeSessionStartHooks
+    // For SessionEnd, stdout is ignored (fire-and-forget cleanup)
     // For other hook types (PreToolUse, PostToolUse, Stop, PermissionRequest), ignore stdout
   }
 
@@ -377,6 +379,11 @@ export class HookManager {
 
       case "SessionStart":
         // Non-blocking for startup, show error in error block
+        messageManager.addErrorBlock(errorMessage);
+        return { shouldBlock: false };
+
+      case "SessionEnd":
+        // Blocking error (exit code 2): show in error block, don't block shutdown
         messageManager.addErrorBlock(errorMessage);
         return { shouldBlock: false };
 
@@ -584,7 +591,8 @@ export class HookManager {
         event === "Stop" ||
         event === "SubagentStop" ||
         event === "WorktreeCreate" ||
-        event === "SessionStart") &&
+        event === "SessionStart" ||
+        event === "SessionEnd") &&
       context.toolName !== undefined
     ) {
       logger?.warn(
@@ -662,7 +670,8 @@ export class HookManager {
       event === "SubagentStop" ||
       event === "WorktreeCreate" ||
       event === "CwdChanged" ||
-      event === "SessionStart"
+      event === "SessionStart" ||
+      event === "SessionEnd"
     ) {
       return true;
     }
@@ -722,7 +731,9 @@ export class HookManager {
       (event === "UserPromptSubmit" ||
         event === "Stop" ||
         event === "SubagentStop" ||
-        event === "WorktreeCreate") &&
+        event === "WorktreeCreate" ||
+        event === "SessionStart" ||
+        event === "SessionEnd") &&
       config.matcher
     ) {
       errors.push(`${prefix}: Event ${event} should not have a matcher`);
@@ -764,6 +775,7 @@ export class HookManager {
           WorktreeCreate: 0,
           CwdChanged: 0,
           SessionStart: 0,
+          SessionEnd: 0,
         },
       };
     }
@@ -778,6 +790,7 @@ export class HookManager {
       WorktreeCreate: 0,
       CwdChanged: 0,
       SessionStart: 0,
+      SessionEnd: 0,
     };
 
     let totalConfigs = 0;
@@ -912,5 +925,38 @@ export class HookManager {
     }
 
     return { results, additionalContext, initialUserMessage };
+  }
+
+  /**
+   * Execute SessionEnd hooks during agent destruction.
+   * Non-blocking: always continues shutdown even if hooks fail.
+   * No stdout processing needed (SessionEnd hooks are fire-and-forget cleanup).
+   */
+  async executeSessionEndHooks(
+    source: SessionEndSource,
+    sessionId: string,
+    transcriptPath: string,
+  ): Promise<HookExecutionResult[]> {
+    const context: ExtendedHookExecutionContext = {
+      event: "SessionEnd",
+      projectDir: this.workdir,
+      timestamp: new Date(),
+      sessionId,
+      transcriptPath,
+      cwd: this.workdir,
+      endSource: source,
+      env: Object.fromEntries(
+        Object.entries(process.env).filter((e) => e[1] !== undefined),
+      ) as Record<string, string>,
+    };
+
+    const results = await this.executeHooks("SessionEnd", context);
+
+    // Process results but never block shutdown
+    if (results.length > 0) {
+      this.processHookResults("SessionEnd", results);
+    }
+
+    return results;
   }
 }
