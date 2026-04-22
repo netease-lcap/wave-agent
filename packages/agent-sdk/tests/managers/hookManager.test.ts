@@ -271,4 +271,100 @@ describe("HookManager", () => {
       expect(manager.getConfiguration()).toBeUndefined();
     });
   });
+
+  describe("Plugin Hooks Preservation", () => {
+    it("should preserve plugin hooks when Wave config has no hooks", () => {
+      const pluginHooks = {
+        SessionStart: [
+          {
+            hooks: [
+              { type: "command" as const, command: "plugin-session-start" },
+            ],
+          },
+        ],
+      };
+
+      manager.registerPluginHooks("/plugin/root", pluginHooks);
+      expect(manager.hasHooks("SessionStart")).toBe(true);
+
+      // Wave config with no hooks key (like settings.local.json with only permissions/enabledPlugins)
+      manager.loadConfigurationFromWaveConfig({});
+
+      // Plugin hooks should still be present (regression: was being wiped out)
+      expect(manager.hasHooks("SessionStart")).toBe(true);
+    });
+
+    it("should preserve plugin hooks when Wave config is null", () => {
+      const pluginHooks = {
+        SessionStart: [
+          {
+            hooks: [
+              { type: "command" as const, command: "plugin-session-start" },
+            ],
+          },
+        ],
+      };
+
+      manager.registerPluginHooks("/plugin/root", pluginHooks);
+      manager.loadConfigurationFromWaveConfig(null);
+
+      expect(manager.hasHooks("SessionStart")).toBe(true);
+    });
+
+    it("should merge Wave config hooks with existing plugin hooks", () => {
+      const pluginHooks = {
+        SessionStart: [
+          {
+            hooks: [{ type: "command" as const, command: "plugin-hook" }],
+          },
+        ],
+      };
+      manager.registerPluginHooks("/plugin/root", pluginHooks);
+
+      const waveConfig: WaveConfiguration = {
+        hooks: {
+          PostToolUse: [
+            {
+              matcher: "Edit",
+              hooks: [{ type: "command", command: "wave-hook" }],
+            },
+          ],
+        },
+      };
+      manager.loadConfigurationFromWaveConfig(waveConfig);
+
+      // Both plugin and Wave hooks should be present
+      expect(manager.hasHooks("SessionStart")).toBe(true);
+      expect(manager.hasHooks("PostToolUse", "Edit")).toBe(true);
+    });
+
+    it("should allow Wave config hooks to override plugin hooks for same event", () => {
+      const pluginHooks = {
+        PostToolUse: [
+          {
+            matcher: "Read",
+            hooks: [{ type: "command" as const, command: "plugin-read-hook" }],
+          },
+        ],
+      };
+      manager.registerPluginHooks("/plugin/root", pluginHooks);
+
+      const waveConfig: WaveConfiguration = {
+        hooks: {
+          PostToolUse: [
+            {
+              matcher: "Edit",
+              hooks: [{ type: "command", command: "wave-edit-hook" }],
+            },
+          ],
+        },
+      };
+      manager.loadConfigurationFromWaveConfig(waveConfig);
+
+      // Wave config replaces plugin hooks for same event (per merge design)
+      const config = manager.getConfiguration();
+      expect(config?.PostToolUse).toHaveLength(1);
+      expect(config?.PostToolUse?.[0].hooks[0].command).toBe("wave-edit-hook");
+    });
+  });
 });

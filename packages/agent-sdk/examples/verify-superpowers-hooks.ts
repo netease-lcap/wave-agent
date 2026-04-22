@@ -172,11 +172,34 @@ async function main() {
     );
   }
 
+  // Step 6: Verify InitializationService pipeline - inject as meta user messages
+  console.log(
+    "\n📬 Verifying InitializationService message injection pipeline...",
+  );
+
+  // Simulate what InitializationService.initialize() does at lines 191-204
+  if (sessionStartResult.additionalContext) {
+    messageManager.addUserMessage({
+      content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
+      isMeta: true,
+    });
+    console.log("   ✅ additionalContext injected as meta user message");
+  }
+
+  if (sessionStartResult.initialUserMessage) {
+    messageManager.addUserMessage({
+      content: sessionStartResult.initialUserMessage,
+      isMeta: true,
+    });
+    console.log("   ✅ initialUserMessage injected as meta user message");
+  }
+
   // Final summary
   console.log("\n" + "=".repeat(50));
   const allSuccess = sessionStartResult.results.every((r) => r.success);
   if (allSuccess && sessionStartResult.additionalContext) {
     console.log("✅ All superpowers hooks verified successfully!");
+    console.log("✅ Message injection pipeline verified!");
     process.exit(0);
   } else if (allSuccess) {
     console.log("⚠️  Hooks executed but no additionalContext produced");
