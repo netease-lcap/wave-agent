@@ -376,8 +376,11 @@ export class AIManager {
             contextParts.push(`\n\n[Available Skills]\n${skillList}`);
           }
 
-          // 5. Background agents status
-          const agents = this.backgroundTaskManager?.getAllTasks() || [];
+          // 5. Background subagent status (shell tasks excluded)
+          const agents =
+            this.backgroundTaskManager
+              ?.getAllTasks()
+              .filter((a) => a.type === "subagent") || [];
           if (agents.length > 0) {
             const agentList = agents
               .map((a) => `- Agent "${a.description}": ${a.status}`)
