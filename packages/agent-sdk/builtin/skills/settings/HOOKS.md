@@ -99,12 +99,13 @@ Hooks can communicate status and control Wave's behavior using exit codes:
 ### Stdout Processing
 
 Hook stdout is processed as follows:
-- If stdout is valid JSON with `additionalContext` or `initialUserMessage` keys, those values are injected as user messages.
+- If stdout is valid JSON with `hookSpecificOutput.additionalContext` (Claude Code format), that value is injected as additional context.
+- If stdout is valid JSON with `initialUserMessage` at the top level, that value is injected as the initial user message.
 - If stdout is not JSON, the entire output is appended as additional context.
 
 Example hook output:
 ```json
-{"additionalContext": "User prefers concise responses", "initialUserMessage": "Here is my current task..."}
+{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "User prefers concise responses"}, "initialUserMessage": "Here is my current task..."}
 ```
 
 ### Example Configuration
@@ -115,7 +116,7 @@ Example hook output:
       {
         "hooks": [
           {
-            "command": "echo '{\"additionalContext\": \"Project uses pnpm and TypeScript\"}'",
+            "command": "echo '{\"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\", \"additionalContext\": \"Project uses pnpm and TypeScript\"}}'",
             "description": "Inject project context at session start"
           }
         ]

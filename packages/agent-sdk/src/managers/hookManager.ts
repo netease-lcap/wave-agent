@@ -908,10 +908,10 @@ export class HookManager {
         // Try to parse as JSON for structured output
         try {
           const parsed = JSON.parse(trimmed);
-          if (parsed.additionalContext) {
+          if (parsed.hookSpecificOutput?.additionalContext) {
             additionalContext =
               (additionalContext ? additionalContext + "\n" : "") +
-              parsed.additionalContext;
+              parsed.hookSpecificOutput.additionalContext;
           }
           if (parsed.initialUserMessage) {
             initialUserMessage = parsed.initialUserMessage;
