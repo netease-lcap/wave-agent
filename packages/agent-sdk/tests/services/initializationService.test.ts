@@ -149,7 +149,7 @@ describe("InitializationService", () => {
   });
 
   describe("SessionStart hooks", () => {
-    it("should inject additionalContext as a user message", async () => {
+    it("should inject additionalContext as a meta user message", async () => {
       vi.mocked(context.hookManager.executeSessionStartHooks).mockResolvedValue(
         {
           results: [],
@@ -160,11 +160,12 @@ describe("InitializationService", () => {
       await InitializationService.initialize(context);
 
       expect(context.messageManager.addUserMessage).toHaveBeenCalledWith({
-        content: "Project context from hook",
+        content: `<system-reminder>\nSessionStart hook additional context: Project context from hook\n</system-reminder>`,
+        isMeta: true,
       });
     });
 
-    it("should inject initialUserMessage as a user message", async () => {
+    it("should inject initialUserMessage as a meta user message", async () => {
       vi.mocked(context.hookManager.executeSessionStartHooks).mockResolvedValue(
         {
           results: [],
@@ -176,6 +177,7 @@ describe("InitializationService", () => {
 
       expect(context.messageManager.addUserMessage).toHaveBeenCalledWith({
         content: "Hello from the hook",
+        isMeta: true,
       });
     });
 
@@ -192,10 +194,12 @@ describe("InitializationService", () => {
 
       expect(context.messageManager.addUserMessage).toHaveBeenCalledTimes(2);
       expect(context.messageManager.addUserMessage).toHaveBeenNthCalledWith(1, {
-        content: "Extra context",
+        content: `<system-reminder>\nSessionStart hook additional context: Extra context\n</system-reminder>`,
+        isMeta: true,
       });
       expect(context.messageManager.addUserMessage).toHaveBeenNthCalledWith(2, {
         content: "Initial message",
+        isMeta: true,
       });
     });
 
