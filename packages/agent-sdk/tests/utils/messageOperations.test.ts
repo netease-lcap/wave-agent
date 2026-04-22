@@ -1078,13 +1078,13 @@ describe("getMessageContent", () => {
     expect(getMessageContent(message)).toBe("!ls -la");
   });
 
-  it("should extract compress block content", () => {
+  it("should extract compact block content", () => {
     const message: Message = {
       id: "msg-1",
       role: "assistant",
       blocks: [
         {
-          type: "compress",
+          type: "compact",
           content: "summarized context",
           sessionId: "test-session",
         },

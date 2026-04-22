@@ -16,7 +16,7 @@ export const ChatInterface: React.FC = () => {
     messages,
     isLoading,
     isCommandRunning,
-    isCompressing,
+    isCompacting,
     sendMessage,
     abortMessage,
     mcpServers,
@@ -79,11 +79,11 @@ export const ChatInterface: React.FC = () => {
 
       {!isConfirmationVisible && !isExpanded && (
         <>
-          {(isLoading || isCommandRunning || isCompressing) && (
+          {(isLoading || isCommandRunning || isCompacting) && (
             <LoadingIndicator
               isLoading={isLoading}
               isCommandRunning={isCommandRunning}
-              isCompressing={isCompressing}
+              isCompacting={isCompacting}
               latestTotalTokens={latestTotalTokens}
             />
           )}

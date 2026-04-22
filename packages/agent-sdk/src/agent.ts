@@ -317,9 +317,9 @@ export class Agent {
     return this.aiManager.isLoading;
   }
 
-  /** Get message compression status */
-  public get isCompressing(): boolean {
-    return this.aiManager.getIsCompressing();
+  /** Get message compaction status */
+  public get isCompacting(): boolean {
+    return this.aiManager.getIsCompacting();
   }
 
   /** Get bash command execution status */

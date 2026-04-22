@@ -4,7 +4,7 @@ import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
 import { BangDisplay } from "./BangDisplay.js";
 import { ToolDisplay } from "./ToolDisplay.js";
-import { CompressDisplay } from "./CompressDisplay.js";
+import { CompactDisplay } from "./CompactDisplay.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
 import { Markdown } from "./Markdown.js";
 import { TaskNotificationMessage } from "./TaskNotificationMessage.js";
@@ -79,8 +79,8 @@ export const MessageBlockItem = ({
         </Box>
       )}
 
-      {block.type === "compress" && (
-        <CompressDisplay block={block} isExpanded={isExpanded} />
+      {block.type === "compact" && (
+        <CompactDisplay block={block} isExpanded={isExpanded} />
       )}
 
       {block.type === "reasoning" && (

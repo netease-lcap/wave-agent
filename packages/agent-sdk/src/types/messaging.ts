@@ -25,7 +25,7 @@ export type MessageBlock =
   | ToolBlock
   | ImageBlock
   | BangBlock
-  | CompressBlock
+  | CompactBlock
   | ReasoningBlock
   | FileHistoryBlock
   | TaskNotificationBlock;
@@ -85,8 +85,8 @@ export interface BangBlock {
   exitCode: number | null;
 }
 
-export interface CompressBlock {
-  type: "compress";
+export interface CompactBlock {
+  type: "compact";
   content: string;
   sessionId: string;
 }

@@ -11,8 +11,8 @@ vi.mock("@/services/aiService", () => ({
     usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
     tool_calls: [],
   }),
-  compressMessages: vi.fn().mockResolvedValue({
-    content: "compressed",
+  compactMessages: vi.fn().mockResolvedValue({
+    content: "compacted",
     usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
   }),
   isClaudeModel: vi.fn().mockReturnValue(false),

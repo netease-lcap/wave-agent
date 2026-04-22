@@ -125,7 +125,7 @@ describe("ConfirmationSelector Esc Integration", () => {
     isLoading: false,
     latestTotalTokens: 0,
     isCommandRunning: false,
-    isCompressing: false,
+    isCompacting: false,
     userInputHistory: [],
     getPermissionMode: vi.fn(() => "default"),
     getMcpServers: vi.fn(() => []),

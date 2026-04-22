@@ -47,8 +47,8 @@ export interface MessageManagerCallbacks {
   onAssistantReasoningUpdated?: (chunk: string, accumulated: string) => void;
   onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
   onErrorBlockAdded?: (error: string) => void;
-  onCompressBlockAdded?: (content: string) => void;
-  onCompressionStateChange?: (isCompressing: boolean) => void;
+  onCompactBlockAdded?: (content: string) => void;
+  onCompactionStateChange?: (isCompacting: boolean) => void;
   // Bang callback
   onAddBangMessage?: (command: string) => void;
   onUpdateBangMessage?: (command: string, output: string) => void;
@@ -494,31 +494,31 @@ export class MessageManager {
   }
 
   /**
-   * Compress messages and update session, delete compressed messages, only keep compressed messages and last 3 messages
+   * Compact messages and update session, delete compacted messages, only keep compacted messages and last 3 messages
    */
-  public compressMessagesAndUpdateSession(
-    compressedContent: string,
+  public compactMessagesAndUpdateSession(
+    compactedContent: string,
     usage?: Usage,
   ): void {
     // Get last 2 API rounds to preserve (structurally safe boundary)
     const lastThreeMessages = getLastApiRounds(this.messages, 2);
 
-    // Create compressed message
-    const compressMessage: Message = {
+    // Create compacted message
+    const compactMessage: Message = {
       id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
-          type: "compress",
-          content: compressedContent,
+          type: "compact",
+          content: compactedContent,
           sessionId: this.sessionId,
         },
       ],
       ...(usage && { usage }),
     };
 
-    // Build new message array: keep the compressed message and last 3 messages
-    const newMessages: Message[] = [compressMessage, ...lastThreeMessages];
+    // Build new message array: keep the compacted message and last 3 messages
+    const newMessages: Message[] = [compactMessage, ...lastThreeMessages];
 
     // Update sessionId and parentSessionId
     const oldSessionId = this.sessionId;
@@ -539,15 +539,15 @@ export class MessageManager {
       this.addPathsFromMessage(message);
     }
 
-    // Scan compressedContent for file mentions
+    // Scan compactedContent for file mentions
     const fileMentionRegex = /(?:^|\s)@([\w.\-/]+)/g;
     let match;
-    while ((match = fileMentionRegex.exec(compressedContent)) !== null) {
+    while ((match = fileMentionRegex.exec(compactedContent)) !== null) {
       this.touchFile(match[1]);
     }
 
-    // Trigger compression callback
-    this.callbacks.onCompressBlockAdded?.(compressedContent);
+    // Trigger compaction callback
+    this.callbacks.onCompactBlockAdded?.(compactedContent);
   }
 
   public addFileHistoryBlock(
@@ -861,7 +861,7 @@ export class MessageManager {
     let targetSessionId = this.sessionId;
     let targetIndexInSession = index;
 
-    // We need to be careful here because loadFullMessageThread might have removed "compress" blocks
+    // We need to be careful here because loadFullMessageThread might have removed "compact" blocks
     // Let's re-calculate based on the actual messages returned.
     // Actually, it's easier to just load sessions one by one again or keep track of counts.
 
@@ -883,19 +883,19 @@ export class MessageManager {
       if (!sessionData) continue;
 
       const sessionMessages = sessionData.messages;
-      // If this is not the first session in the thread, it might have a compress block at the start
+      // If this is not the first session in the thread, it might have a compact block at the start
       // that was removed in getFullMessageThread.
-      const hasCompressBlock = sessionMessages[0]?.blocks.some(
-        (b) => b.type === "compress",
+      const hasCompactBlock = sessionMessages[0]?.blocks.some(
+        (b) => b.type === "compact",
       );
       const effectiveMessages =
-        hasCompressBlock && sid !== sessionIds[0]
+        hasCompactBlock && sid !== sessionIds[0]
           ? sessionMessages.slice(1)
           : sessionMessages;
 
       if (remainingIndex < effectiveMessages.length) {
         targetSessionId = sid;
-        targetIndexInSession = hasCompressBlock
+        targetIndexInSession = hasCompactBlock
           ? remainingIndex + 1
           : remainingIndex;
         break;
@@ -938,7 +938,7 @@ export class MessageManager {
 
     // Update in-memory messages to the truncated session messages
     // We do NOT include ancestor messages here to avoid exceeding context limits.
-    // The 'compress' block at the start of the session (if any) already summarizes them.
+    // The 'compact' block at the start of the session (if any) already summarizes them.
     this.setMessages(newMessagesInSession);
 
     // Update saved message count

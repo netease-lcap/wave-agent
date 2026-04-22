@@ -183,7 +183,7 @@ export class InteractionService {
     // 6. Initialize session state last
     messageManager.initializeFromSession(sessionData);
 
-    // Update task manager with the root session ID to ensure continuity across compressions
+    // Update task manager with the root session ID to ensure continuity across compactions
     taskManager.setTaskListId(sessionData.rootSessionId || sessionData.id);
 
     // 7. Load tasks for the restored session

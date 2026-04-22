@@ -25,7 +25,7 @@ export interface Usage {
   completion_tokens: number; // Tokens generated in completions
   total_tokens: number; // Sum of prompt + completion tokens
   model?: string; // Model used for the operation (e.g., "gpt-4", "gpt-3.5-turbo")
-  operation_type?: "agent" | "compress"; // Type of operation that generated usage
+  operation_type?: "agent" | "compact"; // Type of operation that generated usage
 
   // Cache-related tokens (Claude models only)
   cache_read_input_tokens?: number; // Tokens read from cache

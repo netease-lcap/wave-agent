@@ -30,7 +30,7 @@ export class TaskManager extends EventEmitter {
 
   /**
    * Syncs the task list ID with the current session's root session ID.
-   * This is typically called when the session is cleared or compressed.
+   * This is typically called when the session is cleared or compacted.
    */
   public async syncWithSession(): Promise<void> {
     const messageManager = this.container.get<MessageManager>("MessageManager");

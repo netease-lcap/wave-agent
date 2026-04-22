@@ -22,11 +22,11 @@ function createAssistantMsg(id: string, content = "assistant msg"): Message {
   };
 }
 
-function createCompressMsg(content = "compressed"): Message {
+function createCompactMsg(content = "compacted"): Message {
   return {
     id: generateMessageId(),
     role: "assistant",
-    blocks: [{ type: "compress", content, sessionId: "session-1" }],
+    blocks: [{ type: "compact", content, sessionId: "session-1" }],
   };
 }
 
@@ -71,16 +71,16 @@ describe("groupMessagesByApiRound", () => {
     expect(rounds[2].messages).toEqual([a3]);
   });
 
-  it("should group compress block as its own round", () => {
-    const compress = createCompressMsg("summary");
+  it("should group compact block as its own round", () => {
+    const compact = createCompactMsg("summary");
     const user = createUserMsg("continue");
     const assist = createAssistantMsg("a1", "ok");
 
-    const rounds = groupMessagesByApiRound([compress, user, assist]);
+    const rounds = groupMessagesByApiRound([compact, user, assist]);
 
-    // compress is its own round, user+assist form one round
+    // compact is its own round, user+assist form one round
     expect(rounds).toHaveLength(2);
-    expect(rounds[0].messages).toEqual([compress]);
+    expect(rounds[0].messages).toEqual([compact]);
     expect(rounds[1].messages).toEqual([user, assist]);
   });
 
@@ -154,17 +154,17 @@ describe("getLastApiRounds", () => {
     expect(result2).toEqual([user, a1, a2]);
   });
 
-  it("should handle compress block correctly in getLastApiRounds", () => {
-    const compress = createCompressMsg("summary");
+  it("should handle compact block correctly in getLastApiRounds", () => {
+    const compact = createCompactMsg("summary");
     const user = createUserMsg("continue");
     const assist = createAssistantMsg("a1", "ok");
 
-    const all = [compress, user, assist];
+    const all = [compact, user, assist];
 
-    // Rounds: [[compress], [user, assist]]
+    // Rounds: [[compact], [user, assist]]
     // Last 2 rounds: all messages
     const result = getLastApiRounds(all, 2);
-    expect(result).toEqual([compress, user, assist]);
+    expect(result).toEqual([compact, user, assist]);
   });
 
   it("should handle empty messages", () => {

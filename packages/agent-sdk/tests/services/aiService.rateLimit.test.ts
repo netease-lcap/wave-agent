@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type {
   CallAgentOptions,
-  CompressMessagesOptions,
+  CompactMessagesOptions,
 } from "@/services/aiService.js";
 import type { GatewayConfig, ModelConfig } from "@/types/index.js";
 
@@ -37,9 +37,9 @@ describe("AI Service - Rate Limiting", () => {
   let callAgent: (
     options: CallAgentOptions,
   ) => Promise<import("@/services/aiService.js").CallAgentResult>;
-  let compressMessages: (
-    options: CompressMessagesOptions,
-  ) => Promise<import("@/services/aiService.js").CompressMessagesResult>;
+  let compactMessages: (
+    options: CompactMessagesOptions,
+  ) => Promise<import("@/services/aiService.js").CompactMessagesResult>;
   let resetRateLimiter: () => void;
 
   beforeEach(async () => {
@@ -64,7 +64,7 @@ describe("AI Service - Rate Limiting", () => {
 
     const aiService = await import("@/services/aiService.js");
     callAgent = aiService.callAgent;
-    compressMessages = aiService.compressMessages;
+    compactMessages = aiService.compactMessages;
     resetRateLimiter = aiService.resetRateLimiter;
 
     resetRateLimiter();
@@ -160,7 +160,7 @@ describe("AI Service - Rate Limiting", () => {
     expect(mockCreate).toHaveBeenCalledTimes(1); // Only the first call should have reached OpenAI
   });
 
-  it("should share rate limit between callAgent and compressMessages", async () => {
+  it("should share rate limit between callAgent and compactMessages", async () => {
     const start = Date.now();
 
     await callAgent({
@@ -170,10 +170,10 @@ describe("AI Service - Rate Limiting", () => {
       workdir: "/test/workdir",
     });
 
-    const p2 = compressMessages({
+    const p2 = compactMessages({
       gatewayConfig: TEST_GATEWAY_CONFIG,
       modelConfig: TEST_MODEL_CONFIG,
-      messages: [{ role: "user", content: "Compress 1" }],
+      messages: [{ role: "user", content: "Compact 1" }],
     });
 
     await vi.advanceTimersByTimeAsync(1000);

@@ -816,7 +816,7 @@ export async function sessionExistsInJsonl(
 /**
  * Get the content of the first message in a session
  * For user role: get text block content
- * For assistant role: get compress block content
+ * For assistant role: get compact block content
  * @param sessionId - Session ID to get first message from
  * @param workdir - Working directory for session operations
  * @returns Promise that resolves to the first message content or null if not found
@@ -996,18 +996,18 @@ export async function loadFullMessageThread(
 
     sessionIds.unshift(currentId);
     // Add messages from this session to the beginning of the list
-    // But skip the "compress" block if it's not the first session in our traversal (which is the latest)
+    // But skip the "compact" block if it's not the first session in our traversal (which is the latest)
     // Actually, we should probably keep all messages and let the UI/logic handle it.
-    // But wait, if we are concatenating, the "compress" block in session N summarizes session N-1.
-    // So if we have session N-1 and session N, we should probably skip the compress block in session N.
+    // But wait, if we are concatenating, the "compact" block in session N summarizes session N-1.
+    // So if we have session N-1 and session N, we should probably skip the compact block in session N.
 
     const messages = sessionData.messages;
     if (allMessages.length > 0) {
       // If we already have messages (from "later" sessions),
       // we are now adding messages from an "earlier" session.
-      // The later session's first message might be a "compress" block.
-      if (allMessages[0].blocks.some((b) => b.type === "compress")) {
-        // Remove the compress block from the later session's messages
+      // The later session's first message might be a "compact" block.
+      if (allMessages[0].blocks.some((b) => b.type === "compact")) {
+        // Remove the compact block from the later session's messages
         // because we are now providing the actual messages it summarized.
         allMessages.shift();
       }

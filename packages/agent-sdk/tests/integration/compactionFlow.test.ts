@@ -85,7 +85,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
     // Step 2: Group by API round to find logical boundaries
     const rounds = groupMessagesByApiRound(microcompacted);
 
-    // Step 3: Get last N rounds for compression
+    // Step 3: Get last N rounds for compaction
     const preservedMessages = getLastApiRounds(microcompacted, 2);
 
     // Step 4: Convert for API
@@ -181,7 +181,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
     });
   });
 
-  it("should handle compression scenario with mixed old and recent tools across multiple API rounds", () => {
+  it("should handle compaction scenario with mixed old and recent tools across multiple API rounds", () => {
     // Simulate: user prompt → multiple assistant turns (tool loop) → user follow-up → assistant
     const veryOldTs = now - 10 * 60 * 60 * 1000;
     const oldTs = now - 4 * 60 * 60 * 1000;
@@ -275,14 +275,14 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
     expect(tool2.result).toBe("r2");
   });
 
-  it("should preserve compress block as its own round when chaining getLastApiRounds after previous compaction", () => {
-    // Scenario: session has been compacted before, new compression needed
-    const compressMsg: Message = {
+  it("should preserve compact block as its own round when chaining getLastApiRounds after previous compaction", () => {
+    // Scenario: session has been compacted before, new compaction needed
+    const compactMsg: Message = {
       id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
-          type: "compress",
+          type: "compact",
           content: "Previous summary",
           sessionId: "old-session",
         },
@@ -290,7 +290,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
     };
 
     const messages: Message[] = [
-      compressMsg,
+      compactMsg,
       createUserMsg("continue working"),
       createAssistantMsg("a1", "Working on it", [
         createToolBlock(now - 60 * 60 * 1000, "read", "file"),
@@ -304,13 +304,13 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
       recentResultsToKeep: 1,
     });
 
-    // Rounds: [compressMsg], [user, a1], [user, a2]
+    // Rounds: [compactMsg], [user, a1], [user, a2]
     const rounds = groupMessagesByApiRound(microcompacted);
     expect(rounds).toHaveLength(3);
 
-    // The compress block is its own round
+    // The compact block is its own round
     expect(rounds[0].messages).toHaveLength(1);
-    expect(rounds[0].messages[0].blocks[0].type).toBe("compress");
+    expect(rounds[0].messages[0].blocks[0].type).toBe("compact");
 
     // getLastApiRounds(2) = [user, a1] + [user, a2]
     const lastTwo = getLastApiRounds(microcompacted, 2);
@@ -321,14 +321,14 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
     expect(apiMsgs.length).toBeGreaterThan(0);
   });
 
-  it("should handle compress block as own round followed by mixed conversation", () => {
+  it("should handle compact block as own round followed by mixed conversation", () => {
     // Scenario: session compacted, then continues with new conversation
-    const compressMsg: Message = {
+    const compactMsg: Message = {
       id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
-          type: "compress",
+          type: "compact",
           content: "Initial work summarized",
           sessionId: "s1",
         },
@@ -338,7 +338,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
     // Post-compact conversation with tool loops
     const toolTs = now - 5 * 60 * 60 * 1000;
     const messages: Message[] = [
-      compressMsg,
+      compactMsg,
       createUserMsg("next task"),
       createAssistantMsg("b1", "thinking", [
         createToolBlock(toolTs, "read", "data"),
@@ -353,7 +353,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
       recentResultsToKeep: 1,
     });
 
-    // Rounds: [compress], [user, b1], [b2]
+    // Rounds: [compact], [user, b1], [b2]
     const rounds = groupMessagesByApiRound(microcompacted);
     expect(rounds).toHaveLength(3);
 
@@ -368,7 +368,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
   });
 
   it("should verify full pipeline: microcompact → api-round grouping → getLastApiRounds → convertForAPI", () => {
-    // End-to-end pipeline test simulating what aiManager does before calling compressMessages
+    // End-to-end pipeline test simulating what aiManager does before calling compactMessages
     const ts1 = now - 8 * 60 * 60 * 1000;
     const ts2 = now - 7 * 60 * 60 * 1000;
     const ts3 = now - 3 * 60 * 60 * 1000;
@@ -405,7 +405,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
     // Rounds: [[user,a1], [a2], [user,a3], [a4]]
     expect(step2).toHaveLength(4);
 
-    // Pipeline step 3: get last 2 rounds for compression
+    // Pipeline step 3: get last 2 rounds for compaction
     const step3 = getLastApiRounds(step1, 2);
     // Should be: [user, a3] + [a4]
     expect(step3).toHaveLength(3);

@@ -10,7 +10,7 @@ import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 // Mock the aiService module
 vi.mock("../../src/services/aiService.js", () => ({
   callAgent: vi.fn(),
-  compressMessages: vi.fn(),
+  compactMessages: vi.fn(),
 }));
 
 // Mock the memory service
@@ -61,7 +61,7 @@ describe("AIManager finish reason", () => {
       addErrorBlock: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
-      compressMessagesAndUpdateSession: vi.fn(),
+      compactMessagesAndUpdateSession: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
       finalizeStreamingBlocks: vi.fn(),
     } as unknown as MessageManager;

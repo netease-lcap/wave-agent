@@ -12,8 +12,8 @@ vi.mock("../../src/components/BangDisplay.js", () => ({
 vi.mock("../../src/components/ToolDisplay.js", () => ({
   ToolDisplay: () => <Text>MOCKED_TOOL_RESULT</Text>,
 }));
-vi.mock("../../src/components/CompressDisplay.js", () => ({
-  CompressDisplay: () => <Text>MOCKED_COMPRESS</Text>,
+vi.mock("../../src/components/CompactDisplay.js", () => ({
+  CompactDisplay: () => <Text>MOCKED_COMPRESS</Text>,
 }));
 vi.mock("../../src/components/ReasoningDisplay.js", () => ({
   ReasoningDisplay: () => <Text>MOCKED_REASONING</Text>,
@@ -113,11 +113,11 @@ describe("MessageBlockItem Component", () => {
       expect(lastFrame()).toContain("(2)");
     });
 
-    it("should render compress block", () => {
+    it("should render compact block", () => {
       const message: Message = { id: "test-id", role: "assistant", blocks: [] };
       const block: MessageBlock = {
-        type: "compress",
-        content: "compressed",
+        type: "compact",
+        content: "compacted",
         sessionId: "s1",
       };
       const { lastFrame } = render(

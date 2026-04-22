@@ -582,11 +582,9 @@ export function getMessageContent(message: Message): string {
     return `!${bangBlock.command}`;
   }
 
-  const compressBlock = message.blocks.find(
-    (block) => block.type === "compress",
-  );
-  if (compressBlock && "content" in compressBlock) {
-    return compressBlock.content;
+  const compactBlock = message.blocks.find((block) => block.type === "compact");
+  if (compactBlock && "content" in compactBlock) {
+    return compactBlock.content;
   }
 
   return "";

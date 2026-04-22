@@ -1,29 +1,29 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect } from "vitest";
-import { CompressDisplay } from "../../src/components/CompressDisplay.js";
+import { CompactDisplay } from "../../src/components/CompactDisplay.js";
 
-describe("CompressDisplay", () => {
-  it("should render compressed messages header", () => {
+describe("CompactDisplay", () => {
+  it("should render compacted messages header", () => {
     const block = {
-      type: "compress" as const,
-      content: "Compressed content",
+      type: "compact" as const,
+      content: "Compacted content",
       sessionId: "test-session",
     };
-    const { lastFrame } = render(<CompressDisplay block={block} />);
+    const { lastFrame } = render(<CompactDisplay block={block} />);
     const frame = lastFrame();
-    expect(frame).toContain("Compressed Messages");
-    expect(frame).toContain("Compressed content");
+    expect(frame).toContain("Compacted Messages");
+    expect(frame).toContain("Compacted content");
   });
 
   it("should show full content and not truncate", () => {
     const longContent = "line 1\nline 2\nline 3\nline 4\nline 5";
     const block = {
-      type: "compress" as const,
+      type: "compact" as const,
       content: longContent,
       sessionId: "test-session",
     };
-    const { lastFrame } = render(<CompressDisplay block={block} />);
+    const { lastFrame } = render(<CompactDisplay block={block} />);
     const frame = lastFrame();
     expect(frame).not.toContain("Content truncated");
     expect(frame).toContain("line 1");
@@ -32,12 +32,12 @@ describe("CompressDisplay", () => {
 
   it("should handle empty content", () => {
     const block = {
-      type: "compress" as const,
+      type: "compact" as const,
       content: "",
       sessionId: "test-session",
     };
-    const { lastFrame } = render(<CompressDisplay block={block} />);
-    expect(lastFrame()).toContain("Compressed Messages");
+    const { lastFrame } = render(<CompactDisplay block={block} />);
+    expect(lastFrame()).toContain("Compacted Messages");
     // Should not have the content box
     expect(lastFrame()).not.toContain("borderLeft");
   });

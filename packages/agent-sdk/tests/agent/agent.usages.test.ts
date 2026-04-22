@@ -299,11 +299,11 @@ describe("Agent Usage Tracking", () => {
       expect(usagesHistory).toHaveLength(0);
     });
 
-    it("should track compression usage when it occurs", async () => {
+    it("should track compaction usage when it occurs", async () => {
       const mockCallAgent = vi.mocked(aiService.callAgent);
-      const mockCompressMessages = vi.mocked(aiService.compressMessages);
+      const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
-      // Set up an agent instance with initial messages to have enough content for compression
+      // Set up an agent instance with initial messages to have enough content for compaction
       const initialMessages = [
         {
           id: generateMessageId(),
@@ -369,9 +369,9 @@ describe("Agent Usage Tracking", () => {
 
       vi.clearAllMocks();
 
-      // Mock high token usage to trigger compression
+      // Mock high token usage to trigger compaction
       mockCallAgent.mockResolvedValue({
-        content: "Response that triggers compression",
+        content: "Response that triggers compaction",
         usage: {
           prompt_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS - 20000,
           completion_tokens: 30000,
@@ -379,8 +379,8 @@ describe("Agent Usage Tracking", () => {
         },
       });
 
-      mockCompressMessages.mockResolvedValue({
-        content: "Compressed summary",
+      mockCompactMessages.mockResolvedValue({
+        content: "Compacted summary",
         usage: {
           prompt_tokens: 1000,
           completion_tokens: 500,
@@ -388,12 +388,12 @@ describe("Agent Usage Tracking", () => {
         },
       });
 
-      await agent.sendMessage("Message that triggers compression");
+      await agent.sendMessage("Message that triggers compaction");
 
-      // Should track both agent and compression usage
+      // Should track both agent and compaction usage
       expect(agent.usages).toHaveLength(2);
       expect(agent.usages[0].operation_type).toBe("agent");
-      expect(agent.usages[1].operation_type).toBe("compress");
+      expect(agent.usages[1].operation_type).toBe("compact");
     });
   });
 });

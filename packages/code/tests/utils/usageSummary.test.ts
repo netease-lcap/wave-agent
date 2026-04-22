@@ -43,7 +43,7 @@ describe("Usage Summary Utilities", () => {
           total_tokens: 150,
           operations: {
             agent_calls: 1,
-            compressions: 0,
+            compactions: 0,
           },
         },
       });
@@ -63,7 +63,7 @@ describe("Usage Summary Utilities", () => {
           completion_tokens: 100,
           total_tokens: 300,
           model: "gpt-4",
-          operation_type: "compress",
+          operation_type: "compact",
         },
       ];
 
@@ -77,7 +77,7 @@ describe("Usage Summary Utilities", () => {
           total_tokens: 450,
           operations: {
             agent_calls: 1,
-            compressions: 1,
+            compactions: 1,
           },
         },
       });
@@ -97,7 +97,7 @@ describe("Usage Summary Utilities", () => {
           completion_tokens: 100,
           total_tokens: 300,
           model: "gpt-3.5-turbo",
-          operation_type: "compress",
+          operation_type: "compact",
         },
         {
           prompt_tokens: 150,
@@ -119,7 +119,7 @@ describe("Usage Summary Utilities", () => {
           total_tokens: 375,
           operations: {
             agent_calls: 2,
-            compressions: 0,
+            compactions: 0,
           },
         },
         "gpt-3.5-turbo": {
@@ -129,7 +129,7 @@ describe("Usage Summary Utilities", () => {
           total_tokens: 300,
           operations: {
             agent_calls: 0,
-            compressions: 1,
+            compactions: 1,
           },
         },
       });
@@ -156,7 +156,7 @@ describe("Usage Summary Utilities", () => {
           total_tokens: 0,
           operations: {
             agent_calls: 1,
-            compressions: 0,
+            compactions: 0,
           },
         },
       });
@@ -183,7 +183,7 @@ describe("Usage Summary Utilities", () => {
           total_tokens: 150,
           operations: {
             agent_calls: 1,
-            compressions: 0,
+            compactions: 0,
           },
         },
       });
@@ -204,7 +204,7 @@ describe("Usage Summary Utilities", () => {
 
       expect(result["gpt-4"].operations).toEqual({
         agent_calls: 0,
-        compressions: 0,
+        compactions: 0,
       });
     });
 
@@ -303,7 +303,7 @@ describe("Usage Summary Utilities", () => {
       expect(consoleSpy).toHaveBeenCalledWith("  Completion tokens: 50");
       expect(consoleSpy).toHaveBeenCalledWith("  Total tokens: 150");
       expect(consoleSpy).toHaveBeenCalledWith(
-        "  Operations: 1 agent calls, 0 compressions",
+        "  Operations: 1 agent calls, 0 compactions",
       );
     });
 
@@ -321,7 +321,7 @@ describe("Usage Summary Utilities", () => {
           completion_tokens: 100,
           total_tokens: 300,
           model: "gpt-3.5-turbo",
-          operation_type: "compress",
+          operation_type: "compact",
         },
       ];
 
@@ -336,7 +336,7 @@ describe("Usage Summary Utilities", () => {
       expect(consoleSpy).toHaveBeenCalledWith("  Completion tokens: 100");
       expect(consoleSpy).toHaveBeenCalledWith("  Total tokens: 300");
       expect(consoleSpy).toHaveBeenCalledWith(
-        "  Operations: 0 agent calls, 1 compressions",
+        "  Operations: 0 agent calls, 1 compactions",
       );
 
       expect(consoleSpy).toHaveBeenCalledWith("Model: gpt-4");
@@ -344,7 +344,7 @@ describe("Usage Summary Utilities", () => {
       expect(consoleSpy).toHaveBeenCalledWith("  Completion tokens: 50");
       expect(consoleSpy).toHaveBeenCalledWith("  Total tokens: 150");
       expect(consoleSpy).toHaveBeenCalledWith(
-        "  Operations: 1 agent calls, 0 compressions",
+        "  Operations: 1 agent calls, 0 compactions",
       );
 
       // Should display overall total
@@ -353,7 +353,7 @@ describe("Usage Summary Utilities", () => {
       expect(consoleSpy).toHaveBeenCalledWith("  Completion tokens: 150");
       expect(consoleSpy).toHaveBeenCalledWith("  Total tokens: 450");
       expect(consoleSpy).toHaveBeenCalledWith(
-        "  Operations: 1 agent calls, 1 compressions",
+        "  Operations: 1 agent calls, 1 compactions",
       );
     });
 
@@ -393,7 +393,7 @@ describe("Usage Summary Utilities", () => {
       expect(consoleSpy).toHaveBeenCalledWith("  Completion tokens: 0");
       expect(consoleSpy).toHaveBeenCalledWith("  Total tokens: 0");
       expect(consoleSpy).toHaveBeenCalledWith(
-        "  Operations: 1 agent calls, 0 compressions",
+        "  Operations: 1 agent calls, 0 compactions",
       );
     });
 
@@ -453,7 +453,7 @@ describe("Usage Summary Utilities", () => {
           completion_tokens: 100,
           total_tokens: 300,
           model: "gpt-3.5-turbo",
-          operation_type: "compress",
+          operation_type: "compact",
         },
       ];
       const sessionFilePath = "/home/user/sessions/chat-2023-01-01.json";
@@ -494,7 +494,7 @@ describe("Usage Summary Utilities", () => {
             total_tokens: expect.any(Number),
             operations: expect.objectContaining({
               agent_calls: expect.any(Number),
-              compressions: expect.any(Number),
+              compactions: expect.any(Number),
             }),
           }),
         }),
@@ -529,7 +529,7 @@ describe("Usage Summary Utilities", () => {
             total_tokens: 150,
             operations: {
               agent_calls: 1,
-              compressions: 0,
+              compactions: 0,
             },
             cache_read_input_tokens: 30,
             cache_creation_input_tokens: 70,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { CompressMessagesOptions } from "@/services/aiService.js";
+import type { CompactMessagesOptions } from "@/services/aiService.js";
 import type { GatewayConfig, ModelConfig } from "@/types/index.js";
 
 // Test configuration constants
@@ -44,7 +44,7 @@ vi.mock("process", () => ({
   cwd: () => "/test/cwd",
 }));
 
-describe("AI Service - CompressMessages", () => {
+describe("AI Service - CompactMessages", () => {
   beforeEach(() => {
     // Reset mock and set default behavior
     mockCreate.mockReset();
@@ -52,7 +52,7 @@ describe("AI Service - CompressMessages", () => {
       choices: [
         {
           message: {
-            content: "Compressed conversation summary",
+            content: "Compacted conversation summary",
           },
         },
       ],
@@ -63,15 +63,15 @@ describe("AI Service - CompressMessages", () => {
     vi.clearAllMocks();
   });
 
-  describe("compressMessages", () => {
+  describe("compactMessages", () => {
     // Import the function after mocking
-    let compressMessages: (
-      options: CompressMessagesOptions,
-    ) => Promise<import("@/services/aiService.js").CompressMessagesResult>;
+    let compactMessages: (
+      options: CompactMessagesOptions,
+    ) => Promise<import("@/services/aiService.js").CompactMessagesResult>;
 
     beforeEach(async () => {
       const aiService = await import("@/services/aiService.js");
-      compressMessages = aiService.compressMessages;
+      compactMessages = aiService.compactMessages;
     });
 
     it("should use max_tokens of 8192 and temperature of 0.1", async () => {
@@ -82,7 +82,7 @@ describe("AI Service - CompressMessages", () => {
         },
       ];
 
-      await compressMessages({
+      await compactMessages({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: TEST_MODEL_CONFIG,
         messages,
@@ -110,7 +110,7 @@ describe("AI Service - CompressMessages", () => {
       ];
       const customModel = "custom-model";
 
-      await compressMessages({
+      await compactMessages({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: TEST_MODEL_CONFIG,
         messages,
@@ -139,7 +139,7 @@ describe("AI Service - CompressMessages", () => {
         },
       ];
 
-      await compressMessages({
+      await compactMessages({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: TEST_MODEL_CONFIG,
         messages,
@@ -158,8 +158,8 @@ describe("AI Service - CompressMessages", () => {
       );
     });
 
-    it("should return compressed content", async () => {
-      const expectedContent = "Test compressed content";
+    it("should return compacted content", async () => {
+      const expectedContent = "Test compacted content";
       mockCreate.mockResolvedValueOnce({
         choices: [
           {
@@ -177,7 +177,7 @@ describe("AI Service - CompressMessages", () => {
         },
       ];
 
-      const result = await compressMessages({
+      const result = await compactMessages({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: TEST_MODEL_CONFIG,
         messages,
@@ -195,7 +195,7 @@ describe("AI Service - CompressMessages", () => {
         },
       ];
 
-      await compressMessages({
+      await compactMessages({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: TEST_MODEL_CONFIG,
         messages,
@@ -226,13 +226,13 @@ describe("AI Service - CompressMessages", () => {
       ];
 
       await expect(
-        compressMessages({
+        compactMessages({
           gatewayConfig: TEST_GATEWAY_CONFIG,
           modelConfig: TEST_MODEL_CONFIG,
           messages,
         }),
       ).rejects.toThrow(
-        "Failed to compress conversation history: Empty response from AI",
+        "Failed to compact conversation history: Empty response from AI",
       );
     });
 
@@ -248,7 +248,7 @@ describe("AI Service - CompressMessages", () => {
       ];
 
       await expect(
-        compressMessages({
+        compactMessages({
           gatewayConfig: TEST_GATEWAY_CONFIG,
           modelConfig: TEST_MODEL_CONFIG,
           messages,
@@ -269,12 +269,12 @@ describe("AI Service - CompressMessages", () => {
       ];
 
       await expect(
-        compressMessages({
+        compactMessages({
           gatewayConfig: TEST_GATEWAY_CONFIG,
           modelConfig: TEST_MODEL_CONFIG,
           messages,
         }),
-      ).rejects.toThrow("Compression request was aborted");
+      ).rejects.toThrow("Compaction request was aborted");
     });
 
     it("should pass generic model configuration parameters to OpenAI", async () => {
@@ -285,7 +285,7 @@ describe("AI Service - CompressMessages", () => {
         },
       ];
 
-      await compressMessages({
+      await compactMessages({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,

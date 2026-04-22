@@ -21,8 +21,8 @@ vi.mock("../../src/services/aiService.js", () => ({
       finish_reason: "stop",
     };
   }),
-  compressMessages: vi.fn().mockResolvedValue({
-    content: "Compressed",
+  compactMessages: vi.fn().mockResolvedValue({
+    content: "Compacted",
     usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
   }),
   isClaudeModel: vi.fn().mockReturnValue(false),
@@ -68,7 +68,7 @@ function mockMsgManager(overrides = {}) {
     addErrorBlock: vi.fn(),
     setlatestTotalTokens: vi.fn(),
     saveSession: vi.fn().mockResolvedValue(undefined),
-    compressMessagesAndUpdateSession: vi.fn(),
+    compactMessagesAndUpdateSession: vi.fn(),
     getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
     touchFile: vi.fn(),
     finalizeStreamingBlocks: vi.fn(),
@@ -179,7 +179,7 @@ describe("AIManager - Coverage", () => {
     await aiManager.sendAIMessage();
   });
 
-  it("should handle compression with messages", async () => {
+  it("should handle compaction with messages", async () => {
     const mm = mockMsgManager({
       getMessages: vi.fn().mockReturnValue([
         { role: "user", blocks: [{ type: "text", content: "hello" }] },
@@ -193,8 +193,8 @@ describe("AIManager - Coverage", () => {
     await aiManager.sendAIMessage();
   });
 
-  it("should handle compression error", async () => {
-    vi.mocked(aiService.compressMessages).mockRejectedValueOnce(
+  it("should handle compaction error", async () => {
+    vi.mocked(aiService.compactMessages).mockRejectedValueOnce(
       new Error("fail"),
     );
     const mm = mockMsgManager({
