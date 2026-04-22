@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "fs/promises";
+import * as fsSync from "fs";
 import * as path from "path";
 import { PluginLoader } from "../../src/services/pluginLoader.js";
 import { scanCommandsDirectory } from "../../src/utils/customCommands.js";
@@ -8,6 +9,7 @@ import { parseSkillFile } from "../../src/utils/skillParser.js";
 import { resolveMcpConfig } from "../../src/managers/mcpManager.js";
 
 vi.mock("fs/promises");
+vi.mock("fs");
 vi.mock("path");
 vi.mock("../../src/utils/customCommands.js");
 vi.mock("../../src/utils/skillParser.js");
@@ -41,6 +43,12 @@ describe("PluginLoader", () => {
     vi.mocked(path.join).mockImplementation((...args: string[]) =>
       args.join("/"),
     );
+    // Default mock for statSync to return ENOENT for both paths
+    vi.mocked(fsSync.statSync).mockImplementation(() => {
+      const error = new Error("ENOENT");
+      (error as Error & { code?: string }).code = "ENOENT";
+      throw error;
+    });
   });
 
   describe("loadManifest", () => {
@@ -51,6 +59,10 @@ describe("PluginLoader", () => {
         version: "1.0.0",
       };
 
+      // Mock statSync to succeed for .wave-plugin path (first call)
+      vi.mocked(fsSync.statSync).mockImplementationOnce(
+        () => ({ isFile: () => true }) as fsSync.Stats,
+      );
       vi.mocked(fs.readdir).mockResolvedValue([
         "plugin.json",
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
@@ -63,6 +75,9 @@ describe("PluginLoader", () => {
     });
 
     it("should throw error if manifest directory is not found", async () => {
+      vi.mocked(fsSync.statSync).mockReturnValueOnce({
+        isFile: () => true,
+      } as unknown as Awaited<ReturnType<typeof fsSync.statSync>>);
       const error = new Error("Directory not found");
       (error as Error & { code?: string }).code = "ENOENT";
       vi.mocked(fs.readdir).mockRejectedValue(error);
@@ -73,6 +88,9 @@ describe("PluginLoader", () => {
     });
 
     it("should throw error if .wave-plugin/ contains misplaced files", async () => {
+      vi.mocked(fsSync.statSync).mockReturnValueOnce({
+        isFile: () => true,
+      } as unknown as Awaited<ReturnType<typeof fsSync.statSync>>);
       vi.mocked(fs.readdir).mockResolvedValue([
         "plugin.json",
         "misplaced.txt",
@@ -84,6 +102,9 @@ describe("PluginLoader", () => {
     });
 
     it("should throw error if manifest file is not found", async () => {
+      vi.mocked(fsSync.statSync).mockReturnValueOnce({
+        isFile: () => true,
+      } as unknown as Awaited<ReturnType<typeof fsSync.statSync>>);
       vi.mocked(fs.readdir).mockResolvedValue([
         "plugin.json",
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
@@ -97,6 +118,9 @@ describe("PluginLoader", () => {
     });
 
     it("should throw error if manifest loading fails for other reasons", async () => {
+      vi.mocked(fsSync.statSync).mockReturnValueOnce({
+        isFile: () => true,
+      } as unknown as Awaited<ReturnType<typeof fsSync.statSync>>);
       vi.mocked(fs.readdir).mockResolvedValue([
         "plugin.json",
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
@@ -108,6 +132,9 @@ describe("PluginLoader", () => {
     });
 
     it("should throw error if manifest is missing name", async () => {
+      vi.mocked(fsSync.statSync).mockReturnValueOnce({
+        isFile: () => true,
+      } as unknown as Awaited<ReturnType<typeof fsSync.statSync>>);
       vi.mocked(fs.readdir).mockResolvedValue([
         "plugin.json",
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
@@ -126,6 +153,9 @@ describe("PluginLoader", () => {
     });
 
     it("should throw error if manifest is missing description", async () => {
+      vi.mocked(fsSync.statSync).mockReturnValueOnce({
+        isFile: () => true,
+      } as unknown as Awaited<ReturnType<typeof fsSync.statSync>>);
       vi.mocked(fs.readdir).mockResolvedValue([
         "plugin.json",
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
@@ -144,6 +174,9 @@ describe("PluginLoader", () => {
     });
 
     it("should throw error if manifest is missing version", async () => {
+      vi.mocked(fsSync.statSync).mockReturnValueOnce({
+        isFile: () => true,
+      } as unknown as Awaited<ReturnType<typeof fsSync.statSync>>);
       vi.mocked(fs.readdir).mockResolvedValue([
         "plugin.json",
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
@@ -162,6 +195,9 @@ describe("PluginLoader", () => {
     });
 
     it("should throw error if manifest name is invalid", async () => {
+      vi.mocked(fsSync.statSync).mockReturnValueOnce({
+        isFile: () => true,
+      } as unknown as Awaited<ReturnType<typeof fsSync.statSync>>);
       vi.mocked(fs.readdir).mockResolvedValue([
         "plugin.json",
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
