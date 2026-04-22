@@ -84,6 +84,16 @@ async function buildHookJsonInput(
     }
   }
 
+  // Add SessionStart-specific fields
+  if (context.event === "SessionStart") {
+    if (context.source !== undefined) {
+      jsonInput.source = context.source;
+    }
+    if (context.agentType !== undefined) {
+      jsonInput.agent_type = context.agentType;
+    }
+  }
+
   return jsonInput;
 }
 

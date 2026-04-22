@@ -178,6 +178,36 @@ export class InitializationService {
       // Don't throw error to prevent app startup failure
     }
 
+    // Execute SessionStart hooks
+    try {
+      const phaseStart = performance.now();
+      const sessionStartResult = await hookManager.executeSessionStartHooks(
+        "startup",
+        messageManager.getSessionId(),
+        messageManager.getTranscriptPath(),
+      );
+
+      // Inject additionalContext as a user message
+      if (sessionStartResult.additionalContext) {
+        messageManager.addUserMessage({
+          content: sessionStartResult.additionalContext,
+        });
+      }
+
+      // Inject initialUserMessage as a user message
+      if (sessionStartResult.initialUserMessage) {
+        messageManager.addUserMessage({
+          content: sessionStartResult.initialUserMessage,
+        });
+      }
+
+      logger?.debug(
+        `Initialization Phase [SessionStart Hooks] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
+    } catch (error) {
+      logger?.warn("SessionStart hooks execution failed:", error);
+    }
+
     // Trigger WorktreeCreate hook if this is a new worktree
     if (agentOptions.isNewWorktree && hookManager) {
       try {

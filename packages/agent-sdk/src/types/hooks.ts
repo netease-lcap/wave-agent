@@ -21,7 +21,8 @@ export type HookEvent =
   | "SubagentStop"
   | "PermissionRequest"
   | "WorktreeCreate"
-  | "CwdChanged";
+  | "CwdChanged"
+  | "SessionStart";
 
 // Individual hook command configuration
 export interface HookCommand {
@@ -94,6 +95,8 @@ export class HookConfigurationError extends Error {
   }
 }
 
+export type SessionStartSource = "startup" | "resume" | "compact";
+
 // Type guards for runtime validation
 export function isValidHookEvent(event: string): event is HookEvent {
   return [
@@ -105,6 +108,7 @@ export function isValidHookEvent(event: string): event is HookEvent {
     "PermissionRequest",
     "WorktreeCreate",
     "CwdChanged",
+    "SessionStart",
   ].includes(event);
 }
 
@@ -161,7 +165,7 @@ export interface HookJsonInput {
   session_id: string; // Format: "wave_session_{uuid}_{shortId}"
   transcript_path: string; // Format: "~/.wave/sessions/session_{shortId}.json"
   cwd: string; // Absolute path to current working directory
-  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop" | "PermissionRequest" | "WorktreeCreate" | "CwdChanged"
+  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop" | "PermissionRequest" | "WorktreeCreate" | "CwdChanged" | "SessionStart"
 
   // Optional fields based on event type
   tool_name?: string; // Present for PreToolUse, PostToolUse, PermissionRequest
@@ -172,6 +176,8 @@ export interface HookJsonInput {
   name?: string; // Present for WorktreeCreate events
   old_cwd?: string; // Present for CwdChanged events
   new_cwd?: string; // Present for CwdChanged events
+  source?: SessionStartSource; // Present for SessionStart events
+  agent_type?: string; // Present for SessionStart events
 }
 
 // Extended context interface for passing additional data to hook executor
@@ -187,6 +193,8 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   worktreeName?: string; // Worktree name (WorktreeCreate only)
   oldCwd?: string; // Previous working directory (CwdChanged only)
   newCwd?: string; // New working directory (CwdChanged only)
+  source?: SessionStartSource; // Session start source (SessionStart only)
+  agentType?: string; // Agent type identifier (SessionStart only)
 }
 
 // Environment variables injected into hook processes

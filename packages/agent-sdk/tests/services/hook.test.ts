@@ -705,4 +705,49 @@ describe("Hook Services", () => {
       expect(parsedInput.hook_event_name).toBe("WorktreeCreate");
     });
   });
+
+  describe("SessionStart hook", () => {
+    it("should include source and agent_type in JSON input for SessionStart event", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const sessionStartContext: ExtendedHookExecutionContext = {
+        event: "SessionStart",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        source: "startup",
+        agentType: "planner",
+      };
+
+      const resultPromise = executeCommand("echo test", sessionStartContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(stdinData).toBeTruthy();
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("SessionStart");
+      expect(parsedInput.source).toBe("startup");
+      expect(parsedInput.agent_type).toBe("planner");
+    });
+  });
 });
