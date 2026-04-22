@@ -8,6 +8,7 @@ import {
   InstalledPlugin,
   InstalledPluginsRegistry,
   MarketplaceManifest,
+  MarketplacePluginEntry,
   MarketplaceSource,
 } from "../types/marketplace.js";
 import { GitService } from "./GitService.js";
@@ -767,6 +768,74 @@ export class MarketplaceService {
   }
 
   /**
+   * Resolves a plugin source into a consistent format for installation.
+   * Handles both string sources (local paths or git URLs) and object-style MarketplaceSource.
+   */
+  private resolvePluginSource(
+    pluginEntry: MarketplacePluginEntry,
+    marketplacePath: string,
+  ): { isGit: boolean; url?: string; ref?: string; localPath: string } {
+    const { source } = pluginEntry;
+
+    if (typeof source === "string") {
+      // String source: could be a git URL or a relative local path
+      const isGitUrl =
+        source.startsWith("http://") ||
+        source.startsWith("https://") ||
+        source.startsWith("git@") ||
+        source.startsWith("ssh://");
+
+      if (isGitUrl) {
+        let url = source;
+        let ref: string | undefined;
+        if (url.includes("#")) {
+          [url, ref] = url.split("#");
+        }
+        return { isGit: true, url, ref, localPath: "" };
+      }
+
+      // Relative local path
+      return { isGit: false, localPath: path.resolve(marketplacePath, source) };
+    }
+
+    // Object-style source
+    if (source.source === "git") {
+      return { isGit: true, url: source.url, ref: source.ref, localPath: "" };
+    }
+
+    if (source.source === "github") {
+      return {
+        isGit: true,
+        url: `https://github.com/${source.repo}.git`,
+        ref: source.ref,
+        localPath: "",
+      };
+    }
+
+    if (source.source === "url") {
+      let url = source.url;
+      let ref = source.ref;
+      if (url.includes("#")) {
+        [url, ref] = url.split("#");
+      }
+      return { isGit: true, url, ref, localPath: "" };
+    }
+
+    if (source.source === "directory") {
+      return {
+        isGit: false,
+        localPath: path.resolve(marketplacePath, source.path),
+      };
+    }
+
+    // Exhaustiveness: this should be unreachable given the union type
+    const _exhaustive: never = source;
+    throw new Error(
+      `Unsupported plugin source type: ${(_exhaustive as { source: string }).source}`,
+    );
+  }
+
+  /**
    * Installs a plugin from a marketplace
    */
   async installPlugin(
@@ -794,27 +863,22 @@ export class MarketplaceService {
         );
       }
 
-      const isGitSource =
-        pluginEntry.source.startsWith("http://") ||
-        pluginEntry.source.startsWith("https://") ||
-        pluginEntry.source.startsWith("git@") ||
-        pluginEntry.source.startsWith("ssh://");
+      const resolved = this.resolvePluginSource(pluginEntry, marketplacePath);
 
       let pluginSrcPath: string;
       let tempCloneDir: string | undefined;
 
       try {
-        if (isGitSource) {
+        if (resolved.isGit) {
           tempCloneDir = path.join(this.tmpDir, `clone-${Date.now()}`);
-          let url = pluginEntry.source;
-          let ref: string | undefined;
-          if (url.includes("#")) {
-            [url, ref] = url.split("#");
-          }
-          await this.gitService.clone(url, tempCloneDir, ref);
+          await this.gitService.clone(
+            resolved.url!,
+            tempCloneDir,
+            resolved.ref,
+          );
           pluginSrcPath = tempCloneDir;
         } else {
-          pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
+          pluginSrcPath = resolved.localPath;
         }
 
         let pluginManifestPath: string | undefined;
@@ -853,7 +917,7 @@ export class MarketplaceService {
           `${pluginName}-${Date.now()}`,
         );
         try {
-          if (isGitSource) {
+          if (resolved.isGit) {
             await fs.rename(pluginSrcPath, tmpPluginDir);
             tempCloneDir = undefined;
           } else {
