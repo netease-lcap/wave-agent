@@ -72,12 +72,21 @@ export class PluginLoader {
     const pluginDirPath = path.join(pluginPath, pluginDirName);
 
     // T018: Ensure plugin.json is the only file in the manifest directory
+    // For .claude-plugin/, marketplace.json is also allowed (Claude Code convention)
     try {
       const entries = await fs.readdir(pluginDirPath);
-      const misplaced = entries.filter((e) => e !== "plugin.json");
+      const allowedFiles = ["plugin.json"];
+      if (pluginDirName === ".claude-plugin") {
+        allowedFiles.push("marketplace.json");
+      }
+      const misplaced = entries.filter((e) => !allowedFiles.includes(e));
       if (misplaced.length > 0) {
+        const allowedMsg =
+          pluginDirName === ".claude-plugin"
+            ? "Only plugin.json and marketplace.json should be in this directory."
+            : "Only plugin.json should be in this directory.";
         throw new Error(
-          `Misplaced files/directories in ${pluginDirName}/: ${misplaced.join(", ")}. Only plugin.json should be in this directory.`,
+          `Misplaced files/directories in ${pluginDirName}/: ${misplaced.join(", ")}. ${allowedMsg}`,
         );
       }
     } catch (error) {

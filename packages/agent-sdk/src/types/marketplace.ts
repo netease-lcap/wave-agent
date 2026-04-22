@@ -7,7 +7,7 @@ export interface MarketplaceOwner {
 
 export interface MarketplacePluginEntry {
   name: string;
-  source: string;
+  source: string | MarketplaceSource;
   description: string;
   /** Claude Code compatibility: plugin category */
   category?: string;
@@ -15,6 +15,16 @@ export interface MarketplacePluginEntry {
   tags?: string[];
   /** Claude Code compatibility: when false, plugin.json is optional */
   strict?: boolean;
+  /** Claude Code compatibility: inline manifest fields */
+  version?: string;
+  author?: { name: string; url?: string };
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  keywords?: string[];
+  commands?: string;
+  skills?: string;
+  agents?: string;
 }
 
 export interface MarketplacePluginStatus extends MarketplacePluginEntry {
@@ -46,6 +56,11 @@ export type MarketplaceSource =
     }
   | {
       source: "git";
+      url: string;
+      ref?: string;
+    }
+  | {
+      source: "url";
       url: string;
       ref?: string;
     };
