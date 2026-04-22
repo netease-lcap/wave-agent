@@ -81,9 +81,8 @@ export class HookManager {
    */
   loadConfigurationFromWaveConfig(waveConfig: WaveConfiguration | null): void {
     try {
-      this.configuration = waveConfig?.hooks || undefined;
-
-      // Validate the loaded configuration if it exists
+      // Merge Wave configuration hooks with existing plugin hooks
+      // (plugin hooks were registered earlier via registerPluginHooks)
       if (waveConfig?.hooks) {
         const validation = this.validatePartialConfiguration(waveConfig.hooks);
         if (!validation.valid) {
@@ -92,17 +91,18 @@ export class HookManager {
             validation.errors,
           );
         }
+        if (!this.configuration) {
+          this.configuration = {};
+        }
+        this.mergeHooksConfiguration(this.configuration, waveConfig.hooks);
       }
     } catch (error) {
-      // If loading fails, start with undefined configuration (no hooks)
-      this.configuration = undefined;
-
       // Re-throw configuration errors, but handle other errors gracefully
       if (error instanceof HookConfigurationError) {
         throw error;
       } else {
         logger?.warn(
-          `[HookManager] Failed to load configuration, continuing with no hooks: ${(error as Error).message}`,
+          `[HookManager] Failed to load configuration, continuing with existing hooks: ${(error as Error).message}`,
         );
       }
     }
