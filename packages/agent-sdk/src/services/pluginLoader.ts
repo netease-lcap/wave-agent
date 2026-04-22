@@ -153,7 +153,13 @@ export class PluginLoader {
     const hooksPath = path.join(pluginPath, "hooks", "hooks.json");
     try {
       const content = await fs.readFile(hooksPath, "utf-8");
-      return JSON.parse(content) as PartialHookConfiguration;
+      const parsed = JSON.parse(content);
+      // Claude Code wrapper format: { "hooks": { "SessionStart": [...] } }
+      // (optional "description" sibling key)
+      if (parsed && typeof parsed === "object" && "hooks" in parsed) {
+        return parsed.hooks as PartialHookConfiguration;
+      }
+      return undefined;
     } catch {
       return undefined;
     }
