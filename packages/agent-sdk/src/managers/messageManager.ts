@@ -92,6 +92,8 @@ export class MessageManager {
   private filesInContext: Set<string> = new Set(); // Track files mentioned in the conversation
   private recentFileReads: Map<string, { content: string; timestamp: number }> =
     new Map(); // Track file read contents
+  private invokedSkills: Map<string, { skillName: string; timestamp: number }> =
+    new Map(); // Track invoked skill names
   private sessionType: "main" | "subagent";
   private subagentType?: string;
   private _usages: Usage[] = [];
@@ -270,12 +272,14 @@ export class MessageManager {
     for (const message of newMessages) {
       this.addPathsFromMessage(message);
       this.extractFileReadsFromMessage(message);
+      this.extractSkillInvocationsFromMessage(message);
     }
 
     // Also check if the last message was updated (common for tool blocks)
     if (messages.length > 0 && messages.length === oldLength) {
       this.addPathsFromMessage(messages[messages.length - 1]);
       this.extractFileReadsFromMessage(messages[messages.length - 1]);
+      this.extractSkillInvocationsFromMessage(messages[messages.length - 1]);
     }
 
     this.callbacks.onMessagesChange?.([...messages]);
@@ -1055,5 +1059,55 @@ export class MessageManager {
       result.push({ path, content: truncated });
     }
     return result;
+  }
+
+  /**
+   * Extract skill invocations from tool blocks in a message.
+   */
+  private extractSkillInvocationsFromMessage(message: Message): void {
+    for (const block of message.blocks) {
+      if (
+        block.type === "tool" &&
+        block.name === "Skill" &&
+        block.stage === "end" &&
+        block.parameters
+      ) {
+        try {
+          const params = JSON.parse(block.parameters) as Record<
+            string,
+            unknown
+          >;
+          const skillName = params.skill_name as string | undefined;
+          if (skillName) {
+            this.invokedSkills.set(skillName, {
+              skillName,
+              timestamp: Date.now(),
+            });
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+  }
+
+  /**
+   * Get recently invoked skill names, sorted by timestamp (newest first).
+   * @param maxSkills - Maximum number of skills to return
+   * @returns Array of skill names sorted by recency
+   */
+  public getInvokedSkillNames(maxSkills = 10): string[] {
+    const sorted = Array.from(this.invokedSkills.entries())
+      .sort(([, a], [, b]) => b.timestamp - a.timestamp)
+      .slice(0, maxSkills);
+
+    return sorted.map(([, { skillName }]) => skillName);
+  }
+
+  /**
+   * Clear all invoked skills (e.g., after compaction).
+   */
+  public clearInvokedSkills(): void {
+    this.invokedSkills.clear();
   }
 }
