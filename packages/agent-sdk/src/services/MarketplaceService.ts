@@ -8,7 +8,6 @@ import {
   InstalledPlugin,
   InstalledPluginsRegistry,
   MarketplaceManifest,
-  MarketplacePluginEntry,
   MarketplaceSource,
 } from "../types/marketplace.js";
 import { GitService } from "./GitService.js";
@@ -321,41 +320,18 @@ export class MarketplaceService {
   }
 
   /**
-   * Finds the first existing marketplace manifest path.
-   * Prefers .wave-plugin/ for backward compatibility, falls back to .claude-plugin/.
-   * Returns null if neither exists.
-   */
-  private async findMarketplaceManifestPath(
-    dir: string,
-  ): Promise<string | null> {
-    const waveManifestPath = path.join(dir, ".wave-plugin", "marketplace.json");
-    const claudeManifestPath = path.join(
-      dir,
-      ".claude-plugin",
-      "marketplace.json",
-    );
-
-    if (existsSync(waveManifestPath)) {
-      return waveManifestPath;
-    }
-    if (existsSync(claudeManifestPath)) {
-      return claudeManifestPath;
-    }
-    return null;
-  }
-
-  /**
    * Loads a marketplace manifest from a local path
    */
   async loadMarketplaceManifest(
     marketplacePath: string,
   ): Promise<MarketplaceManifest> {
-    const manifestPath =
-      await this.findMarketplaceManifestPath(marketplacePath);
-    if (!manifestPath) {
-      throw new Error(
-        `Marketplace manifest not found at ${marketplacePath}. Neither .wave-plugin/marketplace.json nor .claude-plugin/marketplace.json exists.`,
-      );
+    const manifestPath = path.join(
+      marketplacePath,
+      ".wave-plugin",
+      "marketplace.json",
+    );
+    if (!existsSync(manifestPath)) {
+      throw new Error(`Marketplace manifest not found at ${manifestPath}`);
     }
     const content = await fs.readFile(manifestPath, "utf-8");
     const manifest = JSON.parse(content);
@@ -768,74 +744,6 @@ export class MarketplaceService {
   }
 
   /**
-   * Resolves a plugin source into a consistent format for installation.
-   * Handles both string sources (local paths or git URLs) and object-style MarketplaceSource.
-   */
-  private resolvePluginSource(
-    pluginEntry: MarketplacePluginEntry,
-    marketplacePath: string,
-  ): { isGit: boolean; url?: string; ref?: string; localPath: string } {
-    const { source } = pluginEntry;
-
-    if (typeof source === "string") {
-      // String source: could be a git URL or a relative local path
-      const isGitUrl =
-        source.startsWith("http://") ||
-        source.startsWith("https://") ||
-        source.startsWith("git@") ||
-        source.startsWith("ssh://");
-
-      if (isGitUrl) {
-        let url = source;
-        let ref: string | undefined;
-        if (url.includes("#")) {
-          [url, ref] = url.split("#");
-        }
-        return { isGit: true, url, ref, localPath: "" };
-      }
-
-      // Relative local path
-      return { isGit: false, localPath: path.resolve(marketplacePath, source) };
-    }
-
-    // Object-style source
-    if (source.source === "git") {
-      return { isGit: true, url: source.url, ref: source.ref, localPath: "" };
-    }
-
-    if (source.source === "github") {
-      return {
-        isGit: true,
-        url: `https://github.com/${source.repo}.git`,
-        ref: source.ref,
-        localPath: "",
-      };
-    }
-
-    if (source.source === "url") {
-      let url = source.url;
-      let ref = source.ref;
-      if (url.includes("#")) {
-        [url, ref] = url.split("#");
-      }
-      return { isGit: true, url, ref, localPath: "" };
-    }
-
-    if (source.source === "directory") {
-      return {
-        isGit: false,
-        localPath: path.resolve(marketplacePath, source.path),
-      };
-    }
-
-    // Exhaustiveness: this should be unreachable given the union type
-    const _exhaustive: never = source;
-    throw new Error(
-      `Unsupported plugin source type: ${(_exhaustive as { source: string }).source}`,
-    );
-  }
-
-  /**
    * Installs a plugin from a marketplace
    */
   async installPlugin(
@@ -863,46 +771,36 @@ export class MarketplaceService {
         );
       }
 
-      const resolved = this.resolvePluginSource(pluginEntry, marketplacePath);
+      const isGitSource =
+        pluginEntry.source.startsWith("http://") ||
+        pluginEntry.source.startsWith("https://") ||
+        pluginEntry.source.startsWith("git@") ||
+        pluginEntry.source.startsWith("ssh://");
 
       let pluginSrcPath: string;
       let tempCloneDir: string | undefined;
 
       try {
-        if (resolved.isGit) {
+        if (isGitSource) {
           tempCloneDir = path.join(this.tmpDir, `clone-${Date.now()}`);
-          await this.gitService.clone(
-            resolved.url!,
-            tempCloneDir,
-            resolved.ref,
-          );
+          let url = pluginEntry.source;
+          let ref: string | undefined;
+          if (url.includes("#")) {
+            [url, ref] = url.split("#");
+          }
+          await this.gitService.clone(url, tempCloneDir, ref);
           pluginSrcPath = tempCloneDir;
         } else {
-          pluginSrcPath = resolved.localPath;
+          pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
         }
 
-        let pluginManifestPath: string | undefined;
-        const wavePluginPath = path.join(
+        const pluginManifestPath = path.join(
           pluginSrcPath,
           ".wave-plugin",
           "plugin.json",
         );
-        const claudePluginPath = path.join(
-          pluginSrcPath,
-          ".claude-plugin",
-          "plugin.json",
-        );
-
-        if (existsSync(wavePluginPath)) {
-          pluginManifestPath = wavePluginPath;
-        } else if (existsSync(claudePluginPath)) {
-          pluginManifestPath = claudePluginPath;
-        }
-
-        if (!pluginManifestPath) {
-          throw new Error(
-            `Plugin manifest not found at ${pluginSrcPath}. Neither .wave-plugin/plugin.json nor .claude-plugin/plugin.json exists.`,
-          );
+        if (!existsSync(pluginManifestPath)) {
+          throw new Error(`Plugin manifest not found at ${pluginManifestPath}`);
         }
 
         const pluginManifestContent = await fs.readFile(
@@ -917,7 +815,7 @@ export class MarketplaceService {
           `${pluginName}-${Date.now()}`,
         );
         try {
-          if (resolved.isGit) {
+          if (isGitSource) {
             await fs.rename(pluginSrcPath, tmpPluginDir);
             tempCloneDir = undefined;
           } else {
