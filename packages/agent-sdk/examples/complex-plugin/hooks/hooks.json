@@ -1,12 +1,14 @@
 {
-  "UserPromptSubmit": [
-    {
-      "hooks": [
-        {
-          "type": "command",
-          "command": "echo 'Complex plugin hook triggered'"
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Complex plugin hook triggered'"
+          }
+        ]
+      }
+    ]
+  }
 }

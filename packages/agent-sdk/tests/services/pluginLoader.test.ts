@@ -325,16 +325,27 @@ describe("PluginLoader", () => {
 
   describe("loadHooksConfig", () => {
     it("should load hooks config if hooks/hooks.json exists", async () => {
-      const mockConfig = { UserPromptSubmit: [] };
+      const mockConfig = {
+        hooks: { UserPromptSubmit: [] },
+      };
       vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockConfig));
 
       const result = await PluginLoader.loadHooksConfig(mockPluginPath);
 
-      expect(result).toEqual(mockConfig);
+      expect(result).toEqual({ UserPromptSubmit: [] });
     });
 
     it("should return undefined if hooks/hooks.json does not exist", async () => {
       vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+
+      const result = await PluginLoader.loadHooksConfig(mockPluginPath);
+
+      expect(result).toBeUndefined();
+    });
+
+    it("should return undefined if hooks.json lacks wrapper format", async () => {
+      const rawConfig = { UserPromptSubmit: [] };
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(rawConfig));
 
       const result = await PluginLoader.loadHooksConfig(mockPluginPath);
 
