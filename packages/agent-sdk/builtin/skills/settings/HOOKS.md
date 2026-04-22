@@ -13,6 +13,8 @@ Wave supports the following hook events:
 - `Stop`: Triggered when Wave finishes its response cycle (no more tool calls).
 - `SubagentStop`: Triggered when a subagent finishes its response cycle.
 - `WorktreeCreate`: Triggered when a new worktree is created.
+- `SessionStart`: Triggered during session initialization. Hooks can inject `additionalContext` and `initialUserMessage` via stdout.
+- `SessionEnd`: Triggered during agent destruction (fire-and-forget, non-blocking). Useful for cleanup, resource teardown, and analytics.
 
 ## Hook Configuration Structure
 
@@ -73,6 +75,9 @@ Wave provides detailed context to hook processes via `stdin` as a JSON object. T
 - `user_prompt`: (UserPromptSubmit) The text submitted by the user.
 - `subagent_type`: (If executed by a subagent) The type of the subagent.
 - `name`: (WorktreeCreate) The name of the new worktree.
+- `source`: (SessionStart) The session start source: `"startup"`, `"resume"`, or `"compact"`.
+- `agent_type`: (SessionStart) The agent type identifier.
+- `end_source`: (SessionEnd) The session end source: `"exit"`, `"stop"`, or `"compact"`.
 
 ## Hook Exit Codes
 
@@ -84,7 +89,70 @@ Hooks can communicate status and control Wave's behavior using exit codes:
     - `PreToolUse`: Blocks tool execution and provides `stderr` to the agent as feedback.
     - `PostToolUse`: Appends `stderr` to the tool result as feedback for the agent.
     - `Stop`: Blocks the stop operation and provides `stderr` to the agent.
+    - `SessionStart` / `SessionEnd`: Shows `stderr` in an error block, but does not block startup or shutdown.
 - **Other Exits (e.g., Exit 1)**: Non-blocking error. Wave continues execution but shows `stderr` as a warning to the user.
+
+## SessionStart Hooks
+
+`SessionStart` hooks fire during session initialization. They can inject context and messages into the session via stdout.
+
+### Stdout Processing
+
+Hook stdout is processed as follows:
+- If stdout is valid JSON with `additionalContext` or `initialUserMessage` keys, those values are injected as user messages.
+- If stdout is not JSON, the entire output is appended as additional context.
+
+Example hook output:
+```json
+{"additionalContext": "User prefers concise responses", "initialUserMessage": "Here is my current task..."}
+```
+
+### Example Configuration
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "echo '{\"additionalContext\": \"Project uses pnpm and TypeScript\"}'",
+            "description": "Inject project context at session start"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## SessionEnd Hooks
+
+`SessionEnd` hooks fire during agent destruction (fire-and-forget, non-blocking). They are useful for cleanup tasks, resource teardown, and analytics.
+
+### Input
+SessionEnd hooks receive `end_source` in the JSON input indicating how the session ended:
+- `"exit"`: User exited the session
+- `"stop"`: Session was explicitly stopped
+- `"compact"`: Session was compacted
+
+### Example Configuration
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": "echo '{\"session_id\": \"$WAVE_SESSION_ID\"}' >> /tmp/session-analytics.log",
+            "description": "Log session end for analytics",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
+```
 
 ## Live Reload
 

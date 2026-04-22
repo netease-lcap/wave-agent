@@ -23,7 +23,7 @@ Wave looks for `settings.json` in three scopes:
 ## Common Settings
 
 ### 1. Hooks
-Hooks allow you to automate tasks when certain events occur (e.g., `WorktreeCreate`, `TaskStart`).
+Hooks allow you to automate tasks when certain events occur (e.g., `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`).
 For detailed hook configuration, see [HOOKS.md](${WAVE_SKILL_DIR}/HOOKS.md).
 
 ### 2. Environment Variables
