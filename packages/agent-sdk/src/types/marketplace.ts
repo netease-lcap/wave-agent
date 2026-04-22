@@ -9,22 +9,6 @@ export interface MarketplacePluginEntry {
   name: string;
   source: string | MarketplaceSource;
   description: string;
-  /** Claude Code compatibility: plugin category */
-  category?: string;
-  /** Claude Code compatibility: plugin tags */
-  tags?: string[];
-  /** Claude Code compatibility: when false, plugin.json is optional */
-  strict?: boolean;
-  /** Claude Code compatibility: inline manifest fields */
-  version?: string;
-  author?: { name: string; url?: string };
-  homepage?: string;
-  repository?: string;
-  license?: string;
-  keywords?: string[];
-  commands?: string;
-  skills?: string;
-  agents?: string;
 }
 
 export interface MarketplacePluginStatus extends MarketplacePluginEntry {
@@ -40,8 +24,6 @@ export interface MarketplaceManifest {
   name: string;
   owner: MarketplaceOwner;
   plugins: MarketplacePluginEntry[];
-  /** Claude Code compatibility: additional metadata */
-  metadata?: Record<string, unknown>;
 }
 
 export type MarketplaceSource =

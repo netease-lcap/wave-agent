@@ -1,5 +1,4 @@
 import * as fs from "fs/promises";
-import * as fsSync from "fs";
 import * as path from "path";
 import {
   PluginManifest,
@@ -15,78 +14,20 @@ import { resolveMcpConfig } from "../managers/mcpManager.js";
 
 export class PluginLoader {
   /**
-   * Finds the first existing plugin manifest path.
-   * Prefers .wave-plugin/ for backward compatibility, falls back to .claude-plugin/.
-   * Returns null if neither exists.
-   */
-  private static findPluginManifestPath(pluginPath: string): string | null {
-    const waveManifestPath = path.join(
-      pluginPath,
-      ".wave-plugin",
-      "plugin.json",
-    );
-    const claudeManifestPath = path.join(
-      pluginPath,
-      ".claude-plugin",
-      "plugin.json",
-    );
-
-    // Check .wave-plugin first for backward compatibility
-    try {
-      const waveStat = fsSync.statSync(waveManifestPath);
-      if (waveStat.isFile()) {
-        return waveManifestPath;
-      }
-    } catch {
-      // .wave-plugin/plugin.json doesn't exist
-    }
-
-    try {
-      const claudeStat = fsSync.statSync(claudeManifestPath);
-      if (claudeStat.isFile()) {
-        return claudeManifestPath;
-      }
-    } catch {
-      // .claude-plugin/plugin.json doesn't exist
-    }
-
-    return null;
-  }
-
-  /**
    * Load and validate a plugin manifest from a directory
    * @param pluginPath Absolute path to the plugin directory
    */
   static async loadManifest(pluginPath: string): Promise<PluginManifest> {
-    const manifestPath = this.findPluginManifestPath(pluginPath);
-    if (!manifestPath) {
-      throw new Error(
-        `Plugin manifest not found at ${pluginPath}. Neither .wave-plugin/plugin.json nor .claude-plugin/plugin.json exists.`,
-      );
-    }
+    const dotWavePluginPath = path.join(pluginPath, ".wave-plugin");
+    const manifestPath = path.join(dotWavePluginPath, "plugin.json");
 
-    // Determine which directory is being used for validation
-    const pluginDirName = manifestPath.includes(".claude-plugin")
-      ? ".claude-plugin"
-      : ".wave-plugin";
-    const pluginDirPath = path.join(pluginPath, pluginDirName);
-
-    // T018: Ensure plugin.json is the only file in the manifest directory
-    // For .claude-plugin/, marketplace.json is also allowed (Claude Code convention)
+    // T018: Ensure plugin.json is the only file in .wave-plugin/
     try {
-      const entries = await fs.readdir(pluginDirPath);
-      const allowedFiles = ["plugin.json"];
-      if (pluginDirName === ".claude-plugin") {
-        allowedFiles.push("marketplace.json");
-      }
-      const misplaced = entries.filter((e) => !allowedFiles.includes(e));
+      const entries = await fs.readdir(dotWavePluginPath);
+      const misplaced = entries.filter((e) => e !== "plugin.json");
       if (misplaced.length > 0) {
-        const allowedMsg =
-          pluginDirName === ".claude-plugin"
-            ? "Only plugin.json and marketplace.json should be in this directory."
-            : "Only plugin.json should be in this directory.";
         throw new Error(
-          `Misplaced files/directories in ${pluginDirName}/: ${misplaced.join(", ")}. ${allowedMsg}`,
+          `Misplaced files/directories in .wave-plugin/: ${misplaced.join(", ")}. Only plugin.json should be in this directory.`,
         );
       }
     } catch (error) {
@@ -95,7 +36,7 @@ export class PluginLoader {
         (error as { code?: string }).code === "ENOENT"
       ) {
         throw new Error(
-          `Plugin manifest directory not found at ${pluginDirPath}`,
+          `Plugin manifest directory not found at ${dotWavePluginPath}`,
         );
       }
       throw error;
