@@ -725,6 +725,170 @@ describe("HookManager Coverage", () => {
       );
       expect(result.additionalContext).toBe("Plain text context");
     });
+
+    it("should concatenate additionalContext from multiple hooks", async () => {
+      let callCount = 0;
+      mockExecuteCommand.mockImplementation(async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return {
+            success: true,
+            duration: 100,
+            timedOut: false,
+            exitCode: 0,
+            stdout: '{"additionalContext": "Context from hook 1"}',
+            stderr: "",
+          };
+        }
+        return {
+          success: true,
+          duration: 100,
+          timedOut: false,
+          exitCode: 0,
+          stdout: '{"additionalContext": "Context from hook 2"}',
+          stderr: "",
+        };
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          {
+            hooks: [
+              { type: "command" as const, command: "echo hook1" },
+              { type: "command" as const, command: "echo hook2" },
+            ],
+          },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.additionalContext).toBe(
+        "Context from hook 1\nContext from hook 2",
+      );
+    });
+
+    it("should parse both additionalContext and initialUserMessage from same hook", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 100,
+        timedOut: false,
+        exitCode: 0,
+        stdout: JSON.stringify({
+          additionalContext: "Project rules context",
+          initialUserMessage: "Start with a plan",
+        }),
+        stderr: "",
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo both" }] },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.additionalContext).toBe("Project rules context");
+      expect(result.initialUserMessage).toBe("Start with a plan");
+    });
+
+    it("should skip failed hooks when collecting additionalContext", async () => {
+      let callCount = 0;
+      mockExecuteCommand.mockImplementation(async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return {
+            success: false,
+            duration: 100,
+            timedOut: false,
+            exitCode: 1,
+            stdout: '{"additionalContext": "Should be ignored"}',
+            stderr: "Hook failed",
+          };
+        }
+        return {
+          success: true,
+          duration: 100,
+          timedOut: false,
+          exitCode: 0,
+          stdout: '{"additionalContext": "Valid context"}',
+          stderr: "",
+        };
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          {
+            hooks: [
+              { type: "command" as const, command: "echo fail" },
+              { type: "command" as const, command: "echo ok" },
+            ],
+          },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.additionalContext).toBe("Valid context");
+    });
+
+    it("should mix JSON and plain text additionalContext from multiple hooks", async () => {
+      let callCount = 0;
+      mockExecuteCommand.mockImplementation(async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return {
+            success: true,
+            duration: 100,
+            timedOut: false,
+            exitCode: 0,
+            stdout: '{"additionalContext": "JSON context"}',
+            stderr: "",
+          };
+        }
+        if (callCount === 2) {
+          return {
+            success: true,
+            duration: 100,
+            timedOut: false,
+            exitCode: 0,
+            stdout: "Plain text context",
+            stderr: "",
+          };
+        }
+        return {
+          success: true,
+          duration: 100,
+          timedOut: false,
+          exitCode: 0,
+          stdout: '{"additionalContext": "More JSON"}',
+          stderr: "",
+        };
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          {
+            hooks: [
+              { type: "command" as const, command: "echo json1" },
+              { type: "command" as const, command: "echo text" },
+              { type: "command" as const, command: "echo json2" },
+            ],
+          },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.additionalContext).toBe(
+        "JSON context\nPlain text context\nMore JSON",
+      );
+    });
   });
 
   describe("SessionStart in processHookResults", () => {

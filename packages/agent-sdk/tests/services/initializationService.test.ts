@@ -36,6 +36,8 @@ describe("InitializationService", () => {
     const container = new Container();
     container.register("MemoryService", mockMemoryService);
 
+    const mockAddUserMessage = vi.fn();
+
     context = {
       skillManager: {
         initialize: vi.fn(),
@@ -70,6 +72,7 @@ describe("InitializationService", () => {
         loadConfigurationFromWaveConfig: vi.fn(),
         executeHooks: vi.fn().mockResolvedValue([]),
         processHookResults: vi.fn(),
+        executeSessionStartHooks: vi.fn().mockResolvedValue({ results: [] }),
       } as unknown as InitializationContext["hookManager"],
       messageManager: {
         getSessionId: vi.fn().mockReturnValue("test"),
@@ -77,6 +80,7 @@ describe("InitializationService", () => {
         setMessages: vi.fn(),
         rebuildUsageFromMessages: vi.fn(),
         getWorkdir: vi.fn().mockReturnValue("/test/workdir"),
+        addUserMessage: mockAddUserMessage,
       } as unknown as InitializationContext["messageManager"],
       memoryRuleManager: {
         discoverRules: vi.fn(),
@@ -142,5 +146,79 @@ describe("InitializationService", () => {
     expect(
       vi.mocked(mockMemoryService.ensureAutoMemoryDirectory),
     ).not.toHaveBeenCalled();
+  });
+
+  describe("SessionStart hooks", () => {
+    it("should inject additionalContext as a user message", async () => {
+      vi.mocked(context.hookManager.executeSessionStartHooks).mockResolvedValue(
+        {
+          results: [],
+          additionalContext: "Project context from hook",
+        },
+      );
+
+      await InitializationService.initialize(context);
+
+      expect(context.messageManager.addUserMessage).toHaveBeenCalledWith({
+        content: "Project context from hook",
+      });
+    });
+
+    it("should inject initialUserMessage as a user message", async () => {
+      vi.mocked(context.hookManager.executeSessionStartHooks).mockResolvedValue(
+        {
+          results: [],
+          initialUserMessage: "Hello from the hook",
+        },
+      );
+
+      await InitializationService.initialize(context);
+
+      expect(context.messageManager.addUserMessage).toHaveBeenCalledWith({
+        content: "Hello from the hook",
+      });
+    });
+
+    it("should inject both additionalContext and initialUserMessage", async () => {
+      vi.mocked(context.hookManager.executeSessionStartHooks).mockResolvedValue(
+        {
+          results: [],
+          additionalContext: "Extra context",
+          initialUserMessage: "Initial message",
+        },
+      );
+
+      await InitializationService.initialize(context);
+
+      expect(context.messageManager.addUserMessage).toHaveBeenCalledTimes(2);
+      expect(context.messageManager.addUserMessage).toHaveBeenNthCalledWith(1, {
+        content: "Extra context",
+      });
+      expect(context.messageManager.addUserMessage).toHaveBeenNthCalledWith(2, {
+        content: "Initial message",
+      });
+    });
+
+    it("should not add user messages when hook returns no context", async () => {
+      vi.mocked(context.hookManager.executeSessionStartHooks).mockResolvedValue(
+        {
+          results: [],
+        },
+      );
+
+      await InitializationService.initialize(context);
+
+      expect(context.messageManager.addUserMessage).not.toHaveBeenCalled();
+    });
+
+    it("should continue initialization when SessionStart hooks fail", async () => {
+      vi.mocked(context.hookManager.executeSessionStartHooks).mockRejectedValue(
+        new Error("Hook execution failed"),
+      );
+
+      await expect(
+        InitializationService.initialize(context),
+      ).resolves.not.toThrow();
+    });
   });
 });
