@@ -13,6 +13,7 @@ import {
 import { GitService } from "./GitService.js";
 import { ConfigurationService } from "./configurationService.js";
 import type { MarketplaceConfig, Scope } from "../types/configuration.js";
+import { logger } from "../utils/globalLogger.js";
 
 /**
  * Marketplace Service
@@ -641,7 +642,7 @@ export class MarketplaceService {
                 (p) => p.name === plugin.name,
               );
               if (!pluginEntry) {
-                console.warn(
+                logger.warn(
                   `Plugin "${plugin.name}" no longer found in marketplace "${marketplace.name}". Uninstalling...`,
                 );
                 try {
