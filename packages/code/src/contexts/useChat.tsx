@@ -117,6 +117,8 @@ export interface ChatContextType {
   workingDirectory: string;
   version?: string;
   workdir?: string;
+  // Agent recreation (e.g. after plugin install)
+  recreateAgent: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -332,8 +334,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   );
 
   // Initialize AI manager
-  useEffect(() => {
-    const initializeAgent = async () => {
+  const initializeAgent = useCallback(
+    async (restoreSessionIdOverride?: string) => {
+      const effectiveRestoreSessionId =
+        restoreSessionIdOverride ?? restoreSessionId;
+
       const callbacks: AgentCallbacks = {
         onMessagesChange: () => {
           throttledSetMessages();
@@ -400,7 +405,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
         const agent = await Agent.create({
           callbacks,
-          restoreSessionId,
+          restoreSessionId: effectiveRestoreSessionId,
           continueLastSession,
           logger,
           permissionMode:
@@ -442,25 +447,53 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }
-    };
+    },
+    [
+      restoreSessionId,
+      continueLastSession,
+      bypassPermissions,
+      showConfirmation,
+      pluginDirs,
+      tools,
+      allowedTools,
+      disallowedTools,
+      workdir,
+      worktreeSession,
+      model,
+      initialPermissionMode,
+      throttledSetMessages,
+      throttledSetTokens,
+    ],
+  );
 
+  // Recreate agent (e.g. after plugin install) — destroys current agent and reinitializes
+  const recreateAgent = useCallback(() => {
+    const currentSessionId = agentRef.current?.sessionId;
+    if (agentRef.current) {
+      try {
+        agentRef.current.destroy();
+      } catch {
+        // Ignore destroy errors
+      }
+    }
+    agentRef.current = null;
+    setMessages([]);
+    setMcpServers([]);
+    setSlashCommands([]);
+    setSessionId("");
+    setIsLoading(false);
+    setlatestTotalTokens(0);
+    setIsCommandRunning(false);
+    setIsCompressing(false);
+    if (currentSessionId) {
+      initializeAgent(currentSessionId);
+    }
+  }, [initializeAgent]);
+
+  // Run initial agent creation
+  useEffect(() => {
     initializeAgent();
-  }, [
-    restoreSessionId,
-    continueLastSession,
-    bypassPermissions,
-    showConfirmation,
-    pluginDirs,
-    tools,
-    allowedTools,
-    disallowedTools,
-    workdir,
-    worktreeSession,
-    model,
-    initialPermissionMode,
-    throttledSetMessages,
-    throttledSetTokens,
-  ]);
+  }, [initializeAgent]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -751,6 +784,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workingDirectory,
     version,
     workdir,
+    recreateAgent,
   };
 
   return (
