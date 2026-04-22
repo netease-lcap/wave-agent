@@ -187,17 +187,19 @@ export class InitializationService {
         messageManager.getTranscriptPath(),
       );
 
-      // Inject additionalContext as a user message
+      // Inject additionalContext as a meta user message (matches Claude Code)
       if (sessionStartResult.additionalContext) {
         messageManager.addUserMessage({
-          content: sessionStartResult.additionalContext,
+          content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
+          isMeta: true,
         });
       }
 
-      // Inject initialUserMessage as a user message
+      // Inject initialUserMessage as a meta user message
       if (sessionStartResult.initialUserMessage) {
         messageManager.addUserMessage({
           content: sessionStartResult.initialUserMessage,
+          isMeta: true,
         });
       }
 
