@@ -7,7 +7,7 @@ export interface MarketplaceOwner {
 
 export interface MarketplacePluginEntry {
   name: string;
-  source: string | MarketplaceSource;
+  source: string;
   description: string;
 }
 
@@ -38,11 +38,6 @@ export type MarketplaceSource =
     }
   | {
       source: "git";
-      url: string;
-      ref?: string;
-    }
-  | {
-      source: "url";
       url: string;
       ref?: string;
     };
