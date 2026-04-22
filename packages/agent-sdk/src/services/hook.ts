@@ -94,6 +94,13 @@ async function buildHookJsonInput(
     }
   }
 
+  // Add SessionEnd-specific fields
+  if (context.event === "SessionEnd") {
+    if (context.endSource !== undefined) {
+      jsonInput.end_source = context.endSource;
+    }
+  }
+
   return jsonInput;
 }
 
