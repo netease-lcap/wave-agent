@@ -663,7 +663,8 @@ describe("HookManager Coverage", () => {
         duration: 100,
         timedOut: false,
         exitCode: 0,
-        stdout: '{"additionalContext": "Extra context here"}',
+        stdout:
+          '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "Extra context here"}}',
         stderr: "",
       });
       manager.loadConfiguration({
@@ -678,6 +679,30 @@ describe("HookManager Coverage", () => {
       );
       expect(result.additionalContext).toBe("Extra context here");
       expect(result.initialUserMessage).toBeUndefined();
+    });
+
+    it("should treat top-level additionalContext as plain text (no parsing)", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 100,
+        timedOut: false,
+        exitCode: 0,
+        stdout: '{"additionalContext": "SDK format context"}',
+        stderr: "",
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo json" }] },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      // Top-level additionalContext is now ignored (Claude Code format only)
+      // Since it parses as JSON but has no hookSpecificOutput, result is undefined
+      expect(result.additionalContext).toBeUndefined();
     });
 
     it("should parse JSON stdout for initialUserMessage", async () => {
@@ -736,7 +761,8 @@ describe("HookManager Coverage", () => {
             duration: 100,
             timedOut: false,
             exitCode: 0,
-            stdout: '{"additionalContext": "Context from hook 1"}',
+            stdout:
+              '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "Context from hook 1"}}',
             stderr: "",
           };
         }
@@ -745,7 +771,8 @@ describe("HookManager Coverage", () => {
           duration: 100,
           timedOut: false,
           exitCode: 0,
-          stdout: '{"additionalContext": "Context from hook 2"}',
+          stdout:
+            '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "Context from hook 2"}}',
           stderr: "",
         };
       });
@@ -776,7 +803,10 @@ describe("HookManager Coverage", () => {
         timedOut: false,
         exitCode: 0,
         stdout: JSON.stringify({
-          additionalContext: "Project rules context",
+          hookSpecificOutput: {
+            hookEventName: "SessionStart",
+            additionalContext: "Project rules context",
+          },
           initialUserMessage: "Start with a plan",
         }),
         stderr: "",
@@ -805,7 +835,8 @@ describe("HookManager Coverage", () => {
             duration: 100,
             timedOut: false,
             exitCode: 1,
-            stdout: '{"additionalContext": "Should be ignored"}',
+            stdout:
+              '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "Should be ignored"}}',
             stderr: "Hook failed",
           };
         }
@@ -814,7 +845,8 @@ describe("HookManager Coverage", () => {
           duration: 100,
           timedOut: false,
           exitCode: 0,
-          stdout: '{"additionalContext": "Valid context"}',
+          stdout:
+            '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "Valid context"}}',
           stderr: "",
         };
       });
@@ -846,7 +878,8 @@ describe("HookManager Coverage", () => {
             duration: 100,
             timedOut: false,
             exitCode: 0,
-            stdout: '{"additionalContext": "JSON context"}',
+            stdout:
+              '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "JSON context"}}',
             stderr: "",
           };
         }
@@ -865,7 +898,8 @@ describe("HookManager Coverage", () => {
           duration: 100,
           timedOut: false,
           exitCode: 0,
-          stdout: '{"additionalContext": "More JSON"}',
+          stdout:
+            '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "More JSON"}}',
           stderr: "",
         };
       });
