@@ -68,6 +68,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     currentModel,
     configuredModels,
     setModel,
+    recreateAgent,
   } = useChat();
 
   // Input manager with all input state and functionality (including images)
@@ -205,7 +206,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
   }
 
   if (showPluginManager) {
-    return <PluginManagerShell onCancel={() => setShowPluginManager(false)} />;
+    return (
+      <PluginManagerShell
+        onCancel={() => setShowPluginManager(false)}
+        onPluginInstalled={recreateAgent}
+      />
+    );
   }
 
   if (showModelSelector) {

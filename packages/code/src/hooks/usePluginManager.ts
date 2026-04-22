@@ -11,7 +11,9 @@ import {
   PluginManagerContextType,
 } from "../components/PluginManagerTypes.js";
 
-export function usePluginManager(): PluginManagerContextType {
+export function usePluginManager(options?: {
+  onPluginInstalled?: () => void;
+}): PluginManagerContextType {
   const [state, setState] = useState<PluginManagerState>({
     currentView: "DISCOVER",
     selectedId: null,
@@ -230,6 +232,7 @@ export function usePluginManager(): PluginManagerContextType {
         await pluginCore.installPlugin(pluginId, scope);
         await refresh();
         setSuccessMessage(`Plugin '${name}' installed successfully`);
+        options?.onPluginInstalled?.();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -238,7 +241,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage, options],
   );
 
   const uninstallPlugin = useCallback(

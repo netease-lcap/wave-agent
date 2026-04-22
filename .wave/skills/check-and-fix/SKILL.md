@@ -5,7 +5,7 @@ context: fork
 ---
 
 1. Check the current state: !`git status`
-2. Run `pnpm ci` to ensure dependencies are up to date.
+2. Run `pnpm run ci` to ensure dependencies are up to date.
 3. If errors are found, analyze the error output and fix the identified issues.
 4. After applying fixes, re-run the checks to verify that the errors are resolved.
 5. Repeat the fix-and-verify cycle if necessary, but avoid infinite loops.
