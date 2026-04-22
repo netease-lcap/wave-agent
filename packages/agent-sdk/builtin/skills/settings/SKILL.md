@@ -1,6 +1,6 @@
 ---
 name: settings
-description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory rules, skills, and subagents. Use this when the user wants to view, update, or learn how to configure Wave.
+description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory rules, skills, subagents, plugins, and plugin marketplaces. Use this when the user wants to view, update, or learn how to configure Wave.
 ---
 
 # Wave Settings Skill
@@ -92,7 +92,9 @@ Delegate tasks to specialized AI personalities.
 For detailed guidance on creating subagents, see [SUBAGENTS.md](${WAVE_SKILL_DIR}/SUBAGENTS.md).
 
 ### 9. Plugins
-Enable or disable plugins via `enabledPlugins`. Plugin skills, hooks, MCP servers, and LSP servers can reference their parent plugin's directory using the `${WAVE_PLUGIN_ROOT}` placeholder. Wave substitutes `${WAVE_PLUGIN_ROOT}` with the plugin's directory path at load time (same as `${WAVE_SKILL_DIR}`), and also injects `WAVE_PLUGIN_ROOT` as an environment variable into the spawned process.
+
+Plugins bundle skills, hooks, MCP servers, LSP servers, and commands into a reusable package. You can install plugins locally or from a marketplace.
+For detailed guidance on creating plugins and marketplaces, see [PLUGINS.md](${WAVE_SKILL_DIR}/PLUGINS.md).
 
 ### 10. Other Settings
 - `language`: Preferred language for agent communication (e.g., `"en"`, `"zh"`).
@@ -112,5 +114,8 @@ You can ask me to:
 - "How do I define a new subagent?"
 - "How do I set max input tokens?"
 - "How do I change the model?"
+- "How do I create a Wave plugin?"
+- "How do I set up a plugin marketplace?"
+- "How do I install a plugin from a marketplace?"
 
 I will guide you through the process and ensure your configuration is valid.
