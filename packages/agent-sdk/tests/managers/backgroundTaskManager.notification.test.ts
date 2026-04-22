@@ -152,4 +152,43 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     const updatedTasks = noNotifyManager.getAllTasks();
     expect(updatedTasks[0].status).toBe("killed");
   });
+
+  it("should NOT enqueue notification when killed task exits (race condition)", () => {
+    // This tests the race condition: stopTask() sets status to "killed",
+    // then the onExit handler fires from the SIGTERM signal.
+    manager.startShell("sleep 999");
+    const tasks = manager.getAllTasks();
+    const taskId = tasks[0].id;
+
+    // Stop the task (sets status to "killed", sends SIGTERM via onStop)
+    manager.stopTask(taskId);
+
+    expect(notificationQueue.hasPending()).toBe(false);
+
+    // Simulate onExit firing after SIGTERM — this should NOT enqueue a notification
+    const exitHandler = handlers.get("exit");
+    exitHandler?.(143); // SIGTERM exit code
+
+    // Status should remain "killed", not be overwritten to "failed"
+    expect(tasks[0].status).toBe("killed");
+    // No notification should be enqueued
+    expect(notificationQueue.hasPending()).toBe(false);
+  });
+
+  it("should preserve killed status when onExit fires after stopTask", () => {
+    manager.startShell("sleep 999");
+    const tasks = manager.getAllTasks();
+    const taskId = tasks[0].id;
+
+    manager.stopTask(taskId);
+    expect(tasks[0].status).toBe("killed");
+
+    // Exit handler fires with exit code 0 (e.g. SIGTERM caught as exit 0)
+    const exitHandler = handlers.get("exit");
+    exitHandler?.(0);
+
+    // Status must remain "killed", not overwritten to "completed"
+    expect(tasks[0].status).toBe("killed");
+    expect(notificationQueue.hasPending()).toBe(false);
+  });
 });

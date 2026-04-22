@@ -153,22 +153,27 @@ export class BackgroundTaskManager {
       if (logStream.writable) {
         logStream.end();
       }
-      shell.status = code === 0 ? "completed" : "failed";
+      const wasKilled = shell.status === "killed";
+      if (!wasKilled) {
+        shell.status = code === 0 ? "completed" : "failed";
+      }
       shell.exitCode = code ?? 0;
       shell.endTime = Date.now();
       shell.runtime = shell.endTime - startTime;
       this.notifyTasksChange();
 
-      // Enqueue completion notification
-      const notificationQueue = this.container.has("NotificationQueue")
-        ? this.container.get<NotificationQueue>("NotificationQueue")
-        : undefined;
-      if (notificationQueue) {
-        const statusStr = shell.status;
-        const summary = `Command "${command}" ${statusStr} with exit code ${code ?? 0}`;
-        notificationQueue.enqueue(
-          `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>${statusStr}</status>\n<summary>${summary}</summary>\n</task-notification>`,
-        );
+      // Skip notification if task was manually killed (user/agent-initiated stop)
+      if (!wasKilled) {
+        const notificationQueue = this.container.has("NotificationQueue")
+          ? this.container.get<NotificationQueue>("NotificationQueue")
+          : undefined;
+        if (notificationQueue) {
+          const statusStr = shell.status;
+          const summary = `Command "${command}" ${statusStr} with exit code ${code ?? 0}`;
+          notificationQueue.enqueue(
+            `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>${statusStr}</status>\n<summary>${summary}</summary>\n</task-notification>`,
+          );
+        }
       }
     };
 
@@ -301,22 +306,27 @@ export class BackgroundTaskManager {
       if (logStream.writable) {
         logStream.end();
       }
-      shell.status = code === 0 ? "completed" : "failed";
+      const wasKilled = shell.status === "killed";
+      if (!wasKilled) {
+        shell.status = code === 0 ? "completed" : "failed";
+      }
       shell.exitCode = code ?? 0;
       shell.endTime = Date.now();
       shell.runtime = shell.endTime - startTime;
       this.notifyTasksChange();
 
-      // Enqueue completion notification
-      const notificationQueue = this.container.has("NotificationQueue")
-        ? this.container.get<NotificationQueue>("NotificationQueue")
-        : undefined;
-      if (notificationQueue) {
-        const statusStr = shell.status;
-        const summary = `Command "${command}" ${statusStr} with exit code ${code ?? 0}`;
-        notificationQueue.enqueue(
-          `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>${statusStr}</status>\n<summary>${summary}</summary>\n</task-notification>`,
-        );
+      // Skip notification if task was manually killed (user/agent-initiated stop)
+      if (!wasKilled) {
+        const notificationQueue = this.container.has("NotificationQueue")
+          ? this.container.get<NotificationQueue>("NotificationQueue")
+          : undefined;
+        if (notificationQueue) {
+          const statusStr = shell.status;
+          const summary = `Command "${command}" ${statusStr} with exit code ${code ?? 0}`;
+          notificationQueue.enqueue(
+            `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>${statusStr}</status>\n<summary>${summary}</summary>\n</task-notification>`,
+          );
+        }
       }
     });
 
