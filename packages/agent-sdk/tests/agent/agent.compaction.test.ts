@@ -784,4 +784,452 @@ describe("Agent Message Compaction Tests", () => {
     // All 3 calls should have attempted compaction (circuit breaker not tripped)
     expect(mockCompactMessages).toHaveBeenCalledTimes(3);
   });
+
+  // Helper to set up compaction-triggering mocks
+  const setupCompactionMocks = () => {
+    const mockCallAgent = vi.mocked(aiService.callAgent);
+    const mockCompactMessages = vi.mocked(aiService.compactMessages);
+
+    mockCallAgent.mockImplementation(async () => ({
+      content: "Response",
+      usage: {
+        prompt_tokens: 50000,
+        completion_tokens: 20000,
+        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      },
+    }));
+
+    mockCompactMessages.mockImplementation(async () => ({
+      content: "Compacted summary",
+      usage: {
+        prompt_tokens: 500,
+        completion_tokens: 250,
+        total_tokens: 750,
+      },
+    }));
+
+    return { mockCallAgent, mockCompactMessages };
+  };
+
+  // Helper to get the BackgroundTaskManager from an Agent instance
+  const getBackgroundTaskManager = (agent: Agent) => {
+    return (
+      agent as unknown as {
+        backgroundTaskManager: import("@/managers/backgroundTaskManager.js").BackgroundTaskManager;
+      }
+    ).backgroundTaskManager;
+  };
+
+  // Helper to get compact block content from agent messages
+  const getCompactBlockContent = (agent: Agent): string => {
+    const compactedMessage = agent.messages.find(
+      (msg) =>
+        msg.role === "assistant" &&
+        msg.blocks.some((b) => b.type === "compact"),
+    );
+    if (!compactedMessage) return "";
+    const compactBlock = compactedMessage.blocks.find(
+      (b) => b.type === "compact",
+    ) as { type: "compact"; content: string };
+    return compactBlock?.content || "";
+  };
+
+  describe("Background Tasks in Compact Context", () => {
+    it("should render killed status with description and id", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      const btManager = getBackgroundTaskManager(agent);
+      btManager.addTask({
+        id: "agent_killed_1",
+        type: "subagent",
+        status: "killed",
+        description: "Research API documentation",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).toContain("[Background Tasks]");
+      expect(compactContent).toContain(
+        'Task "Research API documentation" (agent_killed_1) was stopped by the user.',
+      );
+    });
+
+    it("should render running status with duplicate warning", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      const btManager = getBackgroundTaskManager(agent);
+      btManager.addTask({
+        id: "agent_running_1",
+        type: "subagent",
+        status: "running",
+        description: "Generate test fixtures",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).toContain("[Background Tasks]");
+      expect(compactContent).toContain(
+        'Background agent "Generate test fixtures" (agent_running_1) is still running.',
+      );
+      expect(compactContent).toContain("Do NOT spawn a duplicate.");
+      expect(compactContent).toContain(
+        "You will be notified when it completes.",
+      );
+    });
+
+    it("should include outputPath for running tasks", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      const btManager = getBackgroundTaskManager(agent);
+      btManager.addTask({
+        id: "agent_running_2",
+        type: "subagent",
+        status: "running",
+        description: "Build assets",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+        outputPath: "/tmp/wave-task-123.log",
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).toContain(
+        "You can read partial output at /tmp/wave-task-123.log.",
+      );
+    });
+
+    it("should render completed status with stdout delta", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      const btManager = getBackgroundTaskManager(agent);
+      btManager.addTask({
+        id: "agent_completed_1",
+        type: "subagent",
+        status: "completed",
+        description: "Run lint checks",
+        startTime: Date.now(),
+        stdout: "All files passed linting.",
+        stderr: "",
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).toContain("[Background Tasks]");
+      expect(compactContent).toContain(
+        "Task agent_completed_1 (status: completed) (description: Run lint checks).",
+      );
+      expect(compactContent).toContain("Delta: All files passed linting.");
+    });
+
+    it("should render failed status with stderr delta", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      const btManager = getBackgroundTaskManager(agent);
+      btManager.addTask({
+        id: "agent_failed_1",
+        type: "subagent",
+        status: "failed",
+        description: "Deploy to staging",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "Connection refused: ECONNREFUSED",
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).toContain("[Background Tasks]");
+      expect(compactContent).toContain(
+        "Task agent_failed_1 (status: failed) (description: Deploy to staging).",
+      );
+      expect(compactContent).toContain(
+        "Delta: Connection refused: ECONNREFUSED",
+      );
+    });
+
+    it("should truncate delta text to 500 characters", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      const longStderr = "Error: ".repeat(100); // 700 chars
+      const btManager = getBackgroundTaskManager(agent);
+      btManager.addTask({
+        id: "agent_failed_2",
+        type: "subagent",
+        status: "failed",
+        description: "Long output task",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: longStderr,
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).toContain("Delta: ");
+      // Find the Delta section and verify it's truncated
+      const deltaStart = compactContent.indexOf("Delta: ");
+      expect(deltaStart).toBeGreaterThan(-1);
+      const afterDelta = compactContent.slice(deltaStart + 7);
+      const newlineIdx = afterDelta.indexOf("\n");
+      const deltaLine =
+        newlineIdx > -1 ? afterDelta.slice(0, newlineIdx) : afterDelta;
+      // Should be exactly 500 chars of content + 3 for "..."
+      expect(deltaLine.length).toBe(503);
+      expect(deltaLine.endsWith("...")).toBe(true);
+    });
+
+    it("should include outputPath for completed and failed tasks", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      const btManager = getBackgroundTaskManager(agent);
+      btManager.addTask({
+        id: "agent_completed_2",
+        type: "subagent",
+        status: "completed",
+        description: "Completed with output",
+        startTime: Date.now(),
+        stdout: "Done",
+        stderr: "",
+        outputPath: "/tmp/completed-task.log",
+      });
+      btManager.addTask({
+        id: "agent_failed_3",
+        type: "subagent",
+        status: "failed",
+        description: "Failed with output",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "Error occurred",
+        outputPath: "/tmp/failed-task.log",
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).toContain(
+        "Read the output file to retrieve the result: /tmp/completed-task.log.",
+      );
+      expect(compactContent).toContain(
+        "Read the output file to retrieve the result: /tmp/failed-task.log.",
+      );
+    });
+
+    it("should render multiple agents with mixed statuses", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      const btManager = getBackgroundTaskManager(agent);
+      btManager.addTask({
+        id: "agent_1",
+        type: "subagent",
+        status: "running",
+        description: "Running task",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+      });
+      btManager.addTask({
+        id: "agent_2",
+        type: "subagent",
+        status: "killed",
+        description: "Killed task",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+      });
+      btManager.addTask({
+        id: "agent_3",
+        type: "subagent",
+        status: "completed",
+        description: "Completed task",
+        startTime: Date.now(),
+        stdout: "Success",
+        stderr: "",
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).toContain("[Background Tasks]");
+      expect(compactContent).toContain(
+        'Background agent "Running task" (agent_1) is still running.',
+      );
+      expect(compactContent).toContain(
+        'Task "Killed task" (agent_2) was stopped by the user.',
+      );
+      expect(compactContent).toContain(
+        "Task agent_3 (status: completed) (description: Completed task).",
+      );
+    });
+
+    it("should exclude shell tasks from background tasks section", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      const btManager = getBackgroundTaskManager(agent);
+      // Add a shell task (should be excluded)
+      const mockChildProcess = {
+        pid: 12345,
+        stdout: { on: () => {} },
+        stderr: { on: () => {} },
+        on: () => {},
+        kill: () => true,
+      } as unknown as import("child_process").ChildProcess;
+      btManager.addTask({
+        id: "shell_1",
+        type: "shell",
+        status: "running",
+        command: "sleep 100",
+        process: mockChildProcess,
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+      });
+      // Add a subagent task (should be included)
+      btManager.addTask({
+        id: "agent_4",
+        type: "subagent",
+        status: "running",
+        description: "Subagent task",
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).toContain("Subagent task");
+      expect(compactContent).not.toContain("sleep 100");
+      expect(compactContent).not.toContain("shell_1");
+    });
+
+    it("should not include background tasks section when no agents exist", async () => {
+      const messages = generateMessages(8);
+      const newUserMessage: Message = {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Test" }],
+      };
+
+      await agent.destroy();
+      agent = await Agent.create({
+        messages: [...messages, newUserMessage],
+      });
+
+      setupCompactionMocks();
+      await agent.sendMessage("Test");
+
+      const compactContent = getCompactBlockContent(agent);
+      expect(compactContent).not.toContain("[Background Tasks]");
+    });
+  });
 });
