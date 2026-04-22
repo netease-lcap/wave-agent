@@ -1447,3 +1447,599 @@ describe("MarketplaceService - Coverage Targets", () => {
     expect(result.version).toBe("2.0.0");
   });
 });
+
+describe("MarketplaceService - Object Source & .claude-plugin Coverage", () => {
+  let service: MarketplaceService;
+  const mockPluginsDir = path.join(
+    process.cwd(),
+    "tmp-test-plugins-object-source",
+  );
+
+  beforeEach(async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(getPluginsDir).mockReturnValue(mockPluginsDir);
+    if (existsSync(mockPluginsDir)) {
+      await fs.rm(mockPluginsDir, { recursive: true, force: true });
+    }
+    service = new MarketplaceService();
+    (
+      MarketplaceService as unknown as { isLockedInProcess: boolean }
+    ).isLockedInProcess = false;
+
+    vi.spyOn(
+      service["gitService"] as unknown as {
+        isGitAvailable: () => Promise<boolean>;
+      },
+      "isGitAvailable",
+    ).mockResolvedValue(true);
+    vi.spyOn(
+      service["gitService"] as unknown as { clone: () => Promise<void> },
+      "clone",
+    ).mockResolvedValue();
+    vi.spyOn(
+      service["gitService"] as unknown as { pull: () => Promise<void> },
+      "pull",
+    ).mockResolvedValue();
+
+    vi.mocked(fs.open).mockResolvedValue({
+      close: vi.fn(),
+    } as unknown as Awaited<ReturnType<typeof fs.open>>);
+    vi.mocked(fs.unlink).mockResolvedValue(undefined);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    if (existsSync(mockPluginsDir)) {
+      await fs.rm(mockPluginsDir, { recursive: true, force: true });
+    }
+  });
+
+  // loadMarketplaceManifest with .claude-plugin fallback
+  it("should load manifest from .claude-plugin/ when .wave-plugin/ does not exist", async () => {
+    const tempDir = "/fake/claude-manifest-dir";
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      if (str.endsWith(".claude-plugin/marketplace.json")) return true;
+      return false;
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      JSON.stringify({
+        name: "claude-mkt",
+        owner: { name: "test" },
+        plugins: [],
+      }),
+    );
+
+    const manifest = await service.loadMarketplaceManifest(tempDir);
+    expect(manifest.name).toBe("claude-mkt");
+  });
+
+  // loadMarketplaceManifest throws when neither exists
+  it("should throw when neither .wave-plugin nor .claude-plugin manifest exists", async () => {
+    const tempDir = "/fake/no-manifest-dir";
+    vi.mocked(existsSync).mockReturnValue(false);
+
+    await expect(service.loadMarketplaceManifest(tempDir)).rejects.toThrow(
+      "Neither .wave-plugin/marketplace.json nor .claude-plugin/marketplace.json exists",
+    );
+  });
+
+  // installPlugin with object-style git source
+  it("should install plugin with object-style git source", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "obj-git-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "obj-git-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "obj-git-plugin",
+          description: "test",
+          source: {
+            source: "git",
+            url: "https://example.com/repo.git",
+            ref: "v1.0",
+          },
+        },
+      ],
+    });
+
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      // For git clones, plugin.json is in the clone dir
+      if (str.includes("clone-") && str.includes("plugin.json")) return true;
+      return false;
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      JSON.stringify({ name: "obj-git-plugin", version: "1.0.0" }),
+    );
+
+    // Verify clone was called with the correct URL and ref
+    await service.installPlugin("obj-git-plugin@obj-git-mkt");
+
+    const cloneCalls = vi.mocked(
+      service["gitService"] as unknown as {
+        clone: (url: string, dir: string, ref?: string) => Promise<void>;
+      },
+    ).clone.mock.calls;
+    expect(cloneCalls.length).toBe(1);
+    expect(cloneCalls[0][0]).toBe("https://example.com/repo.git");
+    expect(cloneCalls[0][2]).toBe("v1.0");
+  });
+
+  // installPlugin with object-style github source
+  it("should install plugin with object-style github source", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "obj-github-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "obj-github-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "obj-github-plugin",
+          description: "test",
+          source: {
+            source: "github",
+            repo: "user/repo",
+            ref: "main",
+          },
+        },
+      ],
+    });
+
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      if (str.includes("clone-") && str.includes("plugin.json")) return true;
+      return false;
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      JSON.stringify({ name: "obj-github-plugin", version: "1.0.0" }),
+    );
+
+    await service.installPlugin("obj-github-plugin@obj-github-mkt");
+
+    const cloneCalls = vi.mocked(
+      service["gitService"] as unknown as {
+        clone: (url: string, dir: string, ref?: string) => Promise<void>;
+      },
+    ).clone.mock.calls;
+    expect(cloneCalls.length).toBe(1);
+    expect(cloneCalls[0][0]).toBe("https://github.com/user/repo.git");
+    expect(cloneCalls[0][2]).toBe("main");
+  });
+
+  // installPlugin with object-style url source
+  it("should install plugin with object-style url source", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "obj-url-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "obj-url-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "obj-url-plugin",
+          description: "test",
+          source: {
+            source: "url",
+            url: "https://example.com/repo.git",
+          },
+        },
+      ],
+    });
+
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      if (str.includes("clone-") && str.includes("plugin.json")) return true;
+      return false;
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      JSON.stringify({ name: "obj-url-plugin", version: "1.0.0" }),
+    );
+
+    await service.installPlugin("obj-url-plugin@obj-url-mkt");
+
+    const cloneCalls = vi.mocked(
+      service["gitService"] as unknown as {
+        clone: (url: string, dir: string, ref?: string) => Promise<void>;
+      },
+    ).clone.mock.calls;
+    expect(cloneCalls.length).toBe(1);
+    expect(cloneCalls[0][0]).toBe("https://example.com/repo.git");
+  });
+
+  // installPlugin with object-style url source with ref in URL hash
+  it("should install plugin with object-style url source containing ref in hash", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "obj-urlhash-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "obj-urlhash-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "obj-urlhash-plugin",
+          description: "test",
+          source: {
+            source: "url",
+            url: "https://example.com/repo.git#v2.0",
+          },
+        },
+      ],
+    });
+
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      if (str.includes("clone-") && str.includes("plugin.json")) return true;
+      return false;
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      JSON.stringify({ name: "obj-urlhash-plugin", version: "1.0.0" }),
+    );
+
+    await service.installPlugin("obj-urlhash-plugin@obj-urlhash-mkt");
+
+    const cloneCalls = vi.mocked(
+      service["gitService"] as unknown as {
+        clone: (url: string, dir: string, ref?: string) => Promise<void>;
+      },
+    ).clone.mock.calls;
+    expect(cloneCalls.length).toBe(1);
+    expect(cloneCalls[0][0]).toBe("https://example.com/repo.git");
+    expect(cloneCalls[0][2]).toBe("v2.0");
+  });
+
+  // installPlugin with object-style directory source
+  it("should install plugin with object-style directory source", async () => {
+    const pluginSrcDir = path.join(mockPluginsDir, "plugin-src");
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "obj-dir-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    await fs.mkdir(pluginSrcDir, { recursive: true });
+    const wavePluginDir = path.join(pluginSrcDir, ".wave-plugin");
+    await fs.mkdir(wavePluginDir, { recursive: true });
+    await fs.writeFile(
+      path.join(wavePluginDir, "plugin.json"),
+      JSON.stringify({ name: "obj-dir-plugin", version: "1.0.0" }),
+    );
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "obj-dir-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "obj-dir-plugin",
+          description: "test",
+          source: {
+            source: "directory",
+            path: "plugin-src",
+          },
+        },
+      ],
+    });
+
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      if (str.includes(".wave-plugin/plugin.json")) return true;
+      return false;
+    });
+
+    await service.installPlugin("obj-dir-plugin@obj-dir-mkt");
+
+    // cp should have been called (not clone) since it's a directory source
+    const cpCalls = vi.mocked(fs.cp).mock.calls;
+    expect(cpCalls.length).toBeGreaterThan(0);
+  });
+
+  // installPlugin with .claude-plugin plugin manifest fallback
+  it("should install plugin using .claude-plugin/plugin.json when .wave-plugin does not exist", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "claude-plugin-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    const pluginSrcDir = path.join(mockPluginsDir, "claude-plugin-src");
+    await fs.mkdir(pluginSrcDir, { recursive: true });
+    const claudePluginDir = path.join(pluginSrcDir, ".claude-plugin");
+    await fs.mkdir(claudePluginDir, { recursive: true });
+    await fs.writeFile(
+      path.join(claudePluginDir, "plugin.json"),
+      JSON.stringify({ name: "claude-src-plugin", version: "1.0.0" }),
+    );
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "claude-plugin-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "claude-src-plugin",
+          description: "test",
+          source: {
+            source: "directory",
+            path: "claude-plugin-src",
+          },
+        },
+      ],
+    });
+
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      if (str.includes(".claude-plugin/plugin.json")) return true;
+      return false;
+    });
+
+    await service.installPlugin("claude-src-plugin@claude-plugin-mkt");
+
+    const cpCalls = vi.mocked(fs.cp).mock.calls;
+    expect(cpCalls.length).toBeGreaterThan(0);
+  });
+
+  // installPlugin throws when neither .wave-plugin nor .claude-plugin manifest exists
+  it("should throw when installing plugin with no manifest in either directory", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "no-manifest-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    const pluginSrcDir = path.join(mockPluginsDir, "no-manifest-src");
+    await fs.mkdir(pluginSrcDir, { recursive: true });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "no-manifest-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "no-manifest-plugin",
+          description: "test",
+          source: {
+            source: "directory",
+            path: "no-manifest-src",
+          },
+        },
+      ],
+    });
+
+    vi.mocked(existsSync).mockReturnValue(false);
+
+    await expect(
+      service.installPlugin("no-manifest-plugin@no-manifest-mkt"),
+    ).rejects.toThrow(
+      "Neither .wave-plugin/plugin.json nor .claude-plugin/plugin.json exists",
+    );
+  });
+
+  // String source with git@ URL (resolvePluginSource)
+  it("should install plugin with string git@ source", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "gitstring-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "gitstring-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "gitstring-plugin",
+          description: "test",
+          source: "git@github.com:user/repo.git",
+        },
+      ],
+    });
+
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      if (str.includes("clone-") && str.includes("plugin.json")) return true;
+      return false;
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      JSON.stringify({ name: "gitstring-plugin", version: "1.0.0" }),
+    );
+
+    await service.installPlugin("gitstring-plugin@gitstring-mkt");
+
+    const cloneCalls = vi.mocked(
+      service["gitService"] as unknown as {
+        clone: (url: string, dir: string, ref?: string) => Promise<void>;
+      },
+    ).clone.mock.calls;
+    expect(cloneCalls.length).toBe(1);
+    expect(cloneCalls[0][0]).toBe("git@github.com:user/repo.git");
+  });
+
+  // String source with ssh:// URL
+  it("should install plugin with string ssh:// source", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "ssh-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "ssh-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "ssh-plugin",
+          description: "test",
+          source: "ssh://git@github.com/user/repo.git",
+        },
+      ],
+    });
+
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      if (str.includes("clone-") && str.includes("plugin.json")) return true;
+      return false;
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      JSON.stringify({ name: "ssh-plugin", version: "1.0.0" }),
+    );
+
+    await service.installPlugin("ssh-plugin@ssh-mkt");
+
+    const cloneCalls = vi.mocked(
+      service["gitService"] as unknown as {
+        clone: (url: string, dir: string, ref?: string) => Promise<void>;
+      },
+    ).clone.mock.calls;
+    expect(cloneCalls.length).toBe(1);
+    expect(cloneCalls[0][0]).toBe("ssh://git@github.com/user/repo.git");
+  });
+
+  // String source with http:// URL and ref in hash
+  it("should install plugin with string http:// source with ref in hash", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "http-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "http-mkt",
+      owner: { name: "test" },
+      plugins: [
+        {
+          name: "http-plugin",
+          description: "test",
+          source: "http://example.com/repo.git#develop",
+        },
+      ],
+    });
+
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
+      const str = String(p);
+      if (str.includes("clone-") && str.includes("plugin.json")) return true;
+      return false;
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      JSON.stringify({ name: "http-plugin", version: "1.0.0" }),
+    );
+
+    await service.installPlugin("http-plugin@http-mkt");
+
+    const cloneCalls = vi.mocked(
+      service["gitService"] as unknown as {
+        clone: (url: string, dir: string, ref?: string) => Promise<void>;
+      },
+    ).clone.mock.calls;
+    expect(cloneCalls.length).toBe(1);
+    expect(cloneCalls[0][0]).toBe("http://example.com/repo.git");
+    expect(cloneCalls[0][2]).toBe("develop");
+  });
+});
