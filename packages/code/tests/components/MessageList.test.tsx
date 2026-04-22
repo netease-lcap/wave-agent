@@ -134,15 +134,15 @@ describe("MessageList Component", () => {
       expect(output).not.toContain("🚀 Command is running...");
     });
 
-    it("should NOT show compressing message (moved to ChatInterface)", () => {
-      const messages = [createMessage("user", "Compress test", 1)];
+    it("should NOT show compacting message (moved to ChatInterface)", () => {
+      const messages = [createMessage("user", "Compact test", 1)];
 
       const { lastFrame } = render(<MessageList messages={messages} />);
 
       const output = lastFrame();
 
-      // Should NOT show compressing state
-      expect(output).not.toContain("🗜️ Compressing message history...");
+      // Should NOT show compacting state
+      expect(output).not.toContain("🗜️ Compacting message history...");
     });
 
     it("should show welcome message in empty state", () => {

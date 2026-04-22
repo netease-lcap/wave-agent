@@ -308,16 +308,16 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
-  it("should convert compress block to user role for API (matching Claude Code auto-compact)", () => {
+  it("should convert compact block to user role for API (matching Claude Code auto-compact)", () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
         role: "assistant",
         blocks: [
           {
-            type: "compress",
+            type: "compact",
             content:
-              "[Compressed Message Summary] User asked to refactor a function...",
+              "[Compacted Message Summary] User asked to refactor a function...",
             sessionId: "test-session",
           },
         ],
@@ -337,10 +337,10 @@ describe("convertMessagesForAPI", () => {
     const apiMessages = convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(3);
-    // The compress block should be converted to a user message
+    // The compact block should be converted to a user message
     expect(apiMessages[0].role).toBe("user");
     expect(apiMessages[0].content).toBe(
-      "[Compressed Message Summary] User asked to refactor a function...",
+      "[Compacted Message Summary] User asked to refactor a function...",
     );
     // Subsequent messages should retain their original roles
     expect(apiMessages[1].role).toBe("user");

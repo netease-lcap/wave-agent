@@ -14,7 +14,7 @@ export interface ApiRound {
  * Boundaries:
  *  - A new `role: "user"` message starts a new round.
  *  - A new `role: "assistant"` message with a different `id` starts a new round.
- *  - A message with a `compress` block is pushed as its own round and starts a
+ *  - A message with a `compact` block is pushed as its own round and starts a
  *    new round after it.
  */
 export function groupMessagesByApiRound(messages: Message[]): ApiRound[] {
@@ -28,9 +28,9 @@ export function groupMessagesByApiRound(messages: Message[]): ApiRound[] {
     if (msg.role === "user") {
       startNewRound = true;
     } else if (msg.role === "assistant") {
-      // Compress block is always its own round
-      const hasCompress = msg.blocks.some((b) => b.type === "compress");
-      if (hasCompress) {
+      // Compact block is always its own round
+      const hasCompact = msg.blocks.some((b) => b.type === "compact");
+      if (hasCompact) {
         startNewRound = true;
       } else if (msg.id !== lastAssistantId) {
         // New assistant id starts a new round.
@@ -58,10 +58,10 @@ export function groupMessagesByApiRound(messages: Message[]): ApiRound[] {
 
     currentRound.push(msg);
 
-    // After pushing a compress message as its own round, flush immediately
+    // After pushing a compact message as its own round, flush immediately
     if (
       msg.role === "assistant" &&
-      msg.blocks.some((b) => b.type === "compress")
+      msg.blocks.some((b) => b.type === "compact")
     ) {
       rounds.push({
         messages: currentRound,

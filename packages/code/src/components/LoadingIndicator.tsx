@@ -4,19 +4,19 @@ import { Box, Text } from "ink";
 export interface LoadingIndicatorProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
-  isCompressing?: boolean;
+  isCompacting?: boolean;
   latestTotalTokens?: number;
 }
 
 export const LoadingIndicator = ({
   isLoading = false,
   isCommandRunning = false,
-  isCompressing = false,
+  isCompacting = false,
   latestTotalTokens = 0,
 }: LoadingIndicatorProps) => {
   return (
     <Box flexDirection="column">
-      {isLoading && !isCompressing && (
+      {isLoading && !isCompacting && (
         <Box>
           <Text color="yellow">✻ AI is thinking... </Text>
           {latestTotalTokens > 0 && (
@@ -46,8 +46,8 @@ export const LoadingIndicator = ({
         </Box>
       )}
       {isCommandRunning && <Text color="blue">✻ Command is running...</Text>}
-      {isCompressing && (
-        <Text color="magenta">✻ Compressing message history...</Text>
+      {isCompacting && (
+        <Text color="magenta">✻ Compacting message history...</Text>
       )}
     </Box>
   );

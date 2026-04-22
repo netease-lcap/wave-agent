@@ -179,7 +179,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
 export const DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
-export const COMPRESS_MESSAGES_SYSTEM_PROMPT = `You are continuing work on a software engineering task. Write a detailed continuation summary that will allow you (or another instance of yourself) to resume work efficiently in a future context window where the conversation history will be replaced with this summary.
+export const COMPACT_MESSAGES_SYSTEM_PROMPT = `You are continuing work on a software engineering task. Write a detailed continuation summary that will allow you (or another instance of yourself) to resume work efficiently in a future context window where the conversation history will be replaced with this summary.
 
 First, write your analysis in <analysis> tags as a thinking scratchpad:
 - Chronologically review the conversation

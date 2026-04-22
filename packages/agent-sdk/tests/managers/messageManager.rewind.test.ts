@@ -33,10 +33,10 @@ describe("MessageManager Cross-Session Rewind", () => {
     });
   });
 
-  it("should establish parentSessionId link after compression", () => {
+  it("should establish parentSessionId link after compaction", () => {
     const oldSessionId = messageManager.getSessionId();
     messageManager.addUserMessage({ content: "msg1" });
-    messageManager.compressMessagesAndUpdateSession("compressed content");
+    messageManager.compactMessagesAndUpdateSession("compacted content");
 
     expect(messageManager.getParentSessionId()).toBe(oldSessionId);
     expect(messageManager.getSessionId()).not.toBe(oldSessionId);
@@ -70,11 +70,11 @@ describe("MessageManager Cross-Session Rewind", () => {
       { role: "assistant", blocks: [{ type: "text", content: "assistant1" }] },
     ];
     const session2Messages = [
-      { role: "assistant", blocks: [{ type: "compress", content: "summary" }] },
+      { role: "assistant", blocks: [{ type: "compact", content: "summary" }] },
       { role: "user", blocks: [{ type: "text", content: "user2" }] },
     ];
 
-    // Mock loadFullMessageThread to return concatenated messages (with compress block removed)
+    // Mock loadFullMessageThread to return concatenated messages (with compact block removed)
     vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
       messages: [
         session1Messages[0],

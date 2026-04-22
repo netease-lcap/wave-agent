@@ -15,7 +15,7 @@ import * as aiService from "../../src/services/aiService.js";
 // Mock the aiService module
 vi.mock("../../src/services/aiService.js", () => ({
   callAgent: vi.fn(),
-  compressMessages: vi.fn(),
+  compactMessages: vi.fn(),
 }));
 
 // Mock the memory service
@@ -65,7 +65,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
       addErrorBlock: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
-      compressMessagesAndUpdateSession: vi.fn(),
+      compactMessagesAndUpdateSession: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
       finalizeStreamingBlocks: vi.fn(),
     } as unknown as MessageManager;
@@ -316,9 +316,9 @@ describe("AIManager - latestTotalTokens calculation", () => {
       expect(mockMessageManager.setlatestTotalTokens).not.toHaveBeenCalled();
     });
 
-    it("should calculate latestTotalTokens correctly during compression operations", async () => {
+    it("should calculate latestTotalTokens correctly during compaction operations", async () => {
       const usage: Usage = {
-        prompt_tokens: 100000, // Large value to trigger compression
+        prompt_tokens: 100000, // Large value to trigger compaction
         completion_tokens: 50000,
         total_tokens: 150000, // This will exceed the token limit of 96000
         cache_read_input_tokens: 5000,
@@ -327,7 +327,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
         operation_type: "agent",
       };
 
-      // Mock getMessages to return messages for compression
+      // Mock getMessages to return messages for compaction
       vi.mocked(mockMessageManager.getMessages).mockReturnValue([
         {
           role: "user",
@@ -335,9 +335,9 @@ describe("AIManager - latestTotalTokens calculation", () => {
         },
       ] as unknown as Message[]);
 
-      // Mock compressMessages to return successful compression
-      vi.mocked(aiService.compressMessages).mockResolvedValue({
-        content: "Compressed content",
+      // Mock compactMessages to return successful compaction
+      vi.mocked(aiService.compactMessages).mockResolvedValue({
+        content: "Compacted content",
         usage: {
           prompt_tokens: 50,
           completion_tokens: 25,
@@ -345,7 +345,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
         },
       });
 
-      // Mock callAgent to return usage that triggers compression
+      // Mock callAgent to return usage that triggers compaction
       vi.mocked(aiService.callAgent).mockResolvedValue({
         content: "Test response",
         usage,

@@ -78,7 +78,7 @@ describe("InputBox Smoke Tests", () => {
       );
     });
 
-    it("should compress long text (>200 chars) into compressed format", async () => {
+    it("should compact long text (>200 chars) into compacted format", async () => {
       const { stdin, lastFrame } = render(<InputBox />);
 
       const longText = "A".repeat(250);

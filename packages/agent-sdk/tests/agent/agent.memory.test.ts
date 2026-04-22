@@ -37,7 +37,7 @@ vi.mock("@/services/aiService", () => ({
     content: "Test response",
     usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
   }),
-  compressMessages: vi.fn().mockResolvedValue("Compressed content"),
+  compactMessages: vi.fn().mockResolvedValue("Compacted content"),
 }));
 
 describe("Agent Memory Functionality", () => {

@@ -1,13 +1,13 @@
 import React, { useMemo } from "react";
 import { Box, Text } from "ink";
-import type { CompressBlock } from "wave-agent-sdk";
+import type { CompactBlock } from "wave-agent-sdk";
 
-interface CompressDisplayProps {
-  block: CompressBlock;
+interface CompactDisplayProps {
+  block: CompactBlock;
   isExpanded?: boolean;
 }
 
-export const CompressDisplay: React.FC<CompressDisplayProps> = ({ block }) => {
+export const CompactDisplay: React.FC<CompactDisplayProps> = ({ block }) => {
   const { content } = block;
 
   const { displayContent } = useMemo(() => {
@@ -21,7 +21,7 @@ export const CompressDisplay: React.FC<CompressDisplayProps> = ({ block }) => {
   return (
     <Box flexDirection="column">
       <Box>
-        <Text>Compressed Messages</Text>
+        <Text>Compacted Messages</Text>
       </Box>
 
       {content && (

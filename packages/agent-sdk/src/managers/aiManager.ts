@@ -30,7 +30,7 @@ import type { NotificationQueue } from "./notificationQueue.js";
 import { logger } from "../utils/globalLogger.js";
 
 export interface AIManagerCallbacks {
-  onCompressionStateChange?: (isCompressing: boolean) => void;
+  onCompactionStateChange?: (isCompacting: boolean) => void;
   onUsageAdded?: (usage: Usage) => void;
   onCwdChange?: (newCwd: string) => void;
 }
@@ -58,7 +58,7 @@ export class AIManager {
   private stream: boolean; // Streaming mode flag
   private modelOverride?: string;
   private _onCwdChange?: (newCwd: string) => void; // Store callback for CWD changes
-  private consecutiveCompressionFailures: number = 0;
+  private consecutiveCompactionFailures: number = 0;
 
   // Service overrides
   constructor(
@@ -177,7 +177,7 @@ export class AIManager {
     this._onCwdChange = callback;
   }
 
-  private isCompressing: boolean = false;
+  private isCompacting: boolean = false;
   private callbacks: AIManagerCallbacks;
 
   /**
@@ -253,8 +253,8 @@ export class AIManager {
     return "";
   }
 
-  // Private method to handle token statistics and message compression
-  private async handleTokenUsageAndCompression(
+  // Private method to handle token statistics and message compaction
+  private async handleTokenUsageAndCompaction(
     usage: Usage | undefined,
     abortController: AbortController,
   ): Promise<void> {
@@ -272,30 +272,30 @@ export class AIManager {
       this.getMaxInputTokens()
     ) {
       logger?.debug(
-        `Token usage exceeded ${this.getMaxInputTokens()}, compressing messages...`,
+        `Token usage exceeded ${this.getMaxInputTokens()}, compacting messages...`,
       );
 
-      // Check if messages need compression
-      const messagesToCompress = this.messageManager.getMessages();
+      // Check if messages need compaction
+      const messagesToCompact = this.messageManager.getMessages();
 
-      // If there are messages to compress, perform compression
-      if (messagesToCompress.length > 0) {
-        // Circuit breaker: skip compression after 3 consecutive failures
-        if (this.consecutiveCompressionFailures >= 3) {
+      // If there are messages to compact, perform compaction
+      if (messagesToCompact.length > 0) {
+        // Circuit breaker: skip compaction after 3 consecutive failures
+        if (this.consecutiveCompactionFailures >= 3) {
           logger?.warn(
-            `Skipping compression: ${this.consecutiveCompressionFailures} consecutive failures`,
+            `Skipping compaction: ${this.consecutiveCompactionFailures} consecutive failures`,
           );
           return;
         }
 
-        const recentChatMessages = convertMessagesForAPI(messagesToCompress);
+        const recentChatMessages = convertMessagesForAPI(messagesToCompact);
 
-        // Save session before compression to preserve original messages
+        // Save session before compaction to preserve original messages
         await this.messageManager.saveSession();
 
-        this.setIsCompressing(true);
+        this.setIsCompacting(true);
         try {
-          const compressionResult = await aiService.compressMessages({
+          const compactResult = await aiService.compactMessages({
             gatewayConfig: this.getGatewayConfig(),
             modelConfig: this.getModelConfig(),
             messages: recentChatMessages,
@@ -303,15 +303,15 @@ export class AIManager {
             model: this.getModelConfig().fastModel,
           });
 
-          // Handle usage tracking for compression operations
-          let compressionUsage: Usage | undefined;
-          if (compressionResult.usage) {
-            compressionUsage = {
-              prompt_tokens: compressionResult.usage.prompt_tokens,
-              completion_tokens: compressionResult.usage.completion_tokens,
-              total_tokens: compressionResult.usage.total_tokens,
+          // Handle usage tracking for compaction operations
+          let compactUsage: Usage | undefined;
+          if (compactResult.usage) {
+            compactUsage = {
+              prompt_tokens: compactResult.usage.prompt_tokens,
+              completion_tokens: compactResult.usage.completion_tokens,
+              total_tokens: compactResult.usage.total_tokens,
               model: this.getModelConfig().fastModel,
-              operation_type: "compress",
+              operation_type: "compact",
             };
           }
 
@@ -387,50 +387,50 @@ export class AIManager {
 
           // Merge context restoration into summary
           const enhancedSummary =
-            compressionResult.content +
+            compactResult.content +
             (contextParts.length > 0
               ? `\n\n[Context Restoration]` + contextParts.join("")
               : "");
 
-          // Execute message reconstruction and sessionId update after compression
-          this.messageManager.compressMessagesAndUpdateSession(
+          // Execute message reconstruction and sessionId update after compaction
+          this.messageManager.compactMessagesAndUpdateSession(
             enhancedSummary,
-            compressionUsage,
+            compactUsage,
           );
 
           // Notify Agent to add to usage tracking
-          if (compressionUsage && this.callbacks?.onUsageAdded) {
-            this.callbacks.onUsageAdded(compressionUsage);
+          if (compactUsage && this.callbacks?.onUsageAdded) {
+            this.callbacks.onUsageAdded(compactUsage);
           }
 
           logger?.debug(
-            `Successfully compressed ${messagesToCompress.length} messages and updated session`,
+            `Successfully compacted ${messagesToCompact.length} messages and updated session`,
           );
-          this.consecutiveCompressionFailures = 0;
-        } catch (compressError) {
-          this.consecutiveCompressionFailures++;
+          this.consecutiveCompactionFailures = 0;
+        } catch (compactError) {
+          this.consecutiveCompactionFailures++;
           logger?.error(
-            `Failed to compress messages (${this.consecutiveCompressionFailures} consecutive):`,
-            compressError,
+            `Failed to compact messages (${this.consecutiveCompactionFailures} consecutive):`,
+            compactError,
           );
           this.messageManager.addErrorBlock(
-            `Failed to compress conversation history: ${compressError instanceof Error ? compressError.message : String(compressError)}. You may encounter context limit issues.`,
+            `Failed to compact conversation history: ${compactError instanceof Error ? compactError.message : String(compactError)}. You may encounter context limit issues.`,
           );
         } finally {
-          this.setIsCompressing(false);
+          this.setIsCompacting(false);
         }
       }
     }
   }
 
-  public getIsCompressing(): boolean {
-    return this.isCompressing;
+  public getIsCompacting(): boolean {
+    return this.isCompacting;
   }
 
-  public setIsCompressing(isCompressing: boolean): void {
-    if (this.isCompressing !== isCompressing) {
-      this.isCompressing = isCompressing;
-      this.callbacks.onCompressionStateChange?.(isCompressing);
+  public setIsCompacting(isCompacting: boolean): void {
+    if (this.isCompacting !== isCompacting) {
+      this.isCompacting = isCompacting;
+      this.callbacks.onCompactionStateChange?.(isCompacting);
     }
   }
 
@@ -914,8 +914,8 @@ export class AIManager {
         await Promise.all(toolExecutionPromises);
       }
 
-      // Handle token statistics and message compression
-      await this.handleTokenUsageAndCompression(result.usage, abortController);
+      // Handle token statistics and message compaction
+      await this.handleTokenUsageAndCompaction(result.usage, abortController);
 
       // Finalize text/reasoning blocks for the final response (no tools)
       this.messageManager.finalizeStreamingBlocks();

@@ -348,7 +348,7 @@ export class InitializationService {
       if (sessionToRestore) {
         messageManager.initializeFromSession(sessionToRestore);
 
-        // Update task manager with the root session ID to ensure continuity across compressions
+        // Update task manager with the root session ID to ensure continuity across compactions
         taskManager.setTaskListId(
           sessionToRestore.rootSessionId || sessionToRestore.id,
         );

@@ -37,7 +37,7 @@ export interface ChatContextType {
   messages: Message[];
   isLoading: boolean;
   isCommandRunning: boolean;
-  isCompressing: boolean;
+  isCompacting: boolean;
   // Message display state
   isExpanded: boolean;
   isTaskListVisible: boolean;
@@ -204,7 +204,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [latestTotalTokens, setlatestTotalTokens] = useState(0);
   const [sessionId, setSessionId] = useState("");
   const [isCommandRunning, setIsCommandRunning] = useState(false);
-  const [isCompressing, setIsCompressing] = useState(false);
+  const [isCompacting, setIsCompacting] = useState(false);
   const [currentModel, setCurrentModelState] = useState("");
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
@@ -352,8 +352,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onLatestTotalTokensChange: (tokens) => {
           throttledSetTokens(tokens);
         },
-        onCompressionStateChange: (isCompressingState) => {
-          setIsCompressing(isCompressingState);
+        onCompactionStateChange: (isCompactingState) => {
+          setIsCompacting(isCompactingState);
         },
         onBackgroundTasksChange: (tasks) => {
           setBackgroundTasks([...tasks]);
@@ -431,7 +431,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setIsLoading(agent.isLoading);
         setlatestTotalTokens(agent.latestTotalTokens);
         setIsCommandRunning(agent.isCommandRunning);
-        setIsCompressing(agent.isCompressing);
+        setIsCompacting(agent.isCompacting);
         setPermissionModeState(agent.getPermissionMode());
         setWorkingDirectory(agent.workingDirectory);
         setCurrentModelState(agent.getModelConfig().model);
@@ -484,7 +484,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setIsLoading(false);
     setlatestTotalTokens(0);
     setIsCommandRunning(false);
-    setIsCompressing(false);
+    setIsCompacting(false);
     if (currentSessionId) {
       initializeAgent(currentSessionId);
     }
@@ -753,7 +753,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     configuredModels,
     getConfiguredModels,
     setModel,
-    isCompressing,
+    isCompacting,
     mcpServers,
     connectMcpServer,
     disconnectMcpServer,

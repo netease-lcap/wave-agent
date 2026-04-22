@@ -33,7 +33,7 @@ function safeToolArguments(args: string): string {
 }
 
 /**
- * Convert message format to API call format, stopping when a compressed message is encountered.
+ * Convert message format to API call format, stopping when a compacted message is encountered.
  * Messages with no meaningful content or tool calls are filtered out.
  * @param messages Message list
  * @returns Converted API message format list
@@ -47,19 +47,19 @@ export function convertMessagesForAPI(
   for (let i = startIndex; i >= 0; i--) {
     const message = messages[i];
 
-    // Check if a compression block is encountered, if so, stop iteration
+    // Check if a compaction block is encountered, if so, stop iteration
     if (
       message.role === "assistant" &&
-      message.blocks.some((block) => block.type === "compress")
+      message.blocks.some((block) => block.type === "compact")
     ) {
-      // Add the content of the compression block as an assistant message to the history
-      const compressBlock = message.blocks.find(
-        (block) => block.type === "compress",
+      // Add the content of the compaction block as an assistant message to the history
+      const compactBlock = message.blocks.find(
+        (block) => block.type === "compact",
       );
-      if (compressBlock && compressBlock.type === "compress") {
+      if (compactBlock && compactBlock.type === "compact") {
         recentMessages.unshift({
           role: "user",
-          content: compressBlock.content,
+          content: compactBlock.content,
         });
       }
       break;

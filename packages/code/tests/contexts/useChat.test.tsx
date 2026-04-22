@@ -71,7 +71,7 @@ describe("ChatProvider", () => {
     isLoading: false,
     latestTotalTokens: 0,
     isCommandRunning: false,
-    isCompressing: false,
+    isCompacting: false,
     userInputHistory: [],
     getPermissionMode: vi.fn(() => "default"),
     getMcpServers: vi.fn(() => []),
@@ -185,8 +185,8 @@ describe("ChatProvider", () => {
     // Test onLatestTotalTokensChange
     callbacks.onLatestTotalTokensChange!(100);
 
-    // Test onCompressionStateChange
-    callbacks.onCompressionStateChange!(true);
+    // Test onCompactionStateChange
+    callbacks.onCompactionStateChange!(true);
 
     // Test onBackgroundTasksChange
     const newTasks = [
@@ -210,7 +210,7 @@ describe("ChatProvider", () => {
       expect(lastValue?.mcpServers).toEqual(newServers);
       expect(lastValue?.sessionId).toBe("new-session");
       expect(lastValue?.latestTotalTokens).toBe(100);
-      expect(lastValue?.isCompressing).toBe(true);
+      expect(lastValue?.isCompacting).toBe(true);
       expect(lastValue?.backgroundTasks).toEqual(newTasks);
       expect(lastValue?.permissionMode).toBe("bypassPermissions");
     });

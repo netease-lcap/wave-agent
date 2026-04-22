@@ -23,7 +23,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 import {
-  COMPRESS_MESSAGES_SYSTEM_PROMPT,
+  COMPACT_MESSAGES_SYSTEM_PROMPT,
   WEB_CONTENT_SYSTEM_PROMPT,
   BTW_SYSTEM_PROMPT,
 } from "../prompts/index.js";
@@ -751,7 +751,7 @@ async function processStreamingResponse(
   return result;
 }
 
-export interface CompressMessagesOptions {
+export interface CompactMessagesOptions {
   // Resolved configuration
   gatewayConfig: GatewayConfig;
   modelConfig: ModelConfig;
@@ -762,7 +762,7 @@ export interface CompressMessagesOptions {
   model?: string;
 }
 
-export interface CompressMessagesResult {
+export interface CompactMessagesResult {
   content: string;
   usage?: {
     prompt_tokens: number;
@@ -771,9 +771,9 @@ export interface CompressMessagesResult {
   };
 }
 
-export async function compressMessages(
-  options: CompressMessagesOptions,
-): Promise<CompressMessagesResult> {
+export async function compactMessages(
+  options: CompactMessagesOptions,
+): Promise<CompactMessagesResult> {
   const { gatewayConfig, modelConfig, messages, abortSignal } = options;
 
   // Apply global 1 QPS rate limit
@@ -832,7 +832,7 @@ export async function compressMessages(
         messages: [
           {
             role: "system",
-            content: COMPRESS_MESSAGES_SYSTEM_PROMPT,
+            content: COMPACT_MESSAGES_SYSTEM_PROMPT,
           },
           ...cleanedMessages,
           {
@@ -849,7 +849,7 @@ export async function compressMessages(
     const content = response.choices[0]?.message?.content?.trim();
     if (!content) {
       throw new Error(
-        "Failed to compress conversation history: Empty response from AI",
+        "Failed to compact conversation history: Empty response from AI",
       );
     }
     const usage = response.usage
@@ -866,10 +866,10 @@ export async function compressMessages(
     };
   } catch (error) {
     if ((error as Error).name === "AbortError") {
-      logger.info("Compression request was aborted");
-      throw new Error("Compression request was aborted");
+      logger.info("Compaction request was aborted");
+      throw new Error("Compaction request was aborted");
     }
-    logger.error("Failed to compress messages:", error);
+    logger.error("Failed to compact messages:", error);
     throw error;
   }
 }

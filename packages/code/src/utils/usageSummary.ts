@@ -10,7 +10,7 @@ export interface TokenSummary {
   total_tokens: number;
   operations: {
     agent_calls: number;
-    compressions: number;
+    compactions: number;
   };
   // Cache-related tokens (for Claude models)
   cache_read_input_tokens?: number;
@@ -42,7 +42,7 @@ export function calculateTokenSummary(
         total_tokens: 0,
         operations: {
           agent_calls: 0,
-          compressions: 0,
+          compactions: 0,
         },
       });
     }
@@ -85,8 +85,8 @@ export function calculateTokenSummary(
     // Track operation types
     if (usage.operation_type === "agent") {
       summary.operations.agent_calls += 1;
-    } else if (usage.operation_type === "compress") {
-      summary.operations.compressions += 1;
+    } else if (usage.operation_type === "compact") {
+      summary.operations.compactions += 1;
     }
   }
 
@@ -129,7 +129,7 @@ export function displayUsageSummary(
   let totalCompletion = 0;
   let totalTokens = 0;
   let totalAgentCalls = 0;
-  let totalCompressions = 0;
+  let totalCompactions = 0;
   let totalCacheRead = 0;
   let totalCacheCreation = 0;
   let totalCache5m = 0;
@@ -190,7 +190,7 @@ export function displayUsageSummary(
     }
 
     console.log(
-      `  Operations: ${summary.operations.agent_calls} agent calls, ${summary.operations.compressions} compressions`,
+      `  Operations: ${summary.operations.agent_calls} agent calls, ${summary.operations.compactions} compactions`,
     );
     console.log();
 
@@ -198,7 +198,7 @@ export function displayUsageSummary(
     totalCompletion += summary.completion_tokens;
     totalTokens += summary.total_tokens;
     totalAgentCalls += summary.operations.agent_calls;
-    totalCompressions += summary.operations.compressions;
+    totalCompactions += summary.operations.compactions;
   }
 
   if (Object.keys(summaries).length > 1) {
@@ -228,7 +228,7 @@ export function displayUsageSummary(
     }
 
     console.log(
-      `  Operations: ${totalAgentCalls} agent calls, ${totalCompressions} compressions`,
+      `  Operations: ${totalAgentCalls} agent calls, ${totalCompactions} compactions`,
     );
   }
 }

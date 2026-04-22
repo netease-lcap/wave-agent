@@ -60,7 +60,7 @@ describe("TaskList Integration", () => {
       isLoading: false,
       latestTotalTokens: 0,
       isCommandRunning: false,
-      isCompressing: false,
+      isCompacting: false,
       userInputHistory: [],
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getMcpServers: vi.fn().mockReturnValue([]),

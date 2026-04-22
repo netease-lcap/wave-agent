@@ -116,7 +116,7 @@ describe("Agent - Task List ID Resolution", () => {
     expect(initialTaskListId).toBe("mock-session-id");
 
     // Simulate sessionId change (e.g. via messageManager internal state change)
-    // Since we can't easily trigger compression in a unit test, we verify that
+    // Since we can't easily trigger compaction in a unit test, we verify that
     // TaskManager was only initialized once and agent.taskListId returns the stable value.
 
     // We check that TaskManager was called with the initial ID

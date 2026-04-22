@@ -18,7 +18,7 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 
 vi.mock("../../src/services/aiService.js", () => ({
   callAgent: vi.fn(),
-  compressMessages: vi.fn(),
+  compactMessages: vi.fn(),
 }));
 
 vi.mock("../../src/utils/convertMessagesForAPI.js", () => ({

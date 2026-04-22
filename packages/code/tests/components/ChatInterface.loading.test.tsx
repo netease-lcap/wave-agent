@@ -30,7 +30,7 @@ describe("ChatInterface Loading State", () => {
     isLoading: false,
     isCommandRunning: false,
     userInputHistory: [],
-    isCompressing: false,
+    isCompacting: false,
     isExpanded: false,
     isConfirmationVisible: false,
     remountKey: 0,
@@ -134,10 +134,10 @@ describe("ChatInterface Loading State", () => {
     expect(output).toContain("✻ Command is running...");
   });
 
-  it("should show compressing message when isCompressing is true", () => {
+  it("should show compacting message when isCompacting is true", () => {
     vi.mocked(useChat).mockReturnValue({
       ...mockChatContext,
-      isCompressing: true,
+      isCompacting: true,
     } as unknown as ChatContextType);
     vi.mocked(useInputManager).mockReturnValue(
       mockInputManager as unknown as ReturnType<typeof useInputManager>,
@@ -149,14 +149,14 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).toContain("✻ Compressing message history...");
+    expect(output).toContain("✻ Compacting message history...");
   });
 
-  it("should not show AI is thinking when isCompressing is true", () => {
+  it("should not show AI is thinking when isCompacting is true", () => {
     vi.mocked(useChat).mockReturnValue({
       ...mockChatContext,
       isLoading: true,
-      isCompressing: true,
+      isCompacting: true,
     } as unknown as ChatContextType);
     vi.mocked(useInputManager).mockReturnValue(
       mockInputManager as unknown as ReturnType<typeof useInputManager>,
@@ -168,7 +168,7 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).toContain("✻ Compressing message history...");
+    expect(output).toContain("✻ Compacting message history...");
     expect(output).not.toContain("✻ AI is thinking...");
   });
 });

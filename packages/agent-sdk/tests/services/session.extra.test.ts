@@ -108,14 +108,14 @@ describe("session service - additional coverage", () => {
       expect(content).toBe("!ls");
     });
 
-    it("should return content from compress block", async () => {
+    it("should return content from compact block", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
       vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
         JSON.stringify({
           blocks: [
             {
-              type: "compress",
-              content: "compressed",
+              type: "compact",
+              content: "compacted",
               sessionId: "test-session",
             },
           ],
@@ -123,7 +123,7 @@ describe("session service - additional coverage", () => {
       );
 
       const content = await getFirstMessageContent(sessionId, workdir);
-      expect(content).toBe("compressed");
+      expect(content).toBe("compacted");
     });
 
     it("should return text block content", async () => {

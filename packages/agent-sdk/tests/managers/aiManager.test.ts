@@ -38,8 +38,8 @@ vi.mock("../../src/services/aiService.js", () => ({
       tool_calls: [],
     };
   }),
-  compressMessages: vi.fn().mockResolvedValue({
-    content: "Compressed content",
+  compactMessages: vi.fn().mockResolvedValue({
+    content: "Compacted content",
     usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
   }),
   isClaudeModel: vi.fn().mockReturnValue(false),
@@ -96,7 +96,7 @@ describe("AIManager", () => {
       addErrorBlock: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
-      compressMessagesAndUpdateSession: vi.fn(),
+      compactMessagesAndUpdateSession: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
       touchFile: vi.fn(),
       finalizeStreamingBlocks: vi.fn(),
@@ -176,7 +176,7 @@ describe("AIManager", () => {
 
     // Reset mocks
     vi.mocked(aiService.callAgent).mockClear();
-    vi.mocked(aiService.compressMessages).mockClear();
+    vi.mocked(aiService.compactMessages).mockClear();
   });
 
   it("should call callAgent", async () => {
