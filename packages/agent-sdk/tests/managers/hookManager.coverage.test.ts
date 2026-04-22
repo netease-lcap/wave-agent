@@ -640,4 +640,119 @@ describe("HookManager Coverage", () => {
       );
     });
   });
+
+  describe("executeSessionStartHooks", () => {
+    it("should execute SessionStart hooks and return results", async () => {
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo init" }] },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.results).toBeDefined();
+      expect(mockExecuteCommand).toHaveBeenCalled();
+    });
+
+    it("should parse JSON stdout for additionalContext", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 100,
+        timedOut: false,
+        exitCode: 0,
+        stdout: '{"additionalContext": "Extra context here"}',
+        stderr: "",
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo json" }] },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.additionalContext).toBe("Extra context here");
+      expect(result.initialUserMessage).toBeUndefined();
+    });
+
+    it("should parse JSON stdout for initialUserMessage", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 100,
+        timedOut: false,
+        exitCode: 0,
+        stdout: '{"initialUserMessage": "Hello from hook"}',
+        stderr: "",
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo json" }] },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "resume",
+        "session-123",
+        "/path/to/transcript.json",
+        "planner",
+      );
+      expect(result.initialUserMessage).toBe("Hello from hook");
+      expect(result.additionalContext).toBeUndefined();
+    });
+
+    it("should treat non-JSON stdout as additionalContext", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 100,
+        timedOut: false,
+        exitCode: 0,
+        stdout: "Plain text context",
+        stderr: "",
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo text" }] },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "compact",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.additionalContext).toBe("Plain text context");
+    });
+  });
+
+  describe("SessionStart in processHookResults", () => {
+    it("should handle SessionStart blocking error (exit code 2)", () => {
+      const mockMessageManager = {
+        addUserMessage: vi.fn(),
+        addErrorBlock: vi.fn(),
+        removeLastUserMessage: vi.fn(),
+        updateToolBlock: vi.fn(),
+      };
+      const results = [
+        {
+          success: false,
+          exitCode: 2,
+          stderr: "SessionStart blocked",
+          duration: 0,
+          timedOut: false,
+        },
+      ];
+      const res = manager.processHookResults(
+        "SessionStart",
+        results,
+        mockMessageManager as unknown as MessageManager,
+      );
+      expect(res.shouldBlock).toBe(false);
+      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+        "SessionStart blocked",
+      );
+    });
+  });
 });

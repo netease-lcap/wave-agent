@@ -298,6 +298,7 @@ export class HookManager {
         source: MessageSource.HOOK,
       });
     }
+    // For SessionStart, stdout is processed separately in executeSessionStartHooks
     // For other hook types (PreToolUse, PostToolUse, Stop, PermissionRequest), ignore stdout
   }
 
@@ -371,6 +372,11 @@ export class HookManager {
 
       case "WorktreeCreate":
         // Non-blocking for now, just show error in error block
+        messageManager.addErrorBlock(errorMessage);
+        return { shouldBlock: false };
+
+      case "SessionStart":
+        // Non-blocking for startup, show error in error block
         messageManager.addErrorBlock(errorMessage);
         return { shouldBlock: false };
 
@@ -577,7 +583,8 @@ export class HookManager {
       (event === "UserPromptSubmit" ||
         event === "Stop" ||
         event === "SubagentStop" ||
-        event === "WorktreeCreate") &&
+        event === "WorktreeCreate" ||
+        event === "SessionStart") &&
       context.toolName !== undefined
     ) {
       logger?.warn(
@@ -654,7 +661,8 @@ export class HookManager {
       event === "Stop" ||
       event === "SubagentStop" ||
       event === "WorktreeCreate" ||
-      event === "CwdChanged"
+      event === "CwdChanged" ||
+      event === "SessionStart"
     ) {
       return true;
     }
@@ -755,6 +763,7 @@ export class HookManager {
           PermissionRequest: 0,
           WorktreeCreate: 0,
           CwdChanged: 0,
+          SessionStart: 0,
         },
       };
     }
@@ -768,6 +777,7 @@ export class HookManager {
       PermissionRequest: 0,
       WorktreeCreate: 0,
       CwdChanged: 0,
+      SessionStart: 0,
     };
 
     let totalConfigs = 0;
@@ -843,5 +853,64 @@ export class HookManager {
     }
 
     this.mergeHooksConfiguration(this.configuration, stampedHooks);
+  }
+
+  /**
+   * Execute SessionStart hooks during initialization.
+   * Collects additionalContext and initialUserMessage from hook stdout.
+   */
+  async executeSessionStartHooks(
+    source: "startup" | "resume" | "compact",
+    sessionId: string,
+    transcriptPath: string,
+    agentType?: string,
+  ): Promise<{
+    results: HookExecutionResult[];
+    additionalContext?: string;
+    initialUserMessage?: string;
+  }> {
+    const context: ExtendedHookExecutionContext = {
+      event: "SessionStart",
+      projectDir: this.workdir,
+      timestamp: new Date(),
+      sessionId,
+      transcriptPath,
+      cwd: this.workdir,
+      source,
+      agentType,
+      env: Object.fromEntries(
+        Object.entries(process.env).filter((e) => e[1] !== undefined),
+      ) as Record<string, string>,
+    };
+
+    const results = await this.executeHooks("SessionStart", context);
+
+    let additionalContext: string | undefined;
+    let initialUserMessage: string | undefined;
+
+    // Process stdout from successful hooks
+    for (const result of results) {
+      if (result.success && result.stdout?.trim()) {
+        const trimmed = result.stdout.trim();
+        // Try to parse as JSON for structured output
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed.additionalContext) {
+            additionalContext =
+              (additionalContext ? additionalContext + "\n" : "") +
+              parsed.additionalContext;
+          }
+          if (parsed.initialUserMessage) {
+            initialUserMessage = parsed.initialUserMessage;
+          }
+        } catch {
+          // Not JSON, treat as additional context
+          additionalContext =
+            (additionalContext ? additionalContext + "\n" : "") + trimmed;
+        }
+      }
+    }
+
+    return { results, additionalContext, initialUserMessage };
   }
 }
