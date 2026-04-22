@@ -415,16 +415,53 @@ export class AIManager {
             }
           }
 
-          // 5. Background subagent status (shell tasks excluded)
+          // 5. Background subagent status (shell tasks excluded, matching Claude Code's createAsyncAgentAttachmentsIfNeeded)
           const agents =
             this.backgroundTaskManager
               ?.getAllTasks()
               .filter((a) => a.type === "subagent") || [];
           if (agents.length > 0) {
-            const agentList = agents
-              .map((a) => `- Agent "${a.description}": ${a.status}`)
-              .join("\n");
-            contextParts.push(`\n\n[Background Tasks]\n${agentList}`);
+            const agentParts: string[] = [];
+            for (const a of agents) {
+              if (a.status === "killed") {
+                agentParts.push(
+                  `Task "${a.description}" (${a.id}) was stopped by the user.`,
+                );
+              } else if (a.status === "running") {
+                const parts = [
+                  `Background agent "${a.description}" (${a.id}) is still running.`,
+                  `Do NOT spawn a duplicate. You will be notified when it completes.`,
+                ];
+                if (a.outputPath) {
+                  parts.push(`You can read partial output at ${a.outputPath}.`);
+                }
+                agentParts.push(parts.join(" "));
+              } else {
+                // completed or failed
+                const parts = [
+                  `Task ${a.id} (status: ${a.status}) (description: ${a.description}).`,
+                ];
+                const deltaText = a.status === "failed" ? a.stderr : a.stdout;
+                if (deltaText && deltaText.length > 0) {
+                  const summary =
+                    deltaText.length > 500
+                      ? deltaText.slice(0, 500) + "..."
+                      : deltaText;
+                  parts.push(`Delta: ${summary}`);
+                }
+                if (a.outputPath) {
+                  parts.push(
+                    `Read the output file to retrieve the result: ${a.outputPath}.`,
+                  );
+                }
+                agentParts.push(parts.join(" "));
+              }
+            }
+            if (agentParts.length > 0) {
+              contextParts.push(
+                `\n\n[Background Tasks]\n${agentParts.join("\n")}`,
+              );
+            }
           }
 
           // Merge context restoration into summary
