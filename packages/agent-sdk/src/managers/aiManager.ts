@@ -364,16 +364,55 @@ export class AIManager {
             }
           }
 
-          // 4. Skills context
-          const skills =
-            this.skillManager
-              ?.getAvailableSkills()
-              .filter((s) => !s.disableModelInvocation) || [];
-          if (skills.length > 0) {
-            const skillList = skills
-              .map((s) => `- ${s.name}: ${s.description || ""}`)
-              .join("\n");
-            contextParts.push(`\n\n[Available Skills]\n${skillList}`);
+          // 4. Invoked skills context (with token budget, matching Claude Code)
+          const POST_COMPACT_SKILLS_TOKEN_BUDGET = 25_000;
+          const POST_COMPACT_MAX_TOKENS_PER_SKILL = 5_000;
+          const invokedSkillNames =
+            this.messageManager.getInvokedSkillNames(10);
+          if (invokedSkillNames.length > 0 && this.skillManager) {
+            const invokedSkillParts: string[] = [];
+            let skillsUsedTokens = 0;
+            for (const skillName of invokedSkillNames) {
+              try {
+                const skill = await this.skillManager.loadSkill(skillName);
+                if (!skill) continue;
+
+                // Extract content after frontmatter (matching prepareSkillContent pattern)
+                const contentMatch = skill.content.match(
+                  /^---\n[\s\S]*?\n---\n([\s\S]*)$/,
+                );
+                let skillContent = contentMatch
+                  ? contentMatch[1].trim()
+                  : skill.content;
+
+                // Per-skill token budget enforcement (~4 chars per token)
+                const maxSkillChars = POST_COMPACT_MAX_TOKENS_PER_SKILL * 4;
+                if (skillContent.length > maxSkillChars) {
+                  skillContent =
+                    skillContent.slice(0, maxSkillChars) +
+                    "\n\n...[truncated]...";
+                }
+
+                const skillTokens = Math.ceil(skillContent.length / 4);
+                if (
+                  skillsUsedTokens + skillTokens >
+                  POST_COMPACT_SKILLS_TOKEN_BUDGET
+                )
+                  break;
+                skillsUsedTokens += skillTokens;
+
+                invokedSkillParts.push(
+                  `\n\n## ${skill.name}\n${skill.description ? `*${skill.description}*\n\n` : ""}\`\`\`\n${skillContent}\n\`\`\``,
+                );
+              } catch {
+                // Skip skills that can't be loaded
+              }
+            }
+            if (invokedSkillParts.length > 0) {
+              contextParts.push(
+                `\n\n[Invoked Skills]\n${invokedSkillParts.join("")}`,
+              );
+            }
           }
 
           // 5. Background subagent status (shell tasks excluded)
