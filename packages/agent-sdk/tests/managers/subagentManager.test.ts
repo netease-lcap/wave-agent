@@ -215,3 +215,160 @@ describe("SubagentManager background notification deduplication", () => {
     expect(killedNotifications.length).toBe(0);
   });
 });
+
+describe("SubagentManager registerPluginAgents", () => {
+  let container: Container;
+  let subagentManager: SubagentManager;
+
+  beforeEach(() => {
+    container = new Container();
+
+    const mockBackgroundTaskManager: Partial<BackgroundTaskManager> = {
+      generateId: vi.fn().mockReturnValue("task_1"),
+    };
+    container.register(
+      "BackgroundTaskManager",
+      mockBackgroundTaskManager as unknown as BackgroundTaskManager,
+    );
+
+    subagentManager = new SubagentManager(container, {
+      workdir: "/tmp/test",
+      stream: false,
+    });
+  });
+
+  it("should namespace agent names with pluginName:agentName", async () => {
+    await subagentManager.loadConfigurations();
+    subagentManager.registerPluginAgents("my-plugin", [
+      {
+        name: "test-agent",
+        description: "Test Agent",
+        systemPrompt: "You are a test agent",
+        filePath: "/plugin/agents/test-agent.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/plugin",
+      },
+    ]);
+
+    const configs = subagentManager.getConfigurations();
+    const pluginAgent = configs.find((c) => c.name.includes("my-plugin"));
+    expect(pluginAgent).toBeDefined();
+    expect(pluginAgent!.name).toBe("my-plugin:test-agent");
+  });
+
+  it("should substitute WAVE_PLUGIN_ROOT in systemPrompt as safety net", () => {
+    subagentManager.registerPluginAgents("my-plugin", [
+      {
+        name: "test-agent",
+        description: "Test Agent",
+        systemPrompt: "Read files from ${WAVE_PLUGIN_ROOT}/data",
+        filePath: "/plugin/agents/test-agent.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/plugin",
+      },
+    ]);
+
+    const configs = subagentManager.getConfigurations();
+    const pluginAgent = configs.find((c) => c.name === "my-plugin:test-agent");
+    expect(pluginAgent).toBeDefined();
+    expect(pluginAgent!.systemPrompt).toBe("Read files from /plugin/data");
+  });
+
+  it("should handle agents without WAVE_PLUGIN_ROOT in systemPrompt", () => {
+    subagentManager.registerPluginAgents("my-plugin", [
+      {
+        name: "test-agent",
+        description: "Test Agent",
+        systemPrompt: "You are a test agent",
+        filePath: "/plugin/agents/test-agent.md",
+        scope: "plugin",
+        priority: 2,
+      },
+    ]);
+
+    const configs = subagentManager.getConfigurations();
+    const pluginAgent = configs.find((c) => c.name === "my-plugin:test-agent");
+    expect(pluginAgent).toBeDefined();
+    expect(pluginAgent!.systemPrompt).toBe("You are a test agent");
+  });
+
+  it("should re-register agents with updated content on duplicate plugin registration", async () => {
+    await subagentManager.loadConfigurations();
+
+    subagentManager.registerPluginAgents("my-plugin", [
+      {
+        name: "test-agent",
+        description: "Test Agent v1",
+        systemPrompt: "v1 prompt",
+        filePath: "/plugin/agents/test-agent.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/plugin",
+      },
+    ]);
+
+    const firstConfigs = subagentManager.getConfigurations();
+    const firstAgent = firstConfigs.find(
+      (c) => c.name === "my-plugin:test-agent",
+    );
+    expect(firstAgent!.description).toBe("Test Agent v1");
+
+    // Re-register with updated content
+    subagentManager.registerPluginAgents("my-plugin", [
+      {
+        name: "test-agent",
+        description: "Test Agent v2",
+        systemPrompt: "v2 prompt",
+        filePath: "/plugin/agents/test-agent.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/plugin",
+      },
+    ]);
+
+    const secondConfigs = subagentManager.getConfigurations();
+    const secondAgent = secondConfigs.find(
+      (c) => c.name === "my-plugin:test-agent",
+    );
+    expect(secondAgent!.description).toBe("Test Agent v2");
+    expect(
+      secondConfigs.filter((c) => c.name === "my-plugin:test-agent"),
+    ).toHaveLength(1);
+  });
+
+  it("should sort configurations by priority then name after registration", async () => {
+    await subagentManager.loadConfigurations();
+
+    subagentManager.registerPluginAgents("plugin-a", [
+      {
+        name: "agent-z",
+        description: "Agent Z",
+        systemPrompt: "Prompt",
+        filePath: "/plugin-a/agents/agent-z.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/plugin-a",
+      },
+    ]);
+
+    subagentManager.registerPluginAgents("plugin-b", [
+      {
+        name: "agent-a",
+        description: "Agent A",
+        systemPrompt: "Prompt",
+        filePath: "/plugin-b/agents/agent-a.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/plugin-b",
+      },
+    ]);
+
+    const configs = subagentManager.getConfigurations();
+    const pluginAgents = configs.filter((c) => c.scope === "plugin");
+    // plugin-a:agent-z should come before plugin-b:agent-a (same priority, alphabetical by namespaced name)
+    expect(pluginAgents[0].name).toBe("plugin-a:agent-z");
+    expect(pluginAgents[1].name).toBe("plugin-b:agent-a");
+  });
+});

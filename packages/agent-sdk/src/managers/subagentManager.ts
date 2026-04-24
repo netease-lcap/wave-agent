@@ -187,8 +187,55 @@ export class SubagentManager {
    * Find subagent by exact name match
    */
   async findSubagent(name: string) {
+    // Check cached configurations first (includes plugin agents)
+    if (this.cachedConfigurations !== null) {
+      const cached = this.cachedConfigurations.find(
+        (config) => config.name === name,
+      );
+      if (cached) return cached;
+    }
+    // Fall back to filesystem scan for non-plugin agents
     const { findSubagentByName } = await import("../utils/subagentParser.js");
     return findSubagentByName(name, this.workdir);
+  }
+
+  /**
+   * Register plugin agents into the cached configurations.
+   * Names each agent as `pluginName:agentName` to avoid collisions.
+   */
+  registerPluginAgents(
+    pluginName: string,
+    agents: SubagentConfiguration[],
+  ): void {
+    if (this.cachedConfigurations === null) {
+      // Should not happen if initialization order is correct
+      this.cachedConfigurations = [];
+    }
+
+    // Remove any previously registered agents for this plugin (by name prefix)
+    this.cachedConfigurations = this.cachedConfigurations.filter(
+      (config) => !config.name.startsWith(`${pluginName}:`),
+    );
+
+    for (const agent of agents) {
+      const namespacedName = `${pluginName}:${agent.name}`;
+      const namespacedAgent: SubagentConfiguration = {
+        ...agent,
+        name: namespacedName,
+        // Safety net: substitute any remaining ${WAVE_PLUGIN_ROOT} placeholders
+        systemPrompt: agent.systemPrompt.replace(
+          /\$\{WAVE_PLUGIN_ROOT\}/g,
+          agent.pluginRoot ?? "",
+        ),
+      };
+      this.cachedConfigurations!.push(namespacedAgent);
+    }
+
+    // Re-sort by priority then name
+    this.cachedConfigurations!.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      return a.name.localeCompare(b.name);
+    });
   }
 
   /**

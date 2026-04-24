@@ -93,7 +93,7 @@ For detailed guidance on creating subagents, see [SUBAGENTS.md](${WAVE_SKILL_DIR
 
 ### 9. Plugins
 
-Plugins bundle skills, hooks, MCP servers, LSP servers, and commands into a reusable package. You can install plugins locally or from a marketplace.
+Plugins bundle skills, hooks, MCP servers, LSP servers, commands, and subagents into a reusable package. You can install plugins locally or from a marketplace.
 For detailed guidance on creating plugins and marketplaces, see [PLUGINS.md](${WAVE_SKILL_DIR}/PLUGINS.md).
 
 ### 10. Other Settings

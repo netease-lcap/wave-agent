@@ -3,6 +3,7 @@ import { Skill } from "./skills.js";
 import { LspConfig } from "./lsp.js";
 import { McpConfig } from "./mcp.js";
 import { PartialHookConfiguration } from "./configuration.js";
+import { SubagentConfiguration } from "../utils/subagentParser.js";
 
 /**
  * Plugin manifest structure (.wave-plugin/plugin.json)
@@ -31,6 +32,7 @@ export interface Plugin extends PluginManifest {
   path: string;
   commands: CustomSlashCommand[];
   skills: Skill[];
+  agents: SubagentConfiguration[];
   lspConfig?: LspConfig;
   mcpConfig?: McpConfig;
   hooksConfig?: PartialHookConfiguration;
