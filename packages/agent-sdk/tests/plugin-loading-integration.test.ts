@@ -45,6 +45,7 @@ describe("Agent Plugin Loading Integration", () => {
     });
     vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
     vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+    vi.mocked(PluginLoader.loadAgents).mockResolvedValue([]);
     vi.mocked(PluginLoader.loadLspConfig).mockResolvedValue(undefined);
     vi.mocked(PluginLoader.loadMcpConfig).mockResolvedValue(undefined);
     vi.mocked(PluginLoader.loadHooksConfig).mockResolvedValue(undefined);

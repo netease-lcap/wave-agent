@@ -10,7 +10,12 @@ import {
 } from "../types/index.js";
 import { scanCommandsDirectory } from "../utils/customCommands.js";
 import { parseSkillFile } from "../utils/skillParser.js";
+import {
+  parseAgentFile,
+  type SubagentConfiguration,
+} from "../utils/subagentParser.js";
 import { resolveMcpConfig } from "../managers/mcpManager.js";
+import { logger } from "../utils/globalLogger.js";
 
 export class PluginLoader {
   /**
@@ -163,6 +168,38 @@ export class PluginLoader {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * Load agent configurations from a plugin's agents directory
+   */
+  static async loadAgents(
+    pluginPath: string,
+  ): Promise<SubagentConfiguration[]> {
+    const agentsPath = path.join(pluginPath, "agents");
+    const agents: SubagentConfiguration[] = [];
+
+    try {
+      const entries = await fs.readdir(agentsPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith(".md")) {
+          const agentFilePath = path.join(agentsPath, entry.name);
+          try {
+            const config = parseAgentFile(agentFilePath, "plugin", pluginPath);
+            agents.push(config);
+          } catch (parseError) {
+            // Log error but continue with other files
+            logger?.warn(
+              `Warning: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+            );
+          }
+        }
+      }
+    } catch {
+      // agents directory might not exist
+    }
+
+    return agents;
   }
 
   /**

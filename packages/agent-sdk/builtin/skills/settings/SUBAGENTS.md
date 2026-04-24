@@ -39,12 +39,31 @@ You are a specialized subagent for a specific task. Your goal is to:
 
 ## Subagent Locations
 
-Wave looks for subagents in two locations:
+Wave looks for subagents in three locations:
 
 1.  **User Subagents**: `~/.wave/agents/` (Available in all projects)
 2.  **Project Subagents**: `.wave/agents/` (Specific to the current project)
+3.  **Plugin Agents**: `agents/` within an installed plugin directory (Scoped to the plugin)
 
-Project subagents take precedence over user subagents with the same name.
+Project subagents take precedence over user subagents with the same name. Plugin agents are namespaced with the plugin name (e.g., `pluginName:agentName`) to avoid collisions.
+
+## Plugin Agents
+
+Plugins can define their own subagents in an `agents/` directory within the plugin. These agents can reference their parent plugin's directory using the `${WAVE_PLUGIN_ROOT}` template variable, which is substituted at load time.
+
+For example, a plugin at `/path/to/my-plugin/` with `agents/researcher.md`:
+
+```markdown
+---
+name: researcher
+description: A research agent that uses the plugin's knowledge base
+tools: ["Read", "Glob"]
+---
+
+You are a research assistant. Access plugin resources at ${WAVE_PLUGIN_ROOT}/data.
+```
+
+After loading, `${WAVE_PLUGIN_ROOT}` is replaced with `/path/to/my-plugin/`, and the agent is registered as `my-plugin:researcher`.
 
 ## Delegating to Subagents
 

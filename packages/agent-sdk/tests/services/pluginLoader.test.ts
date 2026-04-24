@@ -5,12 +5,14 @@ import { PluginLoader } from "../../src/services/pluginLoader.js";
 import { scanCommandsDirectory } from "../../src/utils/customCommands.js";
 import { CustomSlashCommand } from "../../src/types/index.js";
 import { parseSkillFile } from "../../src/utils/skillParser.js";
+import { parseAgentFile } from "../../src/utils/subagentParser.js";
 import { resolveMcpConfig } from "../../src/managers/mcpManager.js";
 
 vi.mock("fs/promises");
 vi.mock("path");
 vi.mock("../../src/utils/customCommands.js");
 vi.mock("../../src/utils/skillParser.js");
+vi.mock("../../src/utils/subagentParser.js");
 vi.mock("../../src/managers/mcpManager.js", () => ({
   resolveMcpConfig: vi.fn((config) => {
     // Simulate env var expansion for headers
@@ -350,6 +352,126 @@ describe("PluginLoader", () => {
       const result = await PluginLoader.loadHooksConfig(mockPluginPath);
 
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe("loadAgents", () => {
+    it("should load agents from the agents directory", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        { name: "agent1.md", isFile: () => true, isDirectory: () => false },
+        { name: "agent2.md", isFile: () => true, isDirectory: () => false },
+        { name: "not-a-dir", isFile: () => false, isDirectory: () => true },
+      ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
+
+      vi.mocked(parseAgentFile)
+        .mockImplementationOnce((filePath: string) => ({
+          name: "agent1",
+          description: "Agent 1",
+          systemPrompt: "System prompt",
+          filePath,
+          scope: "plugin",
+          priority: 2,
+          pluginRoot: mockPluginPath,
+        }))
+        .mockImplementationOnce((filePath: string) => ({
+          name: "agent2",
+          description: "Agent 2",
+          systemPrompt: "System prompt",
+          filePath,
+          scope: "plugin",
+          priority: 2,
+          pluginRoot: mockPluginPath,
+        }));
+
+      const result = await PluginLoader.loadAgents(mockPluginPath);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].name).toBe("agent1");
+      expect(result[1].name).toBe("agent2");
+      expect(result[0].scope).toBe("plugin");
+      expect(result[0].pluginRoot).toBe(mockPluginPath);
+      expect(parseAgentFile).toHaveBeenCalledWith(
+        `${mockPluginPath}/agents/agent1.md`,
+        "plugin",
+        mockPluginPath,
+      );
+    });
+
+    it("should set pluginRoot on loaded agents", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        { name: "test-agent.md", isFile: () => true, isDirectory: () => false },
+      ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
+
+      vi.mocked(parseAgentFile).mockReturnValue({
+        name: "test-agent",
+        description: "Test Agent",
+        systemPrompt: "Use ${WAVE_PLUGIN_ROOT} for files",
+        filePath: "/my/plugin/agents/test-agent.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/my/plugin",
+      });
+
+      const result = await PluginLoader.loadAgents("/my/plugin");
+
+      expect(result[0].pluginRoot).toBe("/my/plugin");
+    });
+
+    it("should return empty array if agents directory does not exist", async () => {
+      vi.mocked(fs.readdir).mockRejectedValue(new Error("ENOENT"));
+
+      const result = await PluginLoader.loadAgents(mockPluginPath);
+
+      expect(result).toEqual([]);
+    });
+
+    it("should skip invalid agent files and continue", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        { name: "valid.md", isFile: () => true, isDirectory: () => false },
+        { name: "invalid.md", isFile: () => true, isDirectory: () => false },
+      ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
+
+      vi.mocked(parseAgentFile)
+        .mockImplementationOnce(() => ({
+          name: "valid",
+          description: "Valid Agent",
+          systemPrompt: "Valid prompt",
+          filePath: "/mock/agents/valid.md",
+          scope: "plugin",
+          priority: 2,
+          pluginRoot: mockPluginPath,
+        }))
+        .mockImplementationOnce(() => {
+          throw new Error("Parse error");
+        });
+
+      const result = await PluginLoader.loadAgents(mockPluginPath);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("valid");
+    });
+
+    it("should only load .md files", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        { name: "agent.md", isFile: () => true, isDirectory: () => false },
+        { name: "readme.txt", isFile: () => true, isDirectory: () => false },
+        { name: "subdir", isFile: () => false, isDirectory: () => true },
+      ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
+
+      vi.mocked(parseAgentFile).mockReturnValue({
+        name: "agent",
+        description: "Agent",
+        systemPrompt: "Prompt",
+        filePath: "/mock/agents/agent.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: mockPluginPath,
+      });
+
+      const result = await PluginLoader.loadAgents(mockPluginPath);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("agent");
     });
   });
 });

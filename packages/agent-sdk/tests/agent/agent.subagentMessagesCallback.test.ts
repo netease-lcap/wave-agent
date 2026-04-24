@@ -8,17 +8,19 @@ import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/types/index.js";
 import type { SubagentConfiguration } from "@/utils/subagentParser.js";
 
-// Mock subagent configurations
-const mockSubagentConfig: SubagentConfiguration = {
-  name: "test-subagent",
-  description: "A test subagent",
-  systemPrompt: "You are a test subagent",
-  tools: ["Read", "Write"],
-  model: "inherit",
-  filePath: "/tmp/test-subagent.md",
-  scope: "project",
-  priority: 1,
-};
+// Mock subagent configurations - hoisted to top for vi.mock usage
+const { mockSubagentConfig } = vi.hoisted(() => ({
+  mockSubagentConfig: {
+    name: "test-subagent",
+    description: "A test subagent",
+    systemPrompt: "You are a test subagent",
+    tools: ["Read", "Write"],
+    model: "inherit",
+    filePath: "/tmp/test-subagent.md",
+    scope: "project",
+    priority: 1,
+  } as SubagentConfiguration,
+}));
 
 // Mock AI Service - we'll mock this to control subagent responses
 vi.mock("@/services/aiService", () => ({

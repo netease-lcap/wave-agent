@@ -10,8 +10,10 @@ export interface SubagentConfiguration {
   model?: string;
   systemPrompt: string;
   filePath: string;
-  scope: "project" | "user" | "builtin";
+  scope: "project" | "user" | "builtin" | "plugin";
   priority: number;
+  /** Plugin root directory path, set when scope is "plugin" */
+  pluginRoot?: string;
 }
 
 interface SubagentFrontmatter {
@@ -119,11 +121,12 @@ function validateConfiguration(
 }
 
 /**
- * Parse a single subagent markdown file
+ * Parse a single subagent markdown file with optional pluginRoot support
  */
 function parseSubagentFile(
   filePath: string,
-  scope: "project" | "user" | "builtin",
+  scope: "project" | "user" | "builtin" | "plugin",
+  pluginRoot?: string,
 ): SubagentConfiguration {
   try {
     const content = readFileSync(filePath, "utf-8");
@@ -143,22 +146,46 @@ function parseSubagentFile(
     let priority = 1;
     if (scope === "user") priority = 2;
     if (scope === "builtin") priority = 3;
+    if (scope === "plugin") priority = 2; // Same priority as user-level
+
+    let systemPrompt = body;
+
+    // Substitute ${WAVE_PLUGIN_ROOT} for plugin scope at parse time
+    if (scope === "plugin" && pluginRoot) {
+      systemPrompt = systemPrompt.replace(
+        /\$\{WAVE_PLUGIN_ROOT\}/g,
+        pluginRoot,
+      );
+    }
 
     return {
       name: frontmatter.name!,
       description: frontmatter.description!,
       tools: frontmatter.tools,
       model: frontmatter.model,
-      systemPrompt: body,
+      systemPrompt,
       filePath,
       scope,
       priority,
+      pluginRoot: scope === "plugin" ? pluginRoot : undefined,
     };
   } catch (error) {
     throw new Error(
       `Failed to parse subagent file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+/**
+ * Parse a plugin agent markdown file.
+ * Exposed as a public API for PluginLoader to use.
+ */
+export function parseAgentFile(
+  filePath: string,
+  scope: "plugin",
+  pluginRoot: string,
+): SubagentConfiguration {
+  return parseSubagentFile(filePath, scope, pluginRoot);
 }
 
 /**

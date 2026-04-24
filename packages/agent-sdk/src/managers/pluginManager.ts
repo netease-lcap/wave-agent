@@ -7,6 +7,7 @@ import { HookManager } from "./hookManager.js";
 import { LspManager } from "./lspManager.js";
 import { McpManager } from "./mcpManager.js";
 import { SlashCommandManager } from "./slashCommandManager.js";
+import { SubagentManager } from "./subagentManager.js";
 import { MarketplaceService } from "../services/MarketplaceService.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { Container } from "../utils/container.js";
@@ -51,6 +52,10 @@ export class PluginManager {
 
   private get configurationService(): ConfigurationService | undefined {
     return this.container.get<ConfigurationService>("ConfigurationService");
+  }
+
+  private get subagentManager(): SubagentManager | undefined {
+    return this.container.get<SubagentManager>("SubagentManager");
   }
 
   /**
@@ -155,6 +160,7 @@ export class PluginManager {
         path: absolutePath,
         commands: PluginLoader.loadCommands(absolutePath),
         skills: await PluginLoader.loadSkills(absolutePath),
+        agents: await PluginLoader.loadAgents(absolutePath),
         lspConfig: await PluginLoader.loadLspConfig(absolutePath),
         mcpConfig: await PluginLoader.loadMcpConfig(absolutePath),
         hooksConfig: await PluginLoader.loadHooksConfig(absolutePath),
@@ -190,6 +196,10 @@ export class PluginManager {
 
       if (this.hookManager && plugin.hooksConfig) {
         this.hookManager.registerPluginHooks(plugin.path, plugin.hooksConfig);
+      }
+
+      if (this.subagentManager && plugin.agents.length > 0) {
+        this.subagentManager.registerPluginAgents(plugin.name, plugin.agents);
       }
 
       this.plugins.set(manifest.name, plugin);
