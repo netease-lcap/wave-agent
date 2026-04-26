@@ -8,6 +8,8 @@ export interface ModelSelectorProps {
   onSelectModel: (model: string) => void;
 }
 
+const MAX_VISIBLE_ITEMS = 5;
+
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
   onCancel,
   currentModel,
@@ -45,6 +47,19 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       return;
     }
   });
+
+  // Calculate visible window
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, configuredModels.length - MAX_VISIBLE_ITEMS),
+    ),
+  );
+  const visibleModels = configuredModels.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_ITEMS,
+  );
 
   if (configuredModels.length === 0) {
     return (
@@ -84,22 +99,27 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       </Box>
       <Text dimColor>Select a model to use for the current session</Text>
 
-      {configuredModels.map((model, index) => (
-        <Box key={model}>
-          <Text
-            color={index === selectedIndex ? "black" : "white"}
-            backgroundColor={index === selectedIndex ? "cyan" : undefined}
-          >
-            {index === selectedIndex ? "▶ " : "  "}
-            {model}
-            {model === currentModel ? (
-              <Text color="green"> (current)</Text>
-            ) : (
-              ""
-            )}
-          </Text>
-        </Box>
-      ))}
+      {visibleModels.map((model, index) => {
+        const actualIndex = startIndex + index;
+        return (
+          <Box key={model}>
+            <Text
+              color={actualIndex === selectedIndex ? "black" : "white"}
+              backgroundColor={
+                actualIndex === selectedIndex ? "cyan" : undefined
+              }
+            >
+              {actualIndex === selectedIndex ? "▶ " : "  "}
+              {model}
+              {model === currentModel ? (
+                <Text color="green"> (current)</Text>
+              ) : (
+                ""
+              )}
+            </Text>
+          </Box>
+        );
+      })}
 
       <Box marginTop={1}>
         <Text dimColor>↑/↓ to select · Enter to confirm · Esc to cancel</Text>
