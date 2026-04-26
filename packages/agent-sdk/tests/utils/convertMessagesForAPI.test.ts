@@ -308,6 +308,104 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
+  it("should include reasoning content in assistant messages for API", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "What is 2+2?" }],
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "reasoning",
+            content: "Let me think about this...",
+          },
+          { type: "text", content: "The answer is 4." },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(2);
+
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[0].content).toEqual([
+      { type: "text", text: "What is 2+2?" },
+    ]);
+
+    expect(apiMessages[1].role).toBe("assistant");
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      reasoning_content?: string;
+    };
+    expect(assistantMessage.content).toBe("The answer is 4.");
+    expect(assistantMessage.reasoning_content).toBe(
+      "Let me think about this...",
+    );
+  });
+
+  it("should join multiple reasoning blocks in assistant messages", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Explain quantum computing" }],
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "reasoning",
+            content: "First, define qubits.",
+          },
+          { type: "text", content: "Quantum computing uses qubits." },
+          {
+            type: "reasoning",
+            content: "Then explain superposition.",
+          },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(2);
+
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      reasoning_content?: string;
+    };
+    expect(assistantMessage.reasoning_content).toBe(
+      "First, define qubits.\nThen explain superposition.",
+    );
+  });
+
+  it("should not include reasoning_content when there are no reasoning blocks", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Hello" }],
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [{ type: "text", content: "Hi there!" }],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(2);
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      reasoning_content?: string;
+    };
+    expect(assistantMessage.reasoning_content).toBeUndefined();
+  });
+
   it("should convert compact block to user role for API (matching Claude Code auto-compact)", () => {
     const messages: Message[] = [
       {

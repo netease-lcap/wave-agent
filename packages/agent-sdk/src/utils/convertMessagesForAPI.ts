@@ -145,6 +145,20 @@ export function convertMessagesForAPI(
           .join("\n");
       }
 
+      // Extract reasoning content from reasoning blocks
+      const reasoningBlocks = message.blocks.filter(
+        (block) =>
+          block.type === "reasoning" &&
+          block.content &&
+          block.content.trim().length > 0,
+      );
+      let reasoning_content: string | undefined;
+      if (reasoningBlocks.length > 0) {
+        reasoning_content = reasoningBlocks
+          .map((block) => (block.type === "reasoning" ? block.content : ""))
+          .join("\n");
+      }
+
       // Construct tool calls from tool blocks
       if (toolBlocks.length > 0) {
         tool_calls = toolBlocks
@@ -176,8 +190,9 @@ export function convertMessagesForAPI(
           role: "assistant",
           content: hasContent ? content : undefined,
           tool_calls,
+          ...(reasoning_content ? { reasoning_content } : {}),
           ...(message.additionalFields ? { ...message.additionalFields } : {}),
-        };
+        } as ChatCompletionMessageParam;
 
         recentMessages.unshift(assistantMessage);
       }
