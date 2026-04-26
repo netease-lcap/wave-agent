@@ -146,4 +146,88 @@ describe("DiscoverView", () => {
       expect(lastFrame()).toContain("> plugin2");
     });
   });
+
+  describe("scrolling", () => {
+    const fivePlugins: PluginManagerContextType["discoverablePlugins"] = [
+      {
+        name: "plugin1",
+        marketplace: "mp1",
+        description: "Description 1",
+        installed: false,
+        version: "1.0.0",
+        source: "source1",
+      },
+      {
+        name: "plugin2",
+        marketplace: "mp2",
+        description: "Description 2",
+        installed: false,
+        version: "2.0.0",
+        source: "source2",
+      },
+      {
+        name: "plugin3",
+        marketplace: "mp3",
+        description: "Description 3",
+        installed: false,
+        version: "3.0.0",
+        source: "source3",
+      },
+      {
+        name: "plugin4",
+        marketplace: "mp4",
+        description: "Description 4",
+        installed: false,
+        version: "4.0.0",
+        source: "source4",
+      },
+      {
+        name: "plugin5",
+        marketplace: "mp5",
+        description: "Description 5",
+        installed: false,
+        version: "5.0.0",
+        source: "source5",
+      },
+    ];
+
+    it("should show max 3 plugins when more than 3 discoverable", () => {
+      const { lastFrame } = render(
+        <PluginManagerContext.Provider value={createMockContext(fivePlugins)}>
+          <DiscoverView />
+        </PluginManagerContext.Provider>,
+      );
+      const frame = lastFrame();
+      expect(frame).toContain("plugin1");
+      expect(frame).toContain("plugin2");
+      expect(frame).toContain("plugin3");
+      expect(frame).not.toContain("plugin4");
+      expect(frame).not.toContain("plugin5");
+    });
+
+    it("should scroll window when navigating down past the third visible plugin", async () => {
+      const { stdin, lastFrame } = render(
+        <PluginManagerContext.Provider value={createMockContext(fivePlugins)}>
+          <DiscoverView />
+        </PluginManagerContext.Provider>,
+      );
+
+      // Navigate Down 4 times to reach index 4, waiting between each
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => expect(lastFrame()).toContain("> plugin2"));
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => expect(lastFrame()).toContain("> plugin3"));
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => expect(lastFrame()).toContain("> plugin4"));
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        const frame = lastFrame();
+        expect(frame).toContain("> plugin5");
+        expect(frame).not.toContain("plugin1");
+        expect(frame).not.toContain("plugin2");
+        expect(frame).toContain("plugin3");
+        expect(frame).toContain("plugin4");
+      });
+    });
+  });
 });

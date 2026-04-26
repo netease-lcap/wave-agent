@@ -74,4 +74,80 @@ describe("PluginList", () => {
     expect(frame).toContain("no-version-plugin");
     expect(frame).not.toContain("@test v");
   });
+
+  describe("scrolling", () => {
+    const fivePlugins = [
+      {
+        name: "plugin-1",
+        marketplace: "mp1",
+        installed: false,
+        description: "Description 1",
+        source: "source1",
+      },
+      {
+        name: "plugin-2",
+        marketplace: "mp2",
+        installed: false,
+        description: "Description 2",
+        source: "source2",
+      },
+      {
+        name: "plugin-3",
+        marketplace: "mp3",
+        installed: false,
+        description: "Description 3",
+        source: "source3",
+      },
+      {
+        name: "plugin-4",
+        marketplace: "mp4",
+        installed: false,
+        description: "Description 4",
+        source: "source4",
+      },
+      {
+        name: "plugin-5",
+        marketplace: "mp5",
+        installed: false,
+        description: "Description 5",
+        source: "source5",
+      },
+    ];
+
+    it("should show max 3 plugins when more than 3 exist", () => {
+      const { lastFrame } = render(
+        <PluginList plugins={fivePlugins} selectedIndex={0} />,
+      );
+      const frame = lastFrame();
+      expect(frame).toContain("plugin-1");
+      expect(frame).toContain("plugin-2");
+      expect(frame).toContain("plugin-3");
+      expect(frame).not.toContain("plugin-4");
+      expect(frame).not.toContain("plugin-5");
+    });
+
+    it("should scroll window when selectedIndex moves past visible range", () => {
+      const { lastFrame } = render(
+        <PluginList plugins={fivePlugins} selectedIndex={4} />,
+      );
+      const frame = lastFrame();
+      expect(frame).not.toContain("plugin-1");
+      expect(frame).not.toContain("plugin-2");
+      expect(frame).toContain("plugin-3");
+      expect(frame).toContain("plugin-4");
+      expect(frame).toContain("plugin-5");
+    });
+
+    it("should handle selectedIndex 0 with 5 plugins (center window)", () => {
+      const { lastFrame } = render(
+        <PluginList plugins={fivePlugins} selectedIndex={0} />,
+      );
+      const frame = lastFrame();
+      expect(frame).toContain("plugin-1");
+      expect(frame).toContain("plugin-2");
+      expect(frame).toContain("plugin-3");
+      expect(frame).not.toContain("plugin-4");
+      expect(frame).not.toContain("plugin-5");
+    });
+  });
 });
