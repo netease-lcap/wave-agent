@@ -178,4 +178,123 @@ describe("InstalledView", () => {
       expect(lastFrame()).toContain("> plugin2");
     });
   });
+
+  describe("scrolling", () => {
+    const fiveInstalledPlugins: PluginManagerContextType["installedPlugins"] = [
+      {
+        name: "plugin1",
+        marketplace: "mp1",
+        enabled: true,
+        version: "1.0.0",
+        cachePath: "/tmp/plugin1",
+      },
+      {
+        name: "plugin2",
+        marketplace: "mp2",
+        enabled: true,
+        version: "2.0.0",
+        cachePath: "/tmp/plugin2",
+      },
+      {
+        name: "plugin3",
+        marketplace: "mp3",
+        enabled: true,
+        version: "3.0.0",
+        cachePath: "/tmp/plugin3",
+      },
+      {
+        name: "plugin4",
+        marketplace: "mp4",
+        enabled: true,
+        version: "4.0.0",
+        cachePath: "/tmp/plugin4",
+      },
+      {
+        name: "plugin5",
+        marketplace: "mp5",
+        enabled: true,
+        version: "5.0.0",
+        cachePath: "/tmp/plugin5",
+      },
+    ];
+
+    it("should show max 3 plugins when more than 3 installed", () => {
+      const { lastFrame } = render(
+        <PluginManagerContext.Provider
+          value={createMockContext(fiveInstalledPlugins)}
+        >
+          <InstalledView />
+        </PluginManagerContext.Provider>,
+      );
+      const frame = lastFrame();
+      expect(frame).toContain("plugin1");
+      expect(frame).toContain("plugin2");
+      expect(frame).toContain("plugin3");
+      expect(frame).not.toContain("plugin4");
+      expect(frame).not.toContain("plugin5");
+    });
+
+    it("should scroll window when navigating down past the third visible item", async () => {
+      const { stdin, lastFrame } = render(
+        <PluginManagerContext.Provider
+          value={createMockContext(fiveInstalledPlugins)}
+        >
+          <InstalledView />
+        </PluginManagerContext.Provider>,
+      );
+
+      // Press Down 4 times to reach index 4, waiting between each
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("> plugin2");
+      });
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("> plugin3");
+      });
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("> plugin4");
+      });
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        const frame = lastFrame();
+        expect(frame).toContain("> plugin5");
+        expect(frame).not.toContain("plugin1");
+        expect(frame).not.toContain("plugin2");
+        expect(frame).toContain("plugin3");
+        expect(frame).toContain("plugin4");
+      });
+    });
+
+    it("should scroll window when navigating back up", async () => {
+      const { stdin, lastFrame } = render(
+        <PluginManagerContext.Provider
+          value={createMockContext(fiveInstalledPlugins)}
+        >
+          <InstalledView />
+        </PluginManagerContext.Provider>,
+      );
+
+      // Navigate to index 4
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => expect(lastFrame()).toContain("> plugin2"));
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => expect(lastFrame()).toContain("> plugin3"));
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => expect(lastFrame()).toContain("> plugin4"));
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => expect(lastFrame()).toContain("> plugin5"));
+
+      // Press Up once - window should shift back
+      stdin.write("\u001B[A");
+      await vi.waitFor(() => {
+        const frame = lastFrame();
+        expect(frame).toContain("> plugin4");
+        expect(frame).not.toContain("plugin1");
+        expect(frame).toContain("plugin3");
+        expect(frame).toContain("plugin5");
+      });
+    });
+  });
 });

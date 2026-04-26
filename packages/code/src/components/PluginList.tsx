@@ -12,6 +12,8 @@ interface PluginListProps {
   onSelect?: (index: number) => void;
 }
 
+const MAX_VISIBLE_ITEMS = 3;
+
 export const PluginList: React.FC<PluginListProps> = ({
   plugins,
   selectedIndex,
@@ -24,10 +26,22 @@ export const PluginList: React.FC<PluginListProps> = ({
     );
   }
 
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, plugins.length - MAX_VISIBLE_ITEMS),
+    ),
+  );
+  const visiblePlugins = plugins.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_ITEMS,
+  );
+
   return (
     <Box flexDirection="column">
-      {plugins.map((plugin, index) => {
-        const isSelected = index === selectedIndex;
+      {visiblePlugins.map((plugin, index) => {
+        const isSelected = index + startIndex === selectedIndex;
         const pluginId = `${plugin.name}@${plugin.marketplace}`;
 
         return (

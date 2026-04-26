@@ -30,10 +30,23 @@ export const InstalledView: React.FC = () => {
     );
   }
 
+  const MAX_VISIBLE_ITEMS = 3;
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, installedPlugins.length - MAX_VISIBLE_ITEMS),
+    ),
+  );
+  const visiblePlugins = installedPlugins.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_ITEMS,
+  );
+
   return (
     <Box flexDirection="column">
-      {installedPlugins.map((plugin, index) => {
-        const isSelected = index === selectedIndex;
+      {visiblePlugins.map((plugin, index) => {
+        const isSelected = index + startIndex === selectedIndex;
         return (
           <Box
             key={`${plugin.name}@${plugin.marketplace}`}
