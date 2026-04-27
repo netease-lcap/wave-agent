@@ -251,6 +251,7 @@ export class SubagentManager {
       model?: string;
       stream?: boolean;
       permissionModeOverride?: PermissionMode;
+      maxTurns?: number;
     },
     runInBackground?: boolean,
     onUpdate?: () => void,
@@ -356,6 +357,7 @@ export class SubagentManager {
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
       modelOverride: parameters.model || configuration.model, // Pass model override
       stream: parameters.stream ?? this.stream, // Pass streaming mode flag
+      maxTurns: parameters.maxTurns, // Pass maxTurns limit
       callbacks: {
         onUsageAdded: this.onUsageAdded,
       },

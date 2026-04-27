@@ -173,4 +173,19 @@ describe("AutoMemoryService", () => {
     await autoMemoryService.onTurnEnd("/workdir");
     expect(mockForkedAgentManager.forkAndExecute).toHaveBeenCalledTimes(2);
   });
+
+  it("should pass maxTurns: 5 to forkAndExecute", async () => {
+    mockMessageManager.getMessages.mockReturnValue([
+      { id: "msg1", role: "user", blocks: [] },
+    ]);
+
+    await autoMemoryService.onTurnEnd("/workdir");
+
+    expect(mockForkedAgentManager.forkAndExecute).toHaveBeenCalledWith(
+      "general-purpose",
+      expect.any(Array),
+      expect.objectContaining({ maxTurns: 5 }),
+      expect.any(String),
+    );
+  });
 });
