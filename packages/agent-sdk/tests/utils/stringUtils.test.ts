@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   getLastLines,
   parseCustomHeaders,
+  recoverTruncatedJson,
   removeCodeBlockWrappers,
 } from "@/utils/stringUtils.js";
 
@@ -144,5 +145,54 @@ describe("parseCustomHeaders", () => {
   it("should handle undefined or null input gracefully", () => {
     expect(parseCustomHeaders(undefined as unknown as string)).toEqual({});
     expect(parseCustomHeaders(null as unknown as string)).toEqual({});
+  });
+});
+
+describe("recoverTruncatedJson", () => {
+  it("should return valid JSON unchanged", () => {
+    expect(recoverTruncatedJson('{"a": 1}')).toBe('{"a": 1}');
+  });
+
+  it("should recover JSON missing one closing brace", () => {
+    expect(recoverTruncatedJson('{"a": 1')).toBe('{"a": 1}');
+  });
+
+  it("should recover JSON missing multiple closing braces", () => {
+    expect(recoverTruncatedJson('{"a": {"b": 2')).toBe('{"a": {"b": 2}}');
+  });
+
+  it("should not modify JSON that is already closed", () => {
+    expect(recoverTruncatedJson('{"a": {"b": [1, 2]}}')).toBe(
+      '{"a": {"b": [1, 2]}}',
+    );
+  });
+
+  it("should handle strings containing braces without counting them", () => {
+    expect(recoverTruncatedJson(`{"a": "hello}`)).toBe(`{"a": "hello}"}`);
+  });
+
+  it("should handle escaped quotes inside strings", () => {
+    expect(recoverTruncatedJson(`{"a": "say \\"hi\\"`)).toBe(
+      `{"a": "say \\"hi\\""}`,
+    );
+  });
+
+  it("should return unchanged string for unclosed brackets", () => {
+    // Unclosed brackets cannot be safely recovered
+    expect(recoverTruncatedJson('{"a": [1, 2')).toBe('{"a": [1, 2');
+  });
+
+  it("should close unclosed string before closing braces", () => {
+    expect(recoverTruncatedJson(`{"a": "hello}`)).toBe(`{"a": "hello}"}`);
+  });
+
+  it("should handle empty object missing closing brace", () => {
+    expect(recoverTruncatedJson("{")).toBe("{}");
+  });
+
+  it("should handle deeply nested truncation", () => {
+    expect(recoverTruncatedJson('{"a": {"b": {"c": 3')).toBe(
+      '{"a": {"b": {"c": 3}}}',
+    );
   });
 });
