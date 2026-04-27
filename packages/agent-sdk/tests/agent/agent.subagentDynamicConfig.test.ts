@@ -192,7 +192,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       expect(modelConfig.fastModel).toBe("parent-fast-model");
 
       // Should inherit token limit from parent (using default since not specified)
-      expect(subagentAIManager.getMaxInputTokens()).toBe(96000); // Default value
+      expect(subagentAIManager.getMaxInputTokens()).toBe(128000); // Default value
 
       // Update parent environment variables
       process.env.WAVE_API_KEY = "updated-parent-token";

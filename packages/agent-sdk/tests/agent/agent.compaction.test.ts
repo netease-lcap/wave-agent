@@ -17,7 +17,7 @@ describe("Agent Message Compaction Tests", () => {
     // Disable auto-memory to prevent extra callAgent calls from background tasks
     vi.stubEnv("WAVE_DISABLE_AUTO_MEMORY", "1");
 
-    // Clear WAVE_MAX_INPUT_TOKENS to use default 96000 for compaction threshold
+    // Clear WAVE_MAX_INPUT_TOKENS to use default 128000 for compaction threshold
     delete process.env.WAVE_MAX_INPUT_TOKENS;
 
     // Create Agent instance with required parameters
@@ -475,7 +475,7 @@ describe("Agent Message Compaction Tests", () => {
           usage: {
             prompt_tokens: 50000,
             completion_tokens: 20000,
-            total_tokens: 102000, // Exceeds 96000 to trigger compaction
+            total_tokens: 130000, // Exceeds 128000 to trigger compaction
           },
         };
       } else {
