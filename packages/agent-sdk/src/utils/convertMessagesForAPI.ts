@@ -23,9 +23,9 @@ function safeToolArguments(args: string): string {
     // Try to parse as JSON to validate format
     JSON.parse(args);
     return args;
-  } catch (error) {
-    logger.error(`Invalid tool arguments: ${args}`, error);
-    // If not valid JSON, return a fallback empty object with the original string as a comment or property
+  } catch {
+    // Malformed JSON was already logged when the tool block was created.
+    // Return a sanitized fallback without re-logging on every API call.
     return JSON.stringify({
       invalid_arguments: args,
     });
