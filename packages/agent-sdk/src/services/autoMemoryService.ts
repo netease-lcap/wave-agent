@@ -164,6 +164,7 @@ export class AutoMemoryService {
         ],
         model: "fastModel", // Use fast model for background tasks to reduce latency and cost
         permissionModeOverride: "dontAsk", // Auto-deny out-of-scope writes without prompting user
+        maxTurns: 5, // Limit turns to prevent verification rabbit-holes
       },
       `${prompt}\n\nThe memory directory for this project is: ${memoryDir}`,
     );

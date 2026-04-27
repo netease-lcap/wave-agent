@@ -47,6 +47,7 @@ export class ForkedAgentManager {
       allowedTools?: string[];
       model?: string;
       permissionModeOverride?: PermissionMode;
+      maxTurns?: number;
     },
     prompt: string,
   ): Promise<string> {
@@ -84,6 +85,7 @@ export class ForkedAgentManager {
       allowedTools?: string[];
       model?: string;
       permissionModeOverride?: PermissionMode;
+      maxTurns?: number;
     },
     prompt: string,
   ): Promise<void> {
@@ -103,6 +105,7 @@ export class ForkedAgentManager {
           allowedTools: parameters.allowedTools,
           model: parameters.model,
           permissionModeOverride: parameters.permissionModeOverride,
+          maxTurns: parameters.maxTurns,
         },
         false,
       );

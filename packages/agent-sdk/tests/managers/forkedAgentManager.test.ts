@@ -293,4 +293,21 @@ describe("ForkedAgentManager", () => {
     expect(forkedAgentManager.getActiveForks()).toHaveLength(1);
     expect(forkedAgentManager.getActiveForks()[0].id).toBe(id2);
   });
+
+  it("should pass maxTurns through forkAndExecute to createInstance", async () => {
+    await forkedAgentManager.forkAndExecute(
+      "general-purpose",
+      mockMessages,
+      { ...mockParameters, maxTurns: 5 },
+      mockPrompt,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockSubagentManager.createInstance).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ maxTurns: 5 }),
+        false,
+      );
+    });
+  });
 });

@@ -45,6 +45,8 @@ export interface AIManagerOptions {
   stream?: boolean;
   /**Optional model override (e.g. for subagents) */
   modelOverride?: string;
+  /**Optional max turns limit to prevent runaway recursion (e.g. for auto-memory extraction) */
+  maxTurns?: number;
 }
 
 export class AIManager {
@@ -60,6 +62,7 @@ export class AIManager {
   private modelOverride?: string;
   private _onCwdChange?: (newCwd: string) => void; // Store callback for CWD changes
   private consecutiveCompactionFailures: number = 0;
+  private readonly maxTurns?: number;
 
   // Service overrides
   constructor(
@@ -74,6 +77,7 @@ export class AIManager {
     this.callbacks = options.callbacks ?? {};
     this.modelOverride = options.modelOverride;
     this._onCwdChange = options.callbacks?.onCwdChange; // Initialize onCwdChange
+    this.maxTurns = options.maxTurns;
   }
 
   private get toolManager(): ToolManager {
@@ -1020,108 +1024,116 @@ export class AIManager {
 
       // Check if there are tool operations or response was truncated, if so automatically initiate next AI service call
       if (toolCalls.length > 0 || result.finish_reason === "length") {
-        // Record committed snapshots to message history
-        if (this.reversionManager) {
-          const snapshots =
-            this.reversionManager.getAndClearCommittedSnapshots();
-          if (snapshots.length > 0) {
-            this.messageManager.addFileHistoryBlock(snapshots);
-          }
-        }
-
-        // Check interruption status
-        const isCurrentlyAborted =
-          abortController.signal.aborted || toolAbortController.signal.aborted;
-
-        // Check if all tools were manually backgrounded
-        const lastMessage =
-          this.messageManager.getMessages()[
-            this.messageManager.getMessages().length - 1
-          ];
-        const toolBlocks =
-          lastMessage?.blocks.filter(
-            (block): block is import("../types/messaging.js").ToolBlock =>
-              block.type === "tool",
-          ) || [];
-        const hasBackgrounded =
-          toolBlocks.length > 0 &&
-          toolBlocks.some((block) => block.isManuallyBackgrounded);
-
-        if (hasBackgrounded) {
-          logger?.info(
-            "Some tools were manually backgrounded, stopping recursion.",
+        // Check maxTurns limit before recursing
+        if (this.maxTurns && recursionDepth + 1 >= this.maxTurns) {
+          logger?.debug(
+            `Max turns (${this.maxTurns}) reached, stopping recursion.`,
           );
-        } else if (!isCurrentlyAborted) {
-          // If response was truncated, add a hidden continuation message
-          if (result.finish_reason === "length") {
-            this.messageManager.addUserMessage({
-              content:
-                "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.",
-              isMeta: true,
-            });
+        } else {
+          // Record committed snapshots to message history
+          if (this.reversionManager) {
+            const snapshots =
+              this.reversionManager.getAndClearCommittedSnapshots();
+            if (snapshots.length > 0) {
+              this.messageManager.addFileHistoryBlock(snapshots);
+            }
           }
 
-          // Duplicate Tool Call Detection
-          if (toolCalls.length > 0) {
-            const messages = this.messageManager.getMessages();
-            // Find the most recent assistant message BEFORE the current one that has tool blocks
-            // The current assistant message is messages[messages.length - 1]
-            let previousAssistantWithTools: Message | undefined;
-            for (let i = messages.length - 2; i >= 0; i--) {
-              const msg = messages[i];
-              if (
-                msg.role === "assistant" &&
-                msg.blocks.some((b) => b.type === "tool")
-              ) {
-                previousAssistantWithTools = msg;
-                break;
-              }
+          // Check interruption status
+          const isCurrentlyAborted =
+            abortController.signal.aborted ||
+            toolAbortController.signal.aborted;
+
+          // Check if all tools were manually backgrounded
+          const lastMessage =
+            this.messageManager.getMessages()[
+              this.messageManager.getMessages().length - 1
+            ];
+          const toolBlocks =
+            lastMessage?.blocks.filter(
+              (block): block is import("../types/messaging.js").ToolBlock =>
+                block.type === "tool",
+            ) || [];
+          const hasBackgrounded =
+            toolBlocks.length > 0 &&
+            toolBlocks.some((block) => block.isManuallyBackgrounded);
+
+          if (hasBackgrounded) {
+            logger?.info(
+              "Some tools were manually backgrounded, stopping recursion.",
+            );
+          } else if (!isCurrentlyAborted) {
+            // If response was truncated, add a hidden continuation message
+            if (result.finish_reason === "length") {
+              this.messageManager.addUserMessage({
+                content:
+                  "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.",
+                isMeta: true,
+              });
             }
 
-            if (previousAssistantWithTools) {
-              const previousToolBlocks =
-                previousAssistantWithTools.blocks.filter(
-                  (b): b is import("../types/messaging.js").ToolBlock =>
-                    b.type === "tool",
-                );
+            // Duplicate Tool Call Detection
+            if (toolCalls.length > 0) {
+              const messages = this.messageManager.getMessages();
+              // Find the most recent assistant message BEFORE the current one that has tool blocks
+              // The current assistant message is messages[messages.length - 1]
+              let previousAssistantWithTools: Message | undefined;
+              for (let i = messages.length - 2; i >= 0; i--) {
+                const msg = messages[i];
+                if (
+                  msg.role === "assistant" &&
+                  msg.blocks.some((b) => b.type === "tool")
+                ) {
+                  previousAssistantWithTools = msg;
+                  break;
+                }
+              }
 
-              for (const currentToolCall of toolCalls) {
-                const currentName = currentToolCall.function?.name;
-                const currentArgs = currentToolCall.function?.arguments;
-
-                const isDuplicate = previousToolBlocks.some(
-                  (prevBlock) =>
-                    prevBlock.name === currentName &&
-                    prevBlock.parameters === currentArgs,
-                );
-
-                if (isDuplicate && currentName) {
-                  const toolId = currentToolCall.id;
-                  const lastMessage = messages[messages.length - 1];
-                  const toolBlock = lastMessage.blocks.find(
+              if (previousAssistantWithTools) {
+                const previousToolBlocks =
+                  previousAssistantWithTools.blocks.filter(
                     (b): b is import("../types/messaging.js").ToolBlock =>
-                      b.type === "tool" && b.id === toolId,
+                      b.type === "tool",
                   );
-                  if (toolBlock) {
-                    const warning = `\n\nNote: You just called this tool with the same arguments in the previous turn. Please ensure you are not in a loop and consider if you need to change your approach.`;
-                    this.messageManager.updateToolBlock({
-                      id: toolId,
-                      result: (toolBlock.result || "") + warning,
-                      stage: "end",
-                    });
+
+                for (const currentToolCall of toolCalls) {
+                  const currentName = currentToolCall.function?.name;
+                  const currentArgs = currentToolCall.function?.arguments;
+
+                  const isDuplicate = previousToolBlocks.some(
+                    (prevBlock) =>
+                      prevBlock.name === currentName &&
+                      prevBlock.parameters === currentArgs,
+                  );
+
+                  if (isDuplicate && currentName) {
+                    const toolId = currentToolCall.id;
+                    const lastMessage = messages[messages.length - 1];
+                    const toolBlock = lastMessage.blocks.find(
+                      (b): b is import("../types/messaging.js").ToolBlock =>
+                        b.type === "tool" && b.id === toolId,
+                    );
+                    if (toolBlock) {
+                      const warning = `\n\nNote: You just called this tool with the same arguments in the previous turn. Please ensure you are not in a loop and consider if you need to change your approach.`;
+                      this.messageManager.updateToolBlock({
+                        id: toolId,
+                        result: (toolBlock.result || "") + warning,
+                        stage: "end",
+                      });
+                    }
                   }
                 }
               }
             }
-          }
 
-          // Recursively call AI service, increment recursion depth, and pass same configuration
-          await this.sendAIMessage({
-            recursionDepth: recursionDepth + 1,
-            model,
-            allowedRules,
-            maxTokens,
-          });
+            // Recursively call AI service, increment recursion depth, and pass same configuration
+            await this.sendAIMessage({
+              recursionDepth: recursionDepth + 1,
+              model,
+              allowedRules,
+              maxTokens,
+            });
+          }
         }
       }
     } catch (error) {
