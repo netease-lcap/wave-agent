@@ -2,7 +2,7 @@ import type { Message } from "../types/index.js";
 import { convertImageToBase64 } from "./messageOperations.js";
 import { taskNotificationToXml } from "./notificationXml.js";
 import { ChatCompletionMessageToolCall } from "openai/resources";
-import { stripAnsiColors } from "./stringUtils.js";
+import { recoverTruncatedJson, stripAnsiColors } from "./stringUtils.js";
 import {
   ChatCompletionContentPart,
   ChatCompletionMessageParam,
@@ -10,7 +10,8 @@ import {
 import { logger } from "./globalLogger.js";
 
 /**
- * Safely handle tool call parameters, ensuring a legal JSON string is returned
+ * Safely handle tool call parameters, ensuring a legal JSON string is returned.
+ * Attempts to recover truncated JSON (e.g., missing closing braces).
  * @param args Tool call parameters
  * @returns Legal JSON string
  */
@@ -24,11 +25,17 @@ function safeToolArguments(args: string): string {
     JSON.parse(args);
     return args;
   } catch {
-    // Malformed JSON was already logged when the tool block was created.
-    // Return a sanitized fallback without re-logging on every API call.
-    return JSON.stringify({
-      invalid_arguments: args,
-    });
+    // Attempt to recover truncated JSON
+    const recovered = recoverTruncatedJson(args);
+    try {
+      JSON.parse(recovered);
+      return recovered;
+    } catch {
+      // Truly malformed JSON — return sanitized fallback
+      return JSON.stringify({
+        invalid_arguments: args,
+      });
+    }
   }
 }
 

@@ -24,6 +24,7 @@ import type { SubagentManager } from "./subagentManager.js";
 import type { SkillManager } from "./skillManager.js";
 import { buildSystemPrompt } from "../prompts/index.js";
 import { Container } from "../utils/container.js";
+import { recoverTruncatedJson } from "../utils/stringUtils.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import type { NotificationQueue } from "./notificationQueue.js";
 
@@ -814,34 +815,45 @@ export class AIManager {
             const toolName = functionToolCall.function?.name || "";
             // Safely parse tool parameters, handle tools without parameters
             let toolArgs: Record<string, unknown> = {};
+            let jsonRecovered = false;
             const argsString = functionToolCall.function?.arguments?.trim();
 
             if (!argsString || argsString === "") {
               // Tool without parameters, use empty object
               toolArgs = {};
             } else {
+              let recoveredArgs = argsString;
               try {
                 toolArgs = JSON.parse(argsString);
-              } catch (parseError) {
-                // For non-empty but malformed JSON, still throw exception
-                let errorMessage = `Failed to parse tool arguments`;
-                if (result.finish_reason === "length") {
-                  errorMessage +=
-                    " (output truncated, please reduce your output)";
+              } catch {
+                // Attempt to recover truncated JSON (e.g., missing closing braces)
+                recoveredArgs = recoverTruncatedJson(argsString);
+                try {
+                  toolArgs = JSON.parse(recoveredArgs);
+                  jsonRecovered = true;
+                  logger.warn(
+                    `Recovered truncated JSON for tool "${toolName}"`,
+                  );
+                } catch (parseError) {
+                  let errorMessage = `Failed to parse tool arguments`;
+                  if (result.finish_reason === "length") {
+                    errorMessage +=
+                      " (output truncated, please reduce your output)";
+                  }
+                  logger?.error(errorMessage, parseError);
+                  this.messageManager.updateToolBlock({
+                    id: toolId,
+                    parameters: argsString,
+                    result: errorMessage,
+                    success: false,
+                    error: errorMessage,
+                    stage: "end",
+                    name: toolName,
+                    compactParams: "",
+                    timestamp: Date.now(),
+                  });
+                  return;
                 }
-                logger?.error(errorMessage, parseError);
-                this.messageManager.updateToolBlock({
-                  id: toolId,
-                  parameters: argsString,
-                  result: errorMessage,
-                  success: false,
-                  error: errorMessage,
-                  stage: "end",
-                  name: toolName,
-                  compactParams: "",
-                  timestamp: Date.now(),
-                });
-                return;
               }
             }
 
@@ -942,13 +954,20 @@ export class AIManager {
                 context,
               );
 
+              // Build result content, adding truncation warning if JSON was recovered
+              let toolResultContent =
+                toolResult.content ||
+                (toolResult.error ? `Error: ${toolResult.error}` : "");
+              if (jsonRecovered) {
+                toolResultContent +=
+                  "\n\n⚠️ Tool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.";
+              }
+
               // Update message state - tool execution completed
               this.messageManager.updateToolBlock({
                 id: toolId,
                 parameters: argsString,
-                result:
-                  toolResult.content ||
-                  (toolResult.error ? `Error: ${toolResult.error}` : ""),
+                result: toolResultContent,
                 success: toolResult.success,
                 error: toolResult.error,
                 stage: "end",
