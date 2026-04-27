@@ -42,6 +42,9 @@ When this skill is invoked, follow these steps:
 - `allowed-tools`: (Optional) List of tools the skill can use.
 - `context: fork`: (Optional) Run the skill in a separate subagent.
 - `agent`: (Optional) Specify the subagent type (default: `general-purpose`).
+- `disable-model-invocation`: (Optional, default: `false`) Set to `true` to hide the skill from the AI's available skills list. The skill can still be invoked by users via slash commands.
+- `user-invocable`: (Optional, default: `true`) Set to `false` to hide the skill from the `/` slash command menu. The AI can still invoke it unless `disable-model-invocation` is also set.
+- `model`: (Optional) Override the AI model used for skill execution (e.g., `"gpt-4o"`, `"o3-mini"`).
 
 ## Skill Locations
 
