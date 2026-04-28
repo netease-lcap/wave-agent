@@ -49,24 +49,26 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
     startIndex + MAX_VISIBLE_ITEMS,
   );
 
+  const stateRef = React.useRef({ filteredCommands, selectedIndex });
+  React.useEffect(() => {
+    stateRef.current = { filteredCommands, selectedIndex };
+  }, [filteredCommands, selectedIndex]);
+
   useInput((input, key) => {
+    const { filteredCommands: currentCommands, selectedIndex: currentIndex } =
+      stateRef.current;
+
     if (key.return) {
-      if (
-        filteredCommands.length > 0 &&
-        selectedIndex < filteredCommands.length
-      ) {
-        const selectedCommand = filteredCommands[selectedIndex].id;
+      if (currentCommands.length > 0 && currentIndex < currentCommands.length) {
+        const selectedCommand = currentCommands[currentIndex].id;
         onSelect(selectedCommand);
       }
       return;
     }
 
     if (key.tab && onInsert) {
-      if (
-        filteredCommands.length > 0 &&
-        selectedIndex < filteredCommands.length
-      ) {
-        const selectedCommand = filteredCommands[selectedIndex].id;
+      if (currentCommands.length > 0 && currentIndex < currentCommands.length) {
+        const selectedCommand = currentCommands[currentIndex].id;
         onInsert(selectedCommand);
       }
       return;
@@ -78,14 +80,12 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
     }
 
     if (key.upArrow) {
-      setSelectedIndex(Math.max(0, selectedIndex - 1));
+      setSelectedIndex(Math.max(0, currentIndex - 1));
       return;
     }
 
     if (key.downArrow) {
-      setSelectedIndex(
-        Math.min(filteredCommands.length - 1, selectedIndex + 1),
-      );
+      setSelectedIndex(Math.min(currentCommands.length - 1, currentIndex + 1));
       return;
     }
   });

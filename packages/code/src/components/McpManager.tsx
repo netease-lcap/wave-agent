@@ -72,16 +72,24 @@ export const McpManager: React.FC<McpManagerProps> = ({
     await onDisconnectServer(serverName);
   };
 
+  const stateRef = React.useRef({ state, servers });
+  React.useEffect(() => {
+    stateRef.current = { state, servers };
+  }, [state, servers]);
+
   useInput((input, key) => {
+    const currentState = stateRef.current.state;
+    const currentServers = stateRef.current.servers;
+
     if (key.return) {
-      if (state.viewMode === "list") {
+      if (currentState.viewMode === "list") {
         dispatch({ type: "SET_VIEW_MODE", viewMode: "detail" });
       }
       return;
     }
 
     if (key.escape) {
-      if (state.viewMode === "detail") {
+      if (currentState.viewMode === "detail") {
         dispatch({ type: "SET_VIEW_MODE", viewMode: "list" });
       } else {
         onCancel();
@@ -90,18 +98,18 @@ export const McpManager: React.FC<McpManagerProps> = ({
     }
 
     if (key.upArrow) {
-      dispatch({ type: "MOVE_UP", serverCount: servers.length });
+      dispatch({ type: "MOVE_UP", serverCount: currentServers.length });
       return;
     }
 
     if (key.downArrow) {
-      dispatch({ type: "MOVE_DOWN", serverCount: servers.length });
+      dispatch({ type: "MOVE_DOWN", serverCount: currentServers.length });
       return;
     }
 
     // Hotkeys for server actions
     if (input === "c") {
-      const server = servers[state.selectedIndex];
+      const server = currentServers[currentState.selectedIndex];
       if (
         server &&
         (server.status === "disconnected" || server.status === "error")
@@ -112,7 +120,7 @@ export const McpManager: React.FC<McpManagerProps> = ({
     }
 
     if (input === "d") {
-      const server = servers[state.selectedIndex];
+      const server = currentServers[currentState.selectedIndex];
       if (server && server.status === "connected") {
         handleDisconnect(server.name);
       }

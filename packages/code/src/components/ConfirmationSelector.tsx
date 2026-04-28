@@ -98,7 +98,21 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     return "Yes, and auto-accept edits";
   };
 
+  const stateRef = React.useRef(state);
+  const questionStateRef = React.useRef(questionState);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    questionStateRef.current = questionState;
+  }, [questionState]);
+
   useInput((input, key) => {
+    const currentState = stateRef.current;
+    const currentQuestionState = questionStateRef.current;
+
     if (key.escape) {
       onCancel();
       return;
@@ -122,12 +136,12 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
 
       if (input === " ") {
         const isOtherFocused =
-          questionState.selectedOptionIndex === options.length - 1;
+          currentQuestionState.selectedOptionIndex === options.length - 1;
         if (
           isMultiSelect &&
           (!isOtherFocused ||
-            !questionState.selectedOptionIndices.has(
-              questionState.selectedOptionIndex,
+            !currentQuestionState.selectedOptionIndices.has(
+              currentQuestionState.selectedOptionIndex,
             ))
         ) {
           questionDispatch({
@@ -199,13 +213,13 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
 
     if (key.return) {
       let decision: PermissionDecision | null = null;
-      if (state.selectedOption === "clear") {
+      if (currentState.selectedOption === "clear") {
         decision = {
           behavior: "allow",
           newPermissionMode: "acceptEdits",
           clearContext: true,
         };
-      } else if (state.selectedOption === "allow") {
+      } else if (currentState.selectedOption === "allow") {
         if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
           decision = { behavior: "allow", newPermissionMode: "default" };
         } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
@@ -213,7 +227,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
         } else {
           decision = { behavior: "allow" };
         }
-      } else if (state.selectedOption === "auto") {
+      } else if (currentState.selectedOption === "auto") {
         if (toolName === BASH_TOOL_NAME) {
           const command = (toolInput?.command as string) || "";
           if (command.trim().startsWith("mkdir")) {
@@ -231,8 +245,11 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
         } else {
           decision = { behavior: "allow", newPermissionMode: "acceptEdits" };
         }
-      } else if (state.alternativeText.trim()) {
-        decision = { behavior: "deny", message: state.alternativeText.trim() };
+      } else if (currentState.alternativeText.trim()) {
+        decision = {
+          behavior: "deny",
+          message: currentState.alternativeText.trim(),
+        };
       } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
         decision = {
           behavior: "deny",
@@ -245,7 +262,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       return;
     }
 
-    if (state.selectedOption === "alternative") {
+    if (currentState.selectedOption === "alternative") {
       if (key.leftArrow) {
         dispatch({ type: "MOVE_CURSOR_LEFT" });
         return;
@@ -263,7 +280,9 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     availableOptions.push("alternative");
 
     if (key.upArrow) {
-      const currentIndex = availableOptions.indexOf(state.selectedOption);
+      const currentIndex = availableOptions.indexOf(
+        currentState.selectedOption,
+      );
       if (currentIndex > 0) {
         dispatch({
           type: "SELECT_OPTION",
@@ -274,7 +293,9 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     }
 
     if (key.downArrow) {
-      const currentIndex = availableOptions.indexOf(state.selectedOption);
+      const currentIndex = availableOptions.indexOf(
+        currentState.selectedOption,
+      );
       if (currentIndex < availableOptions.length - 1) {
         dispatch({
           type: "SELECT_OPTION",
@@ -285,7 +306,9 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     }
 
     if (key.tab) {
-      const currentIndex = availableOptions.indexOf(state.selectedOption);
+      const currentIndex = availableOptions.indexOf(
+        currentState.selectedOption,
+      );
       const direction = key.shift ? -1 : 1;
       let nextIndex = currentIndex + direction;
       if (nextIndex < 0) nextIndex = availableOptions.length - 1;

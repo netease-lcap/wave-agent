@@ -1,6 +1,26 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { render } from "ink-testing-library";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
+import { render as originalRender } from "ink-testing-library";
+
+let unmounts: Array<() => void> = [];
+const render = (tree: React.ReactElement) => {
+  const result = originalRender(tree);
+  unmounts.push(result.unmount);
+  return result;
+};
+
+afterEach(() => {
+  unmounts.forEach((u) => u());
+  unmounts = [];
+});
 import { InputBox } from "../../src/components/InputBox.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 import type { SlashCommand } from "wave-agent-sdk";

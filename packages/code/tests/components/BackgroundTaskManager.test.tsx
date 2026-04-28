@@ -1,6 +1,13 @@
 import React from "react";
-import { render } from "ink-testing-library";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render as originalRender } from "ink-testing-library";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+let unmounts: Array<() => void> = [];
+const render = (tree: React.ReactElement) => {
+  const result = originalRender(tree);
+  unmounts.push(result.unmount);
+  return result;
+};
 import { BackgroundTaskManager } from "../../src/components/BackgroundTaskManager.js";
 import { ChatProvider } from "../../src/contexts/useChat.js";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
@@ -137,6 +144,11 @@ describe("BackgroundTaskManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+  });
+
+  afterEach(() => {
+    unmounts.forEach((u) => u());
+    unmounts = [];
   });
 
   it("should render the list of background tasks", async () => {
