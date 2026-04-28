@@ -164,6 +164,11 @@ describe("ChatProvider", () => {
         id: "msg-1",
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "test" }],
+        usage: {
+          prompt_tokens: 50,
+          completion_tokens: 50,
+          total_tokens: 100,
+        },
       },
     ];
     Object.assign(mockAgent, { messages: newMessages });
@@ -181,9 +186,6 @@ describe("ChatProvider", () => {
 
     // Test onSessionIdChange
     callbacks.onSessionIdChange!("new-session");
-
-    // Test onLatestTotalTokensChange
-    callbacks.onLatestTotalTokensChange!(100);
 
     // Test onCompactionStateChange
     callbacks.onCompactionStateChange!(true);
