@@ -953,7 +953,12 @@ export async function handleSessionRestoration(
       // Use only JSONL format - no legacy support
       sessionToRestore = await loadSessionFromJsonl(restoreSessionId, workdir);
       if (!sessionToRestore) {
-        throw new Error(`Session not found: ${restoreSessionId}`);
+        // Session doesn't exist on disk (e.g. new project with no messages saved yet).
+        // Gracefully fall back to starting fresh instead of throwing.
+        logger?.warn(
+          `Session ${restoreSessionId} not found on disk, starting fresh session`,
+        );
+        return;
       }
     } else if (continueLastSession) {
       // Use only JSONL format - no legacy support

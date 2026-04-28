@@ -243,21 +243,23 @@ describe("session service - additional coverage", () => {
       );
     });
 
-    it("should throw if restoreSessionId not found", async () => {
-      const spyError = vi.spyOn(console, "error").mockImplementation(() => {});
+    it("should return undefined if restoreSessionId not found (graceful fallback)", async () => {
+      const spyWarn = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
       vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
-      await expect(
-        handleSessionRestoration(validSessionId, false, workdir),
-      ).rejects.toThrow(`Session not found: ${validSessionId}`);
+      const result = await handleSessionRestoration(
+        validSessionId,
+        false,
+        workdir,
+      );
+      expect(result).toBeUndefined();
 
-      expect(spyError).toHaveBeenCalledWith(
-        "Failed to restore session:",
-        expect.any(Error),
+      expect(spyWarn).toHaveBeenCalledWith(
+        `Session ${validSessionId} not found on disk, starting fresh session`,
       );
 
-      spyError.mockRestore();
+      spyWarn.mockRestore();
     });
   });
 });
