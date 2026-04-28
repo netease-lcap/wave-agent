@@ -915,6 +915,55 @@ describe("inputReducer", () => {
   });
 
   describe("HANDLE_KEY", () => {
+    it("should return state when selectorJustUsed is true", () => {
+      const state = { ...initialState, selectorJustUsed: true };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "a",
+          key: {},
+          attachedImages: [],
+        },
+      });
+      expect(newState).toBe(state);
+    });
+
+    it("should handle btwState return with question", () => {
+      const state = {
+        ...initialState,
+        btwState: { isActive: true, question: "", isLoading: false },
+        inputText: "side question",
+        cursorPosition: 13,
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "\r",
+          key: { return: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.btwState.question).toBe("side question");
+      expect(newState.btwState.isLoading).toBe(true);
+      expect(newState.inputText).toBe("");
+    });
+
+    it("should handle btwState return with empty input", () => {
+      const state = {
+        ...initialState,
+        btwState: { isActive: true, question: "", isLoading: false },
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "\r",
+          key: { return: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState).toBe(state);
+    });
+
     it("should handle escape to abort when no managers active", () => {
       const state = { ...initialState };
       const newState = inputReducer(state, {
@@ -926,6 +975,20 @@ describe("inputReducer", () => {
         },
       });
       expect(newState.pendingAbort).toBe(true);
+    });
+
+    it("should not abort when file selector is active", () => {
+      const state = { ...initialState, showFileSelector: true, atPosition: 0 };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "\u001b",
+          key: { escape: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingAbort).toBe(false);
+      expect(newState.showFileSelector).toBe(false);
     });
 
     it("should handle tab+shift to cycle permission", () => {
@@ -1007,6 +1070,53 @@ describe("inputReducer", () => {
         },
       });
       expect(newState.showHistorySearch).toBe(false);
+    });
+
+    it("should block input when background task manager is active", () => {
+      const state = { ...initialState, showBackgroundTaskManager: true };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "a",
+          key: {},
+          attachedImages: [],
+        },
+      });
+      expect(newState.inputText).toBe("");
+    });
+
+    it("should handle history search backspace", () => {
+      const state = {
+        ...initialState,
+        showHistorySearch: true,
+        historySearchQuery: "test",
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "\u007f",
+          key: { backspace: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.historySearchQuery).toBe("tes");
+    });
+
+    it("should handle history search input", () => {
+      const state = {
+        ...initialState,
+        showHistorySearch: true,
+        historySearchQuery: "test",
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "a",
+          key: {},
+          attachedImages: [],
+        },
+      });
+      expect(newState.historySearchQuery).toBe("testa");
     });
   });
 
