@@ -24,6 +24,7 @@ import {
   AgentCallbacks,
   type ToolPermissionContext,
   OPERATION_CANCELLED_BY_USER,
+  extractLatestTotalTokens,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { throttle } from "../utils/throttle.js";
@@ -158,13 +159,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [isTaskListVisible, setIsTaskListVisible] = useState(true);
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [latestTotalTokens, setLatestTotalTokens] = useState(0);
 
   const throttledSetMessages = useMemo(
     () =>
       throttle(
         () => {
           if (!isExpandedRef.current && agentRef.current) {
-            setMessages([...agentRef.current.messages]);
+            const msgs = [...agentRef.current.messages];
+            setMessages(msgs);
+            setLatestTotalTokens(extractLatestTotalTokens(msgs));
           }
         },
         500,
@@ -187,7 +191,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   }, [throttledSetMessages]);
 
   const [isLoading, setIsLoading] = useState(false);
-  const [latestTotalTokens, setlatestTotalTokens] = useState(0);
   const [sessionId, setSessionId] = useState("");
   const [isCommandRunning, setIsCommandRunning] = useState(false);
   const [isCompacting, setIsCompacting] = useState(false);
@@ -335,9 +338,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onSessionIdChange: (sessionId) => {
           setSessionId(sessionId);
         },
-        onLatestTotalTokensChange: (tokens) => {
-          setlatestTotalTokens(tokens);
-        },
         onCompactionStateChange: (isCompactingState) => {
           setIsCompacting(isCompactingState);
         },
@@ -415,7 +415,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setSessionId(agent.sessionId);
         setMessages(agent.messages);
         setIsLoading(agent.isLoading);
-        setlatestTotalTokens(agent.latestTotalTokens);
+        setLatestTotalTokens(extractLatestTotalTokens(agent.messages));
         setIsCommandRunning(agent.isCommandRunning);
         setIsCompacting(agent.isCompacting);
         setPermissionModeState(agent.getPermissionMode());
@@ -467,7 +467,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setSlashCommands([]);
     setSessionId("");
     setIsLoading(false);
-    setlatestTotalTokens(0);
+    setLatestTotalTokens(0);
     setIsCommandRunning(false);
     setIsCompacting(false);
     if (currentSessionId) {
@@ -704,7 +704,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       } else {
         // Transitioning to COLLAPSED: Restore from agent's actual state
         if (agentRef.current) {
-          setMessages([...agentRef.current.messages]);
+          const msgs = [...agentRef.current.messages];
+          setMessages(msgs);
+          setLatestTotalTokens(extractLatestTotalTokens(msgs));
         }
       }
       // Force remount to re-render Static items with new isExpanded state
