@@ -167,19 +167,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             setMessages([...agentRef.current.messages]);
           }
         },
-        300,
-        { leading: true, trailing: true },
-      ),
-    [],
-  );
-
-  const throttledSetTokens = useMemo(
-    () =>
-      throttle(
-        ((tokens: number) => {
-          setlatestTotalTokens(tokens);
-        }) as (...args: unknown[]) => void,
-        300,
+        500,
         { leading: true, trailing: true },
       ),
     [],
@@ -189,16 +177,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     isExpandedRef.current = isExpanded;
     if (isExpanded) {
       throttledSetMessages.cancel();
-      throttledSetTokens.cancel();
     }
-  }, [isExpanded, throttledSetMessages, throttledSetTokens]);
+  }, [isExpanded, throttledSetMessages]);
 
   useEffect(() => {
     return () => {
       throttledSetMessages.cancel();
-      throttledSetTokens.cancel();
     };
-  }, [throttledSetMessages, throttledSetTokens]);
+  }, [throttledSetMessages]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [latestTotalTokens, setlatestTotalTokens] = useState(0);
@@ -350,7 +336,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setSessionId(sessionId);
         },
         onLatestTotalTokensChange: (tokens) => {
-          throttledSetTokens(tokens);
+          setlatestTotalTokens(tokens);
         },
         onCompactionStateChange: (isCompactingState) => {
           setIsCompacting(isCompactingState);
@@ -462,7 +448,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       model,
       initialPermissionMode,
       throttledSetMessages,
-      throttledSetTokens,
     ],
   );
 
