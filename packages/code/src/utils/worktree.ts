@@ -21,13 +21,7 @@ export interface WorktreeSession {
  */
 export function createWorktree(name: string, cwd: string): WorktreeSession {
   const repoRoot = getGitMainRepoRoot(cwd);
-  const projectName = path.basename(repoRoot);
-  const worktreePath = path.join(
-    repoRoot,
-    "..",
-    `${projectName}.worktrees`,
-    name,
-  );
+  const worktreePath = path.join(repoRoot, ".wave", "worktrees", name);
   const branchName = `worktree-${name}`;
   const baseBranch = getDefaultRemoteBranch(cwd);
 
