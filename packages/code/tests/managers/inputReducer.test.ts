@@ -4,7 +4,7 @@ import {
   initialState,
   InputState,
 } from "../../src/managers/inputReducer.js";
-import { FileItem, PromptEntry } from "wave-agent-sdk";
+import { FileItem, PromptEntry, PermissionMode } from "wave-agent-sdk";
 
 describe("inputReducer", () => {
   it("should return initial state", () => {
@@ -785,6 +785,306 @@ describe("inputReducer", () => {
       });
       expect(newState.inputText).toBe("first");
       expect(newState.originalInputText).toBe("hi there");
+    });
+  });
+
+  describe("HANDLE_FILE_SELECT", () => {
+    it("should insert file path when file selector is active", () => {
+      const state = {
+        ...initialState,
+        showFileSelector: true,
+        atPosition: 0,
+        inputText: "",
+        cursorPosition: 0,
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_FILE_SELECT",
+        payload: { filePath: "test.txt" },
+      });
+      expect(newState.inputText).toBe("@test.txt ");
+      expect(newState.cursorPosition).toBe(10);
+      expect(newState.showFileSelector).toBe(false);
+    });
+
+    it("should return unchanged state when file selector not active", () => {
+      const state = { ...initialState, inputText: "hello" };
+      const newState = inputReducer(state, {
+        type: "HANDLE_FILE_SELECT",
+        payload: { filePath: "test.txt" },
+      });
+      expect(newState.inputText).toBe("hello");
+    });
+  });
+
+  describe("HANDLE_COMMAND_SELECT", () => {
+    it("should set pendingCommand when command selector is active", () => {
+      const state = {
+        ...initialState,
+        showCommandSelector: true,
+        slashPosition: 0,
+        inputText: "/tasks",
+        cursorPosition: 6,
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_COMMAND_SELECT",
+        payload: { command: "tasks" },
+      });
+      expect(newState.inputText).toBe("");
+      expect(newState.pendingCommand).toEqual({
+        command: "tasks",
+        newInput: "",
+        newCursorPosition: 0,
+      });
+    });
+
+    it("should return unchanged state when command selector not active", () => {
+      const state = { ...initialState, inputText: "hello" };
+      const newState = inputReducer(state, {
+        type: "HANDLE_COMMAND_SELECT",
+        payload: { command: "tasks" },
+      });
+      expect(newState.inputText).toBe("hello");
+      expect(newState.pendingCommand).toBeNull();
+    });
+  });
+
+  describe("SUBMIT", () => {
+    it("should set pendingSubmit when input has content", () => {
+      const state = {
+        ...initialState,
+        inputText: "hello world",
+        cursorPosition: 11,
+        longTextMap: { "[LongText#1]": "long text" },
+      };
+      const newState = inputReducer(state, {
+        type: "SUBMIT",
+        payload: { attachedImages: [] },
+      });
+      expect(newState.pendingSubmit).toEqual({
+        content: "hello world",
+        images: undefined,
+        longTextMap: { "[LongText#1]": "long text" },
+      });
+      expect(newState.inputText).toBe("");
+      expect(newState.cursorPosition).toBe(0);
+    });
+
+    it("should return unchanged state when input is empty", () => {
+      const state = { ...initialState };
+      const newState = inputReducer(state, {
+        type: "SUBMIT",
+        payload: { attachedImages: [] },
+      });
+      expect(newState.pendingSubmit).toBeNull();
+    });
+  });
+
+  describe("CYCLE_PERMISSION", () => {
+    it("should cycle to next permission mode", () => {
+      const state: InputState = {
+        ...initialState,
+        permissionMode: "default" as PermissionMode,
+      };
+      const newState = inputReducer(state, {
+        type: "CYCLE_PERMISSION",
+      });
+      expect(newState.permissionMode).toBe("acceptEdits");
+    });
+  });
+
+  describe("PASTE_INPUT", () => {
+    it("should handle single character input", () => {
+      const state = { ...initialState };
+      const newState = inputReducer(state, {
+        type: "PASTE_INPUT",
+        payload: { input: "a" },
+      });
+      expect(newState.inputText).toBe("a");
+      expect(newState.cursorPosition).toBe(1);
+    });
+
+    it("should handle multi-character paste by setting isPasting", () => {
+      const state = { ...initialState };
+      const newState = inputReducer(state, {
+        type: "PASTE_INPUT",
+        payload: { input: "hello world" },
+      });
+      expect(newState.isPasting).toBe(true);
+      expect(newState.pasteBuffer).toBe("hello world");
+    });
+  });
+
+  describe("HANDLE_KEY", () => {
+    it("should handle escape to abort when no managers active", () => {
+      const state = { ...initialState };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "\u001b",
+          key: { escape: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingAbort).toBe(true);
+    });
+
+    it("should handle tab+shift to cycle permission", () => {
+      const state = { ...initialState };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "\t",
+          key: { tab: true, shift: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingCyclePermission).toBe(true);
+    });
+
+    it("should handle ctrl+r to activate history search", () => {
+      const state = { ...initialState };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "r",
+          key: { ctrl: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.showHistorySearch).toBe(true);
+    });
+
+    it("should handle ctrl+b to request background task", () => {
+      const state = { ...initialState };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "b",
+          key: { ctrl: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingBackgroundTask).toBe(true);
+    });
+
+    it("should handle ctrl+v to request paste image", () => {
+      const state = { ...initialState };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "v",
+          key: { ctrl: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingPasteImage).toBe(true);
+    });
+
+    it("should handle btwState escape to deactivate", () => {
+      const state = {
+        ...initialState,
+        btwState: { isActive: true, question: "test", isLoading: false },
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "\u001b",
+          key: { escape: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.btwState.isActive).toBe(false);
+    });
+
+    it("should handle history search escape to cancel", () => {
+      const state = { ...initialState, showHistorySearch: true };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "\u001b",
+          key: { escape: true },
+          attachedImages: [],
+        },
+      });
+      expect(newState.showHistorySearch).toBe(false);
+    });
+  });
+
+  describe("CLEAR_PENDING actions", () => {
+    it("should clear pendingSubmit", () => {
+      const state = {
+        ...initialState,
+        pendingSubmit: { content: "test", images: [], longTextMap: {} },
+      };
+      const newState = inputReducer(state, {
+        type: "CLEAR_PENDING_SUBMIT",
+      });
+      expect(newState.pendingSubmit).toBeNull();
+    });
+
+    it("should clear pendingCommand", () => {
+      const state = {
+        ...initialState,
+        pendingCommand: {
+          command: "tasks",
+          newInput: "",
+          newCursorPosition: 0,
+        },
+      };
+      const newState = inputReducer(state, {
+        type: "CLEAR_PENDING_COMMAND",
+      });
+      expect(newState.pendingCommand).toBeNull();
+    });
+
+    it("should clear pendingAbort", () => {
+      const state = { ...initialState, pendingAbort: true };
+      const newState = inputReducer(state, {
+        type: "CLEAR_PENDING_ABORT",
+      });
+      expect(newState.pendingAbort).toBe(false);
+    });
+
+    it("should clear pendingBackgroundTask", () => {
+      const state = { ...initialState, pendingBackgroundTask: true };
+      const newState = inputReducer(state, {
+        type: "CLEAR_PENDING_BACKGROUND_TASK",
+      });
+      expect(newState.pendingBackgroundTask).toBe(false);
+    });
+
+    it("should clear pendingPasteImage via IMAGE_PASTED", () => {
+      const state = { ...initialState, pendingPasteImage: true };
+      const newState = inputReducer(state, {
+        type: "IMAGE_PASTED",
+        payload: null,
+      });
+      expect(newState.pendingPasteImage).toBe(false);
+    });
+
+    it("should clear pendingHistoryFetch via HISTORY_FETCHED", () => {
+      const state = { ...initialState, pendingHistoryFetch: true };
+      const newState = inputReducer(state, {
+        type: "HISTORY_FETCHED",
+        payload: [],
+      });
+      expect(newState.pendingHistoryFetch).toBe(false);
+    });
+
+    it("should clear pendingCyclePermission", () => {
+      const state = { ...initialState, pendingCyclePermission: true };
+      const newState = inputReducer(state, {
+        type: "CLEAR_PENDING_CYCLE_PERMISSION",
+      });
+      expect(newState.pendingCyclePermission).toBe(false);
+    });
+
+    it("should clear pendingSelectorInsert", () => {
+      const state = { ...initialState, pendingSelectorInsert: "a" };
+      const newState = inputReducer(state, {
+        type: "CLEAR_PENDING_SELECTOR_INSERT",
+      });
+      expect(newState.pendingSelectorInsert).toBeNull();
     });
   });
 });
