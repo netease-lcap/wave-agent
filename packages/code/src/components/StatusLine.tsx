@@ -25,7 +25,16 @@ export const StatusLine: React.FC<StatusLineProps> = ({
       ) : (
         <Text color="gray">
           Mode:{" "}
-          <Text color={permissionMode === "plan" ? "yellow" : "cyan"}>
+          <Text
+            color={
+              permissionMode === "plan"
+                ? "yellow"
+                : permissionMode === "bypassPermissions"
+                  ? "red"
+                  : "cyan"
+            }
+            bold={permissionMode === "bypassPermissions"}
+          >
             {permissionMode}
           </Text>{" "}
           (Shift+Tab to cycle)

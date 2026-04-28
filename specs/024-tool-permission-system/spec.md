@@ -139,14 +139,13 @@ As a user, I want the system to ask for my explicit permission before modifying 
 
 ### User Story 16 - CLI Mode Cycling (Priority: P2)
 
-As a CLI user, I want to quickly switch between permission modes during a session using a keyboard shortcut, so that I can easily toggle between manual control, automatic edits, and planning.
+As a CLI user, I want to quickly switch between permission modes during a session using a keyboard shortcut, so that I can easily toggle between manual control, automatic edits, planning, and bypass.
 
 **Acceptance Scenarios**:
 1. **Given** a CLI session is active and in `default` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to `acceptEdits`.
 2. **Given** the CLI is in `acceptEdits` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to `plan`.
-3. **Given** the CLI is in `plan` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes back to `default` (unless `bypassPermissions` was enabled at start).
-4. **Given** the CLI was started with `--dangerously-skip-permissions` or `--permission-mode bypassPermissions`, **When** the user cycles through modes, **Then** `bypassPermissions` is included in the cycle (e.g., `plan` -> `bypassPermissions` -> `default`).
-5. **Given** the CLI was NOT started with bypass flags, **When** the user cycles through modes, **Then** `bypassPermissions` is NOT included in the cycle.
+3. **Given** the CLI is in `plan` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to `bypassPermissions`.
+4. **Given** the CLI is in `bypassPermissions` mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes back to `default`.
 
 ### User Story 17 - Auto-deny unapproved tools (Priority: P1)
 
@@ -181,8 +180,7 @@ As a user, I want the agent to use the dedicated `Write` and `Edit` tools for fi
 - **FR-003**: CLI MUST provide a confirmation component for restricted tools in "default" mode.
 - **FR-004**: Confirmation component MUST support "Yes", "Yes, and don't ask again", "Yes, and auto-accept edits" (for FS tools), and alternative instructions via text input.
 - **FR-005**: System MUST support a `canUseTool` callback in the Agent SDK for custom permission logic.
-- **FR-006**: System MUST support cycling through permission modes (default -> acceptEdits -> plan) via `Shift+Tab`.
-- **FR-006.1**: `bypassPermissions` MUST ONLY be included in the cycle if the session was started with `--dangerously-skip-permissions` or `--permission-mode bypassPermissions`.
+- **FR-006**: System MUST support cycling through permission modes (default -> acceptEdits -> plan -> bypassPermissions) via `Shift+Tab`.
 - **FR-021**: System MUST hide the "Don't ask again" option for commands identified as dangerous or out-of-bounds.
 - **FR-022**: System MUST automatically deny bash commands with heredoc write redirections (`cat <<EOF > file`) and remind the agent to use the dedicated `Write` or `Edit` tools for file modifications.
 - **FR-056**: System MUST detect write redirections (`>`, `>>`, etc.) in bash commands and treat them as dangerous, hiding the "Don't ask again" option.

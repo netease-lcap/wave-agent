@@ -350,10 +350,6 @@ export const useInputManager = (
     callbacksRef.current.onPermissionModeChange?.(mode);
   }, []);
 
-  const setAllowBypassInCycle = useCallback((allow: boolean) => {
-    dispatch({ type: "SET_ALLOW_BYPASS_IN_CYCLE", payload: allow });
-  }, []);
-
   const setBtwState = useCallback(
     (payload: Partial<import("../managers/inputReducer.js").BtwState>) => {
       dispatch({ type: "SET_BTW_STATE", payload });
@@ -494,7 +490,6 @@ export const useInputManager = (
     setShowPluginManager,
     setShowModelSelector,
     setPermissionMode,
-    setAllowBypassInCycle,
     setBtwState,
 
     // Image management

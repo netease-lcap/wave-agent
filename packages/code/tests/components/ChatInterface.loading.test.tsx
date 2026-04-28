@@ -40,7 +40,6 @@ describe("ChatInterface Loading State", () => {
     slashCommands: [],
     hasSlashCommand: vi.fn(),
     isTaskListVisible: true,
-    allowBypassInCycle: false,
     getModelConfig: vi.fn().mockReturnValue({
       model: "test-model",
       fastModel: "test-fast-model",
