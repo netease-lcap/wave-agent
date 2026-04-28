@@ -21,10 +21,18 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  const stateRef = React.useRef({ files, selectedIndex });
+  React.useEffect(() => {
+    stateRef.current = { files, selectedIndex };
+  }, [files, selectedIndex]);
+
   useInput((input, key) => {
+    const currentFiles = stateRef.current.files;
+    const currentIndex = stateRef.current.selectedIndex;
+
     if (key.return || key.tab) {
-      if (files.length > 0 && selectedIndex < files.length) {
-        onSelect(files[selectedIndex].path);
+      if (currentFiles.length > 0 && currentIndex < currentFiles.length) {
+        onSelect(currentFiles[currentIndex].path);
       }
       return;
     }
@@ -35,12 +43,12 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
     }
 
     if (key.upArrow) {
-      setSelectedIndex(Math.max(0, selectedIndex - 1));
+      setSelectedIndex(Math.max(0, currentIndex - 1));
       return;
     }
 
     if (key.downArrow) {
-      setSelectedIndex(Math.min(files.length - 1, selectedIndex + 1));
+      setSelectedIndex(Math.min(currentFiles.length - 1, currentIndex + 1));
       return;
     }
   });

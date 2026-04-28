@@ -26,6 +26,11 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     detailOutput: null,
   } as BackgroundTaskManagerState);
 
+  const stateRef = React.useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   const { tasks, selectedIndex, viewMode, detailTaskId, detailOutput } = state;
 
   // Convert backgroundTasks to local Task format
@@ -80,14 +85,11 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
   const visibleTasks = tasks.slice(startIndex, startIndex + MAX_VISIBLE_ITEMS);
 
   useInput((input, key) => {
-    if (viewMode === "list") {
+    const currentState = stateRef.current;
+    if (currentState.viewMode === "list") {
       // List mode navigation
       if (key.return) {
-        if (tasks.length > 0 && selectedIndex < tasks.length) {
-          const selectedTask = tasks[selectedIndex];
-          dispatch({ type: "SET_DETAIL_TASK_ID", id: selectedTask.id });
-          dispatch({ type: "SET_VIEW_MODE", mode: "detail" });
-        }
+        dispatch({ type: "SELECT_CURRENT" });
         return;
       }
 
@@ -97,39 +99,40 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
       }
 
       if (key.upArrow) {
-        dispatch({
-          type: "SELECT_INDEX",
-          index: Math.max(0, selectedIndex - 1),
-        });
+        dispatch({ type: "MOVE_UP" });
         return;
       }
 
       if (key.downArrow) {
-        dispatch({
-          type: "SELECT_INDEX",
-          index: Math.min(tasks.length - 1, selectedIndex + 1),
-        });
+        dispatch({ type: "MOVE_DOWN" });
         return;
       }
 
-      if (input === "k" && tasks.length > 0 && selectedIndex < tasks.length) {
-        const selectedTask = tasks[selectedIndex];
-        if (selectedTask.status === "running") {
-          stopTask(selectedTask.id);
+      if (input === "k") {
+        if (
+          currentState.tasks.length > 0 &&
+          currentState.selectedIndex < currentState.tasks.length
+        ) {
+          const selectedTask = currentState.tasks[currentState.selectedIndex];
+          if (selectedTask.status === "running") {
+            stopTask(selectedTask.id);
+          }
         }
         return;
       }
-    } else if (viewMode === "detail") {
+    } else if (currentState.viewMode === "detail") {
       // Detail mode navigation
       if (key.escape) {
         dispatch({ type: "RESET_DETAIL" });
         return;
       }
 
-      if (input === "k" && detailTaskId) {
-        const task = tasks.find((t) => t.id === detailTaskId);
+      if (input === "k" && currentState.detailTaskId) {
+        const task = currentState.tasks.find(
+          (t) => t.id === currentState.detailTaskId,
+        );
         if (task && task.status === "running") {
-          stopTask(detailTaskId);
+          stopTask(currentState.detailTaskId);
         }
         return;
       }
