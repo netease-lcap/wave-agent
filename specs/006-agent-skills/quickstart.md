@@ -33,7 +33,7 @@ user-invocable: true # Optional: Set to false to hide from / menu
 
 Instructions for the AI on how to perform this skill.
 You can use placeholders like $1, $2, or $ARGUMENTS for manual invocation.
-You can also execute bash commands using !`command` syntax.
+You can also execute bash commands using `!`command`` (inline) or ` ```! command ``` ` (block) syntax.
 ```
 
 ### 3. Add Supporting Files (Optional)
@@ -63,7 +63,7 @@ You can explicitly trigger a skill using a slash command:
 
 - **Arguments**: If your `SKILL.md` contains `$1`, `$2`, etc., or `$ARGUMENTS`, they will be replaced by the text you provide.
 - **Path Placeholder**: Use `${WAVE_SKILL_DIR}` in your `SKILL.md` to reference the skill's absolute directory path. This is useful for scripts or templates within the skill directory.
-- **Bash Commands**: Any !`command` in the `SKILL.md` will be executed, and its **raw stdout** will be included in the prompt sent to the AI. If you want the output to appear in a code block, you should wrap the !`command` in a markdown code block.
+- **Bash Commands**: Any `!`command`` (inline) or ` ```! command ``` ` (block) in the `SKILL.md` will be executed, and its **raw stdout** will be included in the prompt sent to the AI. Output is capped at 30,000 characters per command (with preview + temp file for larger output). If you want the output to appear in a code block, you should wrap the command in a markdown code block.
 
 ## Control Flags
 
