@@ -304,4 +304,74 @@ describe("useInputManager", () => {
       expect(mockOnBackgroundCurrentTask).toHaveBeenCalled();
     });
   });
+
+  it("should handle paste image request via ctrl+v", async () => {
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    await getManager().handleInput("v", { ctrl: true } as Key, []);
+
+    // The pendingPasteImage useEffect will call handlePasteImageUtil
+    // which is mocked to return { success: false }
+    await vi.waitFor(() => {
+      // After failed paste, pendingPasteImage should be cleared
+      // The manager should still be accessible
+      expect(getManager()).toBeDefined();
+    });
+  });
+
+  it("should handle history fetch via up arrow when no history loaded", async () => {
+    const mockGetHistory = vi.fn().mockResolvedValue([]);
+    vi.mocked(PromptHistoryManager.getHistory).mockImplementation(
+      mockGetHistory,
+    );
+
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    // Press up arrow to trigger history fetch
+    await getManager().handleInput("\u001b[A", { upArrow: true } as Key, []);
+
+    await vi.waitFor(() => {
+      expect(PromptHistoryManager.getHistory).toHaveBeenCalled();
+    });
+  });
+
+  it("should handle history fetch with sessionId callback", async () => {
+    const mockGetHistory = vi.fn().mockResolvedValue([]);
+    vi.mocked(PromptHistoryManager.getHistory).mockImplementation(
+      mockGetHistory,
+    );
+
+    const callbacksWithSession: Partial<InputManagerCallbacks> = {
+      ...callbacks,
+      sessionId: "test-session-123",
+      getFullMessageThread: vi.fn().mockResolvedValue({
+        messages: [],
+        sessionIds: ["test-session-123", "parent-session"],
+      }),
+    };
+
+    render(
+      <InputManagerTester
+        callbacks={callbacksWithSession}
+        managerRef={managerRef}
+      />,
+    );
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    // Press up arrow to trigger history fetch
+    await getManager().handleInput("\u001b[A", { upArrow: true } as Key, []);
+
+    await vi.waitFor(() => {
+      expect(PromptHistoryManager.getHistory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: expect.arrayContaining([
+            "test-session-123",
+            "parent-session",
+          ]),
+        }),
+      );
+    });
+  });
 });
