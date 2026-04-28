@@ -374,4 +374,153 @@ describe("useInputManager", () => {
       );
     });
   });
+
+  it("should handle btwState ask question via useEffect", async () => {
+    const mockOnAskBtw = vi.fn().mockResolvedValue("The answer is 42");
+    const callbacksWithBtw: Partial<InputManagerCallbacks> = {
+      ...callbacks,
+      onAskBtw: mockOnAskBtw,
+    };
+
+    render(
+      <InputManagerTester
+        callbacks={callbacksWithBtw}
+        managerRef={managerRef}
+      />,
+    );
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    // Type "/btw what is the answer" character by character
+    const question = "/btw what is the answer";
+    for (const char of question) {
+      await getManager().handleInput(char, {} as Key, []);
+    }
+    // Press return
+    await getManager().handleInput("\n", { return: true } as Key, []);
+
+    await vi.waitFor(() => {
+      expect(mockOnAskBtw).toHaveBeenCalledWith("what is the answer");
+    });
+  });
+
+  it("should call onInputTextChange callback when input text changes", async () => {
+    const mockOnInputTextChange = vi.fn();
+    const callbacksWithInput: Partial<InputManagerCallbacks> = {
+      ...callbacks,
+      onInputTextChange: mockOnInputTextChange,
+    };
+
+    render(
+      <InputManagerTester
+        callbacks={callbacksWithInput}
+        managerRef={managerRef}
+      />,
+    );
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    // Type a character
+    await getManager().handleInput("h", {} as Key, []);
+
+    await vi.waitFor(() => {
+      expect(mockOnInputTextChange).toHaveBeenCalledWith("h");
+    });
+  });
+
+  it("should call onCursorPositionChange callback when cursor position changes", async () => {
+    const mockOnCursorPositionChange = vi.fn();
+    const callbacksWithCursor: Partial<InputManagerCallbacks> = {
+      ...callbacks,
+      onCursorPositionChange: mockOnCursorPositionChange,
+    };
+
+    render(
+      <InputManagerTester
+        callbacks={callbacksWithCursor}
+        managerRef={managerRef}
+      />,
+    );
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    // Type a character
+    await getManager().handleInput("h", {} as Key, []);
+
+    await vi.waitFor(() => {
+      expect(mockOnCursorPositionChange).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it("should call onFileSelectorStateChange when file selector activates", async () => {
+    const mockOnFileSelectorStateChange = vi.fn();
+    const callbacksWithFile: Partial<InputManagerCallbacks> = {
+      ...callbacks,
+      onFileSelectorStateChange: mockOnFileSelectorStateChange,
+    };
+
+    render(
+      <InputManagerTester
+        callbacks={callbacksWithFile}
+        managerRef={managerRef}
+      />,
+    );
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    getManager().activateFileSelector(0);
+
+    await vi.waitFor(() => {
+      expect(mockOnFileSelectorStateChange).toHaveBeenCalledWith(
+        true,
+        [],
+        "",
+        0,
+      );
+    });
+  });
+
+  it("should call onCommandSelectorStateChange when command selector activates", async () => {
+    const mockOnCommandSelectorStateChange = vi.fn();
+    const callbacksWithCommand: Partial<InputManagerCallbacks> = {
+      ...callbacks,
+      onCommandSelectorStateChange: mockOnCommandSelectorStateChange,
+    };
+
+    render(
+      <InputManagerTester
+        callbacks={callbacksWithCommand}
+        managerRef={managerRef}
+      />,
+    );
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    getManager().activateCommandSelector(0);
+
+    await vi.waitFor(() => {
+      expect(mockOnCommandSelectorStateChange).toHaveBeenCalledWith(
+        true,
+        "",
+        0,
+      );
+    });
+  });
+
+  it("should call onHistorySearchStateChange when history search activates", async () => {
+    const mockOnHistorySearchStateChange = vi.fn();
+    const callbacksWithHistory: Partial<InputManagerCallbacks> = {
+      ...callbacks,
+      onHistorySearchStateChange: mockOnHistorySearchStateChange,
+    };
+
+    render(
+      <InputManagerTester
+        callbacks={callbacksWithHistory}
+        managerRef={managerRef}
+      />,
+    );
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    await getManager().handleInput("r", { ctrl: true } as Key, []);
+
+    await vi.waitFor(() => {
+      expect(mockOnHistorySearchStateChange).toHaveBeenCalledWith(true, "");
+    });
+  });
 });
