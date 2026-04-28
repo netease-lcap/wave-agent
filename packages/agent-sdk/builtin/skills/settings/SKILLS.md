@@ -60,21 +60,46 @@ Project skills take precedence over user skills with the same name.
 - **AI-Invoked**: The agent automatically discovers and uses skills based on their `description`.
 - **User-Invoked**: Use slash commands in the CLI (e.g., `/my-skill`).
 
-## Inline Bash Commands
+## Bash Command Substitution
 
-You can embed bash commands in skill content using the `!`command`` syntax. The command will be executed and its output will be inserted inline.
+You can embed shell commands in skill content using two syntaxes. Commands are executed and their output is inserted inline when the skill is invoked.
+
+### Inline Syntax
+
+Use `!`command`` for single-line commands:
 
 ```markdown
-# Example Skill
-
 Current git status: !`git status --short`
-
-The above command will be replaced with the actual output when the skill is invoked.
 ```
+
+### Block Syntax
+
+Use ` ```! ` code blocks for multi-line commands:
+
+```markdown
+```!
+git log --oneline -10
+```
+```
+
+Blocks are processed before inline commands, with results replaced in order of appearance.
+
+### Output Limits
+
+- Output is capped at **30,000 characters** per command.
+- When truncated, a 2,048-character preview is shown along with a temp file path containing the full output.
+
+### Safe Replacement
+
+Shell output containing special strings like `$$`, `$&`, `$'` is replaced safely without corruption.
+
+### Empty Commands
+
+Empty or whitespace-only commands are silently skipped.
 
 ## Best Practices
 
 - **Clear Descriptions**: Write descriptions that help the AI understand exactly when the skill is relevant.
 - **Modular Design**: Keep skills focused on a single task or capability.
 - **Use `${WAVE_SKILL_DIR}`**: Use this placeholder to reference files within the skill directory.
-- **Inline Bash Commands**: Use `!`command`` to execute bash commands and insert their output inline.
+- **Bash Commands**: Use `!`command`` for inline output or ` ```! ` blocks for multi-line commands. Keep outputs concise.

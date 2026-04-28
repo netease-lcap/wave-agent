@@ -184,7 +184,13 @@ Markdown content with instructions...
 **Substitution Rules**:
 - Wave MUST support parameter substitution in skills using `$1`, `$2`, ..., and `$ARGUMENTS`.
 - If no `$ARGUMENTS` or `$n` placeholders are present in the skill content, all arguments MUST be automatically appended to the end of the content.
-- Bash command execution in skills using `!`command`` syntax MUST be supported.
+- Bash command execution in skills MUST be supported using two syntaxes:
+  - **Inline**: `!`command`` — single-line command substitution
+  - **Block**: ` ```! command ``` ` — multi-line code block syntax
+- Block commands are parsed before inline commands; results replace in order of appearance (blocks first, then inline).
+- Empty or whitespace-only commands are skipped.
+- Output is truncated at 30,000 characters per command; when truncated, a 2,048-character preview is shown with the full output saved to a temp file.
+- Shell output containing special replacement strings (`$$`, `$&`, `$'`) MUST be replaced safely without corruption (function replacer used in `String.replace`).
 
 ## Error Handling Contract
 

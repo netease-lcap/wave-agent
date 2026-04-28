@@ -76,12 +76,12 @@ A user wants to explicitly invoke a skill using a slash command syntax and provi
 
 **Why this priority**: Enhances the flexibility and power of skills, allowing them to function like custom slash commands while maintaining their discoverable nature.
 
-**Independent Test**: Can be tested by invoking a skill with `/skill-name arg1 arg2` and verifying that `$1` and `$ARGUMENTS` are correctly substituted, and bash commands like !`pwd` are executed.
+**Independent Test**: Can be tested by invoking a skill with `/skill-name arg1 arg2` and verifying that `$1` and `$ARGUMENTS` are correctly substituted, and bash commands like !`pwd` and ```! pwd ``` are executed with output capped at 30K characters.
 
 **Acceptance Scenarios**:
 
 1. **Given** I have a skill with parameter placeholders (e.g., `$1`, `$ARGUMENTS`), **When** I invoke it using `/skill-name arg1 arg2`, **Then** Wave should substitute the placeholders with the provided arguments before processing
-2. **Given** I have a skill with bash command placeholders (e.g., !`pwd`), **When** the skill is invoked, **Then** Wave should execute the bash commands and replace the placeholders with their raw stdout output (without any additional formatting or code blocks)
+2. **Given** I have a skill with bash command placeholders (e.g., !`pwd` or ```! pwd ```), **When** the skill is invoked, **Then** Wave should execute the bash commands and replace the placeholders with their raw stdout output (without any additional formatting or code blocks). Output exceeding 30,000 characters is truncated with a preview and temp file path.
 3. **Given** a skill is registered, **When** I type `/` in the chat, **Then** the skill should appear in the slash command suggestions
 4. **Given** I have a skill with NO parameter placeholders, **When** I invoke it using `/skill-name arg1 arg2`, **Then** Wave should automatically append the arguments to the end of the skill content
 
@@ -164,13 +164,17 @@ A user wants to control how skills are invoked and whether they are visible in t
 - **FR-012**: Wave MUST support skills with multiple supporting file types (markdown, scripts, templates)
 - **FR-013**: Wave MUST support user-invokable skills via slash command syntax (e.g., `/skill-name args`)
 - **FR-014**: Wave MUST support parameter substitution in skills using `$1`, `$2`, ..., and `$ARGUMENTS`
-- **FR-015**: Wave MUST support bash command execution in skills using `!`command`` syntax, replacing the placeholder with the raw stdout of the command execution.
+- **FR-015**: Wave MUST support bash command execution in skills using both `!`command`` (inline) and ```! command ``` (block) syntax, replacing the placeholder with the raw stdout of the command execution, capped at 30,000 characters per command
 - **FR-016**: Wave MUST support `allowed-tools` in skill frontmatter to restrict tool access during skill execution
 - **FR-017**: Wave MUST support `context: fork` and `agent:` in skill frontmatter to execute skills in specialized subagents
 - **FR-018**: Wave MUST support `disable-model-invocation: true` in skill frontmatter to prevent AI from automatically triggering the skill
 - **FR-019**: Wave MUST support `user-invocable: boolean` (default: `true`) in skill frontmatter to control visibility in the slash command menu
 - **FR-020**: Wave MUST support `model:` in skill frontmatter to override the model configuration for skill execution (including forked subagents)
 - **FR-021**: Wave MUST support `${WAVE_SKILL_DIR}` placeholder in skill content, substituting it with the skill's absolute directory path during execution
+- **FR-022**: Wave MUST support block syntax for bash substitution in skills: ```! command ``` (multi-line code blocks)
+- **FR-023**: Wave MUST cap skill bash output at 30,000 characters per command; truncated output includes a 2,048-character preview and temp file path for full output
+- **FR-024**: Wave MUST use function replacer in `String.replace` for bash output substitution to avoid `$$`, `$&`, `$'` corruption
+- **FR-025**: Wave MUST gate inline bash pattern scanning behind a `content.includes('!`')` check for performance
 
 ### Key Entities
 

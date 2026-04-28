@@ -29,7 +29,7 @@
 ### Decision: User-Invokable Skills with Arguments and Bash
 **Rationale**: Users want to explicitly invoke skills like slash commands and provide arguments. Additionally, skills should support dynamic content via bash execution.  
 **Alternatives considered**: Keep skills model-invoked only, use separate slash command system  
-**Chosen approach**: Register skills as slash commands in `SlashCommandManager`, support parameter substitution (`$1`, `$ARGUMENTS`) and bash execution (`!`command``) in `SkillManager`.
+**Chosen approach**: Register skills as slash commands in `SlashCommandManager`, support parameter substitution (`$1`, `$ARGUMENTS`) and bash execution (`!`command`` inline and ` ```! command ``` ` block syntax) in `SkillManager`.
 
 ### Decision: Forked Skill Support for Manual Invocation
 **Rationale**: Skills with `context: fork` should run in a sub-agent even when manually invoked via slash commands. This maintains consistency between autonomous and manual invocation and keeps the main conversation clean.
