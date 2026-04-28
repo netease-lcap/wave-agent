@@ -46,6 +46,14 @@ describe("inputReducer", () => {
         question: "",
         isLoading: false,
       },
+      pendingSubmit: null,
+      pendingCommand: null,
+      pendingAbort: false,
+      pendingBackgroundTask: false,
+      pendingPasteImage: false,
+      pendingHistoryFetch: false,
+      pendingSelectorInsert: null,
+      pendingCyclePermission: false,
     });
   });
 

@@ -76,7 +76,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     cursorPosition,
     // Image management
     attachedImages,
-    clearImages,
     // File selector
     showFileSelector,
     filteredFiles,
@@ -138,7 +137,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   // Use the InputManager's unified input handler
   useInput(async (input, key) => {
-    await handleInput(input, key, attachedImages, clearImages);
+    await handleInput(input, key, attachedImages);
   });
 
   const handleRewindCancel = () => {

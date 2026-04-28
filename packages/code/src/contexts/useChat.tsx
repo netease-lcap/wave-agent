@@ -29,7 +29,7 @@ import {
 import { logger } from "../utils/logger.js";
 import { throttle } from "../utils/throttle.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
-import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
+import { expandLongTextPlaceholders } from "../utils/inputUtils.js";
 
 import { BaseAppProps } from "../types.js";
 

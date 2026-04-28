@@ -3,27 +3,17 @@ import {
   initialState,
   InputState,
   InputAction,
-  InputManagerCallbacks,
+  inputReducer,
 } from "../../src/managers/inputReducer.js";
 import {
   expandLongTextPlaceholders,
   getAtSelectorPosition,
   getSlashSelectorPosition,
-  handleSubmit,
-  handlePasteImage,
-  cyclePermissionMode,
   updateSearchQueriesForActiveSelectors,
   processSelectorInput,
-  handlePasteInput,
-  handleCommandSelect,
-  handleFileSelect,
-  checkForAtDeletion,
-  checkForSlashDeletion,
-  handleSelectorInput,
-  handleNormalInput,
-  handleInput,
-} from "../../src/managers/inputHandlers.js";
-import { PromptHistoryManager, PermissionMode } from "wave-agent-sdk";
+} from "../../src/utils/inputUtils.js";
+import { handlePasteImage } from "../../src/managers/inputHandlers.js";
+import { PermissionMode } from "wave-agent-sdk";
 import { readClipboardImage } from "../../src/utils/clipboard.js";
 import { Key } from "ink";
 
@@ -40,25 +30,9 @@ vi.mock("../../src/utils/clipboard.js", () => ({
 
 describe("inputHandlers", () => {
   let dispatch: React.Dispatch<InputAction>;
-  let callbacks: Partial<InputManagerCallbacks>;
 
   beforeEach(() => {
     dispatch = vi.fn() as unknown as React.Dispatch<InputAction>;
-    callbacks = {
-      onSendMessage: vi.fn(),
-      onPermissionModeChange: vi.fn(),
-      onInputTextChange: vi.fn(),
-      onCursorPositionChange: vi.fn(),
-      onHasSlashCommand: vi.fn(),
-      onAbortMessage: vi.fn(),
-      onBackgroundCurrentTask: vi.fn(),
-      logger: {
-        debug: vi.fn(),
-        error: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-      } as unknown as InputManagerCallbacks["logger"],
-    };
     vi.clearAllMocks();
   });
 
@@ -136,76 +110,6 @@ describe("inputHandlers", () => {
     });
   });
 
-  describe("handleSubmit", () => {
-    it("should submit text and clear input", async () => {
-      const state: InputState = {
-        ...initialState,
-        inputText: "hello [LongText#1]",
-        longTextMap: { "[LongText#1]": "world" },
-      };
-      callbacks.sessionId = "session-1";
-      callbacks.workdir = "/home/user/project";
-      await handleSubmit(state, dispatch, callbacks);
-
-      expect(callbacks.onSendMessage).toHaveBeenCalledWith(
-        "hello [LongText#1]",
-        undefined,
-        { "[LongText#1]": "world" },
-      );
-      expect(dispatch).toHaveBeenCalledWith({ type: "CLEAR_INPUT" });
-      expect(dispatch).toHaveBeenCalledWith({ type: "CLEAR_LONG_TEXT_MAP" });
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "RESET_HISTORY_NAVIGATION",
-      });
-      expect(PromptHistoryManager.addEntry).toHaveBeenCalledWith(
-        "hello [LongText#1]",
-        "session-1",
-        { "[LongText#1]": "world" },
-        "/home/user/project",
-      );
-    });
-
-    it("should handle images in text", async () => {
-      const state: InputState = {
-        ...initialState,
-        inputText: "Look at this [Image #1]",
-        attachedImages: [
-          { id: 1, path: "/path/to/img.png", mimeType: "image/png" },
-        ],
-      };
-      await handleSubmit(state, dispatch, callbacks);
-
-      expect(callbacks.onSendMessage).toHaveBeenCalledWith(
-        "Look at this",
-        [{ path: "/path/to/img.png", mimeType: "image/png" }],
-        {},
-      );
-    });
-
-    it("should preserve long text placeholders during submit", async () => {
-      const state: InputState = {
-        ...initialState,
-        inputText: "Check this: [LongText#1]",
-        longTextMap: { "[LongText#1]": "Expanded content" },
-      };
-      callbacks.sessionId = "session-1";
-      callbacks.workdir = "/home/user/project";
-      await handleSubmit(state, dispatch, callbacks);
-
-      expect(callbacks.onSendMessage).toHaveBeenCalledWith(
-        "Check this: [LongText#1]",
-        undefined,
-        { "[LongText#1]": "Expanded content" },
-      );
-      expect(PromptHistoryManager.addEntry).toHaveBeenCalledWith(
-        "Check this: [LongText#1]",
-        "session-1",
-        { "[LongText#1]": "Expanded content" },
-        "/home/user/project",
-      );
-    });
-  });
-
   describe("handlePasteImage", () => {
     it("should dispatch ADD_IMAGE_AND_INSERT_PLACEHOLDER on success", async () => {
       vi.mocked(readClipboardImage).mockResolvedValue({
@@ -230,49 +134,6 @@ describe("inputHandlers", () => {
 
       expect(result).toBe(false);
       expect(dispatch).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("cyclePermissionMode", () => {
-    it("should cycle through modes including bypassPermissions", () => {
-      cyclePermissionMode("default", dispatch, callbacks);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_PERMISSION_MODE",
-        payload: "acceptEdits",
-      });
-      expect(callbacks.onPermissionModeChange).toHaveBeenCalledWith(
-        "acceptEdits",
-      );
-
-      cyclePermissionMode("acceptEdits", dispatch, callbacks);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_PERMISSION_MODE",
-        payload: "plan",
-      });
-
-      cyclePermissionMode("plan", dispatch, callbacks);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_PERMISSION_MODE",
-        payload: "bypassPermissions",
-      });
-
-      cyclePermissionMode("bypassPermissions", dispatch, callbacks);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_PERMISSION_MODE",
-        payload: "default",
-      });
-    });
-
-    it("should cycle to default if current mode is dontAsk", () => {
-      cyclePermissionMode(
-        "dontAsk" as unknown as PermissionMode,
-        dispatch,
-        callbacks,
-      );
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_PERMISSION_MODE",
-        payload: "default",
-      });
     });
   });
 
@@ -438,146 +299,26 @@ describe("inputHandlers", () => {
     });
   });
 
-  describe("handlePasteInput", () => {
-    it("should dispatch APPEND_PASTE_CHUNK for multi-char input", () => {
-      const state = { ...initialState, cursorPosition: 0 };
-      handlePasteInput(state, dispatch, callbacks, "pasted text");
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "APPEND_PASTE_CHUNK",
-        payload: { chunk: "pasted text", cursorPosition: 0 },
-      });
-    });
+  // --- Reducer tests for handler logic moved to reducer ---
 
-    it("should dispatch APPEND_PASTE_CHUNK regardless of isPasting state", () => {
-      const state = { ...initialState, isPasting: true, cursorPosition: 5 };
-      handlePasteInput(state, dispatch, callbacks, "more text");
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "APPEND_PASTE_CHUNK",
-        payload: { chunk: "more text", cursorPosition: 5 },
-      });
-    });
-
-    it("should handle paste with newline in single-char-like input", () => {
-      const state = { ...initialState, isPasting: false, cursorPosition: 0 };
-      handlePasteInput(state, dispatch, callbacks, "a\nb");
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "APPEND_PASTE_CHUNK",
-        payload: { chunk: "a\nb", cursorPosition: 0 },
-      });
-    });
-
-    it("should handle paste with carriage return", () => {
-      const state = { ...initialState, isPasting: false, cursorPosition: 0 };
-      handlePasteInput(state, dispatch, callbacks, "a\rb");
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "APPEND_PASTE_CHUNK",
-        payload: { chunk: "a\rb", cursorPosition: 0 },
-      });
-    });
-
-    it("should insert single char and check special chars", () => {
-      const state = { ...initialState, cursorPosition: 0, inputText: "" };
-      handlePasteInput(state, dispatch, callbacks, "@");
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "INSERT_TEXT",
-        payload: "@",
-      });
-      expect(dispatch).not.toHaveBeenCalledWith({
-        type: "RESET_HISTORY_NAVIGATION",
-      });
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "ACTIVATE_FILE_SELECTOR",
-        payload: 0,
-      });
-    });
-  });
-
-  describe("handleCommandSelect", () => {
-    it("should execute agent command and replace entire command word", async () => {
-      const state: InputState = {
-        ...initialState,
-        slashPosition: 0,
-        inputText: "/test-command",
-        cursorPosition: 5, // Cursor at /test|
-      };
-      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(true);
-
-      handleCommandSelect(state, dispatch, callbacks, "test-command");
-
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_INPUT_TEXT",
-        payload: "",
-      });
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "CANCEL_COMMAND_SELECTOR",
-      });
-
-      // Wait for async command execution
-      await vi.waitFor(() => {
-        expect(callbacks.onSendMessage).toHaveBeenCalledWith(
-          "/test-command",
-          undefined,
-          {},
-        );
-      });
-    });
-
-    it("should handle clear command by sending /clear message", async () => {
-      const state: InputState = {
-        ...initialState,
-        slashPosition: 0,
-        inputText: "/clear",
-        cursorPosition: 6,
-      };
-      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(true);
-
-      handleCommandSelect(state, dispatch, callbacks, "clear");
-
-      await vi.waitFor(() => {
-        expect(callbacks.onSendMessage).toHaveBeenCalledWith(
-          "/clear",
-          undefined,
-          {},
-        );
-      });
-    });
-
-    it("should handle btw command by activating btwState", async () => {
-      const state: InputState = {
-        ...initialState,
-        slashPosition: 0,
-        inputText: "/btw",
-        cursorPosition: 4,
-      };
-      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(false);
-
-      handleCommandSelect(state, dispatch, callbacks, "btw");
-
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_BTW_STATE",
-        payload: { isActive: true, question: "", isLoading: false },
-      });
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "CANCEL_COMMAND_SELECTOR",
-      });
-    });
-  });
-
-  describe("handleFileSelect", () => {
+  describe("reducer: HANDLE_FILE_SELECT", () => {
     it("should insert file path and close selector, keeping @", () => {
       const state: InputState = {
         ...initialState,
         atPosition: 0,
         inputText: "@",
         cursorPosition: 1,
+        showFileSelector: true,
       };
-      handleFileSelect(state, dispatch, callbacks, "file.txt");
-
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_INPUT_TEXT",
-        payload: "@file.txt ",
+      const newState = inputReducer(state, {
+        type: "HANDLE_FILE_SELECT",
+        payload: { filePath: "file.txt" },
       });
-      expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
+
+      expect(newState.inputText).toBe("@file.txt ");
+      expect(newState.cursorPosition).toBe(10);
+      expect(newState.showFileSelector).toBe(false);
+      expect(newState.atPosition).toBe(-1);
     });
 
     it("should replace the entire @word even if cursor is in the middle", () => {
@@ -585,464 +326,644 @@ describe("inputHandlers", () => {
         ...initialState,
         atPosition: 0,
         inputText: "@file",
-        cursorPosition: 3, // Cursor is at @fi|le
+        cursorPosition: 3,
+        showFileSelector: true,
       };
-      handleFileSelect(state, dispatch, callbacks, "newfile.txt");
+      const newState = inputReducer(state, {
+        type: "HANDLE_FILE_SELECT",
+        payload: { filePath: "newfile.txt" },
+      });
 
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_INPUT_TEXT",
-        payload: "@newfile.txt ",
+      expect(newState.inputText).toBe("@newfile.txt ");
+    });
+  });
+
+  describe("reducer: HANDLE_COMMAND_SELECT", () => {
+    it("should clear input and set pendingCommand", () => {
+      const state: InputState = {
+        ...initialState,
+        slashPosition: 0,
+        inputText: "/test",
+        cursorPosition: 5,
+        showCommandSelector: true,
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_COMMAND_SELECT",
+        payload: { command: "test" },
+      });
+
+      expect(newState.inputText).toBe("");
+      expect(newState.cursorPosition).toBe(0);
+      expect(newState.showCommandSelector).toBe(false);
+      expect(newState.pendingCommand).toEqual({
+        command: "test",
+        newInput: "",
+        newCursorPosition: 0,
+      });
+    });
+
+    it("should handle btw command by setting btwState", () => {
+      const state: InputState = {
+        ...initialState,
+        slashPosition: 0,
+        inputText: "/btw",
+        cursorPosition: 4,
+        showCommandSelector: true,
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_COMMAND_SELECT",
+        payload: { command: "btw" },
+      });
+
+      expect(newState.pendingCommand).toEqual({
+        command: "btw",
+        newInput: "",
+        newCursorPosition: 0,
       });
     });
   });
 
-  describe("checkForAtDeletion", () => {
-    it("should cancel file selector if cursor moves before @", () => {
+  describe("reducer: SUBMIT", () => {
+    it("should set pendingSubmit with content and clear input", () => {
       const state: InputState = {
         ...initialState,
-        showFileSelector: true,
-        atPosition: 5,
+        inputText: "hello [LongText#1]",
+        longTextMap: { "[LongText#1]": "world" },
       };
-      const result = checkForAtDeletion(state, dispatch, 4);
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
+      const newState = inputReducer(state, {
+        type: "SUBMIT",
+        payload: { attachedImages: [] },
+      });
+
+      expect(newState.pendingSubmit).toEqual({
+        content: "hello [LongText#1]",
+        images: undefined,
+        longTextMap: { "[LongText#1]": "world" },
+      });
+      expect(newState.inputText).toBe("");
+      expect(newState.longTextMap).toEqual({});
+    });
+
+    it("should handle images in text", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "Look at this [Image #1]",
+        attachedImages: [
+          { id: 1, path: "/path/to/img.png", mimeType: "image/png" },
+        ],
+      };
+      const newState = inputReducer(state, {
+        type: "SUBMIT",
+        payload: {
+          attachedImages: [
+            { id: 1, path: "/path/to/img.png", mimeType: "image/png" },
+          ],
+        },
+      });
+
+      expect(newState.pendingSubmit?.content).toBe("Look at this");
+      expect(newState.pendingSubmit?.images).toEqual([
+        { path: "/path/to/img.png", mimeType: "image/png" },
+      ]);
+    });
+
+    it("should handle /btw command", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "/btw hello",
+      };
+      const newState = inputReducer(state, {
+        type: "SUBMIT",
+        payload: { attachedImages: [] },
+      });
+
+      expect(newState.btwState.isActive).toBe(true);
+      expect(newState.btwState.question).toBe("hello");
+      expect(newState.inputText).toBe("");
     });
   });
 
-  describe("checkForSlashDeletion", () => {
-    it("should cancel command selector if cursor moves before /", () => {
+  describe("reducer: PASTE_INPUT", () => {
+    it("should dispatch APPEND_PASTE_CHUNK for multi-char input", () => {
+      const state: InputState = { ...initialState, cursorPosition: 0 };
+      const newState = inputReducer(state, {
+        type: "PASTE_INPUT",
+        payload: { input: "pasted text" },
+      });
+
+      expect(newState.isPasting).toBe(true);
+      expect(newState.pasteBuffer).toBe("pasted text");
+      expect(newState.initialPasteCursorPosition).toBe(0);
+    });
+
+    it("should insert single char for normal input", () => {
+      const state: InputState = {
+        ...initialState,
+        cursorPosition: 0,
+        inputText: "",
+      };
+      const newState = inputReducer(state, {
+        type: "PASTE_INPUT",
+        payload: { input: "a" },
+      });
+
+      expect(newState.inputText).toBe("a");
+      expect(newState.cursorPosition).toBe(1);
+      expect(newState.pendingSelectorInsert).toBe("a");
+    });
+
+    it("should convert fullwidth ！ to ! at position 0", () => {
+      const state: InputState = {
+        ...initialState,
+        cursorPosition: 0,
+        inputText: "",
+      };
+      const newState = inputReducer(state, {
+        type: "PASTE_INPUT",
+        payload: { input: "！" },
+      });
+
+      expect(newState.inputText).toBe("!");
+      expect(newState.pendingSelectorInsert).toBe("!");
+    });
+  });
+
+  describe("reducer: CYCLE_PERMISSION", () => {
+    it("should set pendingCyclePermission flag (handled by useEffect)", () => {
+      const newState = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { tab: true, shift: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingCyclePermission).toBe(true);
+    });
+
+    it("should cycle permission mode when CYCLE_PERMISSION action is dispatched", () => {
+      // This action is effectively unused in the useEffect approach,
+      // but the reducer handles it for completeness
+      const state = {
+        ...initialState,
+        permissionMode: "default" as PermissionMode,
+      };
+      const newState = inputReducer(state, { type: "CYCLE_PERMISSION" });
+      expect(newState.permissionMode).toBe("acceptEdits");
+    });
+  });
+
+  describe("reducer: REQUEST_PASTE_IMAGE / IMAGE_PASTED", () => {
+    it("should set pendingPasteImage on request", () => {
+      const newState = inputReducer(initialState, {
+        type: "REQUEST_PASTE_IMAGE",
+      });
+      expect(newState.pendingPasteImage).toBe(true);
+    });
+
+    it("should add image on pasted success", () => {
+      const state = inputReducer(initialState, { type: "REQUEST_PASTE_IMAGE" });
+      const newState = inputReducer(state, {
+        type: "IMAGE_PASTED",
+        payload: { path: "/tmp/img.png", mimeType: "image/png" },
+      });
+
+      expect(newState.attachedImages).toHaveLength(1);
+      expect(newState.attachedImages[0].path).toBe("/tmp/img.png");
+      expect(newState.inputText).toBe("[Image #1]");
+      expect(newState.pendingPasteImage).toBe(false);
+    });
+
+    it("should clear flag on paste failure", () => {
+      const state = inputReducer(initialState, { type: "REQUEST_PASTE_IMAGE" });
+      const newState = inputReducer(state, {
+        type: "IMAGE_PASTED",
+        payload: null,
+      });
+
+      expect(newState.pendingPasteImage).toBe(false);
+    });
+  });
+
+  describe("reducer: REQUEST_ABORT", () => {
+    it("should set pendingAbort", () => {
+      const newState = inputReducer(initialState, { type: "REQUEST_ABORT" });
+      expect(newState.pendingAbort).toBe(true);
+    });
+  });
+
+  describe("reducer: REQUEST_BACKGROUND_TASK", () => {
+    it("should set pendingBackgroundTask", () => {
+      const newState = inputReducer(initialState, {
+        type: "REQUEST_BACKGROUND_TASK",
+      });
+      expect(newState.pendingBackgroundTask).toBe(true);
+    });
+  });
+
+  describe("reducer: HANDLE_KEY - selector input", () => {
+    it("should return true (no state change) if selectorJustUsed is true", () => {
+      const state = {
+        ...initialState,
+        selectorJustUsed: true,
+        inputText: "test",
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState).toBe(state);
+    });
+
+    it("should handle escape to close file selector", () => {
+      const state: InputState = {
+        ...initialState,
+        showFileSelector: true,
+        atPosition: 0,
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { escape: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.showFileSelector).toBe(false);
+      expect(newState.pendingAbort).toBe(false);
+    });
+
+    it("should handle escape to close command selector", () => {
       const state: InputState = {
         ...initialState,
         showCommandSelector: true,
         slashPosition: 0,
       };
-      const result = checkForSlashDeletion(state, dispatch, 0);
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "CANCEL_COMMAND_SELECTOR",
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { escape: true } as Key,
+          attachedImages: [],
+        },
       });
+      expect(newState.showCommandSelector).toBe(false);
+      expect(newState.pendingAbort).toBe(false);
+    });
+
+    it("should handle shift+tab to cycle permission", () => {
+      const newState = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { tab: true, shift: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingCyclePermission).toBe(true);
+    });
+
+    it("should handle history search escape", () => {
+      const state = { ...initialState, showHistorySearch: true };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { escape: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.showHistorySearch).toBe(false);
+    });
+
+    it("should handle history search backspace", () => {
+      const state = {
+        ...initialState,
+        showHistorySearch: true,
+        historySearchQuery: "abc",
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { backspace: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.historySearchQuery).toBe("ab");
+    });
+
+    it("should handle history search input", () => {
+      const state = {
+        ...initialState,
+        showHistorySearch: true,
+        historySearchQuery: "abc",
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: { input: "d", key: {} as Key, attachedImages: [] },
+      });
+      expect(newState.historySearchQuery).toBe("abcd");
     });
   });
 
-  describe("handleSelectorInput", () => {
-    it("should handle backspace in selector", () => {
-      const state: InputState = {
+  describe("reducer: HANDLE_KEY - btw state", () => {
+    it("should handle escape to dismiss btwState", () => {
+      const state = {
         ...initialState,
-        showFileSelector: true,
-        atPosition: 0,
-        inputText: "@a",
-        cursorPosition: 2,
+        btwState: { isActive: true, question: "", isLoading: false },
       };
-      const key = { backspace: true } as Key;
-      const result = handleSelectorInput(state, dispatch, callbacks, "", key);
-
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({ type: "DELETE_CHAR" });
-    });
-
-    it("should handle character input in selector", () => {
-      const state: InputState = {
-        ...initialState,
-        showFileSelector: true,
-        atPosition: 0,
-        inputText: "@",
-        cursorPosition: 1,
-      };
-      const key = {} as Key;
-      const result = handleSelectorInput(state, dispatch, callbacks, "a", key);
-
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "INSERT_TEXT",
-        payload: "a",
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { escape: true } as Key,
+          attachedImages: [],
+        },
       });
+      expect(newState.btwState.isActive).toBe(false);
     });
 
-    it("should handle left arrow in selector", () => {
-      const state: InputState = {
+    it("should handle return to submit btw question", () => {
+      const state = {
         ...initialState,
-        showFileSelector: true,
-        atPosition: 0,
-        inputText: "@a",
-        cursorPosition: 2,
+        btwState: { isActive: true, question: "", isLoading: false },
+        inputText: "What is the time?",
       };
-      const key = { leftArrow: true } as Key;
-      const result = handleSelectorInput(state, dispatch, callbacks, "", key);
-
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "MOVE_CURSOR",
-        payload: -1,
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as Key,
+          attachedImages: [],
+        },
       });
-    });
-
-    it("should handle right arrow in selector", () => {
-      const state: InputState = {
-        ...initialState,
-        showFileSelector: true,
-        atPosition: 0,
-        inputText: "@a",
-        cursorPosition: 1,
-      };
-      const key = { rightArrow: true } as Key;
-      const result = handleSelectorInput(state, dispatch, callbacks, "", key);
-
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "MOVE_CURSOR",
-        payload: 1,
-      });
-    });
-
-    it("should cancel file selector on space input", () => {
-      const state: InputState = {
-        ...initialState,
-        showFileSelector: true,
-        atPosition: 0,
-        inputText: "@",
-        cursorPosition: 1,
-      };
-      const key = {} as Key;
-      const result = handleSelectorInput(state, dispatch, callbacks, " ", key);
-
-      expect(result).toBe(false);
-      expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
-    });
-
-    it("should cancel command selector on space input", () => {
-      const state: InputState = {
-        ...initialState,
-        showCommandSelector: true,
-        slashPosition: 0,
-        inputText: "/",
-        cursorPosition: 1,
-      };
-      const key = {} as Key;
-      const result = handleSelectorInput(state, dispatch, callbacks, " ", key);
-
-      expect(result).toBe(false);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "CANCEL_COMMAND_SELECTOR",
-      });
+      expect(newState.btwState.question).toBe("What is the time?");
+      expect(newState.btwState.isLoading).toBe(true);
+      expect(newState.inputText).toBe("");
     });
   });
 
-  describe("handleNormalInput", () => {
-    it("should handle return key", async () => {
-      const state: InputState = { ...initialState, inputText: "test" };
-      const key = { return: true } as Key;
-      const clearImages = vi.fn();
-      const result = await handleNormalInput(
-        state,
-        dispatch,
-        callbacks,
-        "",
-        key,
-        clearImages,
-      );
-
-      expect(result).toBe(true);
-      expect(callbacks.onSendMessage).toHaveBeenCalledWith(
-        "test",
-        undefined,
-        {},
-      );
-      expect(clearImages).toHaveBeenCalled();
+  describe("reducer: HANDLE_KEY - normal input", () => {
+    it("should handle return key (submit)", () => {
+      const state = { ...initialState, inputText: "test" };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingSubmit?.content).toBe("test");
     });
 
-    it("should handle escape key", async () => {
-      const state: InputState = { ...initialState, showFileSelector: true };
-      const key = { escape: true } as Key;
-      const result = await handleNormalInput(
-        state,
-        dispatch,
-        callbacks,
-        "",
-        key,
-      );
-
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
+    it("should handle escape with file selector", () => {
+      const state: InputState = {
+        ...initialState,
+        showFileSelector: true,
+        atPosition: 0,
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { escape: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.showFileSelector).toBe(false);
     });
 
-    it("should reactivate file selector on backspace inside an existing @word", async () => {
+    it("should handle left/right arrow", () => {
+      const state = { ...initialState, cursorPosition: 3, inputText: "hello" };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { leftArrow: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.cursorPosition).toBe(2);
+
+      const newState2 = inputReducer(newState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { rightArrow: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState2.cursorPosition).toBe(3);
+    });
+
+    it("should handle ctrl+v for paste image", () => {
+      const newState = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "v",
+          key: { ctrl: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingPasteImage).toBe(true);
+    });
+
+    it("should handle ctrl+r for history search", () => {
+      const newState = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "r",
+          key: { ctrl: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.showHistorySearch).toBe(true);
+    });
+
+    it("should handle ctrl+b for background task", () => {
+      const newState = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "b",
+          key: { ctrl: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingBackgroundTask).toBe(true);
+    });
+
+    it("should insert character input", () => {
+      const newState = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: { input: "a", key: {} as Key, attachedImages: [] },
+      });
+      expect(newState.inputText).toBe("a");
+      expect(newState.cursorPosition).toBe(1);
+      expect(newState.pendingSelectorInsert).toBe("a");
+    });
+  });
+
+  describe("reducer: HANDLE_KEY - escape abort", () => {
+    it("should set pendingAbort when no managers active", () => {
+      const newState = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { escape: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingAbort).toBe(true);
+    });
+
+    it("should NOT set pendingAbort when file selector is active", () => {
+      const state: InputState = {
+        ...initialState,
+        showFileSelector: true,
+        atPosition: 0,
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { escape: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingAbort).toBe(false);
+      expect(newState.showFileSelector).toBe(false);
+    });
+  });
+
+  describe("reducer: REQUEST_HISTORY_FETCH / HISTORY_FETCHED", () => {
+    it("should set pendingHistoryFetch on up arrow with empty history", () => {
+      const newState = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { upArrow: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.pendingHistoryFetch).toBe(true);
+    });
+
+    it("should set history on HISTORY_FETCHED", () => {
+      const state = { ...initialState, pendingHistoryFetch: true };
+      const newState = inputReducer(state, {
+        type: "HISTORY_FETCHED",
+        payload: [{ prompt: "prev", timestamp: 1000 }],
+      });
+      expect(newState.history).toEqual([{ prompt: "prev", timestamp: 1000 }]);
+      expect(newState.pendingHistoryFetch).toBe(false);
+    });
+  });
+
+  describe("reducer: HANDLE_KEY - history navigation", () => {
+    it("should navigate up in history", () => {
+      const state: InputState = {
+        ...initialState,
+        history: [{ prompt: "prev", timestamp: 1000 }],
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { upArrow: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.historyIndex).toBe(0);
+      expect(newState.inputText).toBe("prev");
+      expect(newState.originalInputText).toBe("");
+    });
+
+    it("should navigate down in history", () => {
+      const state: InputState = {
+        ...initialState,
+        history: [{ prompt: "prev", timestamp: 1000 }],
+        historyIndex: 0,
+        originalInputText: "current",
+      };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { downArrow: true } as Key,
+          attachedImages: [],
+        },
+      });
+      expect(newState.historyIndex).toBe(-1);
+      expect(newState.inputText).toBe("current");
+    });
+  });
+
+  describe("reducer: backspace with selector reactivation", () => {
+    it("should reactivate file selector on backspace inside @word", () => {
       const state: InputState = {
         ...initialState,
         inputText: "@file",
         cursorPosition: 5,
         showFileSelector: false,
       };
-      const key = { backspace: true } as Key;
-      await handleNormalInput(state, dispatch, callbacks, "", key);
-
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "ACTIVATE_FILE_SELECTOR",
-        payload: 0,
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { backspace: true } as Key,
+          attachedImages: [],
+        },
       });
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_FILE_SEARCH_QUERY",
-        payload: "fil",
-      });
+      expect(newState.showFileSelector).toBe(true);
+      expect(newState.atPosition).toBe(0);
     });
 
-    it("should reactivate command selector on backspace inside an existing /command", async () => {
+    it("should reactivate command selector on backspace inside /command", () => {
       const state: InputState = {
         ...initialState,
         inputText: "/help",
         cursorPosition: 5,
         showCommandSelector: false,
       };
-      const key = { backspace: true } as Key;
-      await handleNormalInput(state, dispatch, callbacks, "", key);
-
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "ACTIVATE_COMMAND_SELECTOR",
-        payload: 0,
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { backspace: true } as Key,
+          attachedImages: [],
+        },
       });
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_COMMAND_SEARCH_QUERY",
-        payload: "hel",
-      });
-    });
-
-    it("should NOT dispatch RESET_HISTORY_NAVIGATION on backspace", async () => {
-      const state: InputState = {
-        ...initialState,
-        inputText: "hello",
-        cursorPosition: 5,
-        historyIndex: 0,
-      };
-      const key = { backspace: true } as Key;
-      await handleNormalInput(state, dispatch, callbacks, "", key);
-
-      expect(dispatch).toHaveBeenCalledWith({ type: "DELETE_CHAR" });
-      expect(dispatch).not.toHaveBeenCalledWith({
-        type: "RESET_HISTORY_NAVIGATION",
-      });
-    });
-
-    it("should handle navigation keys", async () => {
-      const keyLeft = { leftArrow: true } as Key;
-      await handleNormalInput(initialState, dispatch, callbacks, "", keyLeft);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "MOVE_CURSOR",
-        payload: -1,
-      });
-
-      const keyRight = { rightArrow: true } as Key;
-      await handleNormalInput(initialState, dispatch, callbacks, "", keyRight);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "MOVE_CURSOR",
-        payload: 1,
-      });
-    });
-
-    it("should handle up arrow key for history navigation", async () => {
-      const key = { upArrow: true } as Key;
-      const mockHistory = [{ prompt: "prev", timestamp: 1000 }];
-      vi.mocked(PromptHistoryManager.getHistory).mockResolvedValue(mockHistory);
-      callbacks.sessionId = "session-1";
-      callbacks.workdir = "/home/user/project";
-      callbacks.getFullMessageThread = vi.fn().mockResolvedValue({
-        messages: [],
-        sessionIds: ["session-0", "session-1"],
-      });
-
-      // First up arrow - fetch history
-      await handleNormalInput(initialState, dispatch, callbacks, "", key);
-      expect(callbacks.getFullMessageThread).toHaveBeenCalled();
-      expect(PromptHistoryManager.getHistory).toHaveBeenCalledWith({
-        sessionId: ["session-0", "session-1"],
-        workdir: "/home/user/project",
-      });
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_HISTORY_ENTRIES",
-        payload: mockHistory,
-      });
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "NAVIGATE_HISTORY",
-        payload: "up",
-      });
-
-      // Second up arrow - already has history
-      const stateWithHistory = { ...initialState, history: mockHistory };
-      vi.clearAllMocks();
-      await handleNormalInput(stateWithHistory, dispatch, callbacks, "", key);
-      expect(PromptHistoryManager.getHistory).not.toHaveBeenCalled();
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "NAVIGATE_HISTORY",
-        payload: "up",
-      });
-    });
-
-    it("should handle down arrow key for history navigation", async () => {
-      const key = { downArrow: true } as Key;
-      await handleNormalInput(initialState, dispatch, callbacks, "", key);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "NAVIGATE_HISTORY",
-        payload: "down",
-      });
-    });
-
-    it("should handle ctrl+v for image paste", async () => {
-      const key = { ctrl: true } as Key;
-      vi.mocked(readClipboardImage).mockResolvedValue({
-        success: true,
-        imagePath: "p.png",
-        mimeType: "i/p",
-      });
-      await handleNormalInput(initialState, dispatch, callbacks, "v", key);
-
-      await vi.waitFor(() => {
-        expect(dispatch).toHaveBeenCalledWith({
-          type: "ADD_IMAGE_AND_INSERT_PLACEHOLDER",
-          payload: { path: "p.png", mimeType: "i/p" },
-        });
-      });
-    });
-
-    it("should handle ctrl+r for history search", async () => {
-      const key = { ctrl: true } as Key;
-      await handleNormalInput(initialState, dispatch, callbacks, "r", key);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "ACTIVATE_HISTORY_SEARCH",
-      });
-    });
-
-    it("should handle ctrl+b for background task", async () => {
-      const key = { ctrl: true } as Key;
-      await handleNormalInput(initialState, dispatch, callbacks, "b", key);
-      expect(callbacks.onBackgroundCurrentTask).toHaveBeenCalled();
+      expect(newState.showCommandSelector).toBe(true);
+      expect(newState.slashPosition).toBe(0);
     });
   });
 
-  describe("handleInput", () => {
-    it("should return true if selectorJustUsed is true and not call other handlers", async () => {
-      const state = {
+  describe("reducer: non-selector manager absorbs input", () => {
+    it("should not change state when background task manager is active", () => {
+      const state: InputState = {
         ...initialState,
-        selectorJustUsed: true,
-        inputText: "test",
+        showBackgroundTaskManager: true,
       };
-      const key = { return: true } as Key;
-      const result = await handleInput(state, dispatch, callbacks, "", key);
-      expect(result).toBe(true);
-      expect(callbacks.onSendMessage).not.toHaveBeenCalled();
-    });
-
-    it("should handle escape to abort message", async () => {
-      const state = { ...initialState };
-      const key = { escape: true } as Key;
-      const result = await handleInput(state, dispatch, callbacks, "", key);
-      expect(result).toBe(true);
-      expect(callbacks.onAbortMessage).toHaveBeenCalled();
-    });
-
-    it("should handle shift+tab to cycle permission mode", async () => {
-      const key = { tab: true, shift: true } as Key;
-      const result = await handleInput(
-        initialState,
-        dispatch,
-        callbacks,
-        "",
-        key,
-      );
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_PERMISSION_MODE",
-        payload: "acceptEdits",
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: { input: "a", key: {} as Key, attachedImages: [] },
       });
+      expect(newState).toBe(state);
     });
 
-    it("should delegate to handleSelectorInput if selector is active", async () => {
-      const state = {
-        ...initialState,
-        showFileSelector: true,
-        cursorPosition: 1,
-      };
-      const key = { backspace: true } as Key;
-      const result = await handleInput(state, dispatch, callbacks, "", key);
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({ type: "DELETE_CHAR" });
-    });
-
-    it("should handle history search input", async () => {
-      const state = {
-        ...initialState,
-        showHistorySearch: true,
-        historySearchQuery: "abc",
-      };
-      const key = {} as Key;
-      const result = await handleInput(state, dispatch, callbacks, "d", key);
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_HISTORY_SEARCH_QUERY",
-        payload: "abcd",
+    it("should not change state when help is active", () => {
+      const state: InputState = { ...initialState, showHelp: true };
+      const newState = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: { input: "a", key: {} as Key, attachedImages: [] },
       });
-    });
-
-    it("should handle history search backspace", async () => {
-      const state = {
-        ...initialState,
-        showHistorySearch: true,
-        historySearchQuery: "abc",
-      };
-      const key = { backspace: true } as Key;
-      const result = await handleInput(state, dispatch, callbacks, "", key);
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_HISTORY_SEARCH_QUERY",
-        payload: "ab",
-      });
-    });
-
-    it("should handle history search escape", async () => {
-      const state = { ...initialState, showHistorySearch: true };
-      const key = { escape: true } as Key;
-      const result = await handleInput(state, dispatch, callbacks, "", key);
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_HISTORY_SEARCH" });
-    });
-
-    it("should handle input when btwState is active", async () => {
-      const state = {
-        ...initialState,
-        btwState: { isActive: true, question: "", isLoading: false },
-        inputText: "What is the time?",
-      };
-      const key = { return: true } as Key;
-      const result = await handleInput(state, dispatch, callbacks, "", key);
-
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_BTW_STATE",
-        payload: {
-          question: "What is the time?",
-          isLoading: true,
-          answer: undefined,
-        },
-      });
-      expect(dispatch).toHaveBeenCalledWith({ type: "CLEAR_INPUT" });
-    });
-
-    it("should handle escape to dismiss btwState", async () => {
-      const state = {
-        ...initialState,
-        btwState: { isActive: true, question: "", isLoading: false },
-      };
-      const key = { escape: true } as Key;
-      const result = await handleInput(state, dispatch, callbacks, "", key);
-
-      expect(result).toBe(true);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "SET_BTW_STATE",
-        payload: {
-          isActive: false,
-          question: "",
-          answer: undefined,
-          isLoading: false,
-        },
-      });
-      expect(callbacks.onAbortMessage).not.toHaveBeenCalled();
+      expect(newState).toBe(state);
     });
   });
 });

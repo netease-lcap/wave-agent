@@ -5,6 +5,11 @@ import {
   PromptEntry,
   Message,
 } from "wave-agent-sdk";
+import {
+  getWordEnd,
+  getAtSelectorPosition,
+  getSlashSelectorPosition,
+} from "../utils/inputUtils.js";
 
 export interface AttachedImage {
   id: number;
@@ -95,6 +100,23 @@ export interface InputState {
   originalLongTextMap: Record<string, string>;
   isFileSearching: boolean;
   btwState: BtwState;
+  // Pending effect fields - trigger useEffect side effects
+  pendingSubmit: {
+    content: string;
+    images?: Array<{ path: string; mimeType: string }>;
+    longTextMap: Record<string, string>;
+  } | null;
+  pendingCommand: {
+    command: string;
+    newInput: string;
+    newCursorPosition: number;
+  } | null;
+  pendingAbort: boolean;
+  pendingBackgroundTask: boolean;
+  pendingPasteImage: boolean;
+  pendingHistoryFetch: boolean;
+  pendingSelectorInsert: string | null;
+  pendingCyclePermission: boolean;
 }
 
 export const initialState: InputState = {
@@ -135,7 +157,34 @@ export const initialState: InputState = {
     question: "",
     isLoading: false,
   },
+  pendingSubmit: null,
+  pendingCommand: null,
+  pendingAbort: false,
+  pendingBackgroundTask: false,
+  pendingPasteImage: false,
+  pendingHistoryFetch: false,
+  pendingSelectorInsert: null,
+  pendingCyclePermission: false,
 };
+
+// Key type from ink - we use the subset we need
+export interface Key {
+  return?: boolean;
+  escape?: boolean;
+  upArrow?: boolean;
+  downArrow?: boolean;
+  leftArrow?: boolean;
+  rightArrow?: boolean;
+  backspace?: boolean;
+  delete?: boolean;
+  tab?: boolean;
+  shift?: boolean;
+  ctrl?: boolean;
+  meta?: boolean;
+  home?: boolean;
+  end?: boolean;
+  alt?: boolean;
+}
 
 export type InputAction =
   | { type: "SET_INPUT_TEXT"; payload: string }
@@ -183,7 +232,69 @@ export type InputAction =
   | { type: "NAVIGATE_HISTORY"; payload: "up" | "down" }
   | { type: "RESET_HISTORY_NAVIGATION" }
   | { type: "SELECT_HISTORY_ENTRY"; payload: PromptEntry }
-  | { type: "SET_BTW_STATE"; payload: Partial<BtwState> };
+  | { type: "SET_BTW_STATE"; payload: Partial<BtwState> }
+  // New action types for handler logic in reducer
+  | { type: "HANDLE_FILE_SELECT"; payload: { filePath: string } }
+  | { type: "HANDLE_COMMAND_SELECT"; payload: { command: string } }
+  | {
+      type: "SUBMIT";
+      payload: {
+        attachedImages: Array<{ id: number; path: string; mimeType: string }>;
+      };
+    }
+  | { type: "PASTE_INPUT"; payload: { input: string } }
+  | {
+      type: "HANDLE_KEY";
+      payload: {
+        input: string;
+        key: Key;
+        attachedImages: Array<{ id: number; path: string; mimeType: string }>;
+      };
+    }
+  | { type: "CYCLE_PERMISSION" }
+  | { type: "REQUEST_HISTORY_FETCH" }
+  | { type: "HISTORY_FETCHED"; payload: PromptEntry[] }
+  | { type: "REQUEST_PASTE_IMAGE" }
+  | { type: "IMAGE_PASTED"; payload: { path: string; mimeType: string } | null }
+  | { type: "REQUEST_ABORT" }
+  | { type: "REQUEST_BACKGROUND_TASK" }
+  | { type: "CLEAR_PENDING_SUBMIT" }
+  | { type: "CLEAR_PENDING_COMMAND" }
+  | { type: "CLEAR_PENDING_ABORT" }
+  | { type: "CLEAR_PENDING_BACKGROUND_TASK" }
+  | { type: "CLEAR_PENDING_SELECTOR_INSERT" }
+  | { type: "CLEAR_PENDING_CYCLE_PERMISSION" };
+
+// Helper to check if any selector/manager is active
+const isSelectorOrManagerActive = (state: InputState): boolean => {
+  return (
+    state.showFileSelector ||
+    state.showCommandSelector ||
+    state.showHistorySearch ||
+    state.showBackgroundTaskManager ||
+    state.showMcpManager ||
+    state.showRewindManager ||
+    state.showHelp ||
+    state.showStatusCommand ||
+    state.showPluginManager ||
+    state.showModelSelector ||
+    state.btwState.isActive
+  );
+};
+
+// Helper: check if a non-selector manager is active (absorbs all input)
+const isNonSelectorManagerActive = (state: InputState): boolean => {
+  return (
+    state.showBackgroundTaskManager ||
+    state.showMcpManager ||
+    state.showRewindManager ||
+    state.showHelp ||
+    state.showStatusCommand ||
+    state.showPluginManager ||
+    state.showModelSelector ||
+    state.btwState.isActive
+  );
+};
 
 export function inputReducer(
   state: InputState,
@@ -407,10 +518,6 @@ export function inputReducer(
         historyIndex: -1,
       };
     case "APPEND_PASTE_CHUNK": {
-      // The reducer determines if this is a new paste or a continuation
-      // by checking if pasteBuffer is already set. This avoids the
-      // handler needing to track isPasting state, which can be stale
-      // when multiple dispatches fire before React state updates.
       const isNewPaste = !state.pasteBuffer;
       return {
         ...state,
@@ -535,7 +642,871 @@ export function inputReducer(
           ...action.payload,
         },
       };
+
+    // --- New handler logic in reducer ---
+
+    case "HANDLE_FILE_SELECT": {
+      const filePath = action.payload.filePath;
+      if (state.atPosition >= 0) {
+        const wordEnd = getWordEnd(state.inputText, state.atPosition);
+        const beforeAt = state.inputText.substring(0, state.atPosition);
+        const afterWord = state.inputText.substring(wordEnd);
+        const newInput = beforeAt + `@${filePath} ` + afterWord;
+        const newCursorPosition = beforeAt.length + filePath.length + 2;
+        return {
+          ...state,
+          inputText: newInput,
+          cursorPosition: newCursorPosition,
+          showFileSelector: false,
+          atPosition: -1,
+          fileSearchQuery: "",
+          filteredFiles: [],
+          selectorJustUsed: true,
+          isFileSearching: false,
+        };
+      }
+      return state;
+    }
+
+    case "HANDLE_COMMAND_SELECT": {
+      const command = action.payload.command;
+      if (state.slashPosition >= 0) {
+        const wordEnd = getWordEnd(state.inputText, state.slashPosition);
+        const beforeSlash = state.inputText.substring(0, state.slashPosition);
+        const afterWord = state.inputText.substring(wordEnd);
+        const newInput = beforeSlash + afterWord;
+        const newCursorPosition = beforeSlash.length;
+
+        // Set pendingCommand for async execution by useEffect
+        return {
+          ...state,
+          inputText: newInput,
+          cursorPosition: newCursorPosition,
+          showCommandSelector: false,
+          slashPosition: -1,
+          commandSearchQuery: "",
+          selectorJustUsed: true,
+          pendingCommand: { command, newInput, newCursorPosition },
+        };
+      }
+      return state;
+    }
+
+    case "SUBMIT": {
+      const { attachedImages } = action.payload;
+      const trimmedInput = state.inputText.trim();
+      if (!trimmedInput) {
+        return state;
+      }
+
+      // Handle /btw command
+      if (trimmedInput === "/btw" || trimmedInput.startsWith("/btw ")) {
+        const question = trimmedInput.startsWith("/btw ")
+          ? trimmedInput.substring(5).trim()
+          : "";
+        return {
+          ...state,
+          btwState: {
+            isActive: true,
+            question,
+            isLoading: question !== "",
+          },
+          inputText: "",
+          cursorPosition: 0,
+          historyIndex: -1,
+          history: [],
+          longTextMap: {},
+        };
+      }
+
+      // Prepare images for submission
+      const imageRegex = /\[Image #(\d+)\]/g;
+      const matches = [...state.inputText.matchAll(imageRegex)];
+      const referencedImages = matches
+        .map((match) => {
+          const imageId = parseInt(match[1], 10);
+          return attachedImages.find((img) => img.id === imageId);
+        })
+        .filter(
+          (img): img is { id: number; path: string; mimeType: string } =>
+            img !== undefined,
+        )
+        .map((img) => ({ path: img.path, mimeType: img.mimeType }));
+
+      const contentWithPlaceholders = state.inputText
+        .replace(imageRegex, "")
+        .trim();
+
+      return {
+        ...state,
+        pendingSubmit: {
+          content: contentWithPlaceholders,
+          images: referencedImages.length > 0 ? referencedImages : undefined,
+          longTextMap: state.longTextMap,
+        },
+        inputText: "",
+        cursorPosition: 0,
+        historyIndex: -1,
+        history: [],
+        longTextMap: {},
+      };
+    }
+
+    case "PASTE_INPUT": {
+      const inputString = action.payload.input;
+      const isPasteOperation =
+        inputString.length > 1 ||
+        inputString.includes("\n") ||
+        inputString.includes("\r");
+
+      if (isPasteOperation) {
+        return {
+          ...state,
+          isPasting: true,
+          pasteBuffer: state.pasteBuffer + inputString,
+          initialPasteCursorPosition: !state.pasteBuffer
+            ? state.cursorPosition
+            : state.initialPasteCursorPosition,
+        };
+      } else {
+        let char = inputString;
+        if (char === "！" && state.cursorPosition === 0) {
+          char = "!";
+        }
+
+        const beforeCursor = state.inputText.substring(0, state.cursorPosition);
+        const afterCursor = state.inputText.substring(state.cursorPosition);
+        const newInputText = beforeCursor + char + afterCursor;
+        const newCursorPosition = state.cursorPosition + char.length;
+
+        return {
+          ...state,
+          inputText: newInputText,
+          cursorPosition: newCursorPosition,
+          historyIndex: -1,
+          pendingSelectorInsert: char,
+        };
+      }
+    }
+
+    case "HANDLE_KEY": {
+      const { input, key, attachedImages } = action.payload;
+
+      if (state.selectorJustUsed) {
+        return state;
+      }
+
+      // Handle btwState
+      if (state.btwState.isActive) {
+        if (key.escape) {
+          return {
+            ...state,
+            btwState: {
+              isActive: false,
+              question: "",
+              answer: undefined,
+              isLoading: false,
+            },
+          };
+        }
+        if (key.return) {
+          if (state.inputText.trim() && !state.btwState.isLoading) {
+            return {
+              ...state,
+              btwState: {
+                isActive: true,
+                question: state.inputText.trim(),
+                isLoading: true,
+                answer: undefined,
+              },
+              inputText: "",
+              cursorPosition: 0,
+            };
+          }
+          return state;
+        }
+        // Fall through to normal input handling for btw question typing
+        return handleNormalInputKey(state, input, key, attachedImages);
+      }
+
+      // ESC key - abort or close managers
+      if (key.escape) {
+        if (!isSelectorOrManagerActive(state)) {
+          return { ...state, pendingAbort: true };
+        }
+      }
+
+      // Shift+Tab - cycle permission
+      if (key.tab && key.shift) {
+        return { ...state, pendingCyclePermission: true };
+      }
+
+      // Non-selector managers absorb all input
+      if (isNonSelectorManagerActive(state)) {
+        return state;
+      }
+
+      // History search handling
+      if (state.showHistorySearch) {
+        if (key.escape) {
+          return {
+            ...state,
+            showHistorySearch: false,
+            historySearchQuery: "",
+            selectorJustUsed: true,
+          };
+        }
+        if (key.backspace || key.delete) {
+          if (state.historySearchQuery.length > 0) {
+            return {
+              ...state,
+              historySearchQuery: state.historySearchQuery.slice(0, -1),
+            };
+          }
+          return state;
+        }
+        if (input && !key.ctrl && !key.meta && !key.return && !key.tab) {
+          return {
+            ...state,
+            historySearchQuery: state.historySearchQuery + input,
+          };
+        }
+        return state;
+      }
+
+      // Selector handling
+      if (state.showFileSelector || state.showCommandSelector) {
+        return handleSelectorInputKey(state, input, key);
+      }
+
+      // Normal input handling
+      return handleNormalInputKey(state, input, key, attachedImages);
+    }
+
+    case "CYCLE_PERMISSION": {
+      const modes: PermissionMode[] = [
+        "default",
+        "acceptEdits",
+        "plan",
+        "bypassPermissions",
+      ];
+      const currentIndex = modes.indexOf(state.permissionMode);
+      const nextIndex =
+        currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length;
+      const nextMode = modes[nextIndex];
+      return {
+        ...state,
+        permissionMode: nextMode,
+        pendingCyclePermission: false,
+      };
+    }
+
+    case "REQUEST_HISTORY_FETCH":
+      return { ...state, pendingHistoryFetch: true };
+
+    case "HISTORY_FETCHED":
+      return { ...state, history: action.payload, pendingHistoryFetch: false };
+
+    case "REQUEST_PASTE_IMAGE":
+      return { ...state, pendingPasteImage: true };
+
+    case "IMAGE_PASTED": {
+      const imageData = action.payload;
+      if (imageData) {
+        const newImage: AttachedImage = {
+          id: state.imageIdCounter,
+          path: imageData.path,
+          mimeType: imageData.mimeType,
+        };
+        const placeholder = `[Image #${newImage.id}]`;
+        const beforeCursor = state.inputText.substring(0, state.cursorPosition);
+        const afterCursor = state.inputText.substring(state.cursorPosition);
+        const newText = beforeCursor + placeholder + afterCursor;
+        const newCursorPosition = state.cursorPosition + placeholder.length;
+        return {
+          ...state,
+          attachedImages: [...state.attachedImages, newImage],
+          imageIdCounter: state.imageIdCounter + 1,
+          inputText: newText,
+          cursorPosition: newCursorPosition,
+          historyIndex: -1,
+          pendingPasteImage: false,
+        };
+      }
+      return { ...state, pendingPasteImage: false };
+    }
+
+    case "REQUEST_ABORT":
+      return { ...state, pendingAbort: true };
+
+    case "REQUEST_BACKGROUND_TASK":
+      return { ...state, pendingBackgroundTask: true };
+
+    case "CLEAR_PENDING_SUBMIT":
+      return { ...state, pendingSubmit: null };
+
+    case "CLEAR_PENDING_COMMAND":
+      return { ...state, pendingCommand: null };
+
+    case "CLEAR_PENDING_ABORT":
+      return { ...state, pendingAbort: false };
+
+    case "CLEAR_PENDING_BACKGROUND_TASK":
+      return { ...state, pendingBackgroundTask: false };
+
+    case "CLEAR_PENDING_SELECTOR_INSERT":
+      return { ...state, pendingSelectorInsert: null };
+
+    case "CLEAR_PENDING_CYCLE_PERMISSION":
+      return { ...state, pendingCyclePermission: false };
+
     default:
       return state;
   }
+}
+
+// Helper: handle input when a selector (file/command) is active
+function handleSelectorInputKey(
+  state: InputState,
+  input: string,
+  key: Key,
+): InputState {
+  if (key.escape) {
+    if (state.showFileSelector) {
+      return {
+        ...state,
+        showFileSelector: false,
+        atPosition: -1,
+        fileSearchQuery: "",
+        filteredFiles: [],
+        selectorJustUsed: true,
+        isFileSearching: false,
+      };
+    } else if (state.showCommandSelector) {
+      return {
+        ...state,
+        showCommandSelector: false,
+        slashPosition: -1,
+        commandSearchQuery: "",
+        selectorJustUsed: true,
+      };
+    }
+    return state;
+  }
+
+  if (key.backspace || key.delete) {
+    if (state.cursorPosition > 0) {
+      const newCursorPosition = state.cursorPosition - 1;
+      const beforeCursor = state.inputText.substring(
+        0,
+        state.cursorPosition - 1,
+      );
+      const afterCursor = state.inputText.substring(state.cursorPosition);
+      const newInputText = beforeCursor + afterCursor;
+
+      let nextState = {
+        ...state,
+        inputText: newInputText,
+        cursorPosition: newCursorPosition,
+        historyIndex: -1,
+      };
+
+      // Check for special character deletion
+      if (
+        nextState.showFileSelector &&
+        newCursorPosition <= nextState.atPosition
+      ) {
+        return {
+          ...nextState,
+          showFileSelector: false,
+          atPosition: -1,
+          fileSearchQuery: "",
+          filteredFiles: [],
+          selectorJustUsed: true,
+          isFileSearching: false,
+        };
+      }
+      if (
+        nextState.showCommandSelector &&
+        newCursorPosition <= nextState.slashPosition
+      ) {
+        return {
+          ...nextState,
+          showCommandSelector: false,
+          slashPosition: -1,
+          commandSearchQuery: "",
+          selectorJustUsed: true,
+        };
+      }
+
+      // Update search queries and potentially reactivate selectors
+      const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
+      let showFileSelector = nextState.showFileSelector;
+      let atPosition = nextState.atPosition;
+      if (atPos !== -1 && !nextState.showFileSelector) {
+        nextState = {
+          ...nextState,
+          showFileSelector: true,
+          atPosition: atPos,
+          fileSearchQuery: "",
+          filteredFiles: [],
+          isFileSearching: true,
+        };
+        showFileSelector = true;
+        atPosition = atPos;
+      }
+
+      const slashPos = getSlashSelectorPosition(
+        newInputText,
+        newCursorPosition,
+      );
+      let showCommandSelector = nextState.showCommandSelector;
+      let slashPosition = nextState.slashPosition;
+      if (slashPos !== -1 && !nextState.showCommandSelector) {
+        nextState = {
+          ...nextState,
+          showCommandSelector: true,
+          slashPosition: slashPos,
+          commandSearchQuery: "",
+        };
+        showCommandSelector = true;
+        slashPosition = slashPos;
+      }
+
+      // Update search queries
+      if (showFileSelector && atPosition >= 0) {
+        const queryStart = atPosition + 1;
+        const queryEnd = newCursorPosition;
+        const newQuery = newInputText.substring(queryStart, queryEnd);
+        nextState = {
+          ...nextState,
+          fileSearchQuery: newQuery,
+          isFileSearching: true,
+        };
+      } else if (showCommandSelector && slashPosition >= 0) {
+        const queryStart = slashPosition + 1;
+        const queryEnd = newCursorPosition;
+        const newQuery = newInputText.substring(queryStart, queryEnd);
+        nextState = { ...nextState, commandSearchQuery: newQuery };
+      }
+
+      return nextState;
+    }
+    return state;
+  }
+
+  if (key.upArrow || key.downArrow || key.return || key.tab) {
+    return state;
+  }
+
+  if (key.leftArrow) {
+    const newCursorPosition = state.cursorPosition - 1;
+    const nextState = { ...state, cursorPosition: newCursorPosition };
+    if (
+      nextState.showFileSelector &&
+      newCursorPosition <= nextState.atPosition
+    ) {
+      return {
+        ...nextState,
+        showFileSelector: false,
+        atPosition: -1,
+        fileSearchQuery: "",
+        filteredFiles: [],
+        selectorJustUsed: true,
+        isFileSearching: false,
+      };
+    }
+    if (
+      nextState.showCommandSelector &&
+      newCursorPosition <= nextState.slashPosition
+    ) {
+      return {
+        ...nextState,
+        showCommandSelector: false,
+        slashPosition: -1,
+        commandSearchQuery: "",
+        selectorJustUsed: true,
+      };
+    }
+    return nextState;
+  }
+
+  if (key.rightArrow) {
+    return { ...state, cursorPosition: state.cursorPosition + 1 };
+  }
+
+  if (input === " ") {
+    if (state.showFileSelector) {
+      return {
+        ...state,
+        showFileSelector: false,
+        atPosition: -1,
+        fileSearchQuery: "",
+        filteredFiles: [],
+        selectorJustUsed: true,
+        isFileSearching: false,
+      };
+    } else if (state.showCommandSelector) {
+      return {
+        ...state,
+        showCommandSelector: false,
+        slashPosition: -1,
+        commandSearchQuery: "",
+        selectorJustUsed: true,
+      };
+    }
+  }
+
+  if (
+    input &&
+    !key.ctrl &&
+    !("alt" in key && key.alt) &&
+    !key.meta &&
+    !key.return &&
+    !key.tab &&
+    !key.escape &&
+    !key.leftArrow &&
+    !key.rightArrow &&
+    !("home" in key && key.home) &&
+    !("end" in key && key.end)
+  ) {
+    const beforeCursor = state.inputText.substring(0, state.cursorPosition);
+    const afterCursor = state.inputText.substring(state.cursorPosition);
+    const newInputText = beforeCursor + input + afterCursor;
+    const newCursorPosition = state.cursorPosition + input.length;
+
+    return {
+      ...state,
+      inputText: newInputText,
+      cursorPosition: newCursorPosition,
+      historyIndex: -1,
+      pendingSelectorInsert: input,
+    };
+  }
+
+  return state;
+}
+
+// Helper: handle normal input (no active selectors/managers)
+function handleNormalInputKey(
+  state: InputState,
+  input: string,
+  key: Key,
+  attachedImages: Array<{ id: number; path: string; mimeType: string }>,
+): InputState {
+  if (key.return) {
+    const trimmedInput = state.inputText.trim();
+    if (!trimmedInput) {
+      return state;
+    }
+
+    // Handle /btw
+    if (trimmedInput === "/btw" || trimmedInput.startsWith("/btw ")) {
+      const question = trimmedInput.startsWith("/btw ")
+        ? trimmedInput.substring(5).trim()
+        : "";
+      return {
+        ...state,
+        btwState: {
+          isActive: true,
+          question,
+          isLoading: question !== "",
+        },
+        inputText: "",
+        cursorPosition: 0,
+        historyIndex: -1,
+        history: [],
+        longTextMap: {},
+      };
+    }
+
+    // Prepare submit
+    const imageRegex = /\[Image #(\d+)\]/g;
+    const matches = [...state.inputText.matchAll(imageRegex)];
+    const referencedImages = matches
+      .map((match) => {
+        const imageId = parseInt(match[1], 10);
+        return attachedImages.find((img) => img.id === imageId);
+      })
+      .filter(
+        (img): img is { id: number; path: string; mimeType: string } =>
+          img !== undefined,
+      )
+      .map((img) => ({ path: img.path, mimeType: img.mimeType }));
+
+    const contentWithPlaceholders = state.inputText
+      .replace(imageRegex, "")
+      .trim();
+
+    return {
+      ...state,
+      pendingSubmit: {
+        content: contentWithPlaceholders,
+        images: referencedImages.length > 0 ? referencedImages : undefined,
+        longTextMap: state.longTextMap,
+      },
+      inputText: "",
+      cursorPosition: 0,
+      historyIndex: -1,
+      history: [],
+      longTextMap: {},
+    };
+  }
+
+  if (key.escape) {
+    if (state.showFileSelector) {
+      return {
+        ...state,
+        showFileSelector: false,
+        atPosition: -1,
+        fileSearchQuery: "",
+        filteredFiles: [],
+        selectorJustUsed: true,
+        isFileSearching: false,
+      };
+    } else if (state.showCommandSelector) {
+      return {
+        ...state,
+        showCommandSelector: false,
+        slashPosition: -1,
+        commandSearchQuery: "",
+        selectorJustUsed: true,
+      };
+    } else if (state.historyIndex !== -1) {
+      return {
+        ...state,
+        historyIndex: -1,
+        history: [],
+        originalInputText: "",
+        originalLongTextMap: {},
+      };
+    }
+    return state;
+  }
+
+  if (key.upArrow) {
+    if (state.history.length === 0) {
+      // Need to fetch history - set pending flag
+      return { ...state, pendingHistoryFetch: true };
+    }
+    // Navigate history (up)
+    if (state.historyIndex === -1) {
+      return {
+        ...state,
+        historyIndex: 0,
+        originalInputText: state.inputText,
+        originalLongTextMap: state.longTextMap,
+        inputText: state.history[0].prompt,
+        longTextMap: state.history[0].longTextMap || {},
+        cursorPosition: state.history[0].prompt.length,
+      };
+    }
+    const newIndex = Math.min(state.history.length - 1, state.historyIndex + 1);
+    return {
+      ...state,
+      historyIndex: newIndex,
+      inputText: state.history[newIndex].prompt,
+      longTextMap: state.history[newIndex].longTextMap || {},
+      cursorPosition: state.history[newIndex].prompt.length,
+    };
+  }
+
+  if (key.downArrow) {
+    if (state.historyIndex === -1) {
+      return state;
+    }
+    const newIndex = state.historyIndex - 1;
+    if (newIndex === -1) {
+      return {
+        ...state,
+        historyIndex: -1,
+        inputText: state.originalInputText,
+        longTextMap: state.originalLongTextMap,
+        cursorPosition: state.originalInputText.length,
+        originalInputText: "",
+        originalLongTextMap: {},
+      };
+    }
+    return {
+      ...state,
+      historyIndex: newIndex,
+      inputText: state.history[newIndex].prompt,
+      longTextMap: state.history[newIndex].longTextMap || {},
+      cursorPosition: state.history[newIndex].prompt.length,
+    };
+  }
+
+  if (key.backspace || key.delete) {
+    if (state.cursorPosition > 0) {
+      const newCursorPosition = state.cursorPosition - 1;
+      const beforeCursor = state.inputText.substring(
+        0,
+        state.cursorPosition - 1,
+      );
+      const afterCursor = state.inputText.substring(state.cursorPosition);
+      const newInputText = beforeCursor + afterCursor;
+
+      let nextState: InputState = {
+        ...state,
+        inputText: newInputText,
+        cursorPosition: newCursorPosition,
+        historyIndex: -1,
+      };
+
+      // Check for special character deletion
+      if (
+        nextState.showFileSelector &&
+        newCursorPosition <= nextState.atPosition
+      ) {
+        nextState = {
+          ...nextState,
+          showFileSelector: false,
+          atPosition: -1,
+          fileSearchQuery: "",
+          filteredFiles: [],
+          selectorJustUsed: true,
+          isFileSearching: false,
+        };
+      }
+      if (
+        nextState.showCommandSelector &&
+        newCursorPosition <= nextState.slashPosition
+      ) {
+        nextState = {
+          ...nextState,
+          showCommandSelector: false,
+          slashPosition: -1,
+          commandSearchQuery: "",
+          selectorJustUsed: true,
+        };
+      }
+
+      // Reactivate file selector if cursor is now within an @word
+      const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
+      let showFileSelector = nextState.showFileSelector;
+      let atPosition = nextState.atPosition;
+      if (atPos !== -1 && !nextState.showFileSelector) {
+        nextState = {
+          ...nextState,
+          showFileSelector: true,
+          atPosition: atPos,
+          fileSearchQuery: "",
+          filteredFiles: [],
+          isFileSearching: true,
+        };
+        showFileSelector = true;
+        atPosition = atPos;
+      }
+
+      const slashPos = getSlashSelectorPosition(
+        newInputText,
+        newCursorPosition,
+      );
+      let showCommandSelector = nextState.showCommandSelector;
+      let slashPosition = nextState.slashPosition;
+      if (slashPos !== -1 && !nextState.showCommandSelector) {
+        nextState = {
+          ...nextState,
+          showCommandSelector: true,
+          slashPosition: slashPos,
+          commandSearchQuery: "",
+        };
+        showCommandSelector = true;
+        slashPosition = slashPos;
+      }
+
+      // Update search queries
+      if (showFileSelector && atPosition >= 0) {
+        const queryStart = atPosition + 1;
+        const queryEnd = newCursorPosition;
+        const newQuery = newInputText.substring(queryStart, queryEnd);
+        nextState = {
+          ...nextState,
+          fileSearchQuery: newQuery,
+          isFileSearching: true,
+        };
+      } else if (showCommandSelector && slashPosition >= 0) {
+        const queryStart = slashPosition + 1;
+        const queryEnd = newCursorPosition;
+        const newQuery = newInputText.substring(queryStart, queryEnd);
+        nextState = { ...nextState, commandSearchQuery: newQuery };
+      }
+
+      return nextState;
+    }
+    return state;
+  }
+
+  if (key.leftArrow) {
+    return { ...state, cursorPosition: Math.max(0, state.cursorPosition - 1) };
+  }
+
+  if (key.rightArrow) {
+    return {
+      ...state,
+      cursorPosition: Math.min(
+        state.inputText.length,
+        state.cursorPosition + 1,
+      ),
+    };
+  }
+
+  if (key.ctrl && input === "v") {
+    return { ...state, pendingPasteImage: true };
+  }
+
+  if (key.ctrl && input === "r") {
+    return { ...state, showHistorySearch: true, historySearchQuery: "" };
+  }
+
+  if (key.ctrl && input === "b") {
+    return { ...state, pendingBackgroundTask: true };
+  }
+
+  if (
+    input &&
+    !key.ctrl &&
+    !("alt" in key && key.alt) &&
+    !key.meta &&
+    !key.return &&
+    !key.escape &&
+    !key.backspace &&
+    !key.delete &&
+    !key.leftArrow &&
+    !key.rightArrow &&
+    !("home" in key && key.home) &&
+    !("end" in key && key.end)
+  ) {
+    // Detect paste operation (multi-char or contains newlines)
+    const isPasteOperation =
+      input.length > 1 || input.includes("\n") || input.includes("\r");
+
+    if (isPasteOperation) {
+      const isNewPaste = !state.pasteBuffer;
+      return {
+        ...state,
+        isPasting: true,
+        pasteBuffer: state.pasteBuffer + input,
+        initialPasteCursorPosition: isNewPaste
+          ? state.cursorPosition
+          : state.initialPasteCursorPosition,
+      };
+    }
+
+    // Single character insertion
+    const beforeCursor = state.inputText.substring(0, state.cursorPosition);
+    const afterCursor = state.inputText.substring(state.cursorPosition);
+    const newInputText = beforeCursor + input + afterCursor;
+    const newCursorPosition = state.cursorPosition + input.length;
+
+    return {
+      ...state,
+      inputText: newInputText,
+      cursorPosition: newCursorPosition,
+      historyIndex: -1,
+      pendingSelectorInsert: input,
+    };
+  }
+
+  return state;
 }
