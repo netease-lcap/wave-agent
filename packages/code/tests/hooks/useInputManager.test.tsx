@@ -175,6 +175,114 @@ describe("useInputManager", () => {
     });
   });
 
+  it("should handle pendingCommand for mcp command", async () => {
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    mockOnHasSlashCommand.mockReturnValue(false);
+    getManager().activateCommandSelector(0);
+    await getManager().handleCommandSelect("mcp");
+
+    await vi.waitFor(() => {
+      expect(getManager().showMcpManager).toBe(true);
+    });
+  });
+
+  it("should handle pendingCommand for rewind command", async () => {
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    mockOnHasSlashCommand.mockReturnValue(false);
+    getManager().activateCommandSelector(0);
+    await getManager().handleCommandSelect("rewind");
+
+    await vi.waitFor(() => {
+      expect(getManager().showRewindManager).toBe(true);
+    });
+  });
+
+  it("should handle pendingCommand for help command", async () => {
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    mockOnHasSlashCommand.mockReturnValue(false);
+    getManager().activateCommandSelector(0);
+    await getManager().handleCommandSelect("help");
+
+    await vi.waitFor(() => {
+      expect(getManager().showHelp).toBe(true);
+    });
+  });
+
+  it("should handle pendingCommand for status command", async () => {
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    mockOnHasSlashCommand.mockReturnValue(false);
+    getManager().activateCommandSelector(0);
+    await getManager().handleCommandSelect("status");
+
+    await vi.waitFor(() => {
+      expect(getManager().showStatusCommand).toBe(true);
+    });
+  });
+
+  it("should handle pendingCommand for plugin command", async () => {
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    mockOnHasSlashCommand.mockReturnValue(false);
+    getManager().activateCommandSelector(0);
+    await getManager().handleCommandSelect("plugin");
+
+    await vi.waitFor(() => {
+      expect(getManager().showPluginManager).toBe(true);
+    });
+  });
+
+  it("should handle pendingCommand for model command", async () => {
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    mockOnHasSlashCommand.mockReturnValue(false);
+    getManager().activateCommandSelector(0);
+    await getManager().handleCommandSelect("model");
+
+    await vi.waitFor(() => {
+      expect(getManager().showModelSelector).toBe(true);
+    });
+  });
+
+  it("should handle pendingCommand for btw command", async () => {
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    mockOnHasSlashCommand.mockReturnValue(false);
+    getManager().activateCommandSelector(0);
+    await getManager().handleCommandSelect("btw");
+
+    await vi.waitFor(() => {
+      expect(getManager().btwState.isActive).toBe(true);
+    });
+  });
+
+  it("should handle pendingCommand for slash command (executes via onSendMessage)", async () => {
+    renderManager();
+    await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
+
+    mockOnHasSlashCommand.mockReturnValue(true);
+    getManager().activateCommandSelector(0);
+    await getManager().handleCommandSelect("git-commit");
+
+    await vi.waitFor(() => {
+      expect(mockOnSendMessage).toHaveBeenCalledWith(
+        "/git-commit",
+        undefined,
+        {},
+      );
+    });
+  });
+
   it("should handle history search activation via ctrl+r", async () => {
     renderManager();
     await vi.waitFor(() => expect(managerRef.current).not.toBeNull());
