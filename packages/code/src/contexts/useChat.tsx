@@ -80,7 +80,6 @@ export interface ChatContextType {
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
-  allowBypassInCycle: boolean;
   // Permission confirmation state
   isConfirmationVisible: boolean;
   hasPendingConfirmations: boolean;
@@ -289,9 +288,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Status metadata state
   const [workingDirectory, setWorkingDirectory] = useState("");
-
-  const allowBypassInCycle =
-    !!bypassPermissions || initialPermissionMode === "bypassPermissions";
 
   const agentRef = useRef<Agent | null>(null);
 
@@ -752,7 +748,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hasSlashCommand,
     permissionMode,
     setPermissionMode,
-    allowBypassInCycle,
     isConfirmationVisible,
     hasPendingConfirmations: confirmationQueue.length > 0,
     confirmingTool,
