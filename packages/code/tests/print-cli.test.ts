@@ -260,9 +260,12 @@ test("subagent content callbacks output correctly", async () => {
 
   await startPrintCli({ message: "test message" });
 
+  stdoutSpy.mockClear();
+
   // Test onSubagentAssistantMessageAdded callback (starts subagent response)
+  // This callback only initializes state, no output
   capturedCallbacks?.onSubagentAssistantMessageAdded?.("test-subagent-123");
-  expect(stdoutSpy).toHaveBeenCalledWith("\n   ");
+  expect(stdoutSpy).not.toHaveBeenCalled();
 
   // Test onSubagentAssistantContentUpdated callback (streams subagent content)
   capturedCallbacks?.onSubagentAssistantContentUpdated?.(
@@ -270,6 +273,7 @@ test("subagent content callbacks output correctly", async () => {
     "Hello from subagent",
     "Hello from subagent",
   );
+  expect(stdoutSpy).toHaveBeenCalledWith("\n   ");
   expect(stdoutSpy).toHaveBeenCalledWith("Hello from subagent");
 
   // Test onErrorBlockAdded callback
@@ -407,7 +411,7 @@ test("reasoning callbacks output correctly", async () => {
     "Thinking...",
     "Thinking...",
   );
-  expect(stdoutSpy).toHaveBeenCalledWith("💭 Reasoning:\n");
+  expect(stdoutSpy).toHaveBeenCalledWith("\n💭 Reasoning:\n");
   expect(stdoutSpy).toHaveBeenCalledWith("Thinking...");
 
   // Verify header is not printed again
@@ -416,7 +420,7 @@ test("reasoning callbacks output correctly", async () => {
     " more thinking",
     "Thinking... more thinking",
   );
-  expect(stdoutSpy).not.toHaveBeenCalledWith("💭 Reasoning:\n");
+  expect(stdoutSpy).not.toHaveBeenCalledWith("\n💭 Reasoning:\n");
   expect(stdoutSpy).toHaveBeenCalledWith(" more thinking");
 
   // 2. Trigger onAssistantContentUpdated after reasoning and verify the "📝 Response:" header
@@ -438,7 +442,7 @@ test("reasoning callbacks output correctly", async () => {
     "Sub thinking...",
     "Sub thinking...",
   );
-  expect(stdoutSpy).toHaveBeenCalledWith("💭 Reasoning: ");
+  expect(stdoutSpy).toHaveBeenCalledWith("\n   💭 Reasoning: ");
   expect(stdoutSpy).toHaveBeenCalledWith("Sub thinking...");
 
   // Verify header is not printed again
@@ -448,7 +452,7 @@ test("reasoning callbacks output correctly", async () => {
     " more sub thinking",
     "Sub thinking... more sub thinking",
   );
-  expect(stdoutSpy).not.toHaveBeenCalledWith("💭 Reasoning: ");
+  expect(stdoutSpy).not.toHaveBeenCalledWith("\n   💭 Reasoning: ");
   expect(stdoutSpy).toHaveBeenCalledWith(" more sub thinking");
 
   // 4. Trigger onSubagentAssistantContentUpdated after subagent reasoning and verify the "📝 Response:" header
