@@ -71,18 +71,21 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       isReasoning = false;
       isContent = false;
       // Assistant message started - no content to output yet
-      process.stdout.write("\n");
     },
     onAssistantReasoningUpdated: (chunk: string) => {
       if (!isReasoning) {
-        process.stdout.write("💭 Reasoning:\n");
+        process.stdout.write("\n💭 Reasoning:\n");
         isReasoning = true;
       }
       process.stdout.write(chunk);
     },
     onAssistantContentUpdated: (chunk: string) => {
-      if (isReasoning && !isContent) {
-        process.stdout.write("\n\n📝 Response:\n");
+      if (!isContent) {
+        if (isReasoning) {
+          process.stdout.write("\n\n📝 Response:\n");
+        } else {
+          process.stdout.write("\n");
+        }
         isContent = true;
       }
       // FR-001: Stream content updates for real-time display - output only the new chunk
@@ -93,24 +96,24 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     onSubagentAssistantMessageAdded: (subagentId: string) => {
       subagentReasoningStates.set(subagentId, false);
       subagentContentStates.set(subagentId, false);
-      process.stdout.write("\n   ");
     },
     onSubagentAssistantReasoningUpdated: (
       subagentId: string,
       chunk: string,
     ) => {
       if (!subagentReasoningStates.get(subagentId)) {
-        process.stdout.write("💭 Reasoning: ");
+        process.stdout.write("\n   💭 Reasoning: ");
         subagentReasoningStates.set(subagentId, true);
       }
       process.stdout.write(chunk);
     },
     onSubagentAssistantContentUpdated: (subagentId: string, chunk: string) => {
-      if (
-        subagentReasoningStates.get(subagentId) &&
-        !subagentContentStates.get(subagentId)
-      ) {
-        process.stdout.write("\n   📝 Response: ");
+      if (!subagentContentStates.get(subagentId)) {
+        if (subagentReasoningStates.get(subagentId)) {
+          process.stdout.write("\n   📝 Response: ");
+        } else {
+          process.stdout.write("\n   ");
+        }
         subagentContentStates.set(subagentId, true);
       }
       process.stdout.write(chunk);
@@ -161,6 +164,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     // Send message if provided and not empty
     if (typeof message === "string" && message.trim() !== "") {
       await agent.sendMessage(message);
+      process.stdout.write("\n");
     }
 
     // Display usage summary before exit
