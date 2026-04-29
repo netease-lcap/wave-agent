@@ -30,17 +30,21 @@ describe("ModelSelector", () => {
     expect(lastFrame()).toContain("No models configured");
   });
 
-  it("should call onCancel when Escape is pressed", () => {
+  it("should call onCancel when Escape is pressed", async () => {
     const { stdin } = render(<ModelSelector {...defaultProps} />);
     stdin.write("\u001B"); // Escape
-    expect(defaultProps.onCancel).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(defaultProps.onCancel).toHaveBeenCalled();
+    });
   });
 
-  it("should call onSelectModel and onCancel when Enter is pressed", () => {
+  it("should call onSelectModel and onCancel when Enter is pressed", async () => {
     const { stdin } = render(<ModelSelector {...defaultProps} />);
     stdin.write("\r"); // Enter
-    expect(defaultProps.onSelectModel).toHaveBeenCalledWith("model-a");
-    expect(defaultProps.onCancel).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(defaultProps.onSelectModel).toHaveBeenCalledWith("model-a");
+      expect(defaultProps.onCancel).toHaveBeenCalled();
+    });
   });
 
   it("should navigate with arrow keys", async () => {

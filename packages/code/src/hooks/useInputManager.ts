@@ -9,6 +9,7 @@ import {
   searchFiles as searchFilesUtil,
   PermissionMode,
   PromptEntry,
+  PromptHistoryManager,
 } from "wave-agent-sdk";
 import * as handlers from "../managers/inputHandlers.js";
 
@@ -89,6 +90,152 @@ export const useInputManager = (
   useEffect(() => {
     callbacksRef.current.onCursorPositionChange?.(state.cursorPosition);
   }, [state.cursorPosition]);
+
+  // Handle pending effects
+  useEffect(() => {
+    if (!state.pendingEffect) return;
+
+    const effect = state.pendingEffect;
+    dispatch({ type: "CLEAR_PENDING_EFFECT" });
+
+    const runEffect = async () => {
+      try {
+        switch (effect.type) {
+          case "SEND_MESSAGE":
+            await callbacksRef.current.onSendMessage?.(
+              effect.content,
+              effect.images,
+              effect.longTextMap,
+            );
+            break;
+          case "ABORT_MESSAGE":
+            callbacksRef.current.onAbortMessage?.();
+            break;
+          case "BACKGROUND_CURRENT_TASK":
+            callbacksRef.current.onBackgroundCurrentTask?.();
+            break;
+          case "ASK_BTW":
+            try {
+              const answer = await callbacksRef.current.onAskBtw?.(
+                effect.question,
+              );
+              dispatch({
+                type: "SET_BTW_STATE",
+                payload: { answer, isLoading: false },
+              });
+            } catch (error) {
+              console.error("Failed to ask side question:", error);
+              dispatch({
+                type: "SET_BTW_STATE",
+                payload: {
+                  answer:
+                    "Error: Failed to get an answer for your side question.",
+                  isLoading: false,
+                },
+              });
+            }
+            break;
+          case "PERMISSION_MODE_CHANGE":
+            callbacksRef.current.onPermissionModeChange?.(effect.mode);
+            break;
+          case "SAVE_HISTORY":
+            PromptHistoryManager.addEntry(
+              effect.content,
+              callbacksRef.current.sessionId,
+              effect.longTextMap,
+              callbacksRef.current.workdir,
+            ).catch((err: unknown) => {
+              callbacksRef.current.logger?.error(
+                "Failed to save prompt history",
+                err,
+              );
+            });
+            break;
+          case "FETCH_HISTORY": {
+            let sessionIds: string[] | undefined = callbacksRef.current
+              .sessionId
+              ? [callbacksRef.current.sessionId]
+              : undefined;
+
+            if (callbacksRef.current.getFullMessageThread) {
+              try {
+                const thread =
+                  await callbacksRef.current.getFullMessageThread();
+                sessionIds = thread.sessionIds;
+              } catch (error) {
+                callbacksRef.current.logger?.error(
+                  "Failed to fetch ancestor session IDs",
+                  error,
+                );
+              }
+            }
+
+            const history = await PromptHistoryManager.getHistory({
+              sessionId: sessionIds,
+              workdir: callbacksRef.current.workdir,
+            });
+            dispatch({ type: "SET_HISTORY_ENTRIES", payload: history });
+            dispatch({ type: "NAVIGATE_HISTORY", payload: "up" });
+            break;
+          }
+          case "PASTE_IMAGE":
+            try {
+              await handlers.handlePasteImage(dispatch);
+            } catch (error) {
+              console.warn("Failed to handle paste image:", error);
+            }
+            break;
+          case "EXECUTE_COMMAND":
+            if (
+              callbacksRef.current.onSendMessage &&
+              callbacksRef.current.onHasSlashCommand?.(effect.command)
+            ) {
+              const fullCommand = `/${effect.command}`;
+              try {
+                await callbacksRef.current.onSendMessage(
+                  fullCommand,
+                  undefined,
+                  {},
+                );
+              } catch (error) {
+                console.error("Failed to execute slash command:", error);
+              }
+            } else {
+              // Internal command handling
+              const command = effect.command;
+              if (command === "tasks") {
+                dispatch({
+                  type: "SET_SHOW_BACKGROUND_TASK_MANAGER",
+                  payload: true,
+                });
+              } else if (command === "mcp") {
+                dispatch({ type: "SET_SHOW_MCP_MANAGER", payload: true });
+              } else if (command === "rewind") {
+                dispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: true });
+              } else if (command === "help") {
+                dispatch({ type: "SET_SHOW_HELP", payload: true });
+              } else if (command === "status") {
+                dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: true });
+              } else if (command === "plugin") {
+                dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
+              } else if (command === "model") {
+                dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
+              } else if (command === "btw") {
+                dispatch({
+                  type: "SET_BTW_STATE",
+                  payload: { isActive: true, question: "", isLoading: false },
+                });
+              }
+            }
+            break;
+        }
+      } catch (error) {
+        console.error("Effect execution error:", error);
+      }
+    };
+
+    runEffect();
+  }, [state.pendingEffect]);
 
   useEffect(() => {
     callbacksRef.current.onFileSelectorStateChange?.(
@@ -218,12 +365,7 @@ export const useInputManager = (
   }, []);
 
   const handleFileSelect = useCallback((filePath: string) => {
-    return handlers.handleFileSelect(
-      stateRef.current,
-      dispatch,
-      callbacksRef.current,
-      filePath,
-    );
+    dispatch({ type: "SELECT_FILE", payload: filePath });
   }, []);
 
   const handleCancelFileSelect = useCallback(() => {
@@ -235,6 +377,8 @@ export const useInputManager = (
   }, []);
 
   const checkForAtDeletion = useCallback((cursorPos: number) => {
+    // This is now largely handled inside HANDLE_KEY,
+    // but kept for external calls if any.
     return handlers.checkForAtDeletion(stateRef.current, dispatch, cursorPos);
   }, []);
 
@@ -243,42 +387,11 @@ export const useInputManager = (
   }, []);
 
   const handleCommandSelect = useCallback((command: string) => {
-    return handlers.handleCommandSelect(
-      stateRef.current,
-      dispatch,
-      callbacksRef.current,
-      command,
-    );
+    dispatch({ type: "SELECT_COMMAND", payload: command });
   }, []);
 
   const handleCommandInsert = useCallback((command: string) => {
-    const currentState = stateRef.current;
-    if (currentState.slashPosition >= 0) {
-      const wordEnd = handlers.getWordEnd(
-        currentState.inputText,
-        currentState.slashPosition,
-      );
-      const beforeSlash = currentState.inputText.substring(
-        0,
-        currentState.slashPosition,
-      );
-      const afterWord = currentState.inputText.substring(wordEnd);
-      const newInput = beforeSlash + `/${command} ` + afterWord;
-      const newCursorPosition = beforeSlash.length + command.length + 2;
-
-      dispatch({ type: "SET_INPUT_TEXT", payload: newInput });
-      dispatch({ type: "SET_CURSOR_POSITION", payload: newCursorPosition });
-      dispatch({ type: "CANCEL_COMMAND_SELECTOR" });
-
-      callbacksRef.current.onInputTextChange?.(newInput);
-      callbacksRef.current.onCursorPositionChange?.(newCursorPosition);
-
-      return { newInput, newCursorPosition };
-    }
-    return {
-      newInput: currentState.inputText,
-      newCursorPosition: currentState.cursorPosition,
-    };
+    dispatch({ type: "INSERT_COMMAND", payload: command });
   }, []);
 
   const handleCancelCommandSelect = useCallback(() => {
@@ -374,27 +487,28 @@ export const useInputManager = (
   }, []);
 
   const handlePasteInput = useCallback((input: string) => {
-    handlers.handlePasteInput(
-      stateRef.current,
-      dispatch,
-      callbacksRef.current,
-      input,
-    );
+    dispatch({
+      type: "HANDLE_KEY",
+      payload: {
+        input,
+        key: {} as Key,
+        hasSlashCommand: (cmd) =>
+          !!callbacksRef.current.onHasSlashCommand?.(cmd),
+      },
+    });
   }, []);
 
-  const handleSubmit = useCallback(
-    async (
-      attachedImages: Array<{ id: number; path: string; mimeType: string }>,
-    ) => {
-      await handlers.handleSubmit(
-        stateRef.current,
-        dispatch,
-        callbacksRef.current,
-        attachedImages,
-      );
-    },
-    [],
-  );
+  const handleSubmit = useCallback(async () => {
+    dispatch({
+      type: "HANDLE_KEY",
+      payload: {
+        input: "",
+        key: { return: true } as Key,
+        hasSlashCommand: (cmd) =>
+          !!callbacksRef.current.onHasSlashCommand?.(cmd),
+      },
+    });
+  }, []);
 
   const expandLongTextPlaceholders = useCallback((text: string) => {
     return handlers.expandLongTextPlaceholders(
@@ -411,17 +525,24 @@ export const useInputManager = (
     async (
       input: string,
       key: Key,
-      attachedImages: Array<{ id: number; path: string; mimeType: string }>,
+      _attachedImages: Array<{ id: number; path: string; mimeType: string }>,
       clearImages?: () => void,
     ) => {
-      return await handlers.handleInput(
-        stateRef.current,
-        dispatch,
-        callbacksRef.current,
-        input,
-        key,
-        clearImages,
-      );
+      // Clear images side effect if return is pressed
+      if (key.return) {
+        clearImages?.();
+      }
+
+      dispatch({
+        type: "HANDLE_KEY",
+        payload: {
+          input,
+          key,
+          hasSlashCommand: (cmd) =>
+            !!callbacksRef.current.onHasSlashCommand?.(cmd),
+        },
+      });
+      return true;
     },
     [],
   );

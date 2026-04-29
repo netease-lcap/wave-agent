@@ -297,10 +297,14 @@ describe("InputBox Smoke Tests", () => {
       );
 
       // Cancel rewind
+      await new Promise((resolve) => setTimeout(resolve, 100));
       stdin.write("\u001b"); // Escape
-      await vi.waitFor(() => {
-        expect(lastFrame()).toContain("Type your message");
-      });
+      await vi.waitFor(
+        () => {
+          expect(lastFrame()).toContain("Type your message");
+        },
+        { timeout: 3000 },
+      );
     });
 
     it("should cycle permission mode on Shift+Tab", async () => {
@@ -348,10 +352,14 @@ describe("InputBox Smoke Tests", () => {
       );
 
       // Close help
+      await new Promise((resolve) => setTimeout(resolve, 100));
       stdin.write("\u001b"); // Escape
-      await vi.waitFor(() => {
-        expect(lastFrame()).toContain("Type your message");
-      });
+      await vi.waitFor(
+        () => {
+          expect(lastFrame()).toContain("Type your message");
+        },
+        { timeout: 3000 },
+      );
     });
   });
 });

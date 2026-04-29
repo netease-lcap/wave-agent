@@ -1,9 +1,12 @@
 import React from "react";
-import { render } from "ink-testing-library";
-import { describe, it, expect, vi } from "vitest";
+import { render, cleanup } from "ink-testing-library";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { FileSelector, FileItem } from "../../src/components/FileSelector.js";
 
 describe("FileSelector", () => {
+  afterEach(() => {
+    cleanup();
+  });
   const mockFiles: FileItem[] = Array.from({ length: 20 }, (_, i) => ({
     path: `file${i + 1}.txt`,
     type: "file",
@@ -113,7 +116,7 @@ describe("FileSelector", () => {
   });
 
   describe("Tab key functionality", () => {
-    it("should trigger onSelect with correct file path when Tab is pressed", () => {
+    it("should trigger onSelect with correct file path when Tab is pressed", async () => {
       const onSelectMock = vi.fn();
       const testProps = { ...mockProps, onSelect: onSelectMock };
       const { stdin } = render(<FileSelector {...testProps} />);
@@ -121,8 +124,10 @@ describe("FileSelector", () => {
       // Press Tab key (should select first file by default)
       stdin.write("\t");
 
-      expect(onSelectMock).toHaveBeenCalledWith("file1.txt");
-      expect(onSelectMock).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(onSelectMock).toHaveBeenCalledWith("file1.txt");
+        expect(onSelectMock).toHaveBeenCalledTimes(1);
+      });
     });
 
     it("should not call onSelect when Tab is pressed with empty files list", () => {
@@ -141,7 +146,7 @@ describe("FileSelector", () => {
       expect(onSelectMock).not.toHaveBeenCalled();
     });
 
-    it("should work the same way as Enter key - both keys should trigger onSelect", () => {
+    it("should work the same way as Enter key - both keys should trigger onSelect", async () => {
       const onSelectMockTab = vi.fn();
       const onSelectMockEnter = vi.fn();
 
@@ -156,13 +161,15 @@ describe("FileSelector", () => {
       stdinEnter.write("\r");
 
       // Both should call onSelect with the same file (first file by default)
-      expect(onSelectMockTab).toHaveBeenCalledWith("file1.txt");
-      expect(onSelectMockEnter).toHaveBeenCalledWith("file1.txt");
-      expect(onSelectMockTab).toHaveBeenCalledTimes(1);
-      expect(onSelectMockEnter).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(onSelectMockTab).toHaveBeenCalledWith("file1.txt");
+        expect(onSelectMockEnter).toHaveBeenCalledWith("file1.txt");
+        expect(onSelectMockTab).toHaveBeenCalledTimes(1);
+        expect(onSelectMockEnter).toHaveBeenCalledTimes(1);
+      });
     });
 
-    it("should trigger onSelect with correct file path when Tab is pressed with different files", () => {
+    it("should trigger onSelect with correct file path when Tab is pressed with different files", async () => {
       // Test with a smaller, different set of files to ensure Tab works correctly
       const testFiles: FileItem[] = [
         { path: "README.md", type: "file" },
@@ -181,11 +188,13 @@ describe("FileSelector", () => {
       // Press Tab key (should select first file by default)
       stdin.write("\t");
 
-      expect(onSelectMock).toHaveBeenCalledWith("README.md");
-      expect(onSelectMock).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(onSelectMock).toHaveBeenCalledWith("README.md");
+        expect(onSelectMock).toHaveBeenCalledTimes(1);
+      });
     });
 
-    it("should handle Tab key with single file", () => {
+    it("should handle Tab key with single file", async () => {
       const singleFile: FileItem[] = [
         { path: "single-file.txt", type: "file" },
       ];
@@ -201,11 +210,13 @@ describe("FileSelector", () => {
       // Press Tab key
       stdin.write("\t");
 
-      expect(onSelectMock).toHaveBeenCalledWith("single-file.txt");
-      expect(onSelectMock).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(onSelectMock).toHaveBeenCalledWith("single-file.txt");
+        expect(onSelectMock).toHaveBeenCalledTimes(1);
+      });
     });
 
-    it("should handle Tab key correctly with directory files", () => {
+    it("should handle Tab key correctly with directory files", async () => {
       const mixedFiles: FileItem[] = [
         { path: "src/", type: "directory" },
         { path: "components/", type: "directory" },
@@ -223,8 +234,10 @@ describe("FileSelector", () => {
       // Press Tab key (should select first item - directory)
       stdin.write("\t");
 
-      expect(onSelectMock).toHaveBeenCalledWith("src/");
-      expect(onSelectMock).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(onSelectMock).toHaveBeenCalledWith("src/");
+        expect(onSelectMock).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

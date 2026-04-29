@@ -1,28 +1,43 @@
-import React, { useState } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
+import { selectorReducer } from "../reducers/selectorReducer.js";
 
 import { MarketplaceList } from "./MarketplaceList.js";
 
 export const MarketplaceView: React.FC = () => {
   const { marketplaces, actions } = usePluginManagerContext();
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [state, dispatch] = useReducer(selectorReducer, {
+    selectedIndex: 0,
+    pendingDecision: null,
+  });
+
+  const { selectedIndex, pendingDecision } = state;
 
   useInput((input, key) => {
-    if (key.upArrow) {
-      setSelectedIndex(Math.max(0, selectedIndex - 1));
-    } else if (key.downArrow) {
-      setSelectedIndex(Math.min(marketplaces.length - 1, selectedIndex + 1));
-    } else if (key.return) {
+    if (input === "a") {
+      actions.setView("ADD_MARKETPLACE");
+      return;
+    }
+
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: marketplaces.length - 1,
+      hasInsert: false,
+    });
+  });
+
+  useEffect(() => {
+    if (pendingDecision === "select") {
       const mk = marketplaces[selectedIndex];
       if (mk) {
         actions.setSelectedId(mk.name);
         actions.setView("MARKETPLACE_DETAIL");
       }
-    } else if (input === "a") {
-      actions.setView("ADD_MARKETPLACE");
+      dispatch({ type: "CLEAR_DECISION" });
     }
-  });
+  }, [pendingDecision, selectedIndex, marketplaces, actions]);
 
   return (
     <Box flexDirection="column">

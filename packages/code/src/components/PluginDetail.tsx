@@ -1,4 +1,4 @@
-import React, { useReducer } from "react";
+import React, { useReducer, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
 import {
@@ -18,7 +18,11 @@ export const PluginDetail: React.FC = () => {
   const [detailState, dispatch] = useReducer(pluginDetailReducer, {
     selectedScopeIndex: 0,
     selectedActionIndex: 0,
+    pendingDecision: null,
   } as PluginDetailState);
+
+  const { selectedScopeIndex, selectedActionIndex, pendingDecision } =
+    detailState;
 
   const plugin =
     discoverablePlugins.find(
@@ -28,34 +32,35 @@ export const PluginDetail: React.FC = () => {
       (p) => `${p.name}@${p.marketplace}` === state.selectedId,
     );
 
-  const INSTALLED_ACTIONS = [
-    { id: "update", label: "Update plugin (reinstall)" },
-    { id: "uninstall", label: "Uninstall plugin" },
-  ] as const;
+  const INSTALLED_ACTIONS = useMemo(
+    () =>
+      [
+        { id: "update", label: "Update plugin (reinstall)" },
+        { id: "uninstall", label: "Uninstall plugin" },
+      ] as const,
+    [],
+  );
 
   const isInstalledAndEnabled = plugin && "enabled" in plugin && plugin.enabled;
 
-  useInput((input, key) => {
-    if (key.escape) {
-      const isFromDiscover = discoverablePlugins.find(
-        (p) => `${p.name}@${p.marketplace}` === state.selectedId,
-      );
-      actions.setView(isFromDiscover ? "DISCOVER" : "INSTALLED");
-    } else if (key.upArrow) {
-      dispatch({
-        type: "MOVE_ACTION_UP",
-        maxIndex: INSTALLED_ACTIONS.length - 1,
-      });
-      dispatch({ type: "MOVE_SCOPE_UP", maxIndex: SCOPES.length - 1 });
-    } else if (key.downArrow) {
-      dispatch({
-        type: "MOVE_ACTION_DOWN",
-        maxIndex: INSTALLED_ACTIONS.length - 1,
-      });
-      dispatch({ type: "MOVE_SCOPE_DOWN", maxIndex: SCOPES.length - 1 });
-    } else if (key.return && plugin && !state.isLoading) {
+  useInput((_input, key) => {
+    if (state.isLoading && !key.escape) return;
+
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: isInstalledAndEnabled
+        ? INSTALLED_ACTIONS.length - 1
+        : SCOPES.length - 1,
+    });
+  });
+
+  useEffect(() => {
+    if (!pendingDecision) return;
+
+    if (pendingDecision === "select" && plugin && !state.isLoading) {
       if (isInstalledAndEnabled) {
-        const action = INSTALLED_ACTIONS[detailState.selectedActionIndex].id;
+        const action = INSTALLED_ACTIONS[selectedActionIndex].id;
         if (action === "uninstall") {
           actions.uninstallPlugin(plugin.name, plugin.marketplace);
         } else {
@@ -65,11 +70,29 @@ export const PluginDetail: React.FC = () => {
         actions.installPlugin(
           plugin.name,
           plugin.marketplace,
-          SCOPES[detailState.selectedScopeIndex].id,
+          SCOPES[selectedScopeIndex].id,
         );
       }
+    } else if (pendingDecision === "cancel") {
+      const isFromDiscover = discoverablePlugins.find(
+        (p) => `${p.name}@${p.marketplace}` === state.selectedId,
+      );
+      actions.setView(isFromDiscover ? "DISCOVER" : "INSTALLED");
     }
-  });
+
+    dispatch({ type: "CLEAR_DECISION" });
+  }, [
+    pendingDecision,
+    selectedActionIndex,
+    selectedScopeIndex,
+    plugin,
+    isInstalledAndEnabled,
+    state.isLoading,
+    discoverablePlugins,
+    state.selectedId,
+    actions,
+    INSTALLED_ACTIONS,
+  ]);
 
   if (!plugin) {
     return (

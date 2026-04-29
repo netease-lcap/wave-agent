@@ -46,6 +46,7 @@ describe("inputReducer", () => {
         question: "",
         isLoading: false,
       },
+      pendingEffect: null,
     });
   });
 

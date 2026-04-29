@@ -75,7 +75,9 @@ describe("PluginManager Integration", () => {
 
     // Press Enter to go to detail
     stdin.write("\r");
-    expect(setView).toHaveBeenCalledWith("PLUGIN_DETAIL");
+    await vi.waitFor(() => {
+      expect(setView).toHaveBeenCalledWith("PLUGIN_DETAIL");
+    });
 
     // Rerender with new state (simulating state change in hook)
     rerender(<PluginManagerShell />);
@@ -86,11 +88,13 @@ describe("PluginManager Integration", () => {
 
     // Press Enter to install (default scope)
     stdin.write("\r");
-    expect(mockActions.installPlugin).toHaveBeenCalledWith(
-      "test-plugin",
-      "official",
-      "project",
-    );
+    await vi.waitFor(() => {
+      expect(mockActions.installPlugin).toHaveBeenCalledWith(
+        "test-plugin",
+        "official",
+        "project",
+      );
+    });
   });
 
   it("manages installed plugins", async () => {
@@ -129,7 +133,9 @@ describe("PluginManager Integration", () => {
 
     // Press Enter to go to detail
     stdin.write("\r");
-    expect(setView).toHaveBeenCalledWith("PLUGIN_DETAIL");
+    await vi.waitFor(() => {
+      expect(setView).toHaveBeenCalledWith("PLUGIN_DETAIL");
+    });
 
     // Rerender with new state
     rerender(<PluginManagerShell />);

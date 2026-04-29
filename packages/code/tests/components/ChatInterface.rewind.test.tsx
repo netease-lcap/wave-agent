@@ -99,8 +99,8 @@ describe("ChatInterface Rewind Visibility", () => {
     // Arrow keys should not affect inputbox (handleInput should not be called)
     mockHandleInput.mockClear();
     stdin.write("\u001B[A"); // Up arrow
-    // Verify that handleInput is called
-    expect(mockHandleInput).toHaveBeenCalled();
+    // Verify that handleInput is NOT called
+    expect(mockHandleInput).not.toHaveBeenCalled();
   });
 
   it("should show InputBox when showRewindManager is false", async () => {

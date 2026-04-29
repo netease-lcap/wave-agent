@@ -5,6 +5,14 @@ import {
   PromptEntry,
   Message,
 } from "wave-agent-sdk";
+import { Key } from "ink";
+import {
+  getAtSelectorPosition,
+  getSlashSelectorPosition,
+  getWordEnd,
+  SELECTOR_TRIGGERS,
+  getProjectedState,
+} from "../utils/inputUtils.js";
 
 export interface AttachedImage {
   id: number;
@@ -18,6 +26,26 @@ export interface BtwState {
   answer?: string;
   isLoading: boolean;
 }
+
+export type PendingEffect =
+  | {
+      type: "SEND_MESSAGE";
+      content: string;
+      images?: Array<{ path: string; mimeType: string }>;
+      longTextMap: Record<string, string>;
+    }
+  | { type: "ABORT_MESSAGE" }
+  | { type: "BACKGROUND_CURRENT_TASK" }
+  | { type: "ASK_BTW"; question: string }
+  | { type: "PERMISSION_MODE_CHANGE"; mode: PermissionMode }
+  | {
+      type: "SAVE_HISTORY";
+      content: string;
+      longTextMap: Record<string, string>;
+    }
+  | { type: "FETCH_HISTORY" }
+  | { type: "PASTE_IMAGE" }
+  | { type: "EXECUTE_COMMAND"; command: string };
 
 export interface InputManagerCallbacks {
   onInputTextChange?: (text: string) => void;
@@ -95,6 +123,7 @@ export interface InputState {
   originalLongTextMap: Record<string, string>;
   isFileSearching: boolean;
   btwState: BtwState;
+  pendingEffect: PendingEffect | null;
 }
 
 export const initialState: InputState = {
@@ -135,6 +164,7 @@ export const initialState: InputState = {
     question: "",
     isLoading: false,
   },
+  pendingEffect: null,
 };
 
 export type InputAction =
@@ -183,7 +213,19 @@ export type InputAction =
   | { type: "NAVIGATE_HISTORY"; payload: "up" | "down" }
   | { type: "RESET_HISTORY_NAVIGATION" }
   | { type: "SELECT_HISTORY_ENTRY"; payload: PromptEntry }
-  | { type: "SET_BTW_STATE"; payload: Partial<BtwState> };
+  | { type: "SELECT_COMMAND"; payload: string }
+  | { type: "INSERT_COMMAND"; payload: string }
+  | { type: "SELECT_FILE"; payload: string }
+  | { type: "SET_BTW_STATE"; payload: Partial<BtwState> }
+  | { type: "CLEAR_PENDING_EFFECT" }
+  | {
+      type: "HANDLE_KEY";
+      payload: {
+        input: string;
+        key: Key;
+        hasSlashCommand: (cmd: string) => boolean;
+      };
+    };
 
 export function inputReducer(
   state: InputState,
@@ -388,7 +430,7 @@ export function inputReducer(
       const newText = beforeCursor + textToInsert + afterCursor;
       const newCursorPosition = state.cursorPosition + textToInsert.length;
 
-      return {
+      const newState: InputState = {
         ...state,
         inputText: newText,
         cursorPosition: newCursorPosition,
@@ -396,6 +438,34 @@ export function inputReducer(
         longTextMap: newLongTextMap,
         historyIndex: -1,
       };
+
+      // Sync selectors
+      const atPos = getAtSelectorPosition(newText, newCursorPosition);
+      if (atPos !== -1 && !newState.showFileSelector) {
+        newState.showFileSelector = true;
+        newState.atPosition = atPos;
+        newState.isFileSearching = true;
+      }
+
+      const slashPos = getSlashSelectorPosition(newText, newCursorPosition);
+      if (slashPos !== -1 && !newState.showCommandSelector) {
+        newState.showCommandSelector = true;
+        newState.slashPosition = slashPos;
+      }
+
+      if (newState.showFileSelector && newState.atPosition >= 0) {
+        newState.fileSearchQuery = newText.substring(
+          newState.atPosition + 1,
+          newCursorPosition,
+        );
+      } else if (newState.showCommandSelector && newState.slashPosition >= 0) {
+        newState.commandSearchQuery = newText.substring(
+          newState.slashPosition + 1,
+          newCursorPosition,
+        );
+      }
+
+      return newState;
     }
     case "CLEAR_LONG_TEXT_MAP":
       return { ...state, longTextMap: {} };
@@ -519,6 +589,72 @@ export function inputReducer(
         selectorJustUsed: true,
       };
     }
+    case "SELECT_COMMAND": {
+      const command = action.payload;
+      if (state.slashPosition >= 0) {
+        const wordEnd = getWordEnd(state.inputText, state.slashPosition);
+        const beforeSlash = state.inputText.substring(0, state.slashPosition);
+        const afterWord = state.inputText.substring(wordEnd);
+        const newInput = beforeSlash + afterWord;
+        const newCursorPosition = beforeSlash.length;
+
+        return {
+          ...state,
+          inputText: newInput,
+          cursorPosition: newCursorPosition,
+          showCommandSelector: false,
+          slashPosition: -1,
+          commandSearchQuery: "",
+          selectorJustUsed: true,
+          pendingEffect: { type: "EXECUTE_COMMAND", command },
+        };
+      }
+      return state;
+    }
+    case "INSERT_COMMAND": {
+      const command = action.payload;
+      if (state.slashPosition >= 0) {
+        const wordEnd = getWordEnd(state.inputText, state.slashPosition);
+        const beforeSlash = state.inputText.substring(0, state.slashPosition);
+        const afterWord = state.inputText.substring(wordEnd);
+        const newInput = beforeSlash + `/${command} ` + afterWord;
+        const newCursorPosition = beforeSlash.length + command.length + 2;
+
+        return {
+          ...state,
+          inputText: newInput,
+          cursorPosition: newCursorPosition,
+          showCommandSelector: false,
+          slashPosition: -1,
+          commandSearchQuery: "",
+          selectorJustUsed: true,
+        };
+      }
+      return state;
+    }
+    case "SELECT_FILE": {
+      const filePath = action.payload;
+      if (state.atPosition >= 0) {
+        const wordEnd = getWordEnd(state.inputText, state.atPosition);
+        const beforeAt = state.inputText.substring(0, state.atPosition);
+        const afterWord = state.inputText.substring(wordEnd);
+        const newInput = beforeAt + `@${filePath} ` + afterWord;
+        const newCursorPosition = beforeAt.length + filePath.length + 2;
+
+        return {
+          ...state,
+          inputText: newInput,
+          cursorPosition: newCursorPosition,
+          showFileSelector: false,
+          atPosition: -1,
+          fileSearchQuery: "",
+          filteredFiles: [],
+          selectorJustUsed: true,
+          isFileSearching: false,
+        };
+      }
+      return state;
+    }
     case "RESET_HISTORY_NAVIGATION":
       return {
         ...state,
@@ -527,6 +663,548 @@ export function inputReducer(
         originalInputText: "",
         originalLongTextMap: {},
       };
+    case "CLEAR_PENDING_EFFECT":
+      return { ...state, pendingEffect: null };
+    case "HANDLE_KEY": {
+      const { input, key } = action.payload;
+
+      if (state.selectorJustUsed) {
+        return state;
+      }
+
+      // 1. BTW State Handling
+      if (state.btwState.isActive) {
+        if (key.escape) {
+          return {
+            ...state,
+            btwState: {
+              isActive: false,
+              question: "",
+              answer: undefined,
+              isLoading: false,
+            },
+          };
+        }
+
+        if (key.return) {
+          const question = state.inputText.trim();
+          if (question && !state.btwState.isLoading) {
+            return {
+              ...state,
+              inputText: "",
+              cursorPosition: 0,
+              btwState: {
+                ...state.btwState,
+                question,
+                isLoading: true,
+                answer: undefined,
+              },
+              pendingEffect: { type: "ASK_BTW", question },
+            };
+          }
+          return state;
+        }
+      }
+
+      // 2. Escape Handling
+      if (key.escape) {
+        if (state.showFileSelector) {
+          return {
+            ...state,
+            showFileSelector: false,
+            atPosition: -1,
+            fileSearchQuery: "",
+            filteredFiles: [],
+            selectorJustUsed: true,
+            isFileSearching: false,
+          };
+        }
+        if (state.showCommandSelector) {
+          return {
+            ...state,
+            showCommandSelector: false,
+            slashPosition: -1,
+            commandSearchQuery: "",
+            selectorJustUsed: true,
+          };
+        }
+        if (state.showHistorySearch) {
+          return {
+            ...state,
+            showHistorySearch: false,
+            historySearchQuery: "",
+            selectorJustUsed: true,
+          };
+        }
+        if (state.historyIndex !== -1) {
+          return {
+            ...state,
+            historyIndex: -1,
+            inputText: state.originalInputText,
+            longTextMap: state.originalLongTextMap,
+            cursorPosition: state.originalInputText.length,
+            originalInputText: "",
+            originalLongTextMap: {},
+          };
+        }
+        if (
+          !(
+            state.showBackgroundTaskManager ||
+            state.showMcpManager ||
+            state.showRewindManager ||
+            state.showHelp ||
+            state.showStatusCommand ||
+            state.showPluginManager ||
+            state.showModelSelector
+          )
+        ) {
+          return { ...state, pendingEffect: { type: "ABORT_MESSAGE" } };
+        }
+        return state;
+      }
+
+      // 3. Special Shortcuts
+      if (key.tab && key.shift) {
+        const modes: PermissionMode[] = [
+          "default",
+          "acceptEdits",
+          "plan",
+          "bypassPermissions",
+        ];
+        const currentIndex = modes.indexOf(state.permissionMode);
+        const nextIndex =
+          currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length;
+        const nextMode = modes[nextIndex];
+        return {
+          ...state,
+          permissionMode: nextMode,
+          pendingEffect: { type: "PERMISSION_MODE_CHANGE", mode: nextMode },
+        };
+      }
+
+      if (key.ctrl && input === "v") {
+        return { ...state, pendingEffect: { type: "PASTE_IMAGE" } };
+      }
+
+      if (key.ctrl && input === "r") {
+        return {
+          ...state,
+          showHistorySearch: true,
+          historySearchQuery: "",
+        };
+      }
+
+      if (key.ctrl && input === "b") {
+        return {
+          ...state,
+          pendingEffect: { type: "BACKGROUND_CURRENT_TASK" },
+        };
+      }
+
+      // 4. History Navigation
+      if (
+        key.upArrow &&
+        !state.showFileSelector &&
+        !state.showCommandSelector
+      ) {
+        if (state.history.length === 0) {
+          return { ...state, pendingEffect: { type: "FETCH_HISTORY" } };
+        }
+        // If history is already loaded, NAVIGATE_HISTORY logic follows
+        let newIndex = state.historyIndex;
+        let newOriginalInputText = state.originalInputText;
+        let newOriginalLongTextMap = state.originalLongTextMap;
+
+        if (newIndex === -1) {
+          newOriginalInputText = state.inputText;
+          newOriginalLongTextMap = state.longTextMap;
+        }
+        newIndex = Math.min(state.history.length - 1, newIndex + 1);
+        const entry = state.history[newIndex];
+        return {
+          ...state,
+          historyIndex: newIndex,
+          inputText: entry.prompt,
+          longTextMap: entry.longTextMap || {},
+          cursorPosition: entry.prompt.length,
+          originalInputText: newOriginalInputText,
+          originalLongTextMap: newOriginalLongTextMap,
+        };
+      }
+
+      if (
+        key.downArrow &&
+        !state.showFileSelector &&
+        !state.showCommandSelector
+      ) {
+        if (state.historyIndex === -1) return state;
+        const newIndex = state.historyIndex - 1;
+
+        if (newIndex === -1) {
+          return {
+            ...state,
+            historyIndex: -1,
+            inputText: state.originalInputText,
+            longTextMap: state.originalLongTextMap,
+            cursorPosition: state.originalInputText.length,
+            originalInputText: "",
+            originalLongTextMap: {},
+          };
+        } else {
+          const entry = state.history[newIndex];
+          return {
+            ...state,
+            historyIndex: newIndex,
+            inputText: entry.prompt,
+            longTextMap: entry.longTextMap || {},
+            cursorPosition: entry.prompt.length,
+          };
+        }
+      }
+
+      // 5. Active Selector Handling (History Search, File, Command)
+      if (state.showHistorySearch) {
+        if (key.backspace || key.delete) {
+          return {
+            ...state,
+            historySearchQuery: state.historySearchQuery.slice(0, -1),
+          };
+        }
+        if (input && !key.ctrl && !key.meta && !key.return && !key.tab) {
+          return {
+            ...state,
+            historySearchQuery: state.historySearchQuery + input,
+          };
+        }
+        return state;
+      }
+
+      if (state.showFileSelector || state.showCommandSelector) {
+        if (key.backspace || key.delete) {
+          if (state.cursorPosition > 0) {
+            const newCursorPosition = state.cursorPosition - 1;
+            const beforeCursor = state.inputText.substring(
+              0,
+              state.cursorPosition - 1,
+            );
+            const afterCursor = state.inputText.substring(state.cursorPosition);
+            const newInputText = beforeCursor + afterCursor;
+
+            const newState = {
+              ...state,
+              inputText: newInputText,
+              cursorPosition: newCursorPosition,
+              historyIndex: -1,
+            };
+
+            // checkForAtDeletion
+            if (
+              newState.showFileSelector &&
+              newCursorPosition <= newState.atPosition
+            ) {
+              newState.showFileSelector = false;
+              newState.atPosition = -1;
+              newState.fileSearchQuery = "";
+            }
+            // checkForSlashDeletion
+            if (
+              newState.showCommandSelector &&
+              newCursorPosition <= newState.slashPosition
+            ) {
+              newState.showCommandSelector = false;
+              newState.slashPosition = -1;
+              newState.commandSearchQuery = "";
+            }
+
+            // Update queries
+            if (newState.showFileSelector && newState.atPosition >= 0) {
+              newState.fileSearchQuery = newInputText.substring(
+                newState.atPosition + 1,
+                newCursorPosition,
+              );
+            }
+            if (newState.showCommandSelector && newState.slashPosition >= 0) {
+              newState.commandSearchQuery = newInputText.substring(
+                newState.slashPosition + 1,
+                newCursorPosition,
+              );
+            }
+            return newState;
+          }
+        }
+        if (key.leftArrow || key.rightArrow) {
+          const delta = key.leftArrow ? -1 : 1;
+          const newCursorPosition = Math.max(
+            0,
+            Math.min(state.inputText.length, state.cursorPosition + delta),
+          );
+          const newState = { ...state, cursorPosition: newCursorPosition };
+          if (
+            newState.showFileSelector &&
+            newCursorPosition <= newState.atPosition
+          ) {
+            newState.showFileSelector = false;
+            newState.atPosition = -1;
+          }
+          if (
+            newState.showCommandSelector &&
+            newCursorPosition <= newState.slashPosition
+          ) {
+            newState.showCommandSelector = false;
+            newState.slashPosition = -1;
+          }
+          return newState;
+        }
+        if (input === " ") {
+          return {
+            ...state,
+            showFileSelector: false,
+            atPosition: -1,
+            showCommandSelector: false,
+            slashPosition: -1,
+            inputText:
+              state.inputText.substring(0, state.cursorPosition) +
+              " " +
+              state.inputText.substring(state.cursorPosition),
+            cursorPosition: state.cursorPosition + 1,
+          };
+        }
+
+        if (key.return || key.tab || key.upArrow || key.downArrow) {
+          return state;
+        }
+      }
+
+      // 6. Return / Submit
+      if (key.return) {
+        if (state.inputText.trim()) {
+          const imageRegex = /\[Image #(\d+)\]/g;
+          const matches = [...state.inputText.matchAll(imageRegex)];
+          const referencedImages = matches
+            .map((match) => {
+              const imageId = parseInt(match[1], 10);
+              return state.attachedImages.find((img) => img.id === imageId);
+            })
+            .filter((img): img is AttachedImage => img !== undefined)
+            .map((img) => ({ path: img.path, mimeType: img.mimeType }));
+
+          const contentWithPlaceholders = state.inputText
+            .replace(imageRegex, "")
+            .trim();
+
+          if (
+            contentWithPlaceholders === "/btw" ||
+            contentWithPlaceholders.startsWith("/btw ")
+          ) {
+            const question = contentWithPlaceholders.startsWith("/btw ")
+              ? contentWithPlaceholders.substring(5).trim()
+              : "";
+
+            return {
+              ...state,
+              inputText: "",
+              cursorPosition: 0,
+              historyIndex: -1,
+              longTextMap: {},
+              btwState: {
+                isActive: true,
+                question,
+                isLoading: question !== "",
+                answer: undefined,
+              },
+              pendingEffect: question ? { type: "ASK_BTW", question } : null,
+            };
+          }
+
+          return {
+            ...state,
+            inputText: "",
+            cursorPosition: 0,
+            historyIndex: -1,
+            longTextMap: {},
+            pendingEffect: {
+              type: "SEND_MESSAGE",
+              content: contentWithPlaceholders,
+              images:
+                referencedImages.length > 0 ? referencedImages : undefined,
+              longTextMap: state.longTextMap,
+            },
+          };
+        }
+        return state;
+      }
+
+      // 7. Regular Input
+      if (
+        input &&
+        !key.ctrl &&
+        !("alt" in key && key.alt) &&
+        !key.meta &&
+        !key.return &&
+        !key.escape &&
+        !key.leftArrow &&
+        !key.rightArrow &&
+        !("home" in key && key.home) &&
+        !("end" in key && key.end)
+      ) {
+        const isPasteOperation =
+          input.length > 1 || input.includes("\n") || input.includes("\r");
+
+        if (isPasteOperation) {
+          const isNewPaste = !state.pasteBuffer;
+          return {
+            ...state,
+            isPasting: true,
+            pasteBuffer: state.pasteBuffer + input,
+            initialPasteCursorPosition: isNewPaste
+              ? state.cursorPosition
+              : state.initialPasteCursorPosition,
+          };
+        } else {
+          let char = input;
+          if (char === "！" && state.cursorPosition === 0) {
+            char = "!";
+          }
+
+          const { newInputText, newCursorPosition } = getProjectedState(
+            state.inputText,
+            state.cursorPosition,
+            char,
+          );
+
+          const newState = {
+            ...state,
+            inputText: newInputText,
+            cursorPosition: newCursorPosition,
+            historyIndex: -1,
+          };
+
+          // Selector Activation
+          const trigger = SELECTOR_TRIGGERS.find((t) =>
+            t.shouldActivate(
+              char,
+              newCursorPosition,
+              newInputText,
+              state.showFileSelector,
+            ),
+          );
+
+          if (trigger) {
+            if (trigger.type === "ACTIVATE_FILE_SELECTOR") {
+              newState.showFileSelector = true;
+              newState.atPosition = newCursorPosition - 1;
+              newState.fileSearchQuery = "";
+              newState.isFileSearching = true;
+            } else if (trigger.type === "ACTIVATE_COMMAND_SELECTOR") {
+              newState.showCommandSelector = true;
+              newState.slashPosition = newCursorPosition - 1;
+              newState.commandSearchQuery = "";
+            }
+          } else {
+            const atPos = getAtSelectorPosition(
+              newInputText,
+              newCursorPosition,
+            );
+            if (atPos !== -1 && !state.showFileSelector) {
+              newState.showFileSelector = true;
+              newState.atPosition = atPos;
+              newState.fileSearchQuery = "";
+              newState.isFileSearching = true;
+            }
+
+            const slashPos = getSlashSelectorPosition(
+              newInputText,
+              newCursorPosition,
+            );
+            if (slashPos !== -1 && !state.showCommandSelector) {
+              newState.showCommandSelector = true;
+              newState.slashPosition = slashPos;
+              newState.commandSearchQuery = "";
+            }
+          }
+
+          // Update queries
+          if (newState.showFileSelector && newState.atPosition >= 0) {
+            newState.fileSearchQuery = newInputText.substring(
+              newState.atPosition + 1,
+              newCursorPosition,
+            );
+          }
+          if (newState.showCommandSelector && newState.slashPosition >= 0) {
+            newState.commandSearchQuery = newInputText.substring(
+              newState.slashPosition + 1,
+              newCursorPosition,
+            );
+          }
+
+          return newState;
+        }
+      }
+
+      // 8. Backspace / Delete (Normal Mode)
+      if (key.backspace || key.delete) {
+        if (state.cursorPosition > 0) {
+          const newCursorPosition = state.cursorPosition - 1;
+          const beforeCursor = state.inputText.substring(
+            0,
+            state.cursorPosition - 1,
+          );
+          const afterCursor = state.inputText.substring(state.cursorPosition);
+          const newInputText = beforeCursor + afterCursor;
+
+          const newState = {
+            ...state,
+            inputText: newInputText,
+            cursorPosition: newCursorPosition,
+            historyIndex: -1,
+          };
+
+          // Reactivate selectors if cursor is within word
+          const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
+          if (atPos !== -1 && !state.showFileSelector) {
+            newState.showFileSelector = true;
+            newState.atPosition = atPos;
+            newState.isFileSearching = true;
+          }
+
+          const slashPos = getSlashSelectorPosition(
+            newInputText,
+            newCursorPosition,
+          );
+          if (slashPos !== -1 && !state.showCommandSelector) {
+            newState.showCommandSelector = true;
+            newState.slashPosition = slashPos;
+          }
+
+          // Update queries
+          if (newState.showFileSelector && newState.atPosition >= 0) {
+            newState.fileSearchQuery = newInputText.substring(
+              newState.atPosition + 1,
+              newCursorPosition,
+            );
+          }
+          if (newState.showCommandSelector && newState.slashPosition >= 0) {
+            newState.commandSearchQuery = newInputText.substring(
+              newState.slashPosition + 1,
+              newCursorPosition,
+            );
+          }
+          return newState;
+        }
+      }
+
+      // 9. Cursor Movement (Normal Mode)
+      if (key.leftArrow || key.rightArrow) {
+        const delta = key.leftArrow ? -1 : 1;
+        const newCursorPosition = Math.max(
+          0,
+          Math.min(state.inputText.length, state.cursorPosition + delta),
+        );
+        return { ...state, cursorPosition: newCursorPosition };
+      }
+
+      return state;
+    }
     case "SET_BTW_STATE":
       return {
         ...state,

@@ -7,10 +7,7 @@ import {
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
-import {
-  confirmationReducer,
-  type ConfirmationState,
-} from "../reducers/confirmationReducer.js";
+import { confirmationReducer } from "../reducers/confirmationReducer.js";
 import { questionReducer } from "../reducers/questionReducer.js";
 
 const getHeaderColor = (header: string) => {
@@ -67,12 +64,14 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   useEffect(() => {
     if (state.decision) {
       onDecision(state.decision);
+      dispatch({ type: "CLEAR_DECISION" });
     }
   }, [state.decision, onDecision]);
 
   useEffect(() => {
     if (questionState.decision) {
       onDecision(questionState.decision);
+      questionDispatch({ type: "CLEAR_DECISION" });
     }
   }, [questionState.decision, onDecision]);
 
@@ -98,236 +97,30 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     return "Yes, and auto-accept edits";
   };
 
-  const stateRef = React.useRef(state);
-  const questionStateRef = React.useRef(questionState);
-
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
-  useEffect(() => {
-    questionStateRef.current = questionState;
-  }, [questionState]);
-
   useInput((input, key) => {
-    const currentState = stateRef.current;
-    const currentQuestionState = questionStateRef.current;
-
     if (key.escape) {
       onCancel();
       return;
     }
 
     if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
-      if (!currentQuestion) return;
-      const options = [...currentQuestion.options, { label: "Other" }];
-      const isMultiSelect = currentQuestion.multiSelect;
-
-      if (key.return) {
-        questionDispatch({
-          type: "CONFIRM_ANSWER",
-          currentQuestion,
-          options,
-          isMultiSelect: !!isMultiSelect,
-          questions,
-        });
-        return;
-      }
-
-      if (input === " ") {
-        const isOtherFocused =
-          currentQuestionState.selectedOptionIndex === options.length - 1;
-        if (
-          isMultiSelect &&
-          (!isOtherFocused ||
-            !currentQuestionState.selectedOptionIndices.has(
-              currentQuestionState.selectedOptionIndex,
-            ))
-        ) {
-          questionDispatch({
-            type: "TOGGLE_MULTI_SELECT",
-            optionsLength: options.length,
-          });
-          return;
-        }
-        // If it's other and focused, we don't return here, allowing the input handler below to handle it
-      }
-
-      if (key.upArrow) {
-        questionDispatch({
-          type: "MOVE_OPTION_UP",
-          maxIndex: options.length - 1,
-        });
-        return;
-      }
-      if (key.downArrow) {
-        questionDispatch({
-          type: "MOVE_OPTION_DOWN",
-          maxIndex: options.length - 1,
-        });
-        return;
-      }
-      if (key.tab) {
-        questionDispatch({
-          type: "CYCLE_QUESTION",
-          shift: key.shift,
-          questionCount: questions.length,
-        });
-        return;
-      }
-
-      // Always dispatch Other actions unconditionally; the reducer checks
-      // isOtherFocused from the latest state, so this works correctly even
-      // when inputs are batched before React re-renders.
-      if (key.leftArrow) {
-        questionDispatch({
-          type: "MOVE_OTHER_LEFT",
-          optionsLength: options.length,
-        });
-        return;
-      }
-      if (key.rightArrow) {
-        questionDispatch({
-          type: "MOVE_OTHER_RIGHT",
-          optionsLength: options.length,
-        });
-        return;
-      }
-      if (key.backspace || key.delete) {
-        questionDispatch({
-          type: "DELETE_OTHER",
-          optionsLength: options.length,
-        });
-        return;
-      }
-      if (input && !key.ctrl && !key.meta) {
-        questionDispatch({
-          type: "INSERT_OTHER",
-          text: input,
-          optionsLength: options.length,
-        });
-        return;
-      }
-      return;
-    }
-
-    if (key.return) {
-      let decision: PermissionDecision | null = null;
-      if (currentState.selectedOption === "clear") {
-        decision = {
-          behavior: "allow",
-          newPermissionMode: "acceptEdits",
-          clearContext: true,
-        };
-      } else if (currentState.selectedOption === "allow") {
-        if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
-          decision = { behavior: "allow", newPermissionMode: "default" };
-        } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
-          decision = { behavior: "allow", newPermissionMode: "plan" };
-        } else {
-          decision = { behavior: "allow" };
-        }
-      } else if (currentState.selectedOption === "auto") {
-        if (toolName === BASH_TOOL_NAME) {
-          const command = (toolInput?.command as string) || "";
-          if (command.trim().startsWith("mkdir")) {
-            decision = { behavior: "allow", newPermissionMode: "acceptEdits" };
-          } else {
-            const rule = suggestedPrefix
-              ? `Bash(${suggestedPrefix})`
-              : `Bash(${toolInput?.command})`;
-            decision = { behavior: "allow", newPermissionRule: rule };
-          }
-        } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
-          decision = { behavior: "allow", newPermissionMode: "plan" };
-        } else if (toolName.startsWith("mcp__")) {
-          decision = { behavior: "allow", newPermissionRule: toolName };
-        } else {
-          decision = { behavior: "allow", newPermissionMode: "acceptEdits" };
-        }
-      } else if (currentState.alternativeText.trim()) {
-        decision = {
-          behavior: "deny",
-          message: currentState.alternativeText.trim(),
-        };
-      } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
-        decision = {
-          behavior: "deny",
-          message: "User chose not to enter plan mode",
-        };
-      }
-      if (decision) {
-        dispatch({ type: "CONFIRM", decision });
-      }
-      return;
-    }
-
-    if (currentState.selectedOption === "alternative") {
-      if (key.leftArrow) {
-        dispatch({ type: "MOVE_CURSOR_LEFT" });
-        return;
-      }
-      if (key.rightArrow) {
-        dispatch({ type: "MOVE_CURSOR_RIGHT" });
-        return;
-      }
-    }
-
-    const availableOptions: ConfirmationState["selectedOption"][] = [];
-    if (toolName === EXIT_PLAN_MODE_TOOL_NAME) availableOptions.push("clear");
-    availableOptions.push("allow");
-    if (!hidePersistentOption) availableOptions.push("auto");
-    availableOptions.push("alternative");
-
-    if (key.upArrow) {
-      const currentIndex = availableOptions.indexOf(
-        currentState.selectedOption,
-      );
-      if (currentIndex > 0) {
-        dispatch({
-          type: "SELECT_OPTION",
-          option: availableOptions[currentIndex - 1],
-        });
-      }
-      return;
-    }
-
-    if (key.downArrow) {
-      const currentIndex = availableOptions.indexOf(
-        currentState.selectedOption,
-      );
-      if (currentIndex < availableOptions.length - 1) {
-        dispatch({
-          type: "SELECT_OPTION",
-          option: availableOptions[currentIndex + 1],
-        });
-      }
-      return;
-    }
-
-    if (key.tab) {
-      const currentIndex = availableOptions.indexOf(
-        currentState.selectedOption,
-      );
-      const direction = key.shift ? -1 : 1;
-      let nextIndex = currentIndex + direction;
-      if (nextIndex < 0) nextIndex = availableOptions.length - 1;
-      if (nextIndex >= availableOptions.length) nextIndex = 0;
-      dispatch({
-        type: "SELECT_OPTION",
-        option: availableOptions[nextIndex],
+      questionDispatch({
+        type: "HANDLE_KEY",
+        input,
+        key,
+        currentQuestion,
+        questions,
       });
-      return;
-    }
-
-    if (input && !key.ctrl && !key.meta && !("alt" in key && key.alt)) {
-      dispatch({ type: "INSERT_TEXT", text: input });
-      return;
-    }
-
-    if (key.backspace || key.delete) {
-      dispatch({ type: "BACKSPACE" });
-      return;
+    } else {
+      dispatch({
+        type: "HANDLE_KEY",
+        input,
+        key,
+        toolName,
+        toolInput,
+        suggestedPrefix,
+        hidePersistentOption,
+      });
     }
   });
 

@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useReducer, useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { PromptHistoryManager, type PromptEntry } from "wave-agent-sdk";
+import {
+  selectorReducer,
+  type SelectorState,
+} from "../reducers/selectorReducer.js";
 
 export interface HistorySearchProps {
   searchQuery: string;
@@ -14,57 +18,46 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   onCancel,
 }) => {
   const MAX_VISIBLE_ITEMS = 5;
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [state, dispatch] = useReducer(selectorReducer, {
+    selectedIndex: 0,
+    pendingDecision: null,
+  } as SelectorState);
   const [entries, setEntries] = useState<PromptEntry[]>([]);
 
-  const entriesRef = React.useRef<PromptEntry[]>([]);
-  const selectedIndexRef = React.useRef(0);
-
-  useEffect(() => {
-    entriesRef.current = entries;
-  }, [entries]);
-
-  useEffect(() => {
-    selectedIndexRef.current = selectedIndex;
-  }, [selectedIndex]);
+  const { selectedIndex, pendingDecision } = state;
 
   useEffect(() => {
     const fetchHistory = async () => {
       const results = await PromptHistoryManager.searchHistory(searchQuery);
       const limitedResults = results.slice(0, 20);
-      setEntries(limitedResults); // Limit to 20 results
-      setSelectedIndex(0);
+      setEntries(limitedResults);
+      dispatch({ type: "RESET_INDEX" });
     };
     fetchHistory();
   }, [searchQuery]);
 
-  useInput((input, key) => {
-    if (key.return) {
-      if (
-        entriesRef.current.length > 0 &&
-        selectedIndexRef.current < entriesRef.current.length
-      ) {
-        onSelect(entriesRef.current[selectedIndexRef.current]);
+  // Handle decisions from reducer
+  useEffect(() => {
+    if (!pendingDecision) return;
+
+    if (pendingDecision === "select") {
+      if (entries.length > 0 && selectedIndex < entries.length) {
+        onSelect(entries[selectedIndex]);
       }
-      return;
-    }
-
-    if (key.escape) {
+    } else if (pendingDecision === "cancel") {
       onCancel();
-      return;
     }
 
-    if (key.upArrow) {
-      setSelectedIndex((prev) => Math.max(0, prev - 1));
-      return;
-    }
+    dispatch({ type: "CLEAR_DECISION" });
+  }, [pendingDecision, selectedIndex, entries, onSelect, onCancel]);
 
-    if (key.downArrow) {
-      setSelectedIndex((prev) =>
-        Math.min(entriesRef.current.length - 1, prev + 1),
-      );
-      return;
-    }
+  useInput((input, key) => {
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: entries.length - 1,
+      hasInsert: false,
+    });
   });
 
   if (entries.length === 0) {
