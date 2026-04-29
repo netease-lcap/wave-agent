@@ -136,7 +136,7 @@ Usage:
         return {
           success: false,
           content: "",
-          error: analyzeEditMismatch(originalContent, oldString),
+          error: analyzeEditMismatch(),
         };
       }
 
