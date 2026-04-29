@@ -1910,6 +1910,36 @@ describe("WaveAcpAgent", () => {
     );
   });
 
+  it("should forward onUserMessageAdded callback as user_message_chunk", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    capturedCallbacks!.onUserMessageAdded!({
+      content: "Hello from cron job",
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "Hello from cron job" },
+        }),
+      }),
+    );
+  });
+
   it("should include raw JSON content for MCP tools", async () => {
     let capturedCallbacks: AgentOptions["callbacks"];
     const mockWaveAgent = {
