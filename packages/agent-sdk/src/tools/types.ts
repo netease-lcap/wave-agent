@@ -104,6 +104,4 @@ export interface ToolContext {
   };
   /** State of files read in the current session for deduplication */
   readFileState?: Map<string, { mtime: number; hash: string }>;
-  /** Callback to notify when the current working directory changes */
-  onCwdChange?: (newCwd: string) => void;
 }
