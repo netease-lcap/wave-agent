@@ -24,12 +24,25 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     viewMode: "list",
     detailTaskId: null,
     detailOutput: null,
+    pendingEffect: null,
   } as BackgroundTaskManagerState);
 
-  const stateRef = React.useRef(state);
+  // Handle pending effects
   useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+    if (!state.pendingEffect) return;
+
+    const effect = state.pendingEffect;
+    dispatch({ type: "CLEAR_PENDING_EFFECT" });
+
+    switch (effect.type) {
+      case "CANCEL":
+        onCancel();
+        break;
+      case "STOP_TASK":
+        stopBackgroundTask(effect.taskId);
+        break;
+    }
+  }, [state.pendingEffect, onCancel, stopBackgroundTask]);
 
   const { tasks, selectedIndex, viewMode, detailTaskId, detailOutput } = state;
 
@@ -70,10 +83,6 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     return new Date(timestamp).toLocaleTimeString();
   };
 
-  const stopTask = (taskId: string) => {
-    stopBackgroundTask(taskId);
-  };
-
   // Calculate visible window
   const startIndex = Math.max(
     0,
@@ -85,58 +94,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
   const visibleTasks = tasks.slice(startIndex, startIndex + MAX_VISIBLE_ITEMS);
 
   useInput((input, key) => {
-    const currentState = stateRef.current;
-    if (currentState.viewMode === "list") {
-      // List mode navigation
-      if (key.return) {
-        dispatch({ type: "SELECT_CURRENT" });
-        return;
-      }
-
-      if (key.escape) {
-        onCancel();
-        return;
-      }
-
-      if (key.upArrow) {
-        dispatch({ type: "MOVE_UP" });
-        return;
-      }
-
-      if (key.downArrow) {
-        dispatch({ type: "MOVE_DOWN" });
-        return;
-      }
-
-      if (input === "k") {
-        if (
-          currentState.tasks.length > 0 &&
-          currentState.selectedIndex < currentState.tasks.length
-        ) {
-          const selectedTask = currentState.tasks[currentState.selectedIndex];
-          if (selectedTask.status === "running") {
-            stopTask(selectedTask.id);
-          }
-        }
-        return;
-      }
-    } else if (currentState.viewMode === "detail") {
-      // Detail mode navigation
-      if (key.escape) {
-        dispatch({ type: "RESET_DETAIL" });
-        return;
-      }
-
-      if (input === "k" && currentState.detailTaskId) {
-        const task = currentState.tasks.find(
-          (t) => t.id === currentState.detailTaskId,
-        );
-        if (task && task.status === "running") {
-          stopTask(currentState.detailTaskId);
-        }
-        return;
-      }
-    }
+    dispatch({ type: "HANDLE_KEY", input, key });
   });
 
   if (viewMode === "detail" && detailTaskId && detailOutput) {
