@@ -201,6 +201,7 @@ export class WaveAcpAgent implements AcpAgent {
         onPermissionModeChange: (mode) =>
           callbacks.onPermissionModeChange?.(mode),
         onModelChange: (model) => callbacks.onModelChange?.(model),
+        onUserMessageAdded: (params) => callbacks.onUserMessageAdded?.(params),
       },
     });
 
@@ -991,6 +992,15 @@ export class WaveAcpAgent implements AcpAgent {
             },
           });
         }
+      },
+      onUserMessageAdded: (params) => {
+        this.connection.sessionUpdate({
+          sessionId: sessionId as AcpSessionId,
+          update: {
+            sessionUpdate: "user_message_chunk",
+            content: { type: "text", text: params.content },
+          },
+        });
       },
     };
   }
