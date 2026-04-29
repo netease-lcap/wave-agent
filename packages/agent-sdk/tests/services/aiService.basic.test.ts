@@ -381,5 +381,65 @@ describe("AI Service - Basic CallAgent", () => {
       const callArgs = mockCreate.mock.calls[0][0];
       expect(callArgs).not.toHaveProperty("temperature");
     });
+
+    it("should include reasoning_content in result even if it is an empty string", async () => {
+      const mockWithResponse = vi.fn().mockResolvedValue({
+        data: {
+          choices: [
+            {
+              message: {
+                content: "Test response",
+                reasoning_content: "",
+              },
+              finish_reason: "stop",
+            },
+          ],
+        },
+        response: {
+          headers: new Map(),
+        },
+      });
+      mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      expect(result.content).toBe("Test response");
+      expect(result.reasoning_content).toBe("");
+    });
+
+    it("should NOT include reasoning_content in result if it is undefined", async () => {
+      const mockWithResponse = vi.fn().mockResolvedValue({
+        data: {
+          choices: [
+            {
+              message: {
+                content: "Test response",
+                // reasoning_content is absent
+              },
+              finish_reason: "stop",
+            },
+          ],
+        },
+        response: {
+          headers: new Map(),
+        },
+      });
+      mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      expect(result.content).toBe("Test response");
+      expect(result).not.toHaveProperty("reasoning_content");
+    });
   });
 });

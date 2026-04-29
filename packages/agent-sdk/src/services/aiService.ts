@@ -377,10 +377,7 @@ export async function callAgent(
           result.content = finalContent;
         }
 
-        if (
-          typeof finalReasoningContent === "string" &&
-          finalReasoningContent.length > 0
-        ) {
+        if (typeof finalReasoningContent === "string") {
           result.reasoning_content = finalReasoningContent;
         }
 
@@ -544,6 +541,7 @@ async function processStreamingResponse(
 ): Promise<CallAgentResult> {
   let accumulatedContent = "";
   let accumulatedReasoningContent = "";
+  let hasReasoningContent = false;
   const toolCalls: {
     id: string;
     type: "function";
@@ -618,13 +616,13 @@ async function processStreamingResponse(
         }
       }
 
-      if (
-        typeof reasoning_content === "string" &&
-        reasoning_content.length > 0
-      ) {
-        accumulatedReasoningContent += reasoning_content;
-        if (onReasoningUpdate) {
-          onReasoningUpdate(accumulatedReasoningContent);
+      if (typeof reasoning_content === "string") {
+        hasReasoningContent = true;
+        if (reasoning_content.length > 0) {
+          accumulatedReasoningContent += reasoning_content;
+          if (onReasoningUpdate) {
+            onReasoningUpdate(accumulatedReasoningContent);
+          }
         }
       }
 
@@ -716,7 +714,7 @@ async function processStreamingResponse(
     result.content = accumulatedContent.trim();
   }
 
-  if (accumulatedReasoningContent) {
+  if (hasReasoningContent) {
     result.reasoning_content = accumulatedReasoningContent.trim();
   }
 
