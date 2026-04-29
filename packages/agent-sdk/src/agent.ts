@@ -218,13 +218,6 @@ export class Agent {
       }
     };
 
-    // Wire up CWD change callback from AIManager to sync Agent's workdir
-    this.aiManager.setOnCwdChange((newCwd) => {
-      this.workdir = newCwd;
-      this.container.register("Workdir", newCwd);
-      this.options.callbacks?.onWorkdirChange?.(newCwd);
-    });
-
     // Wire up message queue to process when agent becomes idle
     this.messageQueue.onMessageEnqueued = () => {
       // If the AI is NOT loading and command is not running, trigger dequeue
@@ -285,16 +278,6 @@ export class Agent {
   /** Get working directory */
   public get workingDirectory(): string {
     return this.workdir;
-  }
-
-  /**
-   * Set the working directory
-   * @param newCwd - The new working directory
-   */
-  public setWorkdir(newCwd: string): void {
-    this.workdir = newCwd;
-    this.container.register("Workdir", newCwd);
-    this.options.callbacks?.onWorkdirChange?.(newCwd);
   }
 
   /** Get project memory content */

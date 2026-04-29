@@ -98,6 +98,5 @@ export interface AgentCallbacks
   onConfiguredModelsChange?: (models: string[]) => void;
   onLoadingChange?: (loading: boolean) => void;
   onCommandRunningChange?: (running: boolean) => void;
-  onWorkdirChange?: (newCwd: string) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
 }

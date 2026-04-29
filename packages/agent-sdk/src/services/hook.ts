@@ -278,21 +278,6 @@ export async function executeCommands(
 }
 
 /**
- * Execute a CwdChanged hook
- */
-export async function executeCwdChangedHooks(
-  oldCwd: string,
-  newCwd: string,
-  context: ExtendedHookExecutionContext,
-): Promise<HookExecutionResult[]> {
-  // CwdChanged hooks are executed through HookManager.executeCwdChangedHooks()
-  void context;
-  void oldCwd;
-  void newCwd;
-  return [];
-}
-
-/**
  * Validate command safety (basic checks)
  */
 export function isCommandSafe(command: string): boolean {

@@ -21,7 +21,6 @@ export type HookEvent =
   | "SubagentStop"
   | "PermissionRequest"
   | "WorktreeCreate"
-  | "CwdChanged"
   | "SessionStart"
   | "SessionEnd";
 
@@ -110,7 +109,6 @@ export function isValidHookEvent(event: string): event is HookEvent {
     "SubagentStop",
     "PermissionRequest",
     "WorktreeCreate",
-    "CwdChanged",
     "SessionStart",
     "SessionEnd",
   ].includes(event);
@@ -169,7 +167,7 @@ export interface HookJsonInput {
   session_id: string; // Format: "wave_session_{uuid}_{shortId}"
   transcript_path: string; // Format: "~/.wave/sessions/session_{shortId}.json"
   cwd: string; // Absolute path to current working directory
-  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop" | "PermissionRequest" | "WorktreeCreate" | "CwdChanged" | "SessionStart"
+  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop" | "PermissionRequest" | "WorktreeCreate" | "SessionStart"
 
   // Optional fields based on event type
   tool_name?: string; // Present for PreToolUse, PostToolUse, PermissionRequest
@@ -178,8 +176,6 @@ export interface HookJsonInput {
   user_prompt?: string; // Present for UserPromptSubmit only
   subagent_type?: string; // Present when hook is executed by a subagent
   name?: string; // Present for WorktreeCreate events
-  old_cwd?: string; // Present for CwdChanged events
-  new_cwd?: string; // Present for CwdChanged events
   source?: SessionStartSource; // Present for SessionStart events
   agent_type?: string; // Present for SessionStart events
   end_source?: SessionEndSource; // Present for SessionEnd events
@@ -196,8 +192,6 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   userPrompt?: string; // User prompt text (UserPromptSubmit only)
   subagentType?: string; // Subagent type when hook is executed by a subagent
   worktreeName?: string; // Worktree name (WorktreeCreate only)
-  oldCwd?: string; // Previous working directory (CwdChanged only)
-  newCwd?: string; // New working directory (CwdChanged only)
   source?: SessionStartSource; // Session start source (SessionStart only)
   agentType?: string; // Agent type identifier (SessionStart only)
   endSource?: SessionEndSource; // Session end source (SessionEnd only)
