@@ -1,34 +1,47 @@
-import React, { useState } from "react";
+import React, { useReducer, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
+import { selectorReducer } from "../reducers/selectorReducer.js";
 
 export const MarketplaceDetail: React.FC = () => {
   const { state, marketplaces, actions } = usePluginManagerContext();
-  const [selectedActionIndex, setSelectedActionIndex] = useState(0);
+  const [selectorState, dispatch] = useReducer(selectorReducer, {
+    selectedIndex: 0,
+    pendingDecision: null,
+  });
+
+  const { selectedIndex: selectedActionIndex, pendingDecision } = selectorState;
 
   const marketplace = marketplaces.find((m) => m.name === state.selectedId);
 
-  const ACTIONS = [
-    {
-      id: "toggle-auto-update",
-      label: `${marketplace?.autoUpdate ? "Disable" : "Enable"} auto-update`,
-    },
-    { id: "update", label: "Update marketplace" },
-    { id: "remove", label: "Remove marketplace" },
-  ] as const;
+  const ACTIONS = useMemo(
+    () =>
+      [
+        {
+          id: "toggle-auto-update",
+          label: `${marketplace?.autoUpdate ? "Disable" : "Enable"} auto-update`,
+        },
+        { id: "update", label: "Update marketplace" },
+        { id: "remove", label: "Remove marketplace" },
+      ] as const,
+    [marketplace?.autoUpdate],
+  );
 
-  useInput((input, key) => {
-    if (key.escape) {
-      actions.setView("MARKETPLACES");
-    } else if (key.upArrow) {
-      setSelectedActionIndex((prev) =>
-        prev > 0 ? prev - 1 : ACTIONS.length - 1,
-      );
-    } else if (key.downArrow) {
-      setSelectedActionIndex((prev) =>
-        prev < ACTIONS.length - 1 ? prev + 1 : 0,
-      );
-    } else if (key.return && marketplace && !state.isLoading) {
+  useInput((_input, key) => {
+    if (state.isLoading && !key.escape) return;
+
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: ACTIONS.length - 1,
+      hasInsert: false,
+    });
+  });
+
+  useEffect(() => {
+    if (!pendingDecision) return;
+
+    if (pendingDecision === "select" && marketplace && !state.isLoading) {
       const action = ACTIONS[selectedActionIndex].id;
       if (action === "toggle-auto-update") {
         actions.toggleAutoUpdate(marketplace.name, !marketplace.autoUpdate);
@@ -37,8 +50,19 @@ export const MarketplaceDetail: React.FC = () => {
       } else {
         actions.removeMarketplace(marketplace.name);
       }
+    } else if (pendingDecision === "cancel") {
+      actions.setView("MARKETPLACES");
     }
-  });
+
+    dispatch({ type: "CLEAR_DECISION" });
+  }, [
+    pendingDecision,
+    selectedActionIndex,
+    marketplace,
+    state.isLoading,
+    actions,
+    ACTIONS,
+  ]);
 
   if (!marketplace) {
     return (

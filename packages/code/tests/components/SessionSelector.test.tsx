@@ -71,24 +71,28 @@ describe("SessionSelector", () => {
     });
   });
 
-  it("should call onSelect when Enter is pressed", () => {
+  it("should call onSelect when Enter is pressed", async () => {
     const onSelect = vi.fn();
     const { stdin } = render(
       <SessionSelector {...mockProps} onSelect={onSelect} />,
     );
 
     stdin.write("\r"); // Enter
-    expect(onSelect).toHaveBeenCalledWith("session-1");
+    await vi.waitFor(() => {
+      expect(onSelect).toHaveBeenCalledWith("session-1");
+    });
   });
 
-  it("should call onCancel when Escape is pressed", () => {
+  it("should call onCancel when Escape is pressed", async () => {
     const onCancel = vi.fn();
     const { stdin } = render(
       <SessionSelector {...mockProps} onCancel={onCancel} />,
     );
 
     stdin.write("\u001B"); // Escape
-    expect(onCancel).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(onCancel).toHaveBeenCalled();
+    });
   });
 
   it("should handle pagination when many sessions exist", () => {

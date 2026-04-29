@@ -1,6 +1,9 @@
+import { Key } from "ink";
+
 export interface PluginDetailState {
   selectedScopeIndex: number;
   selectedActionIndex: number;
+  pendingDecision: "select" | "cancel" | null;
 }
 
 export type PluginDetailAction =
@@ -9,7 +12,9 @@ export type PluginDetailAction =
   | { type: "MOVE_SCOPE_UP"; maxIndex: number }
   | { type: "MOVE_SCOPE_DOWN"; maxIndex: number }
   | { type: "MOVE_ACTION_UP"; maxIndex: number }
-  | { type: "MOVE_ACTION_DOWN"; maxIndex: number };
+  | { type: "MOVE_ACTION_DOWN"; maxIndex: number }
+  | { type: "HANDLE_KEY"; key: Key; maxIndex: number }
+  | { type: "CLEAR_DECISION" };
 
 export function pluginDetailReducer(
   state: PluginDetailState,
@@ -52,6 +57,42 @@ export function pluginDetailReducer(
             ? state.selectedActionIndex + 1
             : 0,
       };
+    case "HANDLE_KEY":
+      if (action.key.upArrow) {
+        return {
+          ...state,
+          selectedScopeIndex:
+            state.selectedScopeIndex > 0
+              ? state.selectedScopeIndex - 1
+              : action.maxIndex,
+          selectedActionIndex:
+            state.selectedActionIndex > 0
+              ? state.selectedActionIndex - 1
+              : action.maxIndex,
+        };
+      }
+      if (action.key.downArrow) {
+        return {
+          ...state,
+          selectedScopeIndex:
+            state.selectedScopeIndex < action.maxIndex
+              ? state.selectedScopeIndex + 1
+              : 0,
+          selectedActionIndex:
+            state.selectedActionIndex < action.maxIndex
+              ? state.selectedActionIndex + 1
+              : 0,
+        };
+      }
+      if (action.key.return) {
+        return { ...state, pendingDecision: "select" };
+      }
+      if (action.key.escape) {
+        return { ...state, pendingDecision: "cancel" };
+      }
+      return state;
+    case "CLEAR_DECISION":
+      return { ...state, pendingDecision: null };
     default:
       return state;
   }

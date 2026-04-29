@@ -1,14 +1,18 @@
-import React, { useState } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import type { SlashCommand } from "wave-agent-sdk";
 import { AVAILABLE_COMMANDS } from "../constants/commands.js";
+import {
+  selectorReducer,
+  type SelectorState,
+} from "../reducers/selectorReducer.js";
 
 export interface CommandSelectorProps {
   searchQuery: string;
   onSelect: (command: string) => void;
-  onInsert?: (command: string) => void; // New: Tab key to insert command into input box
+  onInsert?: (command: string) => void;
   onCancel: () => void;
-  commands?: SlashCommand[]; // New optional command list parameter
+  commands?: SlashCommand[];
 }
 
 export const CommandSelector: React.FC<CommandSelectorProps> = ({
@@ -16,14 +20,19 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   onSelect,
   onInsert,
   onCancel,
-  commands = [], // Default to empty array
+  commands = [],
 }) => {
   const MAX_VISIBLE_ITEMS = 3;
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [state, dispatch] = useReducer(selectorReducer, {
+    selectedIndex: 0,
+    pendingDecision: null,
+  } as SelectorState);
+
+  const { selectedIndex, pendingDecision } = state;
 
   // Reset selected index when search query changes
-  React.useEffect(() => {
-    setSelectedIndex(0);
+  useEffect(() => {
+    dispatch({ type: "RESET_INDEX" });
   }, [searchQuery]);
 
   // Merge agent commands and local commands
@@ -35,6 +44,38 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       !searchQuery ||
       command.id.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+
+  // Handle decisions from reducer
+  useEffect(() => {
+    if (!pendingDecision) return;
+
+    if (pendingDecision === "select") {
+      if (
+        filteredCommands.length > 0 &&
+        selectedIndex < filteredCommands.length
+      ) {
+        onSelect(filteredCommands[selectedIndex].id);
+      }
+    } else if (pendingDecision === "insert" && onInsert) {
+      if (
+        filteredCommands.length > 0 &&
+        selectedIndex < filteredCommands.length
+      ) {
+        onInsert(filteredCommands[selectedIndex].id);
+      }
+    } else if (pendingDecision === "cancel") {
+      onCancel();
+    }
+
+    dispatch({ type: "CLEAR_DECISION" });
+  }, [
+    pendingDecision,
+    selectedIndex,
+    filteredCommands,
+    onSelect,
+    onInsert,
+    onCancel,
+  ]);
 
   // Calculate visible window
   const startIndex = Math.max(
@@ -49,45 +90,13 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
     startIndex + MAX_VISIBLE_ITEMS,
   );
 
-  const stateRef = React.useRef({ filteredCommands, selectedIndex });
-  React.useEffect(() => {
-    stateRef.current = { filteredCommands, selectedIndex };
-  }, [filteredCommands, selectedIndex]);
-
   useInput((input, key) => {
-    const { filteredCommands: currentCommands, selectedIndex: currentIndex } =
-      stateRef.current;
-
-    if (key.return) {
-      if (currentCommands.length > 0 && currentIndex < currentCommands.length) {
-        const selectedCommand = currentCommands[currentIndex].id;
-        onSelect(selectedCommand);
-      }
-      return;
-    }
-
-    if (key.tab && onInsert) {
-      if (currentCommands.length > 0 && currentIndex < currentCommands.length) {
-        const selectedCommand = currentCommands[currentIndex].id;
-        onInsert(selectedCommand);
-      }
-      return;
-    }
-
-    if (key.escape) {
-      onCancel();
-      return;
-    }
-
-    if (key.upArrow) {
-      setSelectedIndex(Math.max(0, currentIndex - 1));
-      return;
-    }
-
-    if (key.downArrow) {
-      setSelectedIndex(Math.min(currentCommands.length - 1, currentIndex + 1));
-      return;
-    }
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: filteredCommands.length - 1,
+      hasInsert: !!onInsert,
+    });
   });
 
   if (filteredCommands.length === 0) {

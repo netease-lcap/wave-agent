@@ -1,27 +1,37 @@
-import React, { useState } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
 import { PluginList } from "./PluginList.js";
+import { selectorReducer } from "../reducers/selectorReducer.js";
 
 export const DiscoverView: React.FC = () => {
   const { discoverablePlugins, actions } = usePluginManagerContext();
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [state, dispatch] = useReducer(selectorReducer, {
+    selectedIndex: 0,
+    pendingDecision: null,
+  });
 
-  useInput((input, key) => {
-    if (key.upArrow) {
-      setSelectedIndex(Math.max(0, selectedIndex - 1));
-    } else if (key.downArrow) {
-      setSelectedIndex(
-        Math.min(discoverablePlugins.length - 1, selectedIndex + 1),
-      );
-    } else if (key.return) {
+  const { selectedIndex, pendingDecision } = state;
+
+  useInput((_input, key) => {
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: discoverablePlugins.length - 1,
+      hasInsert: false,
+    });
+  });
+
+  useEffect(() => {
+    if (pendingDecision === "select") {
       const plugin = discoverablePlugins[selectedIndex];
       if (plugin) {
         actions.setSelectedId(`${plugin.name}@${plugin.marketplace}`);
         actions.setView("PLUGIN_DETAIL");
       }
+      dispatch({ type: "CLEAR_DECISION" });
     }
-  });
+  }, [pendingDecision, selectedIndex, discoverablePlugins, actions]);
 
   return (
     <Box flexDirection="column">

@@ -138,6 +138,20 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   // Use the InputManager's unified input handler
   useInput(async (input, key) => {
+    // These views have their own useInput handlers that handle escape and navigation.
+    // If they are active, we should skip InputBox's global input handling to avoid
+    // duplicate dispatches or state update conflicts.
+    if (
+      showRewindManager ||
+      showHelp ||
+      showStatusCommand ||
+      showPluginManager ||
+      showModelSelector ||
+      showBackgroundTaskManager ||
+      showMcpManager
+    ) {
+      return;
+    }
     await handleInput(input, key, attachedImages, clearImages);
   });
 

@@ -869,6 +869,7 @@ describe("Confirmation", () => {
           "> Yes, and auto-accept edits",
         );
       });
+
       stdin.write("\u001b[B"); // Go to alternative
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
@@ -876,7 +877,7 @@ describe("Confirmation", () => {
         );
       });
 
-      stdin.write("\u007f"); // Backspace on empty text
+      stdin.write("\x7f"); // Backspace on empty text
 
       // Should still show placeholder and remain on alternative
       await vi.waitFor(() => {
@@ -884,10 +885,6 @@ describe("Confirmation", () => {
           "> Type here to tell Wave what to change",
         );
       });
-
-      const frame = lastFrame();
-      expect(frame).toContain("> Type here to tell Wave what to change");
-      expect(frame).toContain("Type here to tell Wave what to change");
     });
 
     it("should handle whitespace-only alternative text", async () => {

@@ -1,6 +1,10 @@
-import React, { useState } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import type { FileItem } from "wave-agent-sdk";
+import {
+  selectorReducer,
+  type SelectorState,
+} from "../reducers/selectorReducer.js";
 
 export { type FileItem } from "wave-agent-sdk";
 
@@ -19,38 +23,40 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   onSelect,
   onCancel,
 }) => {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [state, dispatch] = useReducer(selectorReducer, {
+    selectedIndex: 0,
+    pendingDecision: null,
+  } as SelectorState);
 
-  const stateRef = React.useRef({ files, selectedIndex });
-  React.useEffect(() => {
-    stateRef.current = { files, selectedIndex };
-  }, [files, selectedIndex]);
+  const { selectedIndex, pendingDecision } = state;
+
+  // Reset selected index when files change
+  useEffect(() => {
+    dispatch({ type: "RESET_INDEX" });
+  }, [files]);
+
+  // Handle decisions from reducer
+  useEffect(() => {
+    if (!pendingDecision) return;
+
+    if (pendingDecision === "select" || pendingDecision === "insert") {
+      if (files.length > 0 && selectedIndex < files.length) {
+        onSelect(files[selectedIndex].path);
+      }
+    } else if (pendingDecision === "cancel") {
+      onCancel();
+    }
+
+    dispatch({ type: "CLEAR_DECISION" });
+  }, [pendingDecision, selectedIndex, files, onSelect, onCancel]);
 
   useInput((input, key) => {
-    const currentFiles = stateRef.current.files;
-    const currentIndex = stateRef.current.selectedIndex;
-
-    if (key.return || key.tab) {
-      if (currentFiles.length > 0 && currentIndex < currentFiles.length) {
-        onSelect(currentFiles[currentIndex].path);
-      }
-      return;
-    }
-
-    if (key.escape) {
-      onCancel();
-      return;
-    }
-
-    if (key.upArrow) {
-      setSelectedIndex(Math.max(0, currentIndex - 1));
-      return;
-    }
-
-    if (key.downArrow) {
-      setSelectedIndex(Math.min(currentFiles.length - 1, currentIndex + 1));
-      return;
-    }
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: files.length - 1,
+      hasInsert: true, // For FileSelector, Tab is also select
+    });
   });
 
   if (files.length === 0) {
@@ -80,24 +86,15 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   const maxDisplay = 5;
 
   // Calculate display window start and end positions
-  const getDisplayWindow = () => {
-    const startIndex = Math.max(
-      0,
-      Math.min(
-        selectedIndex - Math.floor(maxDisplay / 2),
-        Math.max(0, files.length - maxDisplay),
-      ),
-    );
-    const endIndex = Math.min(files.length, startIndex + maxDisplay);
-
-    return {
-      startIndex,
-      endIndex,
-      displayFiles: files.slice(startIndex, endIndex),
-    };
-  };
-
-  const { startIndex, displayFiles } = getDisplayWindow();
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(maxDisplay / 2),
+      Math.max(0, files.length - maxDisplay),
+    ),
+  );
+  const endIndex = Math.min(files.length, startIndex + maxDisplay);
+  const displayFiles = files.slice(startIndex, endIndex);
 
   return (
     <Box

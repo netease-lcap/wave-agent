@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import type { SlashCommand } from "wave-agent-sdk";
 import { AVAILABLE_COMMANDS } from "../constants/commands.js";
+import { helpSelectorReducer } from "../reducers/helpSelectorReducer.js";
 
 export interface HelpViewProps {
   onCancel: () => void;
@@ -12,10 +13,6 @@ export const HelpView: React.FC<HelpViewProps> = ({
   onCancel,
   commands = [],
 }) => {
-  const [activeTab, setActiveTab] = useState<
-    "general" | "commands" | "custom-commands"
-  >("general");
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const MAX_VISIBLE_ITEMS = 10;
 
   const tabs: ("general" | "commands" | "custom-commands")[] = [
@@ -26,33 +23,45 @@ export const HelpView: React.FC<HelpViewProps> = ({
     tabs.push("custom-commands");
   }
 
-  useInput((_, key) => {
-    if (key.escape) {
+  const [state, dispatch] = useReducer(helpSelectorReducer, {
+    selectedIndex: 0,
+    activeTab: "general",
+    pendingDecision: null,
+  });
+
+  const { selectedIndex, activeTab, pendingDecision } = state;
+
+  // Handle decisions from reducer
+  useEffect(() => {
+    if (pendingDecision === "cancel") {
       onCancel();
-      return;
+      dispatch({ type: "CLEAR_DECISION" });
     }
+  }, [pendingDecision, onCancel]);
 
-    if (key.tab) {
-      setActiveTab((prev) => {
-        const currentIndex = tabs.indexOf(prev);
-        const nextIndex = (currentIndex + 1) % tabs.length;
-        return tabs[nextIndex];
-      });
-      setSelectedIndex(0);
-      return;
-    }
+  const currentCommands =
+    activeTab === "commands" ? AVAILABLE_COMMANDS : commands;
 
-    if (activeTab === "commands" || activeTab === "custom-commands") {
-      const currentCommands =
-        activeTab === "commands" ? AVAILABLE_COMMANDS : commands;
-      if (key.upArrow) {
-        setSelectedIndex((prev) => Math.max(0, prev - 1));
-      } else if (key.downArrow) {
-        setSelectedIndex((prev) =>
-          Math.min(currentCommands.length - 1, prev + 1),
-        );
-      }
-    }
+  // Calculate visible window for commands
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, currentCommands.length - MAX_VISIBLE_ITEMS),
+    ),
+  );
+  const visibleCommands = currentCommands.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_ITEMS,
+  );
+
+  useInput((_, key) => {
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: activeTab === "general" ? 0 : currentCommands.length - 1,
+      tabs,
+    });
   });
 
   const helpItems = [
@@ -71,21 +80,6 @@ export const HelpView: React.FC<HelpViewProps> = ({
       description: "Interrupt AI or command / Cancel selector / Close help",
     },
   ];
-
-  // Calculate visible window for commands
-  const currentCommands =
-    activeTab === "commands" ? AVAILABLE_COMMANDS : commands;
-  const startIndex = Math.max(
-    0,
-    Math.min(
-      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
-      Math.max(0, currentCommands.length - MAX_VISIBLE_ITEMS),
-    ),
-  );
-  const visibleCommands = currentCommands.slice(
-    startIndex,
-    startIndex + MAX_VISIBLE_ITEMS,
-  );
 
   const footerText = [
     "Tab switch",

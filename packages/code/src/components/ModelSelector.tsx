@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
+import { selectorReducer } from "../reducers/selectorReducer.js";
 
 export interface ModelSelectorProps {
   onCancel: () => void;
@@ -16,37 +17,43 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   configuredModels,
   onSelectModel,
 }) => {
-  const [selectedIndex, setSelectedIndex] = useState(() => {
-    const index = configuredModels.indexOf(currentModel);
-    return index !== -1 ? index : 0;
+  const [state, dispatch] = useReducer(selectorReducer, {
+    selectedIndex:
+      configuredModels.indexOf(currentModel) !== -1
+        ? configuredModels.indexOf(currentModel)
+        : 0,
+    pendingDecision: null,
   });
 
+  const { selectedIndex, pendingDecision } = state;
+
   useInput((_input, key) => {
-    if (key.return) {
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: configuredModels.length - 1,
+      hasInsert: false,
+    });
+  });
+
+  useEffect(() => {
+    if (pendingDecision === "select") {
       if (configuredModels.length > 0) {
         onSelectModel(configuredModels[selectedIndex]);
       }
       onCancel();
-      return;
-    }
-
-    if (key.escape) {
+      dispatch({ type: "CLEAR_DECISION" });
+    } else if (pendingDecision === "cancel") {
       onCancel();
-      return;
+      dispatch({ type: "CLEAR_DECISION" });
     }
-
-    if (key.upArrow) {
-      setSelectedIndex((prev) => Math.max(0, prev - 1));
-      return;
-    }
-
-    if (key.downArrow) {
-      setSelectedIndex((prev) =>
-        Math.min(configuredModels.length - 1, prev + 1),
-      );
-      return;
-    }
-  });
+  }, [
+    pendingDecision,
+    selectedIndex,
+    configuredModels,
+    onSelectModel,
+    onCancel,
+  ]);
 
   // Calculate visible window
   const startIndex = Math.max(

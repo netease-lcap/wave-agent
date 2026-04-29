@@ -72,14 +72,16 @@ describe("MarketplaceDetail", () => {
     expect(lastFrame()).toContain("Marketplace not found.");
   });
 
-  it("should call setView('MARKETPLACES') when Escape is pressed", () => {
+  it("should call setView('MARKETPLACES') when Escape is pressed", async () => {
     const { stdin } = render(
       <PluginManagerContext.Provider value={mockContext}>
         <MarketplaceDetail />
       </PluginManagerContext.Provider>,
     );
     stdin.write("\u001B"); // Escape
-    expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES");
+    await vi.waitFor(() => {
+      expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES");
+    });
   });
 
   it("should navigate actions with up/down arrows", async () => {

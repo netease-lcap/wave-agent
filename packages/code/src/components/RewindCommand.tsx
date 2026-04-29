@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { getMessageContent } from "wave-agent-sdk";
+import { rewindSelectorReducer } from "../reducers/rewindSelectorReducer.js";
 
 export interface RewindCommandProps {
   messages: Message[];
@@ -22,7 +23,7 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [isLoading, setIsLoading] = useState(!!getFullMessageThread);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (getFullMessageThread) {
       getFullMessageThread().then(({ messages: fullMessages }) => {
         setMessages(fullMessages);
@@ -37,48 +38,40 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
     .filter(({ msg }) => msg.role === "user" && !msg.isMeta);
 
   const MAX_VISIBLE_ITEMS = 3;
-  const [selectedIndex, setSelectedIndex] = useState(checkpoints.length - 1);
+
+  const [state, dispatch] = useReducer(rewindSelectorReducer, {
+    selectedIndex: checkpoints.length - 1,
+    pendingDecision: null,
+  });
+
+  const { selectedIndex, pendingDecision } = state;
 
   // Update selectedIndex when checkpoints change (after loading full thread)
-  React.useEffect(() => {
-    setSelectedIndex(checkpoints.length - 1);
+  useEffect(() => {
+    dispatch({ type: "RESET_INDEX", index: checkpoints.length - 1 });
   }, [checkpoints.length]);
 
-  // Calculate visible window
-  const startIndex = Math.max(
-    0,
-    Math.min(
-      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
-      Math.max(0, checkpoints.length - MAX_VISIBLE_ITEMS),
-    ),
-  );
-  const visibleCheckpoints = checkpoints.slice(
-    startIndex,
-    startIndex + MAX_VISIBLE_ITEMS,
-  );
+  // Handle decisions from reducer
+  useEffect(() => {
+    if (!pendingDecision) return;
 
-  useInput((input, key) => {
-    if (key.return) {
+    if (pendingDecision === "select") {
       if (checkpoints.length > 0 && selectedIndex >= 0) {
         onSelect(checkpoints[selectedIndex].index);
       }
-      return;
-    }
-
-    if (key.escape) {
+    } else if (pendingDecision === "cancel") {
       onCancel();
-      return;
     }
 
-    if (key.upArrow) {
-      setSelectedIndex(Math.max(0, selectedIndex - 1));
-      return;
-    }
+    dispatch({ type: "CLEAR_DECISION" });
+  }, [pendingDecision, selectedIndex, checkpoints, onSelect, onCancel]);
 
-    if (key.downArrow) {
-      setSelectedIndex(Math.min(checkpoints.length - 1, selectedIndex + 1));
-      return;
-    }
+  useInput((input, key) => {
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: checkpoints.length - 1,
+    });
   });
 
   if (isLoading) {
@@ -111,6 +104,19 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
       </Box>
     );
   }
+
+  // Calculate visible window
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, checkpoints.length - MAX_VISIBLE_ITEMS),
+    ),
+  );
+  const visibleCheckpoints = checkpoints.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_ITEMS,
+  );
 
   return (
     <Box

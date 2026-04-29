@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
+import { selectorReducer } from "../reducers/selectorReducer.js";
 
 interface WorktreeExitPromptProps {
   name: string;
@@ -20,26 +21,35 @@ export const WorktreeExitPrompt: React.FC<WorktreeExitPromptProps> = ({
   onRemove,
   onCancel,
 }) => {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [state, dispatch] = useReducer(selectorReducer, {
+    selectedIndex: 0,
+    pendingDecision: null,
+  });
 
-  useInput((input, key) => {
-    if (key.upArrow) {
-      setSelectedIndex((prev) => (prev === 0 ? 1 : 0));
-    }
-    if (key.downArrow) {
-      setSelectedIndex((prev) => (prev === 1 ? 0 : 1));
-    }
-    if (key.return) {
+  const { selectedIndex, pendingDecision } = state;
+
+  useInput((_input, key) => {
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      maxIndex: 1,
+      hasInsert: false,
+    });
+  });
+
+  useEffect(() => {
+    if (pendingDecision === "select") {
       if (selectedIndex === 0) {
         onKeep();
       } else {
         onRemove();
       }
-    }
-    if (key.escape) {
+      dispatch({ type: "CLEAR_DECISION" });
+    } else if (pendingDecision === "cancel") {
       onCancel();
+      dispatch({ type: "CLEAR_DECISION" });
     }
-  });
+  }, [pendingDecision, selectedIndex, onKeep, onRemove, onCancel]);
 
   return (
     <Box flexDirection="column" paddingX={1} marginY={1}>

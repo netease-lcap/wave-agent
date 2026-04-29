@@ -1,3 +1,4 @@
+import { Key } from "ink";
 import type { PermissionDecision } from "wave-agent-sdk";
 
 export interface QuestionSavedState {
@@ -40,6 +41,22 @@ export type QuestionAction =
       };
       options: Array<{ label: string }>;
       isMultiSelect: boolean;
+      questions: Array<{
+        question: string;
+        options: Array<{ label: string }>;
+        multiSelect?: boolean;
+      }>;
+    }
+  | { type: "CLEAR_DECISION" }
+  | {
+      type: "HANDLE_KEY";
+      input: string;
+      key: Key;
+      currentQuestion: {
+        question: string;
+        options: Array<{ label: string }>;
+        multiSelect?: boolean;
+      };
       questions: Array<{
         question: string;
         options: Array<{ label: string }>;
@@ -244,6 +261,193 @@ export function questionReducer(
           },
         };
       }
+    }
+    case "CLEAR_DECISION":
+      return { ...state, decision: null };
+    case "HANDLE_KEY": {
+      const { input, key, currentQuestion, questions } = action;
+      if (!currentQuestion) return state;
+
+      const options = [...currentQuestion.options, { label: "Other" }];
+      const isMultiSelect = currentQuestion.multiSelect;
+
+      if (key.return) {
+        const isOtherFocused = state.selectedOptionIndex === options.length - 1;
+        let answer = "";
+        if (isMultiSelect) {
+          const selectedLabels = Array.from(state.selectedOptionIndices)
+            .filter((i) => i < currentQuestion.options.length)
+            .map((i) => currentQuestion.options[i].label);
+          const isOtherChecked = state.selectedOptionIndices.has(
+            options.length - 1,
+          );
+          if (isOtherChecked && state.otherText.trim()) {
+            selectedLabels.push(state.otherText.trim());
+          }
+          answer = selectedLabels.join(", ");
+        } else {
+          if (isOtherFocused) {
+            answer = state.otherText.trim();
+          } else {
+            answer = options[state.selectedOptionIndex].label;
+          }
+        }
+        if (!answer) return state;
+
+        const newAnswers = {
+          ...state.userAnswers,
+          [currentQuestion.question]: answer,
+        };
+
+        if (state.currentQuestionIndex < questions.length - 1) {
+          const nextIndex = state.currentQuestionIndex + 1;
+          const savedStates = {
+            ...state.savedStates,
+            [state.currentQuestionIndex]: {
+              selectedOptionIndex: state.selectedOptionIndex,
+              selectedOptionIndices: state.selectedOptionIndices,
+              otherText: state.otherText,
+              otherCursorPosition: state.otherCursorPosition,
+            },
+          };
+          const nextState = savedStates[nextIndex] || {
+            selectedOptionIndex: 0,
+            selectedOptionIndices: new Set<number>(),
+            otherText: "",
+            otherCursorPosition: 0,
+          };
+          return {
+            ...state,
+            currentQuestionIndex: nextIndex,
+            ...nextState,
+            userAnswers: newAnswers,
+            savedStates,
+          };
+        } else {
+          const finalAnswers = { ...newAnswers };
+          for (const [idxStr, s] of Object.entries(state.savedStates)) {
+            const idx = parseInt(idxStr);
+            const q = questions[idx];
+            if (q && !finalAnswers[q.question]) {
+              const a = buildAnswerFromSavedState(q, s);
+              if (a) finalAnswers[q.question] = a;
+            }
+          }
+          const allAnswered = questions.every((q) => finalAnswers[q.question]);
+          if (!allAnswered) return state;
+          return {
+            ...state,
+            userAnswers: finalAnswers,
+            decision: {
+              behavior: "allow",
+              message: JSON.stringify(finalAnswers),
+            },
+          };
+        }
+      }
+
+      if (input === " ") {
+        const isOtherFocused = state.selectedOptionIndex === options.length - 1;
+        if (
+          isMultiSelect &&
+          (!isOtherFocused ||
+            !state.selectedOptionIndices.has(state.selectedOptionIndex))
+        ) {
+          const nextIndices = new Set(state.selectedOptionIndices);
+          if (nextIndices.has(state.selectedOptionIndex))
+            nextIndices.delete(state.selectedOptionIndex);
+          else nextIndices.add(state.selectedOptionIndex);
+          return { ...state, selectedOptionIndices: nextIndices };
+        }
+      }
+
+      if (key.upArrow) {
+        return {
+          ...state,
+          selectedOptionIndex: Math.max(0, state.selectedOptionIndex - 1),
+        };
+      }
+      if (key.downArrow) {
+        return {
+          ...state,
+          selectedOptionIndex: Math.min(
+            options.length - 1,
+            state.selectedOptionIndex + 1,
+          ),
+        };
+      }
+
+      if (key.tab) {
+        const direction = key.shift ? -1 : 1;
+        let nextIndex = state.currentQuestionIndex + direction;
+        if (nextIndex < 0) nextIndex = questions.length - 1;
+        if (nextIndex >= questions.length) nextIndex = 0;
+        if (nextIndex === state.currentQuestionIndex) return state;
+        const savedStates = {
+          ...state.savedStates,
+          [state.currentQuestionIndex]: {
+            selectedOptionIndex: state.selectedOptionIndex,
+            selectedOptionIndices: state.selectedOptionIndices,
+            otherText: state.otherText,
+            otherCursorPosition: state.otherCursorPosition,
+          },
+        };
+        const nextState = savedStates[nextIndex] || {
+          selectedOptionIndex: 0,
+          selectedOptionIndices: new Set<number>(),
+          otherText: "",
+          otherCursorPosition: 0,
+        };
+        return {
+          ...state,
+          currentQuestionIndex: nextIndex,
+          ...nextState,
+          savedStates,
+        };
+      }
+
+      if (state.selectedOptionIndex === options.length - 1) {
+        if (key.leftArrow) {
+          return {
+            ...state,
+            otherCursorPosition: Math.max(0, state.otherCursorPosition - 1),
+          };
+        }
+        if (key.rightArrow) {
+          return {
+            ...state,
+            otherCursorPosition: Math.min(
+              state.otherText.length,
+              state.otherCursorPosition + 1,
+            ),
+          };
+        }
+        if (key.backspace || key.delete) {
+          if (state.otherCursorPosition > 0) {
+            return {
+              ...state,
+              otherText:
+                state.otherText.slice(0, state.otherCursorPosition - 1) +
+                state.otherText.slice(state.otherCursorPosition),
+              otherCursorPosition: state.otherCursorPosition - 1,
+            };
+          }
+          return state;
+        }
+        if (input && !key.ctrl && !key.meta) {
+          const newText =
+            state.otherText.slice(0, state.otherCursorPosition) +
+            input +
+            state.otherText.slice(state.otherCursorPosition);
+          return {
+            ...state,
+            otherText: newText,
+            otherCursorPosition: state.otherCursorPosition + input.length,
+          };
+        }
+      }
+
+      return state;
     }
     default:
       return state;
