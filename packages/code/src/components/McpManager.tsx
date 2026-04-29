@@ -1,4 +1,4 @@
-import React, { useReducer } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { McpServerStatus } from "wave-agent-sdk";
 import {
@@ -16,6 +16,7 @@ export interface McpManagerProps {
 const initialState: McpManagerState = {
   selectedIndex: 0,
   viewMode: "list",
+  pendingEffect: null,
 };
 
 export const McpManager: React.FC<McpManagerProps> = ({
@@ -25,6 +26,26 @@ export const McpManager: React.FC<McpManagerProps> = ({
   onDisconnectServer,
 }) => {
   const [state, dispatch] = useReducer(mcpManagerReducer, initialState);
+
+  // Handle pending effects
+  useEffect(() => {
+    if (!state.pendingEffect) return;
+
+    const effect = state.pendingEffect;
+    dispatch({ type: "CLEAR_PENDING_EFFECT" });
+
+    switch (effect.type) {
+      case "CANCEL":
+        onCancel();
+        break;
+      case "CONNECT_SERVER":
+        onConnectServer(effect.serverName);
+        break;
+      case "DISCONNECT_SERVER":
+        onDisconnectServer(effect.serverName);
+        break;
+    }
+  }, [state.pendingEffect, onCancel, onConnectServer, onDisconnectServer]);
 
   // Dynamically calculate selectedServer based on selectedIndex and servers
   const selectedServer =
@@ -64,68 +85,14 @@ export const McpManager: React.FC<McpManagerProps> = ({
     }
   };
 
-  const handleConnect = async (serverName: string) => {
-    await onConnectServer(serverName);
-  };
-
-  const handleDisconnect = async (serverName: string) => {
-    await onDisconnectServer(serverName);
-  };
-
-  const stateRef = React.useRef({ state, servers });
-  React.useEffect(() => {
-    stateRef.current = { state, servers };
-  }, [state, servers]);
-
   useInput((input, key) => {
-    const currentState = stateRef.current.state;
-    const currentServers = stateRef.current.servers;
-
-    if (key.return) {
-      if (currentState.viewMode === "list") {
-        dispatch({ type: "SET_VIEW_MODE", viewMode: "detail" });
-      }
-      return;
-    }
-
-    if (key.escape) {
-      if (currentState.viewMode === "detail") {
-        dispatch({ type: "SET_VIEW_MODE", viewMode: "list" });
-      } else {
-        onCancel();
-      }
-      return;
-    }
-
-    if (key.upArrow) {
-      dispatch({ type: "MOVE_UP", serverCount: currentServers.length });
-      return;
-    }
-
-    if (key.downArrow) {
-      dispatch({ type: "MOVE_DOWN", serverCount: currentServers.length });
-      return;
-    }
-
-    // Hotkeys for server actions
-    if (input === "c") {
-      const server = currentServers[currentState.selectedIndex];
-      if (
-        server &&
-        (server.status === "disconnected" || server.status === "error")
-      ) {
-        handleConnect(server.name);
-      }
-      return;
-    }
-
-    if (input === "d") {
-      const server = currentServers[currentState.selectedIndex];
-      if (server && server.status === "connected") {
-        handleDisconnect(server.name);
-      }
-      return;
-    }
+    dispatch({
+      type: "HANDLE_KEY",
+      input,
+      key,
+      serverCount: servers.length,
+      servers: servers.map((s) => ({ name: s.name, status: s.status })),
+    });
   });
 
   if (state.viewMode === "detail" && selectedServer) {
