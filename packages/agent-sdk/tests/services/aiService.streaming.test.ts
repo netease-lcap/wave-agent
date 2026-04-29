@@ -500,5 +500,81 @@ describe("AI Service - Streaming", () => {
       const callArgs = mockCreate.mock.calls[0][0];
       expect(callArgs.stream).toBeFalsy();
     });
+
+    it("should include reasoning_content in streaming result even if it is an empty string", async () => {
+      // Mock streaming response with an empty reasoning_content delta
+      const mockStream = (async function* () {
+        yield {
+          choices: [
+            {
+              delta: { reasoning_content: "" },
+            },
+          ],
+        };
+        yield {
+          choices: [
+            {
+              delta: { content: "Test response" },
+              finish_reason: "stop",
+            },
+          ],
+        };
+      })();
+
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: mockStream,
+          response: {
+            headers: new Map(),
+          },
+        }),
+      });
+
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        onContentUpdate: () => {},
+        onReasoningUpdate: () => {},
+      });
+
+      expect(result.content).toBe("Test response");
+      expect(result.reasoning_content).toBe("");
+    });
+
+    it("should NOT include reasoning_content in streaming result if it was never provided in deltas", async () => {
+      // Mock streaming response without reasoning_content delta
+      const mockStream = (async function* () {
+        yield {
+          choices: [
+            {
+              delta: { content: "Test response" },
+              finish_reason: "stop",
+            },
+          ],
+        };
+      })();
+
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: mockStream,
+          response: {
+            headers: new Map(),
+          },
+        }),
+      });
+
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        onContentUpdate: () => {},
+      });
+
+      expect(result.content).toBe("Test response");
+      expect(result).not.toHaveProperty("reasoning_content");
+    });
   });
 });
