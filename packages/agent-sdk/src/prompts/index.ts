@@ -238,7 +238,6 @@ export function buildSystemPrompt(
   tools: ToolPlugin[],
   options: {
     workdir?: string;
-    originalWorkdir?: string;
     memory?: string;
     language?: string;
     isSubagent?: boolean;
@@ -276,9 +275,8 @@ export function buildSystemPrompt(
     prompt += `\n\n${buildPlanModePrompt(options.planMode.planFilePath, options.planMode.planExists, options.isSubagent)}`;
   }
 
-  const workdirForPrompt = options.originalWorkdir || options.workdir;
-  if (workdirForPrompt) {
-    const isGitRepo = isGitRepository(workdirForPrompt);
+  if (options.workdir) {
+    const isGitRepo = isGitRepository(options.workdir);
     const platform = os.platform();
     const osVersion = `${os.type()} ${os.release()}`;
     const today = new Date().toISOString().split("T")[0];
@@ -293,7 +291,7 @@ export function buildSystemPrompt(
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: ${workdirForPrompt}
+Working directory: ${options.workdir}
 Is directory a git repo: ${isGitRepo}
 Platform: ${platform}
 Shell: ${shellName}

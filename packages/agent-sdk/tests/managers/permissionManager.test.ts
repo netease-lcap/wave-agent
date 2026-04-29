@@ -2432,118 +2432,6 @@ describe("PermissionManager", () => {
   });
 
   describe("dynamic workdir changes", () => {
-    it("should match previously granted relative rule after workdir changes and returns to original", async () => {
-      const workdir = "/a";
-      const container = createContainer(workdir);
-      const manager = new PermissionManager(container);
-      manager.updateDeniedRules(["Read(src/**)"]);
-
-      // Verify rule matches with initial workdir
-      const context1: ToolPermissionContext = {
-        toolName: "Read",
-        permissionMode: "default",
-        toolInput: { file_path: "/a/src/main.ts" },
-      };
-
-      expect(await manager.checkPermission(context1)).toMatchObject({
-        behavior: "deny",
-      });
-
-      // Change workdir to /a/b
-      container.register("Workdir", "/a/b");
-
-      // Change back to /a
-      container.register("Workdir", "/a");
-
-      // Permission for src/main.ts should still be remembered
-      const context2: ToolPermissionContext = {
-        toolName: "Read",
-        permissionMode: "default",
-        toolInput: { file_path: "/a/src/main.ts" },
-      };
-
-      expect(await manager.checkPermission(context2)).toMatchObject({
-        behavior: "deny",
-      });
-    });
-
-    it("should resolve relative paths against current workdir, not initial workdir", async () => {
-      const workdir = "/a";
-      const container = createContainer(workdir);
-      const manager = new PermissionManager(container);
-      manager.updateDeniedRules(["Read(src/**)"]);
-
-      // Change workdir to /b
-      container.register("Workdir", "/b");
-
-      // Read(/b/src/main.ts) should be denied (matches rule with current workdir)
-      const context1: ToolPermissionContext = {
-        toolName: "Read",
-        permissionMode: "default",
-        toolInput: { file_path: "/b/src/main.ts" },
-      };
-
-      expect(await manager.checkPermission(context1)).toMatchObject({
-        behavior: "deny",
-      });
-
-      // Read(/a/src/main.ts) should be allowed (no longer inside workdir, unrestricted)
-      const context2: ToolPermissionContext = {
-        toolName: "Read",
-        permissionMode: "default",
-        toolInput: { file_path: "/a/src/main.ts" },
-      };
-
-      // Read is unrestricted, so outside workdir it should be allowed
-      expect(await manager.checkPermission(context2)).toMatchObject({
-        behavior: "allow",
-      });
-    });
-
-    it("should keep original workdir as safe zone after dynamic workdir change", async () => {
-      const workdir = "/a";
-      const container = createContainer(workdir);
-      const manager = new PermissionManager(container, {
-        configuredPermissionMode: "acceptEdits",
-      });
-
-      // File /a/test.txt is inside safe zone
-      const context1: ToolPermissionContext = {
-        toolName: "Write",
-        permissionMode: "acceptEdits",
-        toolInput: { file_path: "/a/test.txt" },
-      };
-
-      expect(await manager.checkPermission(context1)).toMatchObject({
-        behavior: "allow",
-      });
-
-      // Update workdir to /c
-      container.register("Workdir", "/c");
-
-      // File /a/test.txt should still be inside safe zone (anchored to original workdir)
-      const context2: ToolPermissionContext = {
-        toolName: "Write",
-        permissionMode: "acceptEdits",
-        toolInput: { file_path: "/a/test.txt" },
-      };
-
-      expect(await manager.checkPermission(context2)).toMatchObject({
-        behavior: "allow",
-      });
-
-      // File /c/test.txt should NOT be inside safe zone (not in original workdir)
-      const context3: ToolPermissionContext = {
-        toolName: "Write",
-        permissionMode: "acceptEdits",
-        toolInput: { file_path: "/c/test.txt" },
-      };
-
-      expect(await manager.checkPermission(context3)).toMatchObject({
-        behavior: "deny",
-      });
-    });
-
     it("should resolve workdir from parent container in subagent PermissionManager", () => {
       const parentContainer = createContainer("/a");
 
@@ -2557,35 +2445,16 @@ describe("PermissionManager", () => {
       // Child container should resolve Workdir=/b
       expect(childContainer.get<string>("Workdir")).toBe("/b");
     });
-
-    it("should resolve additionalDirectories against original workdir even when workdir changes", () => {
-      const workdir = "/a";
-      const container = createContainer(workdir);
-      const manager = new PermissionManager(container);
-
-      // Add relative additional directory
-      manager.updateAdditionalDirectories(["./config"]);
-
-      // Should resolve relative to /a (original workdir)
-      expect(manager.getAdditionalDirectories()).toContain("/a/config");
-
-      // Change workdir
-      container.register("Workdir", "/b");
-
-      // Add another relative directory - should still resolve to /a (original workdir)
-      manager.updateAdditionalDirectories(["./data"]);
-      expect(manager.getAdditionalDirectories()).toContain("/a/data");
-    });
   });
 
   describe("addPermissionRule method", () => {
-    it("should use original workdir for persistence when adding a rule", async () => {
-      const originalWorkdir = "/home/user/project";
+    it("should use workdir for persistence when adding a rule", async () => {
+      const workdir = "/home/user/project";
       const mockConfigService = {
         addAllowedRule: vi.fn().mockResolvedValue(undefined),
       } as unknown as ConfigurationService;
 
-      const container = createContainer(originalWorkdir);
+      const container = createContainer(workdir);
       container.register("ConfigurationService", mockConfigService);
 
       const manager = new PermissionManager(container);
@@ -2594,58 +2463,12 @@ describe("PermissionManager", () => {
 
       // expandBashRule converts "npm test*" to "npm test**" (smart prefix)
       expect(mockConfigService.addAllowedRule).toHaveBeenCalledWith(
-        originalWorkdir,
+        workdir,
         "Bash(npm test**)",
       );
     });
 
-    it("should use original workdir even after dynamic workdir change", async () => {
-      const originalWorkdir = "/home/user/project";
-      const mockConfigService = {
-        addAllowedRule: vi.fn().mockResolvedValue(undefined),
-      } as unknown as ConfigurationService;
-
-      const container = createContainer(originalWorkdir);
-      container.register("ConfigurationService", mockConfigService);
-
-      const manager = new PermissionManager(container);
-
-      // Simulate cd to a subdirectory
-      container.register("Workdir", "/home/user/project/frontend");
-
-      await manager.addPermissionRule("Bash(npm install*)");
-
-      // Should still use the original workdir for persistence
-      expect(mockConfigService.addAllowedRule).toHaveBeenCalledWith(
-        originalWorkdir,
-        "Bash(npm install**)",
-      );
-    });
-
-    it("should use original workdir when workdir changes multiple times", async () => {
-      const originalWorkdir = "/home/user/project";
-      const mockConfigService = {
-        addAllowedRule: vi.fn().mockResolvedValue(undefined),
-      } as unknown as ConfigurationService;
-
-      const container = createContainer(originalWorkdir);
-      container.register("ConfigurationService", mockConfigService);
-
-      const manager = new PermissionManager(container);
-
-      container.register("Workdir", "/home/user/project/frontend");
-      container.register("Workdir", "/home/user/project/backend");
-      container.register("Workdir", "/home/user/project/docs");
-
-      await manager.addPermissionRule("Bash(mkdir test)");
-
-      expect(mockConfigService.addAllowedRule).toHaveBeenCalledWith(
-        originalWorkdir,
-        "Bash(mkdir test)",
-      );
-    });
-
-    it("should throw error if original workdir is not set", async () => {
+    it("should throw error if workdir is not set", async () => {
       const container = new Container();
       // ConfigurationService not needed for this test
       const manager = new PermissionManager(container);
@@ -2656,12 +2479,12 @@ describe("PermissionManager", () => {
     });
 
     it("should not add duplicate rules to internal state", async () => {
-      const originalWorkdir = "/home/user/project";
+      const workdir = "/home/user/project";
       const mockConfigService = {
         addAllowedRule: vi.fn().mockResolvedValue(undefined),
       } as unknown as ConfigurationService;
 
-      const container = createContainer(originalWorkdir);
+      const container = createContainer(workdir);
       container.register("ConfigurationService", mockConfigService);
 
       const manager = new PermissionManager(container);
@@ -2679,12 +2502,12 @@ describe("PermissionManager", () => {
     });
 
     it("should not add rules that are already in default allowed rules", async () => {
-      const originalWorkdir = "/home/user/project";
+      const workdir = "/home/user/project";
       const mockConfigService = {
         addAllowedRule: vi.fn().mockResolvedValue(undefined),
       } as unknown as ConfigurationService;
 
-      const container = createContainer(originalWorkdir);
+      const container = createContainer(workdir);
       container.register("ConfigurationService", mockConfigService);
 
       const manager = new PermissionManager(container);

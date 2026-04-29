@@ -58,7 +58,6 @@ export interface ToolContext {
   abortSignal?: AbortSignal;
   backgroundTaskManager?: import("../managers/backgroundTaskManager.js").BackgroundTaskManager;
   workdir: string;
-  originalWorkdir?: string;
   /** Permission mode for this tool execution */
   permissionMode?: PermissionMode;
   /** Custom permission callback */
