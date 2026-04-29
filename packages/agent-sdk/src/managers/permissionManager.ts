@@ -131,7 +131,7 @@ export class PermissionManager {
   private planFilePath?: string;
   private worktreeName?: string;
   private mainRepoRoot?: string;
-  private originalWorkdir?: string;
+  private workdir?: string;
   private onConfiguredPermissionModeChange?: (mode: PermissionMode) => void;
   private _logger?: Logger;
 
@@ -153,7 +153,7 @@ export class PermissionManager {
 
     this.worktreeName = this.container.get<string>("WorktreeName");
     this.mainRepoRoot = this.container.get<string>("MainRepoRoot");
-    this.originalWorkdir = this.container.get<string>("Workdir");
+    this.workdir = this.container.get<string>("Workdir");
   }
 
   /**
@@ -277,7 +277,7 @@ export class PermissionManager {
    * Update the additional directories (e.g., when configuration reloads)
    */
   updateAdditionalDirectories(directories: string[]): void {
-    const workdir = this.originalWorkdir;
+    const workdir = this.workdir;
     this.additionalDirectories = directories.map((dir) => {
       if (workdir && !path.isAbsolute(dir)) {
         return path.resolve(workdir, dir);
@@ -290,7 +290,7 @@ export class PermissionManager {
    * Add a system-level additional directory that is persistent across configuration reloads
    */
   public addSystemAdditionalDirectory(directory: string): void {
-    const workdir = this.originalWorkdir;
+    const workdir = this.workdir;
     const resolvedPath =
       workdir && !path.isAbsolute(directory)
         ? path.resolve(workdir, directory)
@@ -329,7 +329,7 @@ export class PermissionManager {
     targetPath: string,
     workdir?: string,
   ): { isInside: boolean; resolvedPath: string } {
-    const effectiveWorkdir = this.originalWorkdir || workdir;
+    const effectiveWorkdir = this.workdir || workdir;
 
     // Resolve the target path relative to effectiveWorkdir if it's not absolute
     const absolutePath =
@@ -1068,7 +1068,7 @@ export class PermissionManager {
    * @param rule - The rule to add (e.g., "Bash(ls)")
    */
   public async addPermissionRule(rule: string): Promise<void> {
-    const workdir = this.originalWorkdir;
+    const workdir = this.workdir;
     if (!workdir) {
       throw new Error("Working directory not set in PermissionManager");
     }
