@@ -177,28 +177,17 @@ export class OpenAIClient {
       error.body = errorBody;
 
       if (response.status === 429 && attempt < maxRetries) {
-        const responseHeaders: Record<string, string> = {};
-        response.headers.forEach((value, key) => {
-          responseHeaders[key] = value;
-        });
         logger.warn("OpenAI API 429 Too Many Requests, retrying...", {
           attempt: attempt + 1,
           status: response.status,
-          responseHeaders,
         });
         lastError = error;
         continue;
       }
 
-      const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
-        responseHeaders[key] = value;
-      });
       logger.error("OpenAI API Error:", {
         status: response.status,
         statusText: response.statusText,
-        requestHeaders: headers,
-        responseHeaders,
         errorBody,
       });
       throw error;
