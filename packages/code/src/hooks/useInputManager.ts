@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useCallback, useRef } from "react";
+import { useEffect, useReducer, useCallback } from "react";
 import { Key } from "ink";
 import {
   inputReducer,
@@ -17,17 +17,32 @@ export const useInputManager = (
   callbacks: Partial<InputManagerCallbacks> = {},
 ) => {
   const [state, dispatch] = useReducer(inputReducer, initialState);
-  const callbacksRef = useRef(callbacks);
-  const stateRef = useRef(state);
 
-  // Update refs when they change
-  useEffect(() => {
-    callbacksRef.current = callbacks;
-  }, [callbacks]);
-
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  const {
+    onInputTextChange,
+    onCursorPositionChange,
+    onFileSelectorStateChange,
+    onCommandSelectorStateChange,
+    onHistorySearchStateChange,
+    onBackgroundTaskManagerStateChange,
+    onMcpManagerStateChange,
+    onRewindManagerStateChange,
+    onHelpStateChange,
+    onStatusCommandStateChange,
+    onPluginManagerStateChange,
+    onModelSelectorStateChange,
+    onImagesStateChange,
+    onSendMessage,
+    onHasSlashCommand,
+    onAbortMessage,
+    onBackgroundCurrentTask,
+    onPermissionModeChange,
+    onAskBtw,
+    sessionId,
+    workdir,
+    getFullMessageThread,
+    logger,
+  } = callbacks;
 
   // Handle selectorJustUsed reset
   useEffect(() => {
@@ -67,10 +82,7 @@ export const useInputManager = (
         10,
       );
       const timer = setTimeout(() => {
-        const processedInput = stateRef.current.pasteBuffer.replace(
-          /\r/g,
-          "\n",
-        );
+        const processedInput = state.pasteBuffer.replace(/\r/g, "\n");
         dispatch({
           type: "INSERT_TEXT_WITH_PLACEHOLDER",
           payload: processedInput,
@@ -84,12 +96,12 @@ export const useInputManager = (
 
   // Sync state changes with callbacks
   useEffect(() => {
-    callbacksRef.current.onInputTextChange?.(state.inputText);
-  }, [state.inputText]);
+    onInputTextChange?.(state.inputText);
+  }, [state.inputText, onInputTextChange]);
 
   useEffect(() => {
-    callbacksRef.current.onCursorPositionChange?.(state.cursorPosition);
-  }, [state.cursorPosition]);
+    onCursorPositionChange?.(state.cursorPosition);
+  }, [state.cursorPosition, onCursorPositionChange]);
 
   // Handle pending effects
   useEffect(() => {
@@ -102,23 +114,21 @@ export const useInputManager = (
       try {
         switch (effect.type) {
           case "SEND_MESSAGE":
-            await callbacksRef.current.onSendMessage?.(
+            await onSendMessage?.(
               effect.content,
               effect.images,
               effect.longTextMap,
             );
             break;
           case "ABORT_MESSAGE":
-            callbacksRef.current.onAbortMessage?.();
+            onAbortMessage?.();
             break;
           case "BACKGROUND_CURRENT_TASK":
-            callbacksRef.current.onBackgroundCurrentTask?.();
+            onBackgroundCurrentTask?.();
             break;
           case "ASK_BTW":
             try {
-              const answer = await callbacksRef.current.onAskBtw?.(
-                effect.question,
-              );
+              const answer = await onAskBtw?.(effect.question);
               dispatch({
                 type: "SET_BTW_STATE",
                 payload: { answer, isLoading: false },
@@ -136,43 +146,35 @@ export const useInputManager = (
             }
             break;
           case "PERMISSION_MODE_CHANGE":
-            callbacksRef.current.onPermissionModeChange?.(effect.mode);
+            onPermissionModeChange?.(effect.mode);
             break;
           case "SAVE_HISTORY":
             PromptHistoryManager.addEntry(
               effect.content,
-              callbacksRef.current.sessionId,
+              sessionId,
               effect.longTextMap,
-              callbacksRef.current.workdir,
+              workdir,
             ).catch((err: unknown) => {
-              callbacksRef.current.logger?.error(
-                "Failed to save prompt history",
-                err,
-              );
+              logger?.error("Failed to save prompt history", err);
             });
             break;
           case "FETCH_HISTORY": {
-            let sessionIds: string[] | undefined = callbacksRef.current
-              .sessionId
-              ? [callbacksRef.current.sessionId]
+            let sessionIds: string[] | undefined = sessionId
+              ? [sessionId]
               : undefined;
 
-            if (callbacksRef.current.getFullMessageThread) {
+            if (getFullMessageThread) {
               try {
-                const thread =
-                  await callbacksRef.current.getFullMessageThread();
+                const thread = await getFullMessageThread();
                 sessionIds = thread.sessionIds;
               } catch (error) {
-                callbacksRef.current.logger?.error(
-                  "Failed to fetch ancestor session IDs",
-                  error,
-                );
+                logger?.error("Failed to fetch ancestor session IDs", error);
               }
             }
 
             const history = await PromptHistoryManager.getHistory({
               sessionId: sessionIds,
-              workdir: callbacksRef.current.workdir,
+              workdir: workdir,
             });
             dispatch({ type: "SET_HISTORY_ENTRIES", payload: history });
             dispatch({ type: "NAVIGATE_HISTORY", payload: "up" });
@@ -186,17 +188,10 @@ export const useInputManager = (
             }
             break;
           case "EXECUTE_COMMAND":
-            if (
-              callbacksRef.current.onSendMessage &&
-              callbacksRef.current.onHasSlashCommand?.(effect.command)
-            ) {
+            if (onSendMessage && onHasSlashCommand?.(effect.command)) {
               const fullCommand = `/${effect.command}`;
               try {
-                await callbacksRef.current.onSendMessage(
-                  fullCommand,
-                  undefined,
-                  {},
-                );
+                await onSendMessage(fullCommand, undefined, {});
               } catch (error) {
                 console.error("Failed to execute slash command:", error);
               }
@@ -235,10 +230,22 @@ export const useInputManager = (
     };
 
     runEffect();
-  }, [state.pendingEffect]);
+  }, [
+    state.pendingEffect,
+    onSendMessage,
+    onAbortMessage,
+    onBackgroundCurrentTask,
+    onAskBtw,
+    onPermissionModeChange,
+    sessionId,
+    workdir,
+    getFullMessageThread,
+    logger,
+    onHasSlashCommand,
+  ]);
 
   useEffect(() => {
-    callbacksRef.current.onFileSelectorStateChange?.(
+    onFileSelectorStateChange?.(
       state.showFileSelector,
       state.filteredFiles,
       state.fileSearchQuery,
@@ -249,10 +256,11 @@ export const useInputManager = (
     state.filteredFiles,
     state.fileSearchQuery,
     state.atPosition,
+    onFileSelectorStateChange,
   ]);
 
   useEffect(() => {
-    callbacksRef.current.onCommandSelectorStateChange?.(
+    onCommandSelectorStateChange?.(
       state.showCommandSelector,
       state.commandSearchQuery,
       state.slashPosition,
@@ -261,48 +269,51 @@ export const useInputManager = (
     state.showCommandSelector,
     state.commandSearchQuery,
     state.slashPosition,
+    onCommandSelectorStateChange,
   ]);
 
   useEffect(() => {
-    callbacksRef.current.onHistorySearchStateChange?.(
+    onHistorySearchStateChange?.(
       state.showHistorySearch,
       state.historySearchQuery,
     );
-  }, [state.showHistorySearch, state.historySearchQuery]);
+  }, [
+    state.showHistorySearch,
+    state.historySearchQuery,
+    onHistorySearchStateChange,
+  ]);
 
   useEffect(() => {
-    callbacksRef.current.onBackgroundTaskManagerStateChange?.(
-      state.showBackgroundTaskManager,
-    );
-  }, [state.showBackgroundTaskManager]);
+    onBackgroundTaskManagerStateChange?.(state.showBackgroundTaskManager);
+  }, [state.showBackgroundTaskManager, onBackgroundTaskManagerStateChange]);
 
   useEffect(() => {
-    callbacksRef.current.onMcpManagerStateChange?.(state.showMcpManager);
-  }, [state.showMcpManager]);
+    onMcpManagerStateChange?.(state.showMcpManager);
+  }, [state.showMcpManager, onMcpManagerStateChange]);
 
   useEffect(() => {
-    callbacksRef.current.onRewindManagerStateChange?.(state.showRewindManager);
-  }, [state.showRewindManager]);
+    onRewindManagerStateChange?.(state.showRewindManager);
+  }, [state.showRewindManager, onRewindManagerStateChange]);
 
   useEffect(() => {
-    callbacksRef.current.onHelpStateChange?.(state.showHelp);
-  }, [state.showHelp]);
+    onHelpStateChange?.(state.showHelp);
+  }, [state.showHelp, onHelpStateChange]);
 
   useEffect(() => {
-    callbacksRef.current.onStatusCommandStateChange?.(state.showStatusCommand);
-  }, [state.showStatusCommand]);
+    onStatusCommandStateChange?.(state.showStatusCommand);
+  }, [state.showStatusCommand, onStatusCommandStateChange]);
 
   useEffect(() => {
-    callbacksRef.current.onPluginManagerStateChange?.(state.showPluginManager);
-  }, [state.showPluginManager]);
+    onPluginManagerStateChange?.(state.showPluginManager);
+  }, [state.showPluginManager, onPluginManagerStateChange]);
 
   useEffect(() => {
-    callbacksRef.current.onModelSelectorStateChange?.(state.showModelSelector);
-  }, [state.showModelSelector]);
+    onModelSelectorStateChange?.(state.showModelSelector);
+  }, [state.showModelSelector, onModelSelectorStateChange]);
 
   useEffect(() => {
-    callbacksRef.current.onImagesStateChange?.(state.attachedImages);
-  }, [state.attachedImages]);
+    onImagesStateChange?.(state.attachedImages);
+  }, [state.attachedImages, onImagesStateChange]);
 
   // Handle /btw side question
   useEffect(() => {
@@ -313,9 +324,7 @@ export const useInputManager = (
     ) {
       const askBtw = async () => {
         try {
-          const answer = await callbacksRef.current.onAskBtw?.(
-            state.btwState.question,
-          );
+          const answer = await onAskBtw?.(state.btwState.question);
           dispatch({
             type: "SET_BTW_STATE",
             payload: { answer, isLoading: false },
@@ -337,6 +346,7 @@ export const useInputManager = (
     state.btwState.isActive,
     state.btwState.isLoading,
     state.btwState.question,
+    onAskBtw,
   ]);
 
   // Methods
@@ -376,11 +386,14 @@ export const useInputManager = (
     dispatch({ type: "SET_FILE_SEARCH_QUERY", payload: query });
   }, []);
 
-  const checkForAtDeletion = useCallback((cursorPos: number) => {
-    // This is now largely handled inside HANDLE_KEY,
-    // but kept for external calls if any.
-    return handlers.checkForAtDeletion(stateRef.current, dispatch, cursorPos);
-  }, []);
+  const checkForAtDeletion = useCallback(
+    (cursorPos: number) => {
+      // This is now largely handled inside HANDLE_KEY,
+      // but kept for external calls if any.
+      return handlers.checkForAtDeletion(state, dispatch, cursorPos);
+    },
+    [state],
+  );
 
   const activateCommandSelector = useCallback((position: number) => {
     dispatch({ type: "ACTIVATE_COMMAND_SELECTOR", payload: position });
@@ -402,13 +415,12 @@ export const useInputManager = (
     dispatch({ type: "SET_COMMAND_SEARCH_QUERY", payload: query });
   }, []);
 
-  const checkForSlashDeletion = useCallback((cursorPos: number) => {
-    return handlers.checkForSlashDeletion(
-      stateRef.current,
-      dispatch,
-      cursorPos,
-    );
-  }, []);
+  const checkForSlashDeletion = useCallback(
+    (cursorPos: number) => {
+      return handlers.checkForSlashDeletion(state, dispatch, cursorPos);
+    },
+    [state],
+  );
 
   const handleHistorySearchSelect = useCallback((entry: PromptEntry) => {
     dispatch({ type: "SELECT_HISTORY_ENTRY", payload: entry });
@@ -418,9 +430,12 @@ export const useInputManager = (
     dispatch({ type: "CANCEL_HISTORY_SEARCH" });
   }, []);
 
-  const processSelectorInput = useCallback((char: string) => {
-    handlers.processSelectorInput(stateRef.current, dispatch, char);
-  }, []);
+  const processSelectorInput = useCallback(
+    (char: string) => {
+      handlers.processSelectorInput(state, dispatch, char);
+    },
+    [state],
+  );
 
   const setInputText = useCallback((text: string) => {
     dispatch({ type: "SET_INPUT_TEXT", payload: text });
@@ -458,10 +473,13 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: show });
   }, []);
 
-  const setPermissionMode = useCallback((mode: PermissionMode) => {
-    dispatch({ type: "SET_PERMISSION_MODE", payload: mode });
-    callbacksRef.current.onPermissionModeChange?.(mode);
-  }, []);
+  const setPermissionMode = useCallback(
+    (mode: PermissionMode) => {
+      dispatch({ type: "SET_PERMISSION_MODE", payload: mode });
+      onPermissionModeChange?.(mode);
+    },
+    [onPermissionModeChange],
+  );
 
   const setBtwState = useCallback(
     (payload: Partial<import("../managers/inputReducer.js").BtwState>) => {
@@ -486,17 +504,19 @@ export const useInputManager = (
     return await handlers.handlePasteImage(dispatch);
   }, []);
 
-  const handlePasteInput = useCallback((input: string) => {
-    dispatch({
-      type: "HANDLE_KEY",
-      payload: {
-        input,
-        key: {} as Key,
-        hasSlashCommand: (cmd) =>
-          !!callbacksRef.current.onHasSlashCommand?.(cmd),
-      },
-    });
-  }, []);
+  const handlePasteInput = useCallback(
+    (input: string) => {
+      dispatch({
+        type: "HANDLE_KEY",
+        payload: {
+          input,
+          key: {} as Key,
+          hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
+        },
+      });
+    },
+    [onHasSlashCommand],
+  );
 
   const handleSubmit = useCallback(async () => {
     dispatch({
@@ -504,18 +524,17 @@ export const useInputManager = (
       payload: {
         input: "",
         key: { return: true } as Key,
-        hasSlashCommand: (cmd) =>
-          !!callbacksRef.current.onHasSlashCommand?.(cmd),
+        hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
       },
     });
-  }, []);
+  }, [onHasSlashCommand]);
 
-  const expandLongTextPlaceholders = useCallback((text: string) => {
-    return handlers.expandLongTextPlaceholders(
-      text,
-      stateRef.current.longTextMap,
-    );
-  }, []);
+  const expandLongTextPlaceholders = useCallback(
+    (text: string) => {
+      return handlers.expandLongTextPlaceholders(text, state.longTextMap);
+    },
+    [state.longTextMap],
+  );
 
   const clearLongTextMap = useCallback(() => {
     dispatch({ type: "CLEAR_LONG_TEXT_MAP" });
@@ -538,13 +557,12 @@ export const useInputManager = (
         payload: {
           input,
           key,
-          hasSlashCommand: (cmd) =>
-            !!callbacksRef.current.onHasSlashCommand?.(cmd),
+          hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
         },
       });
       return true;
     },
-    [],
+    [onHasSlashCommand],
   );
 
   return {
