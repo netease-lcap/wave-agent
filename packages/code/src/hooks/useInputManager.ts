@@ -119,6 +119,14 @@ export const useInputManager = (
               effect.images,
               effect.longTextMap,
             );
+            PromptHistoryManager.addEntry(
+              effect.content,
+              sessionId,
+              effect.longTextMap,
+              workdir,
+            ).catch((err: unknown) => {
+              logger?.error("Failed to save prompt history", err);
+            });
             break;
           case "ABORT_MESSAGE":
             onAbortMessage?.();
@@ -147,16 +155,6 @@ export const useInputManager = (
             break;
           case "PERMISSION_MODE_CHANGE":
             onPermissionModeChange?.(effect.mode);
-            break;
-          case "SAVE_HISTORY":
-            PromptHistoryManager.addEntry(
-              effect.content,
-              sessionId,
-              effect.longTextMap,
-              workdir,
-            ).catch((err: unknown) => {
-              logger?.error("Failed to save prompt history", err);
-            });
             break;
           case "FETCH_HISTORY": {
             let sessionIds: string[] | undefined = sessionId

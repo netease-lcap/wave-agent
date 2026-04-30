@@ -38,11 +38,6 @@ export type PendingEffect =
   | { type: "BACKGROUND_CURRENT_TASK" }
   | { type: "ASK_BTW"; question: string }
   | { type: "PERMISSION_MODE_CHANGE"; mode: PermissionMode }
-  | {
-      type: "SAVE_HISTORY";
-      content: string;
-      longTextMap: Record<string, string>;
-    }
   | { type: "FETCH_HISTORY" }
   | { type: "PASTE_IMAGE" }
   | { type: "EXECUTE_COMMAND"; command: string };
