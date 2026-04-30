@@ -418,6 +418,7 @@ describe("Agent Permission Integration", () => {
             id: generateMessageId(),
             role: "user",
             blocks: [{ type: "text", content: "test" }],
+            timestamp: new Date().toISOString(),
           },
         ],
       });

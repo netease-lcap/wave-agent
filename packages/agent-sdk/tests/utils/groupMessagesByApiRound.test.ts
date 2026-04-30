@@ -11,6 +11,7 @@ function createUserMsg(content = "user msg"): Message {
     id: generateMessageId(),
     role: "user",
     blocks: [{ type: "text", content }],
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -19,6 +20,7 @@ function createAssistantMsg(id: string, content = "assistant msg"): Message {
     id,
     role: "assistant",
     blocks: [{ type: "text", content }],
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -27,6 +29,7 @@ function createCompactMsg(content = "compacted"): Message {
     id: generateMessageId(),
     role: "assistant",
     blocks: [{ type: "compact", content, sessionId: "session-1" }],
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -94,6 +97,7 @@ describe("groupMessagesByApiRound", () => {
         { type: "tool", stage: "end" },
         { type: "text", content: "done" },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     const rounds = groupMessagesByApiRound([user, assistant]);

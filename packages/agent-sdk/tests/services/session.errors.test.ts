@@ -256,12 +256,14 @@ describe("Session Error Handling and Edge Cases", () => {
         id: generateMessageId(),
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
+        timestamp: new Date().toISOString(),
       };
 
       const newerSessionMessage = {
         id: generateMessageId(),
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
+        timestamp: new Date().toISOString(),
       };
 
       // Create files - subagent sessions would be in separate directory
@@ -313,6 +315,7 @@ describe("Session Error Handling and Edge Cases", () => {
           id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Hello from subagent" }],
+          timestamp: new Date().toISOString(),
         },
       ];
 

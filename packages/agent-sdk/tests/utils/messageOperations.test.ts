@@ -39,6 +39,7 @@ describe("addUserMessageToMessages", () => {
     expect(result[0]).toMatchObject({
       role: "user",
       blocks: [{ type: "text", content: "Hello world" }],
+      timestamp: expect.any(String),
     });
   });
 
@@ -62,6 +63,7 @@ describe("addUserMessageToMessages", () => {
           imageUrls: ["/tmp/test-image.png"],
         },
       ],
+      timestamp: expect.any(String),
     });
   });
 
@@ -88,6 +90,7 @@ describe("addUserMessageToMessages", () => {
           imageUrls: ["/tmp/image1.png", "/tmp/image2.jpg"],
         },
       ],
+      timestamp: expect.any(String),
     });
   });
 
@@ -111,6 +114,7 @@ describe("addUserMessageToMessages", () => {
           imageUrls: ["/tmp/test-image.png"],
         },
       ],
+      timestamp: expect.any(String),
     });
   });
 
@@ -120,6 +124,7 @@ describe("addUserMessageToMessages", () => {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Previous message" }],
+        timestamp: expect.any(String),
       },
     ];
     const images = [{ path: "/tmp/test.png", mimeType: "image/png" }];
@@ -141,6 +146,7 @@ describe("addUserMessageToMessages", () => {
           imageUrls: ["/tmp/test.png"],
         },
       ],
+      timestamp: expect.any(String),
     });
   });
 
@@ -150,6 +156,7 @@ describe("addUserMessageToMessages", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Original" }],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -177,6 +184,7 @@ describe("addUserMessageToMessages", () => {
       role: "user",
       blocks: [{ type: "text", content: "Hidden message" }],
       isMeta: true,
+      timestamp: expect.any(String),
     });
   });
 });
@@ -189,6 +197,7 @@ describe("updateUserMessageInMessages", () => {
         id,
         role: "user",
         blocks: [{ type: "text", content: "Original" }],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -202,6 +211,7 @@ describe("updateUserMessageInMessages", () => {
       role: "user",
       blocks: [{ type: "text", content: "Updated" }],
       isMeta: true,
+      timestamp: expect.any(String),
     });
   });
 });
@@ -298,6 +308,7 @@ describe("Bang Message Operations", () => {
           id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "!echo hello" }],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -318,6 +329,7 @@ describe("Bang Message Operations", () => {
             exitCode: null,
           },
         ],
+        timestamp: expect.any(String),
       });
     });
 
@@ -341,6 +353,7 @@ describe("Bang Message Operations", () => {
             exitCode: null,
           },
         ],
+        timestamp: expect.any(String),
       });
     });
 
@@ -350,6 +363,7 @@ describe("Bang Message Operations", () => {
           id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "test" }],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -379,6 +393,7 @@ describe("Bang Message Operations", () => {
               exitCode: null,
             },
           ],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -411,6 +426,7 @@ describe("Bang Message Operations", () => {
               exitCode: 0,
             },
           ],
+          timestamp: expect.any(String),
         },
         {
           id: generateMessageId(),
@@ -424,6 +440,7 @@ describe("Bang Message Operations", () => {
               exitCode: null,
             },
           ],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -462,6 +479,7 @@ describe("Bang Message Operations", () => {
               exitCode: null,
             },
           ],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -490,6 +508,7 @@ describe("Bang Message Operations", () => {
               exitCode: 0,
             },
           ],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -522,6 +541,7 @@ describe("Bang Message Operations", () => {
               exitCode: null,
             },
           ],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -555,6 +575,7 @@ describe("Bang Message Operations", () => {
               exitCode: null,
             },
           ],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -584,6 +605,7 @@ describe("Bang Message Operations", () => {
               exitCode: 0,
             },
           ],
+          timestamp: expect.any(String),
         },
         {
           id: generateMessageId(),
@@ -597,6 +619,7 @@ describe("Bang Message Operations", () => {
               exitCode: null,
             },
           ],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -635,6 +658,7 @@ describe("Bang Message Operations", () => {
               exitCode: 0,
             },
           ],
+          timestamp: expect.any(String),
         },
       ];
 
@@ -660,11 +684,13 @@ describe("addErrorBlockToMessage", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello" }],
+        timestamp: expect.any(String),
       },
       {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Hi there!" }],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -680,6 +706,7 @@ describe("addErrorBlockToMessage", () => {
         { type: "text", content: "Hi there!" },
         { type: "error", content: "Something went wrong" },
       ],
+      timestamp: expect.any(String),
     });
   });
 
@@ -689,11 +716,13 @@ describe("addErrorBlockToMessage", () => {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Hi there!" }],
+        timestamp: expect.any(String),
       },
       {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello again" }],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -706,6 +735,7 @@ describe("addErrorBlockToMessage", () => {
     expect(result[2]).toMatchObject({
       role: "assistant",
       blocks: [{ type: "error", content: "Error occurred" }],
+      timestamp: expect.any(String),
     });
     // Original messages should remain unchanged
     expect(result[0]).toEqual(initialMessages[0]);
@@ -724,6 +754,7 @@ describe("addErrorBlockToMessage", () => {
     expect(result[0]).toMatchObject({
       role: "assistant",
       blocks: [{ type: "error", content: "Initial error" }],
+      timestamp: expect.any(String),
     });
   });
 
@@ -733,11 +764,13 @@ describe("addErrorBlockToMessage", () => {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "First response" }],
+        timestamp: expect.any(String),
       },
       {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Follow-up" }],
+        timestamp: expect.any(String),
       },
       {
         id: generateMessageId(),
@@ -746,6 +779,7 @@ describe("addErrorBlockToMessage", () => {
           { type: "text", content: "Second response" },
           { type: "tool", parameters: "ls", stage: "end" },
         ],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -762,6 +796,7 @@ describe("addErrorBlockToMessage", () => {
         { type: "tool", parameters: "ls", stage: "end" },
         { type: "error", content: "Tool execution failed" },
       ],
+      timestamp: expect.any(String),
     });
     // Earlier messages should remain unchanged
     expect(result[0]).toEqual(initialMessages[0]);
@@ -774,6 +809,7 @@ describe("addErrorBlockToMessage", () => {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Original" }],
+        timestamp: expect.any(String),
       },
     ];
     const originalLength = initialMessages[0].blocks.length;
@@ -800,6 +836,7 @@ describe("addToolBlockToMessageInMessages", () => {
         id: messageId,
         role: "user",
         blocks: [{ type: "text", content: "/forked-skill" }],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -829,6 +866,7 @@ describe("addToolBlockToMessageInMessages", () => {
         id: "wrong-id",
         role: "user",
         blocks: [{ type: "text", content: "hello" }],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -861,6 +899,7 @@ describe("updateToolBlockInMessage with messageId", () => {
             stage: "start",
           },
         ],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -896,6 +935,7 @@ describe("updateToolBlockInMessage with messageId", () => {
             stage: "start",
           },
         ],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -929,6 +969,7 @@ describe("updateToolBlockInMessage with messageId", () => {
             stage: "start",
           },
         ],
+        timestamp: expect.any(String),
       },
     ];
 
@@ -971,6 +1012,7 @@ describe("cloneMessage", () => {
       id: "msg-1",
       role: "assistant",
       blocks: [{ type: "text", content: "Hello" }],
+      timestamp: expect.any(String),
     };
     const cloned = cloneMessage(message);
     expect(cloned).toEqual(message);
@@ -990,6 +1032,7 @@ describe("cloneMessage", () => {
           images: [{ data: "img1", mediaType: "image/png" }],
         },
       ],
+      timestamp: expect.any(String),
     };
     const cloned = cloneMessage(message);
     const originalToolBlock = message.blocks[0] as ToolBlock;
@@ -1005,6 +1048,7 @@ describe("cloneMessage", () => {
       role: "assistant",
       blocks: [],
       additionalFields: { foo: "bar" },
+      timestamp: expect.any(String),
     };
     const cloned = cloneMessage(message);
     expect(cloned.additionalFields).not.toBe(message.additionalFields);
@@ -1016,6 +1060,7 @@ describe("cloneMessage", () => {
       id: "msg-1",
       role: "user",
       blocks: [{ type: "image", imageUrls: ["url1"] }],
+      timestamp: expect.any(String),
     };
     const cloned = cloneMessage(message);
     const originalBlock = message.blocks[0] as ImageBlock;
@@ -1028,6 +1073,7 @@ describe("cloneMessage", () => {
     const message: Message = {
       id: "msg-1",
       role: "assistant",
+      timestamp: expect.any(String),
       blocks: [
         {
           type: "file_history",
@@ -1057,6 +1103,7 @@ describe("getMessageContent", () => {
       id: "msg-1",
       role: "user",
       blocks: [{ type: "text", content: "hello world" }],
+      timestamp: expect.any(String),
     };
     expect(getMessageContent(message)).toBe("hello world");
   });
@@ -1074,6 +1121,7 @@ describe("getMessageContent", () => {
           exitCode: null,
         },
       ],
+      timestamp: expect.any(String),
     };
     expect(getMessageContent(message)).toBe("!ls -la");
   });
@@ -1089,6 +1137,7 @@ describe("getMessageContent", () => {
           sessionId: "test-session",
         },
       ],
+      timestamp: expect.any(String),
     };
     expect(getMessageContent(message)).toBe("summarized context");
   });
@@ -1100,6 +1149,7 @@ describe("getMessageContent", () => {
       blocks: [
         { type: "tool", name: "test", parameters: "{}", stage: "start" },
       ],
+      timestamp: expect.any(String),
     };
     expect(getMessageContent(message)).toBe("");
   });

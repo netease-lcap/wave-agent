@@ -25,7 +25,12 @@ vi.mock("../../src/components/Markdown.js", () => ({
 describe("MessageBlockItem Component", () => {
   describe("Block Types", () => {
     it("should render text block", () => {
-      const message: Message = { id: "test-id", role: "user", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "user",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = { type: "text", content: "plain text" };
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
@@ -34,7 +39,12 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render text block with HOOK source (🔗)", () => {
-      const message: Message = { id: "test-id", role: "user", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "user",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = {
         type: "text",
         content: "hook text",
@@ -48,7 +58,12 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render error block", () => {
-      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "assistant",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = {
         type: "error",
         content: "something failed",
@@ -60,7 +75,12 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render bang block", () => {
-      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "assistant",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = {
         type: "bang",
         output: "output",
@@ -75,7 +95,12 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render tool block", () => {
-      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "assistant",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = {
         type: "tool",
         id: "1",
@@ -91,7 +116,12 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render image block without imageUrls", () => {
-      const message: Message = { id: "test-id", role: "user", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "user",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = { type: "image" };
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
@@ -101,7 +131,12 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render image block with imageUrls", () => {
-      const message: Message = { id: "test-id", role: "user", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "user",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = {
         type: "image",
         imageUrls: ["url1", "url2"],
@@ -114,7 +149,12 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render compact block", () => {
-      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "assistant",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = {
         type: "compact",
         content: "compacted",
@@ -127,7 +167,12 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should render reasoning block", () => {
-      const message: Message = { id: "test-id", role: "assistant", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "assistant",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = { type: "reasoning", content: "thinking" };
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
@@ -141,6 +186,7 @@ describe("MessageBlockItem Component", () => {
       id: "test-id",
       role: "assistant",
       blocks: [],
+      timestamp: new Date().toISOString(),
     });
 
     it("should show last 30 chars with ellipsis when streaming and content is long", () => {
@@ -214,7 +260,12 @@ describe("MessageBlockItem Component", () => {
     });
 
     it("should show full content when user message is streaming", () => {
-      const message: Message = { id: "test-id", role: "user", blocks: [] };
+      const message: Message = {
+        id: "test-id",
+        role: "user",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
       const block: MessageBlock = {
         type: "text",
         content: "user streaming content that is very long",

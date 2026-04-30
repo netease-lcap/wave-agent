@@ -20,7 +20,6 @@ import { join } from "path";
 import { homedir } from "os";
 import { randomUUID } from "crypto";
 import type { Message } from "../types/index.js";
-import type { SessionMessage } from "../types/session.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
@@ -228,19 +227,14 @@ export async function appendMessages(
     );
   }
 
-  const messagesWithTimestamp: SessionMessage[] = newMessages.map((msg) => ({
-    timestamp: new Date().toISOString(),
-    ...msg,
-  }));
-
-  await jsonlHandler.append(filePath, messagesWithTimestamp, {
+  await jsonlHandler.append(filePath, newMessages, {
     atomic: false,
   });
 
   // Update index
   const encoder = new PathEncoder();
   const projectDir = await encoder.getProjectDirectory(workdir, SESSION_DIR);
-  const lastMessage = messagesWithTimestamp[messagesWithTimestamp.length - 1];
+  const lastMessage = newMessages[newMessages.length - 1];
 
   // Get first message content if it's a new session or we don't have it
   let firstMessage: string | undefined;
@@ -333,12 +327,7 @@ export async function loadSessionFromJsonl(
       id: sessionId,
       rootSessionId: rootSessionId || sessionId,
       parentSessionId,
-      messages: messages.map((msg) => {
-        // Remove timestamp property for backward compatibility
-        const { timestamp: _ignored, ...messageWithoutTimestamp } = msg;
-        void _ignored; // Use the variable to avoid eslint error
-        return messageWithoutTimestamp;
-      }),
+      messages,
       metadata: {
         workdir,
         lastActiveAt: lastMessage

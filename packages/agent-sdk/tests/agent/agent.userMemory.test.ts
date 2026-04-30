@@ -214,6 +214,7 @@ describe("Agent User Memory Integration", () => {
             content: "Test question",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 

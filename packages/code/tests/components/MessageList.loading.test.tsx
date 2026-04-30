@@ -21,6 +21,7 @@ const createMessage = (
   id: `msg-${Math.random()}`,
   role,
   blocks: [{ type: "text", content }],
+  timestamp: new Date().toISOString(),
 });
 
 describe("MessageList Loading State", () => {

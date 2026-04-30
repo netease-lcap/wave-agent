@@ -351,6 +351,7 @@ describe("Subagent Session Tests", () => {
             blocks: [
               { type: "text" as const, content: "Hello from subagent session" },
             ],
+            timestamp: new Date().toISOString(),
           },
         ];
 
@@ -392,11 +393,13 @@ describe("Subagent Session Tests", () => {
             id: generateMessageId(),
             role: "user",
             blocks: [{ type: "text", content: "Main session message" }],
+            timestamp: new Date().toISOString(),
           })
           .mockResolvedValueOnce({
             id: generateMessageId(),
             role: "user",
             blocks: [{ type: "text", content: "Subagent session message" }],
+            timestamp: new Date().toISOString(),
           });
 
         // Mock read for getting first message timestamps
@@ -404,6 +407,7 @@ describe("Subagent Session Tests", () => {
           id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Test" }],
+          timestamp: new Date().toISOString(),
         };
         // Mock readFirstLine for getting first message timestamps (PERFORMANCE OPTIMIZATION)
         const mockMessageJson = JSON.stringify(mockMessage);
@@ -508,6 +512,7 @@ describe("Subagent Session Tests", () => {
           id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Test" }],
+          timestamp: new Date().toISOString(),
         };
 
         for (let i = 0; i < sessionCount; i++) {

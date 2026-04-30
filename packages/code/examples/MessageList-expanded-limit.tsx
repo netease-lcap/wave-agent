@@ -24,6 +24,7 @@ const createMessage = (
       content: `${content} - Message ${id}`,
     },
   ],
+  timestamp: new Date().toISOString(),
 });
 
 // Create 30 messages to demonstrate limiting

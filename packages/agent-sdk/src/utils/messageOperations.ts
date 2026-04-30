@@ -160,6 +160,7 @@ export const addUserMessageToMessages = ({
     id: id || generateMessageId(),
     role: "user",
     blocks,
+    timestamp: new Date().toISOString(),
     ...(isMeta !== undefined && { isMeta }),
   };
   return [...messages, userMessage];
@@ -231,6 +232,7 @@ export const addAssistantMessageToMessages = (
     id: generateMessageId(),
     role: "assistant",
     blocks,
+    timestamp: new Date().toISOString(),
     usage, // Include usage data if provided
     ...(additionalFields ? { additionalFields: { ...additionalFields } } : {}),
   };
@@ -407,6 +409,7 @@ export const addErrorBlockToMessage = ({
           content: error,
         },
       ],
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -430,6 +433,7 @@ export const addBangMessage = ({
         exitCode: null,
       },
     ],
+    timestamp: new Date().toISOString(),
   };
 
   return [...messages, outputMessage];
@@ -620,6 +624,7 @@ export const addNotificationMessageToMessages = ({
     id: generateMessageId(),
     role: "user",
     blocks: [block],
+    timestamp: new Date().toISOString(),
   };
 
   return [...messages, notificationMessage];

@@ -169,6 +169,7 @@ describe("ChatProvider", () => {
           completion_tokens: 50,
           total_tokens: 100,
         },
+        timestamp: new Date().toISOString(),
       },
     ];
     Object.assign(mockAgent, { messages: newMessages });
@@ -864,6 +865,7 @@ describe("ChatProvider", () => {
         id: "msg-1",
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "test" }],
+        timestamp: new Date().toISOString(),
       },
     ];
     Object.assign(mockAgent, { messages: newMessages });
@@ -1139,7 +1141,14 @@ describe("ChatProvider", () => {
     expect(lastValue?.messages).toEqual([]);
 
     // 1st update: leading call should be immediate
-    const msg1 = [{ id: "1", role: "user" as const, blocks: [] }];
+    const msg1 = [
+      {
+        id: "1",
+        role: "user" as const,
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      },
+    ];
     Object.assign(mockAgent, { messages: msg1 });
     callbacks.onMessagesChange!(msg1);
     await vi.waitFor(() => {
@@ -1147,7 +1156,14 @@ describe("ChatProvider", () => {
     });
 
     // 2nd update within 100ms: should be throttled
-    const msg2 = [{ id: "2", role: "user" as const, blocks: [] }];
+    const msg2 = [
+      {
+        id: "2",
+        role: "user" as const,
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      },
+    ];
     Object.assign(mockAgent, { messages: msg2 });
     callbacks.onMessagesChange!(msg2);
     // Should NOT update yet
@@ -1155,7 +1171,14 @@ describe("ChatProvider", () => {
     expect(lastValue?.messages).toEqual(msg1);
 
     // 3rd update within 100ms: still throttled
-    const msg3 = [{ id: "3", role: "user" as const, blocks: [] }];
+    const msg3 = [
+      {
+        id: "3",
+        role: "user" as const,
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      },
+    ];
     Object.assign(mockAgent, { messages: msg3 });
     callbacks.onMessagesChange!(msg3);
     // Should NOT update yet

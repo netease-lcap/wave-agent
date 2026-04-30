@@ -49,6 +49,7 @@ describe("Agent Message Compaction Tests", () => {
             content: `User message ${i + 1}: Please help me with task ${i + 1}`,
           },
         ],
+        timestamp: new Date().toISOString(),
       });
       messages.push({
         id: generateMessageId(),
@@ -59,6 +60,7 @@ describe("Agent Message Compaction Tests", () => {
             content: `Assistant response ${i + 1}: I'll help you with task ${i + 1}`,
           },
         ],
+        timestamp: new Date().toISOString(),
       });
     }
     return messages;
@@ -78,6 +80,7 @@ describe("Agent Message Compaction Tests", () => {
           content: "Please optimize the component performance",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     // Recreate Agent and pass in message history
@@ -183,6 +186,7 @@ describe("Agent Message Compaction Tests", () => {
           content: "How are you?",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     // Recreate Agent and pass in message history
@@ -238,6 +242,7 @@ describe("Agent Message Compaction Tests", () => {
           content: "Test message",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     // Recreate Agent and pass in message history
@@ -317,6 +322,7 @@ describe("Agent Message Compaction Tests", () => {
             sessionId: "test-session-id",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
       ...initialMessages.slice(8), // Remaining messages
     ];
@@ -331,6 +337,7 @@ describe("Agent Message Compaction Tests", () => {
           content: "Trigger compaction again",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     // Recreate Agent and pass in message history
@@ -449,6 +456,7 @@ describe("Agent Message Compaction Tests", () => {
           content: "First trigger message for compaction",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     // Recreate Agent and pass in message history
@@ -575,6 +583,7 @@ describe("Agent Message Compaction Tests", () => {
           content: "Please optimize the component performance",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     // Recreate Agent and pass in message history
@@ -651,6 +660,7 @@ describe("Agent Message Compaction Tests", () => {
           content: "Test",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     await agent.destroy();
@@ -705,6 +715,7 @@ describe("Agent Message Compaction Tests", () => {
       id: generateMessageId(),
       role: "user",
       blocks: [{ type: "text", content: "Test" }],
+      timestamp: new Date().toISOString(),
     };
 
     await agent.destroy();
@@ -841,6 +852,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();
@@ -875,6 +887,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();
@@ -913,6 +926,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();
@@ -947,6 +961,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();
@@ -982,6 +997,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();
@@ -1019,6 +1035,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();
@@ -1061,6 +1078,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();
@@ -1108,6 +1126,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();
@@ -1166,6 +1185,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();
@@ -1218,6 +1238,7 @@ describe("Agent Message Compaction Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test" }],
+        timestamp: new Date().toISOString(),
       };
 
       await agent.destroy();

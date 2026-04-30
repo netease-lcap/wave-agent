@@ -309,41 +309,49 @@ describe("Agent Usage Tracking", () => {
           id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Message 1" }],
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response 1" }],
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Message 2" }],
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response 2" }],
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Message 3" }],
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response 3" }],
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Message 4" }],
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
           role: "assistant" as const,
           blocks: [{ type: "text" as const, content: "Response 4" }],
+          timestamp: new Date().toISOString(),
         },
       ];
 

@@ -518,6 +518,7 @@ export class MessageManager {
           sessionId: this.sessionId,
         },
       ],
+      timestamp: new Date().toISOString(),
       ...(usage && { usage }),
     };
 
@@ -959,15 +960,13 @@ export class MessageManager {
     try {
       const { writeFile } = await import("fs/promises");
 
-      const sessionMessages: import("../types/session.js").SessionMessage[] =
-        messages.map((message) => ({
-          ...message,
-          timestamp: new Date().toISOString(),
-        }));
-
       const content =
-        sessionMessages.map((m) => JSON.stringify(m)).join("\n") +
-        (sessionMessages.length > 0 ? "\n" : "");
+        messages
+          .map((m) => {
+            const { timestamp, ...rest } = m;
+            return JSON.stringify({ timestamp, ...rest });
+          })
+          .join("\n") + (messages.length > 0 ? "\n" : "");
 
       await writeFile(this.transcriptPath, content, "utf8");
     } catch (error) {

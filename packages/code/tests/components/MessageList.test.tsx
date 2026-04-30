@@ -37,6 +37,7 @@ describe("MessageList Component", () => {
         content: `${content} - Message ${id}`,
       },
     ],
+    timestamp: new Date().toISOString(),
   });
 
   beforeEach(() => {
@@ -207,6 +208,7 @@ describe("MessageList Component", () => {
               stage: "streaming",
             },
           ],
+          timestamp: new Date().toISOString(),
         },
       ];
 

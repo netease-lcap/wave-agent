@@ -392,6 +392,7 @@ describe("Session Core Functionality", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello, world!" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
@@ -402,6 +403,7 @@ describe("Session Core Functionality", () => {
           completion_tokens: 5,
           total_tokens: 15,
         },
+        timestamp: new Date().toISOString(),
       },
     ];
 

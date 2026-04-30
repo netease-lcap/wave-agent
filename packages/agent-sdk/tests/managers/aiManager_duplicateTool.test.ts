@@ -100,6 +100,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
           stage: "end",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     const currentAssistantMessage: Message = {
@@ -115,6 +116,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
           stage: "end",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     vi.mocked(mockMessageManager.getMessages).mockReturnValue([
@@ -163,6 +165,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
           stage: "end",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     const currentAssistantMessage: Message = {
@@ -178,6 +181,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
           stage: "end",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     vi.mocked(mockMessageManager.getMessages).mockReturnValue([
@@ -225,6 +229,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
           stage: "end",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     const currentAssistantMessage: Message = {
@@ -240,6 +245,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
           stage: "end",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     vi.mocked(mockMessageManager.getMessages).mockReturnValue([
@@ -293,6 +299,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
           stage: "end",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     const currentAssistantMessage: Message = {
@@ -316,6 +323,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
           stage: "end",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     vi.mocked(mockMessageManager.getMessages).mockReturnValue([

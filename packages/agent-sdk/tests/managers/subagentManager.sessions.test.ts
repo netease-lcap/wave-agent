@@ -540,6 +540,7 @@ describe("SubagentManager - Session Functionality", () => {
         id: generateMessageId(),
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
+        timestamp: new Date().toISOString(),
       };
       subagentManager.addMessageToInstance(instance.subagentId, message);
       expect(instance.messages).toContain(message);

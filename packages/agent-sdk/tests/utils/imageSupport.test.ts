@@ -22,6 +22,7 @@ describe("Image Support in Tool Results", () => {
             stage: "end",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -78,6 +79,7 @@ describe("Image Support in Tool Results", () => {
             stage: "end",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -140,6 +142,7 @@ describe("Image Support in Tool Results", () => {
             stage: "end",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -183,6 +186,7 @@ describe("Image Support in Tool Results", () => {
             stage: "end",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
