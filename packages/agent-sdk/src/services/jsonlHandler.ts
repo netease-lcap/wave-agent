@@ -57,10 +57,14 @@ export class JsonlHandler {
     }
 
     // Convert to SessionMessage format with timestamps
-    const sessionMessages: SessionMessage[] = messages.map((message) => ({
-      ...message,
-      timestamp: new Date().toISOString(),
-    }));
+    const sessionMessages: SessionMessage[] = messages.map((message) => {
+      const { timestamp: _existingTimestamp, ...rest } =
+        message as SessionMessage;
+      return {
+        timestamp: _existingTimestamp || new Date().toISOString(),
+        ...rest,
+      };
+    });
 
     return this.append(filePath, sessionMessages);
   }

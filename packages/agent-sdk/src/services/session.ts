@@ -228,10 +228,13 @@ export async function appendMessages(
     );
   }
 
-  const messagesWithTimestamp: SessionMessage[] = newMessages.map((msg) => ({
-    timestamp: new Date().toISOString(),
-    ...msg,
-  }));
+  const messagesWithTimestamp: SessionMessage[] = newMessages.map((msg, i) => {
+    const { timestamp: _existingTimestamp, ...rest } = msg as SessionMessage;
+    return {
+      timestamp: _existingTimestamp || new Date(Date.now() + i).toISOString(),
+      ...rest,
+    };
+  });
 
   await jsonlHandler.append(filePath, messagesWithTimestamp, {
     atomic: false,
