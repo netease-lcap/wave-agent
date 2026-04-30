@@ -894,4 +894,16 @@ export class Agent {
   public get taskListId(): string {
     return this.taskManager.getTaskListId();
   }
+
+  /**
+   * Check if there are any running background tasks or active subagents
+   */
+  public get hasRunningBackgroundWork(): boolean {
+    const runningTasks = this.backgroundTaskManager
+      .getAllTasks()
+      .some((t) => t.status === "running");
+    const activeSubagents =
+      this.subagentManager.getActiveInstances().length > 0;
+    return runningTasks || activeSubagents;
+  }
 }
