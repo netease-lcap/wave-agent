@@ -797,8 +797,8 @@ export class SubagentManager {
       onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
         const instance = this.instances.get(subagentId);
         if (instance) {
-          // Log tool execution to file
-          if (instance.logStream) {
+          // Log tool execution to file only when finalized
+          if (instance.logStream && params.stage === "end") {
             const displayParams =
               params.compactParams ||
               (params.parameters || "").substring(0, 100);
