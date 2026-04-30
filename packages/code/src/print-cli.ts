@@ -167,6 +167,11 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       process.stdout.write("\n");
     }
 
+    // Wait for running background tasks and subagents to complete
+    while (agent.hasRunningBackgroundWork) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
     // Display usage summary before exit
     if (showStats) {
       try {
