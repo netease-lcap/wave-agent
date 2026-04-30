@@ -37,6 +37,7 @@ describe("MessageList Static Rendering", () => {
         content: `${content} - Message ${id}`,
       },
     ],
+    timestamp: new Date().toISOString(),
   });
 
   beforeEach(() => {
@@ -239,6 +240,7 @@ describe("MessageList Static Rendering", () => {
           { type: "text", content: "More content here" },
           { type: "error", content: `Error ${id}` },
         ],
+        timestamp: new Date().toISOString(),
       });
 
       const messages = Array.from({ length: 20 }, (_, i) =>

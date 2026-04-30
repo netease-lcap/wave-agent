@@ -8,7 +8,7 @@ import { dirname } from "path";
 import { getLastLine } from "../utils/fileUtils.js";
 
 import type { Message } from "../types/index.js";
-import type { SessionMessage, SessionFilename } from "../types/session.js";
+import type { SessionFilename } from "../types/session.js";
 
 /**
  * JSONL write options
@@ -56,13 +56,7 @@ export class JsonlHandler {
       return;
     }
 
-    // Convert to SessionMessage format with timestamps
-    const sessionMessages: SessionMessage[] = messages.map((message) => ({
-      ...message,
-      timestamp: new Date().toISOString(),
-    }));
-
-    return this.append(filePath, sessionMessages);
+    return this.append(filePath, messages);
   }
 
   /**
@@ -70,7 +64,7 @@ export class JsonlHandler {
    */
   async append(
     filePath: string,
-    messages: SessionMessage[],
+    messages: Message[],
     options?: JsonlWriteOptions,
   ): Promise<void> {
     if (messages.length === 0) {
@@ -85,16 +79,10 @@ export class JsonlHandler {
     // Ensure directory exists
     await this.ensureDirectory(dirname(filePath));
 
-    // Convert messages to JSONL lines (always compact JSON)
+    // Convert messages to JSONL lines (compact JSON, timestamp first)
     const lines = messages.map((message) => {
-      const { timestamp: existingTimestamp, ...messageWithoutTimestamp } =
-        message;
-      const messageWithTimestamp = {
-        timestamp: existingTimestamp || new Date().toISOString(),
-        ...messageWithoutTimestamp,
-      };
-
-      return JSON.stringify(messageWithTimestamp);
+      const { timestamp, ...rest } = message;
+      return JSON.stringify({ timestamp, ...rest });
     });
 
     const content = lines.join("\n") + "\n";
@@ -116,7 +104,7 @@ export class JsonlHandler {
   /**
    * Read all messages from JSONL file (simplified - no metadata handling)
    */
-  async read(filePath: string): Promise<SessionMessage[]> {
+  async read(filePath: string): Promise<Message[]> {
     try {
       const content = await readFile(filePath, "utf8");
       const lines = content
@@ -128,14 +116,14 @@ export class JsonlHandler {
         return [];
       }
 
-      const allMessages: SessionMessage[] = [];
+      const allMessages: Message[] = [];
 
       // Parse all messages (no metadata line to skip)
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
         try {
-          const message = JSON.parse(line) as SessionMessage;
+          const message = JSON.parse(line) as Message;
           if (message.timestamp) allMessages.push(message);
         } catch (error) {
           // Throw error for invalid JSON lines with line number
@@ -155,7 +143,7 @@ export class JsonlHandler {
   /**
    * Get the last message from JSONL file using efficient file reading (simplified)
    */
-  async getLastMessage(filePath: string): Promise<SessionMessage | null> {
+  async getLastMessage(filePath: string): Promise<Message | null> {
     try {
       // First check if file exists
       try {
@@ -176,7 +164,7 @@ export class JsonlHandler {
 
       try {
         const parsed = JSON.parse(lastLine);
-        return parsed as SessionMessage;
+        return parsed as Message;
       } catch (error) {
         throw new Error(`Invalid JSON in last line of "${filePath}": ${error}`);
       }
@@ -190,7 +178,7 @@ export class JsonlHandler {
   /**
    * Validate messages before writing
    */
-  private validateMessages(messages: SessionMessage[]): void {
+  private validateMessages(messages: Message[]): void {
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i];
 

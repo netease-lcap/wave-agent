@@ -14,6 +14,7 @@ export interface Message {
   id: string; // Unique identifier for the message
   role: "user" | "assistant";
   blocks: MessageBlock[];
+  timestamp: string; // ISO 8601 timestamp, assigned at creation
   usage?: Usage; // Usage data for this message's AI operation (assistant messages only)
   additionalFields?: Record<string, unknown>; // Additional metadata from AI responses
   isMeta?: boolean; // Whether the message is a meta message (hidden from UI)

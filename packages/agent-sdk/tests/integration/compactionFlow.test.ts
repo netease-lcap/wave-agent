@@ -26,6 +26,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
       id: generateMessageId(),
       role: "user",
       blocks: [{ type: "text", content }],
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -41,6 +42,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
         ...(content ? [{ type: "text" as const, content }] : []),
         ...tools.map((t) => ({ ...t, stage: "end" as const })),
       ],
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -127,6 +129,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
     const assistant: Message = {
       id: "a1",
       role: "assistant",
+      timestamp: new Date().toISOString(),
       blocks: [
         { type: "text", content: "Starting refactoring" },
         {
@@ -287,6 +290,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
           sessionId: "old-session",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     const messages: Message[] = [
@@ -333,6 +337,7 @@ describe("Integration: Compaction Flow (API-round grouping + microcompact + API 
           sessionId: "s1",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
 
     // Post-compact conversation with tool loops

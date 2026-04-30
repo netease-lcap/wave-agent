@@ -226,6 +226,7 @@ describe("Session Integration Tests", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello, world!" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
@@ -236,6 +237,7 @@ describe("Session Integration Tests", () => {
           completion_tokens: 5,
           total_tokens: 15,
         },
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -404,12 +406,14 @@ describe("Session Integration Tests", () => {
           id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "Start of session" }],
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
           role: "assistant",
           blocks: [{ type: "text", content: "Session started" }],
           usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+          timestamp: new Date().toISOString(),
         },
       ];
 
@@ -436,12 +440,14 @@ describe("Session Integration Tests", () => {
           id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "Continue session" }],
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
           role: "assistant",
           blocks: [{ type: "text", content: "Session continues" }],
           usage: { prompt_tokens: 10, completion_tokens: 7, total_tokens: 17 },
+          timestamp: new Date().toISOString(),
         },
       ];
 
@@ -518,6 +524,7 @@ describe("Session Integration Tests", () => {
           id: generateMessageId(),
           role: "user",
           blocks: [{ type: "text", content: "Test message" }],
+          timestamp: new Date().toISOString(),
         },
       ];
 
@@ -613,6 +620,7 @@ describe("Session Integration Tests", () => {
           role: "user",
           blocks: [{ type: "text", content: "User message" }],
           additionalFields: { userAgent: "test", source: "cli" },
+          timestamp: new Date().toISOString(),
         },
         {
           id: generateMessageId(),
@@ -628,6 +636,7 @@ describe("Session Integration Tests", () => {
           ],
           usage: { prompt_tokens: 15, completion_tokens: 10, total_tokens: 25 },
           additionalFields: { modelName: "test-model", temperature: 0.7 },
+          timestamp: new Date().toISOString(),
         },
       ];
 

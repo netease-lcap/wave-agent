@@ -17,7 +17,8 @@ import {
   type Mock,
 } from "vitest";
 import { JsonlHandler } from "@/services/jsonlHandler.js";
-import type { SessionMessage, SessionFilename } from "@/types/session.js";
+import type { SessionFilename } from "@/types/session.js";
+import type { Message } from "@/types/messaging.js";
 import type { TextBlock } from "@/types/messaging.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
 
@@ -43,7 +44,7 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
     role: "user" | "assistant",
     content: string,
     timestamp?: string,
-  ): SessionMessage => ({
+  ): Message => ({
     id: generateMessageId(),
     role,
     blocks: [{ type: "text", content }],
@@ -173,7 +174,7 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
       await handler.createSession(filePath);
 
       // Add complex messages with various properties
-      const complexMessages: SessionMessage[] = [
+      const complexMessages: Message[] = [
         {
           id: generateMessageId(),
           role: "user",
@@ -388,7 +389,7 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
 
       // Simulate high message volume scenario
       const messageCount = 100;
-      const messages: SessionMessage[] = [];
+      const messages: Message[] = [];
 
       for (let i = 0; i < messageCount; i++) {
         messages.push(
@@ -727,7 +728,7 @@ invalid json line here
         expect(mockWriteFile).toHaveBeenCalledWith(filePath, "", "utf8");
 
         // STEP 2: Add messages to subagent session
-        const subagentMessages: SessionMessage[] = [
+        const subagentMessages: Message[] = [
           createTestMessage(
             "user",
             "Subagent task: analyze this data",
@@ -755,7 +756,7 @@ invalid json line here
               completion_tokens: 32,
               total_tokens: 77,
             },
-          } as SessionMessage,
+          } as Message,
         ];
 
         await handler.append(filePath, subagentMessages, { atomic: false });

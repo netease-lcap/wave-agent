@@ -37,6 +37,7 @@ describe("MessageList Component - Expanded Mode Limit", () => {
         content: `${content} - Message ${id}`,
       },
     ],
+    timestamp: new Date().toISOString(),
   });
 
   beforeEach(() => {

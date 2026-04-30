@@ -37,6 +37,7 @@ describe("MessageList Component", () => {
         content: `${content} - Message ${id}`,
       },
     ],
+    timestamp: new Date().toISOString(),
   });
 
   beforeEach(() => {
@@ -111,6 +112,7 @@ describe("MessageList Component", () => {
           id: "msg-error",
           role: "assistant",
           blocks: [{ type: "error", content: "Something went wrong" }],
+          timestamp: new Date().toISOString(),
         },
       ];
       const { lastFrame } = render(
@@ -148,6 +150,7 @@ describe("MessageList Component", () => {
               imageUrls: ["/tmp/test-image.png"],
             },
           ],
+          timestamp: new Date().toISOString(),
         },
       ];
 
@@ -174,6 +177,7 @@ describe("MessageList Component", () => {
               imageUrls: ["/tmp/test-image1.png", "/tmp/test-image2.jpg"],
             },
           ],
+          timestamp: new Date().toISOString(),
         },
       ];
 
@@ -198,6 +202,7 @@ describe("MessageList Component", () => {
               type: "image",
             },
           ],
+          timestamp: new Date().toISOString(),
         },
       ];
 
@@ -224,6 +229,7 @@ describe("MessageList Component", () => {
               imageUrls: ["/tmp/test-image.png"],
             },
           ],
+          timestamp: new Date().toISOString(),
         },
       ];
 
@@ -255,6 +261,7 @@ describe("MessageList Component", () => {
                 "**Analyzing the Request**\n\nThe user is asking for help with a complex problem. I need to break this down step by step.",
             },
           ],
+          timestamp: new Date().toISOString(),
         },
       ];
 
@@ -287,6 +294,7 @@ describe("MessageList Component", () => {
               content: "",
             },
           ],
+          timestamp: new Date().toISOString(),
         },
       ];
 

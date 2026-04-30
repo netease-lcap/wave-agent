@@ -3,7 +3,7 @@ import {
   JsonlHandler,
   type JsonlWriteOptions,
 } from "@/services/jsonlHandler.js";
-import type { SessionMessage } from "@/types/session.js";
+import type { Message } from "@/types/messaging.js";
 import type { TextBlock } from "@/types/messaging.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
 
@@ -31,11 +31,11 @@ describe("JsonlHandler.append()", () => {
   const createMessage = (
     content: string,
     role: "user" | "assistant" = "user",
-  ): SessionMessage => ({
+  ): Message => ({
+    timestamp: new Date().toISOString(),
     id: generateMessageId(),
     role,
     blocks: [{ type: "text", content }],
-    timestamp: new Date().toISOString(),
   });
 
   beforeEach(async () => {
@@ -154,7 +154,8 @@ describe("JsonlHandler.append()", () => {
   });
 
   it("should preserve message structure when appending", async () => {
-    const complexMessage: SessionMessage = {
+    const complexMessage: Message = {
+      timestamp: "2024-01-01T00:00:00.000Z",
       id: generateMessageId(),
       role: "assistant",
       blocks: [
@@ -166,7 +167,6 @@ describe("JsonlHandler.append()", () => {
           parameters: '{"arg": "value"}',
         },
       ],
-      timestamp: "2024-01-01T00:00:00.000Z",
       usage: {
         prompt_tokens: 10,
         completion_tokens: 20,
@@ -208,7 +208,7 @@ describe("JsonlHandler.read()", () => {
     role: "user" | "assistant" = "user",
     content = "Test message",
     timestamp = "2024-01-01T00:00:00.000Z",
-  ): SessionMessage => ({
+  ): Message => ({
     id: generateMessageId(),
     role,
     blocks: [
@@ -220,7 +220,7 @@ describe("JsonlHandler.read()", () => {
     timestamp,
   });
 
-  const createJsonlContent = (messages: SessionMessage[]): string => {
+  const createJsonlContent = (messages: Message[]): string => {
     return (
       messages.map((msg) => JSON.stringify(msg)).join("\n") +
       (messages.length > 0 ? "\n" : "")
@@ -349,7 +349,7 @@ invalid json line
 
   describe("Message format handling", () => {
     it("should handle messages with all optional properties", async () => {
-      const complexMessage: SessionMessage = {
+      const complexMessage: Message = {
         id: generateMessageId(),
         role: "assistant",
         blocks: [
@@ -388,7 +388,7 @@ invalid json line
     });
 
     it("should handle messages with minimal properties", async () => {
-      const minimalMessage: SessionMessage = {
+      const minimalMessage: Message = {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Simple message" }],
@@ -450,7 +450,7 @@ invalid json line
     });
 
     it("should handle file with many messages", async () => {
-      const messages: SessionMessage[] = [];
+      const messages: Message[] = [];
       for (let i = 0; i < 1000; i++) {
         messages.push(createSampleMessage("user", `Message ${i}`));
       }

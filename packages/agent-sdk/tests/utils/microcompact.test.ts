@@ -16,6 +16,7 @@ function createUserMsg(content = "user"): Message {
     id: generateMessageId(),
     role: "user",
     blocks: [{ type: "text", content }],
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -34,6 +35,7 @@ function createAssistantMsg(
         stage: "end" as const,
       })),
     ],
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -79,6 +81,7 @@ describe("microcompactMessages", () => {
         id: "a1",
         role: "assistant" as const,
         blocks: [{ type: "text" as const, content: "hi" }],
+        timestamp: new Date().toISOString(),
       },
     ];
     const result = microcompactMessages(msgs, options);
@@ -208,6 +211,7 @@ describe("microcompactMessages", () => {
           createTimedToolBlock(oldTs + 1000, "grep", "r2"),
           createTimedToolBlock(oldTs + 2000, "edit", "r3"),
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 

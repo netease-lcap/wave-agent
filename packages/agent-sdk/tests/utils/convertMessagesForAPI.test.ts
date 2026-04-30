@@ -14,11 +14,13 @@ describe("convertMessagesForAPI", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello, can you help me?" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Sure! How can I help you?" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
@@ -26,6 +28,7 @@ describe("convertMessagesForAPI", () => {
         blocks: [
           { type: "text", content: "Thanks! Can you do something else?" },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -60,6 +63,7 @@ describe("convertMessagesForAPI", () => {
               "Please refactor this function to be more efficient:\n\nfunction oldFunction() {\n  // some code\n}",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
@@ -67,6 +71,7 @@ describe("convertMessagesForAPI", () => {
         blocks: [
           { type: "text", content: "I'll help you refactor that function." },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -108,6 +113,7 @@ describe("convertMessagesForAPI", () => {
             stage: "end",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -138,11 +144,13 @@ describe("convertMessagesForAPI", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Initial question" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Final response" }],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -160,36 +168,43 @@ describe("convertMessagesForAPI", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello, can you help me?" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "assistant",
-        blocks: [{ type: "text", content: "" }], // Empty content
+        blocks: [{ type: "text", content: "" }], // Empty content,
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "assistant",
-        blocks: [{ type: "text", content: "   " }], // Whitespace only
+        blocks: [{ type: "text", content: "   " }], // Whitespace only,
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "assistant",
-        blocks: [], // No blocks at all
+        blocks: [], // No blocks at all,
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "user",
-        blocks: [{ type: "text", content: "" }], // Empty user message
+        blocks: [{ type: "text", content: "" }], // Empty user message,
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "user",
-        blocks: [{ type: "text", content: "   " }], // Whitespace only user message
+        blocks: [{ type: "text", content: "   " }], // Whitespace only user message,
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "This is a valid response" }],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -213,6 +228,7 @@ describe("convertMessagesForAPI", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Run a tool for me" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
@@ -228,6 +244,7 @@ describe("convertMessagesForAPI", () => {
             success: true,
           },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -259,6 +276,7 @@ describe("convertMessagesForAPI", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Test prompt" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
@@ -267,6 +285,7 @@ describe("convertMessagesForAPI", () => {
           { type: "error", content: "This error should NOT be sent to API" },
           { type: "text", content: "This response should be sent to API" },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -296,6 +315,7 @@ describe("convertMessagesForAPI", () => {
         role: "user",
         blocks: [{ type: "text", content: "Hidden message" }],
         isMeta: true,
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -314,6 +334,7 @@ describe("convertMessagesForAPI", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "What is 2+2?" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
@@ -325,6 +346,7 @@ describe("convertMessagesForAPI", () => {
           },
           { type: "text", content: "The answer is 4." },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -353,6 +375,7 @@ describe("convertMessagesForAPI", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Explain quantum computing" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
@@ -368,6 +391,7 @@ describe("convertMessagesForAPI", () => {
             content: "Then explain superposition.",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -389,11 +413,13 @@ describe("convertMessagesForAPI", () => {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Hello" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Hi there!" }],
+        timestamp: new Date().toISOString(),
       },
     ];
 
@@ -419,16 +445,19 @@ describe("convertMessagesForAPI", () => {
             sessionId: "test-session",
           },
         ],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "user",
         blocks: [{ type: "text", content: "Continue refactoring" }],
+        timestamp: new Date().toISOString(),
       },
       {
         id: generateMessageId(),
         role: "assistant",
         blocks: [{ type: "text", content: "Here is the refactored code." }],
+        timestamp: new Date().toISOString(),
       },
     ];
 

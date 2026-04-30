@@ -146,6 +146,7 @@ describe("SubagentManager - Recent Changes Coverage", () => {
           parameters: "",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
     instance.messageManager.setMessages([msg1]);
     expect(instance.usedTools).toEqual([
@@ -177,6 +178,7 @@ describe("SubagentManager - Recent Changes Coverage", () => {
           parameters: "",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
     instance.messageManager.setMessages([msg1, msg2]);
     expect(instance.usedTools).toEqual([
@@ -206,6 +208,7 @@ describe("SubagentManager - Recent Changes Coverage", () => {
           parameters: "",
         },
       ],
+      timestamp: new Date().toISOString(),
     };
     instance.messageManager.setMessages([msg1, msg2, msg3]);
     expect(instance.usedTools).toEqual([

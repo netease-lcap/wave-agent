@@ -525,7 +525,7 @@ describe("Agent - Global Logger Integration", () => {
                   content: "Hello world",
                 },
               ],
-              timestamp: Date.now(),
+              timestamp: new Date().toISOString(),
             },
           ];
           const result2 = convertMessagesForAPI(validMessages);
