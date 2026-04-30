@@ -95,7 +95,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
     it("should find and execute Explore subagent successfully", async () => {
       const mockInstance = {
         subagentId: "test-id",
-        lastTools: [],
+        usedTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
           getLatestTotalTokens: vi.fn(() => 0),
@@ -168,7 +168,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
     it("should find and execute general-purpose subagent successfully", async () => {
       const mockInstance = {
         subagentId: "gp-test-id",
-        lastTools: [],
+        usedTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
           getLatestTotalTokens: vi.fn(() => 0),
@@ -203,7 +203,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
     it("should handle fastModel configuration correctly", async () => {
       const mockInstance = {
         subagentId: "test-id",
-        lastTools: [],
+        usedTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
           getLatestTotalTokens: vi.fn(() => 0),
@@ -260,7 +260,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
     it("should find and execute Plan subagent successfully", async () => {
       const mockInstance = {
         subagentId: "plan-test-id",
-        lastTools: [],
+        usedTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
           getLatestTotalTokens: vi.fn(() => 0),
@@ -313,7 +313,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
     it("should handle inherit model configuration correctly", async () => {
       const mockInstance = {
         subagentId: "plan-test-id",
-        lastTools: [],
+        usedTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
           getLatestTotalTokens: vi.fn(() => 0),
@@ -346,7 +346,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
     it("should verify Plan subagent has read-only tools", async () => {
       const mockInstance = {
         subagentId: "plan-test-id",
-        lastTools: [],
+        usedTools: [],
         messageManager: {
           getMessages: vi.fn(() => []),
           getLatestTotalTokens: vi.fn(() => 0),

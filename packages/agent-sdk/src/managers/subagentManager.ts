@@ -68,7 +68,12 @@ export interface SubagentInstance {
   toolManager: ToolManager;
   status: "initializing" | "active" | "completed" | "error" | "aborted";
   messages: Message[];
-  lastTools: string[]; // Track last two tool names
+  usedTools: {
+    name: string;
+    parameters: string;
+    compactParams?: string;
+    stage?: string;
+  }[]; // Track tools with display info
   subagentType: string; // Store the subagent type for hook context
   description: string; // Store the AI-generated description
   allowedTools?: string[]; // Optional permission rules (e.g. git:*)
@@ -388,7 +393,7 @@ export class SubagentManager {
       toolManager,
       status: "initializing",
       messages: [],
-      lastTools: [], // Initialize lastTools
+      usedTools: [], // Initialize usedTools
       subagentType: parameters.subagent_type, // Store the subagent type
       description: parameters.description, // Store the AI-generated description
       allowedTools: parameters.allowedTools, // Store optional permission rules
@@ -790,15 +795,34 @@ export class SubagentManager {
       },
 
       onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
-        // Track last two tool names when a tool starts running
-        if (params.stage === "running" && params.name) {
+        // Track last 2 tool calls for display in short result
+        if (params.name) {
           const instance = this.instances.get(subagentId);
           if (instance) {
-            // Add to lastTools if it's different from the last one or we want to show duplicates
-            // Based on "ToolA, ToolB" requirement, we'll just keep the last two
-            instance.lastTools.push(params.name);
-            if (instance.lastTools.length > 2) {
-              instance.lastTools.shift();
+            // Update existing entry to refresh stage/params, or add new one
+            const existing = instance.usedTools.find(
+              (t) => t.name === params.name,
+            );
+            if (existing) {
+              existing.parameters = params.parameters || existing.parameters;
+              if (params.compactParams !== undefined)
+                existing.compactParams = params.compactParams;
+              existing.stage = params.stage;
+              // Move to end to maintain recency
+              const idx = instance.usedTools.indexOf(existing);
+              instance.usedTools.splice(idx, 1);
+              instance.usedTools.push(existing);
+            } else {
+              instance.usedTools.push({
+                name: params.name,
+                parameters: params.parameters || "",
+                compactParams: params.compactParams,
+                stage: params.stage,
+              });
+            }
+            // Keep only last 2
+            if (instance.usedTools.length > 2) {
+              instance.usedTools = instance.usedTools.slice(-2);
             }
             instance.onUpdate?.();
 
@@ -806,7 +830,7 @@ export class SubagentManager {
             if (instance.logStream) {
               const displayParams =
                 params.compactParams ||
-                (params.parameters || "{}").substring(0, 100);
+                (params.parameters || "").substring(0, 100);
               instance.logStream.write(
                 `[${new Date().toISOString()}] ${params.name}${displayParams ? ` ${displayParams}` : ""}\n`,
               );

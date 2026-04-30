@@ -49,7 +49,7 @@ describe("Agent Tool Completion shortResult", () => {
   it("should include tool count and tokens in shortResult on completion", async () => {
     const mockInstance = {
       subagentId: "gp-test-id",
-      lastTools: ["Read", "Write"],
+      usedTools: [],
       messageManager: {
         getMessages: vi.fn(() => [
           { blocks: [{ type: "tool" }, { type: "tool" }] },
@@ -81,7 +81,7 @@ describe("Agent Tool Completion shortResult", () => {
   it("should show only tool count if tokens is 0", async () => {
     const mockInstance = {
       subagentId: "gp-test-id",
-      lastTools: ["Read"],
+      usedTools: [],
       messageManager: {
         getMessages: vi.fn(() => [{ blocks: [{ type: "tool" }] }]),
         getLatestTotalTokens: vi.fn(() => 0),
@@ -109,7 +109,7 @@ describe("Agent Tool Completion shortResult", () => {
   it("should show only 'Agent completed' if tool count is 0", async () => {
     const mockInstance = {
       subagentId: "gp-test-id",
-      lastTools: [],
+      usedTools: [],
       messageManager: {
         getMessages: vi.fn(() => []),
         getLatestTotalTokens: vi.fn(() => 0),

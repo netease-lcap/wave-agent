@@ -140,7 +140,7 @@ describe("skillTool fork", () => {
         getMessages: vi.fn().mockReturnValue([]),
         getLatestTotalTokens: vi.fn().mockReturnValue(100),
       },
-      lastTools: [],
+      usedTools: [],
     };
 
     const mockSubagentManager = {
