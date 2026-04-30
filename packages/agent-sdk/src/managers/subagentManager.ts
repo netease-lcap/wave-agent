@@ -795,46 +795,16 @@ export class SubagentManager {
       },
 
       onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
-        // Track last 2 tool calls for display in short result
-        if (params.name) {
-          const instance = this.instances.get(subagentId);
-          if (instance) {
-            // Update existing entry to refresh stage/params, or add new one
-            const existing = instance.usedTools.find(
-              (t) => t.name === params.name,
+        const instance = this.instances.get(subagentId);
+        if (instance) {
+          // Log tool execution to file
+          if (instance.logStream) {
+            const displayParams =
+              params.compactParams ||
+              (params.parameters || "").substring(0, 100);
+            instance.logStream.write(
+              `[${new Date().toISOString()}] ${params.name}${displayParams ? ` ${displayParams}` : ""}\n`,
             );
-            if (existing) {
-              existing.parameters = params.parameters || existing.parameters;
-              if (params.compactParams !== undefined)
-                existing.compactParams = params.compactParams;
-              existing.stage = params.stage;
-              // Move to end to maintain recency
-              const idx = instance.usedTools.indexOf(existing);
-              instance.usedTools.splice(idx, 1);
-              instance.usedTools.push(existing);
-            } else {
-              instance.usedTools.push({
-                name: params.name,
-                parameters: params.parameters || "",
-                compactParams: params.compactParams,
-                stage: params.stage,
-              });
-            }
-            // Keep only last 2
-            if (instance.usedTools.length > 2) {
-              instance.usedTools = instance.usedTools.slice(-2);
-            }
-            instance.onUpdate?.();
-
-            // Log tool execution to file
-            if (instance.logStream) {
-              const displayParams =
-                params.compactParams ||
-                (params.parameters || "").substring(0, 100);
-              instance.logStream.write(
-                `[${new Date().toISOString()}] ${params.name}${displayParams ? ` ${displayParams}` : ""}\n`,
-              );
-            }
           }
         }
 
@@ -849,6 +819,17 @@ export class SubagentManager {
         const instance = this.instances.get(subagentId);
         if (instance) {
           instance.messages = messages;
+          // Compute usedTools from messages (last 2 tool blocks)
+          const toolBlocks = messages.flatMap(
+            (m) => m.blocks?.filter((b) => b.type === "tool") ?? [],
+          );
+          const last2 = toolBlocks.slice(-2);
+          instance.usedTools = last2.map((tb) => ({
+            name: tb.name ?? "",
+            parameters: tb.parameters ?? "",
+            compactParams: tb.compactParams,
+            stage: tb.stage,
+          }));
           // Trigger the onUpdate callback if provided
           instance.onUpdate?.();
           // Forward subagent message changes to parent via callbacks
