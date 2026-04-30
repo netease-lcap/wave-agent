@@ -38,6 +38,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
   let mockToolManager: ToolManager;
   let mockBackgroundTaskManager: BackgroundTaskManager;
   let container: Container;
+  let taskIdCounter = 0;
 
   const testConfig: SubagentConfiguration = {
     name: "TestAgent",
@@ -59,7 +60,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     } as unknown as ToolManager;
 
     mockBackgroundTaskManager = {
-      generateId: vi.fn().mockReturnValue("task_123"),
+      generateId: vi.fn().mockImplementation(() => `task_${++taskIdCounter}`),
       addTask: vi.fn(),
       getTask: vi.fn(),
     } as unknown as BackgroundTaskManager;
@@ -235,14 +236,12 @@ describe("SubagentManager - Backgrounding Coverage", () => {
 
     await subagentManager.backgroundInstance(instance.subagentId);
 
-    expect(mockBackgroundTaskManager.addTask).toHaveBeenCalledWith(
-      expect.objectContaining({
-        outputPath: expect.stringContaining("wave-subagent-task_123.log"),
-      }),
-    );
-
     const addTaskMock = vi.mocked(mockBackgroundTaskManager.addTask);
     const outputPath = addTaskMock.mock.calls[0][0].outputPath!;
+
+    expect(outputPath).toContain("wave-subagent-task_");
+    expect(outputPath).toContain(".log");
+
     await vi.waitFor(() => expect(fs.existsSync(outputPath)).toBe(true));
 
     // Capture callbacks passed to MessageManager
@@ -251,10 +250,10 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       MessageManagerMock.mock.calls[MessageManagerMock.mock.calls.length - 1];
     const passedCallbacks = lastCall[1].callbacks;
 
-    // Trigger tool block update
+    // Trigger tool block update (stage "end" to trigger logging)
     passedCallbacks.onToolBlockUpdated?.({
       id: "tool_123",
-      stage: "start",
+      stage: "end",
       name: "Read",
       parameters: JSON.stringify({ file_path: "test.txt" }),
     });
