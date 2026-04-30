@@ -10,7 +10,6 @@
 - [X] Refactor `packages/agent-sdk/src/prompts/index.ts` to use modular constants and improved content from Claude Code
 - [ ] Update `ToolManager` to use the registry for tool descriptions
 - [ ] Implement prompt template substitution logic
-- [X] Add max tool calls limit to parallel tool calls prompt
 - [X] Improve prompt content based on Claude Code (refining "Doing Tasks", adding "Executing actions with care", etc.)
 
 ## Phase 3: Testing & Validation
