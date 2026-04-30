@@ -64,7 +64,7 @@ describe("ForkedAgentManager", () => {
         {} as unknown as import("@/managers/toolManager.js").ToolManager,
       status: "active",
       messages: [],
-      lastTools: [],
+      usedTools: [],
       subagentType: "general-purpose",
       description: "",
     };

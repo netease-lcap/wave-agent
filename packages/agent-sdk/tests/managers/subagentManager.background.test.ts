@@ -254,7 +254,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     // Trigger tool block update
     passedCallbacks.onToolBlockUpdated?.({
       id: "tool_123",
-      stage: "running",
+      stage: "start",
       name: "Read",
       parameters: JSON.stringify({ file_path: "test.txt" }),
     });

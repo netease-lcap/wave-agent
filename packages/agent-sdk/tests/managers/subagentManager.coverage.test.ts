@@ -137,24 +137,57 @@ describe("SubagentManager - Recent Changes Coverage", () => {
     instance.messageManager.updateToolBlock({
       id: "1",
       name: "ToolA",
-      stage: "running",
+      stage: "start",
     });
-    expect(instance.lastTools).toEqual(["ToolA"]);
+    expect(instance.usedTools).toEqual([
+      {
+        name: "ToolA",
+        parameters: "",
+        compactParams: undefined,
+        stage: "start",
+      },
+    ]);
     expect(onUpdate).toHaveBeenCalled();
 
     instance.messageManager.updateToolBlock({
       id: "2",
       name: "ToolB",
-      stage: "running",
+      stage: "start",
     });
-    expect(instance.lastTools).toEqual(["ToolA", "ToolB"]);
+    expect(instance.usedTools).toEqual([
+      {
+        name: "ToolA",
+        parameters: "",
+        compactParams: undefined,
+        stage: "start",
+      },
+      {
+        name: "ToolB",
+        parameters: "",
+        compactParams: undefined,
+        stage: "start",
+      },
+    ]);
 
     instance.messageManager.updateToolBlock({
       id: "3",
       name: "ToolC",
-      stage: "running",
+      stage: "start",
     });
-    expect(instance.lastTools).toEqual(["ToolB", "ToolC"]); // Should only keep last two
+    expect(instance.usedTools).toEqual([
+      {
+        name: "ToolB",
+        parameters: "",
+        compactParams: undefined,
+        stage: "start",
+      },
+      {
+        name: "ToolC",
+        parameters: "",
+        compactParams: undefined,
+        stage: "start",
+      },
+    ]); // Should only keep last 2
   });
 
   it("should cleanup subagent instance on completion (7b412d33)", async () => {
@@ -253,8 +286,12 @@ describe("SubagentManager - Recent Changes Coverage", () => {
       (i) => i.configuration.name === "short-result-test",
     )!;
 
-    // Simulate tool updates
-    instance.lastTools.push("ToolA");
+    // Simulate tool updates via the callback (which pushes to usedTools)
+    instance.messageManager.updateToolBlock({
+      id: "1",
+      name: "ToolA",
+      stage: "running",
+    });
     instance.messageManager.addAssistantMessage("Thinking", [
       {
         id: "1",
@@ -267,7 +304,7 @@ describe("SubagentManager - Recent Changes Coverage", () => {
     instance.onUpdate?.();
 
     expect(onShortResultUpdate).toHaveBeenCalledWith(
-      expect.stringContaining("ToolA (1 tools"),
+      expect.stringContaining("(1 tools"),
     );
   });
 

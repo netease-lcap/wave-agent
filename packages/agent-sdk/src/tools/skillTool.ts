@@ -148,19 +148,39 @@ export const skillTool: ToolPlugin = {
             // Update shortResult
             const messages = instance.messageManager.getMessages();
             const tokens = instance.messageManager.getLatestTotalTokens();
-            const lastTools = instance.lastTools;
+            const usedTools = instance.usedTools;
 
             const toolCount = countToolBlocks(messages);
             const summary = formatToolTokenSummary(toolCount, tokens);
+
+            const getDisplayParam = (t: {
+              name: string;
+              parameters: string;
+              compactParams?: string;
+              stage?: string;
+            }) => {
+              if (
+                (t.stage === "end" || t.stage === "running") &&
+                t.compactParams
+              ) {
+                return t.compactParams;
+              }
+              const flat = t.parameters.replace(/\n/g, "\\n");
+              return flat.length > 30 ? `…${flat.slice(-30)}` : flat;
+            };
 
             let shortResult = "";
             if (toolCount > 2) {
               shortResult += "... ";
             }
-            if (lastTools.length > 0) {
-              shortResult += `${lastTools.join(", ")} `;
-            }
             shortResult += summary;
+            if (usedTools.length > 0) {
+              shortResult +=
+                "\n" +
+                usedTools
+                  .map((t) => `${t.name} ${getDisplayParam(t)}`)
+                  .join("\n");
+            }
 
             context.onShortResultUpdate?.(shortResult);
           },

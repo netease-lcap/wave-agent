@@ -247,7 +247,7 @@ describe("Subagent Permission Integration", () => {
           getMessages: vi.fn(() => []),
           getLatestTotalTokens: vi.fn(() => 0),
         },
-        lastTools: [],
+        usedTools: [],
       }),
       executeAgent: vi.fn().mockResolvedValue("task result"),
       cleanupInstance: vi.fn(),

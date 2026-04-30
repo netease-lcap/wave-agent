@@ -55,7 +55,7 @@ describe("Agent Tool Background Execution", () => {
     );
     const mockInstance = {
       subagentId: "gp-test-id",
-      lastTools: [],
+      usedTools: [],
       messageManager: {
         getMessages: vi.fn(() => []),
         getLatestTotalTokens: vi.fn(() => 0),
@@ -96,7 +96,20 @@ describe("Agent Tool Background Execution", () => {
   it("should add '...' to shortResult when toolCount > 2", async () => {
     const mockInstance = {
       subagentId: "gp-test-id",
-      lastTools: ["Read", "Write"],
+      usedTools: [
+        {
+          name: "Read",
+          parameters: '{"file_path":"file1.txt"}',
+          compactParams: "file1.txt",
+          stage: "running",
+        },
+        {
+          name: "Write",
+          parameters: '{"file_path":"file2.txt"}',
+          compactParams: "file2.txt",
+          stage: "running",
+        },
+      ],
       messageManager: {
         getMessages: vi.fn(() => [
           { blocks: [{ type: "tool" }, { type: "tool" }] },
@@ -135,7 +148,7 @@ describe("Agent Tool Background Execution", () => {
 
     await vi.waitFor(() => {
       expect(capturedShortResult).toBe(
-        "... Read, Write (3 tools | 1,000 tokens)",
+        "... (3 tools | 1,000 tokens)\nRead file1.txt\nWrite file2.txt",
       );
     });
   });
@@ -143,7 +156,20 @@ describe("Agent Tool Background Execution", () => {
   it("should NOT add '...' to shortResult when toolCount <= 2", async () => {
     const mockInstance = {
       subagentId: "gp-test-id",
-      lastTools: ["Read", "Write"],
+      usedTools: [
+        {
+          name: "Read",
+          parameters: '{"file_path":"file1.txt"}',
+          compactParams: "file1.txt",
+          stage: "running",
+        },
+        {
+          name: "Write",
+          parameters: '{"file_path":"file2.txt"}',
+          compactParams: "file2.txt",
+          stage: "running",
+        },
+      ],
       messageManager: {
         getMessages: vi.fn(() => [
           { blocks: [{ type: "tool" }, { type: "tool" }] },
@@ -179,7 +205,9 @@ describe("Agent Tool Background Execution", () => {
     );
 
     await vi.waitFor(() => {
-      expect(capturedShortResult).toBe("Read, Write (2 tools | 1,000 tokens)");
+      expect(capturedShortResult).toBe(
+        "(2 tools | 1,000 tokens)\nRead file1.txt\nWrite file2.txt",
+      );
     });
   });
 
