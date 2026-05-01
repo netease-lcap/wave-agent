@@ -4,6 +4,12 @@
 
 Both Wave's and Claude Code's bash tools do NOT expose a `cwd` argument in the tool schema. The working directory is determined by the application's tracked cwd.
 
+Wave input schema (`bashTool.ts:52-80`):
+- `command` (required)
+- `timeout`
+- `description`
+- `run_in_background`
+
 Claude Code input schema (`BashTool.tsx:227-247`):
 - `command` (required)
 - `timeout`
@@ -36,7 +42,8 @@ Claude Code input schema (`BashTool.tsx:227-247`):
 
 ## Wave's current approach
 
-- Wave uses a **persistent shell session** (single long-lived process).
-- The cwd is passed via `context.workdir` to `spawn()` (`bashTool.ts:245`).
-- Since it's a persistent shell, `cd` commands naturally change the shell's working directory for subsequent commands within the same session — no explicit cwd tracking or temp file needed.
-- However, Wave does NOT have a mechanism to track or reset the cwd if it leaves the allowed working directory.
+- **Fresh shell per command**: Wave spawns a new shell process for each foreground command via `spawn(command, { shell: true, cwd: context.workdir })` (`bashTool.ts:243-250`).
+- **Cwd is fixed to `context.workdir`**: Every command starts from the same working directory passed in via `context.workdir`. The shell working directory is reset to this original directory after each command completes.
+- **`cd` does NOT persist between commands**: Running `cd some/dir` only affects that single command invocation. Subsequent commands still start from `context.workdir`. The agent prompt (`bashTool.ts:144-145`) explicitly instructs: "When you use `cd`, the shell working directory will be reset to the original working directory after the command completes."
+- **Background tasks**: Background processes are spawned similarly and their output is written to a log file. They also start from `context.workdir`.
+- **No cwd tracking**: Unlike Claude Code, Wave does NOT track cwd changes (no `pwd -P` appended, no temp file read). There is no mechanism to track or reset cwd if it leaves the allowed working directory.

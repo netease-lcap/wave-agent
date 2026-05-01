@@ -12,12 +12,13 @@ Implement tools for executing shell commands, supporting both foreground and bac
 - **Platform**: Cross-platform (Node.js)
 
 ## Project Structure
-- `packages/agent-sdk/src/tools/bashTool.ts`: Implementation of `Bash`, `BashOutput`, and `KillBash`.
-- `packages/agent-sdk/src/managers/backgroundBashManager.ts`: Management of background processes.
+- `packages/agent-sdk/src/tools/bashTool.ts`: Implementation of `Bash` tool (foreground + background via `run_in_background`).
+- `packages/agent-sdk/src/managers/backgroundTaskManager.ts`: Management of background shell tasks.
+- `packages/agent-sdk/src/managers/foregroundTaskManager.ts`: Management of foreground streaming tasks.
 
 ## Implementation Phases
 1. **Phase 1: Foreground Execution**: Implement basic `Bash` tool with timeout and output capture.
-2. **Phase 2: Background Support**: Implement `run_in_background` and `BackgroundBashManager`.
-3. **Phase 3: Process Monitoring**: Implement `BashOutput` for retrieving background output.
-4. **Phase 4: Process Control**: Implement `KillBash` for terminating background tasks.
-5. **Phase 5: Safety & UX**: Add ANSI color stripping, output truncation, and permission checks.
+2. **Phase 2: Background Support**: Implement `run_in_background` and `BackgroundTaskManager`.
+3. **Phase 3: Process Monitoring**: Background output written to log file; agents use `Read` tool instead of separate `BashOutput` tool.
+4. **Phase 4: Process Control**: Implement `TaskStop` (replaced `KillBash`) for terminating background tasks.
+5. **Phase 5: Safety & UX**: Add ANSI color stripping, output truncation, permission checks, and real-time streaming updates.

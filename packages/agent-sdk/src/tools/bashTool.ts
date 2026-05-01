@@ -80,7 +80,7 @@ export const bashTool: ToolPlugin = {
     },
   },
   prompt: () => `
-Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
+Executes a given bash command with optional timeout, ensuring proper handling and security measures. Each invocation runs in a fresh shell process starting from the project root.
 
 IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
 
@@ -139,10 +139,7 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 - Do not retry failing commands in a sleep loop — diagnose the root cause.
 - If waiting for a background task you started with \`run_in_background\`, you will be notified when it completes — do not poll.
 - If you must poll an external process, use a check command (e.g. \`gh run view\`) rather than sleeping first.
-- If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
-# CWD management
-Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it. When you use \`cd\`, the shell working directory will be reset to the original working directory after the command completes.`,
+- If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,

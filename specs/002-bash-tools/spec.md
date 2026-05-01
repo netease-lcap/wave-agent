@@ -55,10 +55,11 @@ As an AI agent, I want to see the output of foreground commands in real-time so 
 
 ### Edge Cases
 
-- **Output Truncation**: If a command produces massive output (e.g., > 30,000 characters), the system must truncate it to prevent overwhelming the LLM.
+- **Output Truncation**: If a command produces massive output (e.g., > 30,000 characters), the system must truncate it to prevent overwhelming the LLM. Excess output is persisted to a temp file.
 - **ANSI Color Codes**: Output containing ANSI escape sequences for colors should be stripped to ensure the LLM can read the text clearly.
 - **Process Group Termination**: When killing a background process, it should terminate the entire process group to avoid leaving orphan processes.
-- **Invalid Bash ID**: Calling `BashOutput` or `KillBash` with a non-existent or expired ID should return a clear error message.
+- **Invalid Task ID**: Calling `TaskStop` with a non-existent or expired ID should return a clear error message.
+- **Fresh Shell per Command**: Each foreground command spawns a new shell; `cd` and env changes do not persist between calls.
 
 ## Requirements *(mandatory)*
 
@@ -72,7 +73,7 @@ As an AI agent, I want to see the output of foreground commands in real-time so 
 - **FR-007**: All bash output MUST have ANSI color codes stripped.
 - **FR-008**: Foreground bash output MUST be truncated if it exceeds 30,000 characters.
 - **FR-009**: Background bash tasks MUST NOT update their `shortResult` while running to prevent unnecessary message updates and "unknown" tool blocks in the UI.
-- **FR-010**: The system MUST maintain environment variables across sequential `Bash` calls (persistent session behavior).
+- **FR-010**: Each `Bash` call spawns a fresh shell process with `cwd: context.workdir` and a copy of `process.env`. Environment variables set in one command do NOT persist to subsequent commands.
 - **FR-011**: When `run_in_background` is true, the system MUST return an `outputPath` to a real-time log file.
 - **FR-012**: The system MUST pipe `stdout` and `stderr` to the `outputPath` log file in real-time.
 - **FR-013**: Foreground `Bash` tool MUST support real-time streaming updates to both `shortResult` and the full `result` content.
@@ -82,9 +83,9 @@ As an AI agent, I want to see the output of foreground commands in real-time so 
 
 ### Key Entities *(include if feature involves data)*
 
-- **Bash Session**: Represents a shell execution context.
-- **Bash ID**: A unique identifier for a background process.
-- **Command Output**: The combined stdout and stderr from a command execution.
+- **Foreground Command**: A single shell execution via `spawn()` with `cwd: context.workdir`; fresh shell per call.
+- **Background Task**: A long-running shell process managed by `BackgroundTaskManager`, output piped to a log file.
+- **Command Output**: The combined stdout and stderr from a command execution, ANSI-stripped and potentially truncated.
 
 ## Assumptions
 

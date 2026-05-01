@@ -1,6 +1,6 @@
 # Bash Tools API Contract
 
-**Version**: 1.0.0
+**Version**: 2.0.0
 **Feature**: Bash Tools
 
 ## TypeScript Interface Definitions
@@ -15,49 +15,34 @@ interface BashArgs {
 }
 ```
 
-### Bash Output Tool Arguments
-```typescript
-interface BashOutputArgs {
-  bash_id: string;
-  filter?: string;
-}
-```
-
-### Kill Bash Tool Arguments
-```typescript
-interface KillBashArgs {
-  shell_id: string;
-}
-```
-
-## Background Bash Manager API
+## Background Task Manager API
 
 ```typescript
-interface BackgroundBashManager {
-  startShell(command: string, timeout?: number): string; // returns shellId
-  getOutput(shellId: string, filter?: string): {
-    stdout: string;
-    stderr: string;
-    status: string;
-  } | null;
-  getShell(shellId: string): BackgroundShell | null;
-  killShell(shellId: string): boolean;
+interface BackgroundTaskManager {
+  startShell(command: string, timeout?: number): { id: string }; // returns taskId
+  getTask(taskId: string): BackgroundTask | null;
+  stopTask(taskId: string): boolean;
 }
 
-interface BackgroundShell {
+interface BackgroundTask {
   id: string;
   command: string;
   status: "running" | "completed" | "failed" | "killed";
-  stdout: string;
-  stderr: string;
+  outputPath: string;   // path to real-time log file
   exitCode?: number;
-  startTime: number;
-  endTime?: number;
+}
+```
+
+## Foreground Task Manager API
+
+```typescript
+interface ForegroundTaskManager {
+  registerForegroundTask(task: { id: string; backgroundHandler: () => Promise<void> }): void;
+  unregisterForegroundTask(id: string): void;
 }
 ```
 
 ## Execution Flow
-1. **Foreground**: `Bash` tool spawns a process, waits for completion or timeout, and returns the combined output.
-2. **Background**: `Bash` tool registers the command with `BackgroundBashManager`, which spawns the process and returns a `bash_id`. Background tasks do not update their `shortResult` while running to avoid UI "unknown" blocks.
-3. **Monitoring**: `BashOutput` tool queries `BackgroundBashManager` for accumulated output of a specific `bash_id`.
-4. **Termination**: `KillBash` tool requests `BackgroundBashManager` to terminate a specific `shell_id`.
+1. **Foreground**: `Bash` tool spawns a fresh shell process via `spawn(command, { shell: true, cwd: context.workdir })`, streams output via `onResultUpdate`/`onShortResultUpdate` callbacks, and returns combined stdout+stderr on completion.
+2. **Background**: `Bash` tool calls `BackgroundTaskManager.startShell()` which spawns the process and pipes output to a log file. Returns `taskId` and `outputPath` immediately. Agents use the `Read` tool to monitor output.
+3. **Termination**: `TaskStop` tool calls `BackgroundTaskManager.stopTask()` to terminate a background process (SIGTERM → SIGKILL on process group).
