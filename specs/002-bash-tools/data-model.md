@@ -9,27 +9,22 @@
 **Purpose**: Arguments for the `Bash` tool.
 **Fields**:
 - `command: string`: The shell command to execute.
-- `timeout?: number`: Maximum execution time in milliseconds.
-- `description?: string`: Brief description of the command.
+- `timeout?: number`: Maximum execution time in milliseconds (max 600000).
+- `description?: string`: Brief description of what the command does (5-10 words).
 - `run_in_background?: boolean`: Whether to run the command in the background.
 
-### BashOutputArguments
-**Purpose**: Arguments for the `BashOutput` tool.
+### BackgroundTask
+**Purpose**: Internal state for background processes (managed by `BackgroundTaskManager`).
 **Fields**:
-- `bash_id: string`: The ID of the background process.
-- `filter?: string`: Regex to filter output lines.
-
-### KillBashArguments
-**Purpose**: Arguments for the `KillBash` tool.
-**Fields**:
-- `shell_id: string`: The ID of the background process to kill.
-
-### BackgroundShell
-**Purpose**: Internal state for background processes.
-**Fields**:
-- `id: string`: Unique identifier.
+- `id: string`: Unique identifier (e.g., `shell_<timestamp>_<random>`).
 - `command: string`: The command being run.
 - `status: "running" | "completed" | "failed" | "killed"`: Current status.
-- `stdout: string`: Accumulated standard output.
-- `stderr: string`: Accumulated standard error.
-- `exitCode?: number`: Process exit code.
+- `outputPath: string`: Path to a real-time log file for stdout/stderr.
+- `exitCode?: number`: Process exit code (set when completed).
+
+### ForegroundTask
+**Purpose**: Tracks running foreground commands for streaming and backgrounding (managed by `ForegroundTaskManager`).
+**Fields**:
+- `id: string`: Unique identifier (e.g., `bash_<timestamp>_<random>`).
+- `child: ChildProcess`: The spawned child process.
+- `backgroundHandler: () => Promise<void>`: Callback to move the process to background.
