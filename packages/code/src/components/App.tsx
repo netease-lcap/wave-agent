@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useInput } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
-import { ChatProvider } from "../contexts/useChat.js";
+import { ChatProvider, useChat } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
 import { WorktreeExitPrompt } from "./WorktreeExitPrompt.js";
 import {
@@ -21,20 +21,12 @@ interface AppWithProvidersProps extends BaseAppProps {
   onExit: (shouldRemove: boolean) => void;
 }
 
-const AppWithProviders: React.FC<AppWithProvidersProps> = ({
-  bypassPermissions,
-  permissionMode,
-  pluginDirs,
-  tools,
-  allowedTools,
-  disallowedTools,
-  worktreeSession,
-  workdir,
-  version,
-  model,
-  mcpServers,
-  onExit,
-}) => {
+/** Wraps ChatInterface with worktree exit handling, using useChat() for hook access. */
+const ChatWithExitPrompt: React.FC<{
+  worktreeSession: NonNullable<BaseAppProps["worktreeSession"]>;
+  onExit: (shouldRemove: boolean) => void;
+}> = ({ worktreeSession, onExit }) => {
+  const { triggerWorktreeRemoveHook } = useChat();
   const [isExiting, setIsExiting] = useState(false);
   const [worktreeStatus, setWorktreeStatus] = useState<{
     hasUncommittedChanges: boolean;
@@ -42,25 +34,21 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   } | null>(null);
 
   const handleSignal = useCallback(async () => {
-    if (worktreeSession) {
-      const cwd = workdir || worktreeSession.path;
-      const baseBranch = getDefaultRemoteBranch(cwd);
-      const hasChanges = hasUncommittedChanges(cwd);
-      const hasCommits = hasNewCommits(cwd, baseBranch);
+    const cwd = worktreeSession.path;
+    const baseBranch = getDefaultRemoteBranch(cwd);
+    const hasChanges = hasUncommittedChanges(cwd);
+    const hasCommits = hasNewCommits(cwd, baseBranch);
 
-      if (hasChanges || hasCommits) {
-        setWorktreeStatus({
-          hasUncommittedChanges: hasChanges,
-          hasNewCommits: hasCommits,
-        });
-        setIsExiting(true);
-      } else {
-        onExit(true);
-      }
+    if (hasChanges || hasCommits) {
+      setWorktreeStatus({
+        hasUncommittedChanges: hasChanges,
+        hasNewCommits: hasCommits,
+      });
+      setIsExiting(true);
     } else {
-      onExit(false);
+      onExit(true);
     }
-  }, [worktreeSession, workdir, onExit]);
+  }, [worktreeSession, onExit]);
 
   useInput((input, key) => {
     if (input === "c" && key.ctrl) {
@@ -81,7 +69,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
     };
   }, [handleSignal]);
 
-  if (isExiting && worktreeSession && worktreeStatus) {
+  if (isExiting && worktreeStatus) {
     return (
       <WorktreeExitPrompt
         name={worktreeSession.name}
@@ -89,9 +77,62 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
         hasUncommittedChanges={worktreeStatus.hasUncommittedChanges}
         hasNewCommits={worktreeStatus.hasNewCommits}
         onKeep={() => onExit(false)}
-        onRemove={() => onExit(true)}
+        onRemove={async () => {
+          await triggerWorktreeRemoveHook(worktreeSession.path);
+          onExit(true);
+        }}
         onCancel={() => setIsExiting(false)}
       />
+    );
+  }
+
+  return <ChatInterface />;
+};
+
+const AppWithProviders: React.FC<AppWithProvidersProps> = ({
+  bypassPermissions,
+  permissionMode,
+  pluginDirs,
+  tools,
+  allowedTools,
+  disallowedTools,
+  worktreeSession,
+  workdir,
+  version,
+  model,
+  mcpServers,
+  onExit,
+}) => {
+  // Handle Ctrl-C / SIGTERM for non-worktree sessions (immediate exit)
+  useEffect(() => {
+    if (!worktreeSession) {
+      const onSignal = () => onExit(false);
+      process.on("SIGINT", onSignal);
+      process.on("SIGTERM", onSignal);
+      return () => {
+        process.off("SIGINT", onSignal);
+        process.off("SIGTERM", onSignal);
+      };
+    }
+  }, [worktreeSession, onExit]);
+
+  if (worktreeSession) {
+    return (
+      <ChatProvider
+        bypassPermissions={bypassPermissions}
+        permissionMode={permissionMode}
+        pluginDirs={pluginDirs}
+        tools={tools}
+        allowedTools={allowedTools}
+        disallowedTools={disallowedTools}
+        workdir={workdir}
+        worktreeSession={worktreeSession}
+        version={version}
+        model={model}
+        mcpServers={mcpServers}
+      >
+        <ChatWithExitPrompt worktreeSession={worktreeSession} onExit={onExit} />
+      </ChatProvider>
     );
   }
 

@@ -16,6 +16,7 @@ import {
 } from "../utils/worktreeUtils.js";
 import { getGitMainRepoRoot } from "../utils/gitUtils.js";
 import { ENTER_WORKTREE_TOOL_NAME } from "../constants/tools.js";
+import { logger } from "../utils/globalLogger.js";
 
 export const ENTER_WORKTREE_TOOL_PROMPT = `Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.
 
@@ -99,7 +100,7 @@ export const enterWorktreeTool: ToolPlugin = {
       return {
         success: false,
         content:
-          "Cannot create a worktree: not in a git repository. Configure WorktreeCreate/WorktreeRemove hooks in settings.json to use worktree isolation with other VCS systems.",
+          "Cannot create a worktree: not in a git repository. Configure WorktreeCreate and WorktreeRemove hooks in settings.json to use worktree isolation with other VCS systems.",
         error: "Not in a git repository",
       };
     }
@@ -131,13 +132,51 @@ export const enterWorktreeTool: ToolPlugin = {
     // (Container is not directly accessible from ToolContext, but AIManager.setWorkdir
     // handles both its internal field and process.chdir)
 
+    // Trigger WorktreeCreate hook if worktree is new
+    let hookTriggered = false;
+    if (session.isNew && context.hookManager) {
+      try {
+        const hookResults = await context.hookManager.executeHooks(
+          "WorktreeCreate",
+          {
+            event: "WorktreeCreate",
+            projectDir: worktreeInfo.path,
+            timestamp: new Date(),
+            sessionId: context.sessionId ?? "",
+            transcriptPath: context.messageManager?.getTranscriptPath() ?? "",
+            cwd: worktreeInfo.path,
+            worktreeName: worktreeInfo.name,
+            env: Object.fromEntries(
+              Object.entries(process.env).filter((e) => e[1] !== undefined),
+            ) as Record<string, string>,
+          },
+        );
+
+        if (context.messageManager) {
+          context.hookManager.processHookResults(
+            "WorktreeCreate",
+            hookResults,
+            context.messageManager,
+          );
+        }
+
+        hookTriggered = true;
+      } catch (error) {
+        // Non-blocking: log but don't fail the tool
+        logger?.warn("WorktreeCreate hooks execution failed:", error);
+      }
+    }
+
     const branchInfo = worktreeInfo.branch
       ? ` on branch ${worktreeInfo.branch}`
+      : "";
+    const hookInfo = hookTriggered
+      ? " WorktreeCreate hooks were executed."
       : "";
 
     return {
       success: true,
-      content: `Created worktree at ${worktreeInfo.path}${branchInfo}. The session is now working in the worktree. Use ExitWorktree to leave mid-session, or exit the session to be prompted.`,
+      content: `Created worktree at ${worktreeInfo.path}${branchInfo}. The session is now working in the worktree. Use ExitWorktree to leave mid-session, or exit the session to be prompted.${hookInfo}`,
     };
   },
 };

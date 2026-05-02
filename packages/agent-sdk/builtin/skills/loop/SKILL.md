@@ -1,11 +1,31 @@
 ---
 name: loop
-description: Parses user input into an interval and prompt, converts the interval to a cron expression, and schedules a recurring task
+description: Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo, defaults to 10m)
 allowed-tools: CronCreate, Skill
+user-invocable: true
 ---
+
 # /loop — schedule a recurring prompt
 
 Parse the input below into `[interval] <prompt…>` and schedule it with CronCreate.
+
+## Usage
+
+```
+/loop [interval] <prompt>
+
+Run a prompt or slash command on a recurring interval.
+
+Intervals: Ns, Nm, Nh, Nd (e.g. 5m, 30m, 2h, 1d). Minimum granularity is 1 minute.
+If no interval is specified, defaults to 10m.
+
+Examples:
+  /loop 5m /babysit-prs
+  /loop 30m check the deploy
+  /loop 1h /standup 1
+  /loop check the deploy          (defaults to 10m)
+  /loop check the deploy every 20m
+```
 
 ## Parsing (in priority order)
 
@@ -37,7 +57,13 @@ Supported suffixes: `s` (seconds, rounded up to nearest minute, min 1), `m` (min
 
 **If the interval doesn't cleanly divide its unit** (e.g. `7m` → `*/7 * * * *` gives uneven gaps at :56→:00; `90m` → 1.5h which cron can't express), pick the nearest clean interval and tell the user what you rounded to before scheduling.
 
-**Thundering herd prevention**: For approximate requests like "hourly" or "every morning", pick a random minute (e.g., 7) instead of 0 to avoid global sync issues.
+## Avoid the :00 and :30 minute marks
+
+When the user's request is approximate, pick a minute that is NOT 0 or 30:
+- "every morning around 9" → `57 8 * * *` or `3 9 * * *` (not `0 9 * * *`)
+- "hourly" → `7 * * * *` (not `0 * * * *`)
+
+Only use minute 0 or 30 when the user names that exact time and clearly means it ("at 9:00 sharp", "at half past").
 
 ## Action
 
@@ -46,7 +72,7 @@ Supported suffixes: `s` (seconds, rounded up to nearest minute, min 1), `m` (min
    - `prompt`: the parsed prompt from above, verbatim (slash commands are passed through unchanged)
    - `recurring`: `true`
 2. Briefly confirm: what's scheduled, the cron expression, the human-readable cadence, that recurring tasks auto-expire after 7 days, and that they can cancel sooner with CronDelete (include the job ID).
-3. **Then immediately execute the parsed prompt now** — don't wait for the first cron fire. If it's a slash command, invoke it via the Skill tool; otherwise act on it directly.
+3. **Then immediately execute the parsed prompt now** — don't wait for the first cron fire. If it's a slash command, run it directly; otherwise act on it directly.
 
 ## Input
 

@@ -1,20 +1,24 @@
 import { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { CRON_LIST_TOOL_NAME } from "../constants/tools.js";
 
+const CRON_LIST_DESCRIPTION = "List scheduled cron jobs";
+
+const CRON_LIST_PROMPT = `List all cron jobs scheduled via CronCreate in this session.`;
+
 export const cronListTool: ToolPlugin = {
   name: CRON_LIST_TOOL_NAME,
   config: {
     type: "function",
     function: {
       name: CRON_LIST_TOOL_NAME,
-      description:
-        "List all cron jobs scheduled via CronCreate in this session.",
+      description: CRON_LIST_DESCRIPTION,
       parameters: {
         type: "object",
         properties: {},
       },
     },
   },
+  prompt: () => CRON_LIST_PROMPT,
   execute: async (
     _args: Record<string, unknown>,
     context: ToolContext,

@@ -21,6 +21,7 @@ export type HookEvent =
   | "SubagentStop"
   | "PermissionRequest"
   | "WorktreeCreate"
+  | "WorktreeRemove"
   | "SessionStart"
   | "SessionEnd";
 
@@ -45,6 +46,8 @@ export interface HookExecutionContext {
   toolName?: string; // Present for PreToolUse/PostToolUse events
   projectDir: string; // Absolute path for $WAVE_PROJECT_DIR
   timestamp: Date;
+  worktreeName?: string; // Present for WorktreeCreate
+  worktreePath?: string; // Present for WorktreeRemove
 }
 
 // Result of hook execution
@@ -109,6 +112,7 @@ export function isValidHookEvent(event: string): event is HookEvent {
     "SubagentStop",
     "PermissionRequest",
     "WorktreeCreate",
+    "WorktreeRemove",
     "SessionStart",
     "SessionEnd",
   ].includes(event);

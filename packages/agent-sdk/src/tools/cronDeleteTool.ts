@@ -1,14 +1,17 @@
 import { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { CRON_DELETE_TOOL_NAME } from "../constants/tools.js";
 
+const CRON_DELETE_DESCRIPTION = "Cancel a scheduled cron job by ID";
+
+const CRON_DELETE_PROMPT = `Cancel a cron job previously scheduled with CronCreate. Removes it from the in-memory session store.`;
+
 export const cronDeleteTool: ToolPlugin = {
   name: CRON_DELETE_TOOL_NAME,
   config: {
     type: "function",
     function: {
       name: CRON_DELETE_TOOL_NAME,
-      description:
-        "Cancel a cron job previously scheduled with CronCreate. Removes it from the in-memory session store.",
+      description: CRON_DELETE_DESCRIPTION,
       parameters: {
         type: "object",
         properties: {
@@ -21,6 +24,7 @@ export const cronDeleteTool: ToolPlugin = {
       },
     },
   },
+  prompt: () => CRON_DELETE_PROMPT,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
