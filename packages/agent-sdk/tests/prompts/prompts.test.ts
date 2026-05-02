@@ -6,9 +6,11 @@ import {
 } from "../../src/prompts/index.js";
 import * as os from "node:os";
 import { isGitRepository } from "../../src/utils/gitUtils.js";
+import * as worktreeSession from "../../src/utils/worktreeSession.js";
 
 vi.mock("node:os");
 vi.mock("../../src/utils/gitUtils.js");
+vi.mock("../../src/utils/worktreeSession.js");
 
 describe("prompts", () => {
   afterEach(() => {
@@ -170,6 +172,80 @@ describe("prompts", () => {
       expect(result).toContain(
         "## Memory Context\n\nThe following is important context and memory from previous interactions:\n\nHistorical Context",
       );
+    });
+
+    it("should include worktree warning when worktree session is active", () => {
+      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue({
+        originalCwd: "/original/repo",
+        worktreePath: "/original/repo/.wave/worktrees/test-feature",
+        worktreeBranch: "wave-test-feature",
+        worktreeName: "test-feature",
+        isNew: true,
+        repoRoot: "/original/repo",
+      });
+
+      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+        workdir: "/original/repo/.wave/worktrees/test-feature",
+      });
+
+      expect(result).toContain("This is a git worktree");
+      expect(result).toContain(
+        "Do NOT `cd` to the original repository root at /original/repo",
+      );
+    });
+
+    it("should not include worktree warning when no worktree session", () => {
+      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
+        null,
+      );
+
+      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+        workdir: "/some/path",
+      });
+
+      expect(result).not.toContain("This is a git worktree");
+      expect(result).not.toContain("original repository root");
+    });
+  });
+
+  describe("enhanceSystemPromptWithEnvDetails worktree", () => {
+    it("should include worktree warning in enhanceSystemPromptWithEnvDetails", () => {
+      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue({
+        originalCwd: "/original/repo",
+        worktreePath: "/original/repo/.wave/worktrees/fix-bug",
+        worktreeBranch: "wave-fix-bug",
+        worktreeName: "fix-bug",
+        isNew: true,
+        repoRoot: "/original/repo",
+      });
+
+      const result = enhanceSystemPromptWithEnvDetails(
+        "Existing Prompt",
+        "/original/repo/.wave/worktrees/fix-bug",
+      );
+
+      expect(result).toContain("This is a git worktree");
+      expect(result).toContain(
+        "Do NOT `cd` to the original repository root at /original/repo",
+      );
+      expect(result).toContain(
+        "Absolute paths from prior context may refer to the original repo",
+      );
+      expect(result).toContain("Do NOT edit files outside this worktree");
+    });
+
+    it("should not include worktree warning when no session in enhanceSystemPromptWithEnvDetails", () => {
+      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
+        null,
+      );
+
+      const result = enhanceSystemPromptWithEnvDetails(
+        "Existing Prompt",
+        "/some/path",
+      );
+
+      expect(result).not.toContain("This is a git worktree");
+      expect(result).not.toContain("original repo");
     });
   });
 });

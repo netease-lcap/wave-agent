@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import { ToolPlugin } from "../tools/types.js";
 import { isGitRepository } from "../utils/gitUtils.js";
+import { getCurrentWorktreeSession } from "../utils/worktreeSession.js";
 import { buildAutoMemoryPrompt } from "./autoMemory.js";
 import { PermissionMode } from "../types/permissions.js";
 import {
@@ -284,11 +285,13 @@ export function buildSystemPrompt(
         ? "bash"
         : shell;
 
+    const worktreeSession = getCurrentWorktreeSession();
+
     prompt += `
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: ${options.workdir}
+Working directory: ${options.workdir}${worktreeSession ? `\nThis is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root at ${worktreeSession.originalCwd}.` : ""}
 Is directory a git repo: ${isGitRepo}
 Platform: ${platform}
 Shell: ${shellName}
@@ -327,8 +330,10 @@ export function enhanceSystemPromptWithEnvDetails(
       ? "bash"
       : shell;
 
+  const worktreeSession = getCurrentWorktreeSession();
+
   const notes = `Notes:
-- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.
+- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.${worktreeSession ? `\n- You are in a git worktree at ${worktreeSession.worktreePath} (branch: ${worktreeSession.worktreeBranch}). Absolute paths from prior context may refer to the original repo at ${worktreeSession.originalCwd}; translate them to your worktree. Do NOT edit files outside this worktree.` : ""}
 - In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing (e.g., a bug you found, a function signature the caller asked for) — do not recap code you merely read.
 - For clear communication with the user the assistant MUST avoid using emojis.
 - Do not use a colon before tool calls. Text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.`;
@@ -339,7 +344,7 @@ ${notes}
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: ${workdir}
+Working directory: ${workdir}${worktreeSession ? `\nThis is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root at ${worktreeSession.originalCwd}.` : ""}
 Is directory a git repo: ${isGitRepo}
 Platform: ${platform}
 Shell: ${shellName}
