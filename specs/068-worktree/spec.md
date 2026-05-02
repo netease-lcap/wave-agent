@@ -169,9 +169,9 @@ As a developer using Wave, I want to exit a worktree mid-session by asking the A
 - **FR-018**: System MUST trigger a `WorktreeCreate` hook event when a new worktree is created.
 - **FR-019**: The `WorktreeCreate` hook MUST provide a JSON input via stdin containing a `name` field. The hook MUST execute in the newly created worktree directory.
 - **FR-020**: The `WorktreeCreate` hook MUST NOT be triggered when reusing an existing worktree.
-- **FR-021**: System MUST automatically deny `Write` and `Edit` tool operations that attempt to modify files in the main repository (outside the current worktree) during a worktree session.
-- **FR-022**: The auto-deny mechanism MUST provide a descriptive error message explaining that modifications to the main repository are restricted while in a worktree session.
-- **FR-023**: The auto-deny mechanism MUST NOT restrict modifications to the current plan file, even if it is located outside the worktree.
+- **FR-021**: System MUST include worktree isolation guidance in the system prompt during a worktree session, warning the agent that it is working in an isolated git worktree and that files outside the worktree should not be modified.
+- **FR-022**: The system prompt guidance MUST include the worktree path, original CWD path, and branch name so the agent can translate absolute paths from prior context.
+- **FR-023**: The `-w` CLI flag MUST register the worktree session state (via `setCurrentWorktreeSession`) so the prompt guidance is included in the system prompt.
 - **FR-024**: System MUST provide an `EnterWorktree` tool that creates a git worktree and switches the session's working directory to it.
 - **FR-025**: The `EnterWorktree` tool MUST accept an optional `name` parameter. If not provided, a random name MUST be generated.
 - **FR-026**: The `EnterWorktree` tool MUST validate the worktree name to prevent path traversal and invalid characters (max 64 chars, only letters, digits, dots, underscores, dashes, and `/` for nesting).

@@ -129,8 +129,6 @@ export class PermissionManager {
   private additionalDirectories: string[] = [];
   private systemAdditionalDirectories: string[] = [];
   private planFilePath?: string;
-  private worktreeName?: string;
-  private mainRepoRoot?: string;
   private workdir?: string;
   private onConfiguredPermissionModeChange?: (mode: PermissionMode) => void;
   private _logger?: Logger;
@@ -151,8 +149,6 @@ export class PermissionManager {
       this.addSystemAdditionalDirectory(dir);
     }
 
-    this.worktreeName = this.container.get<string>("WorktreeName");
-    this.mainRepoRoot = this.container.get<string>("MainRepoRoot");
     this.workdir = this.container.get<string>("Workdir");
   }
 
@@ -435,44 +431,6 @@ export class PermissionManager {
           behavior: "deny",
           message: `Access to tool '${context.toolName}' is explicitly denied by instance rule: ${rule}`,
         };
-      }
-    }
-
-    // 0. Check worktree safety for Write and Edit tools
-    const currentWorkdir = this.getWorkdir();
-    if (
-      this.worktreeName &&
-      this.mainRepoRoot &&
-      currentWorkdir &&
-      (context.toolName === WRITE_TOOL_NAME ||
-        context.toolName === EDIT_TOOL_NAME)
-    ) {
-      const targetPath = context.toolInput?.file_path as string | undefined;
-      if (targetPath) {
-        const absoluteTargetPath = path.resolve(currentWorkdir, targetPath);
-        const isInsideMainRepo = isPathInside(
-          absoluteTargetPath,
-          this.mainRepoRoot,
-        );
-        const isInsideWorktree = isPathInside(
-          absoluteTargetPath,
-          currentWorkdir,
-        );
-
-        // If it's inside the main repo but NOT inside the current worktree
-        if (isInsideMainRepo && !isInsideWorktree) {
-          logger?.warn("Worktree safety violation", {
-            toolName: context.toolName,
-            targetPath,
-            worktreeName: this.worktreeName,
-            mainRepoRoot: this.mainRepoRoot,
-            workdir: currentWorkdir,
-          });
-          return {
-            behavior: "deny",
-            message: `Access denied: You are currently in a worktree session ("${this.worktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${currentWorkdir}`,
-          };
-        }
       }
     }
 
