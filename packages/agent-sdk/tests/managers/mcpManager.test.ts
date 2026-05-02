@@ -121,6 +121,123 @@ describe("McpManager", () => {
         status: "disconnected",
       });
     });
+
+    it("should merge workspace config with existing plugin config", async () => {
+      const { promises: fs } = await import("fs");
+
+      // Simulate plugin server added before loadConfig
+      const pluginServerConfig: McpServerConfig = {
+        command: "plugin-mcp",
+        pluginRoot: "/path/to/plugin",
+      };
+      mcpManager.addServer("plugin-server", pluginServerConfig);
+
+      // Workspace config has a different server
+      const workspaceConfig = {
+        mcpServers: {
+          "workspace-server": {
+            command: "workspace-mcp",
+          },
+        },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(workspaceConfig));
+
+      await mcpManager.loadConfig();
+      const config = mcpManager.getConfig();
+
+      expect(config).not.toBeNull();
+      expect(config?.mcpServers).toHaveProperty("plugin-server");
+      expect(config?.mcpServers).toHaveProperty("workspace-server");
+      expect(Object.keys(config!.mcpServers)).toHaveLength(2);
+    });
+
+    it("should preserve plugin server status when merging", async () => {
+      const { promises: fs } = await import("fs");
+
+      // Add plugin server and set it to connected
+      const pluginServerConfig: McpServerConfig = {
+        command: "plugin-mcp",
+        pluginRoot: "/path/to/plugin",
+      };
+      mcpManager.addServer("plugin-server", pluginServerConfig);
+      mcpManager.updateServerStatus("plugin-server", {
+        status: "connected",
+        toolCount: 3,
+      });
+
+      const workspaceConfig = {
+        mcpServers: {
+          "workspace-server": { command: "workspace-mcp" },
+        },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(workspaceConfig));
+
+      await mcpManager.loadConfig();
+
+      const pluginServer = mcpManager.getServer("plugin-server");
+      expect(pluginServer?.status).toBe("connected");
+      expect(pluginServer?.toolCount).toBe(3);
+    });
+
+    it("should let workspace server override plugin server with same name", async () => {
+      const { promises: fs } = await import("fs");
+
+      // Add a plugin server named "shared-server"
+      const pluginServerConfig: McpServerConfig = {
+        command: "plugin-mcp",
+        pluginRoot: "/path/to/plugin",
+      };
+      mcpManager.addServer("shared-server", pluginServerConfig);
+
+      // Workspace config has a server with the same name but different config
+      const workspaceConfig = {
+        mcpServers: {
+          "shared-server": {
+            command: "workspace-mcp",
+            args: ["--verbose"],
+          },
+        },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(workspaceConfig));
+
+      await mcpManager.loadConfig();
+      const config = mcpManager.getConfig();
+
+      // Workspace config should override
+      expect(config?.mcpServers["shared-server"]).toEqual({
+        command: "workspace-mcp",
+        args: ["--verbose"],
+      });
+    });
+
+    it("should append new workspace servers to existing config", async () => {
+      const { promises: fs } = await import("fs");
+
+      // Start with existing config
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({
+          mcpServers: {
+            "server-a": { command: "cmd-a" },
+          },
+        }),
+      );
+      await mcpManager.loadConfig();
+
+      // Second loadConfig with additional server
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({
+          mcpServers: {
+            "server-b": { command: "cmd-b" },
+          },
+        }),
+      );
+      await mcpManager.loadConfig();
+
+      const config = mcpManager.getConfig();
+      expect(config?.mcpServers).toHaveProperty("server-a");
+      expect(config?.mcpServers).toHaveProperty("server-b");
+      expect(Object.keys(config!.mcpServers)).toHaveLength(2);
+    });
   });
 
   describe("saveConfig", () => {
@@ -144,6 +261,93 @@ describe("McpManager", () => {
       const result = await mcpManager.saveConfig(mockConfig);
 
       expect(result).toBe(false);
+    });
+  });
+
+  describe("initialize with autoConnect", () => {
+    let mockClient: MockClient;
+    let mockTransport: MockTransport;
+
+    beforeEach(() => {
+      mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        callTool: vi.fn(),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      mockTransport = {
+        close: vi.fn().mockResolvedValue(undefined),
+        onerror: null,
+        onclose: null,
+        stderr: null,
+      };
+
+      vi.mocked(Client).mockImplementation(function () {
+        return mockClient as never;
+      });
+      vi.mocked(StdioClientTransport).mockImplementation(function () {
+        return mockTransport as never;
+      });
+    });
+
+    it("should load config and start background connections when autoConnect is true", async () => {
+      const { promises: fs } = await import("fs");
+      const configWithServers = {
+        mcpServers: {
+          "auto-server": { command: "auto-mcp" },
+        },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify(configWithServers),
+      );
+
+      const container = new Container();
+      const manager = new McpManager(container);
+      await manager.initialize("/test/workdir", true);
+
+      await vi.waitFor(() => {
+        expect(StdioClientTransport).toHaveBeenCalled();
+      });
+
+      const config = manager.getConfig();
+      expect(config?.mcpServers).toHaveProperty("auto-server");
+
+      await manager.cleanup();
+    });
+
+    it("should merge plugin servers with workspace config during autoConnect init", async () => {
+      const { promises: fs } = await import("fs");
+      const container = new Container();
+      const manager = new McpManager(container);
+
+      // Simulate plugin server added before initialize
+      manager.initialize("/test/workdir");
+      const pluginServerConfig: McpServerConfig = {
+        command: "plugin-mcp",
+        pluginRoot: "/path/to/plugin",
+      };
+      manager.addServer("plugin-server", pluginServerConfig);
+
+      // Workspace config
+      const workspaceConfig = {
+        mcpServers: {
+          "workspace-server": { command: "workspace-mcp" },
+        },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(workspaceConfig));
+
+      await manager.initialize("/test/workdir", true);
+
+      await vi.waitFor(() => {
+        expect(StdioClientTransport).toHaveBeenCalled();
+      });
+
+      const config = manager.getConfig();
+      expect(config?.mcpServers).toHaveProperty("plugin-server");
+      expect(config?.mcpServers).toHaveProperty("workspace-server");
+
+      await manager.cleanup();
     });
   });
 

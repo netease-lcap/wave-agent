@@ -117,8 +117,10 @@ export class McpManager {
     if (autoConnect) {
       logger?.debug("Initializing MCP servers...");
 
-      // Ensure MCP configuration is loaded
-      const config = await this.ensureConfigLoaded();
+      // Load workspace MCP configuration (always read, merge with any plugin servers already added)
+      await this.loadConfig();
+
+      const config = this.config;
 
       if (config && config.mcpServers) {
         // Connect to all configured servers in background to avoid blocking agent initialization
@@ -164,7 +166,16 @@ export class McpManager {
 
     try {
       const configContent = await fs.readFile(this.configPath, "utf-8");
-      this.config = resolveMcpConfig(JSON.parse(configContent));
+      const workspaceConfig = resolveMcpConfig(JSON.parse(configContent));
+
+      // Merge workspace config with any existing config (e.g., from plugins)
+      // Workspace servers take precedence for duplicate names
+      const merged: McpConfig = { mcpServers: {} };
+      if (this.config) {
+        Object.assign(merged.mcpServers, this.config.mcpServers);
+      }
+      Object.assign(merged.mcpServers, workspaceConfig.mcpServers);
+      this.config = merged;
 
       // Initialize server statuses (preserve existing status for already known servers)
       if (this.config) {
