@@ -13,6 +13,7 @@ import {
   countWorktreeChanges,
 } from "../utils/worktreeUtils.js";
 import { EXIT_WORKTREE_TOOL_NAME } from "../constants/tools.js";
+import { logger } from "../utils/globalLogger.js";
 
 export const EXIT_WORKTREE_TOOL_PROMPT = `Exit a worktree session created by EnterWorktree and return the session to the original working directory.
 
@@ -178,6 +179,41 @@ export const exitWorktreeTool: ToolPlugin = {
       aiManager.setWorkdir(originalCwd);
     }
 
+    // Trigger WorktreeRemove hook (non-blocking)
+    let hookTriggered = false;
+    if (context.hookManager) {
+      try {
+        const hookResults = await context.hookManager.executeHooks(
+          "WorktreeRemove",
+          {
+            event: "WorktreeRemove",
+            projectDir: originalCwd,
+            timestamp: new Date(),
+            sessionId: context.sessionId ?? "",
+            transcriptPath: context.messageManager?.getTranscriptPath() ?? "",
+            cwd: originalCwd,
+            worktreePath,
+            env: Object.fromEntries(
+              Object.entries(process.env).filter((e) => e[1] !== undefined),
+            ) as Record<string, string>,
+          },
+        );
+
+        if (context.messageManager) {
+          context.hookManager.processHookResults(
+            "WorktreeRemove",
+            hookResults,
+            context.messageManager,
+          );
+        }
+
+        hookTriggered = true;
+      } catch (error) {
+        // Non-blocking: log but don't fail the tool
+        logger?.warn("WorktreeRemove hooks execution failed:", error);
+      }
+    }
+
     const discardParts: string[] = [];
     if (summary.commits > 0) {
       discardParts.push(
@@ -193,10 +229,13 @@ export const exitWorktreeTool: ToolPlugin = {
       discardParts.length > 0
         ? ` Discarded ${discardParts.join(" and ")}.`
         : "";
+    const hookNote = hookTriggered
+      ? " WorktreeRemove hooks were executed."
+      : "";
 
     return {
       success: true,
-      content: `Exited and removed worktree at ${worktreePath}.${discardNote} Session is now back in ${originalCwd}.`,
+      content: `Exited and removed worktree at ${worktreePath}.${discardNote} Session is now back in ${originalCwd}.${hookNote}`,
     };
   },
 };

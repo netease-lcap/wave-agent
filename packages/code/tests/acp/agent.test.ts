@@ -2043,7 +2043,7 @@ describe("WaveAcpAgent", () => {
     });
   });
 
-  it("should forward onServersChange callback as ext_notification", async () => {
+  it("should forward onMcpServersChange callback as ext_notification", async () => {
     let capturedCallbacks: AgentOptions["callbacks"];
     const mockWaveAgent = {
       sessionId: "session-servers-1",
@@ -2060,12 +2060,12 @@ describe("WaveAcpAgent", () => {
     await agent.newSession({ cwd: "/test", mcpServers: [] });
 
     const callbacks = capturedCallbacks as unknown as Record<string, unknown>;
-    expect(typeof callbacks.onServersChange).toBe("function");
+    expect(typeof callbacks.onMcpServersChange).toBe("function");
 
-    const onServersChange = callbacks.onServersChange as (
+    const onMcpServersChange = callbacks.onMcpServersChange as (
       servers: import("wave-agent-sdk").McpServerStatus[],
     ) => void;
-    onServersChange([
+    onMcpServersChange([
       {
         name: "filesystem",
         status: "connected",

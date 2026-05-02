@@ -52,7 +52,7 @@ export interface McpServerStatus {
 
 ```typescript
 export interface McpManagerCallbacks {
-  onServersChange?: (servers: McpServerStatus[]) => void;
+  onMcpServersChange?: (servers: McpServerStatus[]) => void;
 }
 ```
 

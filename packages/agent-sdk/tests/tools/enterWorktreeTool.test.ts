@@ -157,4 +157,140 @@ describe("enterWorktreeTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("Created worktree");
   });
+
+  it("should trigger WorktreeCreate hooks when worktree is new and hookManager is available", async () => {
+    const mockExecuteHooks = vi.fn().mockResolvedValue([]);
+    const mockProcessHookResults = vi.fn();
+    const mockGetTranscriptPath = vi
+      .fn()
+      .mockReturnValue("/test/transcript.jsonl");
+
+    vi.mocked(worktreeUtils.generateWorktreeName).mockReturnValue("hook-test");
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "hook-test",
+      path: "/test/repo/.wave/worktrees/hook-test",
+      branch: "worktree-hook-test",
+      repoRoot: "/test/repo",
+      isNew: true,
+      originalHeadCommit: "abc123",
+    });
+
+    const contextWithHooks: ToolContext = {
+      ...mockContext,
+      hookManager: {
+        executeHooks: mockExecuteHooks,
+        processHookResults: mockProcessHookResults,
+      } as never,
+      messageManager: {
+        getTranscriptPath: mockGetTranscriptPath,
+      } as never,
+      sessionId: "test-session-id",
+    };
+
+    const result = await enterWorktreeTool.execute({}, contextWithHooks);
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("WorktreeCreate hooks were executed");
+    expect(mockExecuteHooks).toHaveBeenCalledWith("WorktreeCreate", {
+      event: "WorktreeCreate",
+      projectDir: "/test/repo/.wave/worktrees/hook-test",
+      timestamp: expect.any(Date),
+      sessionId: "test-session-id",
+      transcriptPath: "/test/transcript.jsonl",
+      cwd: "/test/repo/.wave/worktrees/hook-test",
+      worktreeName: "hook-test",
+      env: expect.any(Object),
+    });
+    expect(mockProcessHookResults).toHaveBeenCalledWith(
+      "WorktreeCreate",
+      [],
+      contextWithHooks.messageManager,
+    );
+  });
+
+  it("should NOT trigger hooks when worktree is not new (reused)", async () => {
+    const mockExecuteHooks = vi.fn().mockResolvedValue([]);
+    const mockProcessHookResults = vi.fn();
+
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "existing",
+      path: "/test/repo/.wave/worktrees/existing",
+      branch: "worktree-existing",
+      repoRoot: "/test/repo",
+      isNew: false,
+      originalHeadCommit: "abc123",
+    });
+
+    const contextWithHooks: ToolContext = {
+      ...mockContext,
+      hookManager: {
+        executeHooks: mockExecuteHooks,
+        processHookResults: mockProcessHookResults,
+      } as never,
+      messageManager: {} as never,
+    };
+
+    const result = await enterWorktreeTool.execute(
+      { name: "existing" },
+      contextWithHooks,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).not.toContain("WorktreeCreate hooks were executed");
+    expect(mockExecuteHooks).not.toHaveBeenCalled();
+  });
+
+  it("should NOT trigger hooks when hookManager is not available", async () => {
+    vi.mocked(worktreeUtils.generateWorktreeName).mockReturnValue("no-hook");
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "no-hook",
+      path: "/test/repo/.wave/worktrees/no-hook",
+      branch: "worktree-no-hook",
+      repoRoot: "/test/repo",
+      isNew: true,
+      originalHeadCommit: "abc123",
+    });
+
+    const contextWithoutHooks: ToolContext = {
+      ...mockContext,
+      hookManager: undefined,
+      messageManager: {} as never,
+    };
+
+    const result = await enterWorktreeTool.execute({}, contextWithoutHooks);
+
+    expect(result.success).toBe(true);
+    expect(result.content).not.toContain("WorktreeCreate hooks were executed");
+  });
+
+  it("should not fail tool when hooks throw an error", async () => {
+    const mockExecuteHooks = vi
+      .fn()
+      .mockRejectedValue(new Error("Hook execution failed"));
+
+    vi.mocked(worktreeUtils.generateWorktreeName).mockReturnValue("error-hook");
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "error-hook",
+      path: "/test/repo/.wave/worktrees/error-hook",
+      branch: "worktree-error-hook",
+      repoRoot: "/test/repo",
+      isNew: true,
+      originalHeadCommit: "abc123",
+    });
+
+    const contextWithHooks: ToolContext = {
+      ...mockContext,
+      hookManager: {
+        executeHooks: mockExecuteHooks,
+        processHookResults: vi.fn(),
+      } as never,
+      messageManager: {} as never,
+    };
+
+    const result = await enterWorktreeTool.execute({}, contextWithHooks);
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("Created worktree");
+    expect(result.content).not.toContain("WorktreeCreate hooks were executed");
+  });
 });

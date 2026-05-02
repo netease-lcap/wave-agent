@@ -377,6 +377,11 @@ export class HookManager {
         messageManager.addErrorBlock(errorMessage);
         return { shouldBlock: false };
 
+      case "WorktreeRemove":
+        // Non-blocking for cleanup, log error but don't block
+        messageManager.addErrorBlock(errorMessage);
+        return { shouldBlock: false };
+
       case "SessionStart":
         // Non-blocking for startup, show error in error block
         messageManager.addErrorBlock(errorMessage);
@@ -591,6 +596,7 @@ export class HookManager {
         event === "Stop" ||
         event === "SubagentStop" ||
         event === "WorktreeCreate" ||
+        event === "WorktreeRemove" ||
         event === "SessionStart" ||
         event === "SessionEnd") &&
       context.toolName !== undefined
@@ -669,6 +675,7 @@ export class HookManager {
       event === "Stop" ||
       event === "SubagentStop" ||
       event === "WorktreeCreate" ||
+      event === "WorktreeRemove" ||
       event === "SessionStart" ||
       event === "SessionEnd"
     ) {
@@ -731,6 +738,7 @@ export class HookManager {
         event === "Stop" ||
         event === "SubagentStop" ||
         event === "WorktreeCreate" ||
+        event === "WorktreeRemove" ||
         event === "SessionStart" ||
         event === "SessionEnd") &&
       config.matcher
@@ -772,6 +780,7 @@ export class HookManager {
           SubagentStop: 0,
           PermissionRequest: 0,
           WorktreeCreate: 0,
+          WorktreeRemove: 0,
           SessionStart: 0,
           SessionEnd: 0,
         },
@@ -786,6 +795,7 @@ export class HookManager {
       SubagentStop: 0,
       PermissionRequest: 0,
       WorktreeCreate: 0,
+      WorktreeRemove: 0,
       SessionStart: 0,
       SessionEnd: 0,
     };

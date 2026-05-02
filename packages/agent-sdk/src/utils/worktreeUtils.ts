@@ -94,7 +94,7 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
   const repoRoot = getGitMainRepoRoot(cwd);
   if (!repoRoot) {
     throw new Error(
-      "Cannot create a worktree: not in a git repository. Configure WorktreeCreate/WorktreeRemove hooks in settings.json to use worktree isolation with other VCS systems.",
+      "Cannot create a worktree: not in a git repository. Configure WorktreeCreate and WorktreeRemove hooks in settings.json to use worktree isolation with other VCS systems.",
     );
   }
 

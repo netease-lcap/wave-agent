@@ -78,7 +78,7 @@ describe("McpManager", () => {
       const mockCallback = vi.fn();
       const container = new Container();
       const manager = new McpManager(container, {
-        callbacks: { onServersChange: mockCallback },
+        callbacks: { onMcpServersChange: mockCallback },
       });
       expect(manager).toBeInstanceOf(McpManager);
     });

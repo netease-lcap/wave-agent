@@ -91,6 +91,7 @@ describe("ChatProvider", () => {
     askBtw: vi.fn(),
     usages: [],
     sessionFilePath: "test-path",
+    triggerWorktreeRemoveHook: vi.fn(),
   };
 
   beforeEach(() => {
@@ -175,7 +176,7 @@ describe("ChatProvider", () => {
     Object.assign(mockAgent, { messages: newMessages });
     callbacks.onMessagesChange!(newMessages);
 
-    // Test onServersChange
+    // Test onMcpServersChange
     const newServers = [
       {
         name: "test-server",
@@ -183,7 +184,7 @@ describe("ChatProvider", () => {
         config: { command: "test" },
       },
     ];
-    callbacks.onServersChange!(newServers);
+    callbacks.onMcpServersChange!(newServers);
 
     // Test onSessionIdChange
     callbacks.onSessionIdChange!("new-session");
