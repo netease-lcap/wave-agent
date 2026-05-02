@@ -179,6 +179,66 @@ export interface CallAgentResult {
   additionalFields?: Record<string, unknown>;
 }
 
+/**
+ * Determine if an error is retryable.
+ * Retryable cases:
+ * - Stream "terminated" errors (connection dropped mid-stream)
+ * - Non-streaming responses with status 200 but empty/invalid choices
+ * - Server errors (5xx)
+ * - Network-level connection errors (ECONNRESET, ETIMEDOUT, etc.)
+ */
+function isRetryableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+
+  // Never retry abort errors
+  if ((error as Error).name === "AbortError") return false;
+  if ((error as Error).message === "Request was aborted") return false;
+
+  // Never retry 400 client errors (bad request)
+  if ("status" in error && (error as { status: number }).status === 400)
+    return false;
+
+  // Retry "terminated" stream errors
+  if (
+    (error as Error).message &&
+    (error as Error).message.includes("terminated")
+  )
+    return true;
+
+  // Retry "No response from AI" (empty response with 200 status)
+  if (
+    (error as Error).message &&
+    (error as Error).message.includes("No response from AI")
+  )
+    return true;
+
+  // Retry server errors (5xx)
+  if (
+    "status" in error &&
+    typeof (error as { status: number }).status === "number" &&
+    (error as { status: number }).status >= 500
+  )
+    return true;
+
+  // Retry known network-level connection errors
+  if ((error as Error).message) {
+    const msg = (error as Error).message;
+    const networkErrors = [
+      "ECONNRESET",
+      "ECONNREFUSED",
+      "ETIMEDOUT",
+      "ENOTFOUND",
+      "EAI_AGAIN",
+      "socket hang up",
+      "network",
+      "fetch failed",
+    ];
+    if (networkErrors.some((pattern) => msg.includes(pattern))) return true;
+  }
+
+  return false;
+}
+
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
@@ -197,6 +257,9 @@ export async function callAgent(
     onReasoningUpdate,
   } = options;
 
+  const maxRetries = 3;
+  const retryDelay = 45 * 1000; // 45 seconds
+
   // Declare variables outside try block for error handling access
   let openaiMessages: ChatCompletionMessageParam[] | undefined;
   let createParams:
@@ -205,24 +268,45 @@ export async function callAgent(
     | undefined;
   let processedTools: ChatCompletionFunctionTool[] | undefined;
 
-  try {
-    // Create OpenAI client with injected configuration
-    const openai = new OpenAIClient({
-      apiKey: gatewayConfig.apiKey,
-      baseURL: gatewayConfig.baseURL,
-      defaultHeaders: gatewayConfig.defaultHeaders,
-      fetchOptions: gatewayConfig.fetchOptions,
-      fetch: gatewayConfig.fetch,
-    });
+  let lastError: unknown = null;
 
-    // Build system prompt content
-    let systemContent = buildSystemPrompt(
-      systemPrompt || DEFAULT_SYSTEM_PROMPT,
-      tools || [],
-    );
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Check if request was aborted before each attempt
+    if (abortSignal?.aborted) {
+      throw new Error("Request was aborted");
+    }
 
-    // Always add environment information
-    systemContent += `
+    if (attempt > 0) {
+      logger.info(
+        `[Retry ${attempt}/${maxRetries}] Waiting ${retryDelay / 1000}s before retry...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, attempt * retryDelay));
+      logger.info(`[Retry ${attempt}/${maxRetries}] Retrying AI request...`);
+    }
+
+    // Check again after waiting
+    if (abortSignal?.aborted) {
+      throw new Error("Request was aborted");
+    }
+
+    try {
+      // Create OpenAI client with injected configuration
+      const openai = new OpenAIClient({
+        apiKey: gatewayConfig.apiKey,
+        baseURL: gatewayConfig.baseURL,
+        defaultHeaders: gatewayConfig.defaultHeaders,
+        fetchOptions: gatewayConfig.fetchOptions,
+        fetch: gatewayConfig.fetch,
+      });
+
+      // Build system prompt content
+      let systemContent = buildSystemPrompt(
+        systemPrompt || DEFAULT_SYSTEM_PROMPT,
+        tools || [],
+      );
+
+      // Always add environment information
+      systemContent += `
 
 Here is useful information about the environment you are running in:
 <env>
@@ -234,288 +318,310 @@ Today's date: ${new Date().toISOString().split("T")[0]}
 </env>
 `;
 
-    // If there is memory content, add it to the system prompt
-    if (memory && memory.trim()) {
-      systemContent += `\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${memory}`;
-    }
-
-    // Add system prompt
-    const systemMessage: ChatCompletionMessageParam = {
-      role: "system",
-      content: systemContent,
-    };
-
-    // ChatCompletionMessageParam[] is already in OpenAI format, add system prompt to the beginning
-    openaiMessages = [systemMessage, ...messages];
-
-    // Apply cache control for Claude models
-    const currentModel = model || modelConfig.agentModel;
-    const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
-
-    processedTools = tools;
-    console.log("当前采用的模型为", currentModel);
-    if (isClaudeModel(currentModel)) {
-      console.log("走到了claude的处理", currentModel);
-      openaiMessages = transformMessagesForClaudeCache(
-        openaiMessages,
-        currentModel,
-      );
-
-      // Apply cache control to tools separately
-      if (tools && tools.length > 0) {
-        processedTools = addCacheControlToLastTool(tools);
+      // If there is memory content, add it to the system prompt
+      if (memory && memory.trim()) {
+        systemContent += `\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${memory}`;
       }
-    }
 
-    // Get model configuration - use injected modelConfig with optional override
-    const openaiModelConfig = getModelConfig(model || modelConfig.agentModel, {
-      temperature: 0,
-      max_tokens: resolvedMaxTokens,
-    });
+      // Add system prompt
+      const systemMessage: ChatCompletionMessageParam = {
+        role: "system",
+        content: systemContent,
+      };
 
-    // Determine if streaming is needed
-    const isStreaming = !!(
-      onContentUpdate ||
-      onToolUpdate ||
-      onReasoningUpdate
-    );
+      // ChatCompletionMessageParam[] is already in OpenAI format, add system prompt to the beginning
+      openaiMessages = [systemMessage, ...messages];
 
-    // Prepare API call parameters
-    createParams = {
-      ...openaiModelConfig,
-      messages: openaiMessages,
-      stream: isStreaming,
-    } as
-      | ChatCompletionCreateParamsNonStreaming
-      | ChatCompletionCreateParamsStreaming;
+      // Apply cache control for Claude models
+      const currentModel = model || modelConfig.agentModel;
+      const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
-    // Only add tools if they exist
-    if (processedTools && processedTools.length > 0) {
-      createParams.tools = processedTools;
-    }
+      processedTools = tools;
+      console.log("当前采用的模型为", currentModel);
+      if (isClaudeModel(currentModel)) {
+        console.log("走到了claude的处理", currentModel);
+        openaiMessages = transformMessagesForClaudeCache(
+          openaiMessages,
+          currentModel,
+        );
 
-    if (isStreaming) {
-      // Handle streaming response
-      const { data: stream, response } = await openai.chat.completions
-        .create(createParams as ChatCompletionCreateParamsStreaming, {
-          signal: abortSignal,
-        })
-        .withResponse();
+        // Apply cache control to tools separately
+        if (tools && tools.length > 0) {
+          processedTools = addCacheControlToLastTool(tools);
+        }
+      }
 
-      // Extract response headers
-      const responseHeaders: Record<string, string> = {};
-      (response.headers as Headers).forEach((value: string, key: string) => {
-        responseHeaders[key] = value;
-      });
-
-      return await processStreamingResponse(
-        stream,
-        onContentUpdate,
-        onToolUpdate,
-        onReasoningUpdate,
-        abortSignal,
-        responseHeaders,
-        currentModel,
+      // Get model configuration - use injected modelConfig with optional override
+      const openaiModelConfig = getModelConfig(
+        model || modelConfig.agentModel,
+        {
+          temperature: 0,
+          max_tokens: resolvedMaxTokens,
+        },
       );
-    } else {
-      // Handle non-streaming response
-      const { data: response, response: rawResponse } =
-        await openai.chat.completions
-          .create(createParams as ChatCompletionCreateParamsNonStreaming, {
+
+      // Determine if streaming is needed
+      const isStreaming = !!(
+        onContentUpdate ||
+        onToolUpdate ||
+        onReasoningUpdate
+      );
+
+      // Prepare API call parameters
+      createParams = {
+        ...openaiModelConfig,
+        messages: openaiMessages,
+        stream: isStreaming,
+      } as
+        | ChatCompletionCreateParamsNonStreaming
+        | ChatCompletionCreateParamsStreaming;
+
+      // Only add tools if they exist
+      if (processedTools && processedTools.length > 0) {
+        createParams.tools = processedTools;
+      }
+
+      if (isStreaming) {
+        // Handle streaming response
+        const { data: stream, response } = await openai.chat.completions
+          .create(createParams as ChatCompletionCreateParamsStreaming, {
             signal: abortSignal,
           })
           .withResponse();
 
-      // Extract response headers
-      const responseHeaders: Record<string, string> = {};
-      (rawResponse.headers as Headers).forEach((value: string, key: string) => {
-        responseHeaders[key] = value;
-      });
+        // Extract response headers
+        const responseHeaders: Record<string, string> = {};
+        (response.headers as Headers).forEach((value: string, key: string) => {
+          responseHeaders[key] = value;
+        });
 
-      if (!response?.choices?.[0]?.message) {
-        console.error("callAgent 返回为空-原始 responese", response);
-        console.error("callAgent 返回为空-请求 messages", openaiMessages);
-        // eslint-disable-next-line no-warning-comments
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        throw new Error(
-          (response as any)?.error?.message || "No response from AI",
+        return await processStreamingResponse(
+          stream,
+          onContentUpdate,
+          onToolUpdate,
+          onReasoningUpdate,
+          abortSignal,
+          responseHeaders,
+          currentModel,
         );
-      }
-      const finalMessage = response.choices[0]?.message;
-      const finishReason = response.choices[0]?.finish_reason || null;
+      } else {
+        // Handle non-streaming response
+        const { data: response, response: rawResponse } =
+          await openai.chat.completions
+            .create(createParams as ChatCompletionCreateParamsNonStreaming, {
+              signal: abortSignal,
+            })
+            .withResponse();
 
-      let totalUsage = response.usage
-        ? {
-            prompt_tokens: response.usage.prompt_tokens,
-            completion_tokens: response.usage.completion_tokens,
-            total_tokens: response.usage.total_tokens,
+        // Extract response headers
+        const responseHeaders: Record<string, string> = {};
+        (rawResponse.headers as Headers).forEach(
+          (value: string, key: string) => {
+            responseHeaders[key] = value;
+          },
+        );
+
+        if (!response?.choices?.[0]?.message) {
+          console.error("callAgent 返回为空-原始 responese", response);
+          console.error("callAgent 返回为空-请求 messages", openaiMessages);
+          const errorMessage =
+            (response as unknown as { error?: { message?: string } })?.error
+              ?.message || "No response from AI";
+          throw new Error(errorMessage);
+        }
+        const finalMessage = response.choices[0]?.message;
+        const finishReason = response.choices[0]?.finish_reason || null;
+
+        let totalUsage = response.usage
+          ? {
+              prompt_tokens: response.usage.prompt_tokens,
+              completion_tokens: response.usage.completion_tokens,
+              total_tokens: response.usage.total_tokens,
+            }
+          : undefined;
+
+        // Extend usage with cache metrics for Claude models
+        if (totalUsage && isClaudeModel(currentModel) && response.usage) {
+          totalUsage = extendUsageWithCacheMetrics(
+            totalUsage,
+            response.usage as Partial<ClaudeUsage>,
+          );
+        }
+
+        const result: CallAgentResult = {};
+
+        if (finalMessage) {
+          const {
+            content: finalContent,
+            tool_calls: finalToolCalls,
+            reasoning_content: finalReasoningContent,
+            ...otherFields
+          } = finalMessage as unknown as {
+            content?: string;
+            tool_calls?: ChatCompletionMessageToolCall[];
+            reasoning_content?: string;
+            [key: string]: unknown;
+          };
+
+          if (typeof finalContent === "string" && finalContent.length > 0) {
+            result.content = finalContent;
           }
-        : undefined;
 
-      // Extend usage with cache metrics for Claude models
-      if (totalUsage && isClaudeModel(currentModel) && response.usage) {
-        totalUsage = extendUsageWithCacheMetrics(
-          totalUsage,
-          response.usage as Partial<ClaudeUsage>,
-        );
-      }
+          if (
+            typeof finalReasoningContent === "string" &&
+            finalReasoningContent.length > 0
+          ) {
+            result.reasoning_content = finalReasoningContent;
+          }
 
-      const result: CallAgentResult = {};
+          if (Array.isArray(finalToolCalls) && finalToolCalls.length > 0) {
+            result.tool_calls = finalToolCalls;
+          }
 
-      if (finalMessage) {
-        const {
-          content: finalContent,
-          tool_calls: finalToolCalls,
-          reasoning_content: finalReasoningContent,
-          ...otherFields
-        } = finalMessage as unknown as {
-          content?: string;
-          tool_calls?: ChatCompletionMessageToolCall[];
-          reasoning_content?: string;
-          [key: string]: unknown;
-        };
-
-        if (typeof finalContent === "string" && finalContent.length > 0) {
-          result.content = finalContent;
-        }
-
-        if (
-          typeof finalReasoningContent === "string" &&
-          finalReasoningContent.length > 0
-        ) {
-          result.reasoning_content = finalReasoningContent;
-        }
-
-        if (Array.isArray(finalToolCalls) && finalToolCalls.length > 0) {
-          result.tool_calls = finalToolCalls;
-        }
-
-        if (Object.keys(otherFields).length > 0) {
-          const additionalFields: Record<string, unknown> = {};
-          for (const [key, value] of Object.entries(otherFields)) {
-            if (value !== undefined && key !== "role") {
-              additionalFields[key] = value;
+          if (Object.keys(otherFields).length > 0) {
+            const additionalFields: Record<string, unknown> = {};
+            for (const [key, value] of Object.entries(otherFields)) {
+              if (value !== undefined && key !== "role") {
+                additionalFields[key] = value;
+              }
+            }
+            if (Object.keys(additionalFields).length > 0) {
+              result.additionalFields = additionalFields;
             }
           }
-          if (Object.keys(additionalFields).length > 0) {
-            result.additionalFields = additionalFields;
+        }
+
+        if (totalUsage) {
+          result.usage = totalUsage;
+        }
+
+        if (finishReason) {
+          result.finish_reason = finishReason;
+        }
+
+        if (Object.keys(responseHeaders).length > 0) {
+          result.response_headers = responseHeaders;
+        }
+
+        return result;
+      }
+    } catch (error) {
+      lastError = error;
+
+      if ((error as Error).name === "AbortError") {
+        throw new Error("Request was aborted");
+      }
+
+      // Check if it's a 400 error and save messages to temp directory
+      if (
+        error &&
+        typeof error === "object" &&
+        "status" in error &&
+        error.status === 400
+      ) {
+        try {
+          // Create temp directory for error debugging
+          const tempDir = fs.mkdtempSync(
+            path.join(os.tmpdir(), "callAgent-400-error-"),
+          );
+          const messagesFile = path.join(tempDir, "messages.json");
+          const errorFile = path.join(tempDir, "error.json");
+
+          // Save complete messages to temp file
+          const debugData: DebugData = {
+            originalMessages: messages,
+            timestamp: new Date().toISOString(),
+            model: model || modelConfig.agentModel,
+            workdir,
+            sessionId: options.sessionId,
+            gatewayConfig: {
+              baseURL: gatewayConfig.baseURL,
+              // Don't include apiKey for security
+              defaultHeaders: gatewayConfig.defaultHeaders,
+            },
+          };
+
+          // Add processed messages if they exist
+          if (typeof openaiMessages !== "undefined") {
+            debugData.processedMessages = openaiMessages;
           }
+
+          // Add create params if they exist
+          if (typeof createParams !== "undefined") {
+            debugData.createParams = createParams;
+          }
+
+          // Add tools if they exist
+          if (processedTools) {
+            debugData.tools = processedTools;
+          }
+
+          fs.writeFileSync(messagesFile, JSON.stringify(debugData, null, 2));
+
+          // Save error details
+          const errorData: ErrorData = {
+            error: {
+              message:
+                error && typeof error === "object" && "message" in error
+                  ? String(error.message)
+                  : undefined,
+              status:
+                error && typeof error === "object" && "status" in error
+                  ? Number(error.status)
+                  : undefined,
+              type:
+                error && typeof error === "object" && "type" in error
+                  ? String(error.type)
+                  : undefined,
+              code:
+                error && typeof error === "object" && "code" in error
+                  ? String(error.code)
+                  : undefined,
+              body:
+                error && typeof error === "object" && "body" in error
+                  ? error.body
+                  : undefined,
+              stack:
+                error && typeof error === "object" && "stack" in error
+                  ? String(error.stack)
+                  : undefined,
+            },
+            timestamp: new Date().toISOString(),
+          };
+
+          fs.writeFileSync(errorFile, JSON.stringify(errorData, null, 2));
+
+          logger.error(
+            "callAgent 400 error occurred. Debug files saved to:",
+            tempDir,
+          );
+          logger.error("Messages file:", messagesFile);
+          logger.error("Error file:", errorFile);
+          logger.error("Error details:", error);
+        } catch (saveError) {
+          logger.error("Failed to save 400 error debug files:", saveError);
         }
       }
 
-      if (totalUsage) {
-        result.usage = totalUsage;
-      }
-
-      if (finishReason) {
-        result.finish_reason = finishReason;
-      }
-
-      if (Object.keys(responseHeaders).length > 0) {
-        result.response_headers = responseHeaders;
-      }
-
-      return result;
-    }
-  } catch (error) {
-    if ((error as Error).name === "AbortError") {
-      throw new Error("Request was aborted");
-    }
-
-    // Check if it's a 400 error and save messages to temp directory
-    if (
-      error &&
-      typeof error === "object" &&
-      "status" in error &&
-      error.status === 400
-    ) {
-      try {
-        // Create temp directory for error debugging
-        const tempDir = fs.mkdtempSync(
-          path.join(os.tmpdir(), "callAgent-400-error-"),
+      // Check if the error is retryable and we have retries remaining
+      if (isRetryableError(error) && attempt < maxRetries) {
+        logger.warn(
+          `[Attempt ${attempt + 1}/${maxRetries + 1}] AI request failed with retryable error: ${(error as Error).message || "unknown"}, will retry`,
         );
-        const messagesFile = path.join(tempDir, "messages.json");
-        const errorFile = path.join(tempDir, "error.json");
-
-        // Save complete messages to temp file
-        const debugData: DebugData = {
-          originalMessages: messages,
-          timestamp: new Date().toISOString(),
-          model: model || modelConfig.agentModel,
-          workdir,
-          sessionId: options.sessionId,
-          gatewayConfig: {
-            baseURL: gatewayConfig.baseURL,
-            // Don't include apiKey for security
-            defaultHeaders: gatewayConfig.defaultHeaders,
-          },
-        };
-
-        // Add processed messages if they exist
-        if (typeof openaiMessages !== "undefined") {
-          debugData.processedMessages = openaiMessages;
-        }
-
-        // Add create params if they exist
-        if (typeof createParams !== "undefined") {
-          debugData.createParams = createParams;
-        }
-
-        // Add tools if they exist
-        if (processedTools) {
-          debugData.tools = processedTools;
-        }
-
-        fs.writeFileSync(messagesFile, JSON.stringify(debugData, null, 2));
-
-        // Save error details
-        const errorData: ErrorData = {
-          error: {
-            message:
-              error && typeof error === "object" && "message" in error
-                ? String(error.message)
-                : undefined,
-            status:
-              error && typeof error === "object" && "status" in error
-                ? Number(error.status)
-                : undefined,
-            type:
-              error && typeof error === "object" && "type" in error
-                ? String(error.type)
-                : undefined,
-            code:
-              error && typeof error === "object" && "code" in error
-                ? String(error.code)
-                : undefined,
-            body:
-              error && typeof error === "object" && "body" in error
-                ? error.body
-                : undefined,
-            stack:
-              error && typeof error === "object" && "stack" in error
-                ? String(error.stack)
-                : undefined,
-          },
-          timestamp: new Date().toISOString(),
-        };
-
-        fs.writeFileSync(errorFile, JSON.stringify(errorData, null, 2));
-
-        logger.error(
-          "callAgent 400 error occurred. Debug files saved to:",
-          tempDir,
-        );
-        logger.error("Messages file:", messagesFile);
-        logger.error("Error file:", errorFile);
-        logger.error("Error details:", error);
-      } catch (saveError) {
-        logger.error("Failed to save 400 error debug files:", saveError);
+        continue;
       }
-    }
 
-    logger.error("Failed to call OpenAI:", error);
-    throw error;
+      // Non-retryable error or max retries exhausted
+      logger.error("Failed to call OpenAI:", error);
+      throw error;
+    }
   }
+
+  // All retries exhausted (should not normally reach here, but just in case)
+  logger.error(
+    `[Final] All ${maxRetries + 1} attempts failed, throwing last error`,
+  );
+  throw lastError;
 }
 
 /**
