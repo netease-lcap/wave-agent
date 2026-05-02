@@ -32,7 +32,7 @@
 ## Phase 5: ACP MCP Support
 1. **ACP Session Setup**: Accept `mcpServers` in `newSession`/`loadSession` and convert ACP format (stdio/http/sse) to SDK `McpServerConfig`.
 2. **Capabilities**: Advertise `mcpCapabilities` (http + sse) in `initialize` response.
-3. **Status Notifications**: Register `onServersChange` callback to send `ext_notification` with `mcp_server_status` events to ACP clients.
+3. **Status Notifications**: Register `onMcpServersChange` callback to send `ext_notification` with `mcp_server_status` events to ACP clients.
 
 ## Phase 6: UI Support (Optional/Future)
 1. **McpManager Component**: Create an Ink component to display and manage MCP server status in the CLI.

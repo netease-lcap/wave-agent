@@ -211,7 +211,7 @@ export class WaveAcpAgent implements AcpAgent {
           callbacks.onPermissionModeChange?.(mode),
         onModelChange: (model) => callbacks.onModelChange?.(model),
         onUserMessageAdded: (params) => callbacks.onUserMessageAdded?.(params),
-        onServersChange: (servers) => callbacks.onServersChange?.(servers),
+        onMcpServersChange: (servers) => callbacks.onMcpServersChange?.(servers),
       },
     });
 
@@ -1012,7 +1012,7 @@ export class WaveAcpAgent implements AcpAgent {
           },
         });
       },
-      onServersChange: (servers: McpServerStatus[]) => {
+      onMcpServersChange: (servers: McpServerStatus[]) => {
         for (const server of servers) {
           this.connection.sessionUpdate({
             sessionId: sessionId as AcpSessionId,
