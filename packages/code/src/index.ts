@@ -1,7 +1,12 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import { Scope, generateRandomName, type PermissionMode } from "wave-agent-sdk";
+import {
+  Scope,
+  generateRandomName,
+  type PermissionMode,
+  setCurrentWorktreeSession,
+} from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
 import { readFileSync } from "fs";
@@ -320,6 +325,16 @@ export async function main() {
         name = generateRandomName();
       }
       worktreeSession = createWorktree(name, originalCwd);
+
+      // Register worktree session so system prompt includes worktree warnings
+      setCurrentWorktreeSession({
+        originalCwd,
+        worktreePath: worktreeSession.path,
+        worktreeBranch: worktreeSession.branch,
+        worktreeName: worktreeSession.name,
+        isNew: worktreeSession.isNew,
+        repoRoot: worktreeSession.repoRoot,
+      });
     }
 
     const workdir = worktreeSession?.path || originalCwd;
