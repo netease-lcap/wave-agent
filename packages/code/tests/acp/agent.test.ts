@@ -1940,6 +1940,183 @@ describe("WaveAcpAgent", () => {
     );
   });
 
+  it("should pass mcpServers to WaveAgent.create for newSession", async () => {
+    let capturedOptions: AgentOptions;
+    const mockWaveAgent = {
+      sessionId: "session-mcp-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedOptions = options;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({
+      cwd: "/test",
+      mcpServers: [
+        {
+          name: "filesystem",
+          command: "/path/to/mcp-server",
+          args: ["--stdio"],
+          env: [{ name: "API_KEY", value: "secret" }],
+        },
+      ],
+    });
+
+    expect(capturedOptions!.mcpServers).toEqual({
+      filesystem: {
+        command: "/path/to/mcp-server",
+        args: ["--stdio"],
+        env: { API_KEY: "secret" },
+      },
+    });
+  });
+
+  it("should convert HTTP mcpServers to SDK format", async () => {
+    let capturedOptions: AgentOptions;
+    const mockWaveAgent = {
+      sessionId: "session-http-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedOptions = options;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({
+      cwd: "/test",
+      mcpServers: [
+        {
+          type: "http",
+          name: "api-server",
+          url: "https://api.example.com/mcp",
+          headers: [{ name: "Authorization", value: "Bearer token123" }],
+        },
+      ],
+    });
+
+    expect(capturedOptions!.mcpServers).toEqual({
+      "api-server": {
+        url: "https://api.example.com/mcp",
+        headers: { Authorization: "Bearer token123" },
+      },
+    });
+  });
+
+  it("should convert SSE mcpServers to SDK format", async () => {
+    let capturedOptions: AgentOptions;
+    const mockWaveAgent = {
+      sessionId: "session-sse-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedOptions = options;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({
+      cwd: "/test",
+      mcpServers: [
+        {
+          type: "sse",
+          name: "event-stream",
+          url: "https://events.example.com/mcp",
+          headers: [{ name: "X-API-Key", value: "apikey456" }],
+        },
+      ],
+    });
+
+    expect(capturedOptions!.mcpServers).toEqual({
+      "event-stream": {
+        url: "https://events.example.com/mcp",
+        headers: { "X-API-Key": "apikey456" },
+      },
+    });
+  });
+
+  it("should forward onServersChange callback as ext_notification", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-servers-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    const callbacks = capturedCallbacks as unknown as Record<string, unknown>;
+    expect(typeof callbacks.onServersChange).toBe("function");
+
+    const onServersChange = callbacks.onServersChange as (
+      servers: import("wave-agent-sdk").McpServerStatus[],
+    ) => void;
+    onServersChange([
+      {
+        name: "filesystem",
+        status: "connected",
+        config: { command: "/path/to/server", args: [] },
+        toolCount: 5,
+      },
+      {
+        name: "api-server",
+        status: "error",
+        config: { url: "https://api.example.com" },
+        error: "Connection refused",
+      },
+    ]);
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "ext_notification",
+          method: "mcp_server_status",
+          params: expect.objectContaining({
+            name: "filesystem",
+            status: "connected",
+            toolCount: 5,
+          }),
+        }),
+      }),
+    );
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "ext_notification",
+          method: "mcp_server_status",
+          params: expect.objectContaining({
+            name: "api-server",
+            status: "error",
+            error: "Connection refused",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("should advertise mcpCapabilities in initialize response", async () => {
+    const response = await agent.initialize();
+    expect(response.agentCapabilities?.mcpCapabilities).toEqual({
+      http: true,
+      sse: true,
+    });
+  });
+
   it("should include raw JSON content for MCP tools", async () => {
     let capturedCallbacks: AgentOptions["callbacks"];
     const mockWaveAgent = {
