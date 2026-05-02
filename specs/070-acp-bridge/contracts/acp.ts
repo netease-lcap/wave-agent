@@ -38,3 +38,10 @@ export interface AcpPlanUpdate {
     priority: "low" | "medium" | "high";
   }>;
 }
+
+export interface AcpMcpServerStatus {
+  name: string;
+  status: "disconnected" | "connected" | "connecting" | "error";
+  toolCount?: number;
+  error?: string;
+}

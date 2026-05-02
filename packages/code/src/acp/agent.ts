@@ -49,8 +49,10 @@ import {
   type ResourceLink,
   type EmbeddedResource,
   type ImageContent,
+  type McpServer,
   AGENT_METHODS,
 } from "@agentclientprotocol/sdk";
+import type { McpServerConfig, McpServerStatus } from "wave-agent-sdk";
 
 export class WaveAcpAgent implements AcpAgent {
   private agents: Map<string, WaveAgent> = new Map();
@@ -150,6 +152,7 @@ export class WaveAcpAgent implements AcpAgent {
       },
       agentCapabilities: {
         loadSession: true,
+        mcpCapabilities: { http: true, sse: true },
         sessionCapabilities: {
           list: {},
           close: {},
@@ -169,14 +172,20 @@ export class WaveAcpAgent implements AcpAgent {
   private async createAgent(
     sessionId: string | undefined,
     cwd: string,
+    mcpServers?: McpServer[],
   ): Promise<WaveAgent> {
     const callbacks: AgentOptions["callbacks"] = {};
     const agentRef: { instance?: WaveAgent } = {};
+
+    const sdkMcpServers = mcpServers
+      ? convertAcpMcpServers(mcpServers)
+      : undefined;
 
     const agent = await WaveAgent.create({
       workdir: cwd,
       restoreSessionId: sessionId,
       stream: true,
+      mcpServers: sdkMcpServers,
       canUseTool: (context) => {
         if (!agentRef.instance) {
           throw new Error("Agent instance not yet initialized");
@@ -234,9 +243,9 @@ export class WaveAcpAgent implements AcpAgent {
   }
 
   async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
-    const { cwd } = params;
+    const { cwd, mcpServers } = params;
     logger.info(`Creating new session in ${cwd}`);
-    const agent = await this.createAgent(undefined, cwd);
+    const agent = await this.createAgent(undefined, cwd, mcpServers);
     logger.info(`New session created with ID: ${agent.sessionId}`);
 
     return {
@@ -247,9 +256,9 @@ export class WaveAcpAgent implements AcpAgent {
   }
 
   async loadSession(params: LoadSessionRequest): Promise<LoadSessionResponse> {
-    const { sessionId, cwd } = params;
+    const { sessionId, cwd, mcpServers } = params;
     logger.info(`Loading session: ${sessionId} in ${cwd}`);
-    const agent = await this.createAgent(sessionId, cwd);
+    const agent = await this.createAgent(sessionId, cwd, mcpServers);
 
     return {
       modes: this.getSessionModeState(agent),
@@ -1002,6 +1011,75 @@ export class WaveAcpAgent implements AcpAgent {
           },
         });
       },
+      onServersChange: (servers: McpServerStatus[]) => {
+        for (const server of servers) {
+          this.connection.sessionUpdate({
+            sessionId: sessionId as AcpSessionId,
+            update: {
+              sessionUpdate: "ext_notification" as const,
+              method: "mcp_server_status",
+              params: {
+                name: server.name,
+                status: server.status,
+                toolCount: server.toolCount,
+                error: server.error,
+              },
+            },
+          });
+        }
+      },
     };
   }
+}
+
+/**
+ * Convert ACP McpServer[] to SDK Record<string, McpServerConfig>.
+ */
+function convertAcpMcpServers(
+  servers: McpServer[],
+): Record<string, McpServerConfig> {
+  const result: Record<string, McpServerConfig> = {};
+  for (const server of servers) {
+    const config: McpServerConfig = {};
+    if ("type" in server && server.type === "http") {
+      config.url = server.url;
+      config.headers = convertHttpHeaders(server.headers);
+    } else if ("type" in server && server.type === "sse") {
+      config.url = server.url;
+      config.headers = convertHttpHeaders(server.headers);
+    } else {
+      // stdio (no type discriminator)
+      config.command = server.command;
+      config.args = server.args;
+      config.env = convertEnvVariables(server.env);
+    }
+    result[server.name] = config;
+  }
+  return result;
+}
+
+/**
+ * Convert ACP EnvVariable[] to SDK Record<string, string>.
+ */
+function convertEnvVariables(
+  env: Array<{ name: string; value: string }>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const entry of env) {
+    result[entry.name] = entry.value;
+  }
+  return result;
+}
+
+/**
+ * Convert ACP HttpHeader[] to SDK Record<string, string>.
+ */
+function convertHttpHeaders(
+  headers: Array<{ name: string; value: string }>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const entry of headers) {
+    result[entry.name] = entry.value;
+  }
+  return result;
 }
