@@ -211,6 +211,7 @@ export class WaveAcpAgent implements AcpAgent {
           callbacks.onPermissionModeChange?.(mode),
         onModelChange: (model) => callbacks.onModelChange?.(model),
         onUserMessageAdded: (params) => callbacks.onUserMessageAdded?.(params),
+        onServersChange: (servers) => callbacks.onServersChange?.(servers),
       },
     });
 
