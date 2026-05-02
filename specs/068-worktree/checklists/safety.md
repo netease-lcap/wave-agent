@@ -53,5 +53,5 @@
 
 - [x] CHK024 - Is the assumption that `git` is installed and in the PATH validated as a prerequisite? [Assumption, Spec §Assumptions]
 - [x] CHK025 - Is the dependency on the `generateRandomName` utility explicitly documented? [Dependency, Research]
-- [x] CHK026 - Is the auto-deny mechanism for main repository modifications during worktree sessions specified? [Safety, Spec §FR-021]
-- [x] CHK027 - Does the auto-deny mechanism allow modifications to the plan file? [Safety, Spec §FR-023]
+- [x] CHK026 - Is the system prompt guidance for worktree isolation specified? [Safety, Spec §FR-021]
+- [x] CHK027 - Does the prompt guidance include worktree path and original CWD for path translation? [Safety, Spec §FR-022]

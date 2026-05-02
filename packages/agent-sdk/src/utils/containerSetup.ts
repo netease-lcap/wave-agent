@@ -26,7 +26,6 @@ import { ConfigurationService } from "../services/configurationService.js";
 import { ReversionService } from "../services/reversionService.js";
 import { MemoryService } from "../services/memory.js";
 import { AutoMemoryService } from "../services/autoMemoryService.js";
-import { getGitMainRepoRoot } from "./gitUtils.js";
 import { USER_MEMORY_FILE } from "./constants.js";
 import type { AgentOptions, McpServerConfig } from "../types/index.js";
 import type {
@@ -88,11 +87,6 @@ export function setupAgentContainer(
   const foregroundTaskManager = new ForegroundTaskManager(container);
   container.register("ForegroundTaskManager", foregroundTaskManager);
   container.register("ConfigurationService", configurationService);
-
-  if (options.worktreeName) {
-    container.register("WorktreeName", options.worktreeName);
-    container.register("MainRepoRoot", getGitMainRepoRoot(workdir));
-  }
 
   const memoryService = new MemoryService(container);
   container.register("MemoryService", memoryService);
