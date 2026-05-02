@@ -604,6 +604,44 @@ export class Agent {
     this.options.callbacks?.onBackgroundCurrentTask?.();
   }
 
+  /**
+   * Trigger WorktreeRemove hook before agent destruction.
+   * Called from CLI exit dialog when user chooses to remove the worktree.
+   * Non-blocking: errors logged but don't prevent removal.
+   */
+  public async triggerWorktreeRemoveHook(worktreePath: string): Promise<void> {
+    if (!this.hookManager.hasHooks("WorktreeRemove")) {
+      return;
+    }
+    try {
+      const sessionId = this.messageManager.getSessionId();
+      const transcriptPath = this.messageManager.getTranscriptPath();
+      const hookResults = await this.hookManager.executeHooks(
+        "WorktreeRemove",
+        {
+          event: "WorktreeRemove",
+          projectDir: this.workdir,
+          timestamp: new Date(),
+          sessionId,
+          transcriptPath,
+          cwd: this.workdir,
+          worktreePath,
+          env: Object.fromEntries(
+            Object.entries(process.env).filter((e) => e[1] !== undefined),
+          ) as Record<string, string>,
+        },
+      );
+      // Process results via messageManager (may not be visible during shutdown)
+      this.hookManager.processHookResults(
+        "WorktreeRemove",
+        hookResults,
+        this.messageManager,
+      );
+    } catch (error) {
+      this.logger?.warn("WorktreeRemove hooks execution failed:", error);
+    }
+  }
+
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
     // Clear notification callback first to prevent any late triggers from

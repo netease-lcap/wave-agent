@@ -173,5 +173,135 @@ describe("exitWorktreeTool", () => {
       expect(result.content).not.toContain("Discarded");
       expect(worktreeUtils.removeWorktree).toHaveBeenCalled();
     });
+
+    it("should trigger WorktreeRemove hooks when hookManager is available", async () => {
+      const mockExecuteHooks = vi.fn().mockResolvedValue([]);
+      const mockProcessHookResults = vi.fn();
+      const mockGetTranscriptPath = vi
+        .fn()
+        .mockReturnValue("/test/transcript.jsonl");
+
+      vi.mocked(worktreeUtils.countWorktreeChanges).mockReturnValue({
+        changedFiles: 0,
+        commits: 0,
+      });
+
+      const contextWithHooks: ToolContext = {
+        ...mockContext,
+        hookManager: {
+          executeHooks: mockExecuteHooks,
+          processHookResults: mockProcessHookResults,
+        } as never,
+        messageManager: {
+          getTranscriptPath: mockGetTranscriptPath,
+        } as never,
+        sessionId: "test-session-id",
+      };
+
+      const result = await exitWorktreeTool.execute(
+        { action: "remove" },
+        contextWithHooks,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("WorktreeRemove hooks were executed");
+      expect(mockExecuteHooks).toHaveBeenCalledWith("WorktreeRemove", {
+        event: "WorktreeRemove",
+        projectDir: "/original/dir",
+        timestamp: expect.any(Date),
+        sessionId: "test-session-id",
+        transcriptPath: "/test/transcript.jsonl",
+        cwd: "/original/dir",
+        worktreePath: "/repo/.wave/worktrees/test",
+        env: expect.any(Object),
+      });
+      expect(mockProcessHookResults).toHaveBeenCalledWith(
+        "WorktreeRemove",
+        [],
+        contextWithHooks.messageManager,
+      );
+    });
+
+    it("should NOT trigger hooks when hookManager is not available", async () => {
+      const mockExecuteHooks = vi.fn().mockResolvedValue([]);
+
+      vi.mocked(worktreeUtils.countWorktreeChanges).mockReturnValue({
+        changedFiles: 0,
+        commits: 0,
+      });
+
+      const contextWithoutHooks: ToolContext = {
+        ...mockContext,
+        hookManager: undefined,
+        messageManager: {} as never,
+      };
+
+      const result = await exitWorktreeTool.execute(
+        { action: "remove" },
+        contextWithoutHooks,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).not.toContain(
+        "WorktreeRemove hooks were executed",
+      );
+      expect(mockExecuteHooks).not.toHaveBeenCalled();
+    });
+
+    it("should not fail tool when hooks throw an error", async () => {
+      const mockExecuteHooks = vi
+        .fn()
+        .mockRejectedValue(new Error("Hook execution failed"));
+
+      vi.mocked(worktreeUtils.countWorktreeChanges).mockReturnValue({
+        changedFiles: 0,
+        commits: 0,
+      });
+
+      const contextWithHooks: ToolContext = {
+        ...mockContext,
+        hookManager: {
+          executeHooks: mockExecuteHooks,
+          processHookResults: vi.fn(),
+        } as never,
+        messageManager: {} as never,
+      };
+
+      const result = await exitWorktreeTool.execute(
+        { action: "remove" },
+        contextWithHooks,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Exited and removed worktree");
+      expect(result.content).not.toContain(
+        "WorktreeRemove hooks were executed",
+      );
+    });
+
+    it("should NOT trigger WorktreeRemove hooks when action is keep", async () => {
+      const mockExecuteHooks = vi.fn().mockResolvedValue([]);
+
+      const contextWithHooks: ToolContext = {
+        ...mockContext,
+        hookManager: {
+          executeHooks: mockExecuteHooks,
+          processHookResults: vi.fn(),
+        } as never,
+        messageManager: {} as never,
+      };
+
+      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
+        mockSession,
+      );
+
+      const result = await exitWorktreeTool.execute(
+        { action: "keep" },
+        contextWithHooks,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockExecuteHooks).not.toHaveBeenCalled();
+    });
   });
 });

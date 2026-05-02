@@ -103,4 +103,6 @@ export interface ToolContext {
   };
   /** State of files read in the current session for deduplication */
   readFileState?: Map<string, { mtime: number; hash: string }>;
+  /** Hook manager instance for executing hooks */
+  hookManager?: import("../managers/hookManager.js").HookManager;
 }

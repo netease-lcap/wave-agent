@@ -228,6 +228,11 @@ class ToolManager {
         this.container.get<import("./messageManager.js").MessageManager>(
           "MessageManager",
         )!,
+      hookManager: this.container.has("HookManager")
+        ? this.container.get<import("./hookManager.js").HookManager>(
+            "HookManager",
+          )
+        : undefined,
       sessionId: context.sessionId,
       toolCallId: context.toolCallId,
     };

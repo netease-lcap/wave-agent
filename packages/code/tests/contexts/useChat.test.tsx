@@ -91,6 +91,7 @@ describe("ChatProvider", () => {
     askBtw: vi.fn(),
     usages: [],
     sessionFilePath: "test-path",
+    triggerWorktreeRemoveHook: vi.fn(),
   };
 
   beforeEach(() => {
