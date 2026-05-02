@@ -1,6 +1,6 @@
 # Feature Specification: CLI Worktree Support
 
-**Feature Branch**: `068-cli-worktree`  
+**Feature Branch**: `068-worktree`  
 **Created**: 2026-02-27  
 **Input**: User description: "wave code cli support -w or --worktree <feat-name> to create worktree at .wave/worktrees/<feat-name>. if no <feat-name>, system should generate one, just like plan file name do. when exit wave code cli, it should popup this: Exiting worktree session
  You have 1 uncommitted file. These will be lost if you remove the worktree.
@@ -95,6 +95,43 @@ As a developer, I want the CLI to automatically clean up the worktree if I haven
 
 ---
 
+### User Story 6 - Mid-Session EnterWorktree Tool (Priority: P1)
+
+As a developer using Wave, I want to create a worktree mid-session by asking the AI, so that I can isolate my work without restarting the session.
+
+**Why this priority**: Matches Claude Code's EnterWorktree tool behavior and enables AI-driven workflow.
+
+**Independent Test**: Start a Wave session in any directory, ask the AI to "create a worktree", verify that a worktree is created and the session's working directory changes to the new worktree.
+
+**Acceptance Scenarios**:
+
+1. **Given** I am in a git repository, **When** I ask the AI to "create a worktree", **Then** the AI invokes the `EnterWorktree` tool and a new git worktree is created.
+2. **Given** EnterWorktree is invoked, **When** the tool executes, **Then** the session's working directory switches to the new worktree path.
+3. **Given** I ask the AI to create a worktree with a specific name, **When** the AI invokes EnterWorktree with `name`, **Then** the worktree uses that name.
+4. **Given** no name is provided, **When** EnterWorktree is invoked, **Then** a random name is generated (e.g., `swift-fox-123`).
+5. **Given** I am already in a worktree session, **When** the AI invokes EnterWorktree, **Then** the tool fails with an error indicating I'm already in a worktree session.
+6. **Given** I am not in a git repository, **When** the AI invokes EnterWorktree, **Then** the tool fails with an error indicating no git repository is available.
+
+---
+
+### User Story 7 - Mid-Session ExitWorktree Tool (Priority: P1)
+
+As a developer using Wave, I want to exit a worktree mid-session by asking the AI, so that I can return to my original working directory without ending the session.
+
+**Why this priority**: Matches Claude Code's ExitWorktree tool behavior and enables AI-driven workflow.
+
+**Independent Test**: Start a worktree session via EnterWorktree, ask the AI to "exit the worktree" with `action: "keep"`, verify the session returns to the original directory and the worktree is preserved.
+
+**Acceptance Scenarios**:
+
+1. **Given** I am in a worktree session created by EnterWorktree, **When** I ask the AI to "exit the worktree" with `action: "keep"`, **Then** the session returns to the original directory and the worktree is preserved.
+2. **Given** I am in a worktree session, **When** I ask the AI to "exit the worktree" with `action: "remove"`, **Then** the session returns to the original directory and the worktree is deleted.
+3. **Given** I am in a worktree session with uncommitted changes, **When** the AI invokes ExitWorktree with `action: "remove"` and no `discard_changes`, **Then** the tool refuses and lists the uncommitted files and commits.
+4. **Given** I am in a worktree session with uncommitted changes, **When** the user confirms discard, **Then** the AI re-invokes with `discard_changes: true` and the worktree is removed.
+5. **Given** no EnterWorktree session is active, **When** the AI invokes ExitWorktree, **Then** the tool returns a no-op message without making any filesystem changes.
+
+---
+
 ### Edge Cases
 
 - **What happens when the worktree directory already exists?** The system should probably error out or ask to reuse it.
@@ -135,6 +172,19 @@ As a developer, I want the CLI to automatically clean up the worktree if I haven
 - **FR-021**: System MUST automatically deny `Write` and `Edit` tool operations that attempt to modify files in the main repository (outside the current worktree) during a worktree session.
 - **FR-022**: The auto-deny mechanism MUST provide a descriptive error message explaining that modifications to the main repository are restricted while in a worktree session.
 - **FR-023**: The auto-deny mechanism MUST NOT restrict modifications to the current plan file, even if it is located outside the worktree.
+- **FR-024**: System MUST provide an `EnterWorktree` tool that creates a git worktree and switches the session's working directory to it.
+- **FR-025**: The `EnterWorktree` tool MUST accept an optional `name` parameter. If not provided, a random name MUST be generated.
+- **FR-026**: The `EnterWorktree` tool MUST validate the worktree name to prevent path traversal and invalid characters (max 64 chars, only letters, digits, dots, underscores, dashes, and `/` for nesting).
+- **FR-027**: The `EnterWorktree` tool MUST fail if already in an active worktree session (module-level state).
+- **FR-028**: The `EnterWorktree` tool MUST fail if not in a git repository, with an error message suggesting WorktreeCreate/WorktreeRemove hooks.
+- **FR-029**: The `EnterWorktree` tool MUST update the session's working directory via `AIManager.setWorkdir()` (which updates the DI container and calls `process.chdir()`).
+- **FR-030**: System MUST provide an `ExitWorktree` tool that exits a worktree session and restores the original working directory.
+- **FR-031**: The `ExitWorktree` tool MUST accept a required `action` parameter: `"keep"` (preserve worktree) or `"remove"` (delete worktree).
+- **FR-032**: The `ExitWorktree` tool MUST accept an optional `discard_changes` parameter (default `false`). When `action` is `"remove"` and the worktree has uncommitted files or new commits, the tool MUST refuse unless `discard_changes: true`.
+- **FR-033**: The `ExitWorktree` tool MUST be a no-op if no active EnterWorktree session exists (no filesystem changes).
+- **FR-034**: The `ExitWorktree` tool MUST restore the session's working directory to the original CWD via `AIManager.setWorkdir()`.
+- **FR-035**: When `action` is `"remove"`, the system MUST delete the worktree directory using `git worktree remove --force` and the associated branch using `git branch -D`.
+- **FR-036**: The `EnterWorktree` tool MUST NOT trigger the `WorktreeCreate` hook event (hook support is out of scope for mid-session tools).
 
 ### Key Entities
 

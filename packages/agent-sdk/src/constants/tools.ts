@@ -19,3 +19,5 @@ export const CRON_CREATE_TOOL_NAME = "CronCreate";
 export const CRON_DELETE_TOOL_NAME = "CronDelete";
 export const CRON_LIST_TOOL_NAME = "CronList";
 export const WEB_FETCH_TOOL_NAME = "WebFetch";
+export const ENTER_WORKTREE_TOOL_NAME = "EnterWorktree";
+export const EXIT_WORKTREE_TOOL_NAME = "ExitWorktree";

@@ -1,8 +1,8 @@
 # Tasks: CLI Worktree Support
 
 **Feature**: CLI Worktree Support
-**Branch**: `068-cli-worktree`
-**Implementation Plan**: `specs/068-cli-worktree/plan.md`
+**Branch**: `068-worktree`
+**Implementation Plan**: `specs/068-worktree/plan.md`
 
 ## Phase 1: Setup
 
@@ -49,6 +49,22 @@
 - [x] T021 [P] Run `pnpm run type-check`, `pnpm run lint`, and `pnpm test:coverage`
 - [x] T022 Implement `WorktreeCreate` hook event support in `agent-sdk` and `code` packages.
 - [x] T023 Support creating worktrees relative to the main repository root when run from within a worktree.
+
+## Phase 6: Mid-Session Worktree Tools (Priority: P1)
+
+**Goal**: Implement `EnterWorktree` and `ExitWorktree` tools for mid-session worktree management.
+
+**Independent Test**: Start a Wave session, ask AI to create a worktree via EnterWorktree, verify CWD changes. Ask AI to exit via ExitWorktree, verify CWD restores.
+
+- [x] T024 [US6] Create `worktreeSession.ts` for module-level session state tracking
+- [x] T025 [US6] Create `worktreeUtils.ts` with SDK-side git worktree utilities (create, remove, count changes, validate name)
+- [x] T026 [US6] Implement `enterWorktreeTool.ts` with Claude Code's prompt and behavior
+- [x] T027 [US7] Implement `exitWorktreeTool.ts` with Claude Code's prompt, keep/remove actions, and dirty-worktree guard
+- [x] T028 Register both tools in `toolManager.ts`
+- [x] T029 Add `AIManager.setWorkdir()` method to update DI container and `process.chdir()`
+- [x] T030 [P] Add tests for `worktreeSession.test.ts`
+- [x] T031 [P] Add tests for `enterWorktreeTool.test.ts`
+- [x] T032 [P] Add tests for `exitWorktreeTool.test.ts`
 
 ## Dependency Graph
 

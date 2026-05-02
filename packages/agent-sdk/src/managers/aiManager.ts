@@ -53,7 +53,6 @@ export class AIManager {
   private abortController: AbortController | null = null;
   onLoadingChange?: (loading: boolean) => void;
   private toolAbortController: AbortController | null = null;
-  private workdir: string;
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
   private stream: boolean; // Streaming mode flag
@@ -66,7 +65,6 @@ export class AIManager {
     private container: Container,
     options: AIManagerOptions,
   ) {
-    this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
     this.subagentType = options.subagentType; // Store subagent type
     this.stream = options.stream ?? true; // Default to true if not specified
@@ -166,7 +164,16 @@ export class AIManager {
   }
 
   public getWorkdir(): string {
-    return this.workdir;
+    return this.container.get<string>("Workdir") ?? process.cwd();
+  }
+
+  /**
+   * Update the working directory mid-session (e.g., when entering/exiting a worktree).
+   * Also updates process.chdir() so bash commands use the new directory.
+   */
+  public setWorkdir(newWorkdir: string): void {
+    this.container.register("Workdir", newWorkdir);
+    process.chdir(newWorkdir);
   }
 
   private isCompacting: boolean = false;
@@ -185,7 +192,7 @@ export class AIManager {
     return this.toolManager.getToolsConfig({
       availableSubagents,
       availableSkills,
-      workdir: this.workdir,
+      workdir: this.getWorkdir(),
       isSubagent: !!this.subagentType,
     });
   }
@@ -233,7 +240,7 @@ export class AIManager {
         .find((plugin) => plugin.name === toolName);
       if (toolPlugin?.formatCompactParams) {
         const context: ToolContext = {
-          workdir: this.workdir,
+          workdir: this.getWorkdir(),
           taskManager: this.taskManager,
         };
         return toolPlugin.formatCompactParams(toolArgs, context);
@@ -332,7 +339,7 @@ export class AIManager {
 
           // 2. Working directory
           contextParts.push(
-            `\n\n[Working Directory]\nCurrent working directory: ${this.workdir}`,
+            `\n\n[Working Directory]\nCurrent working directory: ${this.getWorkdir()}`,
           );
 
           // 3. Plan mode context
@@ -620,10 +627,10 @@ export class AIManager {
 
       if (this.getAutoMemoryEnabled()) {
         const directory = this.memoryService.getAutoMemoryDirectory(
-          this.workdir,
+          this.getWorkdir(),
         );
         const content = await this.memoryService.getAutoMemoryContent(
-          this.workdir,
+          this.getWorkdir(),
         );
         autoMemoryOptions = { directory, content };
       }
@@ -635,14 +642,14 @@ export class AIManager {
         messages: recentMessages,
         sessionId: this.messageManager.getSessionId(),
         abortSignal: abortController.signal,
-        workdir: this.workdir, // Pass working directory
+        workdir: this.getWorkdir(), // Pass working directory
         tools: toolsConfig, // Pass filtered tool configuration
         model: model, // Use passed model
         systemPrompt: buildSystemPrompt(
           this.systemPrompt,
           filteredToolPlugins,
           {
-            workdir: this.workdir,
+            workdir: this.getWorkdir(),
             memory: combinedMemory,
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
@@ -892,7 +899,7 @@ export class AIManager {
               const context: ToolContext = {
                 abortSignal: toolAbortController.signal,
                 backgroundTaskManager: this.backgroundTaskManager,
-                workdir: this.workdir,
+                workdir: this.getWorkdir(),
                 messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
                 sessionId: this.messageManager.getSessionId(),
                 toolCallId: toolId,
@@ -1196,11 +1203,11 @@ export class AIManager {
 
       const context: ExtendedHookExecutionContext = {
         event: hookName,
-        projectDir: this.workdir,
+        projectDir: this.getWorkdir(),
         timestamp: new Date(),
         sessionId: this.messageManager.getSessionId(),
         transcriptPath: this.messageManager.getTranscriptPath(),
-        cwd: this.workdir,
+        cwd: this.getWorkdir(),
         subagentType: this.subagentType, // Include subagent type in hook context
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
         env: Object.fromEntries(
@@ -1252,7 +1259,7 @@ export class AIManager {
         if (autoMemoryService) {
           // Trigger extraction, but don't block the return.
           // onTurnEnd itself returns quickly after forking.
-          autoMemoryService.onTurnEnd(this.workdir).catch((err) => {
+          autoMemoryService.onTurnEnd(this.getWorkdir()).catch((err) => {
             logger?.error("Auto-memory extraction trigger failed:", err);
           });
         }
@@ -1283,12 +1290,12 @@ export class AIManager {
     try {
       const context: ExtendedHookExecutionContext = {
         event: "PreToolUse",
-        projectDir: this.workdir,
+        projectDir: this.getWorkdir(),
         timestamp: new Date(),
         toolName,
         sessionId: this.messageManager.getSessionId(),
         transcriptPath: this.messageManager.getTranscriptPath(),
-        cwd: this.workdir,
+        cwd: this.getWorkdir(),
         toolInput,
         subagentType: this.subagentType, // Include subagent type in hook context
         env: Object.fromEntries(
@@ -1350,12 +1357,12 @@ export class AIManager {
     try {
       const context: ExtendedHookExecutionContext = {
         event: "PostToolUse",
-        projectDir: this.workdir,
+        projectDir: this.getWorkdir(),
         timestamp: new Date(),
         toolName,
         sessionId: this.messageManager.getSessionId(),
         transcriptPath: this.messageManager.getTranscriptPath(),
-        cwd: this.workdir,
+        cwd: this.getWorkdir(),
         toolInput,
         toolResponse,
         subagentType: this.subagentType, // Include subagent type in hook context

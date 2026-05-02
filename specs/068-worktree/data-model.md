@@ -2,8 +2,8 @@
 
 ## Entities
 
-### WorktreeSession
-Represents a git worktree session created by the CLI.
+### WorktreeSession (CLI-level)
+Represents a git worktree session created by the CLI `-w` flag.
 
 - **name**: `string`
   - The unique identifier for the worktree and its associated branch.
@@ -22,7 +22,27 @@ Represents a git worktree session created by the CLI.
   - `true` if the worktree was newly created in the current session.
   - `false` if an existing worktree was reused.
 
+### WorktreeSession (SDK-level, mid-session)
+Represents a worktree session created via `EnterWorktree` tool during an active agent session.
+
+- **originalCwd**: `string`
+  - The working directory the session was in before `EnterWorktree` was invoked.
+- **worktreePath**: `string`
+  - Path to the worktree directory.
+- **worktreeBranch**: `string`
+  - Git branch name for the worktree.
+- **worktreeName**: `string`
+  - User-provided or auto-generated worktree name.
+- **isNew**: `boolean`
+  - Whether this worktree was newly created.
+- **repoRoot**: `string`
+  - The canonical git repo root.
+- **originalHeadCommit**?: `string`
+  - The HEAD commit of the original branch at worktree creation time (for dirty-check on exit).
+
 ## State Transitions
+
+### CLI Worktree Flow
 
 1. **Initialization**:
    - CLI starts with `-w` or `--worktree`.
@@ -47,3 +67,21 @@ Represents a git worktree session created by the CLI.
      - **Keep worktree**: Exit CLI, leave worktree and branch intact.
      - **Remove worktree**: Run `git worktree remove --force <path>` and `git branch -D <branch>`, then exit.
    - If both are `false`, automatically run `git worktree remove --force <path>` and `git branch -D <branch>`, then exit.
+
+### Mid-Session Tool Flow
+
+1. **EnterWorktree**:
+   - AI invokes `EnterWorktree` tool during an active session.
+   - System validates not already in a worktree session (module-level check).
+   - System resolves canonical git root from current workdir.
+   - System creates worktree at `.wave/worktrees/<name>` with branch `worktree-<name>`.
+   - System updates `AIManager.setWorkdir()` to change CWD (updates DI container + `process.chdir()`).
+   - System stores session state in module-level `currentWorktreeSession`.
+
+2. **ExitWorktree**:
+   - AI invokes `ExitWorktree` tool with `action: "keep"` or `action: "remove"`.
+   - System validates active worktree session exists.
+   - If `action: "remove"` and dirty: system refuses unless `discard_changes: true`.
+   - If `action: "remove"`: system deletes worktree and branch.
+   - System restores CWD via `AIManager.setWorkdir(originalCwd)`.
+   - System clears `currentWorktreeSession`.
