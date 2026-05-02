@@ -331,7 +331,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onMessagesChange: () => {
           throttledSetMessages();
         },
-        onServersChange: (servers) => {
+        onMcpServersChange: (servers) => {
           setMcpServerStatuses([...servers]);
         },
         onSessionIdChange: (sessionId) => {

@@ -24,7 +24,7 @@ interface McpConnection {
 }
 
 export interface McpManagerCallbacks {
-  onServersChange?: (servers: McpServerStatus[]) => void;
+  onMcpServersChange?: (servers: McpServerStatus[]) => void;
 }
 
 import { logger } from "../utils/globalLogger.js";
@@ -158,7 +158,7 @@ export class McpManager {
 
       logger?.debug("MCP servers initialization started in background");
       // Trigger state change callback after starting initialization
-      this.callbacks.onServersChange?.(this.getAllServers());
+      this.callbacks.onMcpServersChange?.(this.getAllServers());
     }
   }
 
@@ -252,7 +252,7 @@ export class McpManager {
     if (server) {
       this.servers.set(name, { ...server, ...updates });
       // Trigger state change callback
-      this.callbacks.onServersChange?.(this.getAllServers());
+      this.callbacks.onMcpServersChange?.(this.getAllServers());
     }
   }
 
