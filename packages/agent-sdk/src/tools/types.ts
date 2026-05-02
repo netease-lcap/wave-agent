@@ -52,4 +52,6 @@ export interface ToolContext {
   lspManager?: import("../types/lsp.js").ILspManager;
   /** AIManager for tools that need message access (e.g. PrepareWrite) */
   aiManager?: import("../managers/aiManager.js").AIManager;
+  /** Custom environment variables to be passed to spawned processes */
+  env?: Record<string, string>;
 }

@@ -56,6 +56,8 @@ export interface AIManagerOptions {
   getModelConfig: () => ModelConfig;
   getMaxInputTokens: () => number;
   getEnvironmentVars?: () => Record<string, string>; // Get configuration environment variables for hooks
+  /** Custom environment variables to be passed to tool execution (e.g. bash spawn) */
+  env?: Record<string, string>;
 }
 
 interface SendAIMessageOptions {
@@ -87,6 +89,7 @@ export class AIManager {
   private getModelConfigFn: () => ModelConfig;
   private getMaxInputTokensFn: () => number;
   private getEnvironmentVarsFn?: () => Record<string, string>;
+  private env?: Record<string, string>;
 
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
@@ -106,6 +109,7 @@ export class AIManager {
     this.getModelConfigFn = options.getModelConfig;
     this.getMaxInputTokensFn = options.getMaxInputTokens;
     this.getEnvironmentVarsFn = options.getEnvironmentVars;
+    this.env = options.env;
   }
 
   // Getter methods for accessing dynamic configuration
@@ -669,6 +673,7 @@ export class AIManager {
                 backgroundBashManager: this.backgroundBashManager,
                 workdir: this.workdir,
                 aiManager: this,
+                env: this.env,
               };
 
               // Execute tool
@@ -816,7 +821,10 @@ export class AIManager {
         cwd: this.workdir,
         subagentType: this.subagentType, // Include subagent type in hook context
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
-        env: this.getEnvironmentVarsFn?.() || {}, // Include configuration environment variables
+        env: {
+          ...(this.getEnvironmentVarsFn?.() || {}),
+          ...(this.env || {}),
+        }, // Include configuration environment variables and custom env
       };
 
       const results = await this.hookManager.executeHooks(hookName, context);
@@ -887,7 +895,10 @@ export class AIManager {
         cwd: this.workdir,
         toolInput,
         subagentType: this.subagentType, // Include subagent type in hook context
-        env: this.getEnvironmentVarsFn?.() || {}, // Include configuration environment variables
+        env: {
+          ...(this.getEnvironmentVarsFn?.() || {}),
+          ...(this.env || {}),
+        }, // Include configuration environment variables and custom env
       };
 
       const results = await this.hookManager.executeHooks(
@@ -953,7 +964,10 @@ export class AIManager {
         toolInput,
         toolResponse,
         subagentType: this.subagentType, // Include subagent type in hook context
-        env: this.getEnvironmentVarsFn?.() || {}, // Include configuration environment variables
+        env: {
+          ...(this.getEnvironmentVarsFn?.() || {}),
+          ...(this.env || {}),
+        }, // Include configuration environment variables and custom env
       };
 
       const results = await this.hookManager.executeHooks(

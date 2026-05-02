@@ -27,7 +27,11 @@ export class BackgroundBashManager {
     this.callbacks.onShellsChange?.(Array.from(this.shells.values()));
   }
 
-  public startShell(command: string, timeout?: number): string {
+  public startShell(
+    command: string,
+    timeout?: number,
+    env?: Record<string, string>,
+  ): string {
     const id = `bash_${this.nextId++}`;
     const startTime = Date.now();
 
@@ -37,6 +41,7 @@ export class BackgroundBashManager {
       cwd: this.workdir,
       env: {
         ...process.env,
+        ...(env || {}),
       },
     });
 

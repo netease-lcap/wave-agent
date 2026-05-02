@@ -173,7 +173,11 @@ Usage notes:
         };
       }
 
-      const shellId = backgroundBashManager.startShell(command, timeout);
+      const shellId = backgroundBashManager.startShell(
+        command,
+        timeout,
+        context.env,
+      );
       return {
         success: true,
         content: `Command started in background with ID: ${shellId}. Use ${BASH_OUTPUT_TOOL_NAME} tool with bash_id="${shellId}" to monitor output.`,
@@ -189,6 +193,7 @@ Usage notes:
         cwd: context.workdir,
         env: {
           ...process.env,
+          ...(context.env || {}),
         },
       });
 

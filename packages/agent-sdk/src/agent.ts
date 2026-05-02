@@ -95,6 +95,8 @@ export interface AgentOptions {
   lspManager?: ILspManager;
   /**Optional local plugins to load */
   plugins?: PluginConfig[];
+  /**Custom environment variables to be passed to tool execution (e.g. bash spawn) */
+  env?: Record<string, string>;
 }
 
 export interface AgentCallbacks
@@ -296,7 +298,10 @@ export class Agent {
                 cwd: this.workdir,
                 message: notificationMessage,
                 notificationType: "permission_prompt",
-                env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
+                env: {
+                  ...this.configurationService.getEnvironmentVars(),
+                  ...(this.options.env || {}),
+                }, // Include configuration environment variables and custom env
               });
             } catch (error) {
               this.logger?.warn("Failed to execute notification hooks", {
@@ -385,6 +390,7 @@ export class Agent {
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
       getEnvironmentVars: () => this.configurationService.getEnvironmentVars(), // Provide access to configuration environment variables
+      env: options.env,
     });
 
     // Initialize command manager
@@ -1052,7 +1058,10 @@ export class Agent {
               transcriptPath: this.messageManager.getTranscriptPath(),
               cwd: this.workdir,
               userPrompt: content,
-              env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
+              env: {
+                ...this.configurationService.getEnvironmentVars(),
+                ...(this.options.env || {}),
+              }, // Include configuration environment variables and custom env
             },
           );
 
