@@ -49,6 +49,19 @@ As a user, I want to see the agent's current task list and plan in my external c
 
 ---
 
+### User Story 4 - MCP Server Support via ACP (Priority: P2)
+
+As an ACP client, I want to provide MCP server configurations when creating or loading a session so that the agent can use external tools from those servers.
+
+**Why this priority**: Enables ACP clients to programmatically configure MCP servers without relying on `.mcp.json` files on disk.
+
+**Acceptance Scenarios**:
+
+1. **Given** the agent is initialized, **When** a client sends a `newSession` request with `mcpServers`, **Then** the agent connects to those MCP servers and makes their tools available.
+2. **Given** an active session with MCP servers, **When** an MCP server's connection status changes, **Then** the agent sends an `mcp_server_status` update via `sessionUpdate` to the client.
+
+---
+
 ### Edge Cases
 
 - **Connection Closure**: If the ACP connection (stdio) is closed, the agent should clean up all active sessions and resources.
@@ -81,6 +94,9 @@ As a user, I want to see the agent's current task list and plan in my external c
 - **FR-012**: System MUST support `resource_link` and `resource` blocks in the `prompt` method, formatting them as markdown-like links `[name](uri)` or `[Resource](uri)` to provide context to the agent.
 - **FR-013**: System MUST join prompt content blocks using a newline to separate different content blocks (text, resource_link, resource).
 - **FR-014**: System MUST advertise support for `image` and `embeddedContext` in `promptCapabilities` during initialization.
+- **FR-015**: System MUST advertise `mcpCapabilities` (http + sse) in the `initialize` response to inform clients of supported MCP transport types.
+- **FR-016**: System MUST accept `mcpServers` in `newSession` and `loadSession` requests, convert them from ACP format to SDK `McpServerConfig`, and pass them to `Agent.create()`.
+- **FR-017**: System MUST send `mcp_server_status` updates via `sessionUpdate` when MCP server status changes (connected, disconnected, connecting, error).
 
 ### Key Entities
 
