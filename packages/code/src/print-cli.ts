@@ -14,6 +14,8 @@ export interface PrintCliOptions extends BaseAppProps {
   continueLastSession?: boolean;
   message?: string;
   showStats?: boolean;
+  /** MCP server config parsed from --mcp-config CLI argument */
+  mcpServers?: Record<string, import("wave-agent-sdk").McpServerConfig>;
 }
 
 function displayTimingInfo(startTime: Date, showStats: boolean): void {
@@ -46,6 +48,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     worktreeSession,
     workdir,
     model,
+    mcpServers,
   } = options;
 
   if (
@@ -158,6 +161,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       disallowedTools,
       workdir,
       model,
+      mcpServers,
       // 保持流式模式以获得更好的命令行用户体验
     });
 

@@ -8,6 +8,7 @@ import type {
   ILspManager,
   PluginConfig,
   BackgroundTask,
+  McpServerConfig,
 } from "./index.js";
 import type { MessageManagerCallbacks } from "../managers/messageManager.js";
 import type { BackgroundTaskManagerCallbacks } from "../managers/backgroundTaskManager.js";
@@ -78,6 +79,11 @@ export interface AgentOptions {
    * These rules follow the standard permission rule syntax: `ToolName` or `ToolName(pattern)`.
    */
   disallowedTools?: string[];
+  /**
+   * Optional MCP server configs to connect at startup.
+   * Overrides .mcp.json for specified server names.
+   */
+  mcpServers?: Record<string, McpServerConfig>;
   [key: string]: unknown;
 }
 

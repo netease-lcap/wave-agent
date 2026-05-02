@@ -32,6 +32,8 @@ import { logger } from "../utils/globalLogger.js";
 export interface McpManagerOptions {
   callbacks?: McpManagerCallbacks;
   logger?: Logger;
+  /** Pre-configured MCP servers passed from constructor options */
+  mcpServers?: Record<string, McpServerConfig>;
 }
 
 /**
@@ -96,12 +98,14 @@ export class McpManager {
   private configPath: string = "";
   private workdir: string = "";
   private callbacks: McpManagerCallbacks;
+  private mcpServers: Record<string, McpServerConfig> | undefined;
 
   constructor(
     private container: Container,
     options: McpManagerOptions = {},
   ) {
     this.callbacks = options.callbacks || {};
+    this.mcpServers = options.mcpServers;
   }
 
   /**
@@ -113,6 +117,13 @@ export class McpManager {
   ): Promise<void> {
     this.configPath = join(workdir, ".mcp.json");
     this.workdir = workdir;
+
+    // Register constructor-provided servers before loading .mcp.json
+    if (this.mcpServers) {
+      for (const [name, config] of Object.entries(this.mcpServers)) {
+        this.addServer(name, config);
+      }
+    }
 
     if (autoConnect) {
       logger?.debug("Initializing MCP servers...");
@@ -168,13 +179,17 @@ export class McpManager {
       const configContent = await fs.readFile(this.configPath, "utf-8");
       const workspaceConfig = resolveMcpConfig(JSON.parse(configContent));
 
-      // Merge workspace config with any existing config (e.g., from plugins)
-      // Workspace servers take precedence for duplicate names
+      // Merge workspace config with any existing config (e.g., from plugins or constructor)
+      // Constructor-provided servers take precedence, then workspace config, then existing config
       const merged: McpConfig = { mcpServers: {} };
       if (this.config) {
         Object.assign(merged.mcpServers, this.config.mcpServers);
       }
       Object.assign(merged.mcpServers, workspaceConfig.mcpServers);
+      // Constructor-provided servers override both for same names
+      if (this.mcpServers) {
+        Object.assign(merged.mcpServers, this.mcpServers);
+      }
       this.config = merged;
 
       // Initialize server statuses (preserve existing status for already known servers)

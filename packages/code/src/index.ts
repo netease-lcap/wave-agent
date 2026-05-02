@@ -94,6 +94,12 @@ export async function main() {
         type: "string",
         global: false,
       })
+      .option("mcp-config", {
+        description:
+          "MCP server configuration as JSON string (same format as .mcp.json)",
+        type: "string",
+        global: false,
+      })
       .option("acp", {
         description: "Run as an ACP bridge",
         type: "boolean",
@@ -284,6 +290,20 @@ export async function main() {
       argv.disallowedTools as string | undefined,
     );
 
+    // Parse MCP server configuration from --mcp-config JSON string
+    let mcpServers:
+      | Record<string, import("wave-agent-sdk").McpServerConfig>
+      | undefined;
+    if (argv.mcpConfig) {
+      try {
+        const parsed = JSON.parse(argv.mcpConfig as string);
+        mcpServers = parsed.mcpServers || parsed;
+      } catch {
+        console.error("Failed to parse --mcp-config as JSON");
+        process.exit(1);
+      }
+    }
+
     // Resolve plugin directories to absolute paths before any worktree logic
     const pluginDirs = (argv.pluginDir as string[] | undefined)?.map((dir) =>
       path.resolve(originalCwd, dir),
@@ -341,6 +361,7 @@ export async function main() {
         workdir,
         version,
         model: argv.model as string | undefined,
+        mcpServers,
       });
     }
 
@@ -364,6 +385,7 @@ export async function main() {
         workdir,
         version,
         model: argv.model as string | undefined,
+        mcpServers,
       });
     }
 
@@ -380,6 +402,7 @@ export async function main() {
       workdir,
       version,
       model: argv.model as string | undefined,
+      mcpServers,
     });
   } catch (error) {
     console.error("Failed to start WAVE Code:", error);

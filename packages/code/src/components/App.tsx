@@ -32,6 +32,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   workdir,
   version,
   model,
+  mcpServers,
   onExit,
 }) => {
   const [isExiting, setIsExiting] = useState(false);
@@ -106,6 +107,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       worktreeSession={worktreeSession}
       version={version}
       model={model}
+      mcpServers={mcpServers}
     >
       <ChatInterface />
     </ChatProvider>
@@ -125,6 +127,7 @@ export const App: React.FC<AppProps> = ({
   workdir,
   version,
   model,
+  mcpServers,
   onExit,
 }) => {
   return (
@@ -143,6 +146,7 @@ export const App: React.FC<AppProps> = ({
         workdir={workdir}
         version={version}
         model={model}
+        mcpServers={mcpServers}
         onExit={onExit}
       />
     </AppProvider>

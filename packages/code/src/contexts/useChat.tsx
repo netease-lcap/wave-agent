@@ -147,6 +147,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   worktreeSession,
   version,
   model,
+  mcpServers,
 }) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
   const { stdout } = useStdout();
@@ -198,7 +199,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
 
   // MCP State
-  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+  const [mcpServerStatuses, setMcpServerStatuses] = useState<McpServerStatus[]>(
+    [],
+  );
 
   // Background tasks state
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
@@ -329,7 +332,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           throttledSetMessages();
         },
         onServersChange: (servers) => {
-          setMcpServers([...servers]);
+          setMcpServerStatuses([...servers]);
         },
         onSessionIdChange: (sessionId) => {
           setSessionId(sessionId);
@@ -403,6 +406,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           worktreeName: worktreeSession?.name,
           isNewWorktree: worktreeSession?.isNew,
           model,
+          mcpServers,
         });
 
         agentRef.current = agent;
@@ -420,8 +424,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setConfiguredModels(agent.getConfiguredModels());
 
         // Get initial MCP servers state
-        const mcpServers = agent.getMcpServers?.() || [];
-        setMcpServers(mcpServers);
+        const initialMcpServers = agent.getMcpServers?.() || [];
+        setMcpServerStatuses(initialMcpServers);
 
         // Get initial commands
         const agentSlashCommands = agent.getSlashCommands?.() || [];
@@ -444,6 +448,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       model,
       initialPermissionMode,
       throttledSetMessages,
+      mcpServers,
     ],
   );
 
@@ -459,7 +464,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
     agentRef.current = null;
     setMessages([]);
-    setMcpServers([]);
+    setMcpServerStatuses([]);
     setSlashCommands([]);
     setSessionId("");
     setIsLoading(false);
@@ -737,7 +742,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     getConfiguredModels,
     setModel,
     isCompacting,
-    mcpServers,
+    mcpServers: mcpServerStatuses,
     connectMcpServer,
     disconnectMcpServer,
     backgroundTasks,

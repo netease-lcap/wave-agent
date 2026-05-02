@@ -24,6 +24,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     workdir,
     version,
     model,
+    mcpServers,
   } = options;
 
   // Continue with ink-based UI for normal mode
@@ -49,6 +50,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       workdir={workdir}
       version={version}
       model={model}
+      mcpServers={mcpServers}
       onExit={handleExit}
     />,
     { exitOnCtrlC: false },
