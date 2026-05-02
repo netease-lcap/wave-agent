@@ -23,6 +23,8 @@ import {
   taskUpdateTool,
   taskListTool,
 } from "../tools/taskManagementTools.js";
+import { enterWorktreeTool } from "../tools/enterWorktreeTool.js";
+import { exitWorktreeTool } from "../tools/exitWorktreeTool.js";
 import { McpManager } from "./mcpManager.js";
 import { PermissionManager } from "./permissionManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
@@ -123,6 +125,8 @@ class ToolManager {
       cronDeleteTool,
       cronListTool,
       webFetchTool,
+      enterWorktreeTool,
+      exitWorktreeTool,
     ];
 
     for (const tool of builtInTools) {
