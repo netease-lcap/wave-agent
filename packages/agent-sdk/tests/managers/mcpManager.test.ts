@@ -351,6 +351,90 @@ describe("McpManager", () => {
     });
   });
 
+  describe("constructor mcpServers option", () => {
+    it("should register constructor-provided servers before file load", async () => {
+      const container = new Container();
+      const manager = new McpManager(container, {
+        mcpServers: {
+          "constructor-server": { command: "constructor-mcp" },
+        },
+      });
+      await manager.initialize("/test/workdir", false);
+
+      // Server should be registered even without loading .mcp.json
+      const servers = manager.getAllServers();
+      expect(servers).toHaveLength(1);
+      expect(servers[0].name).toBe("constructor-server");
+      expect(servers[0].config.command).toBe("constructor-mcp");
+
+      await manager.cleanup();
+    });
+
+    it("should have constructor servers available before loadConfig runs", async () => {
+      const { promises: fs } = await import("fs");
+      const container = new Container();
+      const manager = new McpManager(container, {
+        mcpServers: {
+          "ctor-server": { command: "ctor-mcp" },
+        },
+      });
+      await manager.initialize("/test/workdir", false);
+
+      // Verify constructor server is registered
+      expect(manager.getServer("ctor-server")).toBeDefined();
+
+      // Now load .mcp.json
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({
+          mcpServers: {
+            "file-server": { command: "file-mcp" },
+          },
+        }),
+      );
+      await manager.loadConfig();
+
+      // Both servers should be present
+      expect(manager.getServer("ctor-server")).toBeDefined();
+      expect(manager.getServer("file-server")).toBeDefined();
+
+      const config = manager.getConfig();
+      expect(config?.mcpServers).toHaveProperty("ctor-server");
+      expect(config?.mcpServers).toHaveProperty("file-server");
+
+      await manager.cleanup();
+    });
+
+    it("should let constructor-provided servers override .mcp.json for same-named servers", async () => {
+      const { promises: fs } = await import("fs");
+      const container = new Container();
+      const manager = new McpManager(container, {
+        mcpServers: {
+          "shared-server": { command: "ctor-command", args: ["--ctor"] },
+        },
+      });
+      await manager.initialize("/test/workdir", false);
+
+      // .mcp.json has a server with the same name but different config
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({
+          mcpServers: {
+            "shared-server": { command: "file-command", args: ["--file"] },
+          },
+        }),
+      );
+      await manager.loadConfig();
+
+      // Constructor config should win for same-named server
+      const config = manager.getConfig();
+      expect(config?.mcpServers["shared-server"]).toEqual({
+        command: "ctor-command",
+        args: ["--ctor"],
+      });
+
+      await manager.cleanup();
+    });
+  });
+
   describe("server management", () => {
     beforeEach(async () => {
       const { promises: fs } = await import("fs");

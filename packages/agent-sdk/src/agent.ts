@@ -414,6 +414,7 @@ export class Agent {
    * @param options.messages - Optional initial messages for testing convenience
    * @param options.workdir - Working directory (defaults to process.cwd())
    * @param options.systemPrompt - Optional custom system prompt
+   * @param options.mcpServers - Optional MCP server configs to connect at startup
    * @returns Promise that resolves to initialized Agent instance
    *
    * @example

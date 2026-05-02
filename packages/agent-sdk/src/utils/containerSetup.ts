@@ -28,7 +28,7 @@ import { MemoryService } from "../services/memory.js";
 import { AutoMemoryService } from "../services/autoMemoryService.js";
 import { getGitMainRepoRoot } from "./gitUtils.js";
 import { USER_MEMORY_FILE } from "./constants.js";
-import type { AgentOptions } from "../types/index.js";
+import type { AgentOptions, McpServerConfig } from "../types/index.js";
 import type {
   PermissionMode,
   Usage,
@@ -145,7 +145,12 @@ export function setupAgentContainer(
   });
   container.register("BackgroundTaskManager", backgroundTaskManager);
 
-  const mcpManager = new McpManager(container, { callbacks });
+  const mcpManager = new McpManager(container, {
+    callbacks,
+    mcpServers: options.mcpServers as
+      | Record<string, McpServerConfig>
+      | undefined,
+  });
   container.register("McpManager", mcpManager);
 
   const lspManager = options.lspManager || new LspManager(container);
