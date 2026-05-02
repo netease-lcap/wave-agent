@@ -26,6 +26,23 @@ const agent = await Agent.create({
 });
 ```
 
+### Alternative: Pass MCP Servers via Constructor
+You can also pass MCP server configurations directly without a `.mcp.json` file:
+
+```typescript
+const agent = await Agent.create({
+  workdir: process.cwd(),
+  mcpServers: {
+    "everything": {
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-everything"]
+    }
+  }
+});
+```
+
+Constructor-provided servers take precedence over `.mcp.json` for duplicate names.
+
 ## 3. Use MCP Tools
 The AI can now use tools from the connected MCP servers. You can also manually interact with MCP servers via the agent API:
 

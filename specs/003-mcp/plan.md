@@ -24,5 +24,15 @@
 2.  **Examples**:
     - Create an example showing how to use MCP with Chrome in `packages/agent-sdk/examples/chrome-mcp.ts`.
 
-## Phase 4: UI Support (Optional/Future)
-1.  **McpManager Component**: Create an Ink component to display and manage MCP server status in the CLI.
+## Phase 4: Constructor & Config Merge Support
+1. **Constructor mcpServers**: Add `mcpServers` field to `AgentOptions` and `McpManagerOptions` so callers can pass server configs at construction time.
+2. **Config Merge**: Implement merge logic in `loadConfig()` where constructor servers > workspace `.mcp.json` > plugin servers.
+3. **CLI Support**: Add `--mcp-config` JSON argument for print and interactive modes.
+
+## Phase 5: ACP MCP Support
+1. **ACP Session Setup**: Accept `mcpServers` in `newSession`/`loadSession` and convert ACP format (stdio/http/sse) to SDK `McpServerConfig`.
+2. **Capabilities**: Advertise `mcpCapabilities` (http + sse) in `initialize` response.
+3. **Status Notifications**: Register `onServersChange` callback to send `ext_notification` with `mcp_server_status` events to ACP clients.
+
+## Phase 6: UI Support (Optional/Future)
+1. **McpManager Component**: Create an Ink component to display and manage MCP server status in the CLI.

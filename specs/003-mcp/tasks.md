@@ -15,3 +15,10 @@
 - [x] Integrate MCP tools into the permission system
     - [x] Ensure MCP tools trigger permission requests
     - [x] Support persistent "Allow always" rules for MCP tools
+- [x] Add `mcpServers` option to `AgentOptions` for constructor-time configuration
+- [x] Implement config merge: constructor > workspace `.mcp.json` > plugin servers
+- [x] Add CLI `--mcp-config` JSON argument for print and interactive modes
+- [x] ACP: accept `mcpServers` in `newSession`/`loadSession` with stdio/http/sse conversion
+- [x] ACP: advertise `mcpCapabilities` (http + sse) in `initialize` response
+- [x] ACP: send `ext_notification` with `mcp_server_status` on status changes
+- [x] Add ACP MCP server support tests
