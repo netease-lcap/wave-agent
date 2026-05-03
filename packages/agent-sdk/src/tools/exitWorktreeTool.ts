@@ -47,6 +47,7 @@ If called outside an EnterWorktree session, the tool is a **no-op**: it reports 
 
 export const exitWorktreeTool: ToolPlugin = {
   name: EXIT_WORKTREE_TOOL_NAME,
+  shouldDefer: true,
   config: {
     type: "function",
     function: {
