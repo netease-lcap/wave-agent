@@ -263,7 +263,7 @@ export function buildSystemPrompt(
   // List available deferred tool names so the model knows they exist
   const deferredToolNames = tools.filter(isDeferredTool).map((t) => t.name);
   if (deferredToolNames.length > 0) {
-    prompt += `\n\n## Deferred tools\nThe following tools are available but not loaded yet. Use ${TOOL_SEARCH_TOOL_NAME} to discover their full schemas before calling them: ${deferredToolNames.join(", ")}.`;
+    prompt += `\n\n## Deferred tools\nThe following tools are available but NOT loaded yet. Before calling any of them, you MUST first call ${TOOL_SEARCH_TOOL_NAME} with query="select:ToolName" to discover the full schema. Only after ${TOOL_SEARCH_TOOL_NAME} returns the tool's schema can you call it.\nDeferred tools: ${deferredToolNames.join(", ")}.`;
   }
 
   prompt += `\n\n${OUTPUT_EFFICIENCY_PROMPT}`;

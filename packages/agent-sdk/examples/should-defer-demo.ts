@@ -9,14 +9,31 @@ const agent = await Agent.create({
   permissionMode: "bypassPermissions",
   model: "gemini-2.5-flash",
   fastModel: "gemini-2.5-flash",
+  callbacks: {
+    onToolBlockUpdated: (params) => {
+      if (params.stage === "start") {
+        console.log(`[TOOL] ${params.name}`);
+      }
+      if (params.stage === "end") {
+        const status = params.success ? "✅" : "❌";
+        const short = (params.result || "").slice(0, 200);
+        console.log(`${status} ${params.name}: ${short}`);
+      }
+    },
+    onAssistantContentUpdated: (chunk: string) => {
+      process.stdout.write(chunk);
+    },
+  },
 });
 
 async function main() {
   try {
-    // Ask the agent to schedule a reminder — it must discover CronCreate via ToolSearch first
-    await agent.sendMessage("Remind me to check the build in 1 minute");
+    console.log("🚀 Asking agent to schedule a reminder...\n");
+    await agent.sendMessage(
+      "Remind me to check the build in 1 minute using the cron tool",
+    );
 
-    console.log("\n📊 Final state:");
+    console.log("\n\n📊 Final state:");
     console.log(`   Session ID: ${agent.sessionId}`);
     console.log(`   Messages: ${agent.messages.length}`);
   } catch (error) {

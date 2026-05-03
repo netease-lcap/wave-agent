@@ -79,7 +79,7 @@ export const toolSearchTool: ToolPlugin = {
     function: {
       name: TOOL_SEARCH_TOOL_NAME,
       description:
-        "Fetches full schema definitions for deferred tools so they can be called. Use 'select:ToolName' for direct selection, or keywords to search.",
+        "Fetches full schema definitions for deferred tools so they can be called. Before calling any deferred tool (CronCreate, CronDelete, CronList, WebFetch, EnterWorktree, ExitWorktree, TaskCreate, TaskGet, TaskUpdate, TaskList, TaskStop), you MUST call ToolSearch first. Use query='select:ToolName' for direct selection, or keywords to search.",
       parameters: {
         type: "object",
         properties: {
