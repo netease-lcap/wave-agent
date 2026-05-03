@@ -7,6 +7,7 @@ const CRON_DELETE_PROMPT = `Cancel a cron job previously scheduled with CronCrea
 
 export const cronDeleteTool: ToolPlugin = {
   name: CRON_DELETE_TOOL_NAME,
+  shouldDefer: true,
   config: {
     type: "function",
     function: {

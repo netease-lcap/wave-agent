@@ -18,7 +18,9 @@ import {
   READ_TOOL_NAME,
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
+  TOOL_SEARCH_TOOL_NAME,
 } from "../constants/tools.js";
+import { isDeferredTool } from "../utils/isDeferredTool.js";
 
 export const BASE_SYSTEM_PROMPT = `You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.`;
 
@@ -256,6 +258,12 @@ export function buildSystemPrompt(
 
   if (tools.length > 0) {
     prompt += `\n\n${TOOL_POLICY}`;
+  }
+
+  // List available deferred tool names so the model knows they exist
+  const deferredToolNames = tools.filter(isDeferredTool).map((t) => t.name);
+  if (deferredToolNames.length > 0) {
+    prompt += `\n\n## Deferred tools\nThe following tools are available but not loaded yet. Use ${TOOL_SEARCH_TOOL_NAME} to discover their full schemas before calling them: ${deferredToolNames.join(", ")}.`;
   }
 
   prompt += `\n\n${OUTPUT_EFFICIENCY_PROMPT}`;

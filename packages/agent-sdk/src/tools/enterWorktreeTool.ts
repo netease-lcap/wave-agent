@@ -48,6 +48,7 @@ export const ENTER_WORKTREE_TOOL_PROMPT = `Use this tool ONLY when the user expl
 
 export const enterWorktreeTool: ToolPlugin = {
   name: ENTER_WORKTREE_TOOL_NAME,
+  shouldDefer: true,
   config: {
     type: "function",
     function: {

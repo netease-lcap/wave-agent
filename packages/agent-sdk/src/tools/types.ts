@@ -31,6 +31,21 @@ export interface ToolPlugin {
     workdir?: string;
     isSubagent?: boolean;
   }) => string;
+  /**
+   * When true, this tool is deferred — it's not sent to the API until the model
+   * discovers it via ToolSearch. MCP tools are always deferred.
+   */
+  shouldDefer?: boolean;
+  /**
+   * When true, this tool is never deferred — its full schema always appears in
+   * the initial prompt even when tool search is enabled.
+   */
+  alwaysLoad?: boolean;
+  /**
+   * When true, this is an MCP tool (auto-set by McpManager). MCP tools are
+   * always deferred unless they have alwaysLoad: true.
+   */
+  isMcp?: boolean;
 }
 
 export interface ToolResult {
@@ -58,6 +73,8 @@ export interface ToolContext {
   abortSignal?: AbortSignal;
   backgroundTaskManager?: import("../managers/backgroundTaskManager.js").BackgroundTaskManager;
   workdir: string;
+  /** Tool manager instance for tool discovery (used by ToolSearchTool) */
+  toolManager?: import("../managers/toolManager.js").ToolManager;
   /** Permission mode for this tool execution */
   permissionMode?: PermissionMode;
   /** Custom permission callback */
