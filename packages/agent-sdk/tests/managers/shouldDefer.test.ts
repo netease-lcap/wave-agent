@@ -110,15 +110,15 @@ describe("shouldDefer tool loading", () => {
         workdir: "/test/path",
       });
 
-      expect(prompt).toContain("## Deferred tools");
+      expect(prompt).toContain("<available-deferred-tools>");
       expect(prompt).toContain("CronCreate");
       expect(prompt).toContain("ToolSearch");
-      expect(prompt).toContain("Use ToolSearch to discover");
+      expect(prompt).toContain("call ToolSearch first to discover");
     });
 
     it("should not include deferred tools section when no tools passed", () => {
       const prompt = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {});
-      expect(prompt).not.toContain("## Deferred tools");
+      expect(prompt).not.toContain("<available-deferred-tools>");
     });
   });
 });
