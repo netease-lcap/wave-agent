@@ -103,18 +103,14 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   mcpServers,
   onExit,
 }) => {
-  // Handle Ctrl-C / SIGTERM for non-worktree sessions (immediate exit)
-  useEffect(() => {
-    if (!worktreeSession) {
-      const onSignal = () => onExit(false);
-      process.on("SIGINT", onSignal);
-      process.on("SIGTERM", onSignal);
-      return () => {
-        process.off("SIGINT", onSignal);
-        process.off("SIGTERM", onSignal);
-      };
+  // Handle Ctrl-C for non-worktree sessions (immediate exit)
+  // Ink runs terminal in raw mode, so Ctrl+C arrives as useInput event, not SIGINT
+  useInput((input, key) => {
+    if (!worktreeSession && input === "c" && key.ctrl) {
+      onExit(false);
+      return true;
     }
-  }, [worktreeSession, onExit]);
+  });
 
   if (worktreeSession) {
     return (
