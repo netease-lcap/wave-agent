@@ -158,11 +158,12 @@ describe("prompts", () => {
       expect(result).toContain("# Language\nAlways respond in Spanish.");
     });
 
-    it("should include plan mode when provided", () => {
+    it("should NOT include plan mode in system prompt (injected as user meta message instead)", () => {
       const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
         planMode: { planFilePath: "/plan.md", planExists: true },
       });
-      expect(result).toContain("Plan mode is active.");
+      // Plan mode is now injected as user meta message in AIManager, not in system prompt
+      expect(result).not.toContain("Plan mode is active");
     });
 
     it("should include memory context when provided", () => {
