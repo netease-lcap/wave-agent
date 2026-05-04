@@ -1420,7 +1420,7 @@ export class AIManager {
    */
   private trackDiscoveredTools(content: string): void {
     // Try to extract tool names from shortResult-style content
-    const discoveredMatch = content.match(/Discovered tools?: ([\w, ]+)/);
+    const discoveredMatch = content.match(/Discovered tools?: ([\w-, ]+)/);
     if (discoveredMatch) {
       const names = discoveredMatch[1]!
         .split(",")
@@ -1435,9 +1435,19 @@ export class AIManager {
 
     // Fallback: extract tool names from "ToolName: description" pattern
     const lines = content.split("\n");
+    const nonToolKeywords = new Set([
+      "parameters",
+      "description",
+      "result",
+      "error",
+      "content",
+      "type",
+      "properties",
+      "required",
+    ]);
     for (const line of lines) {
-      const toolMatch = line.match(/^([\w__]+):/);
-      if (toolMatch) {
+      const toolMatch = line.match(/^([\w-]+):/);
+      if (toolMatch && !nonToolKeywords.has(toolMatch[1]!.toLowerCase())) {
         this.discoveredTools.add(toolMatch[1]!);
       }
     }
