@@ -10,8 +10,8 @@ console.log("🌐 Testing WebFetch Tool - Example...\n");
 let tempDir: string;
 let agent: Agent;
 
-// Use gemini-2.5-flash for cheaper and faster testing
-process.env.WAVE_MODEL = "gemini-2.5-flash";
+// Use WAVE_FAST_MODEL for cheaper and faster testing
+process.env.WAVE_MODEL = process.env.WAVE_FAST_MODEL;
 
 async function setupTest() {
   // Create temporary directory

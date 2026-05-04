@@ -108,7 +108,7 @@ async function testWithAgent() {
   }> = [];
 
   agent = await Agent.create({
-    model: "gemini-2.5-flash",
+    model: process.env.WAVE_FAST_MODEL,
     callbacks: {
       onToolBlockUpdated: (params) => {
         if (params.stage === "start") {

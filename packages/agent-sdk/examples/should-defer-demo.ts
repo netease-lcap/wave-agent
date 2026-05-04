@@ -7,8 +7,8 @@ import { Agent } from "../src/agent.js";
 
 const agent = await Agent.create({
   permissionMode: "bypassPermissions",
-  model: "gemini-2.5-flash",
-  fastModel: "gemini-2.5-flash",
+  model: process.env.WAVE_FAST_MODEL,
+  fastModel: process.env.WAVE_FAST_MODEL,
   callbacks: {
     onToolBlockUpdated: (params) => {
       if (params.stage === "start") {

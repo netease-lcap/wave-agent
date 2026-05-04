@@ -47,7 +47,7 @@ This skill was invoked with arguments and executed bash commands.
     );
 
     agent = await Agent.create({
-      model: "gemini-2.5-flash", // Using a fast model as suggested
+      model: process.env.WAVE_FAST_MODEL, // Using a fast model as suggested
       workdir: tempDir,
       callbacks: {
         onAssistantContentUpdated: (chunk: string) => {
