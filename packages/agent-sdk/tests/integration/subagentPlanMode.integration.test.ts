@@ -185,7 +185,7 @@ describe("Subagent Plan Mode Integration", () => {
       });
   });
 
-  it("should include plan mode reminder in subagent messages when plan mode is active", async () => {
+  it("should include plan mode reminder in subagent system prompt when plan mode is active", async () => {
     const instance = await subagentManager.createInstance(subagentConfig, {
       description: "Test task",
       prompt: "Test prompt",
@@ -198,11 +198,12 @@ describe("Subagent Plan Mode Integration", () => {
     // Execute task
     await subagentManager.executeAgent(instance, "Test prompt");
 
-    // Plan mode is now injected as user meta message in AIManager.sendAIMessage,
-    // not in buildSystemPrompt. The mock sendAIMessage doesn't inject user messages,
-    // so we verify the configuration was passed correctly instead.
+    // Verify the system prompt sent to callAgent
     expect(lastSystemPrompt).toBeDefined();
-    // System prompt no longer contains plan mode (moved to user meta message)
-    expect(lastSystemPrompt).not.toContain("Plan mode is active");
+    expect(lastSystemPrompt).toContain("Plan mode is active.");
+    expect(lastSystemPrompt).toContain(
+      "The user indicated that they do not want you to execute yet",
+    );
+    expect(lastSystemPrompt).toContain("/test/project/plan.md");
   });
 });
