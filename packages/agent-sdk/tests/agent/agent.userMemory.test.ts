@@ -110,18 +110,14 @@ describe("Agent User Memory Integration", () => {
     // Send a message to trigger AI response with memory
     await agent.sendMessage("Test question");
 
-    // Verify that callAgent was called with memory in user messages (not systemPrompt)
-    const callArgs = mockCallAgent.mock.calls[0][0];
-    const userMessages = callArgs.messages.filter(
-      (m: { role: string }) => m.role === "user",
+    // Verify that callAgent was called with combined memory
+    expect(mockCallAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining(
+          "Project memory: important context\n\nUser memory: user preferences",
+        ),
+      }),
     );
-    const hasMemoryMessage = userMessages.some(
-      (m: { content: string }) =>
-        typeof m.content === "string" &&
-        m.content.includes("Project memory: important context") &&
-        m.content.includes("User memory: user preferences"),
-    );
-    expect(hasMemoryMessage).toBe(true);
   });
 
   it("should handle project memory only when user memory is empty", async () => {
@@ -140,17 +136,12 @@ describe("Agent User Memory Integration", () => {
     // Send a message to trigger AI response with memory
     await agent.sendMessage("Test question");
 
-    // Verify that callAgent was called with memory in user messages
-    const callArgs = mockCallAgent.mock.calls[0][0];
-    const userMessages = callArgs.messages.filter(
-      (m: { role: string }) => m.role === "user",
+    // Verify that callAgent was called with project memory only
+    expect(mockCallAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining("Project memory only"),
+      }),
     );
-    const hasMemoryMessage = userMessages.some(
-      (m: { content: string }) =>
-        typeof m.content === "string" &&
-        m.content.includes("Project memory only"),
-    );
-    expect(hasMemoryMessage).toBe(true);
   });
 
   it("should handle user memory only when project memory is empty", async () => {
@@ -169,16 +160,12 @@ describe("Agent User Memory Integration", () => {
     // Send a message to trigger AI response with memory
     await agent.sendMessage("Test question");
 
-    // Verify that callAgent was called with memory in user messages
-    const callArgs = mockCallAgent.mock.calls[0][0];
-    const userMessages = callArgs.messages.filter(
-      (m: { role: string }) => m.role === "user",
+    // Verify that callAgent was called with user memory only
+    expect(mockCallAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining("User memory only"),
+      }),
     );
-    const hasMemoryMessage = userMessages.some(
-      (m: { content: string }) =>
-        typeof m.content === "string" && m.content.includes("User memory only"),
-    );
-    expect(hasMemoryMessage).toBe(true);
   });
 
   it("should handle empty memory gracefully", async () => {
@@ -197,17 +184,12 @@ describe("Agent User Memory Integration", () => {
     // Send a message to trigger AI response with memory
     await agent.sendMessage("Test question");
 
-    // Verify that callAgent was called without memory meta message
-    const callArgs = mockCallAgent.mock.calls[0][0];
-    const userMessages = callArgs.messages.filter(
-      (m: { role: string }) => m.role === "user",
+    // Verify that callAgent was called with empty memory
+    expect(mockCallAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: expect.not.stringContaining("## Memory Context"),
+      }),
     );
-    const hasMemoryMessage = userMessages.some(
-      (m: { content: string }) =>
-        typeof m.content === "string" &&
-        m.content.includes("## Memory Context"),
-    );
-    expect(hasMemoryMessage).toBe(false);
   });
 
   it("should handle memory file read errors gracefully", async () => {

@@ -146,8 +146,11 @@ describe("AI Service - Basic CallAgent", () => {
       expect(systemContent).not.toContain("You are an interactive CLI tool");
     });
 
-    it("should use provided system prompt", async () => {
-      const systemPrompt = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, []);
+    it("should use provided system prompt with memory", async () => {
+      const memoryContent = "Important previous context and memory.";
+      const systemPrompt = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+        memory: memoryContent,
+      });
 
       await callAgent({
         gatewayConfig: TEST_GATEWAY_CONFIG,
@@ -159,12 +162,13 @@ describe("AI Service - Basic CallAgent", () => {
 
       const callArgs = mockCreate.mock.calls[0][0];
 
-      // Should have system message
+      // Should have system message with memory
       expect(callArgs.messages[0].role).toBe("system");
       const systemContent = getSystemMessageContent(
         callArgs.messages[0].content,
       );
-      expect(systemContent).toContain(DEFAULT_SYSTEM_PROMPT);
+      expect(systemContent).toContain("## Memory Context");
+      expect(systemContent).toContain(memoryContent);
     });
 
     it("should handle response with usage information", async () => {

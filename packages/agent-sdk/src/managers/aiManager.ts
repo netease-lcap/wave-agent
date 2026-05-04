@@ -22,7 +22,7 @@ import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
 import type { SubagentManager } from "./subagentManager.js";
 import type { SkillManager } from "./skillManager.js";
-import { buildSystemPrompt, buildPlanModePrompt } from "../prompts/index.js";
+import { buildSystemPrompt } from "../prompts/index.js";
 import { Container } from "../utils/container.js";
 import { recoverTruncatedJson } from "../utils/stringUtils.js";
 import { ConfigurationService } from "../services/configurationService.js";
@@ -531,12 +531,89 @@ export class AIManager {
     planExists: boolean;
     isSubagent: boolean;
   }): string {
-    const prompt = buildPlanModePrompt(
-      options.planFilePath,
-      options.planExists,
-      options.isSubagent,
-    );
-    return `<system-reminder>${prompt}</system-reminder>`;
+    const { planFilePath, planExists, isSubagent } = options;
+    const planFileInfo = planExists
+      ? `A plan file already exists at ${planFilePath}. You can read it and make incremental edits using the Edit tool.`
+      : `No plan file exists yet. You should create your plan at ${planFilePath} using the Write tool.`;
+
+    if (isSubagent) {
+      return `<system-reminder>Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits, run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supersedes any other instructions you have received.
+
+## Plan File Info:
+${planFileInfo}
+You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
+Answer the user's query comprehensively, using the AskUserQuestion tool if you need to ask the user clarifying questions.</system-reminder>`;
+    }
+
+    return `<system-reminder>Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supersedes any other instructions you have received.
+
+## Plan File Info:
+${planFileInfo}
+You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
+
+## Plan Workflow
+
+### Phase 1: Initial Understanding
+Goal: Gain a comprehensive understanding of the user's request by reading through code and asking them questions. Critical: In this phase you should only use the Agent tool with subagent_type=explore.
+
+1. Focus on understanding the user's request and the code associated with their request. Actively search for existing functions, utilities, and patterns that can be reused — avoid proposing new code when suitable implementations already exist.
+
+2. **Launch up to 3 explore agents IN PARALLEL** (single message, multiple tool calls) to efficiently explore the codebase.
+   - Use 1 agent when the task is isolated to known files, the user provided specific file paths, or you're making a small targeted change.
+   - Use multiple agents when: the scope is uncertain, multiple areas of the codebase are involved, or you need to understand existing patterns before planning.
+   - Quality over quantity - 3 agents maximum, but you should try to use the minimum number of agents necessary (usually just 1)
+   - If using multiple agents: Provide each agent with a specific search focus or area to explore. Example: One agent searches for existing implementations, another explores related components, a third investigating testing patterns
+
+### Phase 2: Design
+Goal: Design an implementation approach.
+
+Launch agent(s) with subagent_type=plan to design the implementation based on the user's intent and your exploration results from Phase 1.
+
+You can launch up to 3 agent(s) in parallel.
+
+**Guidelines:**
+- **Default**: Launch at least 1 Plan agent for most tasks - it helps validate your understanding and consider alternatives
+- **Skip agents**: Only for truly trivial tasks (typo fixes, single-line changes, simple renames)
+- **Multiple agents**: Use up to 3 agents for complex tasks that benefit from different perspectives
+
+Examples of when to use multiple agents:
+- The task touches multiple parts of the codebase
+- It's a large refactor or architectural change
+- There are many edge cases to consider
+- You'd benefit from exploring different approaches
+
+Example perspectives by task type:
+- New feature: simplicity vs performance vs maintainability
+- Bug fix: root cause vs workaround vs prevention
+- Refactoring: minimal change vs clean architecture
+
+In the agent prompt:
+- Provide comprehensive background context from Phase 1 exploration including filenames and code path traces
+- Describe requirements and constraints
+- Request a detailed implementation plan
+
+### Phase 3: Review
+Goal: Review the plan(s) from Phase 2 and ensure alignment with the user's intentions.
+1. Read the critical files identified by agents to deepen your understanding
+2. Ensure that the plans align with the user's original request
+3. Use AskUserQuestion to clarify any remaining questions with the user
+
+### Phase 4: Final Plan
+Goal: Write your final plan to the plan file (the only file you can edit).
+- Begin with a **Context** section: explain why this change is being made — the problem or need it addresses, what prompted it, and the intended outcome
+- Include only your recommended approach, not all alternatives
+- Ensure that the plan file is concise enough to scan quickly, but detailed enough to execute effectively
+- Include the paths of critical files to be modified
+- Reference existing functions and utilities you found that should be reused, with their file paths
+- Include a verification section describing how to test the changes end-to-end (run the code, use MCP tools, run tests)
+
+### Phase 5: Call ExitPlanMode
+At the very end of your turn, once you have asked the user questions and are happy with your final plan file - you should always call ExitPlanMode to indicate to the user that you are done planning.
+This is critical - your turn should only end with either using the AskUserQuestion tool OR calling ExitPlanMode. Do not stop unless it's for these 2 reasons
+
+**Important:** Use AskUserQuestion ONLY to clarify requirements or choose between approaches. Use ExitPlanMode to request plan approval. Do NOT ask about plan approval in any other way - no text questions, no AskUserQuestion. Phrases like "Is this plan okay?", "Should I proceed?", "How does this plan look?", "Any changes before we start?", or similar MUST use ExitPlanMode.
+
+NOTE: At any point in time through this workflow you should feel free to ask the user questions or clarifications using the AskUserQuestion tool. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins.</system-reminder>`;
   }
 
   public async sendAIMessage(
@@ -632,55 +709,6 @@ export class AIManager {
       }
     }
 
-    // Get memory content (for user meta message injection)
-    let combinedMemory: string = "";
-    try {
-      combinedMemory = await this.messageManager.getCombinedMemory();
-    } catch (error) {
-      this.messageManager.addErrorBlock(
-        `Failed to read memory: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      this.setIsLoading(false);
-      return;
-    }
-
-    let autoMemoryDirectory: string | undefined;
-    let autoMemoryContent: string | undefined;
-    if (this.getAutoMemoryEnabled()) {
-      autoMemoryDirectory = this.memoryService.getAutoMemoryDirectory(
-        this.getWorkdir(),
-      );
-      autoMemoryContent = await this.memoryService.getAutoMemoryContent(
-        this.getWorkdir(),
-      );
-    }
-
-    // Inject dynamic memory content as user meta messages (matching Claude Code pattern).
-    // Static guidance (auto memory instructions) goes in system prompt via buildSystemPrompt.
-    // Only MEMORY.md actual content and combined memory go in user meta messages for cache stability.
-    const memoryMessages: Array<{ role: "user"; content: string }> = [];
-
-    // Auto memory content (MEMORY.md actual content, dynamic — changes over time)
-    if (autoMemoryContent?.trim()) {
-      memoryMessages.push({
-        role: "user",
-        content: `<system-reminder>\n## MEMORY.md\n\n${autoMemoryContent}\n</system-reminder>`,
-      });
-    }
-
-    // Combined memory context (previous interactions, dynamic)
-    if (combinedMemory && combinedMemory.trim()) {
-      memoryMessages.push({
-        role: "user",
-        content: `<system-reminder>\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${combinedMemory}\n</system-reminder>`,
-      });
-    }
-
-    // Inject memory messages (in order: auto memory content first, then combined memory)
-    for (let i = memoryMessages.length - 1; i >= 0; i--) {
-      recentMessages.unshift(memoryMessages[i]);
-    }
-
     // Inject deferred tools as a user meta message (matching Claude Code pattern).
     // Placed in messages rather than system prompt to preserve prompt cache stability
     // when MCP servers connect/disconnect.
@@ -703,6 +731,9 @@ export class AIManager {
     }
 
     try {
+      // Get combined memory content
+      const combinedMemory = await this.messageManager.getCombinedMemory();
+
       // Track if assistant message has been created
       let assistantMessageCreated = false;
 
@@ -713,6 +744,18 @@ export class AIManager {
       const filteredToolPlugins = this.toolManager
         .getTools()
         .filter((t) => toolNames.has(t.name));
+
+      let autoMemoryOptions: { directory: string; content: string } | undefined;
+
+      if (this.getAutoMemoryEnabled()) {
+        const directory = this.memoryService.getAutoMemoryDirectory(
+          this.getWorkdir(),
+        );
+        const content = await this.memoryService.getAutoMemoryContent(
+          this.getWorkdir(),
+        );
+        autoMemoryOptions = { directory, content };
+      }
 
       // Call AI service with streaming callbacks if enabled
       const callAgentOptions: CallAgentOptions = {
@@ -729,10 +772,11 @@ export class AIManager {
           filteredToolPlugins,
           {
             workdir: this.getWorkdir(),
+            memory: combinedMemory,
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
+            autoMemory: autoMemoryOptions,
             permissionMode: currentMode,
-            autoMemoryDir: autoMemoryDirectory, // Static guidance in system prompt
           },
         ), // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override

@@ -2,6 +2,7 @@ import * as os from "node:os";
 import { ToolPlugin } from "../tools/types.js";
 import { isGitRepository } from "../utils/gitUtils.js";
 import { getCurrentWorktreeSession } from "../utils/worktreeSession.js";
+import { buildAutoMemoryPrompt } from "./autoMemory.js";
 import { PermissionMode } from "../types/permissions.js";
 import {
   EXPLORE_SUBAGENT_TYPE,
@@ -18,8 +19,6 @@ import {
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
 } from "../constants/tools.js";
-import { buildAutoMemoryPrompt } from "./autoMemory.js";
-export { buildAutoMemoryPrompt };
 
 export const BASE_SYSTEM_PROMPT = `You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.`;
 
@@ -237,10 +236,18 @@ export function buildSystemPrompt(
   tools: ToolPlugin[],
   options: {
     workdir?: string;
+    memory?: string;
     language?: string;
     isSubagent?: boolean;
+    planMode?: {
+      planFilePath: string;
+      planExists: boolean;
+    };
+    autoMemory?: {
+      directory: string;
+      content: string;
+    };
     permissionMode?: PermissionMode;
-    autoMemoryDir?: string; // Static guidance only (injected into system prompt for cache stability)
   } = {},
 ): string {
   let prompt = basePrompt || DEFAULT_SYSTEM_PROMPT;
@@ -260,10 +267,6 @@ export function buildSystemPrompt(
 
   if (options.language) {
     prompt += `\n\n# Language\nAlways respond in ${options.language}. Technical terms (e.g., code, tool names, file paths) should remain in their original language or English where appropriate.`;
-  }
-
-  if (options.autoMemoryDir) {
-    prompt += `\n\n${buildAutoMemoryPrompt(options.autoMemoryDir)}`;
   }
 
   if (options.workdir) {
@@ -292,6 +295,17 @@ OS Version: ${osVersion}
 Today's date: ${today}
 </env>
 `;
+  }
+
+  if (options.autoMemory) {
+    prompt += `\n\n${buildAutoMemoryPrompt(options.autoMemory.directory)}`;
+    if (options.autoMemory.content.trim()) {
+      prompt += `\n\n## MEMORY.md\n\n${options.autoMemory.content}`;
+    }
+  }
+
+  if (options.memory && options.memory.trim()) {
+    prompt += `\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${options.memory}`;
   }
 
   return prompt;
