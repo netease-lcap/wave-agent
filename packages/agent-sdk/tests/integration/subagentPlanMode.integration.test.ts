@@ -169,13 +169,8 @@ describe("Subagent Plan Mode Integration", () => {
         aiManager.sendAIMessage = async () => {
           const systemPrompt = buildSystemPrompt(config.systemPrompt, [], {
             workdir: "/test/project",
-            memory: "",
             language: undefined,
             isSubagent: true,
-            planMode: {
-              planFilePath: "/test/project/plan.md",
-              planExists: true,
-            },
           });
           lastSystemPrompt = systemPrompt;
           mockMessageManager.addAssistantMessage();

@@ -62,7 +62,7 @@ vi.mock("../../src/services/memory.js", () => ({
 vi.mock("../../src/utils/messageOperations.js", () => ({}));
 
 vi.mock("../../src/utils/convertMessagesForAPI.js", () => ({
-  convertMessagesForAPI: vi.fn().mockReturnValue([]),
+  convertMessagesForAPI: vi.fn().mockImplementation(() => []),
 }));
 
 describe("AIManager", () => {
@@ -84,7 +84,7 @@ describe("AIManager", () => {
     // Create mock MessageManager
     mockMessageManager = {
       getSessionId: vi.fn().mockReturnValue("test-session-id"),
-      getMessages: vi.fn().mockReturnValue([]),
+      getMessages: vi.fn().mockImplementation(() => []),
       addAssistantMessage: vi.fn(),
       addUserMessage: vi.fn(),
       updateCurrentMessageContent: vi.fn(),
@@ -723,11 +723,19 @@ describe("AIManager", () => {
 
       await aiManagerWithAutoMemory.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.stringContaining("Auto-memory content"),
-        }),
+      // Auto-memory guidance should be in system prompt (static)
+      const callArgs = vi.mocked(aiService.callAgent).mock.lastCall![0];
+      expect(callArgs.systemPrompt).toContain("auto memory");
+      expect(callArgs.systemPrompt).toContain("/mock/auto-memory");
+
+      // Auto-memory content should be in user meta messages (dynamic)
+      const userMessages = callArgs.messages.filter((m) => m.role === "user");
+      const hasAutoMemoryMessage = userMessages.some(
+        (m) =>
+          typeof m.content === "string" &&
+          m.content.includes("Auto-memory content"),
       );
+      expect(hasAutoMemoryMessage).toBe(true);
     });
 
     it("should NOT inject auto-memory content when disabled", async () => {
@@ -769,11 +777,20 @@ describe("AIManager", () => {
 
       await aiManagerDisabledAutoMemory.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.not.stringContaining("Auto-memory content"),
-        }),
+      const callArgs = vi.mocked(aiService.callAgent).mock.lastCall![0];
+
+      // Auto-memory guidance should NOT be in system prompt
+      expect(callArgs.systemPrompt).not.toContain("auto memory");
+      expect(callArgs.systemPrompt).not.toContain("/mock/auto-memory");
+
+      // Auto-memory content should NOT be in user meta messages
+      const userMessages = callArgs.messages.filter((m) => m.role === "user");
+      const hasAutoMemoryMessage = userMessages.some(
+        (m) =>
+          typeof m.content === "string" &&
+          m.content.includes("Auto-memory content"),
       );
+      expect(hasAutoMemoryMessage).toBe(false);
     });
   });
 

@@ -128,19 +128,10 @@ describe("prompts", () => {
       process.env.SHELL = originalShell;
     });
 
-    it("should include autoMemory when provided", () => {
-      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-        autoMemory: { directory: "/mem", content: "Memory Content" },
-      });
-      expect(result).toContain("auto memory");
-      expect(result).toContain("## MEMORY.md\n\nMemory Content");
-    });
-
-    it("should handle empty autoMemory content", () => {
-      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-        autoMemory: { directory: "/mem", content: "" },
-      });
-      expect(result).toContain("auto memory");
+    it("should NOT include autoMemory in system prompt (injected as user meta message instead)", () => {
+      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {});
+      // Memory is now injected as user meta message in AIManager, not in system prompt
+      expect(result).not.toContain("auto memory");
       expect(result).not.toContain("## MEMORY.md");
     });
 
@@ -159,20 +150,15 @@ describe("prompts", () => {
     });
 
     it("should NOT include plan mode in system prompt (injected as user meta message instead)", () => {
-      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-        planMode: { planFilePath: "/plan.md", planExists: true },
-      });
+      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, []);
       // Plan mode is now injected as user meta message in AIManager, not in system prompt
       expect(result).not.toContain("Plan mode is active");
     });
 
-    it("should include memory context when provided", () => {
-      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-        memory: "Historical Context",
-      });
-      expect(result).toContain(
-        "## Memory Context\n\nThe following is important context and memory from previous interactions:\n\nHistorical Context",
-      );
+    it("should NOT include memory context in system prompt (injected as user meta message instead)", () => {
+      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {});
+      // Memory is now injected as user meta message in AIManager, not in system prompt
+      expect(result).not.toContain("Memory Context");
     });
 
     it("should include worktree warning when worktree session is active", () => {
