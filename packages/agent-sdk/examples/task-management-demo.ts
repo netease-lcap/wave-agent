@@ -7,7 +7,7 @@ import { Agent } from "../src/agent.js";
 async function main() {
   // 1. Create Agent instance
   const agent = await Agent.create({
-    model: "gemini-2.5-flash", // Use a fast model for testing
+    model: process.env.WAVE_FAST_MODEL, // Use a fast model for testing
     callbacks: {
       onAssistantContentUpdated: (chunk) => {
         process.stdout.write(chunk);

@@ -8,7 +8,7 @@ async function main() {
   // Initialize the agent with a cheap model for testing
   const agent = await Agent.create({
     workdir: process.cwd(),
-    model: "gemini-2.5-flash",
+    model: process.env.WAVE_FAST_MODEL,
     permissionMode: "bypassPermissions", // Allow memory access to keep history clean
     callbacks: {
       onAssistantContentUpdated: (chunk) => {

@@ -71,7 +71,7 @@ paths:
 
     agent = await Agent.create({
       workdir: testDir,
-      model: "gemini-2.5-flash",
+      model: process.env.WAVE_FAST_MODEL,
       logger: {
         debug: (...args: unknown[]) => console.log("[DEBUG]", ...args),
         info: (...args: unknown[]) => console.log("[INFO]", ...args),

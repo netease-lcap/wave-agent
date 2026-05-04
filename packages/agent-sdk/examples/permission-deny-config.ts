@@ -36,7 +36,7 @@ async function main() {
 
   // 3. Initialize the agent pointing to the temporary directory
   const agent = await Agent.create({
-    model: "gemini-2.5-flash",
+    model: process.env.WAVE_FAST_MODEL,
     workdir: tempDir,
     callbacks: {
       onToolBlockUpdated: (params) => {

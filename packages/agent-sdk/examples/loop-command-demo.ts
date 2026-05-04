@@ -18,7 +18,7 @@ async function main() {
   // 1. Create Agent instance
   const agent = await Agent.create({
     workdir: tempDir,
-    model: "gemini-2.5-flash", // Use a supported model
+    model: process.env.WAVE_FAST_MODEL, // Use a supported model
     callbacks: {
       onAssistantContentUpdated: (chunk) => {
         process.stdout.write(chunk);

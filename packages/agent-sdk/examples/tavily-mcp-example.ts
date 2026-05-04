@@ -47,7 +47,7 @@ async function main() {
     agent = await Agent.create({
       workdir: workDir,
       name: "tavily-test-agent",
-      model: "gemini-2.5-flash", // Using a fast model for the demo
+      model: process.env.WAVE_FAST_MODEL, // Using a fast model for the demo
       permissionMode: "bypassPermissions", // Bypass permissions for the demo to allow tool usage
       systemPrompt:
         "You are a helpful assistant. When asked to search, use the tavily_search tool. Answer briefly.",

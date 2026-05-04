@@ -34,11 +34,11 @@ async function setupTest() {
   const agentsDir = path.join(tempDir, ".wave", "agents");
   await fs.mkdir(agentsDir, { recursive: true });
 
-  // Create a simple subagent configuration in markdown format with gemini-2.5-flash model
+  // Create a simple subagent configuration in markdown format with WAVE_FAST_MODEL
   const subagentContent = `---
 name: file-analyzer
 description: Analyzes files and provides summaries
-model: gemini-2.5-flash
+model: ${process.env.WAVE_FAST_MODEL}
 tools: [Read, Glob]
 ---
 

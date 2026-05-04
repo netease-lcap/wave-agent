@@ -24,7 +24,7 @@ async function main() {
 
     const agent = await Agent.create({
       workdir: tempDir,
-      model: "gemini-2.5-flash",
+      model: process.env.WAVE_FAST_MODEL,
       logger: {
         debug: (message: unknown, ...args: unknown[]) => {
           console.debug(`[DEBUG] ${message}`, ...args);

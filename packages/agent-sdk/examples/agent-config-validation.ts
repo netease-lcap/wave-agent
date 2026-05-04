@@ -20,7 +20,7 @@ async function validateAgentConfiguration() {
       apiKey: "test-api-key-here",
       baseURL: "https://test-gateway.com",
       model: "gemini-3-flash",
-      fastModel: "gemini-2.5-flash",
+      fastModel: process.env.WAVE_FAST_MODEL,
       maxInputTokens: 50000,
       workdir: "./project",
     });
@@ -245,8 +245,8 @@ async function validateAgentConfiguration() {
       model:
         process.env.NODE_ENV === "production"
           ? "gemini-3-flash"
-          : "gemini-2.5-flash",
-      fastModel: "gemini-2.5-flash",
+          : process.env.WAVE_FAST_MODEL,
+      fastModel: process.env.WAVE_FAST_MODEL,
       maxInputTokens: process.env.NODE_ENV === "production" ? 96000 : 10000,
       workdir: process.cwd(),
     });

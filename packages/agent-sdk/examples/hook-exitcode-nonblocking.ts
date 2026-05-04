@@ -223,7 +223,7 @@ async function demonstrateNonBlockingErrors(): Promise<void> {
     // Create Agent instance
     const agent = await Agent.create({
       workdir: hookDir,
-      model: "gemini-2.5-flash",
+      model: process.env.WAVE_FAST_MODEL,
       logger: console,
       callbacks: {
         onAssistantContentUpdated: (chunk: string) => {

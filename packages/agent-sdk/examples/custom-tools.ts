@@ -10,7 +10,7 @@ console.log("🔢 Testing Custom Tools MCP - Simple Example...\n");
 let tempDir: string;
 let agent: Agent;
 
-process.env.WAVE_MODEL = "gemini-2.5-flash";
+process.env.WAVE_MODEL = process.env.WAVE_FAST_MODEL;
 
 async function setupTest() {
   // Create temporary directory

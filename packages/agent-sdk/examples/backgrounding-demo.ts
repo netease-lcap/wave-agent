@@ -16,7 +16,7 @@ async function demonstrateBackgrounding(): Promise<void> {
     // Create agent with bash tool enabled
     agent = await Agent.create({
       workdir,
-      model: "gemini-2.5-flash",
+      model: process.env.WAVE_FAST_MODEL,
       permissionMode: "bypassPermissions", // Ensure tools can run without permission prompts
       callbacks: {
         onAssistantContentUpdated: () => {
