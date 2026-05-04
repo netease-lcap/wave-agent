@@ -547,31 +547,18 @@ describe("Agent Message Compaction Tests", () => {
     // Verify parameters of the second call
     expect(callAgentCallCount).toBe(2);
 
-    // Verify that messages passed to callAgent include meta messages (deferred tools + memory) plus compacted message plus preserved messages plus new message
-    // Memory meta message may be present if memory rules are configured
+    // Verify that messages passed to callAgent include the compacted message plus the 3 preserved messages plus the new message plus the deferred tools meta message
+    expect(messagesPassedToCallAgent.length).toBe(6);
 
-    // Find the deferred tools and compacted messages by content
-    const deferredToolsIndex = messagesPassedToCallAgent.findIndex(
-      (m) =>
-        m.role === "user" &&
-        typeof m.content === "string" &&
-        (m.content as string).includes("<available-deferred-tools>"),
-    );
-    const compactedMessageIndex = messagesPassedToCallAgent.findIndex(
-      (m) =>
-        m.role === "user" &&
-        typeof m.content === "string" &&
-        (m.content as string).includes(
-          "Compacted content: This contains summary information",
-        ),
+    // The first message is the deferred tools meta message (injected before API call)
+    expect(messagesPassedToCallAgent[0].role).toBe("user");
+    expect(messagesPassedToCallAgent[0].content).toContain(
+      "<available-deferred-tools>",
     );
 
-    // Deferred tools should come before compacted message
-    expect(deferredToolsIndex).toBeGreaterThanOrEqual(0);
-    expect(compactedMessageIndex).toBeGreaterThan(deferredToolsIndex);
-
-    // The compacted message content check
-    expect(messagesPassedToCallAgent[compactedMessageIndex].content).toContain(
+    // The second message should be the compacted message as user role
+    expect(messagesPassedToCallAgent[1].role).toBe("user");
+    expect(messagesPassedToCallAgent[1].content).toContain(
       "Compacted content: This contains summary information of previous multi-round conversations.",
     );
 
