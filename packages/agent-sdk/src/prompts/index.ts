@@ -269,6 +269,10 @@ export function buildSystemPrompt(
     prompt += `\n\n# Language\nAlways respond in ${options.language}. Technical terms (e.g., code, tool names, file paths) should remain in their original language or English where appropriate.`;
   }
 
+  if (options.planMode) {
+    prompt += `\n\n${buildPlanModePrompt(options.planMode.planFilePath, options.planMode.planExists, options.isSubagent)}`;
+  }
+
   if (options.workdir) {
     const isGitRepo = isGitRepository(options.workdir);
     const platform = os.platform();

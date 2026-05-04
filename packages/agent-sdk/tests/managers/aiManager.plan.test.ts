@@ -101,70 +101,33 @@ describe("AIManager Plan Mode Prompt", () => {
     );
   });
 
-  it("should NOT include plan mode in system prompt (injected as user meta message instead)", async () => {
+  it("should add plan reminder in plan mode when file does not exist", async () => {
     mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
     vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
     await aiManager.sendAIMessage();
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
-    // Plan mode instructions are now injected as user meta message, not in system prompt
-    expect(callOptions.systemPrompt).not.toContain("Plan mode is active");
-  });
-
-  it("should inject plan mode as user meta message when file does not exist", async () => {
-    mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
-    vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
-
-    await aiManager.sendAIMessage();
-
-    const callOptions = vi.mocked(callAgent).mock.calls[0][0];
-    const messages = callOptions.messages as Array<{
-      role: string;
-      content: string;
-    }>;
-    // First message should be the plan mode meta message
-    const planMessage = messages.find(
-      (m) =>
-        m.role === "user" &&
-        typeof m.content === "string" &&
-        m.content.includes("<system-reminder>") &&
-        m.content.includes("Plan mode is active"),
-    );
-    expect(planMessage).toBeDefined();
-    expect(planMessage!.content).toContain("Plan File Info");
-    expect(planMessage!.content).toContain(
+    expect(callOptions.systemPrompt).toContain("Plan File Info");
+    expect(callOptions.systemPrompt).toContain(
       "Plan mode is active. The user indicated that they do not want you to execute yet",
     );
-    expect(planMessage!.content).toContain("No plan file exists yet");
-    expect(planMessage!.content).toContain("using the Write tool");
+    expect(callOptions.systemPrompt).toContain("No plan file exists yet");
+    expect(callOptions.systemPrompt).toContain("using the Write tool");
   });
 
-  it("should inject plan mode as user meta message when file exists", async () => {
+  it("should add plan reminder in plan mode when file exists", async () => {
     mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
     vi.mocked(fs.access).mockResolvedValue(undefined);
 
     await aiManager.sendAIMessage();
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
-    const messages = callOptions.messages as Array<{
-      role: string;
-      content: string;
-    }>;
-    // First message should be the plan mode meta message
-    const planMessage = messages.find(
-      (m) =>
-        m.role === "user" &&
-        typeof m.content === "string" &&
-        m.content.includes("<system-reminder>") &&
-        m.content.includes("Plan mode is active"),
-    );
-    expect(planMessage).toBeDefined();
-    expect(planMessage!.content).toContain("Plan File Info");
-    expect(planMessage!.content).toContain(
+    expect(callOptions.systemPrompt).toContain("Plan File Info");
+    expect(callOptions.systemPrompt).toContain(
       "Plan mode is active. The user indicated that they do not want you to execute yet",
     );
-    expect(planMessage!.content).toContain("A plan file already exists");
-    expect(planMessage!.content).toContain("using the Edit tool");
+    expect(callOptions.systemPrompt).toContain("A plan file already exists");
+    expect(callOptions.systemPrompt).toContain("using the Edit tool");
   });
 });
