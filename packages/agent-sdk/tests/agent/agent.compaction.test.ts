@@ -547,18 +547,13 @@ describe("Agent Message Compaction Tests", () => {
     // Verify parameters of the second call
     expect(callAgentCallCount).toBe(2);
 
-    // Verify that messages passed to callAgent include the compacted message plus the 3 preserved messages plus the new message plus the deferred tools meta message
-    expect(messagesPassedToCallAgent.length).toBe(6);
+    // Verify that messages passed to callAgent include the compacted message plus the 3 preserved messages plus the new message
+    expect(messagesPassedToCallAgent.length).toBe(5);
 
-    // The first message is the deferred tools meta message (injected before API call)
+    // Verify the structure of messages passed to callAgent
+    // The first message should be the compacted message as user role (matching Claude Code's auto-compact)
     expect(messagesPassedToCallAgent[0].role).toBe("user");
     expect(messagesPassedToCallAgent[0].content).toContain(
-      "<available-deferred-tools>",
-    );
-
-    // The second message should be the compacted message as user role
-    expect(messagesPassedToCallAgent[1].role).toBe("user");
-    expect(messagesPassedToCallAgent[1].content).toContain(
       "Compacted content: This contains summary information of previous multi-round conversations.",
     );
 

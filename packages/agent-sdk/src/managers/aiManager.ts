@@ -589,17 +589,6 @@ export class AIManager {
     });
     const recentMessages = convertMessagesForAPI(microcompactedMessages);
 
-    // Inject deferred tools as a user meta message (matching Claude Code pattern).
-    // Placed in messages rather than system prompt to preserve prompt cache stability
-    // when MCP servers connect/disconnect.
-    const deferredToolNames = this.toolManager.getDeferredToolNames();
-    if (deferredToolNames.length > 0) {
-      recentMessages.unshift({
-        role: "user",
-        content: `<available-deferred-tools>\n${deferredToolNames.join(" ")}\nThese tools are NOT loaded yet — call ToolSearch first to discover their schemas before invoking them.</available-deferred-tools>`,
-      });
-    }
-
     try {
       // Get combined memory content
       const combinedMemory = await this.messageManager.getCombinedMemory();
