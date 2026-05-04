@@ -138,9 +138,17 @@ Result format: each matched tool appears as one <function>{"description": "...",
     context: ToolContext,
   ): Promise<ToolResult> => {
     const { query, max_results = 5 } = args as {
-      query: string;
+      query?: string;
       max_results?: number;
     };
+
+    if (!query) {
+      return {
+        success: false,
+        content: "",
+        error: "Missing required 'query' parameter",
+      };
+    }
 
     if (!context.toolManager) {
       return {

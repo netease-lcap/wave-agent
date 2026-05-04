@@ -240,6 +240,14 @@ describe("toolSearchTool", () => {
     expect(result.error).toContain("ToolManager not available");
   });
 
+  it("should return error when query parameter is missing", async () => {
+    const context = makeContext({ list: () => [] });
+    const result = await toolSearchTool.execute({}, context);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Missing required 'query' parameter");
+  });
+
   it("should handle exact match fast path in keyword search", async () => {
     const context = makeContext({
       list: () => [
