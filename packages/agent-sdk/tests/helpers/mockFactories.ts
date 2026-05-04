@@ -12,7 +12,6 @@ interface MockToolManager {
   setPermissionMode: Mock<ToolManager["setPermissionMode"]>;
   initializeBuiltInTools: Mock<ToolManager["initializeBuiltInTools"]>;
   getPermissionManager: Mock<ToolManager["getPermissionManager"]>;
-  getDeferredToolNames: Mock<ToolManager["getDeferredToolNames"]>;
   instance: ToolManager;
 }
 
@@ -46,7 +45,6 @@ export const createMockToolManager = (): MockToolManager => {
   const setPermissionMode = vi.fn();
   const initializeBuiltInTools = vi.fn();
   const getPermissionManager = vi.fn();
-  const getDeferredToolNames = vi.fn(() => []);
 
   return {
     // Individual mocks for control and assertions
@@ -58,7 +56,6 @@ export const createMockToolManager = (): MockToolManager => {
     setPermissionMode,
     initializeBuiltInTools,
     getPermissionManager,
-    getDeferredToolNames,
 
     // The object that behaves like a ToolManager instance
     instance: {
@@ -70,7 +67,6 @@ export const createMockToolManager = (): MockToolManager => {
       setPermissionMode,
       initializeBuiltInTools,
       getPermissionManager,
-      getDeferredToolNames,
     } as unknown as ToolManager,
   };
 };
