@@ -94,6 +94,7 @@ function makeContainer(overrides: Record<string, unknown> = {}) {
     getTools: vi.fn().mockReturnValue([]),
     list: vi.fn().mockReturnValue([]),
     execute: vi.fn().mockResolvedValue({ success: true, content: "result" }),
+    getDeferredToolNames: vi.fn().mockReturnValue([]),
   } as unknown as ToolManager);
   c.register("TaskManager", {
     on: vi.fn(),
@@ -383,6 +384,7 @@ describe("AIManager - Coverage", () => {
       getTools: vi.fn().mockReturnValue([]),
       list: vi.fn().mockReturnValue([]),
       execute: vi.fn().mockResolvedValue({ success: false, error: "exit 1" }),
+      getDeferredToolNames: vi.fn().mockReturnValue([]),
     };
     const aiManager = new AIManager(
       makeContainer({ ToolManager: tm as unknown as ToolManager }),
@@ -409,6 +411,7 @@ describe("AIManager - Coverage", () => {
       getTools: vi.fn().mockReturnValue([]),
       list: vi.fn().mockReturnValue([]),
       execute: vi.fn().mockResolvedValue({ success: true }),
+      getDeferredToolNames: vi.fn().mockReturnValue([]),
     };
     const aiManager = new AIManager(
       makeContainer({ ToolManager: tm as unknown as ToolManager }),

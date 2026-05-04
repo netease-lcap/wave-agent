@@ -28,6 +28,7 @@ vi.mock("@/managers/toolManager", () => ({
       setPermissionMode: vi.fn(),
       initializeBuiltInTools: vi.fn(),
       getPermissionManager: vi.fn(),
+      getDeferredToolNames: vi.fn(() => []),
     };
   }),
 }));

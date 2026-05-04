@@ -144,6 +144,7 @@ describe("AIManager maxTurns", () => {
       execute: vi
         .fn()
         .mockResolvedValue({ success: true, content: "test result" }),
+      getDeferredToolNames: vi.fn().mockReturnValue([]),
     } as unknown as ToolManager;
   });
 

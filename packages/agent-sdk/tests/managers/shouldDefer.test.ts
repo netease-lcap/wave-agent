@@ -97,7 +97,7 @@ describe("shouldDefer tool loading", () => {
   });
 
   describe("System prompt", () => {
-    it("should list deferred tools in the system prompt", () => {
+    it("should NOT include deferred tools in system prompt (injected as user meta message instead)", () => {
       vi.mocked(os.platform).mockReturnValue("linux");
       vi.mocked(os.type).mockReturnValue("Linux");
       vi.mocked(os.release).mockReturnValue("6.8.0");
@@ -110,10 +110,9 @@ describe("shouldDefer tool loading", () => {
         workdir: "/test/path",
       });
 
-      expect(prompt).toContain("<available-deferred-tools>");
-      expect(prompt).toContain("CronCreate");
-      expect(prompt).toContain("ToolSearch");
-      expect(prompt).toContain("call ToolSearch first to discover");
+      // Deferred tools are now injected as user meta message in AIManager,
+      // not in the system prompt — to preserve prompt cache stability.
+      expect(prompt).not.toContain("<available-deferred-tools>");
     });
 
     it("should not include deferred tools section when no tools passed", () => {

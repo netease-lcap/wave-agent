@@ -42,6 +42,7 @@ describe("AIManager Plan Mode Prompt", () => {
     mockToolManager = {
       getToolsConfig: vi.fn().mockReturnValue([]),
       getTools: vi.fn().mockReturnValue([]),
+      getDeferredToolNames: vi.fn().mockReturnValue([]),
     } as unknown as Mocked<ToolManager>;
 
     mockPermissionManager = {
