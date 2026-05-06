@@ -23,6 +23,7 @@ import {
 import type { SkillManager } from "./skillManager.js";
 import type { SkillMetadata } from "../types/skills.js";
 import type { SubagentManager } from "./subagentManager.js";
+import type { MemoryService } from "../services/memory.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -81,6 +82,10 @@ export class SlashCommandManager {
     return this.container.get<SubagentManager>("SubagentManager")!;
   }
 
+  private get memoryService(): MemoryService {
+    return this.container.get<MemoryService>("MemoryService")!;
+  }
+
   private initializeBuiltinCommands(): void {
     // Register built-in clear command
     this.registerCommand({
@@ -90,6 +95,7 @@ export class SlashCommandManager {
       handler: async () => {
         this.aiManager.abortAIMessage();
         this.messageManager.clearMessages();
+        this.memoryService.clearCache();
         await this.taskManager.syncWithSession();
       },
     });

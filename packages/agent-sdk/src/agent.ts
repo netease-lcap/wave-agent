@@ -83,10 +83,6 @@ export class Agent {
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
 
-  // Memory content storage
-  private _projectMemoryContent: string = "";
-  private _userMemoryContent: string = "";
-
   // Dynamic configuration getter methods
   public getGatewayConfig(): GatewayConfig {
     return this.configurationService.resolveGatewayConfig();
@@ -282,12 +278,20 @@ export class Agent {
 
   /** Get project memory content */
   public get projectMemory(): string {
-    return this._projectMemoryContent;
+    const memoryService =
+      this.container.get<import("./services/memory.js").MemoryService>(
+        "MemoryService",
+      );
+    return memoryService?.cachedProjectMemory ?? "";
   }
 
   /** Get user memory content */
   public get userMemory(): string {
-    return this._userMemoryContent;
+    const memoryService =
+      this.container.get<import("./services/memory.js").MemoryService>(
+        "MemoryService",
+      );
+    return memoryService?.cachedUserMemory ?? "";
   }
 
   /** Get combined memory content (project + user + modular rules) */
@@ -480,12 +484,6 @@ export class Agent {
         memoryRuleManager: this.memoryRuleManager,
         liveConfigManager: this.liveConfigManager,
         taskManager: this.taskManager,
-        setProjectMemory: (content) => {
-          this._projectMemoryContent = content;
-        },
-        setUserMemory: (content) => {
-          this._userMemoryContent = content;
-        },
         resolveAndValidateConfig: () => this.resolveAndValidateConfig(),
       },
       options,

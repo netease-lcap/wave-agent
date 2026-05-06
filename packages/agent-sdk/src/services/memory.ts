@@ -8,7 +8,25 @@ import { getGitCommonDir } from "../utils/gitUtils.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
 
 export class MemoryService {
+  private _cachedProjectMemory: string = "";
+  private _cachedUserMemory: string = "";
+  private _cachedCombinedMemory: string | null = null;
+
   constructor(private container: Container) {}
+
+  public get cachedProjectMemory(): string {
+    return this._cachedProjectMemory;
+  }
+
+  public get cachedUserMemory(): string {
+    return this._cachedUserMemory;
+  }
+
+  public clearCache(): void {
+    this._cachedProjectMemory = "";
+    this._cachedUserMemory = "";
+    this._cachedCombinedMemory = null;
+  }
 
   /**
    * Get the project-specific auto-memory directory.
@@ -143,24 +161,19 @@ export class MemoryService {
   }
 
   async getCombinedMemoryContent(workdir: string): Promise<string> {
-    // Read memory file content
-    const memoryContent = await this.readMemoryFile(workdir);
-
-    // Read user-level memory content
-    const userMemoryContent = await this.getUserMemoryContent();
-
-    // Merge project memory and user memory
-    let combinedMemory = "";
-    if (memoryContent.trim()) {
-      combinedMemory += memoryContent;
+    if (this._cachedCombinedMemory !== null) {
+      return this._cachedCombinedMemory;
     }
-    if (userMemoryContent.trim()) {
-      if (combinedMemory) {
-        combinedMemory += "\n\n";
-      }
-      combinedMemory += userMemoryContent;
-    }
+    this._cachedProjectMemory = await this.readMemoryFile(workdir);
+    this._cachedUserMemory = await this.getUserMemoryContent();
 
-    return combinedMemory;
+    let combined = "";
+    if (this._cachedProjectMemory.trim()) combined += this._cachedProjectMemory;
+    if (this._cachedUserMemory.trim()) {
+      if (combined) combined += "\n\n";
+      combined += this._cachedUserMemory;
+    }
+    this._cachedCombinedMemory = combined;
+    return combined;
   }
 }
