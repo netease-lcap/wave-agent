@@ -763,8 +763,8 @@ export function inputReducer(
         const modes: PermissionMode[] = [
           "default",
           "acceptEdits",
-          "plan",
           "bypassPermissions",
+          "plan",
         ];
         const currentIndex = modes.indexOf(state.permissionMode);
         const nextIndex =
