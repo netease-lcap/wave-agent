@@ -11,6 +11,15 @@ const mockMemoryServiceInstance = {
   getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
   ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
   getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+  clearCache: vi.fn(),
+  _cachedProjectMemory: "",
+  _cachedUserMemory: "",
+  get cachedProjectMemory() {
+    return this._cachedProjectMemory;
+  },
+  get cachedUserMemory() {
+    return this._cachedUserMemory;
+  },
 };
 
 vi.mock("@/services/memory", () => ({
@@ -53,6 +62,8 @@ describe("Agent Memory Functionality", () => {
     mockMemoryServiceInstance.getUserMemoryContent.mockResolvedValue("");
     mockMemoryServiceInstance.readMemoryFile.mockResolvedValue("");
     mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue("");
+    mockMemoryServiceInstance._cachedProjectMemory = "";
+    mockMemoryServiceInstance._cachedUserMemory = "";
 
     mockCallbacks = {
       onMessagesChange: vi.fn(),
@@ -65,57 +76,45 @@ describe("Agent Memory Functionality", () => {
 
   describe("T009 - Agent memory initialization test", () => {
     it("should load project memory from AGENTS.md during Agent.create()", async () => {
-      // Mock project memory file content
+      // Mock project memory content via cached property
       const projectMemoryContent =
         "# Memory\n\nProject-specific important information\n- Key project detail\n";
 
-      mockMemoryServiceInstance.readMemoryFile.mockResolvedValue(
-        projectMemoryContent,
-      );
+      mockMemoryServiceInstance._cachedProjectMemory = projectMemoryContent;
 
       const agent = await Agent.create({
         workdir: mockTempDir,
         callbacks: mockCallbacks,
       });
 
-      // Memory should be loaded during initialization
+      // Memory should be available via cached property
       expect(agent.projectMemory).toBe(projectMemoryContent);
-      expect(mockMemoryServiceInstance.readMemoryFile).toHaveBeenCalledWith(
-        mockTempDir,
-      );
 
       await agent.destroy();
     });
 
     it("should load user memory from user memory file during Agent.create()", async () => {
-      // Mock user memory file content
+      // Mock user memory content via cached property
       const userMemoryContent =
         "# User Memory\n\nUser-level preferences\n- User setting 1\n- User setting 2\n";
 
-      mockMemoryServiceInstance.getUserMemoryContent.mockResolvedValue(
-        userMemoryContent,
-      );
+      mockMemoryServiceInstance._cachedUserMemory = userMemoryContent;
 
       const agent = await Agent.create({
         workdir: mockTempDir,
         callbacks: mockCallbacks,
       });
 
-      // User memory should be loaded during initialization
+      // User memory should be available via cached property
       expect(agent.userMemory).toBe(userMemoryContent);
-      expect(mockMemoryServiceInstance.getUserMemoryContent).toHaveBeenCalled();
 
       await agent.destroy();
     });
 
     it("should initialize with empty content when files don't exist", async () => {
-      // Mock files not existing
-      mockMemoryServiceInstance.readMemoryFile.mockRejectedValue(
-        new Error("File not found"),
-      );
-      mockMemoryServiceInstance.getUserMemoryContent.mockRejectedValue(
-        new Error("File not found"),
-      );
+      // Default cached properties are empty strings
+      mockMemoryServiceInstance._cachedProjectMemory = "";
+      mockMemoryServiceInstance._cachedUserMemory = "";
 
       const agent = await Agent.create({
         workdir: mockTempDir,
@@ -133,12 +132,8 @@ describe("Agent Memory Functionality", () => {
       const projectMemoryContent = "# Memory\n\nInitial project content\n";
       const userMemoryContent = "# User Memory\n\nInitial user content\n";
 
-      mockMemoryServiceInstance.readMemoryFile.mockResolvedValue(
-        projectMemoryContent,
-      );
-      mockMemoryServiceInstance.getUserMemoryContent.mockResolvedValue(
-        userMemoryContent,
-      );
+      mockMemoryServiceInstance._cachedProjectMemory = projectMemoryContent;
+      mockMemoryServiceInstance._cachedUserMemory = userMemoryContent;
       mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue(
         projectMemoryContent + "\n\n" + userMemoryContent,
       );
@@ -148,24 +143,18 @@ describe("Agent Memory Functionality", () => {
         callbacks: mockCallbacks,
       });
 
-      // Verify initial memory loading
+      // Verify initial memory is available via cached properties
       expect(agent.projectMemory).toBe(projectMemoryContent);
       expect(agent.userMemory).toBe(userMemoryContent);
 
-      // Access memory multiple times - should not trigger additional file reads for initialization
-      // But getCombinedMemory() calls MemoryService.getCombinedMemoryContent which might read files
+      // Access memory multiple times - should return cached values
       expect(agent.projectMemory).toBe(projectMemoryContent);
       expect(agent.userMemory).toBe(userMemoryContent);
       expect(await agent.getCombinedMemory()).toBe(
         projectMemoryContent + "\n\n" + userMemoryContent,
       );
 
-      // Initialization calls: 1 for project, 1 for user
-      expect(mockMemoryServiceInstance.readMemoryFile).toHaveBeenCalledTimes(1);
-      expect(
-        mockMemoryServiceInstance.getUserMemoryContent,
-      ).toHaveBeenCalledTimes(1);
-      // getCombinedMemory calls: 1
+      // getCombinedMemory calls: 1 (lazy caching)
       expect(
         mockMemoryServiceInstance.getCombinedMemoryContent,
       ).toHaveBeenCalledTimes(1);
@@ -179,9 +168,7 @@ describe("Agent Memory Functionality", () => {
       const projectMemoryContent =
         "# Memory\n\n- Important project info\n- Another detail\n";
 
-      mockMemoryServiceInstance.readMemoryFile.mockResolvedValue(
-        projectMemoryContent,
-      );
+      mockMemoryServiceInstance._cachedProjectMemory = projectMemoryContent;
 
       const agent = await Agent.create({
         workdir: mockTempDir,
@@ -199,9 +186,7 @@ describe("Agent Memory Functionality", () => {
       const userMemoryContent =
         "# User Memory\n\n- User preference 1\n- User preference 2\n";
 
-      mockMemoryServiceInstance.getUserMemoryContent.mockResolvedValue(
-        userMemoryContent,
-      );
+      mockMemoryServiceInstance._cachedUserMemory = userMemoryContent;
 
       const agent = await Agent.create({
         workdir: mockTempDir,
@@ -272,13 +257,9 @@ describe("Agent Memory Functionality", () => {
     });
 
     it("should return empty strings when no content loaded", async () => {
-      // Mock files not existing
-      mockMemoryServiceInstance.readMemoryFile.mockRejectedValue(
-        new Error("ENOENT"),
-      );
-      mockMemoryServiceInstance.getUserMemoryContent.mockRejectedValue(
-        new Error("ENOENT"),
-      );
+      // MemoryService handles errors internally; cached properties return empty strings
+      mockMemoryServiceInstance._cachedProjectMemory = "";
+      mockMemoryServiceInstance._cachedUserMemory = "";
       mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue("");
 
       const agent = await Agent.create({
@@ -297,13 +278,10 @@ describe("Agent Memory Functionality", () => {
 
   describe("T011 - Memory loading error handling test", () => {
     it("should handle missing AGENTS.md gracefully (empty string fallback)", async () => {
-      // Mock project memory file missing but user memory exists
-      mockMemoryServiceInstance.readMemoryFile.mockRejectedValue(
-        new Error("ENOENT"),
-      );
-      mockMemoryServiceInstance.getUserMemoryContent.mockResolvedValue(
-        "# User Memory\n\nUser content",
-      );
+      // MemoryService handles errors internally; cached properties return empty strings on error
+      mockMemoryServiceInstance._cachedProjectMemory = "";
+      mockMemoryServiceInstance._cachedUserMemory =
+        "# User Memory\n\nUser content";
       mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue(
         "# User Memory\n\nUser content",
       );
@@ -324,13 +302,10 @@ describe("Agent Memory Functionality", () => {
     });
 
     it("should handle missing user memory file gracefully", async () => {
-      // Mock user memory file missing but project memory exists
-      mockMemoryServiceInstance.readMemoryFile.mockResolvedValue(
-        "# Memory\n\nProject content",
-      );
-      mockMemoryServiceInstance.getUserMemoryContent.mockRejectedValue(
-        new Error("ENOENT"),
-      );
+      // MemoryService handles errors internally; cached properties return empty strings on error
+      mockMemoryServiceInstance._cachedProjectMemory =
+        "# Memory\n\nProject content";
+      mockMemoryServiceInstance._cachedUserMemory = "";
       mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue(
         "# Memory\n\nProject content",
       );
@@ -351,13 +326,9 @@ describe("Agent Memory Functionality", () => {
     });
 
     it("should handle corrupted/unreadable files gracefully", async () => {
-      // Mock files being unreadable
-      mockMemoryServiceInstance.readMemoryFile.mockRejectedValue(
-        new Error("EACCES"),
-      );
-      mockMemoryServiceInstance.getUserMemoryContent.mockRejectedValue(
-        new Error("EIO"),
-      );
+      // MemoryService handles errors internally; cached properties return empty strings on error
+      mockMemoryServiceInstance._cachedProjectMemory = "";
+      mockMemoryServiceInstance._cachedUserMemory = "";
       mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue("");
 
       const agent = await Agent.create({
@@ -374,24 +345,12 @@ describe("Agent Memory Functionality", () => {
     });
 
     it("should log errors but not throw during initialization", async () => {
-      // Mock files throwing various errors
-      mockMemoryServiceInstance.readMemoryFile.mockRejectedValue(
-        new Error("Unexpected file system error"),
-      );
-      mockMemoryServiceInstance.getUserMemoryContent.mockRejectedValue(
-        new Error("Network file system timeout"),
-      );
+      // MemoryService handles errors internally; cached properties return empty strings on error
+      mockMemoryServiceInstance._cachedProjectMemory = "";
+      mockMemoryServiceInstance._cachedUserMemory = "";
 
       // Agent creation should NOT throw despite memory loading errors
-      let agent: Agent;
-      await expect(async () => {
-        agent = await Agent.create({
-          workdir: mockTempDir,
-          callbacks: mockCallbacks,
-        });
-      }).not.toThrow();
-
-      agent = await Agent.create({
+      const agent = await Agent.create({
         workdir: mockTempDir,
         callbacks: mockCallbacks,
       });
@@ -404,13 +363,9 @@ describe("Agent Memory Functionality", () => {
     });
 
     it("should ensure Agent startup succeeds even with memory errors", async () => {
-      // Mock all possible error scenarios
-      mockMemoryServiceInstance.readMemoryFile.mockRejectedValue(
-        new Error("Random error"),
-      );
-      mockMemoryServiceInstance.getUserMemoryContent.mockRejectedValue(
-        new Error("Random error"),
-      );
+      // MemoryService handles errors internally; cached properties return empty strings on error
+      mockMemoryServiceInstance._cachedProjectMemory = "";
+      mockMemoryServiceInstance._cachedUserMemory = "";
       mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue("");
 
       // Multiple agent creations should all succeed

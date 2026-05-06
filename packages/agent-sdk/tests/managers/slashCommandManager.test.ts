@@ -13,6 +13,7 @@ import * as markdownParser from "../../src/utils/markdownParser.js";
 import type { SubagentManager } from "../../src/managers/subagentManager.js";
 import type { SkillManager } from "../../src/managers/skillManager.js";
 import type { TextBlock } from "../../src/types/index.js";
+import type { MemoryService } from "../../src/services/memory.js";
 
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
@@ -108,6 +109,12 @@ describe("SlashCommandManager", () => {
       new TaskManager(container, "test-task-list"),
     );
 
+    // Mock MemoryService for clear command
+    const mockMemoryService = {
+      clearCache: vi.fn(),
+    } as unknown as MemoryService;
+    container.register("MemoryService", mockMemoryService);
+
     slashCommandManager = new SlashCommandManager(container, {
       workdir: "/test/workdir",
     });
@@ -148,6 +155,22 @@ describe("SlashCommandManager", () => {
 
       const nonExistentCommand = slashCommandManager.getCommand("nonexistent");
       expect(nonExistentCommand).toBeUndefined();
+    });
+
+    it("should call memoryService.clearCache() when executing clear command", async () => {
+      const clearCacheSpy = vi.fn();
+      const mockMemoryService = {
+        clearCache: clearCacheSpy,
+      } as unknown as MemoryService;
+
+      const container = (
+        slashCommandManager as unknown as { container: Container }
+      ).container;
+      container.register("MemoryService", mockMemoryService);
+
+      const result = await slashCommandManager.executeCommand("clear");
+      expect(result).toBe(true);
+      expect(clearCacheSpy).toHaveBeenCalled();
     });
   });
 

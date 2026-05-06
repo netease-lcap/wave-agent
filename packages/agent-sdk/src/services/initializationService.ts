@@ -22,7 +22,6 @@ import type { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import type { LiveConfigManager } from "../managers/liveConfigManager.js";
 import type { TaskManager } from "./taskManager.js";
 import type { PermissionManager } from "../managers/permissionManager.js";
-import type { MemoryService } from "./memory.js";
 
 export interface InitializationContext {
   skillManager: SkillManager;
@@ -42,8 +41,6 @@ export interface InitializationContext {
   memoryRuleManager: MemoryRuleManager;
   liveConfigManager: LiveConfigManager;
   taskManager: TaskManager;
-  setProjectMemory: (content: string) => void;
-  setUserMemory: (content: string) => void;
   resolveAndValidateConfig: () => void;
 }
 
@@ -74,8 +71,6 @@ export class InitializationService {
       memoryRuleManager,
       liveConfigManager,
       taskManager,
-      setProjectMemory,
-      setUserMemory,
       resolveAndValidateConfig,
     } = context;
 
@@ -293,42 +288,8 @@ export class InitializationService {
       // Don't throw error to prevent app startup failure - continue without live reload
     }
 
-    // Load memory files during initialization
-    try {
-      const phaseStart = performance.now();
-      const memoryService = container.get<MemoryService>("MemoryService");
-      if (!memoryService) {
-        throw new Error("MemoryService not found in container");
-      }
-
-      // Load project memory from AGENTS.md
-      try {
-        const projectMemoryContent =
-          await memoryService.readMemoryFile(workdir);
-        setProjectMemory(projectMemoryContent);
-      } catch (error) {
-        logger?.warn("Failed to load project memory file:", error);
-        setProjectMemory("");
-      }
-
-      // Load user memory
-      try {
-        const userMemoryContent = await memoryService.getUserMemoryContent();
-        setUserMemory(userMemoryContent);
-      } catch (error) {
-        logger?.warn("Failed to load user memory file:", error);
-        setUserMemory("");
-      }
-      logger?.debug(
-        `Initialization Phase [Memory Files Loading] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
-      );
-    } catch (error) {
-      // Ensure memory is always initialized even if loading fails
-      setProjectMemory("");
-      setUserMemory("");
-      logger?.error("Failed to load memory files:", error);
-      // Don't throw error to prevent app startup failure
-    }
+    // Memory is lazy-cached on first getCombinedMemoryContent call
+    // No explicit loading needed during initialization
 
     // Handle session restoration or set provided messages
     const sessionPhaseStart = performance.now();
