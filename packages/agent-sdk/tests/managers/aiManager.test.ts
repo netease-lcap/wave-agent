@@ -338,7 +338,7 @@ describe("AIManager", () => {
       expect(aiService.callAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           systemPrompt: expect.stringContaining(
-            "Technical terms (e.g., code, tool names, file paths) should remain in their original language or English where appropriate.",
+            "Use Spanish for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.",
           ),
         }),
       );
