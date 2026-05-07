@@ -275,7 +275,7 @@ export function buildSystemPrompt(
   }
 
   if (options.language) {
-    prompt += `\n\n# Language\nAlways respond in ${options.language}. Technical terms (e.g., code, tool names, file paths) should remain in their original language or English where appropriate.`;
+    prompt += `\n\n# Language\nAlways respond in ${options.language}. Use ${options.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`;
   }
 
   if (options.planMode) {
