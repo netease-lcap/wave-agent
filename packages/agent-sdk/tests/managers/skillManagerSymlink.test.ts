@@ -3,6 +3,7 @@ import { SkillManager } from "../../src/managers/skillManager.js";
 import { Container } from "../../src/utils/container.js";
 import { readdir, stat } from "fs/promises";
 import { parseSkillFile } from "../../src/utils/skillParser.js";
+import { BUILTIN_SKILLS } from "../../src/utils/builtinSkills.js";
 
 vi.mock("fs/promises");
 vi.mock("../../src/utils/skillParser.js", async () => {
@@ -101,7 +102,8 @@ describe("SkillManager Symlink Support", () => {
     await skillManager.initialize();
 
     const skills = skillManager.getAvailableSkills();
-    expect(skills).toHaveLength(2);
+    // 2 builtin skills + 2 from symlink test
+    expect(skills).toHaveLength(BUILTIN_SKILLS.length + 2);
     const names = skills.map((s) => s.name);
     expect(names).toContain("real-skill");
     expect(names).toContain("symlink-skill");

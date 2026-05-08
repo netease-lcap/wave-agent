@@ -20,8 +20,8 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [x] T001 Create built-in subagent utility file structure in packages/agent-sdk/src/utils/builtinSubagents.ts
-- [x] T002 [P] Setup test structure for built-in subagents in packages/agent-sdk/tests/utils/builtinSubagents.test.ts
+- [x] T001 Add `BUILTIN_SUBAGENTS` array to packages/agent-sdk/src/utils/subagentParser.ts
+- [x] T002 [P] Setup test structure for built-in subagents in packages/agent-sdk/tests/utils/subagentParser.test.ts
 
 ---
 
@@ -31,11 +31,11 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [x] T003 Implement getBuiltinSubagents() function in packages/agent-sdk/src/utils/builtinSubagents.ts
-- [x] T004 [P] Create "Explore" built-in subagent configuration with fastModel support in packages/agent-sdk/src/utils/builtinSubagents.ts
+- [x] T003 Add Explore subagent to `BUILTIN_SUBAGENTS` array in packages/agent-sdk/src/utils/subagentParser.ts
+- [x] T004 [P] Configure Explore subagent with fastModel support in packages/agent-sdk/src/utils/subagentParser.ts
 - [x] T005 Extend loadSubagentConfigurations() to include built-ins in packages/agent-sdk/src/utils/subagentParser.ts  
 - [x] T006 [P] Add SubagentManager fastModel handling for "fastModel" model value in packages/agent-sdk/src/managers/subagentManager.ts
-- [x] T007 Add essential tests for built-in loading in packages/agent-sdk/tests/utils/builtinSubagents.test.ts
+- [x] T007 Add essential tests for builtin subagents in packages/agent-sdk/tests/utils/subagentParser.test.ts
 - [x] T008 [P] Extend existing subagentParser tests in packages/agent-sdk/tests/utils/subagentParser.test.ts
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel

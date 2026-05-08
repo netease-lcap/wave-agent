@@ -5,7 +5,7 @@
 ## Functional Requirements
 
 - [X] **FR-001**: System MUST provide a built-in "Plan" subagent that is available without user configuration
-  - Status: ✓ Implemented in `builtinSubagents.ts`
+  - Status: ✓ Implemented in `BUILTIN_SUBAGENTS` (subagentParser.ts)
 
 - [X] **FR-002**: Plan subagent MUST be restricted to read-only tools (Glob, Grep, Read, and read-only Bash commands)
   - Status: ✓ Configured with tools: ["Glob", "Grep", "Read", "Bash", "LS", "LSP"]

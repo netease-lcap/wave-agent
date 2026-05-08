@@ -1,7 +1,7 @@
 # Research: /loop Slash Command & Cron Tools
 
 ## Decision: Built-in Skill Implementation
-- **Choice**: Implement `/loop` as a built-in skill in `packages/agent-sdk/src/builtin-skills/loop/SKILL.md`.
+- **Choice**: Implement `/loop` as a builtin skill in `packages/agent-sdk/src/utils/builtinSkills.ts` (hardcoded TS constant).
 - **Rationale**: The system already has a mechanism for registering skills as slash commands. This follows the pattern of `/settings`.
 - **Alternatives considered**: Hardcoding the command in `SlashCommandManager`. Rejected because skills are more flexible and allow for Markdown-based prompts.
 

@@ -19,7 +19,7 @@ import {
   replaceBashCommandsWithOutput,
   executeBashCommands,
 } from "../utils/markdownParser.js";
-import { getBuiltinSkillsDir } from "../utils/configPaths.js";
+import { BUILTIN_SKILLS } from "../utils/builtinSkills.js";
 
 import { Container } from "../utils/container.js";
 import { logger } from "../utils/globalLogger.js";
@@ -205,10 +205,24 @@ export class SkillManager extends EventEmitter {
    * Discover skills in builtin, personal and project directories
    */
   private async discoverSkills(): Promise<SkillDiscoveryResult> {
-    const builtinCollection = await this.discoverSkillCollection(
-      getBuiltinSkillsDir(),
-      "builtin",
-    );
+    // Builtin skills are hardcoded in TS, not scanned from a directory
+    const builtinSkills = new Map<string, SkillMetadata>();
+    for (const skill of BUILTIN_SKILLS) {
+      builtinSkills.set(skill.name, {
+        name: skill.name,
+        description: skill.description,
+        type: skill.type,
+        skillPath: skill.skillPath,
+        allowedTools: skill.allowedTools,
+        context: skill.context,
+        agent: skill.agent,
+        model: skill.model,
+        disableModelInvocation: skill.disableModelInvocation,
+        userInvocable: skill.userInvocable,
+      });
+      // Store full skill content for later loading
+      this.skillContent.set(skill.name, skill);
+    }
 
     const personalCollection = await this.discoverSkillCollection(
       this.personalSkillsPath,
@@ -221,14 +235,10 @@ export class SkillManager extends EventEmitter {
     );
 
     return {
-      builtinSkills: builtinCollection.skills,
+      builtinSkills,
       personalSkills: personalCollection.skills,
       projectSkills: projectCollection.skills,
-      errors: [
-        ...builtinCollection.errors,
-        ...personalCollection.errors,
-        ...projectCollection.errors,
-      ],
+      errors: [...personalCollection.errors, ...projectCollection.errors],
     };
   }
 

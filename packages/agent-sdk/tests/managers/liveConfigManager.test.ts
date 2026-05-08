@@ -377,7 +377,6 @@ describe("LiveConfigManager - Configuration Management", () => {
         {
           userPaths: [],
           projectPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
-          builtinPaths: [],
           allPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
           existingPaths: [localConfigPath],
         },
@@ -409,7 +408,6 @@ describe("LiveConfigManager - Configuration Management", () => {
         {
           userPaths: [],
           projectPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
-          builtinPaths: [],
           allPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
           existingPaths: [localConfigPath],
         },
@@ -454,7 +452,6 @@ describe("LiveConfigManager - Configuration Management", () => {
         {
           userPaths: [],
           projectPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
-          builtinPaths: [],
           allPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
           existingPaths: [localConfigPath],
         },

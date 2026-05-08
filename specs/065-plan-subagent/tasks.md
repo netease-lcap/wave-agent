@@ -28,11 +28,11 @@
 
 **Purpose**: Create Plan subagent configuration and register it as a built-in subagent
 
-- [X] T004 [US1] Implement `createPlanSubagent()` function in `packages/agent-sdk/src/utils/builtinSubagents.ts`
+- [X] T004 [US1] Implement `createPlanSubagent()` function in `packages/agent-sdk/src/utils/subagentParser.ts`
 - [X] T005 [US1,US2] Configure Plan subagent with read-only tools: ["Glob", "Grep", "Read", "Bash", "LS", "LSP"]
 - [X] T006 [US1] Set model to "inherit" to use parent agent's model
 - [X] T007 [US1] Set scope to "builtin" and priority to 3
-- [X] T008 [US1] Add Plan subagent to `getBuiltinSubagents()` array
+- [X] T008 [US1] Add Plan subagent to `BUILTIN_SUBAGENTS` array
 
 **Checkpoint**: Plan subagent registered and available in system
 
@@ -42,7 +42,7 @@
 
 **Purpose**: Verify Plan subagent configuration and behavior through unit tests
 
-- [X] T009 [P] [US1] Add test for Plan subagent loading in `packages/agent-sdk/tests/utils/builtinSubagents.test.ts`
+- [X] T009 [P] [US1] Add test for Plan subagent loading in `packages/agent-sdk/tests/utils/subagentParser.test.ts`
 - [X] T010 [P] [US2] Add test verifying read-only tool configuration
 - [X] T011 [P] [US1] Add test verifying system prompt includes critical sections
 - [X] T012 [P] [US1] Add test verifying "inherit" model setting

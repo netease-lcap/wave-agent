@@ -7,11 +7,11 @@ The Plan subagent is a built-in software architect agent specialized for designi
 ## Key Changes
 
 ### Files Modified
-- `packages/agent-sdk/src/utils/builtinSubagents.ts` - Added Plan subagent definition
+- `packages/agent-sdk/src/utils/subagentParser.ts` - Added Plan subagent to `BUILTIN_SUBAGENTS`
 - `packages/agent-sdk/src/constants/prompts.ts` - Added PLAN_SUBAGENT_SYSTEM_PROMPT
 
 ### Files Added
-- `packages/agent-sdk/tests/utils/builtinSubagents.test.ts` - Tests for Plan subagent
+- `packages/agent-sdk/tests/utils/subagentParser.test.ts` - Tests for Plan subagent
 
 ## Usage
 
@@ -110,7 +110,6 @@ Users can override "Plan" by creating their own subagent file with the same name
 
 ```bash
 cd packages/agent-sdk
-pnpm test builtinSubagents
 pnpm test subagentParser
 ```
 

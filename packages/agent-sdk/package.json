@@ -24,7 +24,6 @@
     "bin",
     "vendor",
     "scripts",
-    "builtin",
     "README.md"
   ],
   "scripts": {
