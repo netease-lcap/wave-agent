@@ -3,7 +3,7 @@
 ## Decision: Subagent Registration
 The Bash subagent will be implemented as a built-in subagent in `packages/agent-sdk`.
 
-- **Location**: `packages/agent-sdk/src/utils/builtinSubagents.ts`
+- **Location**: `BUILTIN_SUBAGENTS` constant in `packages/agent-sdk/src/utils/subagentParser.ts`
 - **Prompt Storage**: `packages/agent-sdk/src/constants/prompts.ts`
 - **Tools**: Will use `BASH_TOOL_NAME` (which maps to the "Bash" tool).
 - **Model**: Will use `"inherit"` to match the reference implementation and ensure it uses the same model as the main agent.

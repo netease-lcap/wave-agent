@@ -24,7 +24,7 @@ export default defineConfig(() => {
         provider: "v8" as const,
         reporter: ["text", "json", "html"],
         include: ["src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
-        exclude: ["node_modules", "dist", "tests", "examples"],
+        exclude: ["node_modules", "dist", "tests", "examples", "src/types"],
         thresholds: {
           lines: 80,
           functions: 80,

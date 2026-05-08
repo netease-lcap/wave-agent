@@ -6,7 +6,7 @@ The feature involves adding a new built-in subagent named "Bash" to the Wave age
 
 ### Architecture
 - **Package**: `packages/agent-sdk`
-- **Registration**: `packages/agent-sdk/src/utils/builtinSubagents.ts`
+- **Registration**: `BUILTIN_SUBAGENTS` array in `packages/agent-sdk/src/utils/subagentParser.ts`
 - **Prompts**: `packages/agent-sdk/src/constants/prompts.ts`
 - **Tools**: Uses existing `BASH_TOOL_NAME` from `packages/agent-sdk/src/tools/bashTool.ts`.
 
@@ -18,7 +18,7 @@ The feature involves adding a new built-in subagent named "Bash" to the Wave age
 
 - **I. Package-First Architecture**: Changes are confined to `agent-sdk`.
 - **II. TypeScript Excellence**: Strict typing will be maintained for the new subagent configuration.
-- **III. Test Alignment**: Unit tests will be added to `packages/agent-sdk/tests/utils/builtinSubagents.test.ts`.
+- **III. Test Alignment**: Unit tests will be added to `packages/agent-sdk/tests/utils/subagentParser.test.ts`.
 - **VI. Quality Gates**: `pnpm build`, `type-check`, and `test` will be run.
 - **IX. Type System Evolution**: Will extend `SubagentType` enum if necessary.
 - **XI. Planning and Task Delegation**: Planning performed by general-purpose agent; implementation tasks will be delegated to specialized subagents.
@@ -38,10 +38,9 @@ The feature involves adding a new built-in subagent named "Bash" to the Wave age
 - **Action**: Add `BASH_SUBAGENT_SYSTEM_PROMPT` based on the reference implementation.
 
 ### Task 2: Register Bash Subagent
-- **File**: `packages/agent-sdk/src/utils/builtinSubagents.ts`
-- **Action**: 
-    - Implement `createBashSubagent()` function.
-    - Add it to `getBuiltinSubagents()`.
+- **File**: `packages/agent-sdk/src/utils/subagentParser.ts`
+- **Action**:
+    - Add Bash subagent entry to `BUILTIN_SUBAGENTS`.
 
 ### Task 3: Update Types
 - **File**: `packages/agent-sdk/src/types.ts` (or wherever `SubagentType` is defined)
@@ -50,5 +49,5 @@ The feature involves adding a new built-in subagent named "Bash" to the Wave age
 ### Task 4: Verification & Testing
 - **Action**:
     - Run `pnpm -F wave-agent-sdk build`
-    - Add unit tests in `packages/agent-sdk/tests/utils/builtinSubagents.test.ts`.
+    - Add unit tests in `packages/agent-sdk/tests/utils/subagentParser.test.ts`.
     - Run `pnpm -F wave-agent-sdk test`.

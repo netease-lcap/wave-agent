@@ -20,7 +20,7 @@ The system prompt for the `general-purpose` agent will be based on the user-prov
 ## Decision: Integration Point
 
 ### Rationale
-The agent will be registered in `packages/agent-sdk/src/utils/builtinSubagents.ts` within the `getBuiltinSubagents` function. This is the established pattern for built-in subagents in the monorepo.
+The agent will be registered as a constant in `BUILTIN_SUBAGENTS` within `packages/agent-sdk/src/utils/subagentParser.ts`. This is the established pattern for built-in subagents in the monorepo.
 
 ### Alternatives considered
 - **Separate package**: Rejected to avoid unnecessary package proliferation and maintain the "Package-First Architecture" principle by keeping core SDK logic together.

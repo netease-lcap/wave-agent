@@ -53,7 +53,7 @@ Multi-part prompt template that guides the Plan subagent's behavior.
 
 ### SubagentManager
 - Registers Plan as a built-in subagent alongside Explore and general-purpose
-- Loads Plan subagent configuration from `builtinSubagents.ts`
+- Loads Plan subagent configuration from `BUILTIN_SUBAGENTS` in `subagentParser.ts`
 - Applies priority system (project > user > built-in)
 
 ### Task Tool

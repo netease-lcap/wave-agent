@@ -50,10 +50,10 @@ specs/058-general-purpose-agent/
 packages/agent-sdk/
 ├── src/
 │   └── utils/
-│       └── builtinSubagents.ts  # Registration of the new subagent
+│       └── subagentParser.ts    # BUILTIN_SUBAGENTS array for built-in subagents
 └── tests/
     ├── utils/
-    │   └── builtinSubagents.test.ts  # Unit tests
+    │   └── subagentParser.test.ts  # Unit tests
     └── integration/
         └── taskTool.builtin.test.ts  # Integration tests
 ```

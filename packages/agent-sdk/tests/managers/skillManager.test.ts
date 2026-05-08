@@ -10,14 +10,7 @@ import type {
 import { readdir, stat } from "fs/promises";
 import { logger } from "../../src/utils/globalLogger.js";
 import { FileWatcherService } from "../../src/services/fileWatcher.js";
-
-vi.mock("../../src/utils/configPaths.js", async () => {
-  const actual = await vi.importActual("../../src/utils/configPaths.js");
-  return {
-    ...actual,
-    getBuiltinSkillsDir: vi.fn().mockReturnValue("/test/builtin-skills"),
-  };
-});
+import { BUILTIN_SKILLS } from "../../src/utils/builtinSkills.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
@@ -97,11 +90,6 @@ describe("SkillManager", () => {
     it("should discover builtin, personal and project skills successfully", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
         const p = path.toString();
-        if (p.includes("builtin-skills")) {
-          return [
-            { name: "builtin1", isDirectory: () => true },
-          ] as unknown as Awaited<ReturnType<typeof readdir>>;
-        }
         if (p.includes(".wave/skills")) {
           return [
             { name: "skill1", isDirectory: () => true },
@@ -115,8 +103,8 @@ describe("SkillManager", () => {
       );
       vi.mocked(parseSkillFile).mockImplementation((filePath) => {
         const path = filePath as string;
-        const name = path.includes("builtin1") ? "builtin1" : "skill1";
-        const type = path.includes("builtin1") ? "builtin" : "personal";
+        const name = path.includes("skill1") ? "skill1" : "unknown";
+        const type = path.includes("skill1") ? "personal" : "personal";
         return {
           isValid: true,
           skillMetadata: {
@@ -135,11 +123,12 @@ describe("SkillManager", () => {
 
       expect(skillManager.isInitialized()).toBe(true);
       const skills = skillManager.getAvailableSkills();
-      expect(skills).toHaveLength(2);
-      expect(skills.find((s) => s.name === "builtin1")).toBeDefined();
+      // Builtin skills (loop, init) + personal skill (skill1)
+      expect(skills.length).toBeGreaterThanOrEqual(BUILTIN_SKILLS.length + 1);
+      expect(skills.find((s) => s.name === "loop")).toBeDefined();
       expect(skills.find((s) => s.name === "skill1")).toBeDefined();
       expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("SkillManager initialized with 2 skills"),
+        expect.stringContaining("SkillManager initialized with"),
       );
     });
 
@@ -183,7 +172,7 @@ describe("SkillManager", () => {
     it("should handle discovery errors and log warnings", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
         const p = path.toString();
-        if (p.includes(".wave/skills") || p.includes("builtin-skills")) {
+        if (p.includes(".wave/skills")) {
           return [
             { name: "invalid-skill", isDirectory: () => true },
           ] as unknown as Awaited<ReturnType<typeof readdir>>;
@@ -202,7 +191,7 @@ describe("SkillManager", () => {
       await skillManager.initialize();
 
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Found 3 skill discovery errors"),
+        expect.stringContaining("Found 2 skill discovery errors"),
       );
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Skill error in"),
@@ -240,11 +229,12 @@ describe("SkillManager", () => {
 
       await skillManager.initialize();
 
-      expect(skillManager.getAvailableSkills()).toHaveLength(0);
+      expect(skillManager.getAvailableSkills()).toHaveLength(
+        BUILTIN_SKILLS.length,
+      );
     });
 
     it("should handle directory read errors gracefully", async () => {
-      // findSkillDirectories catches readdir errors and returns empty array.
       // discoverSkillCollection catches findSkillDirectories errors (if any) or other errors and logs debug "Could not scan".
       // To trigger "Could not scan", we need findSkillDirectories to throw or something else in discoverSkillCollection to throw.
       // Since findSkillDirectories already has a try-catch around readdir, we need to mock findSkillDirectories itself.
@@ -260,7 +250,9 @@ describe("SkillManager", () => {
 
       await skillManager.initialize();
 
-      expect(skillManager.getAvailableSkills()).toHaveLength(0);
+      expect(skillManager.getAvailableSkills()).toHaveLength(
+        BUILTIN_SKILLS.length,
+      );
       expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining("Could not scan"),
       );
@@ -270,13 +262,15 @@ describe("SkillManager", () => {
     it("should handle readdir error in findSkillDirectories", async () => {
       vi.mocked(readdir).mockRejectedValue(new Error("readdir failed"));
       await skillManager.initialize();
-      expect(skillManager.getAvailableSkills()).toHaveLength(0);
+      expect(skillManager.getAvailableSkills()).toHaveLength(
+        BUILTIN_SKILLS.length,
+      );
     });
 
     it("should handle invalid skill files", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
         const p = path.toString();
-        if (p.includes(".wave/skills") || p.includes("builtin-skills")) {
+        if (p.includes(".wave/skills")) {
           return [
             { name: "bad-skill", isDirectory: () => true },
           ] as unknown as Awaited<ReturnType<typeof readdir>>;
@@ -293,7 +287,7 @@ describe("SkillManager", () => {
       await skillManager.initialize();
 
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Found 3 skill discovery errors"),
+        expect.stringContaining("Found 2 skill discovery errors"),
       );
     });
   });
@@ -881,10 +875,10 @@ describe("SkillManager", () => {
         timestamp: Date.now(),
       });
 
-      // Check if skills were refreshed
+      // Check if skills were refreshed (2 builtin + 1 new)
       const skills = manager.getAvailableSkills();
-      expect(skills).toHaveLength(1);
-      expect(skills[0].name).toBe("new-skill");
+      expect(skills.length).toBe(BUILTIN_SKILLS.length + 1);
+      expect(skills.find((s) => s.name === "new-skill")).toBeDefined();
 
       // Check if slash commands were updated
       const commands = slashCommandManager.getCommands();

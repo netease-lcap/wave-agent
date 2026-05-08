@@ -24,40 +24,18 @@ export async function loadSubagentConfigurations(
 2. User configs (priority 2)  
 3. Built-in configs (priority 3)
 
-## New Functions
+## New Constants
 
-### getBuiltinSubagents()
+### BUILTIN_SUBAGENTS
 
-**Location**: `packages/agent-sdk/src/utils/builtinSubagents.ts`
+**Location**: `packages/agent-sdk/src/utils/subagentParser.ts`
 
-**Signature**:
-```typescript
-export function getBuiltinSubagents(): SubagentConfiguration[]
-```
+**Type**: `SubagentConfiguration[]`
 
 **Returns**: Array of hardcoded built-in subagent configurations
 
 **Configurations Included**:
 - Explore agent (codebase exploration specialist)
-
-### createBuiltinConfiguration()
-
-**Location**: `packages/agent-sdk/src/utils/builtinSubagents.ts`
-
-**Signature**:
-```typescript
-function createBuiltinConfiguration(
-  name: string,
-  description: string,
-  systemPrompt: string,
-  tools: string[],
-  model?: string
-): SubagentConfiguration
-```
-
-**Purpose**: Create hardcoded built-in subagent configurations
-
-**Model Handling**: "fastModel" string gets special treatment in SubagentManager (similar to "inherit")
 
 ## Interface Extensions
 

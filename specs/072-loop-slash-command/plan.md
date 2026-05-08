@@ -55,7 +55,8 @@ specs/072-loop-slash-command/
 ```
 packages/agent-sdk/
 ├── src/
-│   ├── builtin-skills/
+│   ├── utils/
+│   │   └── builtinSkills.ts      # Loop skill as TS constant
 │   │   └── loop/
 │   │       └── SKILL.md
 │   ├── managers/
