@@ -30,5 +30,5 @@
 
 - Refined spec after reviewing the existing `Explore` subagent implementation.
 - Clarified the distinction between `Explore` (read-only, fast) and `general-purpose` (full tool access, implementation-focused).
-- Added requirement FR-007 for integration into `BUILTIN_SUBAGENTS`.
+- Added requirement FR-007 for integration into `getBuiltinSubagents`.
 - All items pass. The specification is ready for planning.

@@ -27,7 +27,7 @@ Existing interface with new scope value for built-in subagents.
 Hardcoded definitions → SubagentConfiguration → SubagentManager
 ```
 
-1. **Load**: Get hardcoded SubagentConfiguration objects from `BUILTIN_SUBAGENTS` in subagentParser.ts
+1. **Load**: Get hardcoded SubagentConfiguration objects from builtinSubagents.ts
 2. **Merge**: Include in standard subagent loading with existing configs  
 3. **Use**: SubagentManager handles identically to file-based subagents
 

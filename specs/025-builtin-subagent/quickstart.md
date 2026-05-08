@@ -7,10 +7,11 @@ This feature adds built-in subagents (starting with "Explore" agent) that are av
 ## Key Changes
 
 ### Files Modified
-- `packages/agent-sdk/src/utils/subagentParser.ts` - Extended with `BUILTIN_SUBAGENTS` array
+- `packages/agent-sdk/src/utils/subagentParser.ts` - Extended to load built-ins
+- `packages/agent-sdk/src/utils/builtinSubagents.ts` - **NEW** Built-in definitions
 
 ### Files Added  
-- `packages/agent-sdk/tests/utils/subagentParser.test.ts` - Tests for builtin subagents
+- `packages/agent-sdk/tests/utils/builtinSubagents.test.ts` - **NEW** Test built-in loading
 
 ## Usage
 
@@ -45,6 +46,7 @@ Users can override "Explore" by creating their own subagent file with the same n
 
 ```bash
 cd packages/agent-sdk
+pnpm test builtinSubagents
 pnpm test subagentParser
 ```
 

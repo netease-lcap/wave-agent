@@ -64,7 +64,7 @@ As a system maintainer, I want the `general-purpose` subagent to complement the 
 - **FR-004**: System SHOULD omit the `tools` field in the `general-purpose` agent configuration to allow default full tool access.
 - **FR-005**: System MUST set `scope: "builtin"` and use a placeholder `filePath` (e.g., `"<builtin:general-purpose>"`) to identify its built-in status.
 - **FR-006**: System MUST ensure the general-purpose agent is available as a valid target for the `Task` tool.
-- **FR-007**: System MUST integrate the `general-purpose` agent into the `BUILTIN_SUBAGENTS` array alongside the `Explore` agent.
+- **FR-007**: System MUST integrate the `general-purpose` agent into the `getBuiltinSubagents` utility alongside the `Explore` agent.
 
 ### Key Entities *(include if feature involves data)*
 
