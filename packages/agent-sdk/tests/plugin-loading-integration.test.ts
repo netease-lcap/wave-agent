@@ -8,7 +8,6 @@ import * as fs from "fs";
 vi.mock("../src/services/MarketplaceService.js");
 vi.mock("../src/services/GitService.js");
 vi.mock("../src/services/pluginLoader.js");
-vi.mock("../src/utils/configPaths.js");
 vi.mock("fs");
 
 describe("Agent Plugin Loading Integration", () => {
@@ -51,10 +50,10 @@ describe("Agent Plugin Loading Integration", () => {
     vi.mocked(PluginLoader.loadHooksConfig).mockResolvedValue(undefined);
 
     // Mock config paths
-    vi.mocked(configPaths.getUserConfigPaths).mockReturnValue([
+    vi.spyOn(configPaths, "getUserConfigPaths").mockReturnValue([
       "/user/settings.json",
     ]);
-    vi.mocked(configPaths.getProjectConfigPaths).mockReturnValue([
+    vi.spyOn(configPaths, "getProjectConfigPaths").mockReturnValue([
       "/project/settings.local.json",
       "/project/settings.json",
     ]);

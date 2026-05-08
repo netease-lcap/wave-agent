@@ -1,9 +1,6 @@
-import { fileURLToPath } from "url";
 import path from "path";
 import process from "process";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { getPackageRoot } from "./configPaths.js";
 
 /**
  * Detect the current platform and architecture to find the correct bundled ripgrep binary.
@@ -29,8 +26,10 @@ const binaryName = isWindows ? "rg.exe" : "rg";
 
 /**
  * Path to the ripgrep binary bundled in the vendor directory.
+ * Uses findUpSync to locate the package root, working correctly even
+ * when bundled (e.g. esbuild into a VS Code extension).
  */
-export const rgPath = path.resolve(
-  __dirname,
-  `../../vendor/ripgrep/${platformKey}/${binaryName}`,
+export const rgPath = path.join(
+  getPackageRoot(),
+  `vendor/ripgrep/${platformKey}/${binaryName}`,
 );
