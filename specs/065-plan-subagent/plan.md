@@ -53,13 +53,13 @@ packages/
 │   │   ├── constants/
 │   │   │   └── prompts.ts              # Add PLAN_SUBAGENT_SYSTEM_PROMPT
 │   │   └── utils/
-│   │       └── subagentParser.ts     # BUILTIN_SUBAGENTS array
+│   │       └── builtinSubagents.ts     # Add createPlanSubagent()
 │   └── tests/
 │       └── utils/
-│           └── subagentParser.test.ts # Builtin subagent tests
+│           └── builtinSubagents.test.ts # Add Plan subagent tests
 ```
 
-**Structure Decision**: Minimal changes to existing codebase. New Plan subagent definition added to `BUILTIN_SUBAGENTS` array in `subagentParser.ts`. System prompt added to `prompts.ts`. No changes to SubagentManager or Task tool - they already support built-in subagents.
+**Structure Decision**: Minimal changes to existing codebase. New Plan subagent definition added to `builtinSubagents.ts`. System prompt added to `prompts.ts`. No changes to SubagentManager or Task tool - they already support built-in subagents.
 
 ## Complexity Tracking
 
@@ -80,7 +80,7 @@ packages/
 ### Phase 2: Subagent Definition
 **Goal**: Create Plan subagent configuration
 
-1. Add `createPlanSubagent()` function to `packages/agent-sdk/src/utils/subagentParser.ts`
+1. Add `createPlanSubagent()` function to `packages/agent-sdk/src/utils/builtinSubagents.ts`
 2. Configure with:
    - name: "Plan"
    - description: when to use guidance
@@ -90,12 +90,12 @@ packages/
    - scope: "builtin"
    - priority: 3
 
-3. Add to `BUILTIN_SUBAGENTS` array
+3. Add to `getBuiltinSubagents()` array
 
 ### Phase 3: Testing
 **Goal**: Verify Plan subagent works correctly
 
-1. Add unit tests to `packages/agent-sdk/tests/utils/subagentParser.test.ts`:
+1. Add unit tests to `packages/agent-sdk/tests/utils/builtinSubagents.test.ts`:
    - Test Plan subagent is loaded
    - Test read-only tool configuration
    - Test system prompt includes critical sections

@@ -55,16 +55,16 @@ packages/agent-sdk/
 ├── src/
 │   ├── utils/
 │   │   ├── subagentParser.ts        # Extend to load built-ins
-│   │   └── subagentParser.ts        # Contains BUILTIN_SUBAGENTS constant
+│   │   └── builtinSubagents.ts      # New: Built-in definitions
 │   └── managers/
 │       └── subagentManager.ts       # No changes needed
 └── tests/
     └── utils/
         ├── subagentParser.test.ts   # Extend existing tests
-        └── subagentParser.test.ts   # Extended: Test built-in loading
+        └── builtinSubagents.test.ts # New: Test built-in loading
 ```
 
-**Structure Decision**: Minimal changes to existing codebase. `subagentParser.ts` contains `BUILTIN_SUBAGENTS` constant array with hardcoded definitions. No changes to SubagentManager interface.
+**Structure Decision**: Minimal changes to existing codebase. New `builtinSubagents.ts` contains hardcoded definitions. Extend `subagentParser.ts` to include built-ins in loading process. No changes to SubagentManager interface.
 
 ## Complexity Tracking
 

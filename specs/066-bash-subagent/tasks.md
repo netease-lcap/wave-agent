@@ -36,16 +36,16 @@
 
 **Goal**: Enable the main agent to delegate bash operations to a specialized "Bash" subagent.
 
-**Independent Test**: Verify that `BUILTIN_SUBAGENTS` includes the "Bash" subagent configuration and that it correctly includes the bash tool and system prompt.
+**Independent Test**: Verify that `getBuiltinSubagents()` returns the "Bash" subagent configuration and that it correctly includes the bash tool and system prompt.
 
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
-- [x] T005 [P] [US1] Create unit test for Bash subagent registration in `packages/agent-sdk/tests/utils/subagentParser.test.ts`
+- [x] T005 [P] [US1] Create unit test for Bash subagent registration in `packages/agent-sdk/tests/utils/builtinSubagents.test.ts`
 
 ### Implementation for User Story 1
 
-- [x] T006 [US1] Implement Bash subagent entry in `packages/agent-sdk/src/utils/subagentParser.ts`
-- [x] T007 [US1] Register Bash subagent in `BUILTIN_SUBAGENTS` within `packages/agent-sdk/src/utils/subagentParser.ts`
+- [x] T006 [US1] Implement `createBashSubagent()` in `packages/agent-sdk/src/utils/builtinSubagents.ts`
+- [x] T007 [US1] Register `createBashSubagent()` in `getBuiltinSubagents()` within `packages/agent-sdk/src/utils/builtinSubagents.ts`
 - [x] T008 [US1] Build the SDK using `pnpm -F wave-agent-sdk build`
 - [x] T009 [US1] Run tests using `pnpm -F wave-agent-sdk test` and verify coverage
 

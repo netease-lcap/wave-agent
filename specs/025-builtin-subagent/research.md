@@ -42,7 +42,7 @@
 
 ## Implementation Approach
 
-**Decision**: Single-file approach - `BUILTIN_SUBAGENTS` constant array in `subagentParser.ts`
+**Decision**: Two-file approach - `builtinSubagents.ts` for definitions, extend `subagentParser.ts` for loading
 
 **Rationale**:
 - Clear separation of concerns

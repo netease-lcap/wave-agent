@@ -63,7 +63,8 @@ describe("configPaths", () => {
     const result = getAllConfigPaths(workdir);
     expect(result.userPaths).toEqual(getUserConfigPaths());
     expect(result.projectPaths).toEqual(getProjectConfigPaths(workdir));
-    expect(result.allPaths).toHaveLength(3);
+    expect(result.builtinPaths).toBeDefined();
+    expect(result.allPaths).toHaveLength(4);
   });
 
   it("getExistingConfigPaths filters existing paths", () => {
