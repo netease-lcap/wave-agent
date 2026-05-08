@@ -14,26 +14,41 @@ import { join, dirname } from "path";
 import { homedir } from "os";
 import { existsSync } from "fs";
 import { fileURLToPath } from "url";
+import { findUpSync } from "find-up";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
+ * Resolve the package root directory by finding the nearest package.json.
+ * Works correctly even when bundled (e.g. esbuild into a VS Code extension),
+ * as long as vendor/ and builtin/ remain alongside package.json on disk.
+ */
+let _packageRoot: string | undefined;
+export function getPackageRoot(): string {
+  if (_packageRoot) return _packageRoot;
+  const pkgPath = findUpSync("package.json", { cwd: __dirname });
+  if (pkgPath) {
+    _packageRoot = dirname(pkgPath);
+    return _packageRoot;
+  }
+  // Fallback: relative to this file (works during development)
+  _packageRoot = join(__dirname, "..", "..");
+  return _packageRoot;
+}
+
+/**
  * Get the builtin skills directory path
  */
 export function getBuiltinSkillsDir(): string {
-  // Builtin skills are now in the 'builtin/skills' directory at the root of the package
-  // Relative to this file (src/utils/configPaths.ts), it's ../../builtin/skills
-  return join(__dirname, "..", "..", "builtin", "skills");
+  return join(getPackageRoot(), "builtin", "skills");
 }
 
 /**
  * Get the builtin subagents directory path
  */
 export function getBuiltinSubagentsDir(): string {
-  // Builtin subagents are now in the 'builtin/subagents' directory at the root of the package
-  // Relative to this file (src/utils/configPaths.ts), it's ../../builtin/subagents
-  return join(__dirname, "..", "..", "builtin", "subagents");
+  return join(getPackageRoot(), "builtin", "subagents");
 }
 
 /**
