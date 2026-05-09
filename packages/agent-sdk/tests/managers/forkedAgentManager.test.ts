@@ -18,6 +18,7 @@ const mockWriteStreamFactory = () => ({
   write: vi.fn(),
   end: vi.fn(),
   destroy: vi.fn(),
+  on: vi.fn(),
 });
 
 vi.mock("fs", () => ({

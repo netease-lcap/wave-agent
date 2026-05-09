@@ -190,6 +190,8 @@ export class ForkedAgentManager {
   async cleanup(): Promise<void> {
     for (const [, entry] of this.activeForks) {
       entry.instance?.aiManager?.abortAIMessage();
+      // Suppress async write errors from in-flight writes
+      entry.logStream?.on("error", () => {});
       entry.logStream?.destroy();
     }
     this.activeForks.clear();

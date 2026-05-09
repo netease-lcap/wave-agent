@@ -74,14 +74,29 @@ function setupMocks() {
 describe("instrumentation", () => {
   let instrumentation: typeof import("@/telemetry/instrumentation.js");
   let mocks: ReturnType<typeof setupMocks>;
+  let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(async () => {
+    originalEnv = { ...process.env };
+    // Strip OTEL env vars to prevent local shell config from poisoning tests
+    delete process.env.OTEL_METRICS_EXPORTER;
+    delete process.env.OTEL_TRACES_EXPORTER;
+    delete process.env.OTEL_LOGS_EXPORTER;
+    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    delete process.env.OTEL_EXPORTER_OTLP_PROTOCOL;
+    delete process.env.OTEL_EXPORTER_OTLP_HEADERS;
+    delete process.env.OTEL_ENABLED;
+    delete process.env.OTEL_LOG_USER_PROMPTS;
+    delete process.env.OTEL_LOG_TOOL_CONTENT;
+    delete process.env.OTEL_SPAN_TTL_MS;
+    delete process.env.OTEL_SHUTDOWN_TIMEOUT_MS;
     vi.resetModules();
     mocks = setupMocks();
     instrumentation = await import("@/telemetry/instrumentation.js");
   });
 
   afterEach(() => {
+    process.env = originalEnv;
     vi.restoreAllMocks();
   });
 
