@@ -11,6 +11,21 @@ import type { QueuedMessage } from "@/managers/messageQueue.js";
 // Mock AI Service
 vi.mock("@/services/aiService");
 
+// Mock telemetry module
+vi.mock("@/telemetry/instrumentation.js", () => ({
+  initializeTelemetry: vi.fn().mockResolvedValue(undefined),
+  shutdownTelemetry: vi.fn().mockResolvedValue(undefined),
+  getCurrentConfig: vi.fn().mockReturnValue(undefined),
+  getOTELApi: vi.fn().mockReturnValue(undefined),
+  isInitialized: vi.fn().mockReturnValue(false),
+  JsonlSpanExporter: class {},
+  JsonlLogExporter: class {},
+}));
+
+vi.mock("@/telemetry/events.js", () => ({
+  logOTelEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock tool registry to control tool execution
 const { instance: mockToolManagerInstance, execute: mockToolExecute } =
   createMockToolManager();

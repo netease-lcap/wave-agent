@@ -46,6 +46,11 @@ import { InteractionService } from "./services/interactionService.js";
 import { ConfigurationService } from "./services/configurationService.js";
 import { Container } from "./utils/container.js";
 import { setupAgentContainer } from "./utils/containerSetup.js";
+import {
+  initializeTelemetry,
+  shutdownTelemetry,
+} from "./telemetry/instrumentation.js";
+import { logOTelEvent } from "./telemetry/events.js";
 
 export class Agent {
   private messageManager: MessageManager;
@@ -79,6 +84,7 @@ export class Agent {
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
   private stream: boolean; // Streaming mode flag
+  private sessionStartTime: number = Date.now();
 
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
@@ -488,6 +494,20 @@ export class Agent {
       },
       options,
     );
+
+    // Initialize OpenTelemetry (non-blocking, graceful degradation)
+    const telemetryConfig = this.configurationService.resolveTelemetryConfig();
+    initializeTelemetry(telemetryConfig).catch((error) => {
+      this.logger?.warn("Telemetry initialization failed:", error);
+    });
+
+    // Log session_start event
+    const modelConfig = this.getModelConfig();
+    logOTelEvent("session_start", {
+      sessionId: this.messageManager.getSessionId(),
+      model: modelConfig.model,
+      workdir: this.workdir,
+    }).catch(() => {}); // Non-blocking
   }
 
   /**
@@ -642,6 +662,14 @@ export class Agent {
 
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
+    // Log session_end event and shutdown telemetry
+    await logOTelEvent("session_end", {
+      duration: String(Math.round((Date.now() - this.sessionStartTime) / 1000)),
+      totalTokens: String(this.messageManager.getLatestTotalTokens()),
+      exitReason: "destroy",
+    }).catch(() => {});
+    await shutdownTelemetry();
+
     // Clear notification callback first to prevent any late triggers from
     // starting async work during teardown
     this.notificationQueue.onNotificationsEnqueued = undefined;

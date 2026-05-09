@@ -696,6 +696,15 @@ export class ConfigurationService {
   }
 
   /**
+   * Get the telemetry config from the loaded settings.
+   */
+  resolveTelemetryConfig():
+    | Partial<import("../types/telemetry.js").TelemetryConfig>
+    | undefined {
+    return this.currentConfiguration?.monitoring?.telemetry;
+  }
+
+  /**
    * Resolve all configuration file paths
    */
   getConfigurationPaths(workdir: string): ConfigurationPaths {

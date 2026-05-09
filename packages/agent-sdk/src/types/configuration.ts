@@ -10,6 +10,7 @@ import type { HookEvent, HookEventConfig } from "./hooks.js";
 import type { PermissionMode } from "./permissions.js";
 import type { ModelConfig } from "./config.js";
 import type { MarketplaceSource } from "./marketplace.js";
+import type { TelemetryConfig } from "./telemetry.js";
 
 export type Scope = "user" | "project" | "local";
 
@@ -47,6 +48,10 @@ export interface WaveConfiguration {
   models?: Record<string, Partial<ModelConfig>>;
   /** Scoped marketplace declarations */
   marketplaces?: Record<string, MarketplaceConfig>;
+  /** OpenTelemetry monitoring configuration */
+  monitoring?: {
+    telemetry?: Partial<TelemetryConfig>;
+  };
 }
 
 /**
