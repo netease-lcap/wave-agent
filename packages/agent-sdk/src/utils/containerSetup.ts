@@ -315,7 +315,7 @@ export function setupAgentContainer(
   const bangManager = new BangManager(container, { workdir });
   container.register("BangManager", bangManager);
 
-  const cronManager = new CronManager(container);
+  const cronManager = new CronManager(container, messageManager.getSessionId());
   container.register("CronManager", cronManager);
   cronManager.start();
 

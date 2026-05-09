@@ -33,9 +33,10 @@ Every user who asks for "9am" gets \`0 9\`, and every user who asks for "hourly"
 
 Only use minute 0 or 30 when the user names that exact time and clearly means it ("at 9:00 sharp", "at half past", coordinating with a meeting). When in doubt, nudge a few minutes early or late — the user will not notice, and the fleet will.
 
-## Session-only
+## Session-only vs durable
 
-Jobs live only in this Wave session — nothing is written to disk, and the job is gone when Wave exits.
+By default, jobs live only in this Wave session — nothing is written to disk, and the job is gone when Wave exits.
+Set \`durable: true\` to persist the job to \`.wave/scheduled_tasks.json\` so it survives Wave restarts (requires the session to hold the scheduler lock).
 
 ## Runtime behavior
 
@@ -70,6 +71,12 @@ export const cronCreateTool: ToolPlugin = {
             description: `true (default) = fire on every cron match until deleted or auto-expired after ${DEFAULT_MAX_AGE_DAYS} days. false = fire once at the next match, then auto-delete. Use false for "remind me at X" one-shot requests with pinned minute/hour/dom/month.`,
             default: true,
           },
+          durable: {
+            type: "boolean",
+            description:
+              "true = persist job to .wave/scheduled_tasks.json so it survives Wave restarts. false (default) = session-only, removed when Wave exits.",
+            default: false,
+          },
         },
         required: ["cron", "prompt"],
       },
@@ -84,7 +91,13 @@ export const cronCreateTool: ToolPlugin = {
       cron,
       prompt,
       recurring = true,
-    } = args as { cron: string; prompt: string; recurring?: boolean };
+      durable = false,
+    } = args as {
+      cron: string;
+      prompt: string;
+      recurring?: boolean;
+      durable?: boolean;
+    };
 
     if (!context.cronManager) {
       return {
@@ -118,10 +131,13 @@ export const cronCreateTool: ToolPlugin = {
         cron,
         prompt,
         recurring,
+        durable,
       });
 
       const humanSchedule = cronToHuman(cron);
-      const where = "Session-only (not written to disk, dies when Wave exits)";
+      const where = durable
+        ? "Persisted to .wave/scheduled_tasks.json"
+        : "Session-only (not written to disk, dies when Wave exits)";
       const resultMessage = recurring
         ? `Scheduled recurring job ${job.id} (${humanSchedule}). ${where}. Auto-expires after ${DEFAULT_MAX_AGE_DAYS} days. Use CronDelete to cancel sooner.`
         : `Scheduled one-shot task ${job.id} (${humanSchedule}). ${where}. It will fire once then auto-delete.`;
@@ -129,7 +145,7 @@ export const cronCreateTool: ToolPlugin = {
       return {
         success: true,
         content: JSON.stringify(
-          { id: job.id, humanSchedule, recurring },
+          { id: job.id, humanSchedule, recurring, durable },
           null,
           2,
         ),

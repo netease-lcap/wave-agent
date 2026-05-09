@@ -3,7 +3,7 @@ import { CRON_DELETE_TOOL_NAME } from "../constants/tools.js";
 
 const CRON_DELETE_DESCRIPTION = "Cancel a scheduled cron job by ID";
 
-const CRON_DELETE_PROMPT = `Cancel a cron job previously scheduled with CronCreate. Removes it from the in-memory session store.`;
+const CRON_DELETE_PROMPT = `Cancel a cron job previously scheduled with CronCreate. Removes it from both the in-memory session store and durable file storage (if applicable).`;
 
 export const cronDeleteTool: ToolPlugin = {
   name: CRON_DELETE_TOOL_NAME,
