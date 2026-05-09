@@ -56,7 +56,7 @@ export const TOOL_POLICY = `# Using your tools
 - Do NOT use the ${BASH_TOOL_NAME} to run commands when a relevant dedicated tool is provided. Using dedicated tools allows the user to better understand and review your work. This is CRITICAL to assisting the user:
   - To read files use ${READ_TOOL_NAME} instead of cat, head, tail, or sed
   - To edit files use ${EDIT_TOOL_NAME} instead of sed or awk
-  - To create files use ${WRITE_TOOL_NAME} instead of cat with heredoc or echo redirection
+  - To create files use ${WRITE_TOOL_NAME} instead of cat or echo redirection
   - To search for files use ${GLOB_TOOL_NAME} instead of find or ls
   - To search the content of files, use ${GREP_TOOL_NAME} instead of grep or rg
   - Reserve using the ${BASH_TOOL_NAME} exclusively for system commands and terminal operations that require shell execution. If you are unsure and there is a relevant dedicated tool, default to using the dedicated tool and only fallback on using the ${BASH_TOOL_NAME} tool for these if it is absolutely necessary.

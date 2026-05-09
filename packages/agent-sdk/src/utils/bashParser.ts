@@ -646,9 +646,6 @@ export function getSmartPrefix(command: string): string | null {
   // to keep it simple and safe.
   const firstCommand = parts[0];
 
-  // Safety check: don't allow heredoc writes
-  if (isBashHeredocWrite(firstCommand)) return null;
-
   const stripped = stripRedirections(stripEnvVars(firstCommand));
   const tokens = stripped.split(/\s+/);
   if (tokens.length === 0) return null;
