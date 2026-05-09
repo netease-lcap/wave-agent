@@ -29,6 +29,13 @@ import { ConfigurationService } from "../services/configurationService.js";
 import type { NotificationQueue } from "./notificationQueue.js";
 
 import { logger } from "../utils/globalLogger.js";
+import {
+  startInteractionSpan,
+  endInteractionSpan,
+  startLLMRequestSpan,
+  endLLMRequestSpan,
+} from "../telemetry/sessionTracing.js";
+import { logOTelEvent } from "../telemetry/events.js";
 
 export interface AIManagerCallbacks {
   onCompactionStateChange?: (isCompacting: boolean) => void;
@@ -487,6 +494,13 @@ export class AIManager {
             `Successfully compacted ${messagesToCompact.length} messages and updated session`,
           );
           this.consecutiveCompactionFailures = 0;
+
+          // Log compaction event
+          logOTelEvent("compaction", {
+            beforeTokens: String(messagesToCompact.length),
+            afterTokens: "1",
+            model: this.getModelConfig().fastModel,
+          }).catch(() => {});
         } catch (compactError) {
           this.consecutiveCompactionFailures++;
           logger?.error(
@@ -532,6 +546,24 @@ export class AIManager {
     } = {},
   ): Promise<void> {
     const { recursionDepth = 0, model, allowedRules, maxTokens } = options;
+
+    // OpenTelemetry: start interaction span for this turn (initial call only)
+    let turnSequence = 0;
+    if (recursionDepth === 0) {
+      const messages = this.messageManager.getMessages();
+      turnSequence = messages.filter((m) => m.role === "user").length;
+      const lastUserMessage = [...messages]
+        .reverse()
+        .find((m) => m.role === "user");
+      const userPromptText =
+        lastUserMessage?.blocks.find((b) => b.type === "text")?.content || "";
+      startInteractionSpan(userPromptText, turnSequence);
+
+      // Log user_prompt event
+      logOTelEvent("user_prompt", {
+        prompt_length: String(userPromptText.length),
+      }).catch(() => {}); // Non-blocking
+    }
 
     // Set loading state early for the initial call, before any async work
     if (recursionDepth === 0) {
@@ -703,7 +735,39 @@ export class AIManager {
         };
       }
 
+      startLLMRequestSpan(model || this.getModelConfig().model);
+      const apiStartTime = Date.now();
+      let ttftMs: number | undefined;
+
+      // If streaming, track TTFT via callback
+      if (this.stream && callAgentOptions.onContentUpdate) {
+        const originalOnContentUpdate = callAgentOptions.onContentUpdate;
+        let firstTokenReceived = false;
+        callAgentOptions.onContentUpdate = (content: string) => {
+          if (!firstTokenReceived) {
+            ttftMs = Date.now() - apiStartTime;
+            firstTokenReceived = true;
+          }
+          originalOnContentUpdate(content);
+        };
+      }
+
       const result = await aiService.callAgent(callAgentOptions);
+      const ttltMs = Date.now() - apiStartTime;
+
+      // End LLM span with usage data
+      endLLMRequestSpan({
+        model: model || this.getModelConfig().model,
+        inputTokens: result.usage?.prompt_tokens,
+        outputTokens: result.usage?.completion_tokens,
+        cacheReadTokens: result.usage?.cache_read_input_tokens,
+        cacheCreationTokens: result.usage?.cache_creation_input_tokens,
+        ttftMs,
+        ttltMs,
+        success: true,
+        hasToolCall: !!(result.tool_calls && result.tool_calls.length > 0),
+      });
+
       const createdByStreaming = assistantMessageCreated;
 
       // For non-streaming mode, create assistant message after callAgent returns
@@ -1114,12 +1178,28 @@ export class AIManager {
         }
       }
     } catch (error) {
+      // End LLM span with error
+      endLLMRequestSpan({
+        model: model || this.getModelConfig().model,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      // Log error event
+      logOTelEvent("error", {
+        error_type: error instanceof Error ? error.constructor.name : "Unknown",
+        message: error instanceof Error ? error.message : String(error),
+      }).catch(() => {}); // Non-blocking
+
       this.messageManager.addErrorBlock(
         error instanceof Error ? error.message : "Unknown error occurred",
       );
     } finally {
       // Only execute cleanup and hooks for the initial call
       if (recursionDepth === 0) {
+        // OpenTelemetry: end interaction span
+        endInteractionSpan();
+
         // Save session in each recursion to ensure message persistence
         await this.messageManager.saveSession();
         // Set loading to false first
@@ -1328,6 +1408,13 @@ export class AIManager {
         );
         shouldContinue = !processResult.shouldBlock;
       }
+
+      // Log tool_decision event
+      logOTelEvent("tool_decision", {
+        tool_name: toolName,
+        decision: shouldContinue ? "approved" : "blocked",
+        source: "hook",
+      }).catch(() => {}); // Non-blocking
 
       // Log hook execution results for debugging
       if (results.length > 0) {

@@ -47,6 +47,7 @@ import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { SkillMetadata } from "../types/skills.js";
 import { toolSearchTool } from "../tools/toolSearchTool.js";
 import { isDeferredTool } from "../utils/isDeferredTool.js";
+import { startToolSpan, endToolSpan } from "../telemetry/sessionTracing.js";
 
 export interface ToolManagerOptions {
   container: Container;
@@ -241,6 +242,10 @@ class ToolManager {
       toolCallId: context.toolCallId,
     };
 
+    // OpenTelemetry: start tool span
+    startToolSpan(name, args);
+    const toolStartTime = Date.now();
+
     logger?.debug("Executing tool with enhanced context", {
       toolName: name,
       permissionMode,
@@ -250,22 +255,50 @@ class ToolManager {
 
     // Check if it's an MCP tool first
     if (this.mcpManager.isMcpTool(name)) {
-      return this.mcpManager.executeMcpToolByRegistry(
-        name,
-        args,
-        enhancedContext,
-      );
+      try {
+        const result = await this.mcpManager.executeMcpToolByRegistry(
+          name,
+          args,
+          enhancedContext,
+        );
+        endToolSpan({
+          success: result.success,
+          durationMs: Date.now() - toolStartTime,
+        });
+        return result;
+      } catch (error) {
+        endToolSpan({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - toolStartTime,
+        });
+        return {
+          success: false,
+          content: "",
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     }
 
     // Check built-in tools
     const plugin = this.toolsRegistry.get(name);
     if (plugin) {
       try {
-        return await plugin.execute(args, enhancedContext);
+        const result = await plugin.execute(args, enhancedContext);
+        endToolSpan({
+          success: result.success,
+          durationMs: Date.now() - toolStartTime,
+        });
+        return result;
       } catch (error) {
         logger?.error("Tool execution failed", {
           toolName: name,
           error: error instanceof Error ? error.message : String(error),
+        });
+        endToolSpan({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - toolStartTime,
         });
         return {
           success: false,
@@ -276,6 +309,11 @@ class ToolManager {
     }
 
     logger?.warn("Tool not found", { toolName: name });
+    endToolSpan({
+      success: false,
+      error: `Tool '${name}' not found`,
+      durationMs: Date.now() - toolStartTime,
+    });
     return {
       success: false,
       content: "",
