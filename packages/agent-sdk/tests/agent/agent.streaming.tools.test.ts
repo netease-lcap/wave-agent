@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/types/index.js";
 import * as aiService from "@/services/aiService.js";
@@ -25,6 +33,17 @@ describe("Agent Tool Streaming Tests", () => {
   };
 
   beforeEach(async () => {
+    // Wait for any leaked async calls from previous test's forked agents to settle
+    // (auto-memory extraction continues after agent.destroy() via fire-and-forget)
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Clear mock to remove any leaked calls from previous test
+    mockCallAgent = vi.mocked(aiService.callAgent);
+    mockCallAgent.mockClear();
+
+    // Reset module-level tool mock to prevent call accumulation across tests
+    mockToolExecute.mockReset();
+
     // Create mock callbacks
     mockCallbacks = {
       onMessagesChange:
@@ -45,9 +64,11 @@ describe("Agent Tool Streaming Tests", () => {
       }
     ).container;
     container.register("ToolManager", mockToolManagerInstance);
+  });
 
-    mockCallAgent = vi.mocked(aiService.callAgent);
-    vi.clearAllMocks();
+  afterEach(async () => {
+    // Clean up Agent to stop timers, abort async operations, and release resources
+    await agent.destroy();
   });
 
   describe("Tool Call Streaming Integration", () => {
