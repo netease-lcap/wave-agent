@@ -316,7 +316,7 @@ describe("bashParser", () => {
       expect(getSmartPrefix("sudo rm -rf /")).toBe(null);
     });
 
-    it("should return null for heredoc writes", () => {
+    it("should return null for heredoc writes (no TOOL_RULE for cat)", () => {
       expect(getSmartPrefix("cat <<EOF > file.txt")).toBe(null);
     });
 

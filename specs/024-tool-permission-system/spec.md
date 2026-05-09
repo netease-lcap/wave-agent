@@ -161,14 +161,9 @@ As a user, I want to be able to set the permission mode to `dontAsk` in my confi
 **Acceptance Scenarios**:
 1. **Given** the configuration file has `permissionMode: "dontAsk"`, **When** the agent starts, **Then** the effective permission mode is `dontAsk`.
 
-### User Story 19 - Bash Heredoc Write Redirection to Dedicated Tools (Priority: P1)
+### ~~User Story 19 - Bash Heredoc Write Redirection to Dedicated Tools (Priority: P1)~~
 
-As a user, I want the agent to use the dedicated `Write` and `Edit` tools for file modifications instead of bash heredoc redirections (e.g., `cat <<EOF > file`), so that I have better visibility and control over file changes.
-
-**Acceptance Scenarios**:
-1. **Given** the agent attempts to run a bash command with heredoc write redirection (e.g., `cat <<EOF > file.txt`), **When** the command is executed, **Then** the system MUST automatically deny the operation and provide a reminder to use the `Write` or `Edit` tools.
-2. **Given** the agent attempts to run a simple bash command with write redirection (e.g., `npm start > app.log`), **When** the command is executed, **Then** the system SHOULD NOT automatically deny it based on heredoc write redirection rules (though it may still require normal bash permissions and be treated as dangerous).
-3. **Given** the agent attempts to run a bash command with stream redirection (e.g., `ls 2>&1`), **When** the command is executed, **Then** the system SHOULD NOT treat it as a write redirection.
+*Removed. Heredoc-based bash commands are no longer automatically denied. Users should rely on tool permission rules and soft prompt guidance to encourage use of dedicated Write/Edit tools.*
 
 ## Requirements
 
@@ -182,7 +177,6 @@ As a user, I want the agent to use the dedicated `Write` and `Edit` tools for fi
 - **FR-005**: System MUST support a `canUseTool` callback in the Agent SDK for custom permission logic.
 - **FR-006**: System MUST support cycling through permission modes (default -> acceptEdits -> plan -> bypassPermissions) via `Shift+Tab`.
 - **FR-021**: System MUST hide the "Don't ask again" option for commands identified as dangerous or out-of-bounds.
-- **FR-022**: System MUST automatically deny bash commands with heredoc write redirections (`cat <<EOF > file`) and remind the agent to use the dedicated `Write` or `Edit` tools for file modifications.
 - **FR-056**: System MUST detect write redirections (`>`, `>>`, etc.) in bash commands and treat them as dangerous, hiding the "Don't ask again" option.
 - **FR-057**: System MUST ignore file descriptor redirections (e.g., `2>&1`) when detecting write redirections.
 - **FR-036**: Selecting "Yes, and auto-accept edits" MUST set the current session's permission mode to `acceptEdits`.
