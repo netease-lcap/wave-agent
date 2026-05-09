@@ -34,9 +34,14 @@ export const cronListTool: ToolPlugin = {
 
     const jobs = context.cronManager.listJobs();
 
+    const annotatedJobs = jobs.map((job) => ({
+      ...job,
+      scope: job.durable ? "durable" : "session-only",
+    }));
+
     return {
       success: true,
-      content: JSON.stringify({ jobs }, null, 2),
+      content: JSON.stringify({ jobs: annotatedJobs }, null, 2),
       shortResult: `Found ${jobs.length} jobs`,
     };
   },

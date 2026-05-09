@@ -39,6 +39,8 @@ As a user, I want to quickly loop a command or prompt without specifying a time 
 
 - **Empty Prompt**: If I type `/loop 5m` without a command, the system should show usage instructions and not schedule anything.
 - **Thundering Herd Prevention**: If I ask for "hourly", the system should pick a random minute (e.g., 7) instead of 0 to avoid global sync issues.
+- **Multi-Session Safety**: When multiple Wave sessions run in the same project, only one session fires durable jobs (via scheduler lease lock). Non-owner sessions fall back to firing session-only jobs.
+- **Lock Takeover**: If the lock-owning session exits, another session takes over the lock within 5 seconds and resumes firing durable jobs.
 
 ## Requirements *(mandatory)*
 
@@ -54,6 +56,11 @@ As a user, I want to quickly loop a command or prompt without specifying a time 
     - A reminder that recurring tasks auto-expire after 7 days.
     - Instructions on how to cancel the job using natural language (e.g., "stop loop [ID]").
 - **FR-009**: System MUST show usage instructions if the resulting prompt is empty.
+- **FR-010**: System MUST support a `durable` parameter on `CronCreate` that persists jobs to `.wave/scheduled_tasks.json`. Jobs with `durable: false` (default) are session-only.
+- **FR-011**: Durable jobs MUST only fire from the session that holds the scheduler lease lock (prevents double-firing across multiple sessions).
+- **FR-012**: When the lock-owning session exits, another session MUST take over the lock and resume firing durable jobs.
+- **FR-013**: `CronList` MUST annotate each job with its scope (`durable` or `session-only`).
+- **FR-014**: `CronDelete` MUST remove durable jobs from both memory and disk storage.
 
 ### Key Entities
 
@@ -63,3 +70,5 @@ As a user, I want to quickly loop a command or prompt without specifying a time 
     - **Prompt**: The command or text to be executed.
     - **Cadence**: Human-readable description of the frequency.
     - **Expiration**: The date/time when the job will auto-delete (7 days from creation).
+    - **Scope**: `session-only` (in-memory, dies on exit) or `durable` (file-backed, survives restarts).
+    - **Scheduler Lock**: Durable jobs require a lease lock to prevent double-firing across sessions.
