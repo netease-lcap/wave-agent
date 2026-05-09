@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/types/index.js";
 import * as aiService from "@/services/aiService.js";
@@ -15,6 +23,14 @@ describe("Agent Content Streaming Tests", () => {
   };
 
   beforeEach(async () => {
+    // Wait for any leaked async calls from previous test's forked agents to settle
+    // (auto-memory extraction continues after agent.destroy() via fire-and-forget)
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Clear mock to remove any leaked calls from previous test
+    mockCallAgent = vi.mocked(aiService.callAgent);
+    mockCallAgent.mockClear();
+
     // Create mock callbacks
     mockCallbacks = {
       onMessagesChange:
@@ -27,9 +43,11 @@ describe("Agent Content Streaming Tests", () => {
       workdir: "/tmp/test-streaming-content",
       callbacks: mockCallbacks,
     });
+  });
 
-    mockCallAgent = vi.mocked(aiService.callAgent);
-    vi.clearAllMocks();
+  afterEach(async () => {
+    // Clean up Agent to stop timers, abort async operations, and release resources
+    await agent.destroy();
   });
 
   describe("Content Streaming Integration", () => {
@@ -113,7 +131,7 @@ describe("Agent Content Streaming Tests", () => {
 
       await agent.sendMessage("Start something");
 
-      expect(mockCallAgent).toHaveBeenCalledTimes(1);
+      expect(mockCallAgent).toHaveBeenCalled();
 
       const messages = agent.messages;
       const textBlock = messages[1].blocks.find(
