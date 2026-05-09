@@ -22,6 +22,7 @@ export interface ForkedAgentManagerCallbacks {
 
 export class ForkedAgentManager {
   private activeForks = new Map<string, ForkedAgentEntry>();
+  private inFlightPromises = new Set<Promise<void>>();
   private callbacks: ForkedAgentManagerCallbacks;
 
   constructor(
@@ -67,11 +68,17 @@ export class ForkedAgentManager {
     this.activeForks.set(id, entry);
 
     // Fire-and-forget execution
-    this.executeFork(entry, subagentType, messages, parameters, prompt).catch(
-      (error) => {
-        logger.error("Forked agent execution failed:", error);
-      },
-    );
+    const forkPromise = this.executeFork(
+      entry,
+      subagentType,
+      messages,
+      parameters,
+      prompt,
+    ).catch((error) => {
+      logger.error("Forked agent execution failed:", error);
+    });
+    this.inFlightPromises.add(forkPromise);
+    forkPromise.finally(() => this.inFlightPromises.delete(forkPromise));
 
     return id;
   }
@@ -125,14 +132,18 @@ export class ForkedAgentManager {
       );
 
       // Write final response and completion to log
-      if (entry.logStream) {
-        entry.logStream.write(
-          `[${new Date().toISOString()}] Final response:\n${result}\n`,
-        );
-        entry.logStream.write(
-          `[${new Date().toISOString()}] Agent completed successfully\n`,
-        );
-        entry.logStream.end();
+      try {
+        if (entry.logStream && !entry.logStream.destroyed) {
+          entry.logStream.write(
+            `[${new Date().toISOString()}] Final response:\n${result}\n`,
+          );
+          entry.logStream.write(
+            `[${new Date().toISOString()}] Agent completed successfully\n`,
+          );
+          entry.logStream.end();
+        }
+      } catch {
+        // Stream may have been destroyed during cleanup
       }
 
       entry.status = "completed";
@@ -141,11 +152,15 @@ export class ForkedAgentManager {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
-      if (entry.logStream) {
-        entry.logStream.write(
-          `[${new Date().toISOString()}] Agent failed: ${errorMessage}\n`,
-        );
-        entry.logStream.end();
+      try {
+        if (entry.logStream && !entry.logStream.destroyed) {
+          entry.logStream.write(
+            `[${new Date().toISOString()}] Agent failed: ${errorMessage}\n`,
+          );
+          entry.logStream.end();
+        }
+      } catch {
+        // Stream may have been destroyed during cleanup
       }
 
       entry.status = "failed";
@@ -170,15 +185,18 @@ export class ForkedAgentManager {
   }
 
   /**
-   * Stop all running forked agents and clear the map.
+   * Stop all running forked agents, wait for in-flight executions to settle, and clear the map.
    */
-  cleanup(): void {
+  async cleanup(): Promise<void> {
     for (const [, entry] of this.activeForks) {
       entry.instance?.aiManager?.abortAIMessage();
       entry.logStream?.destroy();
     }
     this.activeForks.clear();
     this.notifyChange();
+    // Wait for all in-flight fork executions to settle before returning
+    await Promise.allSettled(this.inFlightPromises);
+    this.inFlightPromises.clear();
   }
 
   /**

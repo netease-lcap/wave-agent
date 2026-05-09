@@ -260,7 +260,7 @@ describe("ForkedAgentManager", () => {
       expect(mockSubagentManager.createInstance).toHaveBeenCalledTimes(2);
     });
 
-    forkedAgentManager.cleanup();
+    await forkedAgentManager.cleanup();
 
     // Two separate instances, each with its own abortAIMessage
     const instance1 =

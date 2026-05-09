@@ -710,7 +710,7 @@ export class Agent {
     // Cleanup subagent manager
     this.subagentManager.cleanup();
     // Cleanup forked agent manager
-    this.forkedAgentManager.cleanup();
+    await this.forkedAgentManager.cleanup();
     // Cleanup skill manager
     await this.skillManager.destroy();
     // Cleanup live configuration reload
