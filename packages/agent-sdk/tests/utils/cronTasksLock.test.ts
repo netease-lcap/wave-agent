@@ -187,14 +187,30 @@ describe("cronTasksLock", () => {
   });
 
   describe("registerSchedulerLockCleanup", () => {
+    afterEach(() => {
+      // Clean up any registered process listeners to prevent MaxListenersExceededWarning
+      vi.restoreAllMocks();
+    });
+
     it("registers exit handlers", () => {
       const onSpy = vi.spyOn(process, "on");
+      const offSpy = vi.spyOn(process, "off");
 
-      registerSchedulerLockCleanup({ dir: MOCK_DIR, sessionId: "test" });
+      const dispose = registerSchedulerLockCleanup({
+        dir: MOCK_DIR,
+        sessionId: "test",
+      });
 
       expect(onSpy).toHaveBeenCalledWith("exit", expect.any(Function));
       expect(onSpy).toHaveBeenCalledWith("SIGINT", expect.any(Function));
       expect(onSpy).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
+
+      // Dispose removes the handlers
+      dispose();
+
+      expect(offSpy).toHaveBeenCalledWith("exit", expect.any(Function));
+      expect(offSpy).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+      expect(offSpy).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
     });
   });
 });

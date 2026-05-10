@@ -163,14 +163,20 @@ export function releaseSchedulerLockSync(
 
 /**
  * Register a cleanup handler to release the lock on process exit.
+ * Returns a dispose function to remove the listeners (call in test teardown).
  */
 export function registerSchedulerLockCleanup(
   opts: SchedulerLockOptions = {},
-): void {
+): () => void {
   const handler = () => {
     releaseSchedulerLockSync(opts);
   };
   process.on("exit", handler);
   process.on("SIGINT", handler);
   process.on("SIGTERM", handler);
+  return () => {
+    process.off("exit", handler);
+    process.off("SIGINT", handler);
+    process.off("SIGTERM", handler);
+  };
 }
