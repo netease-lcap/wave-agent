@@ -21,6 +21,7 @@ export class CronManager {
   private interval: NodeJS.Timeout | null = null;
   private isOwner = false;
   private lockProbeTimer: NodeJS.Timeout | null = null;
+  private cleanupSchedulerLock: (() => void) | null = null;
   private sessionId: string;
 
   constructor(
@@ -88,7 +89,10 @@ export class CronManager {
 
     // Register exit cleanup (best-effort)
     try {
-      registerSchedulerLockCleanup({ dir: workdir, sessionId: this.sessionId });
+      this.cleanupSchedulerLock = registerSchedulerLockCleanup({
+        dir: workdir,
+        sessionId: this.sessionId,
+      });
     } catch (e) {
       logger?.warn("CronManager: failed to register lock cleanup:", e);
     }
@@ -151,6 +155,10 @@ export class CronManager {
     if (this.lockProbeTimer) {
       clearInterval(this.lockProbeTimer);
       this.lockProbeTimer = null;
+    }
+    if (this.cleanupSchedulerLock) {
+      this.cleanupSchedulerLock();
+      this.cleanupSchedulerLock = null;
     }
     const workdir = this.container.get<string>("Workdir") ?? process.cwd();
     if (this.isOwner) {
