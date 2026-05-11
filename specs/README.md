@@ -65,17 +65,18 @@ This directory contains feature specifications that serve as the source of truth
 | Plan Mode | Shift+Tab plan mode for read-only analysis with incremental plan file editing | [spec](050-plan-mode/spec.md) · [plan](050-plan-mode/plan.md) |
 | AskUserQuestion Tool | AskUserQuestion tool for structured user interaction with options | [spec](052-ask-user-tool/spec.md) · [plan](052-ask-user-tool/plan.md) |
 | Init Command | `/init` slash command using init-prompt.md for project initialization | [spec](054-init-slash-command/spec.md) · [plan](054-init-slash-command/plan.md) |
-| Rewind Command | `/rewind` to revert conversation to a previous user message, reverting file changes | [spec](056-rewind-command/spec.md) · [plan](056-rewind-command/plan.md) · [tasks](056-rewind-command/tasks.md) |
-| History Search | Ctrl+R history search for reusing previous prompts from `~/.wave/history.jsonl` | [spec](057-history-search-prompt/spec.md) · [plan](057-history-search-prompt/plan.md) · [tasks](057-history-search-prompt/tasks.md) |
-| General Purpose Agent | Built-in subagent for complex research, code search, and multi-step tasks | [spec](058-general-purpose-agent/spec.md) · [plan](058-general-purpose-agent/plan.md) · [tasks](058-general-purpose-agent/tasks.md) |
-| Task Background Execution | `run_in_background`, `TaskOutput`/`TaskStop` tools, `/tasks` command replacing `/bashes` | [spec](061-task-background-execution/spec.md) · [plan](061-task-background-execution/plan.md) · [tasks](061-task-background-execution/tasks.md) |
-| Task Management Tools | TaskCreate/TaskGet/TaskUpdate/TaskList with `~/.wave/tasks/` storage and task list UI | [spec](063-task-management-tools/spec.md) · [plan](063-task-management-tools/plan.md) · [tasks](063-task-management-tools/tasks.md) |
-| Plan Subagent | Built-in Plan subagent for designing implementation plans before coding | [spec](065-plan-subagent/spec.md) · [plan](065-plan-subagent/plan.md) · [tasks](065-plan-subagent/tasks.md) |
-| Bash Subagent | Built-in Bash subagent for executing shell commands | [spec](066-bash-subagent/spec.md) · [plan](066-bash-subagent/plan.md) · [tasks](066-bash-subagent/tasks.md) |
-| Tools Selection | CLI `--tools` flag to restrict agent to a specific tool set | [spec](067-tools-selection/spec.md) · [plan](067-tools-selection/plan.md) · [tasks](067-tools-selection/tasks.md) |
-| CLI Worktree | `-w/--worktree` for isolated git worktrees at `.wave/worktrees/` with safe exit | [spec](068-cli-worktree/spec.md) · [plan](068-cli-worktree/plan.md) · [tasks](068-cli-worktree/tasks.md) |
-| Status Command | `/status` showing version, session ID, cwd, model, and runtime info | [spec](069-status-command/spec.md) · [plan](069-status-command/plan.md) · [tasks](069-status-command/tasks.md) |
-| ACP Bridge | Agent Communication Protocol bridge for connecting external clients | [spec](070-acp-bridge/spec.md) · [plan](070-acp-bridge/plan.md) · [tasks](070-acp-bridge/tasks.md) |
-| Builtin Settings Skill | Guide users on `settings.json`, hooks config, and Wave settings management | [spec](071-builtin-settings-skill/spec.md) · [plan](071-builtin-settings-skill/plan.md) · [tasks](071-builtin-settings-skill/tasks.md) |
-| Loop Command | `/loop` for scheduling recurring prompts via cron (e.g., `/loop 5m check the build`). Includes durable persistence and multi-session scheduler lock. | [spec](072-loop-slash-command/spec.md) · [plan](072-loop-slash-command/plan.md) · [tasks](072-loop-slash-command/tasks.md) |
-| Deferred Tool Loading | `shouldDefer` flag for on-demand tool loading via ToolSearch discovery | [spec](074-should-defer-tool-loading/spec.md) · [plan](074-should-defer-tool-loading/plan.md) · [tasks](074-should-defer-tool-loading/tasks.md) |
+| Rewind Command | `/rewind` to revert conversation to a previous user message, reverting file changes | [spec](056-rewind-command/spec.md) · [plan](056-rewind-command/plan.md) |
+| History Search | Ctrl+R history search for reusing previous prompts from `~/.wave/history.jsonl` | [spec](057-history-search-prompt/spec.md) · [plan](057-history-search-prompt/plan.md) |
+| General Purpose Agent | Built-in subagent for complex research, code search, and multi-step tasks | [spec](058-general-purpose-agent/spec.md) · [plan](058-general-purpose-agent/plan.md) |
+| Task Background Execution | `run_in_background`, `TaskOutput`/`TaskStop` tools, `/tasks` command replacing `/bashes` | [spec](061-task-background-execution/spec.md) · [plan](061-task-background-execution/plan.md) |
+| Task Management Tools | TaskCreate/TaskGet/TaskUpdate/TaskList with `~/.wave/tasks/` storage and task list UI | [spec](063-task-management-tools/spec.md) · [plan](063-task-management-tools/plan.md) |
+| Plan Subagent | Built-in Plan subagent for designing implementation plans before coding | [spec](065-plan-subagent/spec.md) · [plan](065-plan-subagent/plan.md) |
+| Bash Subagent | Built-in Bash subagent for executing shell commands | [spec](066-bash-subagent/spec.md) · [plan](066-bash-subagent/plan.md) |
+| Tools Selection | CLI `--tools` flag to restrict agent to a specific tool set | [spec](067-tools-selection/spec.md) · [plan](067-tools-selection/plan.md) |
+| CLI Worktree | `-w/--worktree` for isolated git worktrees at `.wave/worktrees/` with safe exit | [spec](068-cli-worktree/spec.md) · [plan](068-cli-worktree/plan.md) |
+| Status Command | `/status` showing version, session ID, cwd, model, and runtime info | [spec](069-status-command/spec.md) · [plan](069-status-command/plan.md) |
+| ACP Bridge | Agent Communication Protocol bridge for connecting external clients | [spec](070-acp-bridge/spec.md) · [plan](070-acp-bridge/plan.md) |
+| Builtin Settings Skill | Guide users on `settings.json`, hooks config, and Wave settings management | [spec](071-builtin-settings-skill/spec.md) · [plan](071-builtin-settings-skill/plan.md) |
+| Loop Command | `/loop` for scheduling recurring prompts via cron (e.g., `/loop 5m check the build`). Includes durable persistence and multi-session scheduler lock. | [spec](072-loop-slash-command/spec.md) · [plan](072-loop-slash-command/plan.md) |
+| Deferred Tool Loading | `shouldDefer` flag for on-demand tool loading via ToolSearch discovery | [spec](074-should-defer-tool-loading/spec.md) · [plan](074-should-defer-tool-loading/plan.md) |
+| OpenTelemetry Integration | OpenTelemetry instrumentation for metrics, traces, and logs with multiple exporters (jsonl, OTLP) | [spec](075-opentelemetry/spec.md) · [plan](075-opentelemetry/plan.md) |
