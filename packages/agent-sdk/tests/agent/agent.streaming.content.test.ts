@@ -15,6 +15,16 @@ import type { TextBlock } from "@/types/messaging.js";
 // Mock AI Service
 vi.mock("@/services/aiService");
 
+// Prevent auto-memory extraction forked agents from making extra AI calls
+vi.mock("@/managers/forkedAgentManager", () => ({
+  ForkedAgentManager: vi.fn().mockImplementation(function () {
+    return {
+      forkAndExecute: vi.fn().mockResolvedValue("mock-fork-id"),
+      cleanup: vi.fn(),
+    };
+  }),
+}));
+
 describe("Agent Content Streaming Tests", () => {
   let agent: Agent;
   let mockCallAgent: ReturnType<typeof vi.fn>;
@@ -23,10 +33,6 @@ describe("Agent Content Streaming Tests", () => {
   };
 
   beforeEach(async () => {
-    // Wait for any leaked async calls from previous test's forked agents to settle
-    // (auto-memory extraction continues after agent.destroy() via fire-and-forget)
-    await new Promise((r) => setTimeout(r, 100));
-
     // Clear mock to remove any leaked calls from previous test
     mockCallAgent = vi.mocked(aiService.callAgent);
     mockCallAgent.mockClear();
