@@ -44,8 +44,9 @@ export class CronManager {
 
     // Load durable tasks from file (best-effort, resilient to mocked fs in tests)
     const workdir = this.container.get<string>("Workdir") ?? process.cwd();
+    let durableTasks: Awaited<ReturnType<typeof readCronTasks>> = [];
     try {
-      const durableTasks = readCronTasks(workdir);
+      durableTasks = readCronTasks(workdir) ?? [];
       for (const task of durableTasks) {
         // Recalculate runtime fields for loaded tasks
         try {
@@ -77,24 +78,24 @@ export class CronManager {
       logger?.warn("CronManager: failed to load durable tasks from disk:", e);
     }
 
-    // Try to acquire scheduler lock (best-effort)
-    try {
-      this.tryLock(workdir);
-    } catch (e) {
-      logger?.warn("CronManager: failed to acquire scheduler lock:", e);
-    }
-
     this.interval = setInterval(() => this.checkJobs(), 60000);
     this.interval.unref();
 
-    // Register exit cleanup (best-effort)
-    try {
-      this.cleanupSchedulerLock = registerSchedulerLockCleanup({
-        dir: workdir,
-        sessionId: this.sessionId,
-      });
-    } catch (e) {
-      logger?.warn("CronManager: failed to register lock cleanup:", e);
+    // Only acquire scheduler lock and register cleanup when durable tasks exist
+    if (durableTasks.length > 0) {
+      try {
+        this.tryLock(workdir);
+      } catch (e) {
+        logger?.warn("CronManager: failed to acquire scheduler lock:", e);
+      }
+      try {
+        this.cleanupSchedulerLock = registerSchedulerLockCleanup({
+          dir: workdir,
+          sessionId: this.sessionId,
+        });
+      } catch (e) {
+        logger?.warn("CronManager: failed to register lock cleanup:", e);
+      }
     }
   }
 
@@ -116,6 +117,19 @@ export class CronManager {
       .catch((err) => {
         logger?.error("CronManager: failed to acquire scheduler lock:", err);
       });
+  }
+
+  private ensureLock(workdir: string): void {
+    if (this.isOwner) return;
+    this.tryLock(workdir);
+    try {
+      this.cleanupSchedulerLock = registerSchedulerLockCleanup({
+        dir: workdir,
+        sessionId: this.sessionId,
+      });
+    } catch (e) {
+      logger?.warn("CronManager: failed to register lock cleanup:", e);
+    }
   }
 
   private startLockProbe(workdir: string): void {
@@ -208,6 +222,7 @@ export class CronManager {
       try {
         const workdir = this.container.get<string>("Workdir") ?? process.cwd();
         addCronTask(newJob, workdir);
+        this.ensureLock(workdir);
       } catch (e) {
         logger?.warn(
           `CronManager: failed to persist durable job ${id} to disk:`,

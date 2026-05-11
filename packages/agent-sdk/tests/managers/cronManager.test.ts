@@ -109,6 +109,39 @@ describe("CronManager", () => {
 
       expect(addCronTask).not.toHaveBeenCalled();
     });
+
+    it("acquires scheduler lock on createJob when durable=true", async () => {
+      vi.mocked(tryAcquireSchedulerLock).mockResolvedValue(true);
+
+      cronManager = new CronManager(container);
+      cronManager.createJob({
+        cron: "*/5 * * * *",
+        prompt: "durable job",
+        recurring: true,
+        durable: true,
+      });
+
+      await vi.waitFor(() => {
+        expect(tryAcquireSchedulerLock).toHaveBeenCalled();
+      });
+    });
+
+    it("does not acquire lock on createJob for session-only jobs", async () => {
+      vi.mocked(tryAcquireSchedulerLock).mockResolvedValue(true);
+
+      cronManager = new CronManager(container);
+      cronManager.createJob({
+        cron: "*/5 * * * *",
+        prompt: "session job",
+        recurring: true,
+        durable: false,
+      });
+
+      // Give async lock acquisition time to potentially fire
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(tryAcquireSchedulerLock).not.toHaveBeenCalled();
+    });
   });
 
   describe("deleteJob", () => {
@@ -220,8 +253,18 @@ describe("CronManager", () => {
       expect(cronManager.listJobs()[0].id).toBe("persisted-1");
     });
 
-    it("acquires scheduler lock on start", async () => {
+    it("acquires scheduler lock on start when durable tasks exist", async () => {
       vi.mocked(tryAcquireSchedulerLock).mockResolvedValue(true);
+      vi.mocked(readCronTasks).mockReturnValue([
+        {
+          id: "task-1",
+          cron: "*/5 * * * *",
+          prompt: "durable task",
+          recurring: true,
+          createdAt: Date.now(),
+          durable: true,
+        } as never,
+      ]);
 
       cronManager = new CronManager(container);
       cronManager.start();
@@ -232,8 +275,18 @@ describe("CronManager", () => {
       });
     });
 
-    it("sets up lock probe when not owner", async () => {
+    it("sets up lock probe when not owner and durable tasks exist", async () => {
       vi.mocked(tryAcquireSchedulerLock).mockResolvedValue(false);
+      vi.mocked(readCronTasks).mockReturnValue([
+        {
+          id: "task-1",
+          cron: "*/5 * * * *",
+          prompt: "durable task",
+          recurring: true,
+          createdAt: Date.now(),
+          durable: true,
+        } as never,
+      ]);
 
       cronManager = new CronManager(container);
       cronManager.start();
@@ -241,6 +294,20 @@ describe("CronManager", () => {
       await vi.waitFor(() => {
         expect(registerSchedulerLockCleanup).toHaveBeenCalled();
       });
+    });
+
+    it("does not acquire scheduler lock on start when no durable tasks", async () => {
+      vi.mocked(tryAcquireSchedulerLock).mockResolvedValue(true);
+      vi.mocked(readCronTasks).mockReturnValue([]);
+
+      cronManager = new CronManager(container);
+      cronManager.start();
+
+      // Give async lock acquisition time to potentially fire
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(tryAcquireSchedulerLock).not.toHaveBeenCalled();
+      expect(registerSchedulerLockCleanup).not.toHaveBeenCalled();
     });
   });
 
