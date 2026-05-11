@@ -21,6 +21,23 @@ vi.mock("wave-agent-sdk", async () => {
   const actual = await vi.importActual("wave-agent-sdk");
   return {
     ...actual,
+    Agent: {
+      create: vi.fn().mockResolvedValue({
+        destroy: vi.fn(),
+        abortMessage: vi.fn(),
+        sessionId: "test-session-id",
+        messages: [],
+        isLoading: false,
+        isCommandRunning: false,
+        isCompacting: false,
+        workingDirectory: process.cwd(),
+        getPermissionMode: vi.fn().mockReturnValue("default"),
+        getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+        getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+        getMcpServers: vi.fn().mockReturnValue([]),
+        getSlashCommands: vi.fn().mockReturnValue([]),
+      }),
+    },
     hasUncommittedChanges: vi.fn(),
     hasNewCommits: vi.fn(),
     getDefaultRemoteBranch: vi.fn(),
