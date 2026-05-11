@@ -130,6 +130,23 @@ export const toolSearchTool: ToolPlugin = {
 Deferred tools appear by name in <available-deferred-tools> messages. Until fetched, only the name is known — there is no parameter schema, so the tool cannot be invoked. This tool takes a query, matches it against the deferred tool list, and returns the matched tools' complete JSONSchema definitions inside a <functions> block. Once a tool's schema appears in that result, it is callable exactly like any tool defined at the top of the prompt.
 
 Result format: each matched tool appears as one <function>{"description": "...", "name": "...", "parameters": {...}}`,
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description:
+              'Search query for finding deferred tools. Supports: "select:ToolName" for direct lookup, or keyword search like "notebook jupyter". Use "+term" to require a term (e.g. "+slack send").',
+          },
+          max_results: {
+            type: "number",
+            description:
+              "Maximum number of results to return for keyword search (default: 5).",
+          },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
     },
   },
   shouldDefer: false, // Always available
