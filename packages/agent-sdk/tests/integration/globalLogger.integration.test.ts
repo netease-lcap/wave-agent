@@ -432,12 +432,9 @@ describe("Agent - Global Logger Integration", () => {
   });
 
   describe("User Story 2: Utility Functions Use Global Logger", () => {
-    beforeEach(async () => {
+    beforeEach(() => {
       // Ensure we're in test environment
       process.env.NODE_ENV = "test";
-
-      // Clear all module cache to ensure fresh imports
-      vi.resetModules();
     });
 
     describe("Utility functions log when global logger is configured", () => {
