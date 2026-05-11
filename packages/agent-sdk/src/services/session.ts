@@ -803,12 +803,13 @@ export async function sessionExistsInJsonl(
 }
 
 /**
- * Get the content of the first message in a session
+ * Get the content of the first non-meta message in a session
  * For user role: get text block content
  * For assistant role: get compact block content
+ * Skips meta messages (isMeta: true) to find the first meaningful message
  * @param sessionId - Session ID to get first message from
  * @param workdir - Working directory for session operations
- * @returns Promise that resolves to the first message content or null if not found
+ * @returns Promise that resolves to the first non-meta message content or null if not found
  */
 export async function getFirstMessageContent(
   sessionId: string,
@@ -821,25 +822,29 @@ export async function getFirstMessageContent(
     const projectDir = await encoder.getProjectDirectory(workdir, baseDir);
     const filePath = join(projectDir.encodedPath, `${sessionId}.jsonl`);
 
-    // Read the first line of the file
-    const { readFirstLine } = await import("../utils/fileUtils.js");
-    const firstLine = await readFirstLine(filePath);
+    // Read first N lines to skip meta messages
+    const { readFirstNLines } = await import("../utils/fileUtils.js");
+    const lines = await readFirstNLines(filePath, 10);
 
-    if (!firstLine) {
-      return null;
+    for (const line of lines) {
+      try {
+        const message = JSON.parse(line) as Message;
+
+        // Skip meta messages
+        if (message.isMeta) {
+          continue;
+        }
+
+        const content = getMessageContent(message);
+        if (content) {
+          return content;
+        }
+      } catch (error) {
+        logger.warn(`Failed to parse message in session ${sessionId}:`, error);
+      }
     }
 
-    try {
-      const message = JSON.parse(firstLine) as Message;
-
-      return getMessageContent(message) || null;
-    } catch (error) {
-      logger.warn(
-        `Failed to parse first message in session ${sessionId}:`,
-        error,
-      );
-      return null;
-    }
+    return null;
   } catch (error) {
     logger.warn(
       `Failed to get first message content for session ${sessionId}:`,

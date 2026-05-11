@@ -38,6 +38,7 @@ vi.mock("../../src/utils/pathEncoder.js", () => ({
 
 vi.mock("../../src/utils/fileUtils.js", () => ({
   readFirstLine: vi.fn(),
+  readFirstNLines: vi.fn(),
 }));
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -86,11 +87,11 @@ describe("session service - additional coverage", () => {
 
     it("should return text content from first message", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
-      vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue([
         JSON.stringify({
           blocks: [{ type: "text", content: "hello" }],
         }),
-      );
+      ]);
 
       const content = await getFirstMessageContent(sessionId, workdir);
       expect(content).toBe("hello");
@@ -98,11 +99,11 @@ describe("session service - additional coverage", () => {
 
     it("should return command from bang block", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
-      vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue([
         JSON.stringify({
           blocks: [{ type: "bang", command: "ls" }],
         }),
-      );
+      ]);
 
       const content = await getFirstMessageContent(sessionId, workdir);
       expect(content).toBe("!ls");
@@ -110,7 +111,7 @@ describe("session service - additional coverage", () => {
 
     it("should return content from compact block", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
-      vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue([
         JSON.stringify({
           blocks: [
             {
@@ -120,7 +121,7 @@ describe("session service - additional coverage", () => {
             },
           ],
         }),
-      );
+      ]);
 
       const content = await getFirstMessageContent(sessionId, workdir);
       expect(content).toBe("compacted");
@@ -128,7 +129,7 @@ describe("session service - additional coverage", () => {
 
     it("should return text block content", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
-      vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue([
         JSON.stringify({
           blocks: [
             {
@@ -137,7 +138,7 @@ describe("session service - additional coverage", () => {
             },
           ],
         }),
-      );
+      ]);
 
       const content = await getFirstMessageContent(sessionId, workdir);
       expect(content).toBe("Hello world");
@@ -145,11 +146,11 @@ describe("session service - additional coverage", () => {
 
     it("should return null if no recognized blocks", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
-      vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue([
         JSON.stringify({
           blocks: [{ type: "other" }],
         }),
-      );
+      ]);
 
       const content = await getFirstMessageContent(sessionId, workdir);
       expect(content).toBeNull();
@@ -157,11 +158,75 @@ describe("session service - additional coverage", () => {
 
     it("should return null on parse error", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
-      vi.mocked(fileUtils.readFirstLine).mockResolvedValue("invalid json");
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue(["invalid json"]);
 
       const content = await getFirstMessageContent(sessionId, workdir);
       expect(content).toBeNull();
       expect(logger.warn).toHaveBeenCalled();
+    });
+
+    it("should skip meta message and return second message", async () => {
+      const fileUtils = await import("../../src/utils/fileUtils.js");
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue([
+        JSON.stringify({
+          isMeta: true,
+          blocks: [{ type: "text", content: "system init" }],
+        }),
+        JSON.stringify({
+          blocks: [{ type: "text", content: "hello" }],
+        }),
+      ]);
+
+      const content = await getFirstMessageContent(sessionId, workdir);
+      expect(content).toBe("hello");
+    });
+
+    it("should skip multiple consecutive meta messages", async () => {
+      const fileUtils = await import("../../src/utils/fileUtils.js");
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue([
+        JSON.stringify({
+          isMeta: true,
+          blocks: [{ type: "text", content: "hook1" }],
+        }),
+        JSON.stringify({
+          isMeta: true,
+          blocks: [{ type: "text", content: "hook2" }],
+        }),
+        JSON.stringify({
+          isMeta: true,
+          blocks: [{ type: "text", content: "hook3" }],
+        }),
+        JSON.stringify({
+          blocks: [{ type: "text", content: "real user message" }],
+        }),
+      ]);
+
+      const content = await getFirstMessageContent(sessionId, workdir);
+      expect(content).toBe("real user message");
+    });
+
+    it("should return null if all messages are meta", async () => {
+      const fileUtils = await import("../../src/utils/fileUtils.js");
+      const metaLines = Array(10)
+        .fill(null)
+        .map((_, i) =>
+          JSON.stringify({
+            isMeta: true,
+            blocks: [{ type: "text", content: `meta ${i}` }],
+          }),
+        );
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue(metaLines);
+
+      const content = await getFirstMessageContent(sessionId, workdir);
+      expect(content).toBeNull();
+    });
+
+    it("should handle empty file gracefully", async () => {
+      const fileUtils = await import("../../src/utils/fileUtils.js");
+      vi.mocked(fileUtils.readFirstNLines).mockResolvedValue([]);
+
+      const content = await getFirstMessageContent(sessionId, workdir);
+      expect(content).toBeNull();
     });
   });
 

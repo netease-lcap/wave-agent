@@ -38,6 +38,46 @@ export async function readFirstLine(filePath: string): Promise<string> {
 }
 
 /**
+ * Reads up to N lines from a file using Node.js readline.
+ *
+ * @param {string} filePath - The path to the file.
+ * @param {number} maxLines - Maximum number of non-empty lines to read.
+ * @return {Promise<string[]>} - Array of non-empty lines (up to maxLines).
+ */
+export async function readFirstNLines(
+  filePath: string,
+  maxLines: number,
+): Promise<string[]> {
+  const { createInterface } = await import("node:readline");
+
+  const fileStream = createReadStream(filePath);
+  const rl = createInterface({
+    input: fileStream,
+    crlfDelay: Infinity,
+  });
+
+  const lines: string[] = [];
+
+  try {
+    for await (const line of rl) {
+      const trimmedLine = line.trim();
+      if (trimmedLine.length > 0) {
+        lines.push(trimmedLine);
+        if (lines.length >= maxLines) {
+          break;
+        }
+      }
+    }
+    return lines;
+  } catch {
+    return lines;
+  } finally {
+    rl.close();
+    fileStream.destroy();
+  }
+}
+
+/**
  * Reads a file from the end and returns the last non-empty line.
  *
  * This version supports files that end with:
