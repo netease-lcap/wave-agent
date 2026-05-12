@@ -10,6 +10,7 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [authUrl, setAuthUrl] = useState("");
 
   const isLoadingRef = useRef(isLoading);
   isLoadingRef.current = isLoading;
@@ -35,10 +36,13 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
 
     setIsLoading(true);
     setError("");
+    setAuthUrl("");
     setMessage("Waiting for browser authentication...");
 
     try {
-      await authService.login();
+      await authService.login((url: string) => {
+        setAuthUrl(url);
+      });
       setMessage("Login successful");
     } catch (err) {
       setError((err as Error).message);
@@ -83,6 +87,13 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
             {isLoading ? "⌛ " : ""}
             {message}
           </Text>
+        </Box>
+      )}
+
+      {authUrl && isLoading && (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text color="cyan">Open this URL in your browser:</Text>
+          <Text color="white">{authUrl}</Text>
         </Box>
       )}
 

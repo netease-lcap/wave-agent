@@ -89,7 +89,7 @@ export class AuthService {
     return url;
   }
 
-  async login(): Promise<string> {
+  async login(onAuthUrl?: (url: string) => void): Promise<string> {
     const adminUrl = this.getAdminBaseUrl();
 
     // Step 1: Fetch available SSO providers
@@ -99,14 +99,21 @@ export class AuthService {
         `Failed to fetch SSO providers: ${providersResponse.status} ${providersResponse.statusText}`,
       );
     }
-    const providers = (await providersResponse.json()) as { id: string }[];
+    const providers = (await providersResponse.json()) as {
+      provider: string;
+      displayName: string;
+    }[];
     if (!providers || providers.length === 0) {
       throw new Error("No SSO providers available");
     }
-    const provider = providers[0].id;
+    const provider = providers[0].provider;
 
     // Step 2-5: Start local server, open browser, wait for callback
-    const token = await this.startLocalAuthServer(adminUrl, provider);
+    const token = await this.startLocalAuthServer(
+      adminUrl,
+      provider,
+      onAuthUrl,
+    );
 
     // Save the token (preserve existing keys)
     const existing = this.loadAuth();
@@ -118,6 +125,7 @@ export class AuthService {
   private startLocalAuthServer(
     adminUrl: string,
     provider: string,
+    onAuthUrl?: (url: string) => void,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const server: Server = createServer((req, res) => {
@@ -148,16 +156,14 @@ export class AuthService {
         const callbackUrl = `http://localhost:${port}`;
         const authUrl = `${adminUrl}/api/auth/sso/${provider}?callback_url=${encodeURIComponent(callbackUrl)}`;
 
-        // Open browser
+        // Notify caller of the auth URL
+        onAuthUrl?.(authUrl);
+
+        // Try to open browser; if it fails, keep server alive for manual visit
         try {
           await this.openBrowser(authUrl);
-        } catch (error) {
-          server.close();
-          reject(
-            new Error(
-              `Failed to open browser: ${(error as Error).message}. Please visit: ${authUrl}`,
-            ),
-          );
+        } catch {
+          // Browser not available — server stays alive, user can visit authUrl manually
         }
       });
 
