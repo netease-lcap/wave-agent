@@ -89,7 +89,12 @@ export class AuthService {
     return url;
   }
 
-  async login(onAuthUrl?: (url: string) => void): Promise<string> {
+  async login(options?: {
+    /** Callback to receive the auth URL (for display in CLI). */
+    onAuthUrl?: (url: string) => void;
+    /** Read token manually (e.g. from stdin). Resolves with token or rejects on cancel. */
+    readToken?: () => Promise<string>;
+  }): Promise<string> {
     const adminUrl = this.getAdminBaseUrl();
 
     // Step 1: Fetch available SSO providers
@@ -108,12 +113,11 @@ export class AuthService {
     }
     const provider = providers[0].provider;
 
-    // Step 2-5: Start local server, open browser, wait for callback
-    const token = await this.startLocalAuthServer(
-      adminUrl,
-      provider,
-      onAuthUrl,
-    );
+    // Step 2-5: Start local server, open browser, wait for callback or manual input
+    const token = await this.startLocalAuthServer(adminUrl, provider, {
+      onAuthUrl: options?.onAuthUrl,
+      readToken: options?.readToken,
+    });
 
     // Save the token (preserve existing keys)
     const existing = this.loadAuth();
@@ -125,12 +129,16 @@ export class AuthService {
   private startLocalAuthServer(
     adminUrl: string,
     provider: string,
-    onAuthUrl?: (url: string) => void,
+    options?: {
+      onAuthUrl?: (url: string) => void;
+      readToken?: () => Promise<string>;
+    },
   ): Promise<string> {
     return new Promise((resolve, reject) => {
+      let settled = false;
       const server: Server = createServer((req, res) => {
         if (req.url) {
-          const parsedUrl = new URL(req.url, `http://localhost`);
+          const parsedUrl = new URL(req.url, `http://127.0.0.1`);
           const token = parsedUrl.searchParams.get("token");
 
           res.writeHead(200, { "Content-Type": "text/html" });
@@ -138,14 +146,16 @@ export class AuthService {
             "<html><body><h1>Authentication successful, you can close this window</h1></body></html>",
           );
 
-          if (token) {
+          if (token && !settled) {
+            settled = true;
             server.close();
             resolve(token);
           }
         }
       });
 
-      server.listen(0, "localhost", async () => {
+      // Listen on 127.0.0.1 (IPv4) for reliable localhost callback
+      server.listen(0, "127.0.0.1", async () => {
         const address = server.address();
         if (typeof address !== "object" || !address) {
           server.close();
@@ -153,25 +163,44 @@ export class AuthService {
           return;
         }
         const port = address.port;
-        const callbackUrl = `http://localhost:${port}`;
+        const callbackUrl = `http://127.0.0.1:${port}`;
         const authUrl = `${adminUrl}/api/auth/sso/${provider}?callback_url=${encodeURIComponent(callbackUrl)}`;
 
         // Notify caller of the auth URL
-        onAuthUrl?.(authUrl);
+        options?.onAuthUrl?.(authUrl);
 
         // Try to open browser; if it fails, keep server alive for manual visit
         try {
           await this.openBrowser(authUrl);
         } catch {
-          // Browser not available — server stays alive, user can visit authUrl manually
+          // Browser not available — server stays alive
         }
       });
+
+      // If manual token reading is provided, race between server callback and user input
+      if (options?.readToken) {
+        options.readToken().then(
+          (token) => {
+            if (!settled) {
+              settled = true;
+              server.close();
+              resolve(token);
+            }
+          },
+          () => {
+            // Manual input cancelled or closed, server keeps waiting for callback
+          },
+        );
+      }
 
       // Timeout after 5 minutes
       setTimeout(
         () => {
-          server.close();
-          reject(new Error("SSO authentication timed out after 5 minutes"));
+          if (!settled) {
+            settled = true;
+            server.close();
+            reject(new Error("SSO authentication timed out after 5 minutes"));
+          }
         },
         5 * 60 * 1000,
       );
