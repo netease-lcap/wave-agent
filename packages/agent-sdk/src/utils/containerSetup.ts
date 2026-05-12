@@ -27,6 +27,7 @@ import { ReversionService } from "../services/reversionService.js";
 import { MemoryService } from "../services/memory.js";
 import { AutoMemoryService } from "../services/autoMemoryService.js";
 import { USER_MEMORY_FILE } from "./constants.js";
+import { getGitMainRepoRoot } from "./gitUtils.js";
 import type { AgentOptions, McpServerConfig } from "../types/index.js";
 import type {
   PermissionMode,
@@ -77,6 +78,11 @@ export function setupAgentContainer(
   const container = new Container();
   container.register("AgentOptions", options);
   container.register("Workdir", workdir);
+
+  if (options.worktreeName) {
+    container.register("WorktreeName", options.worktreeName);
+    container.register("MainRepoRoot", getGitMainRepoRoot(workdir));
+  }
 
   const notificationQueue = new NotificationQueue();
   container.register("NotificationQueue", notificationQueue);
