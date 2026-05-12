@@ -66,6 +66,7 @@ export class BackgroundTaskManager {
     const child = spawn(command, {
       shell: true,
       stdio: "pipe",
+      detached: true,
       cwd: this.workdir,
       env: {
         ...process.env,

@@ -240,6 +240,7 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
       const child: ChildProcess = spawn(command, {
         shell: true,
         stdio: "pipe",
+        detached: true,
         cwd: context.workdir,
         env: {
           ...process.env,
