@@ -34,6 +34,7 @@ import {
 } from "../constants/tools.js";
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
+import { getCurrentWorktreeSession } from "../utils/worktreeSession.js";
 
 const SAFE_COMMANDS = [
   "cd",
@@ -129,6 +130,8 @@ export class PermissionManager {
   private systemAdditionalDirectories: string[] = [];
   private planFilePath?: string;
   private workdir?: string;
+  private worktreeName?: string;
+  private mainRepoRoot?: string;
   private onConfiguredPermissionModeChange?: (mode: PermissionMode) => void;
   private _logger?: Logger;
 
@@ -149,6 +152,8 @@ export class PermissionManager {
     }
 
     this.workdir = this.container.get<string>("Workdir");
+    this.worktreeName = this.container.get<string | undefined>("WorktreeName");
+    this.mainRepoRoot = this.container.get<string | undefined>("MainRepoRoot");
   }
 
   /**
@@ -419,6 +424,68 @@ export class PermissionManager {
     // 1. If bypassPermissions mode, always allow
     if (context.permissionMode === "bypassPermissions") {
       return { behavior: "allow" };
+    }
+
+    // 1.0 Check worktree safety for Write and Edit tools
+    // Support both CLI -w sessions (container-registered) and EnterWorktree mid-session (module-level)
+    const worktreeSession = getCurrentWorktreeSession();
+    const effectiveWorktreeName =
+      this.worktreeName || worktreeSession?.worktreeName;
+    const effectiveWorkdir = this.workdir || worktreeSession?.worktreePath;
+    const effectiveMainRepoRoot =
+      this.mainRepoRoot || worktreeSession?.repoRoot;
+
+    if (
+      effectiveWorktreeName &&
+      effectiveMainRepoRoot &&
+      effectiveWorkdir &&
+      (context.toolName === WRITE_TOOL_NAME ||
+        context.toolName === EDIT_TOOL_NAME)
+    ) {
+      const targetPath = context.toolInput?.file_path as string | undefined;
+      if (targetPath) {
+        const absoluteTargetPath = path.resolve(effectiveWorkdir, targetPath);
+        const isInsideMainRepo = isPathInside(
+          absoluteTargetPath,
+          effectiveMainRepoRoot,
+        );
+        const isInsideWorktree = isPathInside(
+          absoluteTargetPath,
+          effectiveWorkdir,
+        );
+
+        // Allow the plan file even if outside worktree
+        if (this.planFilePath) {
+          const absolutePlanPath = path.resolve(this.planFilePath);
+          if (absoluteTargetPath === absolutePlanPath) {
+            // Fall through — plan file is allowed
+          } else if (isInsideMainRepo && !isInsideWorktree) {
+            logger?.warn("Worktree safety violation", {
+              toolName: context.toolName,
+              targetPath,
+              worktreeName: effectiveWorktreeName,
+              mainRepoRoot: effectiveMainRepoRoot,
+              workdir: effectiveWorkdir,
+            });
+            return {
+              behavior: "deny",
+              message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
+            };
+          }
+        } else if (isInsideMainRepo && !isInsideWorktree) {
+          logger?.warn("Worktree safety violation", {
+            toolName: context.toolName,
+            targetPath,
+            worktreeName: effectiveWorktreeName,
+            mainRepoRoot: effectiveMainRepoRoot,
+            workdir: effectiveWorkdir,
+          });
+          return {
+            behavior: "deny",
+            message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
+          };
+        }
+      }
     }
 
     // 1.1 If acceptEdits mode, allow Edit, Write, and mkdir in safe zone

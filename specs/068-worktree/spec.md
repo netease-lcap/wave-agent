@@ -169,22 +169,25 @@ As a developer using Wave, I want to exit a worktree mid-session by asking the A
 - **FR-018**: System MUST trigger a `WorktreeCreate` hook event when a new worktree is created.
 - **FR-019**: The `WorktreeCreate` hook MUST provide a JSON input via stdin containing a `name` field. The hook MUST execute in the newly created worktree directory.
 - **FR-020**: The `WorktreeCreate` hook MUST NOT be triggered when reusing an existing worktree.
-- **FR-021**: System MUST include worktree isolation guidance in the system prompt during a worktree session, warning the agent that it is working in an isolated git worktree and that files outside the worktree should not be modified.
-- **FR-022**: The system prompt guidance MUST include the worktree path, original CWD path, and branch name so the agent can translate absolute paths from prior context.
-- **FR-023**: The `-w` CLI flag MUST register the worktree session state (via `setCurrentWorktreeSession`) so the prompt guidance is included in the system prompt.
-- **FR-024**: System MUST provide an `EnterWorktree` tool that creates a git worktree and switches the session's working directory to it.
-- **FR-025**: The `EnterWorktree` tool MUST accept an optional `name` parameter. If not provided, a random name MUST be generated.
-- **FR-026**: The `EnterWorktree` tool MUST validate the worktree name to prevent path traversal and invalid characters (max 64 chars, only letters, digits, dots, underscores, dashes, and `/` for nesting).
-- **FR-027**: The `EnterWorktree` tool MUST fail if already in an active worktree session (module-level state).
-- **FR-028**: The `EnterWorktree` tool MUST fail if not in a git repository, with an error message suggesting WorktreeCreate/WorktreeRemove hooks.
-- **FR-029**: The `EnterWorktree` tool MUST update the session's working directory via `AIManager.setWorkdir()` (which updates the DI container and calls `process.chdir()`).
-- **FR-030**: System MUST provide an `ExitWorktree` tool that exits a worktree session and restores the original working directory.
-- **FR-031**: The `ExitWorktree` tool MUST accept a required `action` parameter: `"keep"` (preserve worktree) or `"remove"` (delete worktree).
-- **FR-032**: The `ExitWorktree` tool MUST accept an optional `discard_changes` parameter (default `false`). When `action` is `"remove"` and the worktree has uncommitted files or new commits, the tool MUST refuse unless `discard_changes: true`.
-- **FR-033**: The `ExitWorktree` tool MUST be a no-op if no active EnterWorktree session exists (no filesystem changes).
-- **FR-034**: The `ExitWorktree` tool MUST restore the session's working directory to the original CWD via `AIManager.setWorkdir()`.
-- **FR-035**: When `action` is `"remove"`, the system MUST delete the worktree directory using `git worktree remove --force` and the associated branch using `git branch -D`.
-- **FR-036**: The `EnterWorktree` tool MUST NOT trigger the `WorktreeCreate` hook event (hook support is out of scope for mid-session tools).
+- **FR-021**: System MUST automatically deny `Write` and `Edit` tool operations that attempt to modify files in the main repository (outside the current worktree) during a worktree session.
+- **FR-022**: The auto-deny mechanism MUST provide a descriptive error message explaining that modifications to the main repository are restricted while in a worktree session.
+- **FR-023**: The auto-deny mechanism MUST NOT restrict modifications to the current plan file, even if it is located outside the worktree.
+- **FR-024**: System MUST include worktree isolation guidance in the system prompt during a worktree session, warning the agent that it is working in an isolated git worktree and that files outside the worktree should not be modified.
+- **FR-025**: The system prompt guidance MUST include the worktree path, original CWD path, and branch name so the agent can translate absolute paths from prior context.
+- **FR-026**: The `-w` CLI flag MUST register the worktree session state (via `setCurrentWorktreeSession`) so the prompt guidance is included in the system prompt.
+- **FR-027**: System MUST provide an `EnterWorktree` tool that creates a git worktree and switches the session's working directory to it.
+- **FR-028**: The `EnterWorktree` tool MUST accept an optional `name` parameter. If not provided, a random name MUST be generated.
+- **FR-029**: The `EnterWorktree` tool MUST validate the worktree name to prevent path traversal and invalid characters (max 64 chars, only letters, digits, dots, underscores, dashes, and `/` for nesting).
+- **FR-030**: The `EnterWorktree` tool MUST fail if already in an active worktree session (module-level state).
+- **FR-031**: The `EnterWorktree` tool MUST fail if not in a git repository, with an error message suggesting WorktreeCreate/WorktreeRemove hooks.
+- **FR-032**: The `EnterWorktree` tool MUST update the session's working directory via `AIManager.setWorkdir()` (which updates the DI container and calls `process.chdir()`).
+- **FR-033**: System MUST provide an `ExitWorktree` tool that exits a worktree session and restores the original working directory.
+- **FR-034**: The `ExitWorktree` tool MUST accept a required `action` parameter: `"keep"` (preserve worktree) or `"remove"` (delete worktree).
+- **FR-035**: The `ExitWorktree` tool MUST accept an optional `discard_changes` parameter (default `false`). When `action` is `"remove"` and the worktree has uncommitted files or new commits, the tool MUST refuse unless `discard_changes: true`.
+- **FR-036**: The `ExitWorktree` tool MUST be a no-op if no active EnterWorktree session exists (no filesystem changes).
+- **FR-037**: The `ExitWorktree` tool MUST restore the session's working directory to the original CWD via `AIManager.setWorkdir()`.
+- **FR-038**: When `action` is `"remove"`, the system MUST delete the worktree directory using `git worktree remove --force` and the associated branch using `git branch -D`.
+- **FR-039**: The `EnterWorktree` tool MUST NOT trigger the `WorktreeCreate` hook event (hook support is out of scope for mid-session tools).
 
 ### Key Entities
 
