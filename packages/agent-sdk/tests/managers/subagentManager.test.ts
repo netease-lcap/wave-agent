@@ -4,6 +4,7 @@ import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { NotificationQueue } from "../../src/managers/notificationQueue.js";
 import type { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import type { BackgroundTask } from "../../src/types/processes.js";
+import type { SubagentInstance } from "../../src/managers/subagentManager.js";
 
 vi.mock("../../src/utils/subagentParser.js", () => ({
   loadSubagentConfigurations: vi.fn().mockResolvedValue([
@@ -370,5 +371,72 @@ describe("SubagentManager registerPluginAgents", () => {
     // plugin-a:agent-z should come before plugin-b:agent-a (same priority, alphabetical by namespaced name)
     expect(pluginAgents[0].name).toBe("plugin-a:agent-z");
     expect(pluginAgents[1].name).toBe("plugin-b:agent-a");
+  });
+});
+
+describe("SubagentManager.cleanup()", () => {
+  let container: Container;
+  let subagentManager: SubagentManager;
+  let mockAbortAIMessage: ReturnType<typeof vi.fn>;
+  let mockBackgroundTaskManagerCleanup: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    container = new Container();
+
+    mockAbortAIMessage = vi.fn();
+    mockBackgroundTaskManagerCleanup = vi.fn();
+
+    const mockBackgroundTaskManager: Partial<BackgroundTaskManager> = {
+      generateId: vi.fn().mockReturnValue("task_1"),
+      cleanup: mockBackgroundTaskManagerCleanup as unknown as () => void,
+    };
+    container.register(
+      "BackgroundTaskManager",
+      mockBackgroundTaskManager as unknown as BackgroundTaskManager,
+    );
+
+    container.register("ToolManager", {
+      initializeBuiltInTools: vi.fn(),
+    });
+
+    subagentManager = new SubagentManager(container, {
+      workdir: "/tmp/test",
+      stream: false,
+    });
+  });
+
+  it("should abort AI and cleanup background tasks for all active instances", async () => {
+    // Create two mock instances directly to simulate active subagents
+    const mockInstance1 = {
+      subagentId: "id-1",
+      status: "active" as const,
+      aiManager: { abortAIMessage: mockAbortAIMessage },
+      backgroundTaskManager: {
+        cleanup: mockBackgroundTaskManagerCleanup,
+      },
+    } as unknown as SubagentInstance;
+    const mockInstance2 = {
+      subagentId: "id-2",
+      status: "active" as const,
+      aiManager: { abortAIMessage: mockAbortAIMessage },
+      backgroundTaskManager: {
+        cleanup: mockBackgroundTaskManagerCleanup,
+      },
+    } as unknown as SubagentInstance;
+
+    // Access private instances map to inject mocks
+    const instances = (
+      subagentManager as unknown as { instances: Map<string, SubagentInstance> }
+    ).instances;
+    instances.set("id-1", mockInstance1);
+    instances.set("id-2", mockInstance2);
+
+    subagentManager.cleanup();
+
+    expect(mockAbortAIMessage).toHaveBeenCalledTimes(2);
+    expect(mockBackgroundTaskManagerCleanup).toHaveBeenCalledTimes(2);
+    expect(instances.size).toBe(0);
   });
 });
