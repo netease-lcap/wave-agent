@@ -50,7 +50,7 @@
 
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
-- [ ] T008 [P] [US1] Unit tests for AuthService in `packages/agent-sdk/tests/services/authService.test.ts`
+- [x] T008 [P] [US1] Unit tests for AuthService in `packages/agent-sdk/tests/services/authService.test.ts`
 
 ### Implementation for User Story 1
 
@@ -73,7 +73,7 @@
 
 ### Tests for User Story 2 (REQUIRED) ⚠️
 
-- [ ] T015 [P] [US2] Unit tests for manual token input in `packages/agent-sdk/tests/services/authService.test.ts`
+- [x] T015 [P] [US2] Unit tests for manual token input in `packages/agent-sdk/tests/services/authService.test.ts`
 
 ### Implementation for User Story 2
 
