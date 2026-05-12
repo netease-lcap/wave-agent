@@ -50,4 +50,16 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "Switch between configured AI models",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "login",
+    name: "login",
+    description: "Authenticate via SSO",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
+    id: "logout",
+    name: "logout",
+    description: "Clear SSO authentication",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];

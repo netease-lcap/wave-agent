@@ -105,6 +105,7 @@ export interface InputState {
   showRewindManager: boolean;
   showHelp: boolean;
   showStatusCommand: boolean;
+  showLoginCommand: boolean;
   showPluginManager: boolean;
   showModelSelector: boolean;
   permissionMode: PermissionMode;
@@ -142,6 +143,7 @@ export const initialState: InputState = {
   showRewindManager: false,
   showHelp: false,
   showStatusCommand: false,
+  showLoginCommand: false,
   showPluginManager: false,
   showModelSelector: false,
   permissionMode: "default",
@@ -186,6 +188,7 @@ export type InputAction =
   | { type: "SET_SHOW_REWIND_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_HELP"; payload: boolean }
   | { type: "SET_SHOW_STATUS_COMMAND"; payload: boolean }
+  | { type: "SET_SHOW_LOGIN_COMMAND"; payload: boolean }
   | { type: "SET_SHOW_PLUGIN_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_MODEL_SELECTOR"; payload: boolean }
   | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }
@@ -390,6 +393,12 @@ export function inputReducer(
       return {
         ...state,
         showStatusCommand: action.payload,
+        selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
+      };
+    case "SET_SHOW_LOGIN_COMMAND":
+      return {
+        ...state,
+        showLoginCommand: action.payload,
         selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
       };
     case "SET_SHOW_PLUGIN_MANAGER":
@@ -749,6 +758,7 @@ export function inputReducer(
             state.showRewindManager ||
             state.showHelp ||
             state.showStatusCommand ||
+            state.showLoginCommand ||
             state.showPluginManager ||
             state.showModelSelector
           )
