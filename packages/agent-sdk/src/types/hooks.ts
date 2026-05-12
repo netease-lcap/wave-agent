@@ -98,7 +98,7 @@ export class HookConfigurationError extends Error {
   }
 }
 
-export type SessionStartSource = "startup" | "resume" | "compact" | "clear";
+export type SessionStartSource = "startup" | "compact" | "clear";
 
 export type SessionEndSource = "exit" | "stop" | "compact" | "clear";
 
