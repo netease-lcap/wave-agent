@@ -66,6 +66,9 @@ export interface SubagentInstance {
   aiManager: AIManager;
   messageManager: MessageManager;
   toolManager: ToolManager;
+  permissionManager: PermissionManager;
+  backgroundTaskManager: BackgroundTaskManager;
+  notificationQueue: NotificationQueue;
   status: "initializing" | "active" | "completed" | "error" | "aborted";
   messages: Message[];
   usedTools: {
@@ -92,7 +95,6 @@ export interface SubagentManagerOptions {
 
 export class SubagentManager {
   private instances = new Map<string, SubagentInstance>();
-  private subagentPermissionManagers = new Map<string, PermissionManager>();
   private cachedConfigurations: SubagentConfiguration[] | null = null;
 
   private workdir: string;
@@ -154,10 +156,12 @@ export class SubagentManager {
     const parentPm = this.container.get<PermissionManager>("PermissionManager");
     if (!parentPm) return;
 
-    for (const [, pm] of this.subagentPermissionManagers) {
-      pm.updateAllowedRules(parentPm.getAllowedRules());
-      pm.updateDeniedRules(parentPm.getDeniedRules());
-      pm.updateAdditionalDirectories(parentPm.getAdditionalDirectories());
+    for (const instance of this.instances.values()) {
+      instance.permissionManager.updateAllowedRules(parentPm.getAllowedRules());
+      instance.permissionManager.updateDeniedRules(parentPm.getDeniedRules());
+      instance.permissionManager.updateAdditionalDirectories(
+        parentPm.getAdditionalDirectories(),
+      );
     }
   }
 
@@ -324,9 +328,6 @@ export class SubagentManager {
       );
     }
 
-    // Track this subagent's PermissionManager for rule sync
-    this.subagentPermissionManagers.set(subagentId, subagentPermissionManager);
-
     // Add temporary permission rules if provided
     if (parameters.allowedTools) {
       logger.debug(
@@ -391,6 +392,9 @@ export class SubagentManager {
       aiManager,
       messageManager,
       toolManager,
+      permissionManager: subagentPermissionManager,
+      backgroundTaskManager: subagentBackgroundTaskManager,
+      notificationQueue: subagentNotificationQueue,
       status: "initializing",
       messages: [],
       usedTools: [], // Initialize usedTools
@@ -732,7 +736,6 @@ export class SubagentManager {
         instance.status === "aborted")
     ) {
       this.instances.delete(subagentId);
-      this.subagentPermissionManagers.delete(subagentId);
     }
   }
 
@@ -750,6 +753,10 @@ export class SubagentManager {
    * Clean up all instances (for session end)
    */
   cleanup(): void {
+    for (const instance of this.instances.values()) {
+      instance.aiManager.abortAIMessage();
+      instance.backgroundTaskManager.cleanup();
+    }
     this.instances.clear();
   }
 

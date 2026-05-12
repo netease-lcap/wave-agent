@@ -63,6 +63,12 @@ describe("ForkedAgentManager", () => {
       } as unknown as import("@/managers/messageManager.js").MessageManager,
       toolManager:
         {} as unknown as import("@/managers/toolManager.js").ToolManager,
+      permissionManager:
+        {} as unknown as import("@/managers/permissionManager.js").PermissionManager,
+      backgroundTaskManager:
+        {} as unknown as import("@/managers/backgroundTaskManager.js").BackgroundTaskManager,
+      notificationQueue:
+        {} as unknown as import("@/managers/notificationQueue.js").NotificationQueue,
       status: "active",
       messages: [],
       usedTools: [],
