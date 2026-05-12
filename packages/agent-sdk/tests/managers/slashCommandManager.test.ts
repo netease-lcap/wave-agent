@@ -14,6 +14,7 @@ import type { SubagentManager } from "../../src/managers/subagentManager.js";
 import type { SkillManager } from "../../src/managers/skillManager.js";
 import type { TextBlock } from "../../src/types/index.js";
 import type { MemoryService } from "../../src/services/memory.js";
+import type { HookManager } from "../../src/managers/hookManager.js";
 
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
@@ -171,6 +172,111 @@ describe("SlashCommandManager", () => {
       const result = await slashCommandManager.executeCommand("clear");
       expect(result).toBe(true);
       expect(clearCacheSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe("Clear Command Session Hooks", () => {
+    let mockHookManager: HookManager;
+
+    beforeEach(() => {
+      const container = (
+        slashCommandManager as unknown as { container: Container }
+      ).container;
+
+      mockHookManager = {
+        executeSessionEndHooks: vi.fn().mockResolvedValue([]),
+        executeSessionStartHooks: vi.fn().mockResolvedValue({
+          results: [],
+          additionalContext: undefined,
+          initialUserMessage: undefined,
+        }),
+      } as unknown as HookManager;
+
+      container.register("HookManager", mockHookManager);
+    });
+
+    it("should call SessionEnd hooks before clearing messages", async () => {
+      const oldSessionId = messageManager.getSessionId();
+
+      await slashCommandManager.executeCommand("clear");
+
+      expect(mockHookManager.executeSessionEndHooks).toHaveBeenCalledWith(
+        "clear",
+        oldSessionId,
+        expect.any(String),
+      );
+    });
+
+    it("should call SessionStart hooks after clearing messages", async () => {
+      await slashCommandManager.executeCommand("clear");
+
+      expect(mockHookManager.executeSessionStartHooks).toHaveBeenCalledWith(
+        "clear",
+        expect.any(String),
+        expect.any(String),
+      );
+    });
+
+    it("should inject additionalContext as meta user message", async () => {
+      vi.mocked(mockHookManager.executeSessionStartHooks).mockResolvedValue({
+        results: [],
+        additionalContext: "Project context from hook",
+        initialUserMessage: undefined,
+      });
+
+      await slashCommandManager.executeCommand("clear");
+
+      const messages = messageManager.getMessages();
+      const contextMessage = messages.find(
+        (m) =>
+          m.blocks[0]?.type === "text" &&
+          (
+            m.blocks[0] as import("../../src/types/index.js").TextBlock
+          ).content?.includes("SessionStart hook additional context"),
+      );
+      expect(contextMessage).toBeDefined();
+      expect(contextMessage?.isMeta).toBe(true);
+    });
+
+    it("should inject initialUserMessage as meta user message", async () => {
+      vi.mocked(mockHookManager.executeSessionStartHooks).mockResolvedValue({
+        results: [],
+        additionalContext: undefined,
+        initialUserMessage: "Hello from hook",
+      });
+
+      await slashCommandManager.executeCommand("clear");
+
+      const messages = messageManager.getMessages();
+      const hookMessage = messages.find(
+        (m) =>
+          m.blocks[0]?.type === "text" &&
+          (m.blocks[0] as import("../../src/types/index.js").TextBlock)
+            .content === "Hello from hook",
+      );
+      expect(hookMessage).toBeDefined();
+      expect(hookMessage?.isMeta).toBe(true);
+    });
+
+    it("should continue gracefully if SessionEnd hooks fail", async () => {
+      vi.mocked(mockHookManager.executeSessionEndHooks).mockRejectedValue(
+        new Error("SessionEnd hook failed"),
+      );
+
+      const result = await slashCommandManager.executeCommand("clear");
+
+      expect(result).toBe(true);
+      expect(mockHookManager.executeSessionStartHooks).toHaveBeenCalled();
+    });
+
+    it("should continue gracefully if SessionStart hooks fail", async () => {
+      vi.mocked(mockHookManager.executeSessionStartHooks).mockRejectedValue(
+        new Error("SessionStart hook failed"),
+      );
+
+      const result = await slashCommandManager.executeCommand("clear");
+
+      expect(result).toBe(true);
     });
   });
 

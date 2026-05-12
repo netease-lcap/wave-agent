@@ -720,7 +720,7 @@ describe("HookManager Coverage", () => {
         ],
       });
       const result = await manager.executeSessionStartHooks(
-        "resume",
+        "startup",
         "session-123",
         "/path/to/transcript.json",
         "planner",
