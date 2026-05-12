@@ -11,18 +11,58 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [authUrl, setAuthUrl] = useState("");
+  const [tokenInput, setTokenInput] = useState("");
 
   const isLoadingRef = useRef(isLoading);
   isLoadingRef.current = isLoading;
 
-  useInput((_, key) => {
-    if (key.escape) {
-      onCancel();
-    }
-    if (key.return && !isLoadingRef.current) {
-      handleEnter();
-    }
-  });
+  // Resolve/reject refs for the token promise
+  const tokenResolveRef = useRef<((token: string) => void) | null>(null);
+  const tokenRejectRef = useRef<((err: Error) => void) | null>(null);
+
+  // Pre-loading input: Enter starts login, Esc cancels
+  useInput(
+    (_, key) => {
+      if (key.escape) {
+        onCancel();
+      }
+      if (key.return && !isLoadingRef.current) {
+        handleEnter();
+      }
+    },
+    { isActive: !isLoading },
+  );
+
+  // Token input: capture keystrokes while loading
+  useInput(
+    (input, key) => {
+      if (key.escape) {
+        tokenRejectRef.current?.(new Error("cancelled"));
+        onCancel();
+      }
+      if (key.return) {
+        // Submit token
+        const trimmed = tokenInput.trim();
+        if (trimmed) {
+          tokenResolveRef.current?.(trimmed);
+        } else {
+          // Empty: just clear, keep waiting
+          setTokenInput("");
+        }
+        return;
+      }
+      // Backspace
+      if (key.backspace && tokenInput.length > 0) {
+        setTokenInput((prev) => prev.slice(0, -1));
+        return;
+      }
+      // Regular character input (single or pasted multi-char)
+      if (input && !key.ctrl && !key.meta && !key.return && input.length > 0) {
+        setTokenInput((prev) => prev + input);
+      }
+    },
+    { isActive: isLoading },
+  );
 
   const handleEnter = async () => {
     if (isLoadingRef.current) return;
@@ -37,16 +77,34 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
     setIsLoading(true);
     setError("");
     setAuthUrl("");
-    setMessage("Waiting for browser authentication...");
+    setTokenInput("");
+    setMessage("Starting authentication...");
+
+    // Promise that resolves when user presses Enter with token input
+    const readToken = (): Promise<string> =>
+      new Promise((resolve, reject) => {
+        tokenResolveRef.current = resolve;
+        tokenRejectRef.current = reject;
+      });
 
     try {
-      await authService.login((url: string) => {
-        setAuthUrl(url);
+      await authService.login({
+        onAuthUrl: (url: string) => {
+          setAuthUrl(url);
+          setMessage("Paste the token from your browser URL bar:");
+        },
+        readToken,
       });
       setMessage("Login successful");
     } catch (err) {
-      setError((err as Error).message);
+      const errMessage = (err as Error).message;
+      if (errMessage !== "cancelled") {
+        setError(errMessage);
+      }
     } finally {
+      tokenResolveRef.current = null;
+      tokenRejectRef.current = null;
+      setTokenInput("");
       setIsLoading(false);
     }
   };
@@ -97,6 +155,14 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
         </Box>
       )}
 
+      {/* Token input field */}
+      {isLoading && (
+        <Box marginBottom={1}>
+          <Text color="cyan">Token: </Text>
+          <Text color="white">{tokenInput || "..."}</Text>
+        </Box>
+      )}
+
       {!isAuthenticated && !isLoading && (
         <>
           <Box>
@@ -131,17 +197,9 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
         </>
       )}
 
-      {isAuthenticated && message && !error && (
-        <Box marginTop={1}>
-          <Text dimColor>Esc to close</Text>
-        </Box>
-      )}
-
-      {!isAuthenticated && !isLoading && !error && (
-        <Box marginTop={1}>
-          <Text dimColor>Esc to cancel</Text>
-        </Box>
-      )}
+      <Box marginTop={1}>
+        <Text dimColor>Esc to cancel</Text>
+      </Box>
     </Box>
   );
 };
