@@ -19,6 +19,7 @@ vi.mock("fs", () => ({
     stat: vi.fn(),
     realpath: vi.fn((p) => Promise.resolve(p)),
   },
+  existsSync: vi.fn(() => false),
 }));
 
 vi.mock("fs/promises", () => ({

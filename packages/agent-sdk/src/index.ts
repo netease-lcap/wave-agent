@@ -1,5 +1,6 @@
 // Export all services
 export * from "./core/session.js";
+export * from "./services/authService.js";
 
 // Export constants
 export * from "./constants/tools.js";

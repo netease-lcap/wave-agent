@@ -31,6 +31,7 @@ describe("inputReducer", () => {
       showRewindManager: false,
       showHelp: false,
       showStatusCommand: false,
+      showLoginCommand: false,
       showModelSelector: false,
       permissionMode: "default",
       selectorJustUsed: false,

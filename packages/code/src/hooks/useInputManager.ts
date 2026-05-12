@@ -209,6 +209,10 @@ export const useInputManager = (
                 dispatch({ type: "SET_SHOW_HELP", payload: true });
               } else if (command === "status") {
                 dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: true });
+              } else if (command === "login") {
+                dispatch({ type: "SET_SHOW_LOGIN_COMMAND", payload: true });
+              } else if (command === "logout") {
+                dispatch({ type: "SET_SHOW_LOGIN_COMMAND", payload: true });
               } else if (command === "plugin") {
                 dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
               } else if (command === "model") {
@@ -463,6 +467,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: show });
   }, []);
 
+  const setShowLoginCommand = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_LOGIN_COMMAND", payload: show });
+  }, []);
+
   const setShowPluginManager = useCallback((show: boolean) => {
     dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: show });
   }, []);
@@ -582,6 +590,7 @@ export const useInputManager = (
     showRewindManager: state.showRewindManager,
     showHelp: state.showHelp,
     showStatusCommand: state.showStatusCommand,
+    showLoginCommand: state.showLoginCommand,
     showPluginManager: state.showPluginManager,
     showModelSelector: state.showModelSelector,
     permissionMode: state.permissionMode,
@@ -624,6 +633,7 @@ export const useInputManager = (
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,
+    setShowLoginCommand,
     setShowPluginManager,
     setShowModelSelector,
     setPermissionMode,

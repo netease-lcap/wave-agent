@@ -9,6 +9,7 @@ import { McpManager } from "./McpManager.js";
 import { RewindCommand } from "./RewindCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
+import { LoginCommand } from "./LoginCommand.js";
 import { PluginManagerShell } from "./PluginManagerShell.js";
 import { ModelSelector } from "./ModelSelector.js";
 import { StatusLine } from "./StatusLine.js";
@@ -101,6 +102,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showRewindManager,
     showHelp,
     showStatusCommand,
+    showLoginCommand,
     showPluginManager,
     showModelSelector,
     setShowBackgroundTaskManager,
@@ -108,6 +110,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,
+    setShowLoginCommand,
     setShowPluginManager,
     setShowModelSelector,
     // Permission mode
@@ -145,6 +148,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showRewindManager ||
       showHelp ||
       showStatusCommand ||
+      showLoginCommand ||
       showPluginManager ||
       showModelSelector ||
       showBackgroundTaskManager ||
@@ -210,6 +214,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   if (showStatusCommand) {
     return <StatusCommand onCancel={() => setShowStatusCommand(false)} />;
+  }
+
+  if (showLoginCommand) {
+    return <LoginCommand onCancel={() => setShowLoginCommand(false)} />;
   }
 
   if (showPluginManager) {
@@ -283,6 +291,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         showRewindManager ||
         showHelp ||
         showStatusCommand ||
+        showLoginCommand ||
         showPluginManager || (
           <Box flexDirection="column">
             <Box

@@ -7,6 +7,7 @@
 
 import { readFileSync, existsSync, promises as fs } from "fs";
 import * as path from "path";
+import * as os from "os";
 import { isValidHookEvent } from "../types/hooks.js";
 import { logger } from "../utils/globalLogger.js";
 import type {
@@ -372,8 +373,26 @@ export class ConfigurationService {
   // =============================================================================
 
   /**
+   * Read SSO token from ~/.wave/auth.json
+   */
+  private readSSOToken(): string | undefined {
+    const homeDir = os.homedir();
+    const authPath = path.join(homeDir, ".wave", "auth.json");
+    if (!existsSync(authPath)) {
+      return undefined;
+    }
+    try {
+      const content = readFileSync(authPath, "utf-8");
+      const authConfig = JSON.parse(content) as { SSO_TOKEN?: string };
+      return authConfig.SSO_TOKEN;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Resolves gateway configuration from constructor args and environment
-   * Resolution priority: options > env (from settings.json) > process.env > error
+   * Resolution priority: SSO_TOKEN > options > env (from settings.json) > process.env > error
    * @param apiKey - API key override (optional)
    * @param baseURL - Base URL override (optional)
    * @param defaultHeaders - HTTP headers override (optional)
@@ -389,6 +408,29 @@ export class ConfigurationService {
     fetchOptions?: ClientOptions["fetchOptions"],
     fetch?: ClientOptions["fetch"],
   ): GatewayConfig {
+    // Check for SSO token first - if present, use SSO mode
+    const ssoToken = this.readSSOToken();
+    if (ssoToken) {
+      const adminUrl = process.env.WAVE_ADMIN_URL;
+      if (!adminUrl) {
+        throw new ConfigurationError(
+          CONFIG_ERRORS.MISSING_BASE_URL,
+          "baseURL",
+          "WAVE_ADMIN_URL is required for SSO authentication",
+        );
+      }
+      return {
+        apiKey: ssoToken,
+        baseURL: `${adminUrl}/api/v1`,
+        defaultHeaders:
+          Object.keys(defaultHeaders || {}).length > 0
+            ? defaultHeaders
+            : undefined,
+        fetchOptions: fetchOptions ?? this.options.fetchOptions,
+        fetch: fetch ?? this.options.fetch,
+      };
+    }
+
     // Resolve API key: override > options > env (settings.json) > process.env
     // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
     let resolvedApiKey: string | undefined;
