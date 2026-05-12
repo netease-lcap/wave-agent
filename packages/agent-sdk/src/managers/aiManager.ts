@@ -501,6 +501,40 @@ export class AIManager {
             afterTokens: "1",
             model: this.getModelConfig().fastModel,
           }).catch(() => {});
+
+          // Run SessionStart hooks after compaction to restore context
+          if (this.hookManager) {
+            try {
+              const newSessionId = this.messageManager.getSessionId();
+              const sessionStartResult =
+                await this.hookManager.executeSessionStartHooks(
+                  "compact",
+                  newSessionId,
+                  this.messageManager.getTranscriptPath(),
+                  this.subagentType,
+                );
+
+              // Inject additionalContext as a meta user message
+              if (sessionStartResult.additionalContext) {
+                this.messageManager.addUserMessage({
+                  content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
+                  isMeta: true,
+                });
+              }
+
+              // Inject initialUserMessage as a meta user message
+              if (sessionStartResult.initialUserMessage) {
+                this.messageManager.addUserMessage({
+                  content: sessionStartResult.initialUserMessage,
+                  isMeta: true,
+                });
+              }
+            } catch (error) {
+              logger?.warn(
+                `SessionStart hooks on compact failed: ${(error as Error).message}`,
+              );
+            }
+          }
         } catch (compactError) {
           this.consecutiveCompactionFailures++;
           logger?.error(

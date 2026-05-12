@@ -24,6 +24,7 @@ import type { SkillManager } from "./skillManager.js";
 import type { SkillMetadata } from "../types/skills.js";
 import type { SubagentManager } from "./subagentManager.js";
 import type { MemoryService } from "../services/memory.js";
+import type { HookManager } from "./hookManager.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -86,6 +87,10 @@ export class SlashCommandManager {
     return this.container.get<MemoryService>("MemoryService")!;
   }
 
+  private get hookManager(): HookManager | undefined {
+    return this.container.get<HookManager>("HookManager");
+  }
+
   private initializeBuiltinCommands(): void {
     // Register built-in clear command
     this.registerCommand({
@@ -94,9 +99,63 @@ export class SlashCommandManager {
       description: "Clear conversation history and reset session",
       handler: async () => {
         this.aiManager.abortAIMessage();
+
+        // Capture old session info before clearing
+        const oldSessionId = this.messageManager.getSessionId();
+        const transcriptPath = this.messageManager.getTranscriptPath();
+
+        // Run SessionEnd hooks (cleanup before clear)
+        if (this.hookManager) {
+          try {
+            await this.hookManager.executeSessionEndHooks(
+              "clear",
+              oldSessionId,
+              transcriptPath,
+            );
+          } catch (error) {
+            logger?.warn(
+              `SessionEnd hooks on clear failed: ${(error as Error).message}`,
+            );
+          }
+        }
+
+        // Clear messages and generate new session
         this.messageManager.clearMessages();
         this.memoryService.clearCache();
         await this.taskManager.syncWithSession();
+
+        // Run SessionStart hooks (restore context for new session)
+        if (this.hookManager) {
+          try {
+            const newSessionId = this.messageManager.getSessionId();
+            const sessionStartResult =
+              await this.hookManager.executeSessionStartHooks(
+                "clear",
+                newSessionId,
+                this.messageManager.getTranscriptPath(),
+              );
+
+            // Inject additionalContext as a meta user message
+            if (sessionStartResult.additionalContext) {
+              this.messageManager.addUserMessage({
+                content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
+                isMeta: true,
+              });
+            }
+
+            // Inject initialUserMessage as a meta user message
+            if (sessionStartResult.initialUserMessage) {
+              this.messageManager.addUserMessage({
+                content: sessionStartResult.initialUserMessage,
+                isMeta: true,
+              });
+            }
+          } catch (error) {
+            logger?.warn(
+              `SessionStart hooks on clear failed: ${(error as Error).message}`,
+            );
+          }
+        }
       },
     });
   }

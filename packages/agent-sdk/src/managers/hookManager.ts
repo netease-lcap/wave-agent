@@ -851,7 +851,7 @@ export class HookManager {
    * Collects additionalContext and initialUserMessage from hook stdout.
    */
   async executeSessionStartHooks(
-    source: "startup" | "resume" | "compact",
+    source: "startup" | "resume" | "compact" | "clear",
     sessionId: string,
     transcriptPath: string,
     agentType?: string,
