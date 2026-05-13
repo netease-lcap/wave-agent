@@ -224,6 +224,48 @@ describe("AuthService", () => {
     });
   });
 
+  describe("getAuthUser", () => {
+    it("returns user when present in auth.json", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "my-token",
+          user: { id: "user-uuid", email: "user@example.com" },
+        }),
+      );
+      const service = AuthService.getInstance();
+      expect(service.getAuthUser()).toEqual({
+        id: "user-uuid",
+        email: "user@example.com",
+      });
+    });
+
+    it("returns user without email when email is absent", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "my-token",
+          user: { id: "user-uuid" },
+        }),
+      );
+      const service = AuthService.getInstance();
+      expect(service.getAuthUser()).toEqual({ id: "user-uuid" });
+    });
+
+    it("returns undefined when no user in auth.json", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(JSON.stringify({ SSO_TOKEN: "token" }));
+      const service = AuthService.getInstance();
+      expect(service.getAuthUser()).toBeUndefined();
+    });
+
+    it("returns undefined when file does not exist", () => {
+      mockedExists.mockReturnValue(false);
+      const service = AuthService.getInstance();
+      expect(service.getAuthUser()).toBeUndefined();
+    });
+  });
+
   describe("getAdminBaseUrl", () => {
     it("returns WAVE_ADMIN_URL when set", () => {
       process.env.WAVE_ADMIN_URL = "https://admin.example.com";
@@ -252,20 +294,15 @@ describe("AuthService", () => {
       vi.unstubAllGlobals();
     });
 
-    it("fetches providers, opens browser, receives callback code, exchanges for JWT, and saves it", async () => {
+    it("opens browser, receives callback code, exchanges for JWT, and saves it", async () => {
       process.env.WAVE_ADMIN_URL = "https://admin.example.com";
       mockedExists.mockReturnValue(false);
-      // 1st: fetch providers
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => [{ provider: "netease", displayName: "NetEase SSO" }],
-      });
-      // 2nd: exchange code for JWT
+      // exchange code for JWT
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           token: "exchanged-jwt",
-          user: { username: "user" },
+          user: { id: "user-uuid", email: "user@example.com" },
         }),
       });
 
@@ -275,6 +312,8 @@ describe("AuthService", () => {
 
       expect(token).toBe("exchanged-jwt");
       expect(onAuthUrl).toHaveBeenCalled();
+      const authUrl = onAuthUrl.mock.calls[0][0] as string;
+      expect(authUrl).toContain("/login?callback_url=");
       // Verify exchange endpoint was called with the code
       expect(mockFetch).toHaveBeenCalledWith(
         "https://admin.example.com/api/auth/exchange",
@@ -288,37 +327,9 @@ describe("AuthService", () => {
       expect(mockedChmod).toHaveBeenCalled();
     });
 
-    it("throws when provider fetch fails", async () => {
-      process.env.WAVE_ADMIN_URL = "https://admin.example.com";
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: "Internal Error",
-      });
-
-      const service = AuthService.getInstance();
-      await expect(service.login()).rejects.toThrow(
-        "Failed to fetch SSO providers: 500 Internal Error",
-      );
-    });
-
-    it("throws when no providers available", async () => {
-      process.env.WAVE_ADMIN_URL = "https://admin.example.com";
-      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [] });
-
-      const service = AuthService.getInstance();
-      await expect(service.login()).rejects.toThrow(
-        "No SSO providers available",
-      );
-    });
-
     it("throws when code exchange fails", async () => {
       process.env.WAVE_ADMIN_URL = "https://admin.example.com";
       mockedExists.mockReturnValue(false);
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => [{ provider: "netease", displayName: "NetEase SSO" }],
-      });
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 400,
@@ -337,13 +348,10 @@ describe("AuthService", () => {
       mockedReadFile.mockReturnValue(JSON.stringify({ OTHER_KEY: "value" }));
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => [
-          { provider: "provider1", displayName: "Provider 1" },
-        ],
-      });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ token: "jwt-token", user: { username: "user" } }),
+        json: async () => ({
+          token: "jwt-token",
+          user: { id: "user-uuid", email: "user@example.com" },
+        }),
       });
 
       const service = AuthService.getInstance();
@@ -371,17 +379,12 @@ describe("AuthService", () => {
     it("accepts manually provided code via readToken and exchanges for JWT", async () => {
       process.env.WAVE_ADMIN_URL = "https://admin.example.com";
       mockedExists.mockReturnValue(false);
-      // 1st: fetch providers
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => [{ provider: "netease", displayName: "NetEase SSO" }],
-      });
-      // 2nd: exchange code for JWT
+      // exchange code for JWT
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           token: "manual-exchanged-jwt",
-          user: { username: "user" },
+          user: { id: "user-uuid", email: "user@example.com" },
         }),
       });
 
@@ -410,17 +413,12 @@ describe("AuthService", () => {
 
       process.env.WAVE_ADMIN_URL = "https://admin.example.com";
       mockedExists.mockReturnValue(false);
-      // 1st: fetch providers
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => [{ provider: "netease", displayName: "NetEase SSO" }],
-      });
-      // 2nd: exchange code for JWT
+      // exchange code for JWT
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           token: "callback-wins-jwt",
-          user: { username: "user" },
+          user: { id: "user-uuid", email: "user@example.com" },
         }),
       });
 
@@ -453,10 +451,6 @@ describe("AuthService", () => {
     it("rejects after 5 minutes if no token received", async () => {
       process.env.WAVE_ADMIN_URL = "https://admin.example.com";
       mockedExists.mockReturnValue(false);
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => [{ provider: "netease", displayName: "NetEase SSO" }],
-      });
 
       const service = AuthService.getInstance();
 
@@ -479,11 +473,10 @@ describe("AuthService", () => {
       mockedExists.mockReturnValue(false);
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => [{ provider: "netease", displayName: "NetEase SSO" }],
-      });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ token: "early-jwt", user: { username: "user" } }),
+        json: async () => ({
+          token: "early-jwt",
+          user: { id: "user-uuid", email: "user@example.com" },
+        }),
       });
 
       const service = AuthService.getInstance();
