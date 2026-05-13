@@ -19,7 +19,7 @@ import { createServer, Server } from "http";
 import { URL } from "url";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { AuthConfig } from "../types/auth.js";
+import type { AuthConfig, AuthUser } from "../types/auth.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -97,42 +97,30 @@ export class AuthService {
   }): Promise<string> {
     const adminUrl = this.getAdminBaseUrl();
 
-    // Step 1: Fetch available SSO providers
-    const providersResponse = await fetch(`${adminUrl}/api/auth/sso-providers`);
-    if (!providersResponse.ok) {
-      throw new Error(
-        `Failed to fetch SSO providers: ${providersResponse.status} ${providersResponse.statusText}`,
-      );
-    }
-    const providers = (await providersResponse.json()) as {
-      provider: string;
-      displayName: string;
-    }[];
-    if (!providers || providers.length === 0) {
-      throw new Error("No SSO providers available");
-    }
-    const provider = providers[0].provider;
-
-    // Step 2-5: Start local server, open browser, wait for callback or manual input
-    const code = await this.startLocalAuthServer(adminUrl, provider, {
+    // Start local server, open browser, wait for callback or manual input
+    const { code } = await this.startLocalAuthServer(adminUrl, {
       onAuthUrl: options?.onAuthUrl,
       readToken: options?.readToken,
     });
 
-    // Exchange authorization code for JWT
-    const token = await this.exchangeCode(adminUrl, code);
+    // Exchange authorization code for JWT (includes user info)
+    const { token, user } = await this.exchangeCode(adminUrl, code);
 
-    // Save the token (preserve existing keys)
+    // Save the token and user info (preserve existing keys)
     const existing = this.loadAuth();
-    this.saveAuth({ ...existing, SSO_TOKEN: token });
+    this.saveAuth({ ...existing, SSO_TOKEN: token, user });
 
     return token;
   }
 
   /**
    * Exchange a short-lived authorization code for a JWT token.
+   * Returns both the token and user info.
    */
-  private async exchangeCode(adminUrl: string, code: string): Promise<string> {
+  private async exchangeCode(
+    adminUrl: string,
+    code: string,
+  ): Promise<{ token: string; user: AuthUser }> {
     const exchangeUrl = `${adminUrl}/api/auth/exchange`;
     const response = await fetch(exchangeUrl, {
       method: "POST",
@@ -147,19 +135,21 @@ export class AuthService {
 
     const data = (await response.json()) as {
       token: string;
-      user: { username: string };
+      user: { id: string; email?: string };
     };
-    return data.token;
+    return {
+      token: data.token,
+      user: { id: data.user.id, email: data.user.email },
+    };
   }
 
   private startLocalAuthServer(
     adminUrl: string,
-    provider: string,
     options?: {
       onAuthUrl?: (url: string) => void;
       readToken?: () => Promise<string>;
     },
-  ): Promise<string> {
+  ): Promise<{ code: string; user: AuthUser }> {
     return new Promise((resolve, reject) => {
       let settled = false;
       const server: Server = createServer((req, res) => {
@@ -195,7 +185,7 @@ export class AuthService {
           if (!settled) {
             settled = true;
             server.close();
-            resolve(code);
+            resolve({ code, user: { id: "", email: undefined } });
           }
         }
       });
@@ -210,7 +200,7 @@ export class AuthService {
         }
         const port = address.port;
         const callbackUrl = `http://127.0.0.1:${port}`;
-        const authUrl = `${adminUrl}/api/auth/sso/${provider}?callback_url=${encodeURIComponent(callbackUrl)}`;
+        const authUrl = `${adminUrl}/login?callback_url=${encodeURIComponent(callbackUrl)}`;
 
         // Notify caller of the auth URL
         options?.onAuthUrl?.(authUrl);
@@ -230,7 +220,7 @@ export class AuthService {
             if (!settled) {
               settled = true;
               server.close();
-              resolve(code);
+              resolve({ code, user: { id: "", email: undefined } });
             }
           },
           () => {
@@ -274,6 +264,11 @@ export class AuthService {
 
   isSSOAuthenticated(): boolean {
     return this.getSSOToken() !== undefined;
+  }
+
+  getAuthUser(): AuthUser | undefined {
+    const config = this.loadAuth();
+    return config.user;
   }
 }
 

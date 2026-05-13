@@ -3,11 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Mock the instrumentation module
 const mockIsInitialized = vi.fn();
 const mockGetCurrentConfig = vi.fn();
+const mockGetTelemetryAttributes = vi.fn().mockReturnValue({});
 const mockLogEmit = vi.fn();
 
 vi.mock("@/telemetry/instrumentation.js", () => ({
   isInitialized: () => mockIsInitialized(),
   getCurrentConfig: () => mockGetCurrentConfig(),
+  getTelemetryAttributes: () => mockGetTelemetryAttributes(),
 }));
 
 vi.mock("@opentelemetry/api-logs", () => ({
@@ -25,6 +27,7 @@ describe("events", () => {
 
     mockIsInitialized.mockReturnValue(false);
     mockGetCurrentConfig.mockReturnValue(undefined);
+    mockGetTelemetryAttributes.mockReturnValue({});
     mockLogEmit.mockReset();
 
     events = await import("@/telemetry/events.js");
@@ -288,6 +291,7 @@ describe("events with logger import failure", () => {
         logUserPrompts: false,
         logToolContent: false,
       }),
+      getTelemetryAttributes: () => ({}),
     }));
 
     vi.doMock("@opentelemetry/api-logs", () => {

@@ -18,6 +18,7 @@ import type {
   LogRecordExporter,
   ReadableLogRecord,
 } from "@opentelemetry/sdk-logs";
+import { AuthService } from "../services/authService.js";
 
 // Lazy-loaded OTEL modules — only imported when telemetry is initialized
 let sdkNode: typeof import("@opentelemetry/sdk-node") | undefined;
@@ -468,3 +469,23 @@ export function isInitialized(): boolean {
 
 // Export JSONL exporters for testing
 export { JsonlSpanExporter, JsonlLogExporter };
+
+/**
+ * Get telemetry attributes based on the authenticated SSO user.
+ * Returns user.id and user.email when SSO authenticated, empty object otherwise.
+ */
+export function getTelemetryAttributes(): Record<string, string> {
+  try {
+    const user = AuthService.getInstance().getAuthUser();
+    if (user) {
+      const attrs: Record<string, string> = { "user.id": user.id };
+      if (user.email) {
+        attrs["user.email"] = user.email;
+      }
+      return attrs;
+    }
+  } catch {
+    // AuthService not available or not authenticated
+  }
+  return {};
+}

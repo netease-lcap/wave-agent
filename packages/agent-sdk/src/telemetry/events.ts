@@ -6,7 +6,11 @@
  */
 
 import type { OTelEventName } from "../types/telemetry.js";
-import { isInitialized, getCurrentConfig } from "./instrumentation.js";
+import {
+  isInitialized,
+  getCurrentConfig,
+  getTelemetryAttributes,
+} from "./instrumentation.js";
 
 interface OTelLogger {
   emit: (logRecord: {
@@ -52,6 +56,10 @@ export async function logOTelEvent(
 
   log.emit({
     body: eventName,
-    attributes: { "event.name": eventName, ...attributes },
+    attributes: {
+      "event.name": eventName,
+      ...getTelemetryAttributes(),
+      ...attributes,
+    },
   });
 }
