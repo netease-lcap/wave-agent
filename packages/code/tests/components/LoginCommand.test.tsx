@@ -106,16 +106,16 @@ describe("LoginCommand", () => {
     // onAuthUrl replaces the initial message
     await vi.waitFor(() =>
       expect(lastFrame()).toContain(
-        "Paste the token from your browser URL bar:",
+        "Paste the authorization code from your browser URL bar:",
       ),
     );
     await vi.waitFor(() =>
       expect(lastFrame()).toContain("Open this URL in your browser:"),
     );
-    await vi.waitFor(() => expect(lastFrame()).toContain("Token:"));
+    await vi.waitFor(() => expect(lastFrame()).toContain("Code:"));
   });
 
-  it("should show token input field when loading", async () => {
+  it("should show code input field when loading", async () => {
     let resolveLogin: (value: string) => void;
     mockAuthService.login.mockImplementation(
       () =>
@@ -128,13 +128,13 @@ describe("LoginCommand", () => {
 
     stdin.write("\r");
 
-    await vi.waitFor(() => expect(lastFrame()).toContain("Token:"));
+    await vi.waitFor(() => expect(lastFrame()).toContain("Code:"));
     await vi.waitFor(() => expect(lastFrame()).toContain("..."));
 
     resolveLogin!("done");
   });
 
-  it("should accumulate token input characters", async () => {
+  it("should accumulate code input characters", async () => {
     mockAuthService.login.mockImplementation(
       ({ readToken }: { readToken: () => Promise<string> }) =>
         new Promise<string>((resolve) => {
@@ -146,22 +146,22 @@ describe("LoginCommand", () => {
 
     stdin.write("\r");
 
-    await vi.waitFor(() => expect(lastFrame()).toContain("Token:"));
+    await vi.waitFor(() => expect(lastFrame()).toContain("Code:"));
 
-    // Type some token characters
+    // Type some code characters
     stdin.write("abc");
     await vi.waitFor(() => expect(lastFrame()).toContain("abc"));
 
     stdin.write("def");
     await vi.waitFor(() => expect(lastFrame()).toContain("abcdef"));
 
-    // Submit token
+    // Submit code
     stdin.write("\r");
 
     await vi.waitFor(() => expect(mockAuthService.login).toHaveBeenCalled());
   });
 
-  it("should handle backspace in token input", async () => {
+  it("should handle backspace in code input", async () => {
     mockAuthService.login.mockImplementation(
       ({ readToken }: { readToken: () => Promise<string> }) =>
         new Promise<string>((resolve) => {
@@ -172,7 +172,7 @@ describe("LoginCommand", () => {
     const { stdin, lastFrame } = render(<LoginCommand onCancel={vi.fn()} />);
 
     stdin.write("\r");
-    await vi.waitFor(() => expect(lastFrame()).toContain("Token:"));
+    await vi.waitFor(() => expect(lastFrame()).toContain("Code:"));
 
     stdin.write("abcd");
     await vi.waitFor(() => expect(lastFrame()).toContain("abcd"));
@@ -181,7 +181,7 @@ describe("LoginCommand", () => {
     stdin.write("\u007f");
     await vi.waitFor(() => expect(lastFrame()).toContain("abc"));
 
-    // Submit empty token clears input
+    // Submit empty code clears input
     stdin.write("\r");
     await vi.waitFor(() => expect(lastFrame()).toContain("..."));
 
@@ -202,7 +202,7 @@ describe("LoginCommand", () => {
     const { stdin, lastFrame } = render(<LoginCommand onCancel={onCancel} />);
 
     stdin.write("\r");
-    await vi.waitFor(() => expect(lastFrame()).toContain("Token:"));
+    await vi.waitFor(() => expect(lastFrame()).toContain("Code:"));
 
     stdin.write("\u001b");
     await vi.waitFor(() => expect(onCancel).toHaveBeenCalled());
