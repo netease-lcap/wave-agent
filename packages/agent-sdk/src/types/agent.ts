@@ -25,6 +25,8 @@ export interface AgentOptions {
   // Optional configuration with environment fallbacks
   apiKey?: string;
   baseURL?: string;
+  /** Wave admin URL for SSO authentication (fallback to WAVE_ADMIN_URL env var) */
+  adminUrl?: string;
   defaultHeaders?: Record<string, string>;
   fetchOptions?: ClientOptions["fetchOptions"];
   fetch?: ClientOptions["fetch"];

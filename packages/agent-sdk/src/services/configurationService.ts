@@ -408,9 +408,10 @@ export class ConfigurationService {
     fetchOptions?: ClientOptions["fetchOptions"],
     fetch?: ClientOptions["fetch"],
   ): GatewayConfig {
-    // Check for SSO token first - if present and WAVE_ADMIN_URL is set, use SSO mode
+    // Check for SSO token first - if present and admin URL is available, use SSO mode
+    // Admin URL resolution: options > process.env
     const ssoToken = this.readSSOToken();
-    const adminUrl = process.env.WAVE_ADMIN_URL;
+    const adminUrl = this.options.adminUrl || process.env.WAVE_ADMIN_URL;
     if (ssoToken && adminUrl) {
       return {
         apiKey: ssoToken,
