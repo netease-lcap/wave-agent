@@ -408,17 +408,10 @@ export class ConfigurationService {
     fetchOptions?: ClientOptions["fetchOptions"],
     fetch?: ClientOptions["fetch"],
   ): GatewayConfig {
-    // Check for SSO token first - if present, use SSO mode
+    // Check for SSO token first - if present and WAVE_ADMIN_URL is set, use SSO mode
     const ssoToken = this.readSSOToken();
-    if (ssoToken) {
-      const adminUrl = process.env.WAVE_ADMIN_URL;
-      if (!adminUrl) {
-        throw new ConfigurationError(
-          CONFIG_ERRORS.MISSING_BASE_URL,
-          "baseURL",
-          "WAVE_ADMIN_URL is required for SSO authentication",
-        );
-      }
+    const adminUrl = process.env.WAVE_ADMIN_URL;
+    if (ssoToken && adminUrl) {
       return {
         apiKey: ssoToken,
         baseURL: `${adminUrl}/api/v1`,
@@ -444,13 +437,13 @@ export class ConfigurationService {
 
     // Resolve base URL: override > options > env (settings.json) > process.env
     // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
-    let resolvedBaseURL: string;
+    let resolvedBaseURL: string | undefined;
     if (baseURL !== undefined) {
       resolvedBaseURL = baseURL;
     } else if (this.options.baseURL !== undefined) {
       resolvedBaseURL = this.options.baseURL;
     } else {
-      resolvedBaseURL = process.env.WAVE_BASE_URL || "";
+      resolvedBaseURL = process.env.WAVE_BASE_URL;
     }
 
     // Fallback to process.env if still not resolved (for dynamic updates in tests)
@@ -458,23 +451,12 @@ export class ConfigurationService {
       resolvedApiKey = process.env.WAVE_API_KEY;
     }
     if (!resolvedBaseURL) {
-      resolvedBaseURL = process.env.WAVE_BASE_URL || "";
+      resolvedBaseURL = process.env.WAVE_BASE_URL;
     }
 
-    if (!resolvedBaseURL && baseURL === undefined) {
-      throw new ConfigurationError(CONFIG_ERRORS.MISSING_BASE_URL, "baseURL", {
-        constructor: baseURL,
-        environment: process.env.WAVE_BASE_URL,
-        settings: process.env.WAVE_BASE_URL,
-      });
-    }
-
-    if (resolvedBaseURL.trim() === "") {
-      throw new ConfigurationError(
-        CONFIG_ERRORS.EMPTY_BASE_URL,
-        "baseURL",
-        resolvedBaseURL,
-      );
+    // Treat empty string as not provided
+    if (resolvedBaseURL?.trim() === "") {
+      resolvedBaseURL = undefined;
     }
 
     // Resolve custom headers from environment: env (settings.json) > process.env

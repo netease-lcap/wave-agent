@@ -8,7 +8,7 @@ import { PermissionMode } from "./permissions.js";
 
 export interface GatewayConfig {
   apiKey?: string;
-  baseURL: string;
+  baseURL?: string;
   defaultHeaders?: Record<string, string>;
   fetchOptions?: OpenAI["fetchOptions"];
   fetch?: OpenAI["fetch"];
