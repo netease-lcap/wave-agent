@@ -92,7 +92,7 @@ export class AuthService {
   async login(options?: {
     /** Callback to receive the auth URL (for display in CLI). */
     onAuthUrl?: (url: string) => void;
-    /** Read token manually (e.g. from stdin). Resolves with token or rejects on cancel. */
+    /** Read authorization code manually (e.g. from stdin). Resolves with code or rejects on cancel. */
     readToken?: () => Promise<string>;
   }): Promise<string> {
     const adminUrl = this.getAdminBaseUrl();
@@ -114,16 +114,42 @@ export class AuthService {
     const provider = providers[0].provider;
 
     // Step 2-5: Start local server, open browser, wait for callback or manual input
-    const token = await this.startLocalAuthServer(adminUrl, provider, {
+    const code = await this.startLocalAuthServer(adminUrl, provider, {
       onAuthUrl: options?.onAuthUrl,
       readToken: options?.readToken,
     });
+
+    // Exchange authorization code for JWT
+    const token = await this.exchangeCode(adminUrl, code);
 
     // Save the token (preserve existing keys)
     const existing = this.loadAuth();
     this.saveAuth({ ...existing, SSO_TOKEN: token });
 
     return token;
+  }
+
+  /**
+   * Exchange a short-lived authorization code for a JWT token.
+   */
+  private async exchangeCode(adminUrl: string, code: string): Promise<string> {
+    const exchangeUrl = `${adminUrl}/api/auth/exchange`;
+    const response = await fetch(exchangeUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Token exchange failed (${response.status}): ${text}`);
+    }
+
+    const data = (await response.json()) as {
+      token: string;
+      user: { username: string };
+    };
+    return data.token;
   }
 
   private startLocalAuthServer(
@@ -139,17 +165,37 @@ export class AuthService {
       const server: Server = createServer((req, res) => {
         if (req.url) {
           const parsedUrl = new URL(req.url, `http://127.0.0.1`);
-          const token = parsedUrl.searchParams.get("token");
+          const code = parsedUrl.searchParams.get("code");
+          const error = parsedUrl.searchParams.get("error");
+
+          if (error) {
+            res.writeHead(200, { "Content-Type": "text/html" });
+            res.end(
+              `<html><body><h1>Authentication failed</h1><p>${parsedUrl.searchParams.get("error_description") || error}</p></body></html>`,
+            );
+            if (!settled) {
+              settled = true;
+              server.close();
+              reject(new Error(`SSO login failed: ${error}`));
+            }
+            return;
+          }
+
+          if (!code) {
+            res.writeHead(404, { "Content-Type": "text/html" });
+            res.end("<html><body><h1>Not Found</h1></body></html>");
+            return;
+          }
 
           res.writeHead(200, { "Content-Type": "text/html" });
           res.end(
             "<html><body><h1>Authentication successful, you can close this window</h1></body></html>",
           );
 
-          if (token && !settled) {
+          if (!settled) {
             settled = true;
             server.close();
-            resolve(token);
+            resolve(code);
           }
         }
       });
@@ -177,14 +223,14 @@ export class AuthService {
         }
       });
 
-      // If manual token reading is provided, race between server callback and user input
+      // If manual code reading is provided, race between server callback and user input
       if (options?.readToken) {
         options.readToken().then(
-          (token) => {
+          (code) => {
             if (!settled) {
               settled = true;
               server.close();
-              resolve(token);
+              resolve(code);
             }
           },
           () => {

@@ -25,7 +25,7 @@
 
 4. **Browser opens** → Complete SSO login on wave-admin
 
-5. **Browser redirects** to `http://127.0.0.1:{port}?token=...` → Wave receives token automatically
+5. **Browser redirects** to `http://127.0.0.1:{port}?code=...` → Wave exchanges code for JWT automatically
 
 6. **Verify**:
    ```
@@ -60,11 +60,11 @@
 
 5. **Complete SSO login** on wave-admin
 
-6. **Browser redirects** to `http://127.0.0.1:{port}?token=eyJ...` — the page shows "Connection refused" but **the token is visible in the URL bar**
+6. **Browser redirects** to `http://127.0.0.1:{port}?code=abc123` — the page shows "Connection refused" but **the authorization code is visible in the URL bar**
 
-7. **Copy the token** from the URL bar (the `token=` parameter value)
+7. **Copy the authorization code** from the URL bar (the `code=` parameter value)
 
-8. **Paste the token** into the terminal where Wave is running → Press Enter
+8. **Paste the code** into the terminal where Wave is running → Press Enter → Wave exchanges it for a JWT
 
 9. **Verify**:
    ```
@@ -89,7 +89,7 @@ SSO_company_sso_CLIENT_SECRET=xxx
 ```
 
 ### Token expired after 8 hours
-wave-admin JWT defaults to 8-hour expiry. Re-run `/login` to get a fresh token.
+wave-admin JWT defaults to 8-hour expiry. Re-run `/login` to get a fresh authorization code and exchange for a new token.
 
 ### "Connection refused" on browser redirect
-Expected on remote servers. Copy the token from the browser URL bar and paste into the terminal.
+Expected on remote servers. Copy the authorization code from the browser URL bar and paste into the terminal.

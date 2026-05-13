@@ -37,7 +37,7 @@
 
 ## Decision: Wave-Admin as SSO Mediator
 
-**Rationale**: wave-agent CLI does not connect directly to the company SSO IdP. Instead, wave-admin handles the OIDC/OAuth flow and redirects back to the CLI with a JWT. This keeps the CLI simple and centralized authentication in wave-admin.
+**Rationale**: wave-agent CLI does not connect directly to the company SSO IdP. Instead, wave-admin handles the OIDC/OAuth flow and redirects back to the CLI with a short-lived authorization code. The CLI then exchanges this code for a JWT via `POST /api/auth/exchange`. This two-step flow follows the standard OAuth 2.0 authorization code pattern, keeping the JWT out of the URL bar (only a short-lived code is exposed).
 
 ## Decision: SSO Token Priority Over Direct LLM Config
 

@@ -40,7 +40,7 @@ When `SSO_TOKEN` is present, `resolveGatewayConfig()` returns:
 | Idle (not authenticated) | `!isSSOAuthenticated()` | "Not logged in", "Press Enter to login" |
 | Idle (authenticated) | `isSSOAuthenticated()` && `!isLoading` | Truncated token, admin URL, "Press Enter to logout" |
 | Loading | `isLoading` && `!message` | "Starting authentication..." |
-| Auth URL shown | `isLoading` && `authUrl` | Auth URL + "Paste the token from your browser URL bar:" + token input field |
+| Auth URL shown | `isLoading` && `authUrl` | Auth URL + "Paste the authorization code from your browser URL bar:" + code input field |
 | Success | `!isLoading` && `message === "Login successful"` | "Login successful" |
 | Error | `!isLoading` && `error` | Error message in red |
 

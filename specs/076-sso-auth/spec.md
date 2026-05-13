@@ -17,7 +17,7 @@ As a developer working on a local machine, I want to type `/login` in Wave to au
 **Acceptance Scenarios**:
 
 1. **Given** `WAVE_ADMIN_URL` is set and no existing SSO token, **When** the user types `/login`, **Then** Wave opens a browser to the SSO login page and displays the auth URL in the terminal.
-2. **Given** the user completes SSO login in their browser, **When** the browser redirects to the localhost callback URL, **Then** Wave receives the token, saves it to `~/.wave/auth.json`, and displays "Login successful".
+2. **Given** the user completes SSO login in their browser, **When** the browser redirects to the localhost callback URL with `?code={code}`, **Then** Wave exchanges the code for a JWT via `POST /api/auth/exchange`, saves the token to `~/.wave/auth.json`, and displays "Login successful".
 3. **Given** the user is authenticated via SSO, **When** the user sends a message, **Then** all LLM API requests are sent to `WAVE_ADMIN_URL/api/v1` with the SSO token as Bearer auth.
 4. **Given** the user is already authenticated via SSO, **When** the user types `/login`, **Then** Wave shows current auth status (truncated token, admin URL) and offers to logout on Enter.
 5. **Given** the user is authenticated and presses Enter while in the login UI, **When** they confirm logout, **Then** the SSO token is removed from `~/.wave/auth.json` and Wave displays "Logged out successfully".
@@ -34,8 +34,8 @@ As a developer working on a remote server via SSH, I want to manually paste the 
 
 **Acceptance Scenarios**:
 
-1. **Given** Wave is running on a remote server, **When** the user types `/login`, **Then** Wave displays the SSO auth URL and prompts "Paste the token from your browser URL bar:".
-2. **Given** the user pastes a valid JWT token and presses Enter, **Then** Wave saves the token to `~/.wave/auth.json` and displays "Login successful".
+1. **Given** Wave is running on a remote server, **When** the user types `/login`, **Then** Wave displays the SSO auth URL and prompts "Paste the authorization code from your browser URL bar:".
+2. **Given** the user pastes a valid authorization code and presses Enter, **Then** Wave exchanges the code for a JWT via `POST /api/auth/exchange`, saves the token to `~/.wave/auth.json`, and displays "Login successful".
 3. **Given** the user pastes an empty line, **Then** Wave clears the input and keeps waiting for token input.
 4. **Given** the user presses Escape during token input, **Then** the login flow is cancelled and Wave returns to the idle state.
 
@@ -62,7 +62,7 @@ As a developer who has authenticated via SSO, I want all LLM API requests to aut
 - **What happens if the SSO callback server port is already in use?** The server uses `localhost:0` (system-assigned random port), avoiding port collision.
 - **What happens if no SSO providers are configured on wave-admin?** The login fails with a clear error message ("No SSO providers available").
 - **What happens if `WAVE_ADMIN_URL` is not set during login?** The login fails with a clear error instructing the user to set the environment variable.
-- **What happens if the browser cannot be opened (headless server)?** The auth server stays alive, and the user can manually open the URL and paste the token.
+- **What happens if the browser cannot be opened (headless server)?** The auth server stays alive, and the user can manually open the URL and paste the authorization code.
 - **What happens if the user saves additional fields in `auth.json` in the future?** The `saveAuth` method merges with existing config, preserving non-SSO_TOKEN fields.
 - **What happens if the token expires (JWT default 8h)?** The API call returns 401; the user must re-run `/login`. Token refresh is out of scope (requires wave-admin changes).
 - **What happens if the SSO login times out (5 min)?** The auth server closes and an error is displayed. The user can retry `/login`.
@@ -73,9 +73,10 @@ As a developer who has authenticated via SSO, I want all LLM API requests to aut
 
 - **FR-001**: System MUST provide `/login` and `/logout` slash commands in the CLI.
 - **FR-002**: System MUST start a local HTTP server on `127.0.0.1` with a random port to receive SSO callbacks.
+- **FR-002a**: System MUST extract the `code` query parameter from the callback URL and exchange it for a JWT via `POST /api/auth/exchange`.
 - **FR-003**: System MUST fetch available SSO providers from `WAVE_ADMIN_URL/api/auth/sso-providers` and use the first provider.
 - **FR-004**: System MUST open the SSO login URL in the default browser when available.
-- **FR-005**: System MUST accept manual token input via the CLI when browser callback is unavailable (remote servers).
+- **FR-005**: System MUST accept manual authorization code input via the CLI when browser callback is unavailable (remote servers), and exchange it for a JWT.
 - **FR-006**: System MUST save the SSO token to `~/.wave/auth.json` with file permissions `0o600`.
 - **FR-007**: System MUST preserve non-SSO_TOKEN fields in `auth.json` when saving (merge, not overwrite).
 - **FR-008**: System MUST prioritize SSO mode over direct LLM mode when resolving gateway configuration.

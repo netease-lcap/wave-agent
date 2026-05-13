@@ -4,7 +4,7 @@
 
 ## Summary
 
-Add `/login` and `/logout` slash commands for SSO authentication via wave-admin. AuthService handles browser-based SSO flow with localhost callback, falls back to manual token input for remote servers. Gateway configuration prioritizes SSO mode when `~/.wave/auth.json` contains `SSO_TOKEN`, routing all LLM API requests through wave-admin's `/api/v1` proxy.
+Add `/login` and `/logout` slash commands for SSO authentication via wave-admin. AuthService handles browser-based SSO flow with localhost callback (receives authorization code, exchanges for JWT via `POST /api/auth/exchange`), falls back to manual code input for remote servers. Gateway configuration prioritizes SSO mode when `~/.wave/auth.json` contains `SSO_TOKEN`, routing all LLM API requests through wave-admin's `/api/v1` proxy.
 
 ## Technical Context
 
@@ -34,8 +34,8 @@ User types /login → inputReducer → EXECUTE_COMMAND (local)
   → useInputManager → dispatch SET_SHOW_LOGIN_COMMAND
   → InputBox renders <LoginCommand>
     → User presses Enter → AuthService.login()
-    → Browser opens → SSO flow → token saved → UI updates
-    → Remote server fallback: user pastes token from browser URL bar
+    → Browser opens → SSO flow → callback receives code → POST /api/auth/exchange → JWT saved → UI updates
+    → Remote server fallback: user pastes authorization code from browser URL bar → POST /api/auth/exchange → JWT saved
 ```
 
 ## Files Modified
