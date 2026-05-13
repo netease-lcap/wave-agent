@@ -67,11 +67,30 @@ interface GatewayConfig {
 
 ### GET /api/auth/sso/{provider}?callback_url={url}
 
-**Behavior**: Redirects user to SSO IdP login page. After successful authentication, redirects to `callback_url?token={jwt}`.
+**Behavior**: Redirects user to SSO IdP login page. After successful authentication, redirects to `callback_url?code={authorization_code}`.
+
+### POST /api/auth/exchange
+
+**Request**:
+```json
+{
+  "code": "short_authorization_code"
+}
+```
+
+**Response** (200):
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "username": "user@example.com"
+  }
+}
+```
 
 ### Callback URL Response
 
-**Expected**: `GET http://127.0.0.1:{port}?token={jwt}`
+**Expected**: `GET http://127.0.0.1:{port}?code={code}`
 
 **Server responds with**: 200 HTML page "Authentication successful, you can close this window"
 

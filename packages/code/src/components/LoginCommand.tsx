@@ -91,7 +91,7 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
       await authService.login({
         onAuthUrl: (url: string) => {
           setAuthUrl(url);
-          setMessage("Paste the token from your browser URL bar:");
+          setMessage("Paste the authorization code from your browser URL bar:");
         },
         readToken,
       });
@@ -155,10 +155,10 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
         </Box>
       )}
 
-      {/* Token input field */}
+      {/* Authorization code input field */}
       {isLoading && (
         <Box marginBottom={1}>
-          <Text color="cyan">Token: </Text>
+          <Text color="cyan">Code: </Text>
           <Text color="white">{tokenInput || "..."}</Text>
         </Box>
       )}
