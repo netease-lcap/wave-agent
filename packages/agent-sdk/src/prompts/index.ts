@@ -260,11 +260,15 @@ export function buildSystemPrompt(
     prompt += `\n\n${TOOL_POLICY}`;
   }
 
-  // List available deferred tool names so the model knows they exist
-  // Matching Claude Code: deferred tools appear by name, not loaded until fetched.
-  const deferredToolNames = tools.filter(isDeferredTool).map((t) => t.name);
-  if (deferredToolNames.length > 0) {
-    prompt += `\n\n<available-deferred-tools>${deferredToolNames.join(" ")}\nThese tools are NOT loaded yet — call ${TOOL_SEARCH_TOOL_NAME} first to discover their schemas before invoking them.</available-deferred-tools>`;
+  // List available deferred tool names with descriptions so the model knows they exist
+  // and can decide which ones to discover via ToolSearch
+  const deferredTools = tools.filter(isDeferredTool);
+  if (deferredTools.length > 0) {
+    const lines = deferredTools.map((t) => {
+      const desc = t.config.function?.description;
+      return desc ? `${t.name} - ${desc}` : t.name;
+    });
+    prompt += `\n\n<available-deferred-tools>\n${lines.join("\n")}\nThese tools are NOT loaded yet — call ${TOOL_SEARCH_TOOL_NAME} first to discover their schemas before invoking them.</available-deferred-tools>`;
   }
 
   prompt += `\n\n${OUTPUT_EFFICIENCY_PROMPT}`;
