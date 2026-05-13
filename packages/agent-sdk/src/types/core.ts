@@ -96,8 +96,6 @@ export class ConfigurationError extends Error {
 
 // Standard error messages
 export const CONFIG_ERRORS = {
-  MISSING_BASE_URL:
-    "Gateway configuration requires baseURL. Provide via constructor or WAVE_BASE_URL environment variable.",
   MISSING_MODEL:
     "Agent configuration requires model. Provide via constructor or WAVE_MODEL environment variable.",
   MISSING_FAST_MODEL:

@@ -28,32 +28,34 @@ export class ConfigValidator {
       }
     }
 
-    // Validate base URL
-    if (!config.baseURL || typeof config.baseURL !== "string") {
-      throw new ConfigurationError(
-        CONFIG_ERRORS.EMPTY_BASE_URL,
-        "baseURL",
-        config.baseURL,
-      );
-    }
+    // Validate base URL if provided
+    if (config.baseURL) {
+      if (typeof config.baseURL !== "string") {
+        throw new ConfigurationError(
+          "Base URL must be a string if provided.",
+          "baseURL",
+          config.baseURL,
+        );
+      }
 
-    if (config.baseURL.trim() === "") {
-      throw new ConfigurationError(
-        CONFIG_ERRORS.EMPTY_BASE_URL,
-        "baseURL",
-        config.baseURL,
-      );
-    }
+      if (config.baseURL.trim() === "") {
+        throw new ConfigurationError(
+          CONFIG_ERRORS.EMPTY_BASE_URL,
+          "baseURL",
+          config.baseURL,
+        );
+      }
 
-    // Basic URL format validation
-    try {
-      new URL(config.baseURL);
-    } catch {
-      throw new ConfigurationError(
-        `Base URL must be a valid URL format. Received: ${config.baseURL}`,
-        "baseURL",
-        config.baseURL,
-      );
+      // Basic URL format validation
+      try {
+        new URL(config.baseURL);
+      } catch {
+        throw new ConfigurationError(
+          `Base URL must be a valid URL format. Received: ${config.baseURL}`,
+          "baseURL",
+          config.baseURL,
+        );
+      }
     }
   }
 

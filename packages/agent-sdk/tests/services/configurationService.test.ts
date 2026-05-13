@@ -398,8 +398,9 @@ describe("ConfigurationService", () => {
       expect(config.baseURL).toBe("http://env-base.com");
     });
 
-    it("should throw on missing baseURL", () => {
-      expect(() => configService.resolveGatewayConfig()).toThrow();
+    it("should allow missing baseURL", () => {
+      const config = configService.resolveGatewayConfig();
+      expect(config.baseURL).toBeUndefined();
     });
 
     it("should parse custom headers from env", () => {
