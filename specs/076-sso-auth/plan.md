@@ -4,7 +4,7 @@
 
 ## Summary
 
-Add `/login` and `/logout` slash commands for SSO authentication via wave-admin. AuthService handles browser-based SSO flow with localhost callback (receives authorization code, exchanges for JWT via `POST /api/auth/exchange`), falls back to manual code input for remote servers. Gateway configuration prioritizes SSO mode when `~/.wave/auth.json` contains `SSO_TOKEN`, routing all LLM API requests through wave-admin's `/api/v1` proxy.
+Add `/login` and `/logout` slash commands for SSO authentication via Wave AI. AuthService handles browser-based SSO flow with localhost callback (receives authorization code, exchanges for JWT via `POST /api/auth/exchange`), falls back to manual code input for remote servers. Gateway configuration prioritizes SSO mode when `~/.wave/auth.json` contains `SSO_TOKEN`, routing all LLM API requests through Wave AI's `/api/v1` proxy.
 
 ## Technical Context
 

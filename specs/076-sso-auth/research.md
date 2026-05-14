@@ -5,9 +5,9 @@
 **Rationale**: The primary flow uses a localhost HTTP server to receive the SSO callback (standard OAuth/PKCE pattern). For remote servers where the callback cannot reach the CLI (SSH without port forwarding), a manual token input fallback is provided using Ink's `useInput` for terminal text capture.
 
 **Alternatives considered**:
-- **Device code flow (RFC 8628)**: Used by GitHub CLI, Azure CLI. Requires server-side endpoint changes on wave-admin. Rejected — adds server complexity, we can solve this client-side.
+- **Device code flow (RFC 8628)**: Used by GitHub CLI, Azure CLI. Requires server-side endpoint changes on Wave AI. Rejected — adds server complexity, we can solve this client-side.
 - **SSH port forwarding documentation**: Document `ssh -L port:127.0.0.1:port` workaround. Rejected — manual setup each session is poor UX.
-- **Polling endpoint on wave-admin**: CLI gets session ID, polls server for token. Rejected — requires new server endpoint.
+- **Polling endpoint on Wave AI**: CLI gets session ID, polls server for token. Rejected — requires new server endpoint.
 
 ## Decision: `127.0.0.1` (IPv4) for Localhost Server
 
@@ -37,11 +37,11 @@
 
 ## Decision: Wave-Admin as SSO Mediator
 
-**Rationale**: wave-agent CLI does not connect directly to the company SSO IdP. Instead, wave-admin handles the OIDC/OAuth flow and redirects back to the CLI with a short-lived authorization code. The CLI then exchanges this code for a JWT via `POST /api/auth/exchange`. This two-step flow follows the standard OAuth 2.0 authorization code pattern, keeping the JWT out of the URL bar (only a short-lived code is exposed).
+**Rationale**: wave-agent CLI does not connect directly to the company SSO IdP. Instead, Wave AI handles the OIDC/OAuth flow and redirects back to the CLI with a short-lived authorization code. The CLI then exchanges this code for a JWT via `POST /api/auth/exchange`. This two-step flow follows the standard OAuth 2.0 authorization code pattern, keeping the JWT out of the URL bar (only a short-lived code is exposed).
 
 ## Decision: SSO Token Priority Over Direct LLM Config
 
-**Rationale**: When `~/.wave/auth.json` contains `SSO_TOKEN`, gateway configuration resolution prioritizes SSO mode. This ensures authenticated users automatically use wave-admin's API proxy without needing to unset `WAVE_API_KEY`.
+**Rationale**: When `~/.wave/auth.json` contains `SSO_TOKEN`, gateway configuration resolution prioritizes SSO mode. This ensures authenticated users automatically use Wave AI's API proxy without needing to unset `WAVE_API_KEY`.
 
 **Priority order**: SSO_TOKEN → constructor args → options → env (settings.json) → process.env → error.
 

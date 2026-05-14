@@ -111,7 +111,7 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
 
   const isAuthenticated = authService.isSSOAuthenticated();
   const token = authService.getSSOToken();
-  const adminUrl = process.env.WAVE_ADMIN_URL;
+  const aiUrl = process.env.WAVE_AI_URL;
 
   const truncatedToken =
     token && token.length > 14
@@ -185,10 +185,10 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
             <Text color="yellow">Token:</Text>
             <Text color="white"> {truncatedToken}</Text>
           </Box>
-          {adminUrl && (
+          {aiUrl && (
             <Box>
-              <Text color="yellow">Admin URL:</Text>
-              <Text color="white"> {adminUrl}</Text>
+              <Text color="yellow">AI URL:</Text>
+              <Text color="white"> {aiUrl}</Text>
             </Box>
           )}
           <Box marginTop={1}>

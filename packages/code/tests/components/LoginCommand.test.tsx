@@ -55,17 +55,17 @@ describe("LoginCommand", () => {
     expect(lastFrame()).toContain("Press Enter to logout");
   });
 
-  it("should show admin URL when WAVE_ADMIN_URL is set", () => {
+  it("should show AI URL when WAVE_AI_URL is set", () => {
     mockAuthService.isSSOAuthenticated.mockReturnValue(true);
     mockAuthService.getSSOToken.mockReturnValue("short-token");
-    process.env.WAVE_ADMIN_URL = "https://admin.example.com";
+    process.env.WAVE_AI_URL = "https://ai.example.com";
 
     const { lastFrame } = render(<LoginCommand onCancel={vi.fn()} />);
 
-    expect(lastFrame()).toContain("Admin URL:");
-    expect(lastFrame()).toContain("https://admin.example.com");
+    expect(lastFrame()).toContain("AI URL:");
+    expect(lastFrame()).toContain("https://ai.example.com");
 
-    delete process.env.WAVE_ADMIN_URL;
+    delete process.env.WAVE_AI_URL;
   });
 
   it("should call clearAuth when Enter is pressed while authenticated", async () => {
@@ -92,7 +92,7 @@ describe("LoginCommand", () => {
     mockAuthService.login.mockImplementation(
       async ({ onAuthUrl }: { onAuthUrl?: (url: string) => void }) => {
         onAuthUrl?.(
-          "https://admin.example.com/api/auth/sso/netease?callback_url=http://127.0.0.1:12345",
+          "https://ai.example.com/api/auth/sso/netease?callback_url=http://127.0.0.1:12345",
         );
         return new Promise<string>(() => {});
       },
