@@ -298,6 +298,14 @@ export class MessageManager {
         return;
       }
 
+      // Filter out meta messages
+      const meaningfulMessages = unsavedMessages.filter((m) => !m.isMeta);
+
+      if (meaningfulMessages.length === 0) {
+        // No meaningful messages to save
+        return;
+      }
+
       // Create session if needed (only when we have messages to save)
       if (this.savedMessageCount === 0) {
         // This is the first time saving messages, so create the session
@@ -307,7 +315,7 @@ export class MessageManager {
       // Use JSONL format for new sessions
       await appendMessages(
         this.sessionId,
-        unsavedMessages, // Only append new messages
+        meaningfulMessages, // Only append meaningful messages
         this.workdir,
         this.sessionType,
         this.rootSessionId,
