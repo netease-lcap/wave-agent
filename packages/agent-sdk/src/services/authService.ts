@@ -79,11 +79,11 @@ export class AuthService {
     return config.SSO_TOKEN;
   }
 
-  getAdminBaseUrl(): string {
-    const url = process.env.WAVE_ADMIN_URL;
+  getAiBaseUrl(): string {
+    const url = process.env.WAVE_AI_URL;
     if (!url) {
       throw new Error(
-        "WAVE_ADMIN_URL environment variable is not set. SSO authentication requires this to be configured.",
+        "WAVE_AI_URL environment variable is not set. SSO authentication requires this to be configured.",
       );
     }
     return url;
@@ -95,16 +95,16 @@ export class AuthService {
     /** Read authorization code manually (e.g. from stdin). Resolves with code or rejects on cancel. */
     readToken?: () => Promise<string>;
   }): Promise<string> {
-    const adminUrl = this.getAdminBaseUrl();
+    const aiUrl = this.getAiBaseUrl();
 
     // Start local server, open browser, wait for callback or manual input
-    const { code } = await this.startLocalAuthServer(adminUrl, {
+    const { code } = await this.startLocalAuthServer(aiUrl, {
       onAuthUrl: options?.onAuthUrl,
       readToken: options?.readToken,
     });
 
     // Exchange authorization code for JWT (includes user info)
-    const { token, user } = await this.exchangeCode(adminUrl, code);
+    const { token, user } = await this.exchangeCode(aiUrl, code);
 
     // Save the token and user info (preserve existing keys)
     const existing = this.loadAuth();
@@ -118,10 +118,10 @@ export class AuthService {
    * Returns both the token and user info.
    */
   private async exchangeCode(
-    adminUrl: string,
+    aiUrl: string,
     code: string,
   ): Promise<{ token: string; user: AuthUser }> {
-    const exchangeUrl = `${adminUrl}/api/auth/exchange`;
+    const exchangeUrl = `${aiUrl}/api/auth/exchange`;
     const response = await fetch(exchangeUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -144,7 +144,7 @@ export class AuthService {
   }
 
   private startLocalAuthServer(
-    adminUrl: string,
+    aiUrl: string,
     options?: {
       onAuthUrl?: (url: string) => void;
       readToken?: () => Promise<string>;
@@ -200,7 +200,7 @@ export class AuthService {
         }
         const port = address.port;
         const callbackUrl = `http://127.0.0.1:${port}`;
-        const authUrl = `${adminUrl}/login?callback_url=${encodeURIComponent(callbackUrl)}`;
+        const authUrl = `${aiUrl}/login?callback_url=${encodeURIComponent(callbackUrl)}`;
 
         // Notify caller of the auth URL
         options?.onAuthUrl?.(authUrl);
