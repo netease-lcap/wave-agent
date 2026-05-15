@@ -29,3 +29,7 @@ export * from "./utils/gitUtils.js";
 export * from "./utils/nameGenerator.js";
 export * from "./utils/worktreeSession.js";
 export * from "./types/index.js";
+
+// Export tool building utilities
+export * from "./tools/buildTool.js";
+export type { ToolPlugin, ToolResult, ToolContext } from "./tools/types.js";

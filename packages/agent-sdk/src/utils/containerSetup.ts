@@ -257,6 +257,7 @@ export function setupAgentContainer(
   const toolManager = new ToolManager({
     container,
     tools: options.tools,
+    customTools: options.customTools,
   });
   container.register("ToolManager", toolManager);
 

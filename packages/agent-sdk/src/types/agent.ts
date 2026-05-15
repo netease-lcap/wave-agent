@@ -14,6 +14,7 @@ import type { MessageManagerCallbacks } from "../managers/messageManager.js";
 import type { BackgroundTaskManagerCallbacks } from "../managers/backgroundTaskManager.js";
 import type { McpManagerCallbacks } from "../managers/mcpManager.js";
 import type { SubagentManagerCallbacks } from "../managers/subagentManager.js";
+import type { ToolPlugin } from "../tools/types.js";
 
 /**
  * Configuration options for Agent instances
@@ -86,6 +87,8 @@ export interface AgentOptions {
    * Overrides .mcp.json for specified server names.
    */
   mcpServers?: Record<string, McpServerConfig>;
+  /** Custom tools provided by the SDK user, registered alongside built-in tools */
+  customTools?: ToolPlugin[];
   [key: string]: unknown;
 }
 
