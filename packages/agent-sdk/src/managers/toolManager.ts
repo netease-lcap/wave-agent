@@ -53,6 +53,8 @@ export interface ToolManagerOptions {
   container: Container;
   /** Optional list of tool names to enable */
   tools?: string[];
+  /** Custom tools to register alongside built-in tools */
+  customTools?: ToolPlugin[];
 }
 
 /**
@@ -64,11 +66,13 @@ export interface ToolManagerOptions {
 class ToolManager {
   private toolsRegistry = new Map<string, ToolPlugin>();
   private tools?: string[];
+  private customTools?: ToolPlugin[];
   private container: Container;
 
   constructor(options: ToolManagerOptions) {
     this.container = options.container;
     this.tools = options.tools;
+    this.customTools = options.customTools;
   }
 
   private get mcpManager(): McpManager {
@@ -134,6 +138,13 @@ class ToolManager {
     ];
 
     for (const tool of builtInTools) {
+      if (this.shouldEnableTool(tool.name)) {
+        this.toolsRegistry.set(tool.name, tool);
+      }
+    }
+
+    // Register custom tools
+    for (const tool of this.customTools || []) {
       if (this.shouldEnableTool(tool.name)) {
         this.toolsRegistry.set(tool.name, tool);
       }
