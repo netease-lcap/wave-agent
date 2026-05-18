@@ -3,6 +3,8 @@ import {
   McpManager,
   expandEnvVars,
   resolveMcpConfig,
+  resolveMcpTemplates,
+  type McpResolverContext,
 } from "../../src/managers/mcpManager.js";
 import { Container } from "../../src/utils/container.js";
 import type { McpServerConfig } from "../../src/types/index.js";
@@ -1349,5 +1351,246 @@ describe("resolveMcpConfig", () => {
     };
     resolveMcpConfig(config);
     expect(config.mcpServers.s.url).toBe("${URL}");
+  });
+});
+
+describe("resolveMcpTemplates", () => {
+  const originalEnv = process.env;
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it("should resolve ${WAVE_SERVER_URL} in command", () => {
+    const config: McpServerConfig = {
+      command: "${WAVE_SERVER_URL}/bin/mcp",
+      args: ["--endpoint", "${WAVE_SERVER_URL}/api"],
+    };
+    const ctx: McpResolverContext = { serverUrl: "https://wave.example.com" };
+    const resolved = resolveMcpTemplates(config, ctx);
+    expect(resolved.command).toBe("https://wave.example.com/bin/mcp");
+    expect(resolved.args).toEqual([
+      "--endpoint",
+      "https://wave.example.com/api",
+    ]);
+  });
+
+  it("should resolve ${WAVE_SERVER_URL} in url", () => {
+    const config: McpServerConfig = {
+      url: "${WAVE_SERVER_URL}/sse",
+    };
+    const ctx: McpResolverContext = { serverUrl: "https://wave.example.com" };
+    const resolved = resolveMcpTemplates(config, ctx);
+    expect(resolved.url).toBe("https://wave.example.com/sse");
+  });
+
+  it("should resolve ${WAVE_SSO_TOKEN} in headers", () => {
+    const config: McpServerConfig = {
+      url: "https://example.com/mcp",
+      headers: { Authorization: "Bearer ${WAVE_SSO_TOKEN}" },
+    };
+    const ctx: McpResolverContext = { ssoToken: "abc123token" };
+    const resolved = resolveMcpTemplates(config, ctx);
+    expect(resolved.headers).toEqual({ Authorization: "Bearer abc123token" });
+  });
+
+  it("should resolve both ${WAVE_SERVER_URL} and ${WAVE_SSO_TOKEN} in the same config", () => {
+    const config: McpServerConfig = {
+      url: "${WAVE_SERVER_URL}/mcp/sse",
+      headers: { Authorization: "Bearer ${WAVE_SSO_TOKEN}" },
+    };
+    const ctx: McpResolverContext = {
+      serverUrl: "https://wave.example.com",
+      ssoToken: "tok_xyz",
+    };
+    const resolved = resolveMcpTemplates(config, ctx);
+    expect(resolved.url).toBe("https://wave.example.com/mcp/sse");
+    expect(resolved.headers).toEqual({ Authorization: "Bearer tok_xyz" });
+  });
+
+  it("should resolve ${WAVE_SERVER_URL} in env values", () => {
+    const config: McpServerConfig = {
+      command: "npx",
+      args: ["mcp-server"],
+      env: {
+        MCP_ENDPOINT: "${WAVE_SERVER_URL}/api/mcp",
+      },
+    };
+    const ctx: McpResolverContext = { serverUrl: "https://wave.local:3000" };
+    const resolved = resolveMcpTemplates(config, ctx);
+    expect(resolved.env).toEqual({
+      MCP_ENDPOINT: "https://wave.local:3000/api/mcp",
+    });
+  });
+
+  it("should leave templates unchanged when context value is missing", () => {
+    const config: McpServerConfig = {
+      command: "${WAVE_SERVER_URL}/bin/mcp",
+      url: "${WAVE_SERVER_URL}/sse",
+      headers: { Authorization: "Bearer ${WAVE_SSO_TOKEN}" },
+    };
+    const ctx: McpResolverContext = {};
+    const resolved = resolveMcpTemplates(config, ctx);
+    expect(resolved.command).toBe("${WAVE_SERVER_URL}/bin/mcp");
+    expect(resolved.url).toBe("${WAVE_SERVER_URL}/sse");
+    expect(resolved.headers).toEqual({
+      Authorization: "Bearer ${WAVE_SSO_TOKEN}",
+    });
+  });
+
+  it("should leave templates unchanged when only partial context is provided", () => {
+    const config: McpServerConfig = {
+      url: "${WAVE_SERVER_URL}/sse",
+      headers: { Authorization: "Bearer ${WAVE_SSO_TOKEN}" },
+    };
+    // Only ssoToken provided — serverUrl template stays untouched
+    const ctx: McpResolverContext = { ssoToken: "my-token" };
+    const resolved = resolveMcpTemplates(config, ctx);
+    expect(resolved.url).toBe("${WAVE_SERVER_URL}/sse");
+    expect(resolved.headers).toEqual({ Authorization: "Bearer my-token" });
+  });
+
+  it("should NOT expand regular env vars from process.env", () => {
+    process.env.HOME = "/home/user";
+    const config: McpServerConfig = {
+      command: "${HOME}/bin/mcp",
+    };
+    const ctx: McpResolverContext = {};
+    const resolved = resolveMcpTemplates(config, ctx);
+    // resolveMcpTemplates only handles WAVE_SERVER_URL and WAVE_SSO_TOKEN
+    expect(resolved.command).toBe("${HOME}/bin/mcp");
+  });
+
+  it("should NOT expand ${WAVE_SERVER_URL} from process.env", () => {
+    process.env.WAVE_SERVER_URL = "https://from-env.com";
+    const config: McpServerConfig = {
+      url: "${WAVE_SERVER_URL}/sse",
+    };
+    const ctx: McpResolverContext = {};
+    const resolved = resolveMcpTemplates(config, ctx);
+    // Template should remain — only context values are used, not process.env
+    expect(resolved.url).toBe("${WAVE_SERVER_URL}/sse");
+  });
+
+  it("should not mutate the original config", () => {
+    const config: McpServerConfig = {
+      url: "${WAVE_SERVER_URL}/sse",
+      headers: { Authorization: "Bearer ${WAVE_SSO_TOKEN}" },
+    };
+    const ctx: McpResolverContext = {
+      serverUrl: "https://resolved.com",
+      ssoToken: "tok",
+    };
+    resolveMcpTemplates(config, ctx);
+    expect(config.url).toBe("${WAVE_SERVER_URL}/sse");
+    expect(config.headers).toEqual({
+      Authorization: "Bearer ${WAVE_SSO_TOKEN}",
+    });
+  });
+});
+
+describe("resolveMcpConfig with context", () => {
+  const originalEnv = process.env;
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it("should apply both env var expansion AND template resolution", () => {
+    process.env.MCP_PORT = "8080";
+    // Set WAVE_SSO_TOKEN in process.env so expandEnvVars doesn't wipe it;
+    // resolveMcpTemplates then replaces it with the context value
+    process.env.WAVE_SSO_TOKEN = "${WAVE_SSO_TOKEN}";
+    const config = {
+      mcpServers: {
+        s: {
+          url: "http://localhost:${MCP_PORT}/sse",
+          headers: { Authorization: "Bearer ${WAVE_SSO_TOKEN}" },
+        },
+      },
+    };
+    const ctx: McpResolverContext = { ssoToken: "secret-token" };
+    const resolved = resolveMcpConfig(config, ctx);
+    // Step 1: ${MCP_PORT} expanded from process.env; ${WAVE_SSO_TOKEN} replaced
+    //         with literal "${WAVE_SSO_TOKEN}" (from process.env)
+    // Step 2: resolveMcpTemplates replaces "${WAVE_SSO_TOKEN}" with context value
+    expect(resolved.mcpServers.s.url).toBe("http://localhost:8080/sse");
+    expect(resolved.mcpServers.s.headers).toEqual({
+      Authorization: "Bearer secret-token",
+    });
+  });
+
+  it("should apply env var expansion and template resolution to command and args", () => {
+    process.env.MCP_CMD = "npx";
+    // Set WAVE_SERVER_URL so expandEnvVars preserves the template string
+    process.env.WAVE_SERVER_URL = "${WAVE_SERVER_URL}";
+    const config = {
+      mcpServers: {
+        s: {
+          command: "${MCP_CMD}",
+          args: ["--url", "${WAVE_SERVER_URL}/api"],
+        },
+      },
+    };
+    const ctx: McpResolverContext = { serverUrl: "https://wave.test" };
+    const resolved = resolveMcpConfig(config, ctx);
+    expect(resolved.mcpServers.s.command).toBe("npx");
+    expect(resolved.mcpServers.s.args).toEqual([
+      "--url",
+      "https://wave.test/api",
+    ]);
+  });
+
+  it("should verify env var and template var resolution are separate steps", () => {
+    // Set WAVE_SERVER_URL in process.env — expandEnvVars runs first and replaces it
+    // before resolveMcpTemplates gets a chance to use the context value
+    process.env.WAVE_SERVER_URL = "https://from-env.com";
+    const config = {
+      mcpServers: {
+        s: {
+          url: "${WAVE_SERVER_URL}/sse",
+        },
+      },
+    };
+    // Pass a different value via context — it will NOT be used because
+    // expandEnvVars already replaced the template from process.env
+    const ctx: McpResolverContext = { serverUrl: "https://from-context.com" };
+    const resolved = resolveMcpConfig(config, ctx);
+    expect(resolved.mcpServers.s.url).toBe("https://from-env.com/sse");
+  });
+
+  it("should show ${WAVE_SERVER_URL} is NOT expanded from process.env by resolveMcpTemplates alone", () => {
+    // This test uses resolveMcpTemplates directly (not resolveMcpConfig)
+    // to verify that resolveMcpTemplates only uses context, not process.env
+    process.env.WAVE_SERVER_URL = "https://from-env.com";
+    const config: McpServerConfig = {
+      url: "${WAVE_SERVER_URL}/sse",
+    };
+    const ctx: McpResolverContext = { serverUrl: "https://from-context.com" };
+    const resolved = resolveMcpTemplates(config, ctx);
+    // resolveMcpTemplates ignores process.env and uses context
+    expect(resolved.url).toBe("https://from-context.com/sse");
+  });
+
+  it("should not expand template vars when env var is unset and no context provided", () => {
+    // Ensure these are not in process.env
+    delete process.env.WAVE_SERVER_URL;
+    delete process.env.WAVE_SSO_TOKEN;
+    const config = {
+      mcpServers: {
+        s: {
+          url: "${WAVE_SERVER_URL}/sse",
+          headers: { Authorization: "Bearer ${WAVE_SSO_TOKEN}" },
+        },
+      },
+    };
+    // No context passed — expandEnvVars replaces unknown vars with empty string
+    const resolved = resolveMcpConfig(config);
+    // expandEnvVars replaces ${WAVE_SERVER_URL} and ${WAVE_SSO_TOKEN} with ""
+    // since they are not in process.env and no defaults are provided
+    expect(resolved.mcpServers.s.url).toBe("/sse");
+    expect(resolved.mcpServers.s.headers).toEqual({
+      Authorization: "Bearer ",
+    });
   });
 });
