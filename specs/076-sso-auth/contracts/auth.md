@@ -16,8 +16,8 @@ class AuthService {
   getSSOToken(): string | undefined;         // Returns SSO_TOKEN or undefined
   isSSOAuthenticated(): boolean;             // Returns true if SSO_TOKEN exists
 
-  // Admin URL
-  getAiBaseUrl(): string;                    // Returns WAVE_AI_URL, throws if unset
+  // Server URL
+  getServerUrl(): string;                    // Returns WAVE_SERVER_URL, throws if unset
 
   // Login flow
   login(options?: {
@@ -44,7 +44,7 @@ When `readSSOToken()` returns a non-empty value:
 ```typescript
 interface GatewayConfig {
   apiKey: string;          // SSO_TOKEN
-  baseURL: string;         // ${WAVE_AI_URL}/api/v1
+  baseURL: string;         // ${WAVE_SERVER_URL}/api/v1
   defaultHeaders?: Record<string, string>;
   fetchOptions?: ClientOptions["fetchOptions"];
   fetch?: ClientOptions["fetch"];

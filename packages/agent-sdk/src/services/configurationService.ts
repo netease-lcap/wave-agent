@@ -408,14 +408,14 @@ export class ConfigurationService {
     fetchOptions?: ClientOptions["fetchOptions"],
     fetch?: ClientOptions["fetch"],
   ): GatewayConfig {
-    // Check for SSO token first - if present and AI URL is available, use SSO mode
-    // AI URL resolution: options > process.env
+    // Check for SSO token first - if present and server URL is available, use SSO mode
+    // Server URL resolution: options > process.env
     const ssoToken = this.readSSOToken();
-    const aiUrl = this.options.aiUrl || process.env.WAVE_AI_URL;
-    if (ssoToken && aiUrl) {
+    const serverUrl = this.options.serverUrl || process.env.WAVE_SERVER_URL;
+    if (ssoToken && serverUrl) {
       return {
         apiKey: ssoToken,
-        baseURL: `${aiUrl}/api/v1`,
+        baseURL: `${serverUrl}/api/v1`,
         defaultHeaders:
           Object.keys(defaultHeaders || {}).length > 0
             ? defaultHeaders

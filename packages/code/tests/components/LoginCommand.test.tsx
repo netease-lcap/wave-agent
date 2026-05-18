@@ -55,17 +55,17 @@ describe("LoginCommand", () => {
     expect(lastFrame()).toContain("Press Enter to logout");
   });
 
-  it("should show AI URL when WAVE_AI_URL is set", () => {
+  it("should show server URL when WAVE_SERVER_URL is set", () => {
     mockAuthService.isSSOAuthenticated.mockReturnValue(true);
     mockAuthService.getSSOToken.mockReturnValue("short-token");
-    process.env.WAVE_AI_URL = "https://ai.example.com";
+    process.env.WAVE_SERVER_URL = "https://server.example.com";
 
     const { lastFrame } = render(<LoginCommand onCancel={vi.fn()} />);
 
-    expect(lastFrame()).toContain("AI URL:");
-    expect(lastFrame()).toContain("https://ai.example.com");
+    expect(lastFrame()).toContain("Server URL:");
+    expect(lastFrame()).toContain("https://server.example.com");
 
-    delete process.env.WAVE_AI_URL;
+    delete process.env.WAVE_SERVER_URL;
   });
 
   it("should call clearAuth when Enter is pressed while authenticated", async () => {

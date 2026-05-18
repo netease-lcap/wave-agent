@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- `WAVE_AI_URL` environment variable set to your Wave AI instance
+- `WAVE_SERVER_URL` environment variable set to your Wave AI instance
 - Wave AI running with at least one SSO provider configured
 - Browser accessible from the machine running Wave (for local flow)
 
@@ -10,7 +10,7 @@
 
 1. **Set environment variable**:
    ```bash
-   export WAVE_AI_URL=https://wave-ai.example.com
+   export WAVE_SERVER_URL=https://wave-ai.example.com
    ```
 
 2. **Start Wave**:
@@ -73,10 +73,10 @@
 
 ## Troubleshooting
 
-### "WAVE_AI_URL is not set"
+### "WAVE_SERVER_URL is not set"
 Set the environment variable in your shell:
 ```bash
-export WAVE_AI_URL=https://wave-ai.example.com
+export WAVE_SERVER_URL=https://wave-ai.example.com
 ```
 
 ### "No SSO providers available"

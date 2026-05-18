@@ -25,8 +25,8 @@ export interface AgentOptions {
   // Optional configuration with environment fallbacks
   apiKey?: string;
   baseURL?: string;
-  /** Wave AI URL for SSO authentication (fallback to WAVE_AI_URL env var) */
-  aiUrl?: string;
+  /** Wave server URL for SSO authentication (fallback to WAVE_SERVER_URL env var) */
+  serverUrl?: string;
   defaultHeaders?: Record<string, string>;
   fetchOptions?: ClientOptions["fetchOptions"];
   fetch?: ClientOptions["fetch"];
