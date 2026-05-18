@@ -90,7 +90,7 @@ describe("AuthService", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     resetServiceInstance();
-    delete process.env.WAVE_AI_URL;
+    delete process.env.WAVE_SERVER_URL;
     httpMockState.fireCallback = true;
     httpMockState.code = "fake-auth-code";
     httpMockState.handlers = [];
@@ -266,17 +266,17 @@ describe("AuthService", () => {
     });
   });
 
-  describe("getAiBaseUrl", () => {
-    it("returns WAVE_AI_URL when set", () => {
-      process.env.WAVE_AI_URL = "https://ai.example.com";
+  describe("getServerUrl", () => {
+    it("returns WAVE_SERVER_URL when set", () => {
+      process.env.WAVE_SERVER_URL = "https://server.example.com";
       const service = AuthService.getInstance();
-      expect(service.getAiBaseUrl()).toBe("https://ai.example.com");
+      expect(service.getServerUrl()).toBe("https://server.example.com");
     });
 
-    it("throws when WAVE_AI_URL is not set", () => {
+    it("throws when WAVE_SERVER_URL is not set", () => {
       const service = AuthService.getInstance();
-      expect(() => service.getAiBaseUrl()).toThrow(
-        "WAVE_AI_URL environment variable is not set",
+      expect(() => service.getServerUrl()).toThrow(
+        "WAVE_SERVER_URL environment variable is not set",
       );
     });
   });
@@ -295,7 +295,7 @@ describe("AuthService", () => {
     });
 
     it("opens browser, receives callback code, exchanges for JWT, and saves it", async () => {
-      process.env.WAVE_AI_URL = "https://ai.example.com";
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
       mockedExists.mockReturnValue(false);
       // exchange code for JWT
       mockFetch.mockResolvedValueOnce({
@@ -328,7 +328,7 @@ describe("AuthService", () => {
     });
 
     it("throws when code exchange fails", async () => {
-      process.env.WAVE_AI_URL = "https://ai.example.com";
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
       mockedExists.mockReturnValue(false);
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -343,7 +343,7 @@ describe("AuthService", () => {
     });
 
     it("preserves existing keys when saving token", async () => {
-      process.env.WAVE_AI_URL = "https://ai.example.com";
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
       mockedExists.mockReturnValue(true);
       mockedReadFile.mockReturnValue(JSON.stringify({ OTHER_KEY: "value" }));
       mockFetch.mockResolvedValueOnce({
@@ -377,7 +377,7 @@ describe("AuthService", () => {
     });
 
     it("accepts manually provided code via readToken and exchanges for JWT", async () => {
-      process.env.WAVE_AI_URL = "https://ai.example.com";
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
       mockedExists.mockReturnValue(false);
       // exchange code for JWT
       mockFetch.mockResolvedValueOnce({
@@ -411,7 +411,7 @@ describe("AuthService", () => {
       httpMockState.fireCallback = true;
       httpMockState.code = "callback-wins-code";
 
-      process.env.WAVE_AI_URL = "https://ai.example.com";
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
       mockedExists.mockReturnValue(false);
       // exchange code for JWT
       mockFetch.mockResolvedValueOnce({
@@ -449,7 +449,7 @@ describe("AuthService", () => {
     });
 
     it("rejects after 5 minutes if no token received", async () => {
-      process.env.WAVE_AI_URL = "https://ai.example.com";
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
       mockedExists.mockReturnValue(false);
 
       const service = AuthService.getInstance();
@@ -469,7 +469,7 @@ describe("AuthService", () => {
       httpMockState.fireCallback = true;
       httpMockState.code = "early-code";
 
-      process.env.WAVE_AI_URL = "https://ai.example.com";
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
       mockedExists.mockReturnValue(false);
       mockFetch.mockResolvedValueOnce({
         ok: true,

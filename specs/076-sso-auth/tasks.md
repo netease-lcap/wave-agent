@@ -20,7 +20,7 @@
 - [x] T002 [P] [US1] Export auth types from `packages/agent-sdk/src/types/index.ts`
 - [x] T003 [P] [US1] Create `AuthService` in `packages/agent-sdk/src/services/authService.ts` with:
   - `getAuthPath()`, `loadAuth()`, `saveAuth()`, `clearAuth()`
-  - `getSSOToken()`, `isSSOAuthenticated()`, `getAiBaseUrl()`
+  - `getSSOToken()`, `isSSOAuthenticated()`, `getServerUrl()`
   - `login()` with browser SSO flow
   - `startLocalAuthServer()` with localhost callback
   - `openBrowser()` using `execFile` for security
@@ -35,7 +35,7 @@
 **⚠️ CRITICAL**: This enables API routing — all user stories depend on this
 
 - [x] T005 [US3] Add `readSSOToken()` private method to `ConfigurationService` in `packages/agent-sdk/src/services/configurationService.ts`
-- [x] T006 [US3] Update `resolveGatewayConfig()` to check SSO token first, returning `{ apiKey: SSO_TOKEN, baseURL: ${WAVE_AI_URL}/api/v1 }` when present
+- [x] T006 [US3] Update `resolveGatewayConfig()` to check SSO token first, returning `{ apiKey: SSO_TOKEN, baseURL: ${WAVE_SERVER_URL}/api/v1 }` when present
 - [ ] T007 [US3] Unit tests for SSO mode resolution in `packages/agent-sdk/tests/services/configurationService.test.ts`
 
 **Checkpoint**: SSO API routing works — agent can use SSO token for LLM requests.
@@ -46,7 +46,7 @@
 
 **Goal**: `/login` opens browser, receives callback, saves token.
 
-**Independent Test**: Set `WAVE_AI_URL`, run Wave locally, type `/login`, browser opens, complete SSO, verify token saved.
+**Independent Test**: Set `WAVE_SERVER_URL`, run Wave locally, type `/login`, browser opens, complete SSO, verify token saved.
 
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
@@ -136,3 +136,4 @@
 - T003, T004 (AuthService creation + export)
 - T008, T009, T010, T011 (US1 tests + CLI commands)
 - T015, T016, T017 (US2 tests + AuthService update)
+te)
