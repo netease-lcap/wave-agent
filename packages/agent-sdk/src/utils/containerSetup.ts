@@ -146,13 +146,15 @@ export function setupAgentContainer(
   });
   container.register("BackgroundTaskManager", backgroundTaskManager);
 
+  const ssoToken = authService.getSSOToken();
+  const serverUrl = options.serverUrl || process.env.WAVE_SERVER_URL;
   const mcpManager = new McpManager(container, {
     callbacks,
     mcpServers: options.mcpServers as
       | Record<string, McpServerConfig>
       | undefined,
-    serverUrl: options.serverUrl || process.env.WAVE_SERVER_URL,
-    ssoToken: authService.getSSOToken(),
+    serverUrl,
+    ssoToken,
   });
   container.register("McpManager", mcpManager);
 

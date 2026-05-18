@@ -44,10 +44,16 @@ export interface McpManagerOptions {
  * Expand environment variables in a string value.
  * Supports ${VAR} and ${VAR:-default} patterns.
  */
+const WAVE_TEMPLATE_VARS = ["WAVE_SERVER_URL", "WAVE_SSO_TOKEN"];
+
 export function expandEnvVars(value: string): string {
   return value.replace(/\$\{([^}]+)\}/g, (_match, expr: string) => {
     const [varName, ...rest] = expr.split(":-");
     const defaultValue = rest.join(":-");
+    // Skip Wave-specific template variables — they are handled by resolveMcpTemplates
+    if (WAVE_TEMPLATE_VARS.includes(varName)) {
+      return _match; // return original ${...} string untouched
+    }
     return process.env[varName] ?? defaultValue;
   });
 }
@@ -177,12 +183,18 @@ export class McpManager {
   private callbacks: McpManagerCallbacks;
   private mcpServers: Record<string, McpServerConfig> | undefined;
 
+  private resolverCtx: McpResolverContext | undefined;
+
   constructor(
     private container: Container,
     options: McpManagerOptions = {},
   ) {
     this.callbacks = options.callbacks || {};
     this.mcpServers = options.mcpServers;
+    this.resolverCtx = {
+      serverUrl: options.serverUrl,
+      ssoToken: options.ssoToken,
+    };
   }
 
   /**
@@ -254,7 +266,10 @@ export class McpManager {
 
     try {
       const configContent = await fs.readFile(this.configPath, "utf-8");
-      const workspaceConfig = resolveMcpConfig(JSON.parse(configContent));
+      const workspaceConfig = resolveMcpConfig(
+        JSON.parse(configContent),
+        this.resolverCtx,
+      );
 
       // Merge workspace config with any existing config (e.g., from plugins or constructor)
       // Constructor-provided servers take precedence, then workspace config, then existing config

@@ -1541,9 +1541,9 @@ describe("resolveMcpConfig with context", () => {
     ]);
   });
 
-  it("should verify env var and template var resolution are separate steps", () => {
-    // Set WAVE_SERVER_URL in process.env — expandEnvVars runs first and replaces it
-    // before resolveMcpTemplates gets a chance to use the context value
+  it("should skip Wave templates in expandEnvVars and let resolveMcpTemplates handle them", () => {
+    // Set WAVE_SERVER_URL in process.env — expandEnvVars now skips Wave templates
+    // so resolveMcpTemplates (Step 2) uses the context value instead
     process.env.WAVE_SERVER_URL = "https://from-env.com";
     const config = {
       mcpServers: {
@@ -1552,11 +1552,10 @@ describe("resolveMcpConfig with context", () => {
         },
       },
     };
-    // Pass a different value via context — it will NOT be used because
-    // expandEnvVars already replaced the template from process.env
     const ctx: McpResolverContext = { serverUrl: "https://from-context.com" };
     const resolved = resolveMcpConfig(config, ctx);
-    expect(resolved.mcpServers.s.url).toBe("https://from-env.com/sse");
+    // Context value is used since expandEnvVars skips Wave templates
+    expect(resolved.mcpServers.s.url).toBe("https://from-context.com/sse");
   });
 
   it("should show ${WAVE_SERVER_URL} is NOT expanded from process.env by resolveMcpTemplates alone", () => {
@@ -1572,7 +1571,7 @@ describe("resolveMcpConfig with context", () => {
     expect(resolved.url).toBe("https://from-context.com/sse");
   });
 
-  it("should not expand template vars when env var is unset and no context provided", () => {
+  it("should preserve template vars when no context provided (expandEnvVars skips them)", () => {
     // Ensure these are not in process.env
     delete process.env.WAVE_SERVER_URL;
     delete process.env.WAVE_SSO_TOKEN;
@@ -1584,13 +1583,11 @@ describe("resolveMcpConfig with context", () => {
         },
       },
     };
-    // No context passed — expandEnvVars replaces unknown vars with empty string
+    // No context passed — expandEnvVars skips Wave templates, so they stay
     const resolved = resolveMcpConfig(config);
-    // expandEnvVars replaces ${WAVE_SERVER_URL} and ${WAVE_SSO_TOKEN} with ""
-    // since they are not in process.env and no defaults are provided
-    expect(resolved.mcpServers.s.url).toBe("/sse");
+    expect(resolved.mcpServers.s.url).toBe("${WAVE_SERVER_URL}/sse");
     expect(resolved.mcpServers.s.headers).toEqual({
-      Authorization: "Bearer ",
+      Authorization: "Bearer ${WAVE_SSO_TOKEN}",
     });
   });
 });
