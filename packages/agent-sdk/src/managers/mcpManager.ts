@@ -34,6 +34,10 @@ export interface McpManagerOptions {
   logger?: Logger;
   /** Pre-configured MCP servers passed from constructor options */
   mcpServers?: Record<string, McpServerConfig>;
+  /** Wave server URL for resolving ${WAVE_SERVER_URL} templates in MCP configs */
+  serverUrl?: string;
+  /** SSO token for resolving ${WAVE_SSO_TOKEN} templates in MCP configs */
+  ssoToken?: string;
 }
 
 /**
@@ -49,13 +53,81 @@ export function expandEnvVars(value: string): string {
 }
 
 /**
- * Walk an MCP config and expand env vars in all string fields.
+ * Context for resolving Wave-specific MCP template variables.
  */
-export function resolveMcpConfig(config: McpConfig): McpConfig {
+export interface McpResolverContext {
+  serverUrl?: string; // resolves ${WAVE_SERVER_URL}
+  ssoToken?: string; // resolves ${WAVE_SSO_TOKEN}
+}
+
+/**
+ * Walk a single McpServerConfig and replace Wave template variables.
+ * Only replaces ${WAVE_SERVER_URL} and ${WAVE_SSO_TOKEN} — does not touch
+ * arbitrary env vars (that is what expandEnvVars handles).
+ */
+export function resolveMcpTemplates(
+  config: McpServerConfig,
+  ctx: McpResolverContext,
+): McpServerConfig {
+  const resolved: McpServerConfig = { ...config };
+
+  const replace = (value: string): string => {
+    let result = value;
+    if (ctx.serverUrl !== undefined) {
+      result = result.replace(/\$\{WAVE_SERVER_URL\}/g, ctx.serverUrl);
+    }
+    if (ctx.ssoToken !== undefined) {
+      result = result.replace(/\$\{WAVE_SSO_TOKEN\}/g, ctx.ssoToken);
+    }
+    return result;
+  };
+
+  if (resolved.command) {
+    resolved.command = replace(resolved.command);
+  }
+
+  if (resolved.args) {
+    resolved.args = resolved.args.map(replace);
+  }
+
+  if (resolved.env) {
+    const resolvedEnv: Record<string, string> = {};
+    for (const [key, val] of Object.entries(resolved.env)) {
+      resolvedEnv[key] = replace(val);
+    }
+    resolved.env = resolvedEnv;
+  }
+
+  if (resolved.url) {
+    resolved.url = replace(resolved.url);
+  }
+
+  if (resolved.headers) {
+    const resolvedHeaders: Record<string, string> = {};
+    for (const [key, val] of Object.entries(resolved.headers)) {
+      resolvedHeaders[key] = replace(val);
+    }
+    resolved.headers = resolvedHeaders;
+  }
+
+  return resolved;
+}
+
+/**
+ * Walk an MCP config and resolve variables in all string fields.
+ * Applies two steps in order:
+ *   1. expandEnvVars — resolves ${VAR} from process.env
+ *   2. resolveMcpTemplates — resolves ${WAVE_SERVER_URL}, ${WAVE_SSO_TOKEN} from context
+ */
+export function resolveMcpConfig(
+  config: McpConfig,
+  ctx?: McpResolverContext,
+): McpConfig {
   const resolved: McpConfig = { mcpServers: {} };
 
   for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
-    const resolvedServer: McpServerConfig = { ...serverConfig };
+    // Step 1: expand env vars from process.env
+    let resolvedServer: McpServerConfig = { ...serverConfig };
 
     if (resolvedServer.command) {
       resolvedServer.command = expandEnvVars(resolvedServer.command);
@@ -83,6 +155,11 @@ export function resolveMcpConfig(config: McpConfig): McpConfig {
         resolvedHeaders[key] = expandEnvVars(val);
       }
       resolvedServer.headers = resolvedHeaders;
+    }
+
+    // Step 2: resolve Wave template variables from context
+    if (ctx) {
+      resolvedServer = resolveMcpTemplates(resolvedServer, ctx);
     }
 
     resolved.mcpServers[name] = resolvedServer;

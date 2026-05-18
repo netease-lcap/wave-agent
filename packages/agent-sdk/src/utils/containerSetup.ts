@@ -38,6 +38,7 @@ import type {
 } from "../types/index.js";
 
 import { logger } from "./globalLogger.js";
+import { authService } from "../services/authService.js";
 
 export interface AgentContainerSetupOptions {
   options: AgentOptions;
@@ -150,6 +151,8 @@ export function setupAgentContainer(
     mcpServers: options.mcpServers as
       | Record<string, McpServerConfig>
       | undefined,
+    serverUrl: options.serverUrl || process.env.WAVE_SERVER_URL,
+    ssoToken: authService.getSSOToken(),
   });
   container.register("McpManager", mcpManager);
 
