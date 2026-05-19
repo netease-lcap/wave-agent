@@ -15,11 +15,15 @@ import {
 } from "fs";
 import * as path from "path";
 import * as os from "os";
+import { randomBytes } from "crypto";
 import { createServer, Server } from "http";
 import { URL } from "url";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import type { AuthConfig, AuthUser } from "../types/auth.js";
+
+/** Persistent anonymous ID for telemetry fallback when SSO is not authenticated. */
+let _anonymousId: string | undefined;
 
 const execFileAsync = promisify(execFile);
 
@@ -312,3 +316,55 @@ export class AuthService {
 }
 
 export const authService = AuthService.getInstance();
+
+/**
+ * Get or create a persistent anonymous ID for telemetry.
+ *
+ * Stored in ~/.wave/config.json as { anonymousId: "..." }.
+ * Generated once on first run (32-byte random hex) and reused thereafter.
+ * Falls back to an in-memory ID if file I/O fails.
+ */
+export function getOrCreateAnonymousId(): string {
+  if (_anonymousId) return _anonymousId;
+
+  try {
+    const configPath = path.join(os.homedir(), ".wave", "config.json");
+    if (existsSync(configPath)) {
+      const content = readFileSync(configPath, "utf-8");
+      const config = JSON.parse(content) as { anonymousId?: string };
+      if (config.anonymousId) {
+        _anonymousId = config.anonymousId;
+        return _anonymousId;
+      }
+    }
+
+    // Generate and persist
+    _anonymousId = randomBytes(32).toString("hex");
+    const waveDir = path.dirname(configPath);
+    if (!existsSync(waveDir)) {
+      mkdirSync(waveDir, { recursive: true });
+    }
+    const existing = existsSync(configPath)
+      ? (JSON.parse(readFileSync(configPath, "utf-8")) as Record<
+          string,
+          unknown
+        >)
+      : {};
+    writeFileSync(
+      configPath,
+      JSON.stringify({ ...existing, anonymousId: _anonymousId }, null, 2),
+      "utf-8",
+    );
+    chmodSync(configPath, 0o600);
+  } catch {
+    // File I/O failed — use in-memory fallback
+    _anonymousId = randomBytes(32).toString("hex");
+  }
+
+  return _anonymousId;
+}
+
+/** @internal — reset anonymous ID cache for testing only */
+export function __resetAnonymousIdForTesting(): void {
+  _anonymousId = undefined;
+}

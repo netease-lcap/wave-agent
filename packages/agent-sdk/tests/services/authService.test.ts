@@ -84,7 +84,11 @@ function resetServiceInstance() {
 }
 
 // Import after mocks are set up
-import { AuthService } from "../../src/services/authService.js";
+import {
+  AuthService,
+  getOrCreateAnonymousId,
+  __resetAnonymousIdForTesting,
+} from "../../src/services/authService.js";
 
 describe("AuthService", () => {
   beforeEach(() => {
@@ -637,6 +641,92 @@ describe("AuthService", () => {
       const s1 = AuthService.getInstance();
       const s2 = AuthService.getInstance();
       expect(s1).toBe(s2);
+    });
+  });
+
+  describe("getOrCreateAnonymousId", () => {
+    beforeEach(() => {
+      __resetAnonymousIdForTesting();
+      vi.resetAllMocks();
+    });
+
+    it("reads anonymousId from existing config.json", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({ anonymousId: "persisted-id-123" }),
+      );
+
+      const id = getOrCreateAnonymousId();
+      expect(id).toBe("persisted-id-123");
+      expect(mockedReadFile).toHaveBeenCalledWith(
+        expect.stringContaining("config.json"),
+        "utf-8",
+      );
+    });
+
+    it("generates and persists anonymousId when config.json does not exist", () => {
+      mockedExists.mockReturnValue(false);
+
+      const id = getOrCreateAnonymousId();
+
+      expect(id).toHaveLength(64); // 32 bytes hex = 64 chars
+      expect(mockedMkdir).toHaveBeenCalledWith(
+        expect.stringContaining(".wave"),
+        { recursive: true },
+      );
+      expect(mockedWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining("config.json"),
+        expect.stringContaining('"anonymousId"'),
+        "utf-8",
+      );
+      expect(mockedChmod).toHaveBeenCalledWith(
+        expect.stringContaining("config.json"),
+        0o600,
+      );
+    });
+
+    it("preserves existing config fields when writing anonymousId", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({ someSetting: true, theme: "dark" }),
+      );
+
+      const id = getOrCreateAnonymousId();
+
+      expect(id).toHaveLength(64);
+      const written = mockedWriteFile.mock.calls.find((c) =>
+        (c[1] as string)?.includes("anonymousId"),
+      )?.[1] as string;
+      expect(written).toContain("someSetting");
+      expect(written).toContain("anonymousId");
+    });
+
+    it("generates anonymousId when config exists but has no anonymousId field", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(JSON.stringify({ otherKey: "value" }));
+
+      const id = getOrCreateAnonymousId();
+      expect(id).toHaveLength(64);
+    });
+
+    it("returns same ID on repeated calls (caching)", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({ anonymousId: "cached-id" }),
+      );
+
+      const id1 = getOrCreateAnonymousId();
+      const id2 = getOrCreateAnonymousId();
+      expect(id1).toBe(id2);
+    });
+
+    it("falls back to in-memory ID when file I/O fails", () => {
+      mockedExists.mockImplementation(() => {
+        throw new Error("I/O error");
+      });
+
+      const id = getOrCreateAnonymousId();
+      expect(id).toHaveLength(64);
     });
   });
 });

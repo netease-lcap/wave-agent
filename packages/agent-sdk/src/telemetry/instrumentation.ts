@@ -18,7 +18,10 @@ import type {
   LogRecordExporter,
   ReadableLogRecord,
 } from "@opentelemetry/sdk-logs";
-import { AuthService } from "../services/authService.js";
+import {
+  AuthService,
+  getOrCreateAnonymousId,
+} from "../services/authService.js";
 
 // Lazy-loaded OTEL modules — only imported when telemetry is initialized
 let sdkNode: typeof import("@opentelemetry/sdk-node") | undefined;
@@ -471,8 +474,11 @@ export function isInitialized(): boolean {
 export { JsonlSpanExporter, JsonlLogExporter };
 
 /**
- * Get telemetry attributes based on the authenticated SSO user.
- * Returns user.id and user.email when SSO authenticated, empty object otherwise.
+ * Get telemetry attributes for the current session.
+ *
+ * Priority:
+ * 1. SSO authenticated → server-provided user.id + user.email
+ * 2. Not authenticated → persistent anonymous ID from ~/.wave/config.json
  */
 export function getTelemetryAttributes(): Record<string, string> {
   try {
@@ -487,5 +493,7 @@ export function getTelemetryAttributes(): Record<string, string> {
   } catch {
     // AuthService not available or not authenticated
   }
-  return {};
+
+  // Fallback to anonymous ID
+  return { "user.id": getOrCreateAnonymousId() };
 }
