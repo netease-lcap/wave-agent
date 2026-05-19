@@ -111,7 +111,12 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
 
   const isAuthenticated = authService.isSSOAuthenticated();
   const token = authService.getSSOToken();
-  const serverUrl = process.env.WAVE_SERVER_URL;
+  let serverUrl: string | undefined;
+  try {
+    serverUrl = authService.getServerUrl();
+  } catch {
+    // serverUrl not configured, skip display
+  }
 
   const truncatedToken =
     token && token.length > 14

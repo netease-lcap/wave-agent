@@ -148,6 +148,9 @@ export function setupAgentContainer(
 
   const ssoToken = authService.getSSOToken();
   const serverUrl = options.serverUrl || process.env.WAVE_SERVER_URL;
+  if (options.serverUrl) {
+    authService.setServerUrl(options.serverUrl);
+  }
   const mcpManager = new McpManager(container, {
     callbacks,
     mcpServers: options.mcpServers as
