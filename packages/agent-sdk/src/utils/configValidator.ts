@@ -5,7 +5,6 @@
 
 import {
   GatewayConfig,
-  ModelConfig,
   ConfigurationError,
   CONFIG_ERRORS,
 } from "../types/index.js";
@@ -89,34 +88,6 @@ export class ConfigValidator {
       );
     }
   }
-
-  /**
-   * Validates model configuration (basic validation)
-   * @param config - Model configuration object
-   * @throws ConfigurationError if invalid
-   */
-  static validateModelConfig(config: ModelConfig): void {
-    const { model, fastModel } = config;
-    if (!model || typeof model !== "string" || model.trim() === "") {
-      throw new ConfigurationError(
-        "Agent model must be a non-empty string.",
-        "model",
-        model,
-      );
-    }
-
-    if (
-      !fastModel ||
-      typeof fastModel !== "string" ||
-      fastModel.trim() === ""
-    ) {
-      throw new ConfigurationError(
-        "Fast model must be a non-empty string.",
-        "fastModel",
-        fastModel,
-      );
-    }
-  }
 }
 
 /**
@@ -126,6 +97,4 @@ export class ConfigValidator {
 export const configValidator = {
   validateGatewayConfig: ConfigValidator.validateGatewayConfig,
   validateMaxInputTokens: ConfigValidator.validateMaxInputTokens,
-  validateModelConfig: (config: ModelConfig) =>
-    ConfigValidator.validateModelConfig(config),
 };
