@@ -127,6 +127,13 @@ export const McpManager: React.FC<McpManagerProps> = ({
               <Text color="blue">Command:</Text> {selectedServer.config.command}
             </Text>
           </Box>
+          {selectedServer.originalUrl && (
+            <Box>
+              <Text>
+                <Text color="blue">URL:</Text> {selectedServer.originalUrl}
+              </Text>
+            </Box>
+          )}
           {selectedServer.config.args && (
             <Box>
               <Text>
@@ -259,10 +266,16 @@ export const McpManager: React.FC<McpManagerProps> = ({
           </Text>
           {index === state.selectedIndex && (
             <Box marginLeft={4} flexDirection="column">
-              <Text color="gray" dimColor>
-                {server.config.command}
-                {server.config.args ? ` ${server.config.args.join(" ")}` : ""}
-              </Text>
+              {server.config.command ? (
+                <Text color="gray" dimColor>
+                  {server.config.command}
+                  {server.config.args ? ` ${server.config.args.join(" ")}` : ""}
+                </Text>
+              ) : server.originalUrl ? (
+                <Text color="gray" dimColor>
+                  {server.originalUrl}
+                </Text>
+              ) : null}
               {server.lastConnected && (
                 <Text color="gray" dimColor>
                   Last connected: {formatTime(server.lastConnected)}

@@ -44,7 +44,11 @@ export interface McpManagerOptions {
  * Expand environment variables in a string value.
  * Supports ${VAR} and ${VAR:-default} patterns.
  */
-const WAVE_TEMPLATE_VARS = ["WAVE_SERVER_URL", "WAVE_SSO_TOKEN"];
+const WAVE_TEMPLATE_VARS = [
+  "WAVE_SERVER_URL",
+  "WAVE_SSO_TOKEN",
+  "WAVE_PLUGIN_ROOT",
+];
 
 export function expandEnvVars(value: string): string {
   return value.replace(/\$\{([^}]+)\}/g, (_match, expr: string) => {
@@ -268,10 +272,14 @@ export class McpManager {
 
     try {
       const configContent = await fs.readFile(this.configPath, "utf-8");
-      const workspaceConfig = resolveMcpConfig(
-        JSON.parse(configContent),
-        this.resolverCtx,
-      );
+      const rawConfig: McpConfig = JSON.parse(configContent);
+      const workspaceConfig = resolveMcpConfig(rawConfig, this.resolverCtx);
+
+      // Extract original (pre-resolution) URLs for safe display
+      const originalUrls: Record<string, string | undefined> = {};
+      for (const [name, serverConfig] of Object.entries(rawConfig.mcpServers)) {
+        originalUrls[name] = serverConfig.url;
+      }
 
       // Merge workspace config with any existing config (e.g., from plugins or constructor)
       // Constructor-provided servers take precedence, then workspace config, then existing config
@@ -296,12 +304,14 @@ export class McpManager {
             this.servers.set(name, {
               ...existingServer,
               config, // Update config in case it changed
+              originalUrl: originalUrls[name] ?? existingServer.originalUrl,
             });
           } else {
             // New server, initialize with disconnected status
             this.servers.set(name, {
               name,
               config,
+              originalUrl: originalUrls[name],
               status: "disconnected",
             });
           }
@@ -355,15 +365,45 @@ export class McpManager {
       return false;
     }
 
-    // Resolve template variables before storing
-    const resolvedConfig = resolveMcpTemplates(
-      config,
+    // Capture original URL before any resolution for safe display
+    const originalUrl = config.url;
+
+    // Step 1: expand env vars from process.env (e.g. ${TAVILY_API_KEY})
+    let resolvedConfig: McpServerConfig = { ...config };
+    if (resolvedConfig.command) {
+      resolvedConfig.command = expandEnvVars(resolvedConfig.command);
+    }
+    if (resolvedConfig.args) {
+      resolvedConfig.args = resolvedConfig.args.map(expandEnvVars);
+    }
+    if (resolvedConfig.env) {
+      const resolvedEnv: Record<string, string> = {};
+      for (const [key, val] of Object.entries(resolvedConfig.env)) {
+        resolvedEnv[key] = expandEnvVars(val);
+      }
+      resolvedConfig.env = resolvedEnv;
+    }
+    if (resolvedConfig.url) {
+      resolvedConfig.url = expandEnvVars(resolvedConfig.url);
+    }
+    if (resolvedConfig.headers) {
+      const resolvedHeaders: Record<string, string> = {};
+      for (const [key, val] of Object.entries(resolvedConfig.headers)) {
+        resolvedHeaders[key] = expandEnvVars(val);
+      }
+      resolvedConfig.headers = resolvedHeaders;
+    }
+
+    // Step 2: resolve Wave template variables (e.g. ${WAVE_SERVER_URL}, ${WAVE_SSO_TOKEN})
+    resolvedConfig = resolveMcpTemplates(
+      resolvedConfig,
       this.resolverCtx ?? { serverUrl: undefined, ssoToken: undefined },
     );
 
     const newServer: McpServerStatus = {
       name,
       config: resolvedConfig,
+      originalUrl,
       status: "disconnected",
     };
 
@@ -846,7 +886,7 @@ export class McpManager {
         this.resolverCtx,
       );
 
-      // Update the stored config
+      // Update the stored config, preserving originalUrl
       this.servers.set(name, {
         ...server,
         config: resolvedConfig,
