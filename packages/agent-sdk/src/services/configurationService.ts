@@ -461,8 +461,7 @@ export class ConfigurationService {
     }
 
     // Resolve custom headers from environment: env (settings.json) > process.env
-    const envCustomHeaders =
-      process.env.WAVE_CUSTOM_HEADERS || process.env.WAVE_CUSTOM_HEADERS || "";
+    const envCustomHeaders = process.env.WAVE_CUSTOM_HEADERS || "";
     const parsedEnvHeaders = parseCustomHeaders(envCustomHeaders);
 
     // Merge headers: env headers < options < override
@@ -497,19 +496,13 @@ export class ConfigurationService {
     maxTokens?: number,
     permissionMode?: PermissionMode,
   ): ModelConfig {
-    // Resolve agent model: override > options > env (settings.json) > process.env
+    // Resolve agent model: override > options > process.env (includes settings.json env)
     const resolvedAgentModel =
-      model ||
-      this.options.model ||
-      process.env.WAVE_MODEL ||
-      process.env.WAVE_MODEL;
+      model || this.options.model || process.env.WAVE_MODEL;
 
-    // Resolve fast model: override > options > env (settings.json) > process.env
+    // Resolve fast model: override > options > process.env (includes settings.json env)
     const resolvedFastModel =
-      fastModel ||
-      this.options.fastModel ||
-      process.env.WAVE_FAST_MODEL ||
-      process.env.WAVE_FAST_MODEL;
+      fastModel || this.options.fastModel || process.env.WAVE_FAST_MODEL;
 
     // Validate required fields
     if (!resolvedAgentModel) {
@@ -572,8 +565,7 @@ export class ConfigurationService {
     }
 
     // Try env (settings.json) first, then process.env
-    const envMaxInputTokens =
-      process.env.WAVE_MAX_INPUT_TOKENS || process.env.WAVE_MAX_INPUT_TOKENS;
+    const envMaxInputTokens = process.env.WAVE_MAX_INPUT_TOKENS;
     if (envMaxInputTokens) {
       const parsed = parseInt(envMaxInputTokens, 10);
       if (!isNaN(parsed)) {
@@ -677,8 +669,7 @@ export class ConfigurationService {
     }
 
     // Try env (settings.json) first, then process.env
-    const envMaxOutputTokens =
-      process.env.WAVE_MAX_OUTPUT_TOKENS || process.env.WAVE_MAX_OUTPUT_TOKENS;
+    const envMaxOutputTokens = process.env.WAVE_MAX_OUTPUT_TOKENS;
     if (envMaxOutputTokens) {
       const parsed = parseInt(envMaxOutputTokens, 10);
       if (!isNaN(parsed) && parsed > 0) {
@@ -704,8 +695,7 @@ export class ConfigurationService {
     const models = new Set<string>();
 
     // Add current model from options or environment
-    const currentModel =
-      this.options.model || process.env.WAVE_MODEL || process.env.WAVE_MODEL;
+    const currentModel = this.options.model || process.env.WAVE_MODEL;
     if (currentModel) {
       models.add(currentModel);
     }
