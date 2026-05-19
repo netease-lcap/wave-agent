@@ -26,6 +26,8 @@ const execFileAsync = promisify(execFile);
 export class AuthService {
   private static instance: AuthService;
   private _serverUrl: string | undefined;
+  private onAuthChangeCallbacks: Array<(event: "login" | "logout") => void> =
+    [];
 
   static getInstance(): AuthService {
     if (!AuthService.instance) {
@@ -40,6 +42,29 @@ export class AuthService {
    */
   setServerUrl(url: string): void {
     this._serverUrl = url;
+  }
+
+  /**
+   * Register a callback for auth state changes.
+   * Returns an unsubscribe function.
+   */
+  onAuthChange(callback: (event: "login" | "logout") => void): () => void {
+    this.onAuthChangeCallbacks.push(callback);
+    return () => {
+      this.onAuthChangeCallbacks = this.onAuthChangeCallbacks.filter(
+        (cb) => cb !== callback,
+      );
+    };
+  }
+
+  private notifyAuthChange(event: "login" | "logout"): void {
+    for (const cb of this.onAuthChangeCallbacks) {
+      try {
+        cb(event);
+      } catch {
+        // Don't let callback errors break auth flow
+      }
+    }
   }
 
   getAuthPath(): string {
@@ -81,6 +106,7 @@ export class AuthService {
     } else {
       this.saveAuth(config);
     }
+    this.notifyAuthChange("logout");
   }
 
   getSSOToken(): string | undefined {
@@ -120,6 +146,8 @@ export class AuthService {
     // Save the token and user info (preserve existing keys)
     const existing = this.loadAuth();
     this.saveAuth({ ...existing, SSO_TOKEN: token, user });
+
+    this.notifyAuthChange("login");
 
     return token;
   }

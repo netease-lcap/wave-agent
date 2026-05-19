@@ -353,9 +353,15 @@ export class McpManager {
       return false;
     }
 
+    // Resolve template variables before storing
+    const resolvedConfig = resolveMcpTemplates(
+      config,
+      this.resolverCtx ?? { serverUrl: undefined, ssoToken: undefined },
+    );
+
     const newServer: McpServerStatus = {
       name,
-      config,
+      config: resolvedConfig,
       status: "disconnected",
     };
 
@@ -363,10 +369,10 @@ export class McpManager {
 
     // Update config
     if (this.config) {
-      this.config.mcpServers[name] = config;
+      this.config.mcpServers[name] = resolvedConfig;
     } else {
       this.config = {
-        mcpServers: { [name]: config },
+        mcpServers: { [name]: resolvedConfig },
       };
     }
 
@@ -753,6 +759,82 @@ export class McpManager {
       this.disconnectServer(name),
     );
     await Promise.all(disconnectPromises);
+  }
+
+  /**
+   * Update credentials and reconnect MCP servers that use template variables.
+   * Called after SSO login to refresh ${WAVE_SSO_TOKEN} and ${WAVE_SERVER_URL}.
+   */
+  async refreshCredentials(
+    serverUrl?: string,
+    ssoToken?: string,
+  ): Promise<void> {
+    // Update resolver context
+    this.resolverCtx = {
+      serverUrl: serverUrl ?? this.resolverCtx?.serverUrl,
+      ssoToken: ssoToken ?? this.resolverCtx?.ssoToken,
+    };
+
+    logger?.info(
+      `MCP refreshCredentials: serverUrl=${serverUrl}, hasToken=${!!ssoToken}`,
+    );
+
+    // Collect servers that need reconnection
+    const serversToReconnect: string[] = [];
+
+    for (const [name, server] of this.servers) {
+      // Re-resolve config with new credentials
+      const originalConfig = server.config;
+      const resolvedConfig = resolveMcpTemplates(
+        originalConfig,
+        this.resolverCtx,
+      );
+
+      // Update the stored config
+      this.servers.set(name, {
+        ...server,
+        config: resolvedConfig,
+      });
+
+      if (this.config && this.config.mcpServers[name]) {
+        this.config.mcpServers[name] = resolvedConfig;
+      }
+
+      // Determine if reconnection is needed
+      const wasConnected = this.connections.has(name);
+      const wasDisconnected =
+        server.status === "disconnected" || server.status === "error";
+
+      if (wasConnected) {
+        // Disconnect first, then reconnect with new resolved config
+        await this.disconnectServer(name);
+        serversToReconnect.push(name);
+      } else if (wasDisconnected) {
+        // Was disconnected or errored — try to reconnect now that we have credentials
+        serversToReconnect.push(name);
+      }
+    }
+
+    // Reconnect servers
+    for (const name of serversToReconnect) {
+      logger?.debug(
+        `Reconnecting MCP server after credential refresh: ${name}`,
+      );
+      this.connectServer(name)
+        .then((success) => {
+          if (success) {
+            logger?.info(`Successfully reconnected MCP server: ${name}`);
+          } else {
+            logger?.warn(`Failed to reconnect MCP server: ${name}`);
+          }
+        })
+        .catch((error) => {
+          logger?.error(`Reconnection to MCP server ${name} failed:`, error);
+        });
+    }
+
+    // Trigger state change callback
+    this.callbacks.onMcpServersChange?.(this.getAllServers());
   }
 
   // ========== Tools Registry Methods ==========
