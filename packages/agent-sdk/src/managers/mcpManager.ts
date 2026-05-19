@@ -184,6 +184,8 @@ export class McpManager {
   private mcpServers: Record<string, McpServerConfig> | undefined;
 
   private resolverCtx: McpResolverContext | undefined;
+  private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
+  private reconnectAttempts: Map<string, number> = new Map();
 
   constructor(
     private container: Container,
@@ -560,6 +562,10 @@ export class McpManager {
           tools: [],
           toolCount: 0,
         });
+        // Auto-reconnect with exponential backoff (not triggered by explicit disconnect)
+        if (!this.reconnectTimers.has(name)) {
+          this.scheduleReconnect(name);
+        }
       };
 
       // Store connection
@@ -591,7 +597,53 @@ export class McpManager {
     }
   }
 
+  /**
+   * Schedule auto-reconnect with exponential backoff.
+   * Delays: 1s, 2s, 4s, 8s, 16s, 30s, 30s, ...
+   */
+  private scheduleReconnect(name: string): void {
+    const attempts = this.reconnectAttempts.get(name) ?? 0;
+    const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
+    this.reconnectAttempts.set(name, attempts + 1);
+
+    logger?.info(
+      `Scheduling MCP server ${name} reconnect in ${delay}ms (attempt ${attempts + 1})`,
+    );
+
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(name);
+      logger?.debug(`Auto-reconnecting MCP server: ${name}`);
+      this.connectServer(name)
+        .then((success) => {
+          if (success) {
+            logger?.info(`Auto-reconnected MCP server: ${name}`);
+            this.reconnectAttempts.delete(name);
+          } else {
+            logger?.warn(`Auto-reconnect failed for MCP server: ${name}`);
+            // Will be retried via onclose handler
+          }
+        })
+        .catch((error) => {
+          logger?.error(`Auto-reconnect error for MCP server ${name}:`, error);
+        });
+    }, delay);
+
+    this.reconnectTimers.set(name, timer);
+  }
+
+  private cancelReconnect(name: string): void {
+    const timer = this.reconnectTimers.get(name);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(name);
+    }
+    this.reconnectAttempts.delete(name);
+  }
+
   async disconnectServer(name: string): Promise<boolean> {
+    // Cancel any pending reconnect attempts
+    this.cancelReconnect(name);
+
     const connection = this.connections.get(name);
     if (!connection) return false;
 
@@ -755,6 +807,10 @@ export class McpManager {
 
   // Cleanup all connections
   async cleanup(): Promise<void> {
+    // Cancel all pending reconnect timers
+    for (const name of this.reconnectTimers.keys()) {
+      this.cancelReconnect(name);
+    }
     const disconnectPromises = Array.from(this.connections.keys()).map((name) =>
       this.disconnectServer(name),
     );
