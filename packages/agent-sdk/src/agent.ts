@@ -456,13 +456,11 @@ export class Agent {
   private resolveAndValidateConfig(): void {
     // Resolve configuration from constructor args and environment variables (including settings.json)
     const gatewayConfig = this.getGatewayConfig();
-    const modelConfig = this.getModelConfig();
     const maxInputTokens = this.getMaxInputTokens();
 
     // Validate resolved configuration
     configValidator.validateGatewayConfig(gatewayConfig);
     configValidator.validateMaxInputTokens(maxInputTokens);
-    configValidator.validateModelConfig(modelConfig);
   }
 
   /** Private initialization method, handles async initialization logic */
