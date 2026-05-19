@@ -161,6 +161,15 @@ export function setupAgentContainer(
   });
   container.register("McpManager", mcpManager);
 
+  // Wire up auth change callback to reconnect MCP servers after SSO login
+  authService.onAuthChange((event) => {
+    if (event === "login") {
+      const newServerUrl = options.serverUrl || process.env.WAVE_SERVER_URL;
+      const newToken = authService.getSSOToken();
+      mcpManager.refreshCredentials(newServerUrl, newToken);
+    }
+  });
+
   const lspManager = options.lspManager || new LspManager(container);
   container.register("LspManager", lspManager);
 
