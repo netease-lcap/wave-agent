@@ -6,32 +6,12 @@ import { scanCommandsDirectory } from "../../src/utils/customCommands.js";
 import { CustomSlashCommand } from "../../src/types/index.js";
 import { parseSkillFile } from "../../src/utils/skillParser.js";
 import { parseAgentFile } from "../../src/utils/subagentParser.js";
-import { resolveMcpConfig } from "../../src/managers/mcpManager.js";
 
 vi.mock("fs/promises");
 vi.mock("path");
 vi.mock("../../src/utils/customCommands.js");
 vi.mock("../../src/utils/skillParser.js");
 vi.mock("../../src/utils/subagentParser.js");
-vi.mock("../../src/managers/mcpManager.js", () => ({
-  resolveMcpConfig: vi.fn((config) => {
-    // Simulate env var expansion for headers
-    const result = JSON.parse(JSON.stringify(config));
-    for (const server of Object.values(result.mcpServers) as Array<{
-      headers?: Record<string, string>;
-    }>) {
-      if (server.headers) {
-        for (const [key, value] of Object.entries(server.headers)) {
-          server.headers[key] = value.replace(
-            /\$\{([^}]+)\}/g,
-            (_match, varName) => process.env[varName] ?? "",
-          );
-        }
-      }
-    }
-    return result;
-  }),
-}));
 
 describe("PluginLoader", () => {
   const mockPluginPath = "/mock/plugin/path";
@@ -287,7 +267,6 @@ describe("PluginLoader", () => {
       const result = await PluginLoader.loadMcpConfig(mockPluginPath);
 
       expect(result).toEqual(mockConfig);
-      expect(resolveMcpConfig).toHaveBeenCalledWith(mockConfig);
     });
 
     it("should return undefined if .mcp.json does not exist", async () => {
@@ -298,7 +277,7 @@ describe("PluginLoader", () => {
       expect(result).toBeUndefined();
     });
 
-    it("should resolve environment variables in MCP config", async () => {
+    it("should return raw config without resolving variables", async () => {
       const mockConfig = {
         mcpServers: {
           tavily: {
@@ -311,15 +290,13 @@ describe("PluginLoader", () => {
       };
       vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockConfig));
 
-      // Set env var so mock resolver can pick it up
+      // Set env var — loadMcpConfig should NOT resolve it
       process.env.TAVILY_API_KEY = "test-api-key-123";
 
       const result = await PluginLoader.loadMcpConfig(mockPluginPath);
 
-      expect(resolveMcpConfig).toHaveBeenCalledWith(mockConfig);
-      expect(result?.mcpServers?.tavily?.headers?.Authorization).toBe(
-        "Bearer test-api-key-123",
-      );
+      // Returns raw config — resolution happens in McpManager
+      expect(result).toEqual(mockConfig);
 
       delete process.env.TAVILY_API_KEY;
     });

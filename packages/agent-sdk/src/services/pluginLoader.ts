@@ -14,7 +14,6 @@ import {
   parseAgentFile,
   type SubagentConfiguration,
 } from "../utils/subagentParser.js";
-import { resolveMcpConfig } from "../managers/mcpManager.js";
 import { logger } from "../utils/globalLogger.js";
 
 export class PluginLoader {
@@ -143,7 +142,8 @@ export class PluginLoader {
     const mcpPath = path.join(pluginPath, ".mcp.json");
     try {
       const content = await fs.readFile(mcpPath, "utf-8");
-      return resolveMcpConfig(JSON.parse(content)) as McpConfig;
+      // Return raw config — let McpManager resolve templates and capture originalUrl
+      return JSON.parse(content) as McpConfig;
     } catch {
       return undefined;
     }
