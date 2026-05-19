@@ -25,12 +25,21 @@ const execFileAsync = promisify(execFile);
 
 export class AuthService {
   private static instance: AuthService;
+  private _serverUrl: string | undefined;
 
   static getInstance(): AuthService {
     if (!AuthService.instance) {
       AuthService.instance = new AuthService();
     }
     return AuthService.instance;
+  }
+
+  /**
+   * Set server URL programmatically (e.g. from AgentOptions.serverUrl).
+   * Takes priority over WAVE_SERVER_URL environment variable.
+   */
+  setServerUrl(url: string): void {
+    this._serverUrl = url;
   }
 
   getAuthPath(): string {
@@ -80,7 +89,7 @@ export class AuthService {
   }
 
   getServerUrl(): string {
-    const url = process.env.WAVE_SERVER_URL;
+    const url = this._serverUrl || process.env.WAVE_SERVER_URL;
     if (!url) {
       throw new Error(
         "WAVE_SERVER_URL environment variable is not set. SSO authentication requires this to be configured.",
@@ -94,8 +103,10 @@ export class AuthService {
     onAuthUrl?: (url: string) => void;
     /** Read authorization code manually (e.g. from stdin). Resolves with code or rejects on cancel. */
     readToken?: () => Promise<string>;
+    /** Server URL override. Falls back to setServerUrl() or WAVE_SERVER_URL env var. */
+    serverUrl?: string;
   }): Promise<string> {
-    const serverUrl = this.getServerUrl();
+    const serverUrl = options?.serverUrl || this.getServerUrl();
 
     // Start local server, open browser, wait for callback or manual input
     const { code } = await this.startLocalAuthServer(serverUrl, {

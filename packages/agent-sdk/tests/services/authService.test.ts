@@ -279,6 +279,148 @@ describe("AuthService", () => {
         "WAVE_SERVER_URL environment variable is not set",
       );
     });
+
+    it("returns _serverUrl when set via setServerUrl", () => {
+      process.env.WAVE_SERVER_URL = "https://env.example.com";
+      const service = AuthService.getInstance();
+      service.setServerUrl("https://programmatic.example.com");
+      expect(service.getServerUrl()).toBe("https://programmatic.example.com");
+    });
+
+    it("_serverUrl takes priority over WAVE_SERVER_URL env var", () => {
+      process.env.WAVE_SERVER_URL = "https://env.example.com";
+      const service = AuthService.getInstance();
+      service.setServerUrl("https://options.example.com");
+      expect(service.getServerUrl()).toBe("https://options.example.com");
+    });
+
+    it("falls back to env var when _serverUrl is not set", () => {
+      process.env.WAVE_SERVER_URL = "https://fallback.example.com";
+      const service = AuthService.getInstance();
+      expect(service.getServerUrl()).toBe("https://fallback.example.com");
+    });
+
+    it("throws when neither _serverUrl nor env var is set", () => {
+      const service = AuthService.getInstance();
+      expect(() => service.getServerUrl()).toThrow(
+        "WAVE_SERVER_URL environment variable is not set",
+      );
+    });
+  });
+
+  describe("login with serverUrl option", () => {
+    const mockFetch = vi.fn();
+
+    beforeEach(() => {
+      vi.stubGlobal("fetch", mockFetch);
+      httpMockState.fireCallback = true;
+      httpMockState.code = "auth-code";
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("uses serverUrl option when provided", async () => {
+      mockedExists.mockReturnValue(false);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "jwt",
+          user: { id: "u1", email: "u@example.com" },
+        }),
+      });
+
+      const service = AuthService.getInstance();
+      await service.login({ serverUrl: "https://option.example.com" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://option.example.com/api/auth/exchange",
+        expect.any(Object),
+      );
+    });
+
+    it("serverUrl option takes priority over setServerUrl", async () => {
+      mockedExists.mockReturnValue(false);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "jwt",
+          user: { id: "u1", email: "u@example.com" },
+        }),
+      });
+
+      const service = AuthService.getInstance();
+      service.setServerUrl("https://set.example.com");
+      await service.login({ serverUrl: "https://login-option.example.com" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://login-option.example.com/api/auth/exchange",
+        expect.any(Object),
+      );
+    });
+
+    it("serverUrl option takes priority over env var", async () => {
+      process.env.WAVE_SERVER_URL = "https://env.example.com";
+      mockedExists.mockReturnValue(false);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "jwt",
+          user: { id: "u1", email: "u@example.com" },
+        }),
+      });
+
+      const service = AuthService.getInstance();
+      await service.login({ serverUrl: "https://option.example.com" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://option.example.com/api/auth/exchange",
+        expect.any(Object),
+      );
+    });
+
+    it("falls back to setServerUrl when option not provided", async () => {
+      mockedExists.mockReturnValue(false);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "jwt",
+          user: { id: "u1", email: "u@example.com" },
+        }),
+      });
+
+      const service = AuthService.getInstance();
+      service.setServerUrl("https://set.example.com");
+      await service.login();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://set.example.com/api/auth/exchange",
+        expect.any(Object),
+      );
+    });
+
+    it("succeeds with setServerUrl even without env var", async () => {
+      // No WAVE_SERVER_URL set
+      mockedExists.mockReturnValue(false);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "jwt-no-env",
+          user: { id: "u1", email: "u@example.com" },
+        }),
+      });
+
+      const service = AuthService.getInstance();
+      service.setServerUrl("https://no-env.example.com");
+      const token = await service.login();
+
+      expect(token).toBe("jwt-no-env");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://no-env.example.com/api/auth/exchange",
+        expect.any(Object),
+      );
+    });
   });
 
   describe("login (callback flow)", () => {

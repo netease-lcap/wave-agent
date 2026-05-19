@@ -8,6 +8,7 @@ const { mockAuthService } = vi.hoisted(() => ({
   mockAuthService: {
     isSSOAuthenticated: vi.fn<() => boolean>(() => false),
     getSSOToken: vi.fn<() => string | undefined>(() => undefined),
+    getServerUrl: vi.fn<() => string | undefined>(() => undefined),
     clearAuth: vi.fn<() => void>(),
     login: vi.fn(),
   },
@@ -22,6 +23,7 @@ describe("LoginCommand", () => {
     vi.clearAllMocks();
     mockAuthService.isSSOAuthenticated.mockReturnValue(false);
     mockAuthService.getSSOToken.mockReturnValue(undefined);
+    mockAuthService.getServerUrl.mockReturnValue(undefined);
     mockAuthService.login.mockReset();
   });
 
@@ -55,17 +57,15 @@ describe("LoginCommand", () => {
     expect(lastFrame()).toContain("Press Enter to logout");
   });
 
-  it("should show server URL when WAVE_SERVER_URL is set", () => {
+  it("should show server URL when getServerUrl returns a value", () => {
     mockAuthService.isSSOAuthenticated.mockReturnValue(true);
     mockAuthService.getSSOToken.mockReturnValue("short-token");
-    process.env.WAVE_SERVER_URL = "https://server.example.com";
+    mockAuthService.getServerUrl.mockReturnValue("https://server.example.com");
 
     const { lastFrame } = render(<LoginCommand onCancel={vi.fn()} />);
 
     expect(lastFrame()).toContain("Server URL:");
     expect(lastFrame()).toContain("https://server.example.com");
-
-    delete process.env.WAVE_SERVER_URL;
   });
 
   it("should call clearAuth when Enter is pressed while authenticated", async () => {
