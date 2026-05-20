@@ -39,6 +39,7 @@ import type {
 
 import { logger } from "./globalLogger.js";
 import { authService } from "../services/authService.js";
+import { remoteSettingsService } from "../services/remoteSettingsService.js";
 
 export interface AgentContainerSetupOptions {
   options: AgentOptions;
@@ -167,6 +168,15 @@ export function setupAgentContainer(
       const newServerUrl = options.serverUrl || process.env.WAVE_SERVER_URL;
       const newToken = authService.getSSOToken();
       mcpManager.refreshCredentials(newServerUrl, newToken);
+    }
+  });
+
+  // Wire up auth change callback to refresh/clear remote settings
+  authService.onAuthChange((event) => {
+    if (event === "login") {
+      remoteSettingsService.refresh();
+    } else if (event === "logout") {
+      remoteSettingsService.clear();
     }
   });
 

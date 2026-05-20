@@ -44,6 +44,10 @@ import {
 } from "../utils/constants.js";
 import { ClientOptions } from "openai";
 import { parseCustomHeaders } from "../utils/stringUtils.js";
+import {
+  getRemoteSettingsSync,
+  mergeRemoteSettings,
+} from "./remoteSettingsService.js";
 
 /**
  * Default ConfigurationService implementation
@@ -101,19 +105,25 @@ export class ConfigurationService {
         };
       }
 
+      // Merge remote settings (highest priority: Remote > Local > Project > User)
+      const remoteSettings = getRemoteSettingsSync();
+      const finalConfig = remoteSettings
+        ? mergeRemoteSettings(mergedConfig, remoteSettings)
+        : mergedConfig;
+
       // Success case
-      this.currentConfiguration = mergedConfig;
+      this.currentConfiguration = finalConfig;
 
       // Set environment variables from merged config and inject system variables
       const env = {
-        ...(mergedConfig.env || {}),
+        ...(finalConfig.env || {}),
         WAVE_PROJECT_DIR: workdir,
       };
       this.setEnvironmentVars(env);
-      mergedConfig.env = env;
+      finalConfig.env = env;
 
       return {
-        configuration: mergedConfig,
+        configuration: finalConfig,
         success: true,
         sourcePath: "merged configuration",
         warnings: validation.warnings,

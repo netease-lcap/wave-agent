@@ -138,3 +138,24 @@ interface Logger {
   info: (...args: unknown[]) => void;
   debug: (...args: unknown[]) => void;
 }
+
+export interface RemoteSettingsResponse {
+  uuid: string;
+  checksum: string;
+  settings: WaveConfiguration;
+}
+
+export interface RemoteSettingsCache {
+  uuid: string;
+  checksum: string;
+  settings: WaveConfiguration;
+  fetchedAt: string;
+}
+
+export interface RemoteSettingsFetchResult {
+  success: boolean;
+  settings?: WaveConfiguration | null;
+  checksum?: string;
+  error?: string;
+  notConfigured?: boolean;
+}

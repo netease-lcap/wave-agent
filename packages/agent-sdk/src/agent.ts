@@ -51,6 +51,7 @@ import {
   shutdownTelemetry,
 } from "./telemetry/instrumentation.js";
 import { logOTelEvent } from "./telemetry/events.js";
+import { remoteSettingsService } from "./services/remoteSettingsService.js";
 
 export class Agent {
   private messageManager: MessageManager;
@@ -720,6 +721,8 @@ export class Agent {
         error,
       );
     }
+    // Cleanup remote settings polling
+    remoteSettingsService.shutdown();
     // Cleanup memory store
   }
 
