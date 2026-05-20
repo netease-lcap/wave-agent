@@ -22,6 +22,7 @@ import type { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import type { LiveConfigManager } from "../managers/liveConfigManager.js";
 import type { TaskManager } from "./taskManager.js";
 import type { PermissionManager } from "../managers/permissionManager.js";
+import { remoteSettingsService } from "./remoteSettingsService.js";
 
 export interface InitializationContext {
   skillManager: SkillManager;
@@ -286,6 +287,18 @@ export class InitializationService {
     } catch (error) {
       logger?.error("Failed to initialize live configuration reload:", error);
       // Don't throw error to prevent app startup failure - continue without live reload
+    }
+
+    // Initialize remote settings (fetch server-managed config)
+    try {
+      const phaseStart = performance.now();
+      await remoteSettingsService.initialize();
+      logger?.debug(
+        `Initialization Phase [Remote Settings] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
+    } catch (error) {
+      logger?.error("Failed to initialize remote settings:", error);
+      // Don't throw error to prevent app startup failure - continue without remote settings
     }
 
     // Memory is lazy-cached on first getCombinedMemoryContent call
