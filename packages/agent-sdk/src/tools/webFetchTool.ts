@@ -103,7 +103,6 @@ const GITHUB_URL_ERROR =
 
 export const webFetchTool: ToolPlugin = {
   name: WEB_FETCH_TOOL_NAME,
-  shouldDefer: true,
   config: {
     type: "function",
     function: {

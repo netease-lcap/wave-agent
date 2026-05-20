@@ -48,7 +48,6 @@ Returns a job ID you can pass to CronDelete.`;
 
 export const cronCreateTool: ToolPlugin = {
   name: CRON_CREATE_TOOL_NAME,
-  shouldDefer: true,
   config: {
     type: "function",
     function: {

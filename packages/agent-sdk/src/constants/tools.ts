@@ -21,4 +21,3 @@ export const CRON_LIST_TOOL_NAME = "CronList";
 export const WEB_FETCH_TOOL_NAME = "WebFetch";
 export const ENTER_WORKTREE_TOOL_NAME = "EnterWorktree";
 export const EXIT_WORKTREE_TOOL_NAME = "ExitWorktree";
-export const TOOL_SEARCH_TOOL_NAME = "ToolSearch";
