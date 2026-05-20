@@ -176,8 +176,11 @@ export class OpenAIClient {
       error.status = response.status;
       error.body = errorBody;
 
-      if (response.status === 429 && attempt < maxRetries) {
-        logger.warn("OpenAI API 429 Too Many Requests, retrying...", {
+      const retryableStatus =
+        response.status === 429 ||
+        (response.status >= 500 && response.status !== 501);
+      if (retryableStatus && attempt < maxRetries) {
+        logger.warn("OpenAI API error, retrying...", {
           attempt: attempt + 1,
           status: response.status,
         });

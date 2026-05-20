@@ -280,13 +280,161 @@ describe("OpenAIClient", () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
-    it("should not retry on 500 status code", async () => {
+    it("should retry on 500 status code and eventually succeed", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          statusText: "Internal Server Error",
+          headers: new Headers(),
+          text: async () =>
+            JSON.stringify({ error: { message: "Internal Server Error" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "success" } }],
+          }),
+          headers: new Headers(),
+        });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      const promise = client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      await vi.runAllTimersAsync();
+
+      const result = await promise;
+      expect(result.choices[0].message.content).toBe("success");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should retry on 502 Bad Gateway and eventually succeed", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 502,
+          statusText: "Bad Gateway",
+          headers: new Headers(),
+          text: async () =>
+            JSON.stringify({ error: { message: "Bad Gateway" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "success" } }],
+          }),
+          headers: new Headers(),
+        });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      const promise = client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      await vi.runAllTimersAsync();
+
+      const result = await promise;
+      expect(result.choices[0].message.content).toBe("success");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should retry on 503 Service Unavailable and eventually succeed", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          statusText: "Service Unavailable",
+          headers: new Headers(),
+          text: async () =>
+            JSON.stringify({ error: { message: "Service Unavailable" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "success" } }],
+          }),
+          headers: new Headers(),
+        });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      const promise = client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      await vi.runAllTimersAsync();
+
+      const result = await promise;
+      expect(result.choices[0].message.content).toBe("success");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should retry on 504 Gateway Timeout and eventually succeed", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 504,
+          statusText: "Gateway Timeout",
+          headers: new Headers(),
+          text: async () =>
+            JSON.stringify({ error: { message: "Gateway Timeout" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "success" } }],
+          }),
+          headers: new Headers(),
+        });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      const promise = client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      await vi.runAllTimersAsync();
+
+      const result = await promise;
+      expect(result.choices[0].message.content).toBe("success");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should not retry on 501 Not Implemented", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: false,
-        status: 500,
-        statusText: "Internal Server Error",
+        status: 501,
+        statusText: "Not Implemented",
         headers: new Headers(),
-        text: async () => "Internal Server Error",
+        text: async () => "Not Implemented",
       });
 
       const client = new OpenAIClient({
@@ -300,7 +448,7 @@ describe("OpenAIClient", () => {
         messages: [{ role: "user", content: "hi" }],
       });
 
-      await expect(promise).rejects.toThrow("Internal Server Error");
+      await expect(promise).rejects.toThrow("Not Implemented");
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
