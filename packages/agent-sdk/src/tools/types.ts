@@ -107,4 +107,8 @@ export interface ToolContext {
   readFileState?: Map<string, { mtime: number; hash: string }>;
   /** Hook manager instance for executing hooks */
   hookManager?: import("../managers/hookManager.js").HookManager;
+  /** Callback to notify when the current working directory changes */
+  onCwdChange?: (newCwd: string) => void;
+  /** Original working directory (before any cd changes) for CWD reset */
+  originalWorkdir?: string;
 }

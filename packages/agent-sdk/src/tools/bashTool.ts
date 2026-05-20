@@ -139,7 +139,10 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 - Do not retry failing commands in a sleep loop — diagnose the root cause.
 - If waiting for a background task you started with \`run_in_background\`, you will be notified when it completes — do not poll.
 - If you must poll an external process, use a check command (e.g. \`gh run view\`) rather than sleeping first.
-- If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.`,
+- If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
+
+# CWD management
+Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it. When you use \`cd\`, the shell working directory will be reset to the original working directory after the command completes.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -237,7 +240,14 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 
     // Foreground execution (original behavior)
     return new Promise((resolve) => {
-      const child: ChildProcess = spawn(command, {
+      // Create a temporary file to store the CWD
+      const tempCwdFile = path.join(
+        os.tmpdir(),
+        `wave_cwd_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.tmp`,
+      );
+      const wrappedCommand = `${command} && pwd -P >| ${tempCwdFile}`;
+
+      const child: ChildProcess = spawn(wrappedCommand, {
         shell: true,
         stdio: "pipe",
         detached: true,
@@ -422,13 +432,55 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
             clearTimeout(timeoutHandle);
           }
 
+          // Read the new CWD from the temporary file
+          let newCwd: string | undefined;
+          try {
+            if (fs.existsSync(tempCwdFile)) {
+              newCwd = fs.readFileSync(tempCwdFile, "utf8").trim();
+              // Validate the path exists before calling the callback
+              fs.accessSync(newCwd, fs.constants.F_OK);
+            }
+          } catch (fileError) {
+            logger.warn(
+              `Could not read or validate new CWD from temp file ${tempCwdFile}:`,
+              fileError,
+            );
+            newCwd = undefined;
+          } finally {
+            // Ensure temp file is cleaned up even if reading fails
+            try {
+              if (fs.existsSync(tempCwdFile)) {
+                fs.unlinkSync(tempCwdFile);
+              }
+            } catch (fileError) {
+              logger.error("Failed to clean up temp CWD file:", fileError);
+            }
+          }
+
+          // If CWD changed, call the onCwdChange callback and add notification
+          let cwdChangedNotification = "";
+          if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
+            const isInSafeZone =
+              context.permissionManager?.isPathInSafeZone?.(newCwd) ?? true;
+
+            if (isInSafeZone) {
+              context.onCwdChange(newCwd);
+            } else if (context.originalWorkdir) {
+              context.onCwdChange(context.originalWorkdir);
+              cwdChangedNotification = `Shell cwd was reset to ${context.originalWorkdir}\n`;
+            } else {
+              context.onCwdChange(newCwd);
+            }
+          }
+
           const exitCode = code ?? 0;
           const combinedOutput =
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 
           // Handle large output by truncation and persistence if needed
           const finalOutput =
-            combinedOutput || `Command executed with exit code: ${exitCode}`;
+            cwdChangedNotification +
+            (combinedOutput || `Command executed with exit code: ${exitCode}`);
           const content = processOutput(finalOutput);
 
           const lines = combinedOutput.trim().split("\n");
