@@ -28,7 +28,12 @@ export interface McpServerStatus {
   config: McpServerConfig;
   /** Pre-resolution URL with template variables (e.g. ${WAVE_SSO_TOKEN}) preserved for safe display */
   originalUrl?: string;
-  status: "disconnected" | "connected" | "connecting" | "error";
+  status:
+    | "disconnected"
+    | "connected"
+    | "connecting"
+    | "reconnecting"
+    | "error";
   tools?: McpTool[];
   toolCount?: number;
   capabilities?: string[];
