@@ -585,13 +585,29 @@ export class McpManager {
         );
       }
 
-      // Handle transport errors
+      // Handle transport errors (e.g. SSE stream disconnected)
+      // The SDK auto-reconnects for transient SSE errors, so we use
+      // "reconnecting" status instead of "error". We then poll listTools()
+      // to detect when reconnection succeeds.
       transport.onerror = (error: Error) => {
-        logger?.error(`MCP Server ${name} transport error:`, error);
-        this.updateServerStatus(name, {
-          status: "error",
-          error: error.message,
-        });
+        const isTransient = error.message?.includes("SSE stream disconnected");
+        if (isTransient) {
+          logger?.warn(
+            `MCP Server ${name} transient transport error (SDK will auto-reconnect): ${error.message}`,
+          );
+          this.updateServerStatus(name, {
+            status: "reconnecting",
+            error: error.message,
+          });
+          // Poll to detect when the SDK's auto-reconnect succeeds
+          this.pollReconnectRecovery(name, client);
+        } else {
+          logger?.error(`MCP Server ${name} transport error:`, error);
+          this.updateServerStatus(name, {
+            status: "error",
+            error: error.message,
+          });
+        }
       };
 
       transport.onclose = () => {
@@ -669,6 +685,54 @@ export class McpManager {
     }, delay);
 
     this.reconnectTimers.set(name, timer);
+  }
+
+  /**
+   * Poll listTools() to detect when the SDK's auto-reconnect succeeds
+   * after a transient SSE disconnect. Restores status to "connected".
+   */
+  private async pollReconnectRecovery(
+    name: string,
+    client: Client,
+  ): Promise<void> {
+    const maxAttempts = 10;
+    const delay = 3000; // Match SDK's reconnection delay
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, delay));
+      const serverStatus = this.servers.get(name);
+      if (serverStatus?.status !== "reconnecting") {
+        return; // Status changed by onclose or user action — stop polling
+      }
+      try {
+        const toolsResponse = await client.listTools();
+        const tools =
+          toolsResponse.tools?.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+          })) || [];
+        logger?.info(
+          `MCP Server ${name} auto-reconnected successfully (attempt ${i + 1})`,
+        );
+        this.updateServerStatus(name, {
+          status: "connected",
+          tools,
+          toolCount: tools.length,
+          lastConnected: Date.now(),
+          error: undefined,
+        });
+        this.reconnectAttempts.delete(name);
+        return;
+      } catch {
+        logger?.debug(
+          `MCP Server ${name} reconnect recovery check ${i + 1}/${maxAttempts} failed`,
+        );
+      }
+    }
+    // If we exhausted attempts, fall through to McpManager's own reconnect
+    logger?.warn(
+      `MCP Server ${name} SDK auto-reconnect did not recover after ${maxAttempts} attempts`,
+    );
   }
 
   private cancelReconnect(name: string): void {
@@ -899,7 +963,9 @@ export class McpManager {
       // Determine if reconnection is needed
       const wasConnected = this.connections.has(name);
       const wasDisconnected =
-        server.status === "disconnected" || server.status === "error";
+        server.status === "disconnected" ||
+        server.status === "error" ||
+        server.status === "reconnecting";
 
       if (wasConnected) {
         // Disconnect first, then reconnect with new resolved config

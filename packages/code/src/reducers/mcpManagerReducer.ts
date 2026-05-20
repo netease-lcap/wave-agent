@@ -78,7 +78,9 @@ export function mcpManagerReducer(
         const server = servers[state.selectedIndex];
         if (
           server &&
-          (server.status === "disconnected" || server.status === "error")
+          (server.status === "disconnected" ||
+            server.status === "error" ||
+            server.status === "reconnecting")
         ) {
           return {
             ...state,
