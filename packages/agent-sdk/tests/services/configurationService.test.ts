@@ -602,5 +602,171 @@ describe("ConfigurationService", () => {
       expect(models).toContain("model-b");
       expect(models).not.toContain("gemini-3-flash");
     });
+
+    it("should include currentConfiguration.model in getConfiguredModels", async () => {
+      const config = { model: "persisted-model" };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      delete process.env.WAVE_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const models = configService.getConfiguredModels();
+        expect(models).toContain("persisted-model");
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+      }
+    });
+  });
+
+  describe("resolveModelConfig — model priority", () => {
+    it("should fall back to currentConfiguration.model when no param, options, or env var", async () => {
+      const config = { model: "config-model" };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      process.env.WAVE_FAST_MODEL = "fast-model";
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        configService.setOptions({}); // no options.model
+        const resolved = configService.resolveModelConfig();
+        expect(resolved.model).toBe("config-model");
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+
+    it("should prioritize options.model over WAVE_MODEL env var and currentConfiguration.model", async () => {
+      const config = { model: "config-model" };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      process.env.WAVE_MODEL = "env-model";
+      process.env.WAVE_FAST_MODEL = "fast-model";
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        configService.setOptions({ model: "options-model" });
+        const resolved = configService.resolveModelConfig();
+        expect(resolved.model).toBe("options-model");
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+
+    it("should prioritize WAVE_MODEL env var over currentConfiguration.model", async () => {
+      const config = { model: "config-model" };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      process.env.WAVE_MODEL = "env-model";
+      process.env.WAVE_FAST_MODEL = "fast-model";
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        configService.setOptions({}); // no options.model
+        const resolved = configService.resolveModelConfig();
+        expect(resolved.model).toBe("env-model");
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+
+    it("should prioritize model param over options.model, env var, and currentConfiguration.model", async () => {
+      const config = { model: "config-model" };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      process.env.WAVE_MODEL = "env-model";
+      process.env.WAVE_FAST_MODEL = "fast-model";
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        configService.setOptions({ model: "options-model" });
+        const resolved = configService.resolveModelConfig("param-model");
+        expect(resolved.model).toBe("param-model");
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+  });
+
+  describe("loadMergedWaveConfig — model field", () => {
+    it("should merge model field with last-write-wins", async () => {
+      const userSettingsPath = path.join(userHome, ".wave", "settings.json");
+      const projectSettingsPath = path.join(tempDir, ".wave", "settings.json");
+
+      const userSettings = { model: "user-model" };
+      const projectSettings = { model: "project-model" };
+
+      mockExistsSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        return [userSettingsPath, projectSettingsPath].some((expected) =>
+          pathStr.includes(expected),
+        );
+      });
+
+      mockReadFileSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr.includes(userSettingsPath))
+          return JSON.stringify(userSettings);
+        if (pathStr.includes(projectSettingsPath))
+          return JSON.stringify(projectSettings);
+        return "";
+      });
+
+      const result = loadMergedWaveConfig(tempDir);
+      expect(result?.model).toBe("project-model");
+    });
+
+    it("should use user model when project has no model", async () => {
+      const userSettingsPath = path.join(userHome, ".wave", "settings.json");
+      const projectSettingsPath = path.join(tempDir, ".wave", "settings.json");
+
+      const userSettings = { model: "user-model" };
+      const projectSettings = {};
+
+      mockExistsSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        return [userSettingsPath, projectSettingsPath].some((expected) =>
+          pathStr.includes(expected),
+        );
+      });
+
+      mockReadFileSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr.includes(userSettingsPath))
+          return JSON.stringify(userSettings);
+        if (pathStr.includes(projectSettingsPath))
+          return JSON.stringify(projectSettings);
+        return "";
+      });
+
+      const result = loadMergedWaveConfig(tempDir);
+      expect(result?.model).toBe("user-model");
+    });
   });
 });

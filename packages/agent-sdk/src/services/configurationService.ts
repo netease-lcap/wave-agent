@@ -508,7 +508,10 @@ export class ConfigurationService {
   ): ModelConfig {
     // Resolve agent model: override > options > process.env (includes settings.json env)
     const resolvedAgentModel =
-      model || this.options.model || process.env.WAVE_MODEL;
+      model ||
+      this.options.model ||
+      process.env.WAVE_MODEL ||
+      this.currentConfiguration?.model;
 
     // Resolve fast model: override > options > process.env (includes settings.json env)
     const resolvedFastModel =
@@ -696,6 +699,28 @@ export class ConfigurationService {
    */
   setModel(model: string): void {
     this.options.model = model;
+    this.persistModelToSettings(model);
+  }
+
+  private async persistModelToSettings(model: string): Promise<void> {
+    const configPath = getUserConfigPaths()[0]; // ~/.wave/settings.json
+    const configDir = path.dirname(configPath);
+    if (!existsSync(configDir)) {
+      await fs.mkdir(configDir, { recursive: true });
+    }
+
+    let config: WaveConfiguration = {};
+    if (existsSync(configPath)) {
+      try {
+        const content = await fs.readFile(configPath, "utf-8");
+        config = JSON.parse(content);
+      } catch {
+        // Start fresh if corrupted
+      }
+    }
+
+    config.model = model;
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
   }
 
   /**
@@ -708,6 +733,11 @@ export class ConfigurationService {
     const currentModel = this.options.model || process.env.WAVE_MODEL;
     if (currentModel) {
       models.add(currentModel);
+    }
+
+    // Persisted model from settings (includes remote-merged)
+    if (this.currentConfiguration?.model) {
+      models.add(this.currentConfiguration.model);
     }
 
     // Add models from merged configuration
@@ -1139,6 +1169,7 @@ export function loadWaveConfigFromFile(
       permissions: config.permissions || undefined,
       enabledPlugins: config.enabledPlugins || undefined,
       language: config.language || undefined,
+      model: config.model || undefined,
       autoMemoryEnabled:
         config.autoMemoryEnabled !== undefined
           ? config.autoMemoryEnabled
@@ -1268,6 +1299,11 @@ export function loadMergedWaveConfig(
       mergedConfig.language = config.language;
     }
 
+    // Merge model (last one wins)
+    if (config.model !== undefined) {
+      mergedConfig.model = config.model;
+    }
+
     // Merge autoMemoryEnabled (last one wins)
     if (config.autoMemoryEnabled !== undefined) {
       mergedConfig.autoMemoryEnabled = config.autoMemoryEnabled;
@@ -1316,6 +1352,7 @@ export function loadMergedWaveConfig(
         ? mergedConfig.enabledPlugins
         : undefined,
     language: mergedConfig.language,
+    model: mergedConfig.model,
     autoMemoryEnabled: mergedConfig.autoMemoryEnabled,
     marketplaces:
       mergedConfig.marketplaces &&

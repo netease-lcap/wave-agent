@@ -286,6 +286,7 @@ export function mergeRemoteSettings(
 
   // Scalar / last-write-wins fields: remote wins
   if (remote.language !== undefined) result.language = remote.language;
+  if (remote.model !== undefined) result.model = remote.model;
   if (remote.autoMemoryEnabled !== undefined)
     result.autoMemoryEnabled = remote.autoMemoryEnabled;
   if (remote.autoMemoryFrequency !== undefined)
