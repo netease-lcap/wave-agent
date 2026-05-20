@@ -78,5 +78,4 @@ This directory contains feature specifications that serve as the source of truth
 | ACP Bridge | Agent Communication Protocol bridge for connecting external clients | [spec](070-acp-bridge/spec.md) · [plan](070-acp-bridge/plan.md) |
 | Builtin Settings Skill | Guide users on `settings.json`, hooks config, and Wave settings management | [spec](071-builtin-settings-skill/spec.md) · [plan](071-builtin-settings-skill/plan.md) |
 | Loop Command | `/loop` for scheduling recurring prompts via cron (e.g., `/loop 5m check the build`). Includes durable persistence and multi-session scheduler lock. | [spec](072-loop-slash-command/spec.md) · [plan](072-loop-slash-command/plan.md) |
-| Deferred Tool Loading | `shouldDefer` flag for on-demand tool loading via ToolSearch discovery | [spec](074-should-defer-tool-loading/spec.md) · [plan](074-should-defer-tool-loading/plan.md) |
 | OpenTelemetry Integration | OpenTelemetry instrumentation for metrics, traces, and logs with multiple exporters (jsonl, OTLP) | [spec](075-opentelemetry/spec.md) · [plan](075-opentelemetry/plan.md) |

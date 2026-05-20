@@ -45,8 +45,6 @@ import { logger } from "../utils/globalLogger.js";
 
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { SkillMetadata } from "../types/skills.js";
-import { toolSearchTool } from "../tools/toolSearchTool.js";
-import { isDeferredTool } from "../utils/isDeferredTool.js";
 import { startToolSpan, endToolSpan } from "../telemetry/sessionTracing.js";
 
 export interface ToolManagerOptions {
@@ -134,7 +132,6 @@ class ToolManager {
       webFetchTool,
       enterWorktreeTool,
       exitWorktreeTool,
-      toolSearchTool,
     ];
 
     for (const tool of builtInTools) {
@@ -210,7 +207,7 @@ class ToolManager {
       permissionMode: effectivePermissionMode,
       canUseToolCallback,
       permissionManager,
-      toolManager: this, // Allow ToolSearchTool to access the tool manager
+      toolManager: this,
       taskManager:
         this.container.get<import("../services/taskManager.js").TaskManager>(
           "TaskManager",
@@ -349,13 +346,10 @@ class ToolManager {
     availableSkills?: SkillMetadata[];
     workdir?: string;
     isSubagent?: boolean;
-    /** Set of discovered deferred tool names to include in the API call */
-    discoveredTools?: Set<string>;
   }): ChatCompletionFunctionTool[] {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
     const effectivePermissionMode = this.getPermissionMode();
-    const discoveredTools = options?.discoveredTools;
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
         // If tool is explicitly denied by name in permission rules, filter it out
@@ -380,10 +374,6 @@ class ToolManager {
             effectivePermissionMode !== "bypassPermissions"
           );
         }
-        // Exclude deferred tools that haven't been discovered yet
-        if (isDeferredTool(tool) && !discoveredTools?.has(tool.name)) {
-          return false;
-        }
         return true;
       })
       .map((tool) => {
@@ -404,10 +394,6 @@ class ToolManager {
       .getMcpToolsConfig()
       .filter((tool) => {
         if (permissionManager?.isToolDenied(tool.function.name)) {
-          return false;
-        }
-        // Exclude MCP tools that haven't been discovered yet
-        if (discoveredTools && !discoveredTools.has(tool.function.name)) {
           return false;
         }
         return true;
@@ -451,23 +437,6 @@ class ToolManager {
    */
   public getPermissionManager(): PermissionManager | undefined {
     return this.container.get<PermissionManager>("PermissionManager");
-  }
-
-  /**
-   * Get the names of all deferred tools (those that require ToolSearch to discover).
-   */
-  public getDeferredToolNames(): string[] {
-    const permissionManager =
-      this.container.get<PermissionManager>("PermissionManager");
-    const builtInDeferred = Array.from(this.toolsRegistry.values())
-      .filter((tool) => isDeferredTool(tool))
-      .filter((tool) => !permissionManager?.isToolDenied(tool.name))
-      .map((tool) => tool.name);
-    const mcpDeferred = this.mcpManager
-      .getMcpToolsConfig()
-      .filter((tool) => !permissionManager?.isToolDenied(tool.function.name))
-      .map((tool) => tool.function.name);
-    return [...builtInDeferred, ...mcpDeferred];
   }
 
   /**

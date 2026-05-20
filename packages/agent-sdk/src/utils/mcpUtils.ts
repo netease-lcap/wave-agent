@@ -91,7 +91,6 @@ export function createMcpToolPlugin(
   return {
     name: prefixedName,
     config: mcpToolToOpenAITool(mcpTool, serverName),
-    isMcp: true, // MCP tools are always deferred
     async execute(
       args: Record<string, unknown>,
       context?: ToolContext,

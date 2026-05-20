@@ -24,8 +24,6 @@ export interface ToolDef {
     params: Record<string, unknown>,
     context: ToolContext,
   ) => string;
-  shouldDefer?: boolean;
-  alwaysLoad?: boolean;
   additionalProperties?: boolean;
 }
 
@@ -59,7 +57,5 @@ export function buildTool(def: ToolDef): ToolPlugin {
     execute: def.execute,
     prompt: promptFn,
     formatCompactParams: def.formatCompactParams,
-    shouldDefer: def.shouldDefer ?? false,
-    alwaysLoad: def.alwaysLoad ?? false,
   };
 }

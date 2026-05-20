@@ -9,7 +9,6 @@ import {
 
 export const taskCreateTool: ToolPlugin = {
   name: TASK_CREATE_TOOL_NAME,
-  shouldDefer: true,
   config: {
     type: "function",
     function: {
@@ -144,7 +143,6 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 
 export const taskGetTool: ToolPlugin = {
   name: TASK_GET_TOOL_NAME,
-  shouldDefer: true,
   config: {
     type: "function",
     function: {
@@ -204,7 +202,6 @@ Returns full task details:
 
 export const taskUpdateTool: ToolPlugin = {
   name: TASK_UPDATE_TOOL_NAME,
-  shouldDefer: true,
   config: {
     type: "function",
     function: {
@@ -559,7 +556,6 @@ Set up task dependencies:
 
 export const taskListTool: ToolPlugin = {
   name: TASK_LIST_TOOL_NAME,
-  shouldDefer: true,
   config: {
     type: "function",
     function: {

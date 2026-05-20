@@ -84,33 +84,6 @@ describe("buildTool", () => {
     expect(tool.prompt!()).toBe("Dynamic prompt");
   });
 
-  it("should set shouldDefer to true when specified", () => {
-    const def: ToolDef = {
-      name: "DeferredTool",
-      description: "A deferred tool",
-      parameters: {},
-      shouldDefer: true,
-      execute: async () => ({ success: true, content: "" }),
-    };
-
-    const tool = buildTool(def);
-
-    expect(tool.shouldDefer).toBe(true);
-  });
-
-  it("should default shouldDefer to false", () => {
-    const def: ToolDef = {
-      name: "NonDeferredTool",
-      description: "A non-deferred tool",
-      parameters: {},
-      execute: async () => ({ success: true, content: "" }),
-    };
-
-    const tool = buildTool(def);
-
-    expect(tool.shouldDefer).toBe(false);
-  });
-
   it("should include formatCompactParams when provided", () => {
     const formatter = () => "compact";
     const def: ToolDef = {
@@ -132,7 +105,6 @@ describe("buildTool", () => {
       description: "Checking shape",
       parameters: { key: { type: "string" } },
       required: ["key"],
-      shouldDefer: true,
       prompt: "Test prompt",
       execute: async () => ({ success: true, content: "ok" }),
     };
@@ -146,8 +118,6 @@ describe("buildTool", () => {
     expect(_plugin.config).toBeDefined();
     expect(typeof _plugin.execute).toBe("function");
     expect(typeof _plugin.prompt).toBe("function");
-    expect(_plugin.shouldDefer).toBe(true);
-    expect(_plugin.alwaysLoad).toBe(false);
   });
 
   it("should execute the tool and return result", async () => {
@@ -197,32 +167,5 @@ describe("buildTool", () => {
     const tool = buildTool(def);
 
     expect(tool.config.function.parameters!.additionalProperties).toBe(false);
-  });
-
-  it("should set alwaysLoad when specified", () => {
-    const def: ToolDef = {
-      name: "AlwaysTool",
-      description: "Always loaded tool",
-      parameters: {},
-      alwaysLoad: true,
-      execute: async () => ({ success: true, content: "" }),
-    };
-
-    const tool = buildTool(def);
-
-    expect(tool.alwaysLoad).toBe(true);
-  });
-
-  it("should default alwaysLoad to false", () => {
-    const def: ToolDef = {
-      name: "NormalTool",
-      description: "Normal tool",
-      parameters: {},
-      execute: async () => ({ success: true, content: "" }),
-    };
-
-    const tool = buildTool(def);
-
-    expect(tool.alwaysLoad).toBe(false);
   });
 });

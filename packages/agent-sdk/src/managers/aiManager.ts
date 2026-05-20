@@ -66,8 +66,6 @@ export class AIManager {
   private modelOverride?: string;
   private consecutiveCompactionFailures: number = 0;
   private readonly maxTurns?: number;
-  /** Tracks which deferred tools have been discovered via ToolSearch */
-  private discoveredTools = new Set<string>();
 
   // Service overrides
   constructor(
@@ -203,7 +201,6 @@ export class AIManager {
       availableSkills,
       workdir: this.getWorkdir(),
       isSubagent: !!this.subagentType,
-      discoveredTools: this.discoveredTools,
     });
   }
 
@@ -1060,11 +1057,6 @@ export class AIManager {
                 toolArgs,
                 toolResult,
               );
-
-              // Track discovered tools from ToolSearch results
-              if (toolName === "ToolSearch" && toolResult.success) {
-                this.trackDiscoveredTools(toolResult.content);
-              }
             } catch (toolError) {
               const errorMessage =
                 toolError instanceof Error
@@ -1531,46 +1523,6 @@ export class AIManager {
     } catch (error) {
       // Hook execution errors should not interrupt the main workflow
       logger?.error("PostToolUse hook execution failed:", error);
-    }
-  }
-
-  /**
-   * Parse ToolSearch result content to extract discovered tool names.
-   * ToolSearch returns content like "ToolName: description\nParameters: {...}"
-   * or shortResult like "Discovered tools: ToolA, ToolB".
-   */
-  private trackDiscoveredTools(content: string): void {
-    // Try to extract tool names from shortResult-style content
-    const discoveredMatch = content.match(/Discovered tools?: ([\w-, ]+)/);
-    if (discoveredMatch) {
-      const names = discoveredMatch[1]!
-        .split(",")
-        .map((n) => n.trim())
-        .filter(Boolean);
-      for (const name of names) {
-        this.discoveredTools.add(name);
-      }
-      logger?.debug("Discovered tools:", names);
-      return;
-    }
-
-    // Fallback: extract tool names from "ToolName: description" pattern
-    const lines = content.split("\n");
-    const nonToolKeywords = new Set([
-      "parameters",
-      "description",
-      "result",
-      "error",
-      "content",
-      "type",
-      "properties",
-      "required",
-    ]);
-    for (const line of lines) {
-      const toolMatch = line.match(/^([\w-]+):/);
-      if (toolMatch && !nonToolKeywords.has(toolMatch[1]!.toLowerCase())) {
-        this.discoveredTools.add(toolMatch[1]!);
-      }
     }
   }
 }
