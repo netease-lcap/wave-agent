@@ -96,6 +96,12 @@ describe("BackgroundTaskManager", () => {
     isCommandRunning: false,
     isCompacting: false,
     userInputHistory: [],
+    getModelConfig: vi.fn(() => ({
+      model: "test-model",
+      fastModel: "test-fast-model",
+    })),
+    getConfiguredModels: vi.fn(() => []),
+    getGatewayConfig: vi.fn(() => ({ serverUrl: "http://localhost:8080" })),
   };
 
   it("should display the log file path if available", async () => {

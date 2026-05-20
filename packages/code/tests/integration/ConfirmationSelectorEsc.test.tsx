@@ -145,6 +145,12 @@ describe("ConfirmationSelector Esc Integration", () => {
     askBtw: vi.fn(),
     usages: [],
     sessionFilePath: "test-path",
+    getModelConfig: vi.fn(() => ({
+      model: "test-model",
+      fastModel: "test-fast-model",
+    })),
+    getConfiguredModels: vi.fn(() => []),
+    getGatewayConfig: vi.fn(() => ({ serverUrl: "http://localhost:8080" })),
   };
 
   beforeEach(() => {

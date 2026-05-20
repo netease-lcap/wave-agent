@@ -70,6 +70,7 @@ describe("TaskList Integration", () => {
         model: "test-model",
         fastModel: "test-fast-model",
       }),
+      getConfiguredModels: vi.fn().mockReturnValue([]),
       destroy: vi.fn(),
     } as unknown as Agent;
 

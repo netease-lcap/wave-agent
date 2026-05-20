@@ -34,6 +34,10 @@ export default defineConfig(() => {
       // Test environment variables: disable logger I/O operations by default to improve performance
       onConsoleLog(log: string, type: "stdout" | "stderr"): boolean | void {
         if (type === "stderr") {
+          // Allow known expected stderr from print-cli tests
+          if (log.includes("Print mode requires a message")) {
+            return false;
+          }
           throw new Error(`Unexpected stderr: ${log}`);
         }
       },
