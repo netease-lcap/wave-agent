@@ -711,6 +711,20 @@ describe("remoteSettingsService", () => {
       const result = mergeRemoteSettings(local, remote);
       expect(result.language).toBe("en");
     });
+
+    it("merges model: remote model overrides local model", () => {
+      const local = { model: "local-model" } as unknown as WaveConfiguration;
+      const remote = { model: "remote-model" } as unknown as WaveConfiguration;
+      const result = mergeRemoteSettings(local, remote);
+      expect(result.model).toBe("remote-model");
+    });
+
+    it("merges model: local model preserved when remote has no model", () => {
+      const local = { model: "local-model" } as unknown as WaveConfiguration;
+      const remote = {} as unknown as WaveConfiguration;
+      const result = mergeRemoteSettings(local, remote);
+      expect(result.model).toBe("local-model");
+    });
   });
 
   // ---------------------------------------------------------------------------

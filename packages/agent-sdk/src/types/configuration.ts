@@ -44,6 +44,8 @@ export interface WaveConfiguration {
   autoMemoryEnabled?: boolean;
   /** Frequency of auto-memory extraction turns */
   autoMemoryFrequency?: number;
+  /** Persisted model selection (from /model command) */
+  model?: string;
   /** Model-specific configuration overrides */
   models?: Record<string, Partial<ModelConfig>>;
   /** Scoped marketplace declarations */
