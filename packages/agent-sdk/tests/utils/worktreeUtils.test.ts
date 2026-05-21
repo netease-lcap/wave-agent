@@ -140,6 +140,102 @@ describe("worktreeUtils", () => {
 
       expect(result.isNew).toBe(true);
     });
+
+    it("should fetch default branch when not found locally, then create worktree", () => {
+      let callCount = 0;
+      vi.mocked(execSync).mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          // getHeadCommit
+          return "abc123\n";
+        }
+        if (callCount === 2) {
+          // First git worktree add -b fails — branch not fetched
+          const err = new Error("git error") as Error & {
+            stderr?: Buffer;
+          };
+          err.stderr = Buffer.from("not a valid object name");
+          throw err;
+        }
+        if (callCount === 3) {
+          // git fetch origin main succeeds
+          return "";
+        }
+        // Retry git worktree add -b succeeds
+        return "";
+      });
+
+      const result = worktreeUtils.createWorktree("feat", "/test");
+
+      expect(result.isNew).toBe(true);
+      expect(result.originalHeadCommit).toBe("abc123");
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining("git fetch origin main"),
+        expect.anything(),
+      );
+    });
+
+    it("should fall back to HEAD when fetch also fails", () => {
+      let callCount = 0;
+      vi.mocked(execSync).mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          // getHeadCommit
+          return "abc123\n";
+        }
+        if (callCount === 2) {
+          // First git worktree add -b fails
+          const err = new Error("git error") as Error & {
+            stderr?: Buffer;
+          };
+          err.stderr = Buffer.from("not a valid object name");
+          throw err;
+        }
+        if (callCount === 3) {
+          // git fetch origin main fails
+          throw new Error("fetch failed");
+        }
+        // git worktree add -b ... HEAD succeeds
+        return "";
+      });
+
+      const result = worktreeUtils.createWorktree("feat", "/test");
+
+      expect(result.isNew).toBe(true);
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringMatching(/git worktree add -b worktree-feat ".*" HEAD/),
+        expect.anything(),
+      );
+    });
+
+    it("should throw when both fetch and HEAD fallback fail", () => {
+      let callCount = 0;
+      vi.mocked(execSync).mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          // getHeadCommit
+          return "abc123\n";
+        }
+        if (callCount === 2) {
+          // First git worktree add -b fails
+          const err = new Error("git error") as Error & {
+            stderr?: Buffer;
+          };
+          err.stderr = Buffer.from("not a valid object name");
+          throw err;
+        }
+        if (callCount === 3) {
+          // git fetch origin main fails
+          throw new Error("fetch failed");
+        }
+        // git worktree add -b ... HEAD also fails
+        throw new Error("HEAD fallback failed");
+      });
+
+      expect(() => worktreeUtils.createWorktree("feat", "/test")).toThrow(
+        "Failed to create worktree",
+      );
+    });
   });
 
   describe("removeWorktree", () => {

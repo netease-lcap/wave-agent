@@ -174,6 +174,69 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
         );
       }
     }
+    if (
+      stderr.includes("not a valid object name") ||
+      stderr.includes("unknown revision")
+    ) {
+      // Base branch not fetched yet — try fetching then retrying
+      const branchNameOnly = baseBranch.split("/").pop()!;
+      try {
+        execSync(`git fetch origin ${branchNameOnly}`, {
+          cwd: repoRoot,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: "0",
+            GIT_ASKPASS: "",
+          },
+        });
+        execSync(
+          `git worktree add -b ${branchName} "${worktreePath}" ${baseBranch}`,
+          {
+            cwd: repoRoot,
+            stdio: ["ignore", "pipe", "pipe"],
+            env: {
+              ...process.env,
+              GIT_TERMINAL_PROMPT: "0",
+              GIT_ASKPASS: "",
+            },
+          },
+        );
+        return {
+          name,
+          path: worktreePath,
+          branch: branchName,
+          repoRoot,
+          isNew: true,
+          originalHeadCommit,
+        };
+      } catch {
+        // Fetch or retry failed — fall back to HEAD
+        try {
+          execSync(`git worktree add -b ${branchName} "${worktreePath}" HEAD`, {
+            cwd: repoRoot,
+            stdio: ["ignore", "pipe", "pipe"],
+            env: {
+              ...process.env,
+              GIT_TERMINAL_PROMPT: "0",
+              GIT_ASKPASS: "",
+            },
+          });
+          return {
+            name,
+            path: worktreePath,
+            branch: branchName,
+            repoRoot,
+            isNew: true,
+            originalHeadCommit,
+          };
+        } catch {
+          throw new Error(
+            `Failed to create worktree: ${(error as Error).message}\n${stderr}`,
+          );
+        }
+      }
+    }
     throw new Error(
       `Failed to create worktree: ${(error as Error).message}\n${stderr}`,
     );

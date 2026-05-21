@@ -116,6 +116,95 @@ describe("worktree utils", () => {
         "Failed to add existing worktree branch",
       );
     });
+
+    it("should fetch default branch when not found locally, then create worktree", () => {
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      // First git worktree add -b fails — branch not fetched
+      const error = new Error("Command failed");
+      (error as { stderr?: Buffer }).stderr = Buffer.from(
+        "not a valid object name",
+      );
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw error;
+      });
+
+      // git fetch origin main succeeds
+      vi.mocked(execSync).mockImplementationOnce(() => Buffer.from(""));
+
+      // Retry git worktree add -b succeeds
+      vi.mocked(execSync).mockImplementationOnce(() => Buffer.from(""));
+
+      const session = createWorktree("my-feat", "/repo/root");
+
+      expect(session.isNew).toBe(true);
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining("git fetch origin main"),
+        expect.any(Object),
+      );
+    });
+
+    it("should fall back to HEAD when fetch also fails", () => {
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      // First git worktree add -b fails
+      const error = new Error("Command failed");
+      (error as { stderr?: Buffer }).stderr = Buffer.from(
+        "not a valid object name",
+      );
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw error;
+      });
+
+      // git fetch origin main fails
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error("fetch failed");
+      });
+
+      // git worktree add -b ... HEAD succeeds
+      vi.mocked(execSync).mockImplementationOnce(() => Buffer.from(""));
+
+      const session = createWorktree("my-feat", "/repo/root");
+
+      expect(session.isNew).toBe(true);
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringMatching(/git worktree add -b worktree-my-feat ".*" HEAD/),
+        expect.any(Object),
+      );
+    });
+
+    it("should throw when both fetch and HEAD fallback fail", () => {
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      // First git worktree add -b fails
+      const error = new Error("Command failed");
+      (error as { stderr?: Buffer }).stderr = Buffer.from(
+        "not a valid object name",
+      );
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw error;
+      });
+
+      // git fetch origin main fails
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error("fetch failed");
+      });
+
+      // git worktree add -b ... HEAD also fails
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error("HEAD fallback failed");
+      });
+
+      expect(() => createWorktree("my-feat", "/repo/root")).toThrow(
+        "Failed to create worktree",
+      );
+    });
   });
 
   describe("removeWorktree", () => {

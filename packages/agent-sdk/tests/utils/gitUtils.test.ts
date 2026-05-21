@@ -1,15 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { execSync } from "node:child_process";
+import * as fsSync from "node:fs";
+import * as path from "node:path";
 import {
   getGitRepoRoot,
   getGitMainRepoRoot,
   getDefaultRemoteBranch,
+  resolveGitDir,
   hasUncommittedChanges,
   hasNewCommits,
 } from "../../src/utils/gitUtils.js";
 
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
+}));
+
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+  statSync: vi.fn(),
+  readdirSync: vi.fn(),
+  mkdirSync: vi.fn(),
 }));
 
 describe("gitUtils", () => {
@@ -78,117 +89,155 @@ describe("gitUtils", () => {
     });
   });
 
+  describe("resolveGitDir", () => {
+    it("should find .git directory for a normal repo", () => {
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) => p === "/repo/root/.git",
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
+      expect(resolveGitDir("/repo/root")).toBe("/repo/root/.git");
+    });
+
+    it("should resolve worktree git dir via commondir", () => {
+      const worktreeGitDir = "/repo/main/.git/worktrees/wt1";
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) =>
+          p === "/repo/worktree/.git" ||
+          p === path.join(worktreeGitDir, "commondir"),
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => false,
+      } as unknown as fsSync.Stats);
+      vi.mocked(fsSync.readFileSync).mockImplementation((p) => {
+        if (p === "/repo/worktree/.git") return `gitdir: ${worktreeGitDir}`;
+        if (p === path.join(worktreeGitDir, "commondir")) return "../..\n";
+        throw new Error("Not found");
+      });
+      expect(resolveGitDir("/repo/worktree")).toBe("/repo/main/.git");
+    });
+
+    it("should return null if no .git found", () => {
+      vi.mocked(fsSync.existsSync).mockReturnValue(false);
+      expect(resolveGitDir("/some/path")).toBeNull();
+    });
+  });
+
   describe("getDefaultRemoteBranch", () => {
-    it("should return the default remote branch from symbolic-ref (Step 1)", () => {
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git symbolic-ref refs/remotes/origin/HEAD") {
-          return "refs/remotes/origin/main\n" as unknown as ReturnType<
-            typeof execSync
-          >;
-        }
-        if (cmd === "git rev-parse --verify origin/main") {
-          return "" as unknown as ReturnType<typeof execSync>;
-        }
-        throw new Error("Command failed");
+    const gitDir = "/repo/root/.git";
+
+    function mockGitDirFound() {
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) =>
+          p === "/repo/root/.git" ||
+          p === path.join(gitDir, "refs/remotes/origin/main") ||
+          p === path.join(gitDir, "refs/remotes/origin/master") ||
+          p === path.join(gitDir, "refs/remotes/origin/HEAD"),
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
+    }
+
+    it("should return branch from origin/HEAD symref (Step 1)", () => {
+      mockGitDirFound();
+      vi.mocked(fsSync.readFileSync).mockImplementation((p) => {
+        if (p === path.join(gitDir, "refs/remotes/origin/HEAD"))
+          return "ref: refs/remotes/origin/main\n";
+        throw new Error("Not found");
       });
+      // refs/remotes/origin/main exists (already in existsSync mock)
       expect(getDefaultRemoteBranch("/repo/root")).toBe("origin/main");
     });
 
-    it("should skip stale origin/HEAD and fallback if resolved branch does not exist (Step 1 stale)", () => {
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git symbolic-ref refs/remotes/origin/HEAD") {
-          return "refs/remotes/origin/master\n" as unknown as ReturnType<
-            typeof execSync
-          >;
-        }
-        if (cmd === "git rev-parse --verify origin/master") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --verify origin/main") {
-          return "" as unknown as ReturnType<typeof execSync>;
-        }
-        throw new Error("Command failed");
+    it("should skip stale origin/HEAD and fallback (Step 1 stale)", () => {
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) =>
+          p === "/repo/root/.git" ||
+          p === path.join(gitDir, "refs/remotes/origin/HEAD") ||
+          p === path.join(gitDir, "refs/remotes/origin/main"),
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
+      vi.mocked(fsSync.readFileSync).mockImplementation((p) => {
+        if (p === path.join(gitDir, "refs/remotes/origin/HEAD"))
+          return "ref: refs/remotes/origin/master\n";
+        throw new Error("Not found");
       });
+      // origin/master ref doesn't exist, but origin/main does
       expect(getDefaultRemoteBranch("/repo/root")).toBe("origin/main");
     });
 
-    it("should fallback to origin/main if it exists (Step 2)", () => {
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git symbolic-ref refs/remotes/origin/HEAD") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --verify origin/main") {
-          return "" as unknown as ReturnType<typeof execSync>;
-        }
-        throw new Error("Command failed");
-      });
+    it("should fallback to origin/main if ref exists (Step 2)", () => {
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) =>
+          p === "/repo/root/.git" ||
+          p === path.join(gitDir, "refs/remotes/origin/main"),
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
+      // No origin/HEAD file, but origin/main exists
       expect(getDefaultRemoteBranch("/repo/root")).toBe("origin/main");
     });
 
-    it("should fallback to origin/master if it exists (Step 3)", () => {
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git symbolic-ref refs/remotes/origin/HEAD") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --verify origin/main") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --verify origin/master") {
-          return "" as unknown as ReturnType<typeof execSync>;
-        }
-        throw new Error("Command failed");
-      });
+    it("should fallback to origin/master if ref exists (Step 3)", () => {
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) =>
+          p === "/repo/root/.git" ||
+          p === path.join(gitDir, "refs/remotes/origin/master"),
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
       expect(getDefaultRemoteBranch("/repo/root")).toBe("origin/master");
     });
 
-    it("should fallback to upstream branch (Step 4)", () => {
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git symbolic-ref refs/remotes/origin/HEAD") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --verify origin/main") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --verify origin/master") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --abbrev-ref --symbolic-full-name @{u}") {
-          return "origin/feature-branch\n" as unknown as ReturnType<
-            typeof execSync
-          >;
-        }
-        throw new Error("Command failed");
-      });
-      expect(getDefaultRemoteBranch("/repo/root")).toBe(
-        "origin/feature-branch",
+    it("should return 'main' as hardcoded fallback (Step 4)", () => {
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) => p === "/repo/root/.git",
       );
-    });
-
-    it("should fallback to current branch name (Step 5)", () => {
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git symbolic-ref refs/remotes/origin/HEAD") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --verify origin/main") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --verify origin/master") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --abbrev-ref --symbolic-full-name @{u}") {
-          throw new Error("Command failed");
-        }
-        if (cmd === "git rev-parse --abbrev-ref HEAD") {
-          return "main\n" as unknown as ReturnType<typeof execSync>;
-        }
-        throw new Error("Command failed");
-      });
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
       expect(getDefaultRemoteBranch("/repo/root")).toBe("main");
     });
 
-    it("should fallback to origin/main if all else fails (Step 6)", () => {
-      vi.mocked(execSync).mockImplementation(() => {
-        throw new Error("Command failed");
+    it("should return 'main' if no git dir found", () => {
+      vi.mocked(fsSync.existsSync).mockReturnValue(false);
+      expect(getDefaultRemoteBranch("/some/path")).toBe("main");
+    });
+
+    it("should find ref in packed-refs", () => {
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) =>
+          p === "/repo/root/.git" || p === path.join(gitDir, "packed-refs"),
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
+      vi.mocked(fsSync.readFileSync).mockImplementation((p) => {
+        if (p === path.join(gitDir, "packed-refs"))
+          return "abc123 refs/remotes/origin/main\n";
+        throw new Error("Not found");
+      });
+      expect(getDefaultRemoteBranch("/repo/root")).toBe("origin/main");
+    });
+
+    it("should skip comments and peeled lines in packed-refs", () => {
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) =>
+          p === "/repo/root/.git" || p === path.join(gitDir, "packed-refs"),
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
+      vi.mocked(fsSync.readFileSync).mockImplementation((p) => {
+        if (p === path.join(gitDir, "packed-refs"))
+          return "# pack-refs\n^def456\nabc123 refs/remotes/origin/main\n";
+        throw new Error("Not found");
       });
       expect(getDefaultRemoteBranch("/repo/root")).toBe("origin/main");
     });

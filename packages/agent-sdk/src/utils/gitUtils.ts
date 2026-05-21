@@ -82,79 +82,144 @@ export function getGitMainRepoRoot(cwd: string): string {
 }
 
 /**
- * Get the default remote branch (e.g., origin/main)
+ * Resolve the git directory for a repository by walking up from `cwd`.
+ * Handles both normal repos (.git is a directory) and worktrees
+ * (.git is a file pointing to the main repo's worktree git dir).
+ * For worktrees, reads the `commondir` file to find the common git dir.
+ * @param cwd Working directory to start searching from
+ * @returns Absolute path to the git directory, or null if not found
+ */
+export function resolveGitDir(cwd: string): string | null {
+  let currentPath = path.resolve(cwd);
+  while (currentPath !== path.dirname(currentPath)) {
+    const gitPath = path.join(currentPath, ".git");
+    if (fsSync.existsSync(gitPath)) {
+      const stat = fsSync.statSync(gitPath);
+      if (stat.isDirectory()) {
+        // Normal repo: .git is a directory
+        return gitPath;
+      }
+      // Worktree: .git is a file containing "gitdir: <path>"
+      try {
+        const content = fsSync.readFileSync(gitPath, "utf8").trim();
+        const prefix = "gitdir: ";
+        if (content.startsWith(prefix)) {
+          const worktreeGitDir = content.substring(prefix.length);
+          // Read commondir to find the common git dir
+          const commondirPath = path.join(worktreeGitDir, "commondir");
+          if (fsSync.existsSync(commondirPath)) {
+            const commondirRel = fsSync
+              .readFileSync(commondirPath, "utf8")
+              .trim();
+            return path.resolve(worktreeGitDir, commondirRel);
+          }
+          // Fallback: resolve ../.. from the worktree git dir
+          return path.resolve(worktreeGitDir, "..", "..");
+        }
+      } catch {
+        return null;
+      }
+    }
+    currentPath = path.dirname(currentPath);
+  }
+  return null;
+}
+
+/**
+ * Read a symbolic ref file in the git directory.
+ * If the file content starts with "ref: ", returns the target ref path.
+ * Symbolic refs are never packed in packed-refs, so only loose refs are checked.
+ * @param gitDir Absolute path to the git directory
+ * @param refPath Relative path to the ref file (e.g., "refs/remotes/origin/HEAD")
+ * @returns The symbolic ref target, or null if not a symbolic ref or on error
+ */
+function readSymref(gitDir: string, refPath: string): string | null {
+  try {
+    const fullPath = path.join(gitDir, refPath);
+    const content = fsSync.readFileSync(fullPath, "utf8").trim();
+    if (content.startsWith("ref: ")) {
+      return content.substring("ref: ".length);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if a git ref exists, checking both loose refs and packed-refs.
+ * @param gitDir Absolute path to the git directory
+ * @param refPath Relative path to the ref (e.g., "refs/remotes/origin/main")
+ * @returns True if the ref exists, false otherwise
+ */
+function refExists(gitDir: string, refPath: string): boolean {
+  // 1. Check loose ref
+  const loosePath = path.join(gitDir, refPath);
+  if (fsSync.existsSync(loosePath)) {
+    return true;
+  }
+  // 2. Check packed-refs
+  try {
+    const packedRefsPath = path.join(gitDir, "packed-refs");
+    const content = fsSync.readFileSync(packedRefsPath, "utf8");
+    for (const line of content.split("\n")) {
+      // Skip comments and peeled lines
+      if (line.startsWith("#") || line.startsWith("^")) {
+        continue;
+      }
+      // Format: <sha> <refPath>
+      const parts = line.split(" ");
+      if (parts.length >= 2 && parts[1] === refPath) {
+        return true;
+      }
+    }
+  } catch {
+    // packed-refs doesn't exist or can't be read
+  }
+  return false;
+}
+
+/**
+ * Get the default remote branch (e.g., origin/main) using filesystem reads.
+ * No subprocess calls — matches Claude Code's approach.
+ *
+ * Priority:
+ * 1. Read refs/remotes/origin/HEAD symref → extract branch name (verify it exists)
+ * 2. Check if refs/remotes/origin/main ref exists
+ * 3. Check if refs/remotes/origin/master ref exists
+ * 4. Hardcoded "main" fallback
+ *
  * @param cwd Working directory
  * @returns Default remote branch name
  */
 export function getDefaultRemoteBranch(cwd: string): string {
-  // 1. Try git symbolic-ref refs/remotes/origin/HEAD
-  try {
-    const head = execSync("git symbolic-ref refs/remotes/origin/HEAD", {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    const branch = head.replace("refs/remotes/", "");
+  const gitDir = resolveGitDir(cwd);
+  if (!gitDir) {
+    return "main";
+  }
+
+  // 1. Try reading origin/HEAD symref
+  const symref = readSymref(gitDir, "refs/remotes/origin/HEAD");
+  if (symref) {
+    const branch = symref.replace("refs/remotes/", "");
     // Verify the resolved branch actually exists (origin/HEAD can be stale)
-    try {
-      execSync(`git rev-parse --verify ${branch}`, {
-        cwd,
-        stdio: "ignore",
-      });
+    if (refExists(gitDir, symref)) {
       return branch;
-    } catch {
-      // Stale ref, continue to next step
     }
-  } catch {
-    // Ignore error and proceed to next step
   }
 
   // 2. Check if origin/main exists
-  try {
-    execSync("git rev-parse --verify origin/main", {
-      cwd,
-      stdio: "ignore",
-    });
+  if (refExists(gitDir, "refs/remotes/origin/main")) {
     return "origin/main";
-  } catch {
-    // Ignore error and proceed to next step
   }
 
   // 3. Check if origin/master exists
-  try {
-    execSync("git rev-parse --verify origin/master", {
-      cwd,
-      stdio: "ignore",
-    });
+  if (refExists(gitDir, "refs/remotes/origin/master")) {
     return "origin/master";
-  } catch {
-    // Ignore error and proceed to next step
   }
 
-  // 4. Try to get the current branch's upstream
-  try {
-    return execSync("git rev-parse --abbrev-ref --symbolic-full-name @{u}", {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    // Ignore error and proceed to next step
-  }
-
-  // 5. Try to get the current branch name
-  try {
-    return execSync("git rev-parse --abbrev-ref HEAD", {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    // Ignore error and proceed to next step
-  }
-
-  // 6. Fallback to origin/main
-  return "origin/main";
+  // 4. Hardcoded fallback
+  return "main";
 }
 
 /**

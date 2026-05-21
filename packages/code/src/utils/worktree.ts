@@ -88,6 +88,56 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
         );
       }
     }
+    if (
+      stderr.includes("not a valid object name") ||
+      stderr.includes("unknown revision")
+    ) {
+      // Base branch not fetched yet — try fetching then retrying
+      const branchNameOnly = baseBranch.split("/").pop()!;
+      try {
+        execSync(`git fetch origin ${branchNameOnly}`, {
+          cwd: repoRoot,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        execSync(
+          `git worktree add -b ${branchName} "${worktreePath}" ${baseBranch}`,
+          {
+            cwd: repoRoot,
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+        return {
+          name,
+          path: worktreePath,
+          branch: branchName,
+          repoRoot,
+          hasUncommittedChanges: false,
+          hasNewCommits: false,
+          isNew: true,
+        };
+      } catch {
+        // Fetch or retry failed — fall back to HEAD
+        try {
+          execSync(`git worktree add -b ${branchName} "${worktreePath}" HEAD`, {
+            cwd: repoRoot,
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          return {
+            name,
+            path: worktreePath,
+            branch: branchName,
+            repoRoot,
+            hasUncommittedChanges: false,
+            hasNewCommits: false,
+            isNew: true,
+          };
+        } catch {
+          throw new Error(
+            `Failed to create worktree: ${(error as Error).message}\n${stderr}`,
+          );
+        }
+      }
+    }
     throw new Error(
       `Failed to create worktree: ${(error as Error).message}\n${stderr}`,
     );
