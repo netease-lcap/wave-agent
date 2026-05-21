@@ -94,7 +94,17 @@ export function getDefaultRemoteBranch(cwd: string): string {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
-    return head.replace("refs/remotes/", "");
+    const branch = head.replace("refs/remotes/", "");
+    // Verify the resolved branch actually exists (origin/HEAD can be stale)
+    try {
+      execSync(`git rev-parse --verify ${branch}`, {
+        cwd,
+        stdio: "ignore",
+      });
+      return branch;
+    } catch {
+      // Stale ref, continue to next step
+    }
   } catch {
     // Ignore error and proceed to next step
   }

@@ -86,6 +86,27 @@ describe("gitUtils", () => {
             typeof execSync
           >;
         }
+        if (cmd === "git rev-parse --verify origin/main") {
+          return "" as unknown as ReturnType<typeof execSync>;
+        }
+        throw new Error("Command failed");
+      });
+      expect(getDefaultRemoteBranch("/repo/root")).toBe("origin/main");
+    });
+
+    it("should skip stale origin/HEAD and fallback if resolved branch does not exist (Step 1 stale)", () => {
+      vi.mocked(execSync).mockImplementation((cmd) => {
+        if (cmd === "git symbolic-ref refs/remotes/origin/HEAD") {
+          return "refs/remotes/origin/master\n" as unknown as ReturnType<
+            typeof execSync
+          >;
+        }
+        if (cmd === "git rev-parse --verify origin/master") {
+          throw new Error("Command failed");
+        }
+        if (cmd === "git rev-parse --verify origin/main") {
+          return "" as unknown as ReturnType<typeof execSync>;
+        }
         throw new Error("Command failed");
       });
       expect(getDefaultRemoteBranch("/repo/root")).toBe("origin/main");
