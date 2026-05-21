@@ -1,10 +1,10 @@
 # Implementation Plan: SSO Authentication
 
-**Branch**: `076-sso-auth` | **Status**: Implemented | **Date**: 2026-05-12 | **Spec**: [spec.md](./spec.md)
+**Branch**: `076-sso-auth` | **Status**: Implemented (incl. token expiration & refresh) | **Date**: 2026-05-12 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
-Add `/login` and `/logout` slash commands for SSO authentication via Wave AI. AuthService handles browser-based SSO flow with localhost callback (receives authorization code, exchanges for JWT via `POST /api/auth/exchange`), falls back to manual code input for remote servers. Gateway configuration prioritizes SSO mode when `~/.wave/auth.json` contains `SSO_TOKEN`, routing all LLM API requests through Wave AI's `/api/v1` proxy.
+Add `/login` and `/logout` slash commands for SSO authentication via Wave AI. AuthService handles browser-based SSO flow with localhost callback (receives authorization code, exchanges for JWT via `POST /api/auth/token` with `grant_type: "authorization_code"`), falls back to manual code input for remote servers. Gateway configuration prioritizes SSO mode when `~/.wave/auth.json` contains `SSO_TOKEN`, routing all LLM API requests through Wave AI's `/api/v1` proxy. Token expiration is handled via proactive refresh (5-min buffer), reactive 401/403 recovery with `createAuthAwareFetch`, and multi-process safety via file mtime detection.
 
 ## Technical Context
 
@@ -34,19 +34,35 @@ User types /login → inputReducer → EXECUTE_COMMAND (local)
   → useInputManager → dispatch SET_SHOW_LOGIN_COMMAND
   → InputBox renders <LoginCommand>
     → User presses Enter → AuthService.login()
-    → Browser opens → SSO flow → callback receives code → POST /api/auth/exchange → JWT saved → UI updates
-    → Remote server fallback: user pastes authorization code from browser URL bar → POST /api/auth/exchange → JWT saved
+    → Browser opens → SSO flow → callback receives code → POST /api/auth/token { grant_type: "authorization_code", code } → JWT + refreshToken saved → UI updates
+    → Remote server fallback: user pastes authorization code from browser URL bar → POST /api/auth/token → JWT + refreshToken saved
+
+Token refresh flow:
+  → Before API call: isTokenExpired() checks 5-min buffer
+  → If expired → checkAndRefreshTokenIfNeeded() (dedup: shares in-flight promise)
+  → POST /api/auth/token { grant_type: "refresh_token", refresh_token }
+  → On 400/401 (revoked): clearAuth() → user must re-login
+  → On network error: preserve existing auth, retry on next request
+
+Reactive 401/403 recovery (createAuthAwareFetch):
+  → Request returns 401/403
+  → tryReadRefreshedTokenFromDisk() → another process may have refreshed
+  → If disk refresh found → retry with new token
+  → Else checkAndRefreshTokenIfNeeded() → force refresh
+  → If refresh succeeds → retry with new token
+  → Else → return original 401/403 response
 ```
 
 ## Files Modified
 
 | File | Action |
 |------|--------|
-| `packages/agent-sdk/src/types/auth.ts` | Create |
-| `packages/agent-sdk/src/services/authService.ts` | Create |
+| `packages/agent-sdk/src/types/auth.ts` | Create (incl. `SSO_REFRESH_TOKEN`, `SSO_TOKEN_EXPIRES_AT`, `TokenResponse`) |
+| `packages/agent-sdk/src/services/authService.ts` | Create (incl. token refresh methods, `createAuthAwareFetch`) |
 | `packages/agent-sdk/src/types/index.ts` | Export auth types |
 | `packages/agent-sdk/src/index.ts` | Export AuthService |
-| `packages/agent-sdk/src/services/configurationService.ts` | Add SSO mode to resolveGatewayConfig |
+| `packages/agent-sdk/src/services/configurationService.ts` | Add SSO mode to resolveGatewayConfig + wrap fetch with `createAuthAwareFetch` |
+| `packages/agent-sdk/src/services/remoteSettingsService.ts` | Wrap fetch with `createAuthAwareFetch` |
 | `packages/code/src/constants/commands.ts` | Add login/logout entries |
 | `packages/code/src/managers/inputReducer.ts` | Add showLoginCommand state + action |
 | `packages/code/src/hooks/useInputManager.ts` | Add login/logout handlers + setter |

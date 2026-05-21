@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
 
-import { authService } from "./authService.js";
+import { authService, createAuthAwareFetch } from "./authService.js";
 import type {
   RemoteSettingsCache,
   RemoteSettingsFetchResult,
@@ -85,7 +85,8 @@ async function fetchRemoteSettings(): Promise<RemoteSettingsFetchResult> {
   }
 
   try {
-    const response = await fetch(`${serverUrl}/api/wave/settings`, {
+    const authFetch = createAuthAwareFetch(globalThis.fetch);
+    const response = await authFetch(`${serverUrl}/api/wave/settings`, {
       method: "GET",
       headers,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),

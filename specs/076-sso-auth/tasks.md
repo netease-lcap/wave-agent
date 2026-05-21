@@ -129,6 +129,7 @@
 - **User Story 2 (Phase 4)**: Depends on Setup (Phase 1) and Configuration (Phase 2). Manual token input.
 - **User Story 3 (Phase 5)**: Depends on Configuration Integration (Phase 2). SSO API routing verification.
 - **Polish (Final Phase)**: Depends on all user stories.
+- **Token Expiration (Phase 7)**: Depends on Setup (Phase 1) and Configuration (Phase 2). Proactive refresh + reactive 401 recovery.
 
 ### Parallel Opportunities
 
@@ -136,4 +137,30 @@
 - T003, T004 (AuthService creation + export)
 - T008, T009, T010, T011 (US1 tests + CLI commands)
 - T015, T016, T017 (US2 tests + AuthService update)
-te)
+
+---
+
+## Phase 7: Token Expiration & Refresh (Issue #1137)
+
+**Purpose**: Proactive token refresh, reactive 401 recovery, multi-process safety
+
+- [x] T028 [US3] Extend `AuthConfig` type with `SSO_REFRESH_TOKEN`, `SSO_TOKEN_EXPIRES_AT` and add `TokenResponse` type in `packages/agent-sdk/src/types/auth.ts`
+- [x] T029 [US3] Add token refresh methods to `AuthService` in `packages/agent-sdk/src/services/authService.ts`:
+  - `isTokenExpired()`, `checkAndRefreshTokenIfNeeded()`, `refreshToken()`, `tryReadRefreshedTokenFromDisk()`
+  - `_refreshPromise` (401 dedup), `_authFileMtime` (multi-process), `REFRESH_BUFFER_MS` (5-min)
+  - Update `exchangeCode()` endpoint to `/api/auth/token` with `grant_type`
+  - Update `login()` to save `SSO_REFRESH_TOKEN`, `SSO_TOKEN_EXPIRES_AT`
+  - Update `isSSOAuthenticated()` to check strict expiry
+  - Update `clearAuth()` to delete new fields
+  - Update `saveAuth()`/`loadAuth()` to track mtime
+- [x] T030 [US3] Create `createAuthAwareFetch()` export in `packages/agent-sdk/src/services/authService.ts`
+- [x] T031 [US3] Integrate auth-aware fetch into `resolveGatewayConfig()` SSO branch in `packages/agent-sdk/src/services/configurationService.ts`
+- [x] T032 [US3] Integrate auth-aware fetch into `fetchRemoteSettings()` in `packages/agent-sdk/src/services/remoteSettingsService.ts`
+- [x] T033 [US3] Update and add tests in `packages/agent-sdk/tests/services/authService.test.ts`:
+  - Update exchange endpoint URL/body assertions
+  - `isTokenExpired`, `checkAndRefreshTokenIfNeeded`, `refreshToken`, `clearAuth` new fields
+  - `createAuthAwareFetch` proactive refresh, 401 recovery, header updates
+  - `isSSOAuthenticated` with expiry
+- [x] T034 [US3] Update `remoteSettingsService.test.ts` authService mock with `createAuthAwareFetch` and `checkAndRefreshTokenIfNeeded`
+
+**Checkpoint**: Tokens refresh automatically before expiry, 401 errors are recovered transparently, multi-process safe.

@@ -21,7 +21,9 @@ vi.mock("../../src/services/authService.js", () => ({
     isSSOAuthenticated: vi.fn(),
     getSSOToken: vi.fn(),
     getServerUrl: vi.fn(),
+    checkAndRefreshTokenIfNeeded: vi.fn().mockResolvedValue(true),
   },
+  createAuthAwareFetch: vi.fn((innerFetch: typeof fetch) => innerFetch),
 }));
 
 vi.mock("../../src/utils/globalLogger.js", () => ({

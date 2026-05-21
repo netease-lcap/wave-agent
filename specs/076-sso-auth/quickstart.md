@@ -89,7 +89,7 @@ SSO_company_sso_CLIENT_SECRET=xxx
 ```
 
 ### Token expired after 8 hours
-Wave AI JWT defaults to 8-hour expiry. Re-run `/login` to get a fresh authorization code and exchange for a new token.
+Wave AI JWT defaults to 8-hour expiry. The system automatically refreshes tokens 5 minutes before expiry using the stored refresh token. If the refresh token is revoked, you'll need to re-run `/login`.
 
 ### "Connection refused" on browser redirect
 Expected on remote servers. Copy the authorization code from the browser URL bar and paste into the terminal.
