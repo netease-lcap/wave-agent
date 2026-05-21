@@ -24,6 +24,16 @@ This directory contains feature specifications that serve as the source of truth
 5. Break down into tasks (`tasks.md`)
 6. Implement against the spec
 
+## Stats
+
+| Metric | Count |
+|--------|-------|
+| Specs | 53 |
+| User Stories | 216 |
+| Functional Requirements | 792 |
+| Test Files | 298 |
+| Test Cases | 3,784 |
+
 ## Specs
 
 | Feature | Description | Links |
