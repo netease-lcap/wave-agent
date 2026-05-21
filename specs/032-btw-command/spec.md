@@ -1,38 +1,62 @@
-# BTW Command Spec
+# Feature Specification: BTW Command
 
-The `/btw <question>` command allows users to ask side questions to the AI without using tools. The answer is displayed in a special component at the bottom of the chat interface, and the main input box is disabled while the side question is active. A key feature of this command is that it bypasses the main message queue, allowing it to be processed immediately even if the AI is busy with another task.
+**Feature Branch**: `032-btw-command`
+**Created**: 2026-04-15
+**Input**: "Allow users to ask side questions via /btw without triggering tools, processed immediately even while the AI is busy."
 
-## Goals
+## User Scenarios & Testing *(mandatory)*
 
-- Provide a way to ask quick questions without triggering tool executions.
-- Keep the side question context separate from the main conversation flow.
-- Allow users to dismiss the side question view easily.
-- Ensure side questions are processed immediately, bypassing the main message queue.
-- Prevent side questions from being added to the main chat history or user input history.
+### User Story 1 - Ask a side question (Priority: P1)
 
-## User Experience
+As a CLI user, I want to type `/btw <question>` to ask a quick side question so I can get an answer without triggering tool executions or interrupting the main conversation.
 
-1. User types `/btw <question>` and presses Enter, or just types `/btw` and presses Enter to enter "BTW mode".
-2. The main input box shows a cyan border and "Type your side question..." placeholder in cyan if empty. A cursor is displayed before the placeholder.
-3. The status line shows `Mode: BTW (ESC to dismiss)` where "BTW" is in cyan.
-4. A `BtwDisplay` component appears above the task list and loading indicator.
-5. The `BtwDisplay` shows a status dot (yellow when loading, green when finished) followed by the question as `/btw <question>` in italic gray.
-6. Once the AI responds, the answer is displayed in the `BtwDisplay`.
-7. The user can press **ESC** to dismiss the `BtwDisplay` and return to the main conversation mode.
+**Acceptance Scenarios**:
 
-## Implementation Details
+1. **Given** the user is in the main conversation mode, **When** the user types `/btw <question>` and presses Enter, **Then** a `BtwDisplay` component appears showing the question and a loading indicator, and the AI responds without calling any tools.
+2. **Given** the AI is currently processing another task, **When** the user types `/btw <question>`, **Then** the side question bypasses the main message queue and is processed immediately.
+3. **Given** the AI has responded to the side question, **When** the user presses **ESC**, **Then** the `BtwDisplay` is dismissed and the user returns to the main conversation mode.
 
-### Agent SDK
+---
 
-- **`AiService`**: Added `btw` method that uses a specialized system prompt (`BTW_SYSTEM_PROMPT`) to prevent tool calling.
-- **`Agent`**: Added `askBtw` method to call the AI service.
+### User Story 2 - Enter BTW mode interactively (Priority: P2)
 
-### Code Package
+As a CLI user, I want to type `/btw` without a question to enter BTW mode so I can type my side question in a dedicated input state.
 
-- **`inputReducer`**: Added `btwState` to track `isActive`, `question`, `answer`, and `isLoading`.
-- **`inputHandlers`**: Intercepts `/btw` command and handles the **ESC** key to dismiss the side question.
-- **`useInputManager`**: Manages the lifecycle of the side question and calls the `onAskBtw` callback.
-- **`useChat`**: Provides the `askBtw` implementation and manages the `btwState` in the chat context.
-- **`BtwDisplay`**: A compact Ink component to render the side question and answer. It displays the question as `/btw <question>` in italic gray.
-- **`InputBox`**: Updated to show a cyan border and a cursor before the placeholder text when `btwState.isActive` is true.
-- **`StatusLine`**: Updated to prioritize displaying `Mode: BTW (ESC to dismiss)` when `btwState.isActive` is true.
+**Acceptance Scenarios**:
+
+1. **Given** the user is in the main conversation mode, **When** the user types `/btw` and presses Enter, **Then** the input box enters BTW mode with a cyan border and "Type your side question..." placeholder.
+2. **Given** the input is in BTW mode, **When** the user types a question and presses Enter, **Then** the side question is submitted and the `BtwDisplay` appears.
+3. **Given** the input is in BTW mode, **When** the user presses **ESC**, **Then** BTW mode is dismissed without submitting a question.
+
+---
+
+### User Story 3 - Visual feedback during BTW (Priority: P2)
+
+As a CLI user, I want clear visual indicators when a side question is active so I can distinguish it from the main conversation.
+
+**Acceptance Scenarios**:
+
+1. **Given** a side question is loading, **Then** the `BtwDisplay` shows a yellow status dot and the status line shows `Mode: BTW (ESC to dismiss)`.
+2. **Given** a side question has been answered, **Then** the `BtwDisplay` shows a green status dot and the answer content.
+
+---
+
+### Edge Cases
+
+- **What happens if the user asks a `/btw` question that would normally trigger a tool?** The specialized `BTW_SYSTEM_PROMPT` prevents tool calling; the AI answers using only its knowledge.
+- **Side questions are NOT added to the main chat history or user input history.**
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: The SDK MUST provide an `AiService.btw()` method that calls the AI with a specialized system prompt preventing tool use.
+- **FR-002**: The `Agent` class MUST expose an `askBtw()` method that delegates to `AiService.btw()`.
+- **FR-003**: The `/btw` command MUST bypass the main message queue and be processed immediately.
+- **FR-004**: Side questions and answers MUST NOT be added to the main chat history or user input history.
+- **FR-005**: The CLI MUST render a `BtwDisplay` component showing the question with a status dot (yellow while loading, green when done).
+- **FR-006**: When BTW mode is active, the input box MUST display a cyan border and "Type your side question..." placeholder.
+- **FR-007**: The status line MUST display `Mode: BTW (ESC to dismiss)` when a side question is active.
+- **FR-008**: Pressing **ESC** MUST dismiss the `BtwDisplay` or exit BTW input mode.
+- **FR-009**: The `inputReducer` MUST track `btwState` with `isActive`, `question`, `answer`, and `isLoading` fields.
+- **FR-010**: The `inputHandlers` MUST intercept `/btw` commands and the **ESC** key for BTW state management.

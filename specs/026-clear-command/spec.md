@@ -1,31 +1,44 @@
-# Spec: Clear Command in SDK
+# Feature Specification: Clear Command
 
-## Overview
-The `clear` command is a core feature that resets the conversation history and session. It is implemented as a built-in slash command in the `SlashCommandManager` within `packages/agent-sdk`.
+**Feature Branch**: `026-clear-command`
+**Created**: 2026-04-01
+**Input**: "Provide a built-in /clear slash command that resets conversation history and session state."
 
-## Goals
-- Provide a consistent way to clear messages and sync the task list via the SDK.
-- Ensure the CLI can react to session resets (e.g., by clearing the terminal).
-- Make the `clear` command available to all consumers of the SDK.
-- Ensure programmatic calls to `clearMessages()` have the same effect as typing `/clear`.
+## User Scenarios & Testing *(mandatory)*
 
-## Architecture
-The `clear` command is registered as a built-in slash command in the SDK. When executed, it performs the following actions:
-1. Aborts any ongoing AI message processing.
-2. Clears the conversation history and generates a new session ID.
-3. Synchronizes the task list with the new session ID.
+### User Story 1 - Clear conversation via slash command (Priority: P1)
 
-The CLI (packages/code) reacts to the `sessionId` change by clearing the terminal screen and remounting the chat interface.
+As a CLI user, I want to type `/clear` to reset my conversation history so I can start a fresh session without restarting the application.
 
-## Components
+**Acceptance Scenarios**:
 
-### SDK (agent-sdk)
-- **SlashCommandManager**: Registers the `clear` command and handles its execution.
-- **Agent**: Provides an async `clearMessages()` method that delegates to the `clear` slash command.
+1. **Given** an active conversation with messages, **When** the user types `/clear`, **Then** the conversation history is cleared, a new session ID is generated, and the terminal screen is cleared.
+2. **Given** an ongoing AI response is being processed, **When** the user types `/clear`, **Then** the ongoing AI processing is aborted before the conversation is cleared.
+3. **Given** the task list has items from the current session, **When** `/clear` is executed, **Then** the task list is synchronized with the new session ID.
 
-### CLI (code)
-- **App Component**: Reacts to `sessionId` changes to clear the terminal.
+---
 
-## User Experience
-- Typing `/clear` in the CLI resets the conversation and clears the screen.
-- Programmatic calls to `agent.clearMessages()` in the SDK perform the same reset.
+### User Story 2 - Programmatic clear via SDK (Priority: P1)
+
+As an SDK consumer, I want to call `agent.clearMessages()` to reset the conversation so my application can programmatically start a new session.
+
+**Acceptance Scenarios**:
+
+1. **Given** an active agent session with messages, **When** `agent.clearMessages()` is called, **Then** the conversation history is cleared and a new session ID is generated, producing the same effect as typing `/clear`.
+
+---
+
+### Edge Cases
+
+- **What happens if `/clear` is called while no conversation exists?** A new session ID is generated anyway; no error is thrown.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: The SDK MUST register a `clear` built-in slash command in the `SlashCommandManager`.
+- **FR-002**: Executing `/clear` MUST abort any ongoing AI message processing.
+- **FR-003**: Executing `/clear` MUST clear the conversation history and generate a new session ID.
+- **FR-004**: Executing `/clear` MUST synchronize the task list with the new session ID.
+- **FR-005**: The `Agent` class MUST expose an async `clearMessages()` method that delegates to the `clear` slash command.
+- **FR-006**: The CLI MUST react to session ID changes by clearing the terminal screen and remounting the chat interface.
