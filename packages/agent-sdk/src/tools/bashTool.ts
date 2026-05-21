@@ -142,7 +142,7 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
 
 # CWD management
-Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it. When you use \`cd\`, the shell working directory will be reset to the original working directory after the command completes.`,
+The working directory persists between commands. Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -458,7 +458,7 @@ Try to maintain your current working directory throughout the session by using a
           }
 
           // If CWD changed, call the onCwdChange callback and add notification
-          let cwdChangedNotification = "";
+          let cwdResetMessage: string | undefined;
           if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
             const isInSafeZone =
               context.permissionManager?.isPathInSafeZone?.(newCwd) ?? true;
@@ -467,7 +467,7 @@ Try to maintain your current working directory throughout the session by using a
               context.onCwdChange(newCwd);
             } else if (context.originalWorkdir) {
               context.onCwdChange(context.originalWorkdir);
-              cwdChangedNotification = `Shell cwd was reset to ${context.originalWorkdir}\n`;
+              cwdResetMessage = `Shell cwd was reset to ${context.originalWorkdir}`;
             } else {
               context.onCwdChange(newCwd);
             }
@@ -477,9 +477,9 @@ Try to maintain your current working directory throughout the session by using a
           const combinedOutput =
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 
-          // Handle large output by truncation and persistence if needed
+          // Prepend CWD reset message to output if present (like Claude Code's stderr approach)
           const finalOutput =
-            cwdChangedNotification +
+            (cwdResetMessage ? cwdResetMessage + "\n" : "") +
             (combinedOutput || `Command executed with exit code: ${exitCode}`);
           const content = processOutput(finalOutput);
 
