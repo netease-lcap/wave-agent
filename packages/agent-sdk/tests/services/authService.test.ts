@@ -12,6 +12,7 @@ import {
   chmodSync,
   rmSync,
   mkdirSync,
+  statSync,
 } from "fs";
 import * as os from "os";
 
@@ -77,6 +78,7 @@ const mockedWriteFile = vi.mocked(writeFileSync);
 const mockedChmod = vi.mocked(chmodSync);
 const mockedRm = vi.mocked(rmSync);
 const mockedMkdir = vi.mocked(mkdirSync);
+const mockedStat = vi.mocked(statSync);
 
 function resetServiceInstance() {
   (AuthService as unknown as { instance: AuthService }).instance =
@@ -86,6 +88,7 @@ function resetServiceInstance() {
 // Import after mocks are set up
 import {
   AuthService,
+  createAuthAwareFetch,
   getOrCreateAnonymousId,
   __resetAnonymousIdForTesting,
 } from "../../src/services/authService.js";
@@ -164,12 +167,37 @@ describe("AuthService", () => {
     it("deletes file when SSO_TOKEN is the only key", () => {
       mockedExists.mockReturnValue(true);
       mockedReadFile.mockReturnValue(
-        JSON.stringify({ SSO_TOKEN: "old-token" }),
+        JSON.stringify({
+          SSO_TOKEN: "old-token",
+          SSO_REFRESH_TOKEN: "old-refresh",
+          SSO_TOKEN_EXPIRES_AT: 1234567890,
+        }),
       );
       const service = AuthService.getInstance();
       service.clearAuth();
 
       expect(mockedRm).toHaveBeenCalledWith("/tmp/.wave/auth.json");
+    });
+
+    it("removes SSO_REFRESH_TOKEN and SSO_TOKEN_EXPIRES_AT along with SSO_TOKEN", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "token",
+          SSO_REFRESH_TOKEN: "refresh-token",
+          SSO_TOKEN_EXPIRES_AT: 1234567890,
+          OTHER_KEY: "value",
+        }),
+      );
+      const service = AuthService.getInstance();
+      service.clearAuth();
+
+      expect(mockedWriteFile).toHaveBeenCalledWith(
+        "/tmp/.wave/auth.json",
+        JSON.stringify({ OTHER_KEY: "value" }, null, 2),
+        "utf-8",
+      );
+      expect(mockedRm).not.toHaveBeenCalled();
     });
 
     it("saves remaining config when other keys exist", () => {
@@ -225,6 +253,30 @@ describe("AuthService", () => {
       mockedExists.mockReturnValue(false);
       const service = AuthService.getInstance();
       expect(service.isSSOAuthenticated()).toBe(false);
+    });
+
+    it("returns false when token is expired (past SSO_TOKEN_EXPIRES_AT)", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() - 1000,
+        }),
+      );
+      const service = AuthService.getInstance();
+      expect(service.isSSOAuthenticated()).toBe(false);
+    });
+
+    it("returns true when token exists with future expiry", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 60000,
+        }),
+      );
+      const service = AuthService.getInstance();
+      expect(service.isSSOAuthenticated()).toBe(true);
     });
   });
 
@@ -339,7 +391,7 @@ describe("AuthService", () => {
       await service.login({ serverUrl: "https://option.example.com" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://option.example.com/api/auth/exchange",
+        "https://option.example.com/api/auth/token",
         expect.any(Object),
       );
     });
@@ -359,7 +411,7 @@ describe("AuthService", () => {
       await service.login({ serverUrl: "https://login-option.example.com" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://login-option.example.com/api/auth/exchange",
+        "https://login-option.example.com/api/auth/token",
         expect.any(Object),
       );
     });
@@ -379,7 +431,7 @@ describe("AuthService", () => {
       await service.login({ serverUrl: "https://option.example.com" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://option.example.com/api/auth/exchange",
+        "https://option.example.com/api/auth/token",
         expect.any(Object),
       );
     });
@@ -399,7 +451,7 @@ describe("AuthService", () => {
       await service.login();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://set.example.com/api/auth/exchange",
+        "https://set.example.com/api/auth/token",
         expect.any(Object),
       );
     });
@@ -421,7 +473,7 @@ describe("AuthService", () => {
 
       expect(token).toBe("jwt-no-env");
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://no-env.example.com/api/auth/exchange",
+        "https://no-env.example.com/api/auth/token",
         expect.any(Object),
       );
     });
@@ -462,11 +514,14 @@ describe("AuthService", () => {
       expect(authUrl).toContain("/login?callback_url=");
       // Verify exchange endpoint was called with the code
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://ai.example.com/api/auth/exchange",
+        "https://ai.example.com/api/auth/token",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: "callback-auth-code" }),
+          body: JSON.stringify({
+            grant_type: "authorization_code",
+            code: "callback-auth-code",
+          }),
         },
       );
       expect(mockedWriteFile).toHaveBeenCalled();
@@ -544,11 +599,14 @@ describe("AuthService", () => {
 
       expect(token).toBe("manual-exchanged-jwt");
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://ai.example.com/api/auth/exchange",
+        "https://ai.example.com/api/auth/token",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: "manual-code-123" }),
+          body: JSON.stringify({
+            grant_type: "authorization_code",
+            code: "manual-code-123",
+          }),
         },
       );
     });
@@ -727,6 +785,406 @@ describe("AuthService", () => {
 
       const id = getOrCreateAnonymousId();
       expect(id).toHaveLength(64);
+    });
+  });
+
+  describe("isTokenExpired", () => {
+    it("returns false when no SSO_TOKEN_EXPIRES_AT (backward compat)", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(JSON.stringify({ SSO_TOKEN: "token" }));
+      const service = AuthService.getInstance();
+      expect(service.isTokenExpired()).toBe(false);
+    });
+
+    it("returns false when expiry is in the future", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 60 * 60 * 1000,
+        }),
+      );
+      const service = AuthService.getInstance();
+      expect(service.isTokenExpired()).toBe(false);
+    });
+
+    it("returns true when expiry is in the past", () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() - 1000,
+        }),
+      );
+      const service = AuthService.getInstance();
+      expect(service.isTokenExpired()).toBe(true);
+    });
+
+    it("returns true when within 5-minute buffer", () => {
+      mockedExists.mockReturnValue(true);
+      // 3 minutes from now — within 5-min buffer
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 3 * 60 * 1000,
+        }),
+      );
+      const service = AuthService.getInstance();
+      expect(service.isTokenExpired()).toBe(true);
+    });
+  });
+
+  describe("checkAndRefreshTokenIfNeeded", () => {
+    const mockFetch = vi.fn();
+
+    beforeEach(() => {
+      vi.stubGlobal("fetch", mockFetch);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("returns true when token is fresh (no refresh needed)", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 60 * 60 * 1000,
+        }),
+      );
+      const service = AuthService.getInstance();
+      const result = await service.checkAndRefreshTokenIfNeeded();
+      expect(result).toBe(true);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("returns true when no expiry info (backward compat)", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(JSON.stringify({ SSO_TOKEN: "token" }));
+      const service = AuthService.getInstance();
+      const result = await service.checkAndRefreshTokenIfNeeded();
+      expect(result).toBe(true);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("triggers refresh when token is within buffer", async () => {
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "old-token",
+          SSO_REFRESH_TOKEN: "refresh-token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 3 * 60 * 1000,
+        }),
+      );
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "new-token",
+          refreshToken: "new-refresh",
+          expiresIn: 3600,
+          user: { id: "u1", email: "u@example.com" },
+        }),
+      });
+
+      const service = AuthService.getInstance();
+      const result = await service.checkAndRefreshTokenIfNeeded();
+      expect(result).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://ai.example.com/api/auth/token",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            grant_type: "refresh_token",
+            refresh_token: "refresh-token",
+          }),
+        }),
+      );
+      delete process.env.WAVE_SERVER_URL;
+    });
+
+    it("returns false when no refresh token available", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "old-token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() - 1000,
+        }),
+      );
+      const service = AuthService.getInstance();
+      const result = await service.checkAndRefreshTokenIfNeeded();
+      expect(result).toBe(false);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("deduplicates concurrent calls", async () => {
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "old-token",
+          SSO_REFRESH_TOKEN: "refresh-token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 3 * 60 * 1000,
+        }),
+      );
+      let resolveRefresh: (value: unknown) => void;
+      const refreshPromise = new Promise((resolve) => {
+        resolveRefresh = resolve;
+      });
+      mockFetch.mockReturnValueOnce(refreshPromise);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "new-token",
+          expiresIn: 3600,
+          user: { id: "u1" },
+        }),
+      });
+
+      const service = AuthService.getInstance();
+      const p1 = service.checkAndRefreshTokenIfNeeded();
+      const p2 = service.checkAndRefreshTokenIfNeeded();
+
+      // Both should share the same refresh call
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      resolveRefresh!({
+        ok: true,
+        json: async () => ({
+          token: "new-token",
+          expiresIn: 3600,
+          user: { id: "u1" },
+        }),
+      });
+
+      const [r1, r2] = await Promise.all([p1, p2]);
+      expect(r1).toBe(true);
+      expect(r2).toBe(true);
+      delete process.env.WAVE_SERVER_URL;
+    });
+  });
+
+  describe("refreshToken", () => {
+    const mockFetch = vi.fn();
+
+    beforeEach(() => {
+      vi.stubGlobal("fetch", mockFetch);
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      delete process.env.WAVE_SERVER_URL;
+    });
+
+    it("saves new token fields on success", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "old-token",
+          SSO_REFRESH_TOKEN: "old-refresh",
+          SSO_TOKEN_EXPIRES_AT: Date.now() - 1000,
+        }),
+      );
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "new-token",
+          refreshToken: "new-refresh",
+          expiresIn: 3600,
+          user: { id: "u1", email: "u@example.com" },
+        }),
+      });
+
+      // Use checkAndRefreshTokenIfNeeded to trigger refreshToken (it's private)
+      const service = AuthService.getInstance();
+      const result = await service.checkAndRefreshTokenIfNeeded();
+      expect(result).toBe(true);
+
+      // Verify saved data
+      const writeCalls = mockedWriteFile.mock.calls;
+      const lastWrite = writeCalls[writeCalls.length - 1];
+      const saved = JSON.parse(lastWrite[1] as string);
+      expect(saved.SSO_TOKEN).toBe("new-token");
+      expect(saved.SSO_REFRESH_TOKEN).toBe("new-refresh");
+      expect(saved.SSO_TOKEN_EXPIRES_AT).toBeGreaterThan(Date.now());
+    });
+
+    it("clears auth on 400 response (refresh token revoked)", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "old-token",
+          SSO_REFRESH_TOKEN: "revoked-refresh",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 3 * 60 * 1000,
+        }),
+      );
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+      });
+
+      const service = AuthService.getInstance();
+      const result = await service.checkAndRefreshTokenIfNeeded();
+      expect(result).toBe(false);
+      // clearAuth should have been called — file deleted or auth cleared
+      expect(mockedRm).toHaveBeenCalled();
+    });
+
+    it("returns false on network error without clearing auth", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "old-token",
+          SSO_REFRESH_TOKEN: "refresh-token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 3 * 60 * 1000,
+        }),
+      );
+      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+      const service = AuthService.getInstance();
+      const result = await service.checkAndRefreshTokenIfNeeded();
+      expect(result).toBe(false);
+      // Should NOT clear auth — network error might be transient
+      expect(mockedRm).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("createAuthAwareFetch", () => {
+    const mockFetch = vi.fn();
+    const mockInnerFetch = vi.fn();
+
+    beforeEach(() => {
+      vi.stubGlobal("fetch", mockFetch);
+      resetServiceInstance();
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("calls checkAndRefreshTokenIfNeeded before request", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "fresh-token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 60 * 60 * 1000,
+        }),
+      );
+      mockInnerFetch.mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+      const authFetch = createAuthAwareFetch(mockInnerFetch);
+      await authFetch("https://api.example.com/test");
+
+      // Token was fresh, no refresh needed, but Authorization header should be set
+      expect(mockInnerFetch).toHaveBeenCalledWith(
+        "https://api.example.com/test",
+        expect.objectContaining({
+          headers: expect.any(Headers),
+        }),
+      );
+      const callHeaders = mockInnerFetch.mock.calls[0][1].headers as Headers;
+      expect(callHeaders.get("Authorization")).toBe("Bearer fresh-token");
+    });
+
+    it("retries on 401 after disk refresh", async () => {
+      mockedExists.mockReturnValue(true);
+      // First loadAuth: token expired, triggers refresh
+      mockedReadFile.mockReturnValueOnce(
+        JSON.stringify({
+          SSO_TOKEN: "expired-token",
+          SSO_REFRESH_TOKEN: "refresh-token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() - 1000,
+        }),
+      );
+      // For tryReadRefreshedTokenFromDisk — stat says file was updated
+      mockedStat.mockReturnValueOnce({
+        mtimeMs: Date.now(),
+      } as unknown as Awaited<ReturnType<typeof statSync>>);
+      // After disk read, token is fresh
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "new-from-disk",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 60 * 60 * 1000,
+        }),
+      );
+      // Refresh call succeeds
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "refreshed-token",
+          expiresIn: 3600,
+          user: { id: "u1" },
+        }),
+      });
+
+      mockInnerFetch.mockResolvedValueOnce(
+        new Response("unauthorized", { status: 401 }),
+      );
+      mockInnerFetch.mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+      const authFetch = createAuthAwareFetch(mockInnerFetch);
+      const response = await authFetch("https://api.example.com/test");
+
+      expect(response.status).toBe(200);
+      expect(mockInnerFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("returns original 401 when both disk and force refresh fail", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "expired-token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() - 1000,
+        }),
+      );
+      // No refresh token — refreshToken() returns false
+      mockInnerFetch.mockResolvedValueOnce(
+        new Response("unauthorized", { status: 401 }),
+      );
+
+      const authFetch = createAuthAwareFetch(mockInnerFetch);
+      const response = await authFetch("https://api.example.com/test");
+
+      expect(response.status).toBe(401);
+      expect(mockInnerFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("updates Authorization header with fresh token after refresh", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValueOnce(
+        JSON.stringify({
+          SSO_TOKEN: "old-token",
+          SSO_REFRESH_TOKEN: "refresh-token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 3 * 60 * 1000,
+        }),
+      );
+      // After refresh, loadAuth returns new token
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "refreshed-token",
+          expiresIn: 3600,
+          user: { id: "u1" },
+        }),
+      });
+      mockedReadFile.mockReturnValue(
+        JSON.stringify({
+          SSO_TOKEN: "refreshed-token",
+          SSO_TOKEN_EXPIRES_AT: Date.now() + 60 * 60 * 1000,
+        }),
+      );
+
+      mockInnerFetch.mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+      const authFetch = createAuthAwareFetch(mockInnerFetch);
+      await authFetch("https://api.example.com/test");
+
+      const callHeaders = mockInnerFetch.mock.calls[0][1].headers as Headers;
+      expect(callHeaders.get("Authorization")).toBe("Bearer refreshed-token");
+      delete process.env.WAVE_SERVER_URL;
     });
   });
 });

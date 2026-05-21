@@ -48,6 +48,7 @@ import {
   getRemoteSettingsSync,
   mergeRemoteSettings,
 } from "./remoteSettingsService.js";
+import { createAuthAwareFetch } from "./authService.js";
 
 /**
  * Default ConfigurationService implementation
@@ -423,6 +424,12 @@ export class ConfigurationService {
     const ssoToken = this.readSSOToken();
     const serverUrl = this.options.serverUrl || process.env.WAVE_SERVER_URL;
     if (ssoToken && serverUrl) {
+      const baseFetch = fetch ?? this.options.fetch;
+      const authAwareFetch = baseFetch
+        ? (createAuthAwareFetch(
+            baseFetch as typeof globalThis.fetch,
+          ) as ClientOptions["fetch"])
+        : undefined;
       return {
         apiKey: ssoToken,
         baseURL: `${serverUrl}/api/v1`,
@@ -431,7 +438,7 @@ export class ConfigurationService {
             ? defaultHeaders
             : undefined,
         fetchOptions: fetchOptions ?? this.options.fetchOptions,
-        fetch: fetch ?? this.options.fetch,
+        fetch: authAwareFetch,
       };
     }
 

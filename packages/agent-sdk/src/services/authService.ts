@@ -12,6 +12,7 @@ import {
   chmodSync,
   rmSync,
   mkdirSync,
+  statSync,
 } from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -20,7 +21,7 @@ import { createServer, Server } from "http";
 import { URL } from "url";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { AuthConfig, AuthUser } from "../types/auth.js";
+import type { AuthConfig, AuthUser, TokenResponse } from "../types/auth.js";
 
 /** Persistent anonymous ID for telemetry fallback when SSO is not authenticated. */
 let _anonymousId: string | undefined;
@@ -32,6 +33,9 @@ export class AuthService {
   private _serverUrl: string | undefined;
   private onAuthChangeCallbacks: Array<(event: "login" | "logout") => void> =
     [];
+  private _refreshPromise: Promise<boolean> | null = null;
+  private _authFileMtime: number = 0;
+  private static readonly REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
   static getInstance(): AuthService {
     if (!AuthService.instance) {
@@ -83,6 +87,12 @@ export class AuthService {
     }
     try {
       const content = readFileSync(authPath, "utf-8");
+      // Best-effort mtime tracking for multi-process detection
+      try {
+        this._authFileMtime = statSync(authPath).mtimeMs;
+      } catch {
+        // ignore stat errors
+      }
       return JSON.parse(content) as AuthConfig;
     } catch {
       return {};
@@ -97,11 +107,19 @@ export class AuthService {
     }
     writeFileSync(authPath, JSON.stringify(config, null, 2), "utf-8");
     chmodSync(authPath, 0o600);
+    // Update mtime after write
+    try {
+      this._authFileMtime = statSync(authPath).mtimeMs;
+    } catch {
+      // ignore stat errors
+    }
   }
 
   clearAuth(): void {
     const config = this.loadAuth();
     delete config.SSO_TOKEN;
+    delete config.SSO_REFRESH_TOKEN;
+    delete config.SSO_TOKEN_EXPIRES_AT;
     if (Object.keys(config).length === 0) {
       const authPath = this.getAuthPath();
       if (existsSync(authPath)) {
@@ -145,11 +163,22 @@ export class AuthService {
     });
 
     // Exchange authorization code for JWT (includes user info)
-    const { token, user } = await this.exchangeCode(serverUrl, code);
+    const { token, refreshToken, expiresIn, user } = await this.exchangeCode(
+      serverUrl,
+      code,
+    );
 
     // Save the token and user info (preserve existing keys)
     const existing = this.loadAuth();
-    this.saveAuth({ ...existing, SSO_TOKEN: token, user });
+    this.saveAuth({
+      ...existing,
+      SSO_TOKEN: token,
+      SSO_REFRESH_TOKEN: refreshToken,
+      SSO_TOKEN_EXPIRES_AT: expiresIn
+        ? Date.now() + expiresIn * 1000
+        : undefined,
+      user,
+    });
 
     this.notifyAuthChange("login");
 
@@ -158,17 +187,17 @@ export class AuthService {
 
   /**
    * Exchange a short-lived authorization code for a JWT token.
-   * Returns both the token and user info.
+   * Returns token, optional refresh token, optional expiresIn, and user info.
    */
   private async exchangeCode(
     serverUrl: string,
     code: string,
-  ): Promise<{ token: string; user: AuthUser }> {
-    const exchangeUrl = `${serverUrl}/api/auth/exchange`;
+  ): Promise<TokenResponse> {
+    const exchangeUrl = `${serverUrl}/api/auth/token`;
     const response = await fetch(exchangeUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ grant_type: "authorization_code", code }),
     });
 
     if (!response.ok) {
@@ -176,14 +205,7 @@ export class AuthService {
       throw new Error(`Token exchange failed (${response.status}): ${text}`);
     }
 
-    const data = (await response.json()) as {
-      token: string;
-      user: { id: string; email?: string };
-    };
-    return {
-      token: data.token,
-      user: { id: data.user.id, email: data.user.email },
-    };
+    return (await response.json()) as TokenResponse;
   }
 
   private startLocalAuthServer(
@@ -306,7 +328,115 @@ export class AuthService {
   }
 
   isSSOAuthenticated(): boolean {
-    return this.getSSOToken() !== undefined;
+    const config = this.loadAuth();
+    if (!config.SSO_TOKEN) return false;
+    if (
+      config.SSO_TOKEN_EXPIRES_AT &&
+      Date.now() >= config.SSO_TOKEN_EXPIRES_AT
+    )
+      return false;
+    return true;
+  }
+
+  /**
+   * Check if the current token is expired or within the refresh buffer.
+   * Returns false if no expiry info (backward compat — treated as never-expiring).
+   */
+  isTokenExpired(): boolean {
+    const config = this.loadAuth();
+    if (!config.SSO_TOKEN_EXPIRES_AT) return false;
+    return (
+      Date.now() >= config.SSO_TOKEN_EXPIRES_AT - AuthService.REFRESH_BUFFER_MS
+    );
+  }
+
+  /**
+   * Check if the token needs refresh and refresh it if possible.
+   * Deduplicates concurrent refresh calls (401 dedup).
+   */
+  async checkAndRefreshTokenIfNeeded(): Promise<boolean> {
+    if (!this.isTokenExpired()) return true;
+    // Dedup: if a refresh is already in-flight, reuse the same promise
+    if (this._refreshPromise) return this._refreshPromise;
+    this._refreshPromise = this.refreshToken();
+    try {
+      return await this._refreshPromise;
+    } finally {
+      this._refreshPromise = null;
+    }
+  }
+
+  /**
+   * Refresh the access token using the stored refresh token.
+   * Returns true on success, false on failure.
+   */
+  private async refreshToken(): Promise<boolean> {
+    const config = this.loadAuth();
+    if (!config.SSO_REFRESH_TOKEN) return false;
+
+    const serverUrl = this.getServerUrl();
+    try {
+      const response = await fetch(`${serverUrl}/api/auth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "refresh_token",
+          refresh_token: config.SSO_REFRESH_TOKEN,
+        }),
+      });
+
+      if (response.status === 400 || response.status === 401) {
+        // Refresh token revoked — clear auth
+        this.clearAuth();
+        return false;
+      }
+
+      if (!response.ok) return false;
+
+      const data = (await response.json()) as TokenResponse;
+      this.saveAuth({
+        ...config,
+        SSO_TOKEN: data.token,
+        SSO_REFRESH_TOKEN: data.refreshToken ?? config.SSO_REFRESH_TOKEN,
+        SSO_TOKEN_EXPIRES_AT: data.expiresIn
+          ? Date.now() + data.expiresIn * 1000
+          : undefined,
+        user: data.user
+          ? { id: data.user.id, email: data.user.email }
+          : config.user,
+      });
+      this.notifyAuthChange("login");
+      return true;
+    } catch {
+      // Network error — don't clear auth (might be transient)
+      return false;
+    }
+  }
+
+  /**
+   * Check if another process has refreshed the token on disk.
+   * Returns true if a fresh token was found and loaded.
+   */
+  /** @internal Check if another process has refreshed the token on disk */
+  tryReadRefreshedTokenFromDisk(): boolean {
+    try {
+      const authPath = this.getAuthPath();
+      if (!existsSync(authPath)) return false;
+      const stat = statSync(authPath);
+      if (stat.mtimeMs <= this._authFileMtime) return false;
+      // File was modified by another process — check if token is fresh
+      const config = this.loadAuth();
+      if (
+        config.SSO_TOKEN_EXPIRES_AT &&
+        Date.now() < config.SSO_TOKEN_EXPIRES_AT
+      ) {
+        this._authFileMtime = stat.mtimeMs;
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   }
 
   getAuthUser(): AuthUser | undefined {
@@ -316,6 +446,55 @@ export class AuthService {
 }
 
 export const authService = AuthService.getInstance();
+
+/**
+ * Create a fetch wrapper that handles SSO token refresh transparently.
+ *
+ * 1. Proactive refresh: calls checkAndRefreshTokenIfNeeded() before each request
+ * 2. Updates Authorization header with fresh token
+ * 3. Reactive 401/403 recovery: tries disk refresh then force refresh, retries once
+ */
+export function createAuthAwareFetch(innerFetch: typeof fetch): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    // Proactive refresh
+    await authService.checkAndRefreshTokenIfNeeded();
+
+    // Update Authorization header with fresh token
+    const freshToken = authService.getSSOToken();
+    const headers = new Headers(init?.headers);
+    if (freshToken) {
+      headers.set("Authorization", `Bearer ${freshToken}`);
+    }
+    const modifiedInit = { ...init, headers };
+
+    const response = await innerFetch(input, modifiedInit);
+
+    // Reactive 401/403 recovery (single retry)
+    if (response.status === 401 || response.status === 403) {
+      // Try disk refresh first (another process may have refreshed)
+      if (authService.tryReadRefreshedTokenFromDisk()) {
+        const retryToken = authService.getSSOToken();
+        const retryHeaders = new Headers(init?.headers);
+        if (retryToken) {
+          retryHeaders.set("Authorization", `Bearer ${retryToken}`);
+        }
+        return innerFetch(input, { ...init, headers: retryHeaders });
+      }
+
+      // Try force refresh
+      if (await authService.checkAndRefreshTokenIfNeeded()) {
+        const retryToken = authService.getSSOToken();
+        if (retryToken) {
+          const retryHeaders = new Headers(init?.headers);
+          retryHeaders.set("Authorization", `Bearer ${retryToken}`);
+          return innerFetch(input, { ...init, headers: retryHeaders });
+        }
+      }
+    }
+
+    return response;
+  };
+}
 
 /**
  * Get or create a persistent anonymous ID for telemetry.

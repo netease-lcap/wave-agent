@@ -4,7 +4,7 @@
 
 - [x] **FR-001**: `/login` and `/logout` slash commands available in CLI
 - [x] **FR-002**: Local HTTP server on `127.0.0.1` with random port for SSO callbacks
-- [x] **FR-002a**: Extracts `code` from callback URL and exchanges via `POST /api/auth/exchange`
+- [x] **FR-002a**: Extracts `code` from callback URL and exchanges via `POST /api/auth/token` with `{ grant_type: "authorization_code", code }`
 - [x] **FR-003**: Fetches SSO providers from `WAVE_SERVER_URL/api/auth/sso-providers`
 - [x] **FR-004**: Opens SSO login URL in default browser (`open`/`xdg-open`/`start`)
 - [x] **FR-005**: Accepts manual authorization code input via Ink `useInput` for remote servers, exchanges for JWT
@@ -18,3 +18,12 @@
 - [x] **FR-013**: Escape cancels login flow at any time
 - [x] **FR-014**: `execFile` used for browser opening (prevents command injection)
 - [x] **FR-015**: Removing SSO token restores direct LLM behavior
+- [x] **FR-016**: System proactively refreshes SSO token within 5-min buffer of expiry
+- [x] **FR-017**: System recovers from 401/403 by attempting token refresh and retrying once
+- [x] **FR-018**: System deduplicates concurrent token refresh calls
+- [x] **FR-019**: System detects token refresh by other processes via file mtime
+- [x] **FR-020**: System clears auth on refresh token revocation (400/401), preserves on network errors
+- [x] **FR-021**: Tokens without `SSO_TOKEN_EXPIRES_AT` treated as never-expiring (backward compat)
+- [x] **FR-022**: Code exchange uses `POST /api/auth/token` with `{ grant_type: "authorization_code", code }`
+- [x] **FR-023**: System saves/deletes `SSO_REFRESH_TOKEN` and `SSO_TOKEN_EXPIRES_AT` alongside `SSO_TOKEN`
+- [x] **FR-024**: SSO mode fetch wrapped with `createAuthAwareFetch` for transparent token refresh
