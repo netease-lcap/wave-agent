@@ -5,6 +5,15 @@
 ## Context
 This specification merges and unifies the requirements for local plugin support, expanded plugin capabilities (Skills, LSP, MCP, Hooks, Agents), plugin scope management, and the plugin marketplace ecosystem (including local, GitHub, and builtin marketplace support, as well as the interactive CLI management interface). It provides a single source of truth for how plugins are discovered, installed, and managed within the Wave ecosystem.
 
+## Remote Plugin Fetching
+
+All remote plugin/marketplace fetching uses **`git clone --depth 1`** via `GitService`. There is no direct HTTP file download. The fetch flow:
+
+1. **Marketplace registration** → `git clone` of the marketplace repo (HTTP/HTTPS/SSH) into `~/.wave/plugins/marketplaces/<repo>/`
+2. **Plugin install** → If the plugin entry's `source` in `marketplace.json` is a Git URL (`http://`, `https://`, `git@`, `ssh://`), the individual plugin repo is cloned into a temp directory, then moved to cache. If `source` is a relative path, it is resolved from the marketplace checkout directory.
+3. **Plugin loading** → `PluginLoader` reads `.wave-plugin/plugin.json` and component subdirectories from the cached local copy.
+4. **Plugin activation** → `PluginManager.loadSinglePlugin()` registers commands, skills, hooks, etc. with the respective managers.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Developer creates a local plugin (Priority: P1)
@@ -77,9 +86,9 @@ As a user, I want to add and manage marketplace sources so that I can access plu
 - **FR-011**: System MUST support a `--plugin-dir` flag to load a plugin from a specific directory.
 - **FR-012**: System MUST provide a standalone Ink-based CLI interface triggered by `wave plugin`.
 - **FR-013**: System MUST support three main navigation areas: Discover, Installed, and Marketplaces.
-- **FR-014**: System MUST allow adding marketplaces via GitHub shorthand (`owner/repo`), Git URLs (with fragments for refs), and local filesystem paths.
+- **FR-014**: System MUST allow adding marketplaces via GitHub shorthand (`owner/repo`), Git URLs (with optional `ref` for branch/tag), and local filesystem paths.
 - **FR-015**: System MUST include `wave-plugins-official` (netease-lcap/wave-plugins-official on github) as a default registered marketplace.
-- **FR-016**: System MUST support plugin sources defined as relative paths in `marketplace.json`.
+- **FR-016**: System MUST support plugin sources defined as relative paths or Git URLs in `marketplace.json`.
 - **FR-017**: System MUST cache marketplace manifests locally to avoid redundant network requests.
 - **FR-018**: System MUST support updating marketplaces via `wave plugin marketplace update [name]` or the UI.
 - **FR-019**: System MUST support auto-update for registered marketplaces (enabled by default for builtin).
@@ -87,21 +96,31 @@ As a user, I want to add and manage marketplace sources so that I can access plu
 - **FR-021**: System MUST track and display the last update time for each registered marketplace.
 - **FR-022**: System MUST perform marketplace auto-updates in the background during startup to avoid blocking the CLI.
 - **FR-023**: System MUST implement a file-based locking mechanism to ensure safe concurrent access to plugin registries and cache.
-- **FR-024**: System MUST enforce a timeout (default 120s) for all Git operations to prevent hanging on slow networks or large repositories.
+- **FR-024**: System MUST enforce a timeout (default 120s, configurable via `WAVE_PLUGIN_GIT_TIMEOUT_MS`) for all Git operations to prevent hanging on slow networks or large repositories.
+- **FR-025**: System MUST fetch remote plugins and marketplaces exclusively via `git clone --depth 1` (shallow clone). There is no direct HTTP file download mechanism.
+- **FR-026**: Plugin entries in `marketplace.json` with Git URL sources (`http://`, `https://`, `git@`, `ssh://`) MUST be cloned individually during install, not copied from the marketplace checkout.
+- **FR-027**: `PluginManager.loadPlugins()` MUST load explicitly configured plugins first (from `AgentOptions.plugins`), then load marketplace-installed plugins from `installed_plugins.json`.
+- **FR-028**: `PluginCore` MUST provide a unified high-level API for all plugin and marketplace operations (install, uninstall, enable, disable, update, list, add/remove marketplace, toggle auto-update).
 
 ### Key Entities
-- **Plugin**: A self-contained directory containing metadata and functionality extensions.
-- **Plugin Manifest**: A JSON file (`.wave-plugin/plugin.json`) containing the plugin's identity and metadata.
+- **Plugin**: A self-contained directory containing metadata and functionality extensions. Extends `PluginManifest` with component fields at the top level (no nested `components` wrapper).
+- **Plugin Manifest**: A JSON file (`.wave-plugin/plugin.json`) containing the plugin's identity and metadata (`name`, `description`, `version`, optional `author`).
+- **PluginConfig**: Configuration for loading a plugin. Currently supports `type: "local"` with a `path` field.
 - **Skill**: A model-invoked capability defined by a `SKILL.md` file.
 - **Scope**: A configuration level (user, project, or local) that determines where settings are stored and their precedence.
-- **Marketplace**: A source of plugins. Attributes include name, source URL/path, and a list of available plugins.
-- **Installation**: Represents the state of a plugin on the user's system. Attributes include scope (User/Project/Local) and status (Enabled/Disabled).
+- **Marketplace**: A source of plugins. Attributes include name, source (directory, GitHub, or Git URL), and a list of available plugins.
+- **MarketplaceSource**: A discriminated union type: `{ source: "directory"; path }` | `{ source: "github"; repo; ref? }` | `{ source: "git"; url; ref? }`.
+- **MarketplacePluginEntry**: A plugin listing in `marketplace.json` with `name`, `source` (relative path or Git URL), and `description`.
+- **InstalledPlugin**: Records an installed plugin with `name`, `marketplace`, `version`, `cachePath`, optional `scope`, and optional `projectPath`.
+- **Installation**: Represents the state of a plugin on the user's system. Enabled state is tracked via `enabledPlugins` in settings, not on the `InstalledPlugin` record itself.
 
 ## Assumptions
 - **A-001**: Installed plugins are **DISABLED** by default if they are not explicitly mentioned in any `enabledPlugins` configuration.
 - **A-002**: The `enabledPlugins` setting in `settings.json` takes precedence over the mere presence of the plugin in the cache.
 - **A-003**: Users MUST use the `name@marketplace` format to uniquely identify plugins for scope management.
-- **A-004**: The underlying plugin installation logic is handled by SDK services.
-- **A-005**: "Project scope" installation involves modifying a file typically committed to version control (e.g., `.wave/config.json`).
+- **A-004**: The underlying plugin installation logic is handled by SDK services via `PluginCore` high-level API.
+- **A-005**: "Project scope" installation involves modifying a file typically committed to version control (e.g., `.wave/settings.json`).
 - **A-006**: The system should have `git` installed to use GitHub or Git-based marketplaces.
 - **A-007**: Local marketplaces are stored on the same filesystem as the `wave` installation.
+- **A-008**: All remote fetching uses `git clone` — there is no direct HTTP download of plugin files.
+- **A-009**: GitHub shorthand (`owner/repo`) is resolved to `https://github.com/owner/repo.git` automatically.

@@ -14,8 +14,7 @@ cat <<EOF > my-plugin/.wave-plugin/plugin.json
   "description": "A sample plugin for Wave.",
   "version": "1.0.0",
   "author": {
-    "name": "Your Name",
-    "email": "your.email@example.com"
+    "name": "Your Name"
   }
 }
 EOF
@@ -51,17 +50,23 @@ wave --plugin-dir ./my-plugin
 ```
 
 ## 4. Manage Plugins (CLI)
-Use the `plugin` command to enable, disable, or install plugins.
+Use the `plugin` command to enable, disable, install, or update plugins.
 
 ```bash
+# Install a plugin from a marketplace
+wave plugin install my-plugin@wave-plugins-official
+
 # Enable a plugin
-wave plugin enable my-plugin@local
+wave plugin enable my-plugin@wave-plugins-official --scope project
 
 # Disable a plugin
-wave plugin disable my-plugin@local
+wave plugin disable my-plugin@wave-plugins-official --scope project
 
-# Install a plugin from GitHub
-wave plugin install https://github.com/user/repo.git
+# Update a plugin
+wave plugin update my-plugin@wave-plugins-official
+
+# Uninstall a plugin
+wave plugin uninstall my-plugin@wave-plugins-official
 ```
 
 ## 5. Plugin Structure
@@ -76,7 +81,7 @@ my-plugin/
 ├── skills/              # Optional: Skills
 │   └── SKILL.md
 ├── hooks/               # Optional: Hooks
-│   └── HOOK.md
+│   └── hooks.json
 ├── agents/              # Optional: Agents
 │   └── AGENT.md
 ├── .lsp.json            # Optional: LSP configuration
@@ -113,6 +118,7 @@ In the "Marketplaces" view, you can add, update, or remove marketplace sources.
 1. Select "Add Marketplace".
 2. Enter a source:
    - **GitHub**: `owner/repo` (e.g., `netease-lcap/wave-plugins-official`)
+   - **GitHub with branch**: `owner/repo#branch`
    - **Git**: Full URL (e.g., `https://github.com/owner/repo.git`)
    - **Local**: Path to directory (e.g., `./my-marketplace`)
 
@@ -125,10 +131,23 @@ wave plugin marketplace update [name]
 ## 10. Builtin Marketplace
 The `wave-plugins-official` marketplace is available by default. You can discover and install official plugins immediately after installation.
 
-## 11. CLI Commands for Marketplace
-While the interactive UI is recommended, you can also use CLI commands:
-- `wave plugin install <plugin-name>@<marketplace-name>`
-- `wave plugin marketplace add <source>`
-- `wave plugin marketplace list`
-- `wave plugin marketplace update [name]`
-- `wave plugin marketplace remove <name>`
+## 11. Remote Plugin Fetching
+All remote fetching uses `git clone --depth 1` (shallow clone). There is no direct HTTP file download. Plugin entries in `marketplace.json` can reference:
+- **Relative paths** (e.g., `./plugins/review-plugin`) — copied from marketplace checkout
+- **Git URLs** (e.g., `https://github.com/user/plugin.git`) — cloned individually
+
+## 12. CLI Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `wave plugin` | Open interactive UI |
+| `wave plugin list` | List installed plugins |
+| `wave plugin install <name>@<marketplace>` | Install a plugin |
+| `wave plugin uninstall <name>@<marketplace>` | Uninstall a plugin |
+| `wave plugin update <name>@<marketplace>` | Update a plugin |
+| `wave plugin enable <name>@<marketplace> [--scope]` | Enable a plugin |
+| `wave plugin disable <name>@<marketplace> [--scope]` | Disable a plugin |
+| `wave plugin marketplace add <source> [--scope]` | Add a marketplace |
+| `wave plugin marketplace list` | List marketplaces |
+| `wave plugin marketplace update [name]` | Update marketplace(s) |
+| `wave plugin marketplace remove <name>` | Remove a marketplace |
