@@ -5,73 +5,110 @@ This document defines the entities and data structures for the plugin support sy
 ## Entities
 
 ### 1. Plugin
-Represents a loaded plugin in the system.
+Represents a loaded plugin in the system. Extends `PluginManifest` (fields are flat, no nested `components` wrapper).
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `name` | `string` | Unique identifier, used for namespacing. |
-| `description` | `string` | Brief description of the plugin. |
-| `version` | `string` | Semantic version. |
-| `author` | `object` (Optional) | Information about the plugin author. |
+| `name` | `string` | Inherited from `PluginManifest`. Unique identifier, used for namespacing. |
+| `description` | `string` | Inherited from `PluginManifest`. |
+| `version` | `string` | Inherited from `PluginManifest`. Semantic version. |
+| `author` | `{ name: string }` (Optional) | Inherited from `PluginManifest`. Information about the plugin author. |
 | `path` | `string` | Absolute path to the plugin directory. |
-| `manifest` | `PluginManifest` | The static definition of the plugin. |
-| `components` | `object` | List of components provided by the plugin. |
-| `skills` | `Skill[]` | List of skills provided by the plugin. |
+| `commands` | `CustomSlashCommand[]` | Slash commands provided by the plugin. |
+| `skills` | `Skill[]` | Skills provided by the plugin. |
+| `agents` | `SubagentConfiguration[]` | Subagent definitions provided by the plugin. |
+| `lspConfig` | `LspConfig` (Optional) | LSP server configuration. |
+| `mcpConfig` | `McpConfig` (Optional) | MCP server configuration. |
+| `hooksConfig` | `PartialHookConfiguration` (Optional) | Hook event handlers. |
 
 ### 2. PluginManifest
 The structure of the `.wave-plugin/plugin.json` file.
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `name` | `string` | Required. |
+| `name` | `string` | Required. Lowercase, alphanumeric + hyphens. |
 | `description` | `string` | Required. |
 | `version` | `string` | Required. |
-| `author` | `object` (Optional) | Information about the plugin author. |
+| `author` | `{ name: string }` (Optional) | Information about the plugin author. |
 
-### 3. WaveConfiguration (Updated)
-The existing `WaveConfiguration` interface will be updated to include `enabledPlugins`.
+### 3. PluginConfig
+Configuration for loading a plugin, passed via `AgentOptions.plugins`.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `type` | `"local"` | Currently only local plugins are supported. |
+| `path` | `string` | Filesystem path to the plugin directory. |
+
+### 4. WaveConfiguration (Updated)
+The existing `WaveConfiguration` interface includes plugin-related fields.
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `enabledPlugins` | `Record<string, boolean>` | A mapping of plugin IDs (`name@marketplace`) to their enabled state. |
+| `marketplaces` | `Record<string, MarketplaceConfig>` | Registered marketplaces with their source and settings. |
 
-### 4. Scope
+### 5. MarketplaceConfig
+Configuration for a marketplace entry in `WaveConfiguration`.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `source` | `MarketplaceSource` | The marketplace source (directory, GitHub, or Git). |
+| `autoUpdate` | `boolean` (Optional) | Whether auto-update is enabled. |
+
+### 6. Scope
 | Value | Description |
 | :--- | :--- |
 | `user` | Global configuration in `~/.wave/settings.json`. |
 | `project` | Project-specific configuration in `.wave/settings.json`. |
 | `local` | Local override configuration in `.wave/settings.local.json`. |
 
-### 5. KnownMarketplace (Internal)
-Stored in `~/.wave/plugins/known_marketplaces.json`.
+### 7. MarketplaceSource (Discriminated Union)
+The location of a marketplace. Uses discriminated union for type safety.
 
-| Field | Type | Description |
+| Variant | Fields | Description |
 | :--- | :--- | :--- |
-| `name` | `string` | Unique name of the marketplace. |
-| `source` | `MarketplaceSource` | Union type defining the location (GitHub, Git, or local directory). |
-| `isBuiltin` | `boolean` (Optional) | Flag to indicate if this marketplace is provided by the system. |
-| `autoUpdate` | `boolean` | Whether auto-update is enabled for this marketplace. |
-| `lastUpdated` | `string` | ISO date string of the last successful update. |
+| `directory` | `{ source: "directory"; path: string }` | Local filesystem path. |
+| `github` | `{ source: "github"; repo: string; ref?: string }` | GitHub `owner/repo` shorthand. Optional `ref` for branch/tag. |
+| `git` | `{ source: "git"; url: string; ref?: string }` | Full Git repository URL. Optional `ref` for branch/tag. |
 
-### 6. MarketplaceSource
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `source` | `'directory' \| 'github' \| 'git'` | The type of source. |
-| `path` | `string` (for `directory`) | Absolute path to the marketplace root. |
-| `repo` | `string` (for `github`) | The `owner/repo` string for GitHub marketplaces. |
-| `url` | `string` (for `git`) | Full Git repository URL. |
-
-### 7. MarketplacePluginEntry (External)
+### 8. MarketplacePluginEntry (External)
 Represents a plugin entry within a `marketplace.json` manifest.
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `name` | `string` | Name of the plugin. |
-| `source` | `string` | Relative path to plugin source (e.g., `"./plugins/commit-commands"`). |
+| `source` | `string` | Relative path to plugin source (e.g., `"./plugins/commit-commands"`) **or** a Git URL (`http://`, `https://`, `git@`, `ssh://`). |
 | `description` | `string` | Brief description of the plugin. |
 
-### 8. InstalledPlugin (Internal)
-Stored in `~/.wave/plugins/installed_plugins.json`.
+### 9. MarketplacePluginStatus
+Aggregates a `MarketplacePluginEntry` with installation status for UI display.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `name` | `string` | Inherited from `MarketplacePluginEntry`. |
+| `source` | `string` | Inherited from `MarketplacePluginEntry`. |
+| `description` | `string` | Inherited from `MarketplacePluginEntry`. |
+| `marketplace` | `string` | Name of the marketplace. |
+| `installed` | `boolean` | Whether the plugin is currently installed. |
+| `version` | `string` (Optional) | Installed version. |
+| `cachePath` | `string` (Optional) | Path to cached plugin files. |
+| `projectPath` | `string` (Optional) | Project path for project-scoped installs. |
+| `scope` | `Scope` (Optional) | Installation scope. |
+
+### 10. KnownMarketplace (Internal)
+Stored in `~/.wave/plugins/known_marketplaces.json`.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `name` | `string` | Unique name of the marketplace. |
+| `source` | `MarketplaceSource` | Discriminated union defining the location. |
+| `isBuiltin` | `boolean` (Optional) | Flag to indicate if this marketplace is provided by the system. |
+| `autoUpdate` | `boolean` (Optional) | Whether auto-update is enabled. |
+| `lastUpdated` | `string` (Optional) | ISO date string of the last successful update. |
+| `declaredScope` | `"user" \| "project" \| "local" \| "builtin"` (Optional) | Which scope declared this marketplace. |
+
+### 11. InstalledPlugin (Internal)
+Stored in `~/.wave/plugins/installed_plugins.json`. Enabled state is tracked separately via `enabledPlugins` in settings, not on this record.
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
@@ -79,10 +116,10 @@ Stored in `~/.wave/plugins/installed_plugins.json`.
 | `marketplace` | `string` | Name of the marketplace it was installed from. |
 | `version` | `string` | Version of the plugin at the time of installation. |
 | `cachePath` | `string` | Absolute path to the cached plugin files in `~/.wave/plugins/cache/`. |
-| `scope` | `'user' \| 'project' \| 'local'` | Installation scope. |
-| `isEnabled` | `boolean` | Whether the plugin is enabled in the current scope. |
+| `scope` | `Scope` (Optional) | Installation scope. |
+| `projectPath` | `string` (Optional) | Project path for project-scoped installs. |
 
-### 9. Lock File (Internal)
+### 12. Lock File (Internal)
 Located at `~/.wave/plugins/.lock`.
 
 Used to synchronize access to `known_marketplaces.json` and `installed_plugins.json` across multiple `wave-agent` processes. It is a re-entrant file-based lock.
@@ -98,6 +135,19 @@ interface PluginManagerState {
 }
 ```
 
+## Disk Layout
+```
+~/.wave/plugins/
+├── installed_plugins.json       # InstalledPlugin registry
+├── known_marketplaces.json      # KnownMarketplace registry
+├── .lock                        # File-based lock
+├── cache/                       # Cached plugin files
+│   └── <marketplace>/<plugin>/<version>/
+├── marketplaces/                # Cloned marketplace repos
+│   └── <owner>/<repo>/
+└── tmp/                         # Temporary clone directories
+```
+
 ## Validation Rules
 1. **Manifest Location**: MUST be at `.wave-plugin/plugin.json`.
 2. **Component Location**: All component directories (`commands/`, `skills/`, `hooks/`, `agents/`) and config files (`.lsp.json`, `.mcp.json`) MUST be at the plugin root level.
@@ -106,8 +156,9 @@ interface PluginManagerState {
 5. **Namespacing**: Both slash commands and agent skills provided by plugins MUST be namespaced using the plugin name and a colon (e.g., `plugin-name:component-name`).
 6. **Scope Priority**: `local` > `project` > `user`.
 7. **Marketplace Name**: Must be alphanumeric and unique among added marketplaces.
-8. **Plugin Name**: Must be alphanumeric and unique within a marketplace.
-9. **Source Path**: Must be a valid relative path within the marketplace directory.
+8. **Plugin Name**: Must be lowercase, alphanumeric + hyphens, unique within a marketplace.
+9. **Source Path**: Relative paths must be valid within the marketplace directory. Git URL sources must start with `http://`, `https://`, `git@`, or `ssh://`.
 10. **Version**: Must follow semantic versioning (e.g., `1.0.0`).
 11. **Marketplace Source**: Must be a valid GitHub shorthand (`owner/repo`), a valid Git URL, or an existing local directory path.
 12. **Installation Scope**: Must be one of the three supported scopes.
+13. **Remote Fetching**: All remote fetching uses `git clone --depth 1`; no direct HTTP file download.

@@ -15,6 +15,7 @@ This checklist ensures that the plugin support system and marketplace meet all r
 - [x] `PluginLoader` MUST load LSP, MCP, and Hooks configurations.
 - [x] `PluginManager` MUST store and manage loaded plugins.
 - [x] `PluginManager` MUST orchestrate loading and registration of all component types.
+- [x] `PluginManager.loadPlugins()` MUST load explicit configs first, then marketplace-installed plugins.
 
 ## 3. Plugin Management
 - [x] `--plugin-dir` flag MUST load local plugins.
@@ -22,30 +23,40 @@ This checklist ensures that the plugin support system and marketplace meet all r
 - [x] `plugin disable` command MUST disable a plugin in the specified scope.
 - [x] `plugin install` command MUST support scoped installation and auto-enable.
 - [x] `PluginManager` MUST filter loaded plugins by `enabledPlugins` across all scopes.
+- [x] `PluginCore` MUST provide a unified high-level API for all plugin and marketplace operations.
 
 ## 4. Scope Management
 - [x] `PluginScopeManager` MUST manage plugin installation scopes (`user`, `project`, `local`).
 - [x] `WaveConfiguration` MUST include `enabledPlugins: Record<string, boolean>`.
 - [x] `getMergedEnabledPlugins` MUST merge `enabledPlugins` across all scopes.
 - [x] Scope priority MUST be `local` > `project` > `user`.
+- [x] Enabled state MUST be tracked via `enabledPlugins` in settings, not on `InstalledPlugin`.
 
 ## 5. Dynamic Tools
 - [x] `Skill` and `Task` tools MUST use getters for their `config` property.
 - [x] Tools MUST reflect plugins loaded after initial tool registration.
 
-## 6. General
+## 6. Remote Fetching
+- [x] All remote fetching MUST use `git clone --depth 1` (no direct HTTP download).
+- [x] `GitService` MUST support GitHub shorthand, full Git URLs, and local paths.
+- [x] `GitService` MUST enforce configurable timeout (default 120s via `WAVE_PLUGIN_GIT_TIMEOUT_MS`).
+- [x] Plugin entries with Git URL sources MUST be cloned individually during install.
+- [x] Plugin entries with relative path sources MUST be copied from marketplace checkout.
+- [x] `MarketplaceSource` MUST use discriminated union with optional `ref` for branch/tag.
+
+## 7. General
 - [x] All "Claude" references MUST be replaced with "Agent".
 - [x] Plugin IDs MUST follow the `name@marketplace` format.
 - [x] `pnpm build` MUST succeed.
 - [x] `pnpm run type-check` and `pnpm lint` MUST pass.
 
-## 7. Content Quality (Marketplace)
+## 8. Content Quality (Marketplace)
 - [x] No implementation details (languages, frameworks, APIs)
 - [x] Focused on user value and business needs
 - [x] Written for non-technical stakeholders
 - [x] All mandatory sections completed
 
-## 8. Requirement Completeness (Marketplace)
+## 9. Requirement Completeness (Marketplace)
 - [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] All acceptance scenarios are defined
@@ -53,7 +64,7 @@ This checklist ensures that the plugin support system and marketplace meet all r
 - [x] Scope is clearly bounded
 - [x] Dependencies and assumptions identified
 
-## 9. Feature Readiness (Marketplace)
+## 10. Feature Readiness (Marketplace)
 - [x] All functional requirements have clear acceptance criteria
 - [x] User scenarios cover primary flows
 - [x] No implementation details leak into specification

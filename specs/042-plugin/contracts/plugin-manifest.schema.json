@@ -5,7 +5,8 @@
   "properties": {
     "name": {
       "type": "string",
-      "description": "The unique name of the plugin."
+      "description": "The unique name of the plugin. Lowercase, alphanumeric + hyphens.",
+      "pattern": "^[a-z0-9-]+$"
     },
     "description": {
       "type": "string",
@@ -13,15 +14,13 @@
     },
     "version": {
       "type": "string",
-      "description": "The semantic version of the plugin."
+      "description": "The semantic version of the plugin.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+"
     },
     "author": {
       "type": "object",
       "properties": {
         "name": {
-          "type": "string"
-        },
-        "email": {
           "type": "string"
         }
       },

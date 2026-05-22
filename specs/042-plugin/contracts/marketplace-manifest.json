@@ -18,7 +18,10 @@
         "properties": {
           "name": { "type": "string" },
           "description": { "type": "string" },
-          "source": { "type": "string" }
+          "source": {
+            "type": "string",
+            "description": "Relative path within marketplace (e.g., './plugins/review-plugin') or Git URL (http://, https://, git@, ssh://)"
+          }
         },
         "required": ["name", "source", "description"]
       }
