@@ -424,12 +424,10 @@ export class ConfigurationService {
     const ssoToken = this.readSSOToken();
     const serverUrl = this.options.serverUrl || process.env.WAVE_SERVER_URL;
     if (ssoToken && serverUrl) {
-      const baseFetch = fetch ?? this.options.fetch;
-      const authAwareFetch = baseFetch
-        ? (createAuthAwareFetch(
-            baseFetch as typeof globalThis.fetch,
-          ) as ClientOptions["fetch"])
-        : undefined;
+      const baseFetch = fetch ?? this.options.fetch ?? globalThis.fetch;
+      const authAwareFetch = createAuthAwareFetch(
+        baseFetch as typeof globalThis.fetch,
+      ) as ClientOptions["fetch"];
       return {
         apiKey: ssoToken,
         baseURL: `${serverUrl}/api/v1`,
