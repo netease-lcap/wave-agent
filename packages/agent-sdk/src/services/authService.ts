@@ -22,6 +22,7 @@ import { URL } from "url";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import type { AuthConfig, AuthUser, TokenResponse } from "../types/auth.js";
+import { logger } from "../utils/globalLogger.js";
 
 /** Persistent anonymous ID for telemetry fallback when SSO is not authenticated. */
 let _anonymousId: string | undefined;
@@ -194,6 +195,7 @@ export class AuthService {
     code: string,
   ): Promise<TokenResponse> {
     const exchangeUrl = `${serverUrl}/api/auth/token`;
+    logger.info(`[Auth] Exchanging authorization code at ${exchangeUrl}`);
     const response = await fetch(exchangeUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -202,10 +204,15 @@ export class AuthService {
 
     if (!response.ok) {
       const text = await response.text();
+      logger.info(
+        `[Auth] Authorization code exchange failed (${response.status}): ${text}`,
+      );
       throw new Error(`Token exchange failed (${response.status}): ${text}`);
     }
 
-    return (await response.json()) as TokenResponse;
+    const data = (await response.json()) as TokenResponse;
+    logger.info("[Auth] Authorization code exchanged successfully");
+    return data;
   }
 
   private startLocalAuthServer(
@@ -345,9 +352,17 @@ export class AuthService {
   isTokenExpired(): boolean {
     const config = this.loadAuth();
     if (!config.SSO_TOKEN_EXPIRES_AT) return false;
-    return (
-      Date.now() >= config.SSO_TOKEN_EXPIRES_AT - AuthService.REFRESH_BUFFER_MS
-    );
+    const expiresAt = config.SSO_TOKEN_EXPIRES_AT;
+    const bufferMs = AuthService.REFRESH_BUFFER_MS;
+    const now = Date.now();
+    const remaining = expiresAt - now;
+    const expired = now >= expiresAt - bufferMs;
+    if (expired) {
+      logger.info(
+        `[Auth] Token expired or within refresh buffer: remaining=${Math.round(remaining / 1000)}s, buffer=${bufferMs / 1000}s`,
+      );
+    }
+    return expired;
   }
 
   /**
@@ -357,7 +372,13 @@ export class AuthService {
   async checkAndRefreshTokenIfNeeded(): Promise<boolean> {
     if (!this.isTokenExpired()) return true;
     // Dedup: if a refresh is already in-flight, reuse the same promise
-    if (this._refreshPromise) return this._refreshPromise;
+    if (this._refreshPromise) {
+      logger.info(
+        "[Auth] Token refresh already in-flight, reusing existing promise",
+      );
+      return this._refreshPromise;
+    }
+    logger.info("[Auth] Starting token refresh");
     this._refreshPromise = this.refreshToken();
     try {
       return await this._refreshPromise;
@@ -372,10 +393,14 @@ export class AuthService {
    */
   private async refreshToken(): Promise<boolean> {
     const config = this.loadAuth();
-    if (!config.SSO_REFRESH_TOKEN) return false;
+    if (!config.SSO_REFRESH_TOKEN) {
+      logger.info("[Auth] No refresh token available, cannot refresh");
+      return false;
+    }
 
     const serverUrl = this.getServerUrl();
     try {
+      logger.info(`[Auth] Refreshing token via ${serverUrl}/api/auth/token`);
       const response = await fetch(`${serverUrl}/api/auth/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -387,28 +412,41 @@ export class AuthService {
 
       if (response.status === 400 || response.status === 401) {
         // Refresh token revoked — clear auth
+        logger.info(
+          `[Auth] Refresh token rejected (${response.status}), clearing auth`,
+        );
         this.clearAuth();
         return false;
       }
 
-      if (!response.ok) return false;
+      if (!response.ok) {
+        logger.info(
+          `[Auth] Token refresh failed with status ${response.status}`,
+        );
+        return false;
+      }
 
       const data = (await response.json()) as TokenResponse;
+      const newExpiresAt = data.expiresIn
+        ? Date.now() + data.expiresIn * 1000
+        : undefined;
       this.saveAuth({
         ...config,
         SSO_TOKEN: data.token,
         SSO_REFRESH_TOKEN: data.refreshToken ?? config.SSO_REFRESH_TOKEN,
-        SSO_TOKEN_EXPIRES_AT: data.expiresIn
-          ? Date.now() + data.expiresIn * 1000
-          : undefined,
+        SSO_TOKEN_EXPIRES_AT: newExpiresAt,
         user: data.user
           ? { id: data.user.id, email: data.user.email }
           : config.user,
       });
+      logger.info(
+        `[Auth] Token refreshed successfully, new token expires at ${newExpiresAt ? new Date(newExpiresAt).toISOString() : "never"}`,
+      );
       this.notifyAuthChange("login");
       return true;
-    } catch {
+    } catch (err) {
       // Network error — don't clear auth (might be transient)
+      logger.info(`[Auth] Token refresh failed with network error: ${err}`);
       return false;
     }
   }
@@ -430,6 +468,9 @@ export class AuthService {
         config.SSO_TOKEN_EXPIRES_AT &&
         Date.now() < config.SSO_TOKEN_EXPIRES_AT
       ) {
+        logger.info(
+          `[Auth] Detected token refreshed by another process (auth.json mtime changed)`,
+        );
         this._authFileMtime = stat.mtimeMs;
         return true;
       }
@@ -471,6 +512,9 @@ export function createAuthAwareFetch(innerFetch: typeof fetch): typeof fetch {
 
     // Reactive 401/403 recovery (single retry)
     if (response.status === 401 || response.status === 403) {
+      logger.info(
+        `[Auth] Received ${response.status}, attempting token recovery`,
+      );
       // Try disk refresh first (another process may have refreshed)
       if (authService.tryReadRefreshedTokenFromDisk()) {
         const retryToken = authService.getSSOToken();
@@ -478,6 +522,7 @@ export function createAuthAwareFetch(innerFetch: typeof fetch): typeof fetch {
         if (retryToken) {
           retryHeaders.set("Authorization", `Bearer ${retryToken}`);
         }
+        logger.info("[Auth] Retrying request with disk-refreshed token");
         return innerFetch(input, { ...init, headers: retryHeaders });
       }
 
@@ -487,9 +532,12 @@ export function createAuthAwareFetch(innerFetch: typeof fetch): typeof fetch {
         if (retryToken) {
           const retryHeaders = new Headers(init?.headers);
           retryHeaders.set("Authorization", `Bearer ${retryToken}`);
+          logger.info("[Auth] Retrying request with force-refreshed token");
           return innerFetch(input, { ...init, headers: retryHeaders });
         }
       }
+
+      logger.info("[Auth] Token recovery failed, returning original response");
     }
 
     return response;
