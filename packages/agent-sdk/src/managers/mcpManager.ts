@@ -34,27 +34,19 @@ export interface McpManagerOptions {
   logger?: Logger;
   /** Pre-configured MCP servers passed from constructor options */
   mcpServers?: Record<string, McpServerConfig>;
-  /** Wave server URL for resolving ${WAVE_SERVER_URL} templates in MCP configs */
-  serverUrl?: string;
-  /** SSO token for resolving ${WAVE_SSO_TOKEN} templates in MCP configs */
-  ssoToken?: string;
 }
 
 /**
  * Expand environment variables in a string value.
  * Supports ${VAR} and ${VAR:-default} patterns.
  */
-const WAVE_TEMPLATE_VARS = [
-  "WAVE_SERVER_URL",
-  "WAVE_SSO_TOKEN",
-  "WAVE_PLUGIN_ROOT",
-];
+const WAVE_TEMPLATE_VARS = ["WAVE_PLUGIN_ROOT"];
 
 export function expandEnvVars(value: string): string {
   return value.replace(/\$\{([^}]+)\}/g, (_match, expr: string) => {
     const [varName, ...rest] = expr.split(":-");
     const defaultValue = rest.join(":-");
-    // Skip Wave-specific template variables — they are handled by resolveMcpTemplates
+    // Skip Wave-specific template variables — they are handled at spawn time
     if (WAVE_TEMPLATE_VARS.includes(varName)) {
       return _match; // return original ${...} string untouched
     }
@@ -63,81 +55,15 @@ export function expandEnvVars(value: string): string {
 }
 
 /**
- * Context for resolving Wave-specific MCP template variables.
+ * Walk an MCP config and resolve environment variables in all string fields.
+ * Only expands ${VAR} from process.env (skipping WAVE_PLUGIN_ROOT which is
+ * handled at spawn time).
  */
-export interface McpResolverContext {
-  serverUrl?: string; // resolves ${WAVE_SERVER_URL}
-  ssoToken?: string; // resolves ${WAVE_SSO_TOKEN}
-}
-
-/**
- * Walk a single McpServerConfig and replace Wave template variables.
- * Only replaces ${WAVE_SERVER_URL} and ${WAVE_SSO_TOKEN} — does not touch
- * arbitrary env vars (that is what expandEnvVars handles).
- */
-export function resolveMcpTemplates(
-  config: McpServerConfig,
-  ctx: McpResolverContext,
-): McpServerConfig {
-  const resolved: McpServerConfig = { ...config };
-
-  const replace = (value: string): string => {
-    let result = value;
-    if (ctx.serverUrl !== undefined) {
-      result = result.replace(/\$\{WAVE_SERVER_URL\}/g, ctx.serverUrl);
-    }
-    if (ctx.ssoToken !== undefined) {
-      result = result.replace(/\$\{WAVE_SSO_TOKEN\}/g, ctx.ssoToken);
-    }
-    return result;
-  };
-
-  if (resolved.command) {
-    resolved.command = replace(resolved.command);
-  }
-
-  if (resolved.args) {
-    resolved.args = resolved.args.map(replace);
-  }
-
-  if (resolved.env) {
-    const resolvedEnv: Record<string, string> = {};
-    for (const [key, val] of Object.entries(resolved.env)) {
-      resolvedEnv[key] = replace(val);
-    }
-    resolved.env = resolvedEnv;
-  }
-
-  if (resolved.url) {
-    resolved.url = replace(resolved.url);
-  }
-
-  if (resolved.headers) {
-    const resolvedHeaders: Record<string, string> = {};
-    for (const [key, val] of Object.entries(resolved.headers)) {
-      resolvedHeaders[key] = replace(val);
-    }
-    resolved.headers = resolvedHeaders;
-  }
-
-  return resolved;
-}
-
-/**
- * Walk an MCP config and resolve variables in all string fields.
- * Applies two steps in order:
- *   1. expandEnvVars — resolves ${VAR} from process.env
- *   2. resolveMcpTemplates — resolves ${WAVE_SERVER_URL}, ${WAVE_SSO_TOKEN} from context
- */
-export function resolveMcpConfig(
-  config: McpConfig,
-  ctx?: McpResolverContext,
-): McpConfig {
+export function resolveMcpConfig(config: McpConfig): McpConfig {
   const resolved: McpConfig = { mcpServers: {} };
 
   for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
-    // Step 1: expand env vars from process.env
-    let resolvedServer: McpServerConfig = { ...serverConfig };
+    const resolvedServer: McpServerConfig = { ...serverConfig };
 
     if (resolvedServer.command) {
       resolvedServer.command = expandEnvVars(resolvedServer.command);
@@ -167,11 +93,6 @@ export function resolveMcpConfig(
       resolvedServer.headers = resolvedHeaders;
     }
 
-    // Step 2: resolve Wave template variables from context
-    if (ctx) {
-      resolvedServer = resolveMcpTemplates(resolvedServer, ctx);
-    }
-
     resolved.mcpServers[name] = resolvedServer;
   }
 
@@ -187,7 +108,6 @@ export class McpManager {
   private callbacks: McpManagerCallbacks;
   private mcpServers: Record<string, McpServerConfig> | undefined;
 
-  private resolverCtx: McpResolverContext | undefined;
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private reconnectAttempts: Map<string, number> = new Map();
 
@@ -197,10 +117,6 @@ export class McpManager {
   ) {
     this.callbacks = options.callbacks || {};
     this.mcpServers = options.mcpServers;
-    this.resolverCtx = {
-      serverUrl: options.serverUrl,
-      ssoToken: options.ssoToken,
-    };
   }
 
   /**
@@ -273,7 +189,7 @@ export class McpManager {
     try {
       const configContent = await fs.readFile(this.configPath, "utf-8");
       const rawConfig: McpConfig = JSON.parse(configContent);
-      const workspaceConfig = resolveMcpConfig(rawConfig, this.resolverCtx);
+      const workspaceConfig = resolveMcpConfig(rawConfig);
 
       // Extract original (pre-resolution) URLs for safe display
       const originalUrls: Record<string, string | undefined> = {};
@@ -368,8 +284,8 @@ export class McpManager {
     // Capture original URL before any resolution for safe display
     const originalUrl = config.url;
 
-    // Step 1: expand env vars from process.env (e.g. ${TAVILY_API_KEY})
-    let resolvedConfig: McpServerConfig = { ...config };
+    // Expand env vars from process.env (e.g. ${TAVILY_API_KEY})
+    const resolvedConfig: McpServerConfig = { ...config };
     if (resolvedConfig.command) {
       resolvedConfig.command = expandEnvVars(resolvedConfig.command);
     }
@@ -393,12 +309,6 @@ export class McpManager {
       }
       resolvedConfig.headers = resolvedHeaders;
     }
-
-    // Step 2: resolve Wave template variables (e.g. ${WAVE_SERVER_URL}, ${WAVE_SSO_TOKEN})
-    resolvedConfig = resolveMcpTemplates(
-      resolvedConfig,
-      this.resolverCtx ?? { serverUrl: undefined, ssoToken: undefined },
-    );
 
     const newServer: McpServerStatus = {
       name,
@@ -919,84 +829,6 @@ export class McpManager {
       this.disconnectServer(name),
     );
     await Promise.all(disconnectPromises);
-  }
-
-  /**
-   * Update credentials and reconnect MCP servers that use template variables.
-   * Called after SSO login to refresh ${WAVE_SSO_TOKEN} and ${WAVE_SERVER_URL}.
-   */
-  async refreshCredentials(
-    serverUrl?: string,
-    ssoToken?: string,
-  ): Promise<void> {
-    // Update resolver context
-    this.resolverCtx = {
-      serverUrl: serverUrl ?? this.resolverCtx?.serverUrl,
-      ssoToken: ssoToken ?? this.resolverCtx?.ssoToken,
-    };
-
-    logger?.info(
-      `MCP refreshCredentials: serverUrl=${serverUrl}, hasToken=${!!ssoToken}`,
-    );
-
-    // Collect servers that need reconnection
-    const serversToReconnect: string[] = [];
-
-    for (const [name, server] of this.servers) {
-      // Re-resolve config with new credentials
-      const originalConfig = server.config;
-      const resolvedConfig = resolveMcpTemplates(
-        originalConfig,
-        this.resolverCtx,
-      );
-
-      // Update the stored config, preserving originalUrl
-      this.servers.set(name, {
-        ...server,
-        config: resolvedConfig,
-      });
-
-      if (this.config && this.config.mcpServers[name]) {
-        this.config.mcpServers[name] = resolvedConfig;
-      }
-
-      // Determine if reconnection is needed
-      const wasConnected = this.connections.has(name);
-      const wasDisconnected =
-        server.status === "disconnected" ||
-        server.status === "error" ||
-        server.status === "reconnecting";
-
-      if (wasConnected) {
-        // Disconnect first, then reconnect with new resolved config
-        await this.disconnectServer(name);
-        serversToReconnect.push(name);
-      } else if (wasDisconnected) {
-        // Was disconnected or errored — try to reconnect now that we have credentials
-        serversToReconnect.push(name);
-      }
-    }
-
-    // Reconnect servers
-    for (const name of serversToReconnect) {
-      logger?.debug(
-        `Reconnecting MCP server after credential refresh: ${name}`,
-      );
-      this.connectServer(name)
-        .then((success) => {
-          if (success) {
-            logger?.info(`Successfully reconnected MCP server: ${name}`);
-          } else {
-            logger?.warn(`Failed to reconnect MCP server: ${name}`);
-          }
-        })
-        .catch((error) => {
-          logger?.error(`Reconnection to MCP server ${name} failed:`, error);
-        });
-    }
-
-    // Trigger state change callback
-    this.callbacks.onMcpServersChange?.(this.getAllServers());
   }
 
   // ========== Tools Registry Methods ==========

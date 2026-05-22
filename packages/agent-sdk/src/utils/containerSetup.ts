@@ -147,8 +147,6 @@ export function setupAgentContainer(
   });
   container.register("BackgroundTaskManager", backgroundTaskManager);
 
-  const ssoToken = authService.getSSOToken();
-  const serverUrl = options.serverUrl || process.env.WAVE_SERVER_URL;
   if (options.serverUrl) {
     authService.setServerUrl(options.serverUrl);
   }
@@ -157,19 +155,8 @@ export function setupAgentContainer(
     mcpServers: options.mcpServers as
       | Record<string, McpServerConfig>
       | undefined,
-    serverUrl,
-    ssoToken,
   });
   container.register("McpManager", mcpManager);
-
-  // Wire up auth change callback to reconnect MCP servers after SSO login
-  authService.onAuthChange((event) => {
-    if (event === "login") {
-      const newServerUrl = options.serverUrl || process.env.WAVE_SERVER_URL;
-      const newToken = authService.getSSOToken();
-      mcpManager.refreshCredentials(newServerUrl, newToken);
-    }
-  });
 
   // Wire up auth change callback to refresh/clear remote settings
   authService.onAuthChange((event) => {
