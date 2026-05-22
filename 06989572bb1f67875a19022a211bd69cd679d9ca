@@ -1,0 +1,54 @@
+packages/agent-sdk/src/utils/toolCallMetadata.ts
+  a6e20cf6ae626409 1-44
+packages/agent-sdk/tests/utils/toolCallMetadata.test.ts
+  a6e20cf6ae626409 1-3,5-8,11-15,18-19,27-28,30,33-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.7",
+  "base_commit_sha": "06989572bb1f67875a19022a211bd69cd679d9ca",
+  "prompts": {
+    "0e911f008680641b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3ae505c2-e434-4890-a117-d8a50cbd165a",
+        "model": "composer-2.5"
+      },
+      "human_author": "刘宇阳",
+      "messages": [],
+      "total_additions": 21,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "tmp-parse-test.mjs": {
+          "additions": 21
+        }
+      }
+    },
+    "a6e20cf6ae626409": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9e4f964e-3e9d-44fb-9b35-b0d82b2b52bc",
+        "model": "composer-2.5"
+      },
+      "human_author": "刘宇阳",
+      "messages": [],
+      "total_additions": 78,
+      "total_deletions": 0,
+      "accepted_lines": 63,
+      "overriden_lines": 12,
+      "per_file_stats": {
+        "packages/agent-sdk/tests/utils/toolCallMetadata.test.ts": {
+          "additions": 34,
+          "accepted_lines": 19,
+          "overriden_lines": 12
+        },
+        "packages/agent-sdk/src/utils/toolCallMetadata.ts": {
+          "additions": 44,
+          "accepted_lines": 44
+        }
+      }
+    }
+  }
+}
