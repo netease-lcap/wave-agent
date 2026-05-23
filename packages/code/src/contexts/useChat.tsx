@@ -702,7 +702,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Listen for Ctrl+O hotkey to toggle collapse/expand state and ESC to cancel confirmation
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
-      // Clear terminal screen when expanded state changes
       // Use ref to get the current value to avoid stale closure
       const nextExpanded = !isExpandedRef.current;
       setIsExpanded(nextExpanded);
@@ -720,8 +719,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setLatestTotalTokens(extractLatestTotalTokens(msgs));
         }
       }
-      // Force remount to re-render Static items with new isExpanded state
-      requestRemount();
+      // Force remount directly (bypass throttle) to ensure Static items re-render
+      // The throttled requestRemount can be dropped if pressed too quickly after
+      // a previous remount, leaving the UI stuck without a visual update
+      stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
+        setRemountKey((prev) => prev + 1);
+      });
     }
 
     if (key.ctrl && input === "t") {
