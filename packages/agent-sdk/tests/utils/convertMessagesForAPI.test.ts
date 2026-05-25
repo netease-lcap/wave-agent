@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import { convertMessagesForAPI } from "../../src/utils/convertMessagesForAPI.js";
 import type { Message } from "../../src/types/index.js";
 import type {
+  ChatCompletionAssistantMessageParam,
+  ChatCompletionMessageFunctionToolCall,
   ChatCompletionMessageParam,
-  ChatCompletionMessageToolCall,
 } from "openai/resources.js";
 
 describe("convertMessagesForAPI", () => {
@@ -189,7 +190,7 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[1].role).toBe("assistant");
     // Type assertion for assistant message with tool_calls
     const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
-      tool_calls?: ChatCompletionMessageToolCall[];
+      tool_calls?: ChatCompletionMessageFunctionToolCall[];
     };
     expect(assistantMessage.tool_calls).toBeDefined();
     expect(assistantMessage.tool_calls).toHaveLength(1);
@@ -234,5 +235,206 @@ describe("convertMessagesForAPI", () => {
     // FR-020: Verify ErrorBlock content is completely excluded from API messages
     const allApiContent = JSON.stringify(apiMessages);
     expect(allApiContent).not.toContain("This error should NOT be sent to API");
+  });
+
+  it("should include reasoning content in assistant messages for API", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "What is 2+2?" }],
+      },
+      {
+        role: "assistant",
+        blocks: [
+          {
+            type: "reasoning",
+            content: "Let me think about this...",
+          },
+          { type: "text", content: "The answer is 4." },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(2);
+
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[0].content).toEqual([
+      { type: "text", text: "What is 2+2?" },
+    ]);
+
+    expect(apiMessages[1].role).toBe("assistant");
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      reasoning_content?: string;
+    };
+    expect(assistantMessage.content).toBe("The answer is 4.");
+    expect(assistantMessage.reasoning_content).toBe(
+      "Let me think about this...",
+    );
+  });
+
+  it("should join multiple reasoning blocks in assistant messages", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Explain quantum computing" }],
+      },
+      {
+        role: "assistant",
+        blocks: [
+          {
+            type: "reasoning",
+            content: "First, define qubits.",
+          },
+          { type: "text", content: "Quantum computing uses qubits." },
+          {
+            type: "reasoning",
+            content: "Then explain superposition.",
+          },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(2);
+
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      reasoning_content?: string;
+    };
+    expect(assistantMessage.reasoning_content).toBe(
+      "First, define qubits.\nThen explain superposition.",
+    );
+  });
+
+  it("should not include reasoning_content when there are no reasoning blocks", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Hello" }],
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "Hi there!" }],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(2);
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      reasoning_content?: string;
+    };
+    expect(assistantMessage.reasoning_content).toBeUndefined();
+  });
+
+  it("should preserve thought_signature on tool_calls for Gemini multi-turn tool calling", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Read a file" }],
+      },
+      {
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "call_read_1",
+            name: "default_api:Read",
+            parameters: '{"path": "/tmp/foo.txt"}',
+            stage: "end",
+            result: "file contents",
+            success: true,
+            toolCallMetadata: {
+              thought_signature: "encrypted-signature-abc",
+            },
+          },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      tool_calls?: Array<Record<string, unknown>>;
+      thought_signature?: string;
+    };
+
+    expect(assistantMessage.tool_calls).toHaveLength(1);
+    const toolCall = assistantMessage
+      .tool_calls?.[0] as ChatCompletionMessageFunctionToolCall & {
+      thought_signature?: string;
+    };
+    expect(toolCall.function.name).toBe("Read");
+    expect(toolCall.thought_signature).toBe("encrypted-signature-abc");
+    expect(assistantMessage.thought_signature).toBeUndefined();
+  });
+
+  it("should omit tool_calls for blocks with unknown placeholder names", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Do something" }],
+      },
+      {
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "call_bad",
+            name: "unknown",
+            parameters: "{}",
+            stage: "end",
+            result: "Error: Tool 'unknown' not found",
+            success: false,
+          },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+    const assistantMessage =
+      apiMessages[1] as ChatCompletionAssistantMessageParam;
+    expect(assistantMessage.tool_calls).toBeUndefined();
+  });
+
+  it("should move thought_signature from additionalFields to first tool_call", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Read a file" }],
+      },
+      {
+        role: "assistant",
+        additionalFields: {
+          thought_signature: "sig-from-message-level",
+          forgetDistance: 1,
+        },
+        blocks: [
+          {
+            type: "tool",
+            id: "call_read_1",
+            name: "Read",
+            parameters: "{}",
+            stage: "end",
+            result: "ok",
+            success: true,
+          },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      tool_calls?: Array<Record<string, unknown>>;
+      thought_signature?: string;
+      forgetDistance?: number;
+    };
+
+    expect(assistantMessage.tool_calls?.[0].thought_signature).toBe(
+      "sig-from-message-level",
+    );
+    expect(assistantMessage.thought_signature).toBeUndefined();
+    expect(assistantMessage.forgetDistance).toBe(1);
   });
 });

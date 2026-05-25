@@ -7,6 +7,11 @@ import {
   ChatCompletionMessageParam,
 } from "openai/resources.js";
 import { logger } from "./globalLogger.js";
+import {
+  getThoughtSignatureFromAdditionalFields,
+  isValidToolCallName,
+  normalizeToolCallName,
+} from "./toolCallMetadata.js";
 
 /**
  * Safely handle tool call parameters, ensuring a legal JSON string is returned
@@ -144,22 +149,65 @@ export function convertMessagesForAPI(
           .join("\n");
       }
 
+      // Extract reasoning content from reasoning blocks
+      const reasoningBlocks = message.blocks.filter(
+        (block) =>
+          block.type === "reasoning" &&
+          block.content &&
+          block.content.trim().length > 0,
+      );
+      let reasoning_content: string | undefined;
+      if (reasoningBlocks.length > 0) {
+        reasoning_content = reasoningBlocks
+          .map((block) => (block.type === "reasoning" ? block.content : ""))
+          .join("\n");
+      }
+
+      const thoughtSignatureFromMessage =
+        getThoughtSignatureFromAdditionalFields(message.additionalFields);
+
+      const additionalFieldsForApi = message.additionalFields
+        ? { ...message.additionalFields }
+        : undefined;
+      if (
+        additionalFieldsForApi &&
+        thoughtSignatureFromMessage &&
+        toolBlocks.length > 0
+      ) {
+        delete additionalFieldsForApi.thought_signature;
+      }
+
       // Construct tool calls from tool blocks
       if (toolBlocks.length > 0) {
-        tool_calls = toolBlocks
-          .filter(
-            (toolBlock) => toolBlock.id && completedToolIds.has(toolBlock.id),
-          )
-          .map((toolBlock) => ({
+        const completedToolBlocks = toolBlocks.filter(
+          (toolBlock) =>
+            toolBlock.id &&
+            completedToolIds.has(toolBlock.id) &&
+            isValidToolCallName(toolBlock.name),
+        );
+        tool_calls = completedToolBlocks.map((toolBlock, index) => {
+          const toolCall: Record<string, unknown> = {
             id: toolBlock.id!,
             type: "function",
             function: {
-              name: toolBlock.name || "",
+              name: normalizeToolCallName(toolBlock.name),
               arguments: safeToolArguments(
                 String(toolBlock.parameters || "{}"),
               ),
             },
-          }));
+            ...(toolBlock.toolCallMetadata ?? {}),
+          };
+
+          if (
+            index === 0 &&
+            thoughtSignatureFromMessage &&
+            toolCall.thought_signature === undefined
+          ) {
+            toolCall.thought_signature = thoughtSignatureFromMessage;
+          }
+
+          return toolCall as unknown as ChatCompletionMessageToolCall;
+        });
 
         if (tool_calls.length === 0) {
           tool_calls = undefined;
@@ -175,8 +223,12 @@ export function convertMessagesForAPI(
           role: "assistant",
           content: hasContent ? content : undefined,
           tool_calls,
-          ...(message.additionalFields ? { ...message.additionalFields } : {}),
-        };
+          ...(reasoning_content ? { reasoning_content } : {}),
+          ...(additionalFieldsForApi &&
+          Object.keys(additionalFieldsForApi).length > 0
+            ? additionalFieldsForApi
+            : {}),
+        } as ChatCompletionMessageParam;
 
         recentMessages.unshift(assistantMessage);
       }

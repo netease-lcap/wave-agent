@@ -65,6 +65,8 @@ export interface ToolBlock {
   error?: string | Error;
   compactParams?: string; // Compact parameter display
   parametersChunk?: string; // Incremental parameter updates for streaming
+  /** Extra fields from API tool_calls (e.g. thought_signature for Gemini 3) */
+  toolCallMetadata?: Record<string, unknown>;
 }
 
 export interface ImageBlock {

@@ -6,6 +6,12 @@ import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import { logger } from "./globalLogger.js";
+import {
+  extractToolCallMetadata,
+  isValidToolCallName,
+  mergeToolCallMetadata,
+  normalizeToolCallName,
+} from "./toolCallMetadata.js";
 
 // Base user message parameters interface
 export interface UserMessageParams {
@@ -34,12 +40,13 @@ export interface UpdateToolBlockParams {
    * - 'running': Tool execution in progress
    * - 'end': Tool execution completed with final result
    */
-  stage: "start" | "streaming" | "running" | "end";
+  stage?: "start" | "streaming" | "running" | "end";
   name?: string;
   shortResult?: string;
   images?: Array<{ data: string; mediaType?: string }>;
   compactParams?: string;
   parametersChunk?: string; // Incremental parameter updates for streaming
+  toolCallMetadata?: Record<string, unknown>;
 }
 
 // Agent specific interfaces (without messages parameter)
@@ -198,8 +205,11 @@ export const addAssistantMessageToMessages = (
         parameters: toolCall.function.arguments || "",
         result: "",
         id: toolCall.id || "",
-        name: toolCall.function?.name || "",
+        name: normalizeToolCallName(toolCall.function?.name),
         stage: "start",
+        toolCallMetadata: extractToolCallMetadata(
+          toolCall as unknown as Record<string, unknown>,
+        ),
       });
     });
   }
@@ -228,6 +238,7 @@ export const updateToolBlockInMessage = ({
   images,
   compactParams,
   parametersChunk,
+  toolCallMetadata,
 }: UpdateToolBlockParams): Message[] => {
   const newMessages = [...messages];
   // Find the last assistant message
@@ -251,10 +262,21 @@ export const updateToolBlockInMessage = ({
             toolBlock.compactParams = compactParams;
           if (parametersChunk !== undefined)
             toolBlock.parametersChunk = parametersChunk;
+          if (name !== undefined) {
+            const normalizedName = normalizeToolCallName(name);
+            if (normalizedName) {
+              toolBlock.name = normalizedName;
+            }
+          }
+          if (toolCallMetadata !== undefined) {
+            toolBlock.toolCallMetadata = mergeToolCallMetadata(
+              toolBlock.toolCallMetadata,
+              toolCallMetadata,
+            );
+          }
         }
-      } else {
-        // If existing block not found, create new one
-        // This handles cases where we're streaming tool parameters before execution
+      } else if (isValidToolCallName(name)) {
+        // Only create a tool block once we know the tool name (avoids "unknown" placeholders)
         newMessages[i].blocks.push({
           type: "tool",
           parameters: parameters,
@@ -262,12 +284,13 @@ export const updateToolBlockInMessage = ({
           shortResult: shortResult,
           images: images, // Add image data
           id: id,
-          name: name || "unknown",
+          name: normalizeToolCallName(name),
           success: success,
           error: error,
           stage: stage ?? "start",
           compactParams: compactParams,
           parametersChunk: parametersChunk,
+          toolCallMetadata,
         });
       }
       break;

@@ -16,6 +16,12 @@ import {
   extendUsageWithCacheMetrics,
   type ClaudeUsage,
 } from "../utils/cacheControlUtils.js";
+import {
+  extractToolCallMetadata,
+  mergeToolCallMetadata,
+  applyToolCallMetadataToResult,
+  normalizeToolCallName,
+} from "../utils/toolCallMetadata.js";
 
 import * as os from "os";
 import * as fs from "fs";
@@ -94,13 +100,7 @@ function isGitRepository(dirPath: string): string {
 type OpenAIModelConfig = Omit<
   ChatCompletionCreateParamsNonStreaming,
   "messages"
-> & {
-  vertexai?: {
-    thinking_config: {
-      thinking_level: string;
-    };
-  };
-};
+>;
 
 /**
  * Get specific configuration parameters based on model name
@@ -122,14 +122,6 @@ function getModelConfig(
   if (modelName.includes("gpt-5-codex")) {
     // gpt-5-codex model sets temperature to undefined
     config.temperature = undefined;
-  }
-
-  if (modelName.startsWith("gemini-3")) {
-    config.vertexai = {
-      thinking_config: {
-        thinking_level: "minimal",
-      },
-    };
   }
 
   return config;
@@ -337,9 +329,9 @@ Today's date: ${new Date().toISOString().split("T")[0]}
       const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
       processedTools = tools;
-      console.log("当前采用的模型为", currentModel);
+      // console.log("当前采用的模型为", currentModel);
       if (isClaudeModel(currentModel)) {
-        console.log("走到了claude的处理", currentModel);
+        // console.log("走到了claude的处理", currentModel);
         openaiMessages = transformMessagesForClaudeCache(
           openaiMessages,
           currentModel,
@@ -423,7 +415,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
 
         if (!response?.choices?.[0]?.message) {
           console.error("callAgent 返回为空-原始 responese", response);
-          console.error("callAgent 返回为空-请求 messages", openaiMessages);
+          // console.error("callAgent 返回为空-请求 messages", openaiMessages);
           const errorMessage =
             (response as unknown as { error?: { message?: string } })?.error
               ?.message || "No response from AI";
@@ -659,6 +651,7 @@ async function processStreamingResponse(
       arguments: string;
     };
   }[] = [];
+  const toolCallMetadataById = new Map<string, Record<string, unknown>>();
   const additionalDeltaFields: Record<string, unknown> = {};
   let usage: CallAgentResult["usage"] = undefined;
   let finishReason: CallAgentResult["finish_reason"] = null;
@@ -740,11 +733,19 @@ async function processStreamingResponse(
           const toolCallDelta =
             rawToolCall as ChatCompletionChunk.Choice.Delta.ToolCall;
 
-          if (!toolCallDelta.function) {
+          const deltaMetadata = extractToolCallMetadata(
+            rawToolCall as unknown as Record<string, unknown>,
+          );
+
+          const rawRecord = rawToolCall as unknown as Record<string, unknown>;
+          const topLevelName =
+            typeof rawRecord.name === "string" ? rawRecord.name : undefined;
+
+          if (!toolCallDelta.function && !topLevelName) {
             continue;
           }
 
-          const functionDelta = toolCallDelta.function;
+          const functionDelta = toolCallDelta.function ?? {};
 
           let existingCall;
           let isNew = false;
@@ -756,7 +757,9 @@ async function processStreamingResponse(
                 id: toolCallDelta.id,
                 type: "function" as const,
                 function: {
-                  name: functionDelta.name || "",
+                  name: normalizeToolCallName(
+                    functionDelta.name || topLevelName,
+                  ),
                   arguments: "",
                 },
               };
@@ -771,32 +774,56 @@ async function processStreamingResponse(
             continue;
           }
 
-          if (functionDelta.name) {
-            existingCall.function.name = functionDelta.name;
+          if (deltaMetadata) {
+            const callId = existingCall.id || toolCallDelta.id;
+            if (callId) {
+              toolCallMetadataById.set(
+                callId,
+                mergeToolCallMetadata(
+                  toolCallMetadataById.get(callId),
+                  deltaMetadata,
+                )!,
+              );
+            }
           }
 
-          // Emit start stage when a new tool call is created and we have the tool name
-          if (onToolUpdate && isNew && existingCall.function.name) {
+          const previousName = existingCall.function.name;
+          const resolvedName = normalizeToolCallName(
+            functionDelta.name || topLevelName || previousName,
+          );
+          if (resolvedName) {
+            existingCall.function.name = resolvedName;
+          }
+
+          const nameJustResolved =
+            !normalizeToolCallName(previousName) &&
+            Boolean(existingCall.function.name);
+
+          // Emit start when a tool call first gets a resolvable name
+          if (
+            onToolUpdate &&
+            existingCall.function.name &&
+            (isNew || nameJustResolved)
+          ) {
             onToolUpdate({
               id: existingCall.id,
               name: existingCall.function.name,
-              parameters: "", // Empty parameters for start stage
-              parametersChunk: "", // Empty chunk for start stage
-              stage: "start", // New tool call triggers start stage
+              parameters: "",
+              parametersChunk: "",
+              stage: "start",
             });
-            isNew = false; // Prevent duplicate start emissions
+            isNew = false;
           }
 
           if (functionDelta.arguments) {
             existingCall.function.arguments += functionDelta.arguments;
           }
 
-          // Emit streaming updates for all chunks with actual content (including first chunk)
           if (
             onToolUpdate &&
             existingCall.function.name &&
             functionDelta.arguments &&
-            functionDelta.arguments.length > 0 // Only emit streaming for chunks with actual content
+            functionDelta.arguments.length > 0
           ) {
             onToolUpdate({
               id: existingCall.id,
@@ -828,7 +855,14 @@ async function processStreamingResponse(
   }
 
   if (toolCalls.length > 0) {
-    result.tool_calls = toolCalls;
+    result.tool_calls = toolCalls
+      .filter((toolCall) => normalizeToolCallName(toolCall.function.name))
+      .map((toolCall) =>
+        applyToolCallMetadataToResult(
+          toolCall,
+          toolCallMetadataById.get(toolCall.id),
+        ),
+      );
   }
 
   if (usage) {
