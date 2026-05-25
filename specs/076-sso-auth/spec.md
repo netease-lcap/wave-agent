@@ -96,10 +96,13 @@ As a developer who has authenticated via SSO, I want all LLM API requests to aut
 - **FR-022**: System MUST use `POST /api/auth/token` with `{ grant_type: "authorization_code", code }` for the initial code exchange (replaces `POST /api/auth/exchange`).
 - **FR-023**: System MUST save `SSO_REFRESH_TOKEN` and `SSO_TOKEN_EXPIRES_AT` alongside `SSO_TOKEN` in `~/.wave/auth.json`, and delete them on logout.
 - **FR-024**: System MUST wrap fetch with `createAuthAwareFetch` in SSO mode to transparently handle token refresh for all API calls.
+- **FR-025**: System MUST log info-level `[Auth]` messages during token refresh operations (proactive refresh, reactive 401 recovery, mtime-based deduplication) for audit and debugging.
+- **FR-026**: System MUST always create `authAwareFetch` wrapper when SSO mode is active, even if `resolveGatewayConfig()` is called without an explicit `fetch` argument.
+- **FR-027**: `AuthService.login()` MUST accept an optional `serverUrl` parameter with priority: `login({serverUrl})` → `authService._serverUrl` → `WAVE_SERVER_URL` env var.
 
 ### Key Entities
 
-- **AuthService**: Singleton service managing SSO authentication lifecycle (login, logout, token storage, token refresh, auth-aware fetch).
+- **AuthService**: Singleton service managing SSO authentication lifecycle (login, logout, token storage, token refresh, auth-aware fetch). Accepts optional `serverUrl` param in `login()` with priority chain.
 - **AuthConfig**: Configuration object stored in `~/.wave/auth.json` containing `SSO_TOKEN`, `SSO_REFRESH_TOKEN`, `SSO_TOKEN_EXPIRES_AT`, and `user`.
 - **LoginCommand**: Ink UI component for the `/login` slash command, handling both browser and manual input flows.
 - **GatewayConfig (SSO mode)**: Resolved configuration where `apiKey` is the SSO token, `baseURL` is `${WAVE_SERVER_URL}/api/v1`, and `fetch` is wrapped with `createAuthAwareFetch`.

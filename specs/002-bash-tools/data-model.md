@@ -28,3 +28,4 @@
 - `id: string`: Unique identifier (e.g., `bash_<timestamp>_<random>`).
 - `child: ChildProcess`: The spawned child process.
 - `backgroundHandler: () => Promise<void>`: Callback to move the process to background.
+- `finalCwd?: string`: The working directory after command completion (used for CWD tracking).

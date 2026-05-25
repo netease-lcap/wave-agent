@@ -92,3 +92,9 @@ graph TD
 1. **MVP**: Focus on US1 and US2 first to enable worktree creation.
 2. **Incremental Delivery**: Add exit detection and prompt (US3, US4, US5) after creation is stable.
 3. **Safety First**: Ensure "Remove worktree" is robust to avoid accidental data loss or git state corruption.
+
+## Phase 7: Branch Resolution Optimization
+
+- [ ] Use filesystem reads for getDefaultRemoteBranch instead of git subprocess
+- [ ] Add fetch+HEAD fallback for stale origin/HEAD references
+- [ ] Verify resolved branch exists before creating worktree

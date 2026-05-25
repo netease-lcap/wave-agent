@@ -11,8 +11,6 @@
 | `execute` | `(args, context) => Promise<ToolResult>` | Yes | — | Tool execution function |
 | `prompt` | `string \| (args?) => string` | No | — | Tool description override (static or dynamic) |
 | `formatCompactParams` | `(params, context) => string` | No | — | Compact display for tool block headers |
-| `shouldDefer` | `boolean` | No | `false` | Hide from initial prompt until discovered |
-| `alwaysLoad` | `boolean` | No | `false` | Always include in initial prompt |
 | `additionalProperties` | `boolean` | No | `false` | Allow extra params in JSON schema |
 
 ## ToolPlugin (Internal Output)
@@ -24,8 +22,6 @@
 | `execute` | `(args, context) => Promise<ToolResult>` | Execution function |
 | `prompt` | `(args?) => string \| undefined` | Dynamic description function |
 | `formatCompactParams` | `(params, context) => string \| undefined` | Compact display function |
-| `shouldDefer` | `boolean` | Defer flag |
-| `alwaysLoad` | `boolean` | Always-load flag |
 | `isMcp` | `boolean \| undefined` | MCP flag (not set by buildTool) |
 
 ## AgentOptions (Addition)

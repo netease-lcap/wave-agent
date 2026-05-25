@@ -112,3 +112,12 @@
 - T001, T002 (Phase 1 Tests)
 - T008, T009, T010 (Phase 2 - same file)
 - T007, T014 (Tests can run in parallel with implementation)
+
+---
+
+## Phase 7: Model Persistence
+
+**Purpose**: Persist `/model` selection across sessions and load it on startup with correct priority.
+
+- [ ] Persist /model selection to ~/.wave/settings.json
+- [ ] Load persisted model on startup with correct priority chain

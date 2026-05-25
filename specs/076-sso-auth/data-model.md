@@ -67,6 +67,14 @@ When `SSO_TOKEN` is present, `resolveGatewayConfig()` returns:
 6. Error (missing baseURL)
 ```
 
+## serverUrl Priority for AuthService.login()
+
+```
+1. login({serverUrl}) — explicit override
+2. authService._serverUrl — previously set server URL
+3. WAVE_SERVER_URL — environment variable
+```
+
 ## `~/.wave/auth.json` Example
 
 ```json
@@ -90,6 +98,7 @@ When `SSO_TOKEN` is present, `resolveGatewayConfig()` returns:
 4. On success: save new SSO_TOKEN, SSO_REFRESH_TOKEN, SSO_TOKEN_EXPIRES_AT
 5. On 400/401 (revoked): clearAuth() → user must re-login
 6. On network error: return false, preserve existing auth
+   - All refresh operations MUST log info-level `[Auth]` messages for audit/debugging.
 
 Reactive 401/403 recovery (single retry):
 1. Request returns 401/403

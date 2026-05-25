@@ -151,7 +151,7 @@ As a developer using Wave, I want to exit a worktree mid-session by asking the A
 
 - **FR-001**: System MUST support `-w` and `--worktree [feat-name]` command-line arguments.
 - **FR-002**: System MUST generate a unique feature name (e.g., `adjective-adjective-noun`) if `<feat-name>` is not provided.
-- **FR-003**: System MUST create a git worktree at `.wave/worktrees/<feat-name>` (absolute path) relative to the **main repository root** (even if run from within a worktree), branching from the default remote branch (identified via `git symbolic-ref refs/remotes/origin/HEAD`).
+- **FR-003**: System MUST create a git worktree at `.wave/worktrees/<feat-name>` (absolute path) relative to the **main repository root** (even if run from within a worktree), branching from the default remote branch. The default branch MUST be resolved using filesystem reads (`.git/refs/remotes/origin/HEAD`) rather than subprocess calls. If `origin/HEAD` points to a branch that no longer exists (stale ref), the system MUST fall back to fetching `refs/heads/HEAD` from origin and resolving the resulting SHA.
 - **FR-004**: System MUST name the worktree branch `worktree-<feat-name>`.
 - **FR-005**: System MUST call `process.chdir()` to the worktree path to ensure the process's working directory matches the worktree, facilitating tmux and other window-copying features.
 - **FR-006**: System MUST detect uncommitted changes (staged or unstaged, identified via `git status --porcelain`) in the worktree upon exit.
@@ -188,6 +188,7 @@ As a developer using Wave, I want to exit a worktree mid-session by asking the A
 - **FR-037**: The `ExitWorktree` tool MUST restore the session's working directory to the original CWD via `AIManager.setWorkdir()`.
 - **FR-038**: When `action` is `"remove"`, the system MUST delete the worktree directory using `git worktree remove --force` and the associated branch using `git branch -D`.
 - **FR-039**: The `EnterWorktree` tool MUST NOT trigger the `WorktreeCreate` hook event (hook support is out of scope for mid-session tools).
+- **FR-040**: System MUST verify that the branch resolved from `origin/HEAD` exists in `refs/remotes/origin/`. If the branch does not exist (stale `origin/HEAD`), the system MUST attempt a `git fetch origin HEAD` to resolve the correct default branch.
 
 ### Key Entities
 

@@ -22,3 +22,8 @@
 - [x] ACP: advertise `mcpCapabilities` (http + sse) in `initialize` response
 - [x] ACP: send `ext_notification` with `mcp_server_status` on status changes
 - [x] Add ACP MCP server support tests
+- [ ] Add SSE auto-reconnect with exponential backoff for MCP servers
+- [ ] Add "reconnecting" status display during SSE reconnection attempts
+- [ ] Add MCP server reconnection after SSO login
+- [ ] Add MCP tool result size limiting (50K chars) with shared persistence utility
+- [ ] Add originalUrl storage for URL-based MCP servers to prevent sensitive URL exposure

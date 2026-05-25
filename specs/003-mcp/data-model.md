@@ -39,6 +39,7 @@ Represents the current state of an MCP server.
 - `capabilities`: (Optional) List of capabilities supported by the server (e.g., `"tools"`, `"resources"`).
 - `lastConnected`: (Optional) Timestamp of the last successful connection.
 - `error`: (Optional) Error message if the status is `"error"`.
+- `originalUrl`: (Optional) The original URL before any resolution/substitution (for display purposes, prevents sensitive tokens from appearing in UI).
 
 ### McpTool
 Represents a tool provided by an MCP server.
@@ -67,6 +68,11 @@ The result of an MCP tool execution.
 Status updates sent to ACP clients via `ext_notification`.
 - `method`: `"mcp_server_status"`
 - `params`: `McpServerStatus` object with current server state.
+
+## MCP Capabilities
+Advertised in ACP `initialize` response.
+- `mcpCapabilities`: `{ transports: ["http", "sse"] }`
+)`: Writes content to a file and returns a `<persisted-output>` reference.
 
 ## MCP Capabilities
 Advertised in ACP `initialize` response.

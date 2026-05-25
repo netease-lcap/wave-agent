@@ -80,6 +80,8 @@ As an AI agent, I want to see the output of foreground commands in real-time so 
 - **FR-014**: Real-time updates for foreground `Bash` tool MUST be throttled to once per second.
 - **FR-015**: Real-time `shortResult` for foreground `Bash` tool MUST show the last 3 lines of output.
 - **FR-016**: The `Read` tool MUST work for reading the `outputPath` of background processes.
+- **FR-017**: System MUST detect CWD changes after Bash execution by checking the shell's final working directory. If the CWD changed (e.g., via `cd`), the system MUST update the agent's `workdir` context for subsequent tool calls.
+- **FR-018**: The Bash tool prompt MUST inform the agent that "the working directory persists between commands" when `cd` is used, matching the actual behavior.
 
 ### Key Entities *(include if feature involves data)*
 

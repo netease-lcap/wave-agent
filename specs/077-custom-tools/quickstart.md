@@ -30,18 +30,6 @@ const agent = await Agent.create({
 
 ## Advanced Features
 
-### Deferred Loading (Hidden Until Discovered)
-
-```typescript
-const advancedTool = buildTool({
-  name: "AdvancedSearch",
-  description: "Perform an advanced search",
-  parameters: { query: { type: "string" } },
-  shouldDefer: true, // Not in initial prompt — discovered via ToolSearch
-  execute: async (args) => ({ success: true, content: "Results..." }),
-});
-```
-
 ### Dynamic Prompt
 
 ```typescript

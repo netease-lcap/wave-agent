@@ -40,6 +40,16 @@ Represents a worktree session created via `EnterWorktree` tool during an active 
 - **originalHeadCommit**?: `string`
   - The HEAD commit of the original branch at worktree creation time (for dirty-check on exit).
 
+## Branch Resolution Strategy
+
+The default branch for worktree creation is resolved as follows:
+
+1. **Primary path**: Read `.git/refs/remotes/origin/HEAD` via filesystem (no subprocess). This file contains a reference like `ref: refs/remotes/origin/main`, from which the branch name is extracted.
+2. **Validation**: Verify the resolved branch exists in `.git/refs/remotes/origin/` (e.g., `.git/refs/remotes/origin/main` exists). This detects stale `origin/HEAD` refs.
+3. **Fallback**: If the resolved branch does not exist (stale `origin/HEAD`), execute `git fetch origin HEAD` to resolve the correct default branch SHA from the remote.
+
+The filesystem-first approach avoids subprocess overhead in the common case, making worktree creation faster.
+
 ## State Transitions
 
 ### CLI Worktree Flow

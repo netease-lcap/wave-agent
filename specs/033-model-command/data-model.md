@@ -24,6 +24,19 @@ A model entry for display in the selector UI.
 - `ModelEntry` is derived from `ModelConfig` and the current session state.
 - Multiple `ModelEntry` objects are aggregated from various configuration sources.
 
+### Model Persistence (settings.json)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `model` | `string?` | Persisted model selection from `/model` command |
+
+### Model Resolution Priority (highest to lowest)
+
+1. In-memory override (set during current session via `/model`)
+2. `WAVE_MODEL` environment variable
+3. `settings.json` `model` field (local or remote managed)
+4. Provider default
+
 ## Validation Rules
 - Model IDs must be non-empty strings.
 - The selected model must exist in the configured models list.

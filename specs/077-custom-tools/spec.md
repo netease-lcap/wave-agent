@@ -24,18 +24,16 @@ As an SDK user, I want to define custom tools using a simple `buildTool()` facto
 
 ### User Story 2 - Advanced Tool Features (Priority: P2)
 
-As an SDK user, I want advanced control over my custom tools (deferred loading, always-load, parameter formatting, dynamic prompts) so my tools integrate seamlessly with Wave's existing tool ecosystem.
+As an SDK user, I want advanced control over my custom tools (parameter formatting, dynamic prompts) so my tools integrate seamlessly with Wave's existing tool ecosystem.
 
-**Why this priority**: These features allow custom tools to behave consistently with built-in tools regarding deferred loading, compact display, and context-aware descriptions.
+**Why this priority**: These features allow custom tools to behave consistently with built-in tools regarding compact display and context-aware descriptions.
 
-**Independent Test**: Create a deferred custom tool (`shouldDefer: true`), verify it does NOT appear in the initial tool list but IS discoverable via ToolSearch. Create a tool with `formatCompactParams`, verify the compact representation appears in tool blocks.
+**Independent Test**: Create a tool with `formatCompactParams`, verify the compact representation appears in tool blocks. Create a tool with a dynamic `prompt` function, verify the description is context-aware.
 
 **Acceptance Scenarios**:
 
-1. **Given** a custom tool with `shouldDefer: true`, **When** the agent initializes, **Then** the tool is NOT included in the initial API tool list. **When** the model searches for tools via ToolSearch, **Then** the deferred tool is discoverable.
-2. **Given** a custom tool with `formatCompactParams`, **When** the tool executes, **Then** the UI displays the compact parameter representation in the tool block header.
-3. **Given** a custom tool with `prompt` as a function, **When** tool descriptions are generated, **Then** the function is called with available subagents, skills, and workdir context.
-4. **Given** a custom tool with `alwaysLoad: true`, **When** deferred tool loading is active, **Then** this tool's full schema is always sent in the initial prompt.
+1. **Given** a custom tool with `formatCompactParams`, **When** the tool executes, **Then** the UI displays the compact parameter representation in the tool block header.
+2. **Given** a custom tool with `prompt` as a function, **When** tool descriptions are generated, **Then** the function is called with available subagents, skills, and workdir context.
 
 ---
 
@@ -68,17 +66,15 @@ As an SDK user, I want to control which custom tools are enabled via the `tools`
 
 - **FR-001**: System MUST export a `buildTool()` factory function that accepts a `ToolDef` and returns a `ToolPlugin`.
 - **FR-002**: `ToolDef` MUST include required fields: `name`, `description`, `parameters`, `execute`.
-- **FR-003**: `ToolDef` MUST support optional fields: `required`, `prompt`, `formatCompactParams`, `shouldDefer`, `alwaysLoad`, `additionalProperties`.
+- **FR-003**: `ToolDef` MUST support optional fields: `required`, `prompt`, `formatCompactParams`, `additionalProperties`.
 - **FR-004**: `buildTool()` MUST auto-construct a `ChatCompletionFunctionTool` config from the provided `name`, `description`, `parameters`, `required`, and `additionalProperties`.
 - **FR-005**: When `prompt` is a string, `buildTool()` MUST normalize it to a zero-argument function returning that string.
 - **FR-006**: `AgentOptions` MUST accept a `customTools?: ToolPlugin[]` field.
 - **FR-007**: Custom tools MUST be registered in the `ToolManager` alongside built-in tools during `initializeBuiltInTools()`.
 - **FR-008**: Custom tools MUST respect the `tools` whitelist — only custom tools whose names appear in the whitelist are enabled.
 - **FR-009**: Custom tools MUST respect permission rules (`allowedTools`, `disallowedTools`).
-- **FR-010**: Custom tools with `shouldDefer: true` MUST be excluded from the initial API tool list and discoverable via ToolSearch.
-- **FR-011**: Custom tools with `alwaysLoad: true` MUST always be included in the initial API tool list, even when deferred loading is active.
-- **FR-012**: `buildTool`, `ToolPlugin`, `ToolResult`, and `ToolContext` MUST be exported from the SDK's public API (`index.ts`).
-- **FR-013**: Default values MUST be: `shouldDefer: false`, `alwaysLoad: false`, `additionalProperties: false`.
+- **FR-010**: `buildTool`, `ToolPlugin`, `ToolResult`, and `ToolContext` MUST be exported from the SDK's public API (`index.ts`).
+- **FR-011**: Default values MUST be: `additionalProperties: false`.
 
 ### Key Entities
 

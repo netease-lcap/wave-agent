@@ -24,14 +24,8 @@
 - **Rationale**: `ToolDef` requires `name`, `description`, `parameters`, and `execute`. TypeScript's type system catches missing fields at compile time. SDK users are developers — runtime validation adds overhead without meaningful benefit.
 - **Alternatives considered**: Runtime validation with Zod: Rejected — adds dependency, unnecessary for a developer-facing SDK.
 
-## Decision: Support shouldDefer and alwaysLoad
-
-- **Rationale**: Custom tools should participate in Wave's deferred tool loading system. `shouldDefer: true` hides the tool from the initial prompt until discovered via ToolSearch. `alwaysLoad: true` ensures a tool is always sent, even when deferred loading is active. This matches built-in tool behavior.
-- **Alternatives considered**: Custom tools always non-deferred: Rejected — limits flexibility for tools that should only be discoverable.
-
 ## Integration Points
 
 - `Agent.create()`: Accepts `customTools` in `AgentOptions`, passes to `setupAgentContainer`.
 - `containerSetup.ts`: Passes `options.customTools` to `ToolManager` constructor.
 - `ToolManager`: Stores `customTools`, registers them in `initializeBuiltInTools()` after built-in tools.
-- `isDeferredTool()`: Already checks `shouldDefer` and `alwaysLoad` on any `ToolPlugin` — no changes needed.

@@ -75,6 +75,7 @@ As an ACP client, I want to specify MCP servers when creating or loading a sessi
 - **Unsupported Schema Fields**: MCP tool schemas containing fields like `$schema`, `exclusiveMinimum`, or `exclusiveMaximum` MUST be cleaned to ensure compatibility with LLM APIs.
 - **Invalid Configuration**: If `.mcp.json` is malformed, the agent SHOULD log an error and proceed without MCP tools.
 - **Config Merge**: When multiple config sources exist (constructor, `.mcp.json`, plugins), they are merged with precedence: constructor > workspace (.mcp.json) > plugin servers.
+- **SSE Reconnection**: When an SSE EventSource connection drops unexpectedly, the system MUST attempt auto-reconnection with exponential backoff. During reconnection, the server status MUST show "reconnecting". If reconnection fails after all attempts, the status MUST transition to "error".
 
 ## Requirements *(mandatory)*
 
@@ -95,6 +96,11 @@ As an ACP client, I want to specify MCP servers when creating or loading a sessi
 - **FR-013**: ACP bridge MUST accept `mcpServers` in `newSession` and `loadSession` requests, converting ACP `McpServer[]` to SDK `McpServerConfig` format (supporting stdio, http, sse transports).
 - **FR-014**: ACP bridge MUST send `ext_notification` with `mcp_server_status` event type when MCP server status changes.
 - **FR-015**: ACP `initialize` response MUST include `mcpCapabilities` advertising support for http and sse transports.
+- **FR-016**: System MUST auto-reconnect SSE MCP servers with exponential backoff when the EventSource connection closes unexpectedly.
+- **FR-017**: System MUST display "reconnecting" status for MCP servers during SSE reconnection attempts.
+- **FR-018**: System MUST reconnect all MCP servers when SSO authentication completes (after `/login`).
+- **FR-019**: MCP tool execution results MUST be truncated to 50,000 characters. Excess output MUST be persisted to a file via the shared `toolResultStorage` utility, and the result MUST include a `<persisted-output>` reference.
+- **FR-020**: System MUST store the pre-resolution `originalUrl` for MCP servers configured with a URL, to prevent sensitive tokens from appearing in UI status displays.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -104,6 +110,7 @@ As an ACP client, I want to specify MCP servers when creating or loading a sessi
     - `args`: Command-line arguments (for stdio).
     - `env`: Environment variables (for stdio).
     - `url`: Endpoint URL (for SSE).
+    - `originalUrl`: The original URL before any resolution/substitution (for display purposes).
     - `status`: Current connection state.
     - `transport`: Transport type (`stdio`, `http`, `sse`). (ACP format)
 - **McpTool**: A tool provided by an MCP server.

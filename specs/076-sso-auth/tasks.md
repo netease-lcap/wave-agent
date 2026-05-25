@@ -164,3 +164,13 @@
 - [x] T034 [US3] Update `remoteSettingsService.test.ts` authService mock with `createAuthAwareFetch` and `checkAndRefreshTokenIfNeeded`
 
 **Checkpoint**: Tokens refresh automatically before expiry, 401 errors are recovered transparently, multi-process safe.
+
+---
+
+## Phase 8: Auth Observability & Configuration Gaps
+
+**Purpose**: Audit logging, authAwareFetch reliability, and serverUrl resolution
+
+- [ ] Add info-level `[Auth]` logging to token refresh flow
+- [ ] Always create authAwareFetch in SSO mode regardless of fetch argument
+- [ ] Add serverUrl option to AuthService.login() with priority chain
