@@ -1,0 +1,58 @@
+packages/agent-sdk/tests/utils/toolCallMetadata.test.ts
+  a6e20cf6ae626409 1-4,6-11,14-18,21-22,30-31,33,37-61
+packages/agent-sdk/src/managers/aiManager.ts
+  a6e20cf6ae626409 8-12,624-640,715
+packages/agent-sdk/src/utils/messageOperations.ts
+  a6e20cf6ae626409 11,13,208,265-270,278-279,287
+packages/agent-sdk/src/utils/convertMessagesForAPI.ts
+  a6e20cf6ae626409 10-14,183-186,193
+packages/agent-sdk/src/utils/toolCallMetadata.ts
+  a6e20cf6ae626409 1-96
+packages/agent-sdk/tests/utils/convertMessagesForAPI.test.ts
+  a6e20cf6ae626409 5-6,193,364-369,371-398
+packages/agent-sdk/src/services/aiService.ts
+  a6e20cf6ae626409 22-23,740-744,748,760-762,790-795,798-807,811-813,815,826,858-865
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.7",
+  "base_commit_sha": "7eba8e37395614932508fe19cf43af36f2d7964e",
+  "prompts": {
+    "a6e20cf6ae626409": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9e4f964e-3e9d-44fb-9b35-b0d82b2b52bc",
+        "model": "composer-2.5"
+      },
+      "human_author": "刘宇阳",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 263,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "packages/agent-sdk/src/managers/aiManager.ts": {
+          "accepted_lines": 23
+        },
+        "packages/agent-sdk/src/utils/toolCallMetadata.ts": {
+          "accepted_lines": 96
+        },
+        "packages/agent-sdk/src/utils/messageOperations.ts": {
+          "accepted_lines": 12
+        },
+        "packages/agent-sdk/tests/utils/convertMessagesForAPI.test.ts": {
+          "accepted_lines": 37
+        },
+        "packages/agent-sdk/src/services/aiService.ts": {
+          "accepted_lines": 40
+        },
+        "packages/agent-sdk/tests/utils/toolCallMetadata.test.ts": {
+          "accepted_lines": 45
+        },
+        "packages/agent-sdk/src/utils/convertMessagesForAPI.ts": {
+          "accepted_lines": 10
+        }
+      }
+    }
+  }
+}
