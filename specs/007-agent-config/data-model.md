@@ -57,7 +57,8 @@ Resolved configuration for model selection.
 - `[key: string]: unknown` - Arbitrary additional model-specific parameters (e.g., `temperature`, `reasoning_effort`, `thinking`)
 
 **Validation Rules**:
-- Model IDs must be non-empty strings after resolution
+- `model` and `fastModel` are fully optional — no validation error if not provided
+- If provided, model IDs must be non-empty strings
 - No format validation (service validates model availability)
 
 **Default Values**:

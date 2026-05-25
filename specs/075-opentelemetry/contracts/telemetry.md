@@ -40,3 +40,20 @@ Returns the current interaction span from AsyncLocalStorage context.
 
 ### `withToolContext<T>(span: Span, fn: () => T): T`
 Executes `fn` with the given tool span as the active context. Ensures correct nesting for parallel tool calls.
+
+## User Identification Functions
+
+```typescript
+/**
+ * Get or create an anonymous ID for telemetry.
+ * Stored in ~/.wave/config.json as a 32-byte hex string.
+ * Created on first use if not present.
+ */
+function getOrCreateAnonymousId(): string;
+
+/**
+ * Get telemetry attributes including user identification.
+ * Returns SSO user.id if authenticated, otherwise anonymous ID.
+ */
+function getTelemetryAttributes(): Record<string, string>;
+```

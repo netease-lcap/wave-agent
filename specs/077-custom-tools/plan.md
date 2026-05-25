@@ -5,7 +5,7 @@
 
 ## Summary
 
-Add a `buildTool()` factory function and `customTools` option to `Agent.create()` so SDK users can define and register custom tools alongside built-in tools. Tools respect the existing whitelist, permission rules, and deferred loading system.
+Add a `buildTool()` factory function and `customTools` option to `Agent.create()` so SDK users can define and register custom tools alongside built-in tools. Tools respect the existing whitelist and permission rules.
 
 ## Technical Context
 

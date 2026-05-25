@@ -37,10 +37,8 @@
   - With `prompt` as function → passed through
   - Output matches `ToolPlugin` shape
   - Tool execution returns correct result
-  - With `shouldDefer: true`
   - With `formatCompactParams`
   - With `additionalProperties`
-  - With `alwaysLoad`
 
 ### Implementation for User Story 1
 
@@ -54,21 +52,19 @@
 
 ## Phase 3: User Story 2 - Advanced Tool Features (Priority: P2)
 
-**Goal**: Custom tools support `shouldDefer`, `alwaysLoad`, `formatCompactParams`, and dynamic prompts.
+**Goal**: Custom tools support `formatCompactParams` and dynamic prompts.
 
-**Independent Test**: Create a deferred tool, verify it's excluded from initial tool list but discoverable via ToolSearch.
+**Independent Test**: Create a tool with `formatCompactParams`, verify the compact representation appears in tool blocks. Create a tool with a dynamic `prompt` function, verify the description is context-aware.
 
 ### Tests for User Story 2 (REQUIRED) ⚠️
 
 - [x] T008 [P] [US2] Unit tests for advanced features in `packages/agent-sdk/tests/tools/buildTool.test.ts`
-  - `shouldDefer: true` → sets flag correctly
-  - `alwaysLoad: true` → sets flag correctly
   - `formatCompactParams` → passed through to ToolPlugin
   - `additionalProperties: true` → reflected in config schema
 
 ### Implementation for User Story 2
 
-- [x] T009 [US2] Ensure `isDeferredTool()` works with custom tools (no changes needed — already checks `shouldDefer`/`alwaysLoad` on any ToolPlugin)
+(No additional implementation tasks — advanced features are handled by `buildTool()` factory.)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently.
 
@@ -82,13 +78,13 @@
 
 ### Tests for User Story 3 (REQUIRED) ⚠️
 
-- [ ] T010 [P] [US3] Integration test for custom tool filtering in `packages/agent-sdk/tests/tools/customToolsIntegration.test.ts`
+- [ ] T009 [P] [US3] Integration test for custom tool filtering in `packages/agent-sdk/tests/tools/customToolsIntegration.test.ts`
   - Custom tools with `tools` whitelist
   - Custom tools with `disallowedTools` rule
 
 ### Implementation for User Story 3
 
-- [ ] T011 [US3] Verify `shouldEnableTool()` applies to custom tools (no changes needed — already used in registration loop)
+- [ ] T010 [US3] Verify `shouldEnableTool()` applies to custom tools (no changes needed — already used in registration loop)
 
 ---
 
@@ -96,8 +92,8 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [x] T012 [P] Run `pnpm run type-check` and `pnpm lint` across the monorepo
-- [x] T013 [P] Create example in `packages/agent-sdk/examples/build-tool-demo.ts`
+- [x] T011 [P] Run `pnpm run type-check` and `pnpm lint` across the monorepo
+- [x] T012 [P] Create example in `packages/agent-sdk/examples/build-tool-demo.ts`
 
 ---
 

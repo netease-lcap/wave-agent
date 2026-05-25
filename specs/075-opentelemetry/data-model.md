@@ -17,6 +17,7 @@
 | `logToolContent` | `boolean` | Include tool I/O in events |
 | `shutdownTimeoutMs` | `number` | Max flush time on exit (default 2000) |
 | `spanTtlMs` | `number` | Stale span eviction TTL (default 1800000) |
+| `user.id` | `string` | Resolved user identifier (SSO user ID or anonymous ID) |
 
 ## Span Types
 
@@ -69,6 +70,12 @@
 | `tool_decision` | `tool_name`, `decision`, `source` |
 | `compaction` | `beforeTokens`, `afterTokens`, `model` |
 | `error` | `error_type`, `message`, `stack` (truncated) |
+
+## Relationships
+- An **InteractionSpan** has multiple child **LLMRequestSpan**s (if multi-turn recursion) and multiple child **ToolSpan**s.
+- A **Session** produces multiple **InteractionSpan**s (one per user message).
+- **OTelEvent**s are independent log records, not tied to specific spans.
+wave/config.json`. Used as `user.id` telemetry attribute when SSO is not available.
 
 ## Relationships
 - An **InteractionSpan** has multiple child **LLMRequestSpan**s (if multi-turn recursion) and multiple child **ToolSpan**s.

@@ -82,6 +82,7 @@ As a developer, I want structured event logs for key session lifecycle events (s
 - **FR-013**: System MUST include resource attributes: `service.name: 'wave'`, `service.version`, `os.type`, `host.arch`.
 - **FR-014**: System MUST support configuration via both environment variables AND `settings.json`, with env vars taking precedence.
 - **FR-015**: Console exporters are NOT supported. Instead, a custom JSONL file exporter writes telemetry records (one JSON per line) to `~/.wave/telemetry.jsonl`.
+- **FR-016**: System MUST use an anonymous ID as fallback for `user.id` telemetry attribute when SSO is not authenticated. The anonymous ID MUST be a 32-byte hex string stored in `~/.wave/config.json` and created on first use. When SSO is authenticated, `user.id` MUST use the SSO user ID instead.
 
 ### Key Entities
 
@@ -90,3 +91,4 @@ As a developer, I want structured event logs for key session lifecycle events (s
 - **Tool Span**: Child span of interaction span, representing a single tool execution.
 - **OTel Event**: Structured log record for session lifecycle events.
 - **TelemetryConfig**: Configuration resolved from env vars + settings.json controlling exporters, endpoints, and PII gates.
+- **AnonymousId**: 32-byte hex string persisted in `~/.wave/config.json`, used as `user.id` when SSO is not authenticated. Created via `getOrCreateAnonymousId()`.

@@ -147,7 +147,7 @@ A developer is actively working and needs to modify their settings.json configur
 - **FR-003**: Agent constructor MUST accept optional `model` string parameter with fallback to `WAVE_MODEL` environment variable.
 - **FR-004**: Agent constructor MUST accept optional `fastModel` string parameter with fallback to `WAVE_FAST_MODEL` environment variable.
 - **FR-005**: Agent constructor MUST accept optional `maxInputTokens` number parameter with fallback to `WAVE_MAX_INPUT_TOKENS` environment variable.
-- **FR-006**: System MUST validate resolved configuration and throw clear errors for missing/invalid values.
+- **FR-006**: System MUST validate resolved configuration for required values (`apiKey` or alternative auth). Model (`WAVE_MODEL`) and fast model (`WAVE_FAST_MODEL`) are fully optional — if not provided, the system MUST use reasonable defaults.
 - **FR-007**: System MUST prioritize constructor-provided values over environment variables when both exist.
 - **FR-008**: System MUST preserve existing environment variable behavior for testing-related variables (`NODE_ENV`, `VITEST`, `WAVE_TEST_HOOKS_EXECUTION`).
 - **FR-009**: Service MUST use resolved configuration instead of direct `process.env` access.

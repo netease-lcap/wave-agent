@@ -24,7 +24,8 @@
       "Bash(node packages/code/dist/index.js *)",
       "Bash(wave *)",
       "Bash(acpx *)",
-      "Bash(rm *packages/*/tests/*)"
+      "Bash(rm *packages/*/tests/*)",
+      "Bash(node scripts*)"
     ],
     "additionalDirectories": [
       "../wave-plugins-official",

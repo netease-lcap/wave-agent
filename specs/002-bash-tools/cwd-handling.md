@@ -47,3 +47,12 @@ Claude Code input schema (`BashTool.tsx:227-247`):
 - **`cd` does NOT persist between commands**: Running `cd some/dir` only affects that single command invocation. Subsequent commands still start from `context.workdir`. The agent prompt (`bashTool.ts:144-145`) explicitly instructs: "When you use `cd`, the shell working directory will be reset to the original working directory after the command completes."
 - **Background tasks**: Background processes are spawned similarly and their output is written to a log file. They also start from `context.workdir`.
 - **No cwd tracking**: Unlike Claude Code, Wave does NOT track cwd changes (no `pwd -P` appended, no temp file read). There is no mechanism to track or reset cwd if it leaves the allowed working directory.
+
+## Auto CWD Tracking (New Behavior)
+
+Wave now implements automatic CWD tracking after each Bash command, similar to Claude Code's approach:
+
+- **After each Bash command**, the system reads the shell's final working directory (by appending `pwd -P` to the command and capturing the result).
+- **If the final CWD differs from `context.workdir`**, `context.workdir` is updated to the new directory. This means `cd` commands effectively persist across Bash calls — subsequent commands will start in the new directory.
+- **Only foreground tasks update the CWD**. Background tasks do not affect `context.workdir`.
+- **The bash tool prompt reflects this behavior**: the prompt informs the agent that "the working directory persists between commands" when `cd` is used, matching the actual runtime behavior rather than the previous instruction that CWD resets.

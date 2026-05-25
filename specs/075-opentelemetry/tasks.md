@@ -133,3 +133,7 @@
 - T006, T007, T008, T009 (Foundational sub-tasks)
 - T010, T011 (US1 Tests)
 - T012, T013, T014, T015 (US1 implementation)
+
+## Phase 7: User Identification
+
+- [ ] Implement anonymous ID fallback for telemetry when SSO not authenticated

@@ -161,3 +161,9 @@
 - [x] T042 [P] Update existing tests that use HookConfiguration to use WaveConfiguration
 - [x] T043 Run quickstart.md validation examples
 - [x] T044 Build and test agent-sdk package integration
+
+---
+
+## Task: Make model/fastModel Fully Optional
+
+- [ ] Remove validateModelConfig to make model/fastModel fully optional

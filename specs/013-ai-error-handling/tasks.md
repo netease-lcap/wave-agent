@@ -15,3 +15,4 @@
 - [x] Add duplicate tool call reminder user message in `AIManager.ts`
 - [x] Create unit tests for duplicate tool call reminder in `packages/agent-sdk/tests/managers/aiManager_duplicateTool.test.ts`
 - [x] Verify duplicate tool call reminder implementation
+- [ ] Add retry for transient 5xx errors (500, 502, 503, 504) in OpenAI client

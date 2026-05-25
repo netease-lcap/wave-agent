@@ -28,19 +28,19 @@ This directory contains feature specifications that serve as the source of truth
 
 | Metric | Count |
 |--------|-------|
-| Specs | 53 |
-| User Stories | 216 |
-| Functional Requirements | 805 |
-| Test Files | 298 |
-| Test Cases | 3,767 |
+| Specs | 54 |
+| User Stories | 219 |
+| Functional Requirements | 829 |
+| Test Files | 299 |
+| Test Cases | 3,790 |
 
 ## Specs
 
 | Feature | Description | US | FR | Links |
 |---------|-------------|----|----|-------|
 | File System Tools | Read, Write, Edit, Glob, Grep tools for file operations | 3 | 15 | [spec](001-fs-tools/spec.md) · [plan](001-fs-tools/plan.md) |
-| Bash Tools | Bash, BashOutput, KillBash tools for shell command execution | 3 | 15 | [spec](002-bash-tools/spec.md) · [plan](002-bash-tools/plan.md) |
-| MCP | Model Context Protocol support for external tools and context sources | 4 | 15 | [spec](003-mcp/spec.md) · [plan](003-mcp/plan.md) |
+| Bash Tools | Bash, BashOutput, KillBash tools for shell command execution | 3 | 17 | [spec](002-bash-tools/spec.md) · [plan](002-bash-tools/plan.md) |
+| MCP | Model Context Protocol support for external tools and context sources | 4 | 20 | [spec](003-mcp/spec.md) · [plan](003-mcp/plan.md) |
 | Session Management | Performance-optimized, project-based session management system | 3 | 17 | [spec](004-session-management/spec.md) · [plan](004-session-management/plan.md) |
 | Hooks | Event hooks system for extending Wave behavior | 13 | 52 | [spec](005-hooks/spec.md) · [plan](005-hooks/plan.md) |
 | Agent Skills | Discoverable skill packages with SKILL.md files for model-invoked capabilities | 8 | 25 | [spec](006-agent-skills/spec.md) · [plan](006-agent-skills/plan.md) |
@@ -49,7 +49,7 @@ This directory contains feature specifications that serve as the source of truth
 | Subagent | Subagent support for delegating tasks to pre-configured AI personalities | 5 | 23 | [spec](009-subagent/spec.md) · [plan](009-subagent/plan.md) |
 | Usage Tracking | SDK usage tracking callbacks (`onUsagesChange`) for AI calls and compression | 4 | 15 | [spec](010-usage-tracking-callback/spec.md) · [plan](010-usage-tracking-callback/plan.md) |
 | Streaming | Real-time content streaming for assistant messages and tool parameters | 5 | 22 | [spec](012-stream-content-updates/spec.md) · [plan](012-stream-content-updates/plan.md) |
-| AI Error Handling | Handle output token limit exceeded by prompting agent to break work into smaller pieces | 5 | 9 | [spec](013-ai-error-handling/spec.md) · [plan](013-ai-error-handling/plan.md) |
+| AI Error Handling | Handle output token limit exceeded by prompting agent to break work into smaller pieces | 5 | 10 | [spec](013-ai-error-handling/spec.md) · [plan](013-ai-error-handling/plan.md) |
 | Message Compression | Conversation history and user input size management | 4 | 12 | [spec](014-message-compression/spec.md) · [plan](014-message-compression/plan.md) |
 | Image Pasting | Paste images from clipboard into chat input with placeholder and attachment | 3 | 10 | [spec](015-image-pasting/spec.md) · [plan](015-image-pasting/plan.md) |
 | File Selector | Quick file/directory selector UI component | 3 | 8 | [spec](016-file-selector/spec.md) · [plan](016-file-selector/plan.md) |
@@ -68,7 +68,7 @@ This directory contains feature specifications that serve as the source of truth
 | Status Line | Extracted StatusLine component for mode and shell command status display | 1 | 4 | [spec](030-status-line/spec.md) |
 | Update Command | `wave update` / `wave-code update` to update to latest version | 2 | 7 | [spec](031-update-command/spec.md) · [plan](031-update-command/plan.md) |
 | BTW Command | `/btw` for side questions bypassing the main message queue | 3 | 10 | [spec](032-btw-command/spec.md) |
-| Model Command | `/model` interactive UI to switch between configured AI models | 3 | 11 | [spec](033-model-command/spec.md) |
+| Model Command | `/model` interactive UI to switch between configured AI models | 3 | 13 | [spec](033-model-command/spec.md) |
 | Confirm UI | Confirmation dialog UI components for tool permission approvals | 5 | 13 | [spec](034-confirm-ui/spec.md) · [plan](034-confirm-ui/plan.md) |
 | LSP Integration | Language Server Protocol for code intelligence (definitions, references, hover) | 3 | 8 | [spec](039-lsp-integration/spec.md) · [plan](039-lsp-integration/plan.md) |
 | Plugin | Plugin system with marketplace, scopes, Skills, LSP, MCP, Hooks, Agents | 6 | 28 | [spec](042-plugin/spec.md) · [plan](042-plugin/plan.md) |
@@ -83,9 +83,12 @@ This directory contains feature specifications that serve as the source of truth
 | Plan Subagent | Built-in Plan subagent for designing implementation plans before coding | 4 | 15 | [spec](065-plan-subagent/spec.md) · [plan](065-plan-subagent/plan.md) |
 | Bash Subagent | Built-in Bash subagent for executing shell commands | 1 | 7 | [spec](066-bash-subagent/spec.md) · [plan](066-bash-subagent/plan.md) |
 | Tools Selection | CLI `--tools` flag to restrict agent to a specific tool set | 4 | 8 | [spec](067-tools-selection/spec.md) · [plan](067-tools-selection/plan.md) |
-| CLI Worktree | `-w/--worktree` for isolated git worktrees at `.wave/worktrees/` with safe exit | 7 | 39 | [spec](068-cli-worktree/spec.md) · [plan](068-cli-worktree/plan.md) |
+| CLI Worktree | `-w/--worktree` for isolated git worktrees at `.wave/worktrees/` with safe exit | 7 | 40 | [spec](068-cli-worktree/spec.md) · [plan](068-cli-worktree/plan.md) |
 | Status Command | `/status` showing version, session ID, cwd, model, and runtime info | 1 | 9 | [spec](069-status-command/spec.md) · [plan](069-status-command/plan.md) |
 | ACP Bridge | Agent Communication Protocol bridge for connecting external clients | 4 | 17 | [spec](070-acp-bridge/spec.md) · [plan](070-acp-bridge/plan.md) |
 | Builtin Settings Skill | Guide users on `settings.json`, hooks config, and Wave settings management | 3 | 8 | [spec](071-builtin-settings-skill/spec.md) · [plan](071-builtin-settings-skill/plan.md) |
 | Loop Command | `/loop` for scheduling recurring prompts via cron (e.g., `/loop 5m check the build`). Includes durable persistence and multi-session scheduler lock. | 2 | 10 | [spec](072-loop-slash-command/spec.md) · [plan](072-loop-slash-command/plan.md) |
-| OpenTelemetry Integration | OpenTelemetry instrumentation for metrics, traces, and logs with multiple exporters (jsonl, OTLP) | 3 | 15 | [spec](075-opentelemetry/spec.md) · [plan](075-opentelemetry/plan.md) |
+| OpenTelemetry Integration | OpenTelemetry instrumentation for metrics, traces, and logs with multiple exporters (jsonl, OTLP) | 3 | 16 | [spec](075-opentelemetry/spec.md) · [plan](075-opentelemetry/plan.md) |
+| SSO Authentication | /login for browser-based SSO, token storage, auto API proxy routing | 3 | 27 | [spec](076-sso-auth/spec.md) · [plan](076-sso-auth/plan.md) |
+| Custom Tools via buildTool() | buildTool() factory for SDK users to define custom tools | 3 | 11 | [spec](077-custom-tools/spec.md) · [plan](077-custom-tools/plan.md) |
+| Server-Managed Config | Download and apply managed settings from Wave AI with checksum caching and merge priority | 3 | 11 | [spec](078-server-managed-config/spec.md) · [plan](078-server-managed-config/plan.md) |

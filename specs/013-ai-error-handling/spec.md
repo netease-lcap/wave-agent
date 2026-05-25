@@ -82,6 +82,7 @@ As a user, I want the agent to handle cases where the AI provides malformed JSON
 - **FR-007**: The system MUST handle JSON parsing errors for tool arguments. If the response was truncated, the error message MUST include: `"(output truncated, please reduce your output)"`.
 - **FR-008**: The system MUST respect abort signals and backgrounded tools, stopping recursion even if a truncation occurred.
 - **FR-009**: The system MUST detect if a new tool call is identical to a tool call in the previous turn (same tool name and arguments). If so, it MUST add a user message reminding the agent to avoid loops and consider changing its approach.
+- **FR-010**: The system MUST retry transient server errors (HTTP 500, 502, 503, 504) with exponential backoff, using the same retry strategy as 429 errors.
 
 ### Key Entities *(include if feature involves data)*
 
