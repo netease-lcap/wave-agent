@@ -4,6 +4,8 @@ import * as path from "path";
 import * as os from "os";
 import { logger } from "../utils/globalLogger.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
+import { processToolResult } from "../utils/toolResultStorage.js";
+import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import {
   BASH_TOOL_NAME,
@@ -14,35 +16,7 @@ import {
   WRITE_TOOL_NAME,
 } from "../constants/tools.js";
 
-const MAX_OUTPUT_LENGTH = 30000;
 const BASH_DEFAULT_TIMEOUT_MS = 120000;
-
-/**
- * Helper function to handle large output by truncation and persistence to a temporary file.
- */
-function processOutput(output: string): string {
-  if (output.length <= MAX_OUTPUT_LENGTH) {
-    return output;
-  }
-
-  try {
-    const tempDir = os.tmpdir();
-    const fileName = `bash_output_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.txt`;
-    const filePath = path.join(tempDir, fileName);
-    fs.writeFileSync(filePath, output, "utf8");
-
-    return (
-      output.substring(0, MAX_OUTPUT_LENGTH) +
-      `\n\n... (output truncated)\nFull output persisted to: ${filePath}`
-    );
-  } catch (error) {
-    logger.error("Failed to persist large bash output:", error);
-    return (
-      output.substring(0, MAX_OUTPUT_LENGTH) +
-      "\n\n... (output truncated, failed to persist full output)"
-    );
-  }
-}
 
 /**
  * Bash command execution tool - supports both foreground and background execution
@@ -104,7 +78,7 @@ Usage notes:
   - The command argument is required.
   - You can specify an optional timeout in milliseconds (up to ${BASH_DEFAULT_TIMEOUT_MS}ms / ${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes). If not specified, commands will timeout after ${BASH_DEFAULT_TIMEOUT_MS}ms (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes).
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
-  - If the output exceeds ${MAX_OUTPUT_LENGTH} characters, output will be truncated and the full output will be persisted to a temporary file.
+  - If the output exceeds ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters, output will be truncated and the full output will be persisted to a file you can read with the Read tool.
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${READ_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
   - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
@@ -280,12 +254,12 @@ The working directory persists between commands. Try to maintain your current wo
           context.onShortResultUpdate(shortResult);
         }
 
-        // Update full result
+        // Update full result (simple truncation for streaming — persistence happens at final result)
         if (context.onResultUpdate) {
           const content =
-            combinedOutput.length <= MAX_OUTPUT_LENGTH
+            combinedOutput.length <= BASH_MAX_OUTPUT_CHARS
               ? combinedOutput
-              : combinedOutput.substring(0, MAX_OUTPUT_LENGTH) +
+              : combinedOutput.substring(0, BASH_MAX_OUTPUT_CHARS) +
                 "\n\n... (output truncated)";
           context.onResultUpdate(content);
         }
@@ -378,8 +352,10 @@ The working directory persists between commands. Try to maintain your current wo
             }
           }
 
-          const processedOutput = processOutput(
+          const processedOutput = processToolResult(
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
+            BASH_MAX_OUTPUT_CHARS,
+            "bash",
           );
           resolve({
             success: false,
@@ -481,7 +457,11 @@ The working directory persists between commands. Try to maintain your current wo
           const finalOutput =
             (cwdResetMessage ? cwdResetMessage + "\n" : "") +
             (combinedOutput || `Command executed with exit code: ${exitCode}`);
-          const content = processOutput(finalOutput);
+          const content = processToolResult(
+            finalOutput,
+            BASH_MAX_OUTPUT_CHARS,
+            "bash",
+          );
 
           const lines = combinedOutput.trim().split("\n");
           const shortResult =

@@ -17,6 +17,7 @@ vi.mock("fs", async () => {
   return {
     ...actual,
     writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
     existsSync: vi.fn(),
     readFileSync: vi.fn(),
     unlinkSync: vi.fn(),
@@ -250,10 +251,11 @@ describe("bashTool", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Command execution was aborted");
-      expect(result.content).toContain("... (output truncated)");
-      expect(result.content).toContain("Full output persisted to:");
+      expect(result.content).toContain("<persisted-output>");
+      expect(result.content).toContain("Full output saved to:");
+      expect(result.content).toContain("</persisted-output>");
       expect(fs.writeFileSync).toHaveBeenCalledWith(
-        expect.stringContaining("/tmp/bash_output_"),
+        expect.stringContaining("wave-tool-results"),
         largeOutput,
         "utf8",
       );
@@ -368,10 +370,11 @@ describe("bashTool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.content).toContain("... (output truncated)");
-      expect(result.content).toContain("Full output persisted to:");
+      expect(result.content).toContain("<persisted-output>");
+      expect(result.content).toContain("Full output saved to:");
+      expect(result.content).toContain("</persisted-output>");
       expect(fs.writeFileSync).toHaveBeenCalledWith(
-        expect.stringContaining("/tmp/bash_output_"),
+        expect.stringContaining("wave-tool-results"),
         largeOutput,
         "utf8",
       );
