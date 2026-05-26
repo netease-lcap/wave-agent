@@ -19,7 +19,7 @@ import type { PermissionManager } from "./permissionManager.js";
 import {
   getProjectConfigPaths,
   getUserConfigPaths,
-} from "@/utils/configPaths.js";
+} from "../utils/configPaths.js";
 import type { HookValidationResult } from "../types/hooks.js";
 import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";

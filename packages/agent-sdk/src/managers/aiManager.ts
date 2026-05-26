@@ -5,6 +5,11 @@ import {
 } from "../services/aiService.js";
 import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
+import {
+  extractToolCallMetadata,
+  isValidToolCallName,
+  normalizeToolCallName,
+} from "../utils/toolCallMetadata.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import * as memory from "../services/memory.js";
 import * as fs from "node:fs/promises";
@@ -584,6 +589,19 @@ export class AIManager {
         }
       }
 
+      for (const toolCall of toolCalls) {
+        const metadata = extractToolCallMetadata(
+          toolCall as unknown as Record<string, unknown>,
+        );
+        if (metadata && toolCall.id) {
+          this.messageManager.updateToolBlock({
+            id: toolCall.id,
+            parameters: toolCall.function.arguments || "{}",
+            toolCallMetadata: metadata,
+          });
+        }
+      }
+
       if (toolCalls.length > 0) {
         // Execute all tools in parallel using Promise.all
         const toolExecutionPromises = toolCalls.map(
@@ -598,7 +616,23 @@ export class AIManager {
               return;
             }
 
-            const toolName = functionToolCall.function?.name || "";
+            const toolName = normalizeToolCallName(
+              functionToolCall.function?.name,
+            );
+            if (!isValidToolCallName(toolName)) {
+              const skipMessage =
+                "Skipped tool execution: model returned an empty or invalid tool name.";
+              this.logger?.warn(skipMessage, { toolId });
+              this.messageManager.updateToolBlock({
+                id: toolId,
+                parameters: functionToolCall.function?.arguments || "{}",
+                result: skipMessage,
+                success: false,
+                error: skipMessage,
+                stage: "end",
+              });
+              return;
+            }
             // Safely parse tool parameters, handle tools without parameters
             let toolArgs: Record<string, unknown> = {};
             let jsonRecovered = false;
@@ -684,7 +718,7 @@ export class AIManager {
 
               // Execute tool
               const toolResult = await this.toolManager.execute(
-                functionToolCall.function?.name || "",
+                toolName,
                 toolArgs,
                 context,
               );
