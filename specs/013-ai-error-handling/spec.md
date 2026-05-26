@@ -60,6 +60,22 @@ As a user, I want the agent to handle cases where the AI provides malformed JSON
 
 ---
 
+### User Story 6 - Recovering Truncated Tool Arguments (Priority: P2)
+
+As a user, I want the agent to attempt to recover truncated tool arguments (e.g., Write/Edit with missing closing braces) so that the tool can still execute instead of failing outright.
+
+**Why this priority**: Truncated tool arguments are common when `finish_reason` is `"length"`. Recovery avoids unnecessary failures and re-tries, improving reliability for Write/Edit operations.
+
+**Independent Test**: Can be tested by providing a tool call with truncated JSON (missing closing braces) and verifying that `recoverTruncatedJson()` closes them, the tool executes, and a warning is appended.
+
+**Acceptance Scenarios**:
+
+1. **Given** the AI provides tool arguments with truncated JSON (missing closing `}` braces or `"` string), **When** the agent attempts to parse the arguments, **Then** it should attempt recovery via `recoverTruncatedJson()`, close unclosed strings and braces, and if the recovered JSON parses successfully, execute the tool with a truncation warning appended to the result.
+2. **Given** the AI provides tool arguments with truncated JSON containing unclosed `[` brackets, **When** the agent attempts to parse the arguments, **Then** recovery should NOT be attempted (cannot guess array content) and the tool should fail with the standard error message.
+3. **Given** the recovered JSON is still unparseable after recovery, **When** the agent attempts to parse the recovered arguments, **Then** it should fall back to the error message (with truncation hint if `finish_reason === "length"`).
+
+---
+
 ### Edge Cases
 
 - **Infinite Recursion**: What happens if the AI keeps getting truncated?
@@ -80,6 +96,9 @@ As a user, I want the agent to handle cases where the AI provides malformed JSON
 - **FR-005**: The system MUST retry on 429 errors with exponential backoff (up to 5 retries).
 - **FR-006**: The system MUST save debug data (messages, error details) to a temporary directory when a 400 error occurs.
 - **FR-007**: The system MUST handle JSON parsing errors for tool arguments. If the response was truncated, the error message MUST include: `"(output truncated, please reduce your output)"`.
+- **FR-007a**: The system MUST attempt to recover truncated tool arguments JSON by closing unclosed strings (`"`) and braces (`}`) before failing. Recovery MUST NOT be attempted when unclosed `[` brackets are detected (cannot guess array content).
+- **FR-007b**: When recovered JSON parses successfully, the system MUST execute the tool and append a warning to the tool result: `"\n\n⚠️ Tool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls."`.
+- **FR-007c**: The `safeToolArguments()` function in `convertMessagesForAPI.ts` MUST also attempt `recoverTruncatedJson()` before falling back to `{"invalid_arguments": args}`.
 - **FR-008**: The system MUST respect abort signals and backgrounded tools, stopping recursion even if a truncation occurred.
 - **FR-009**: The system MUST detect if a new tool call is identical to a tool call in the previous turn (same tool name and arguments). If so, it MUST add a user message reminding the agent to avoid loops and consider changing its approach.
 - **FR-010**: The system MUST retry transient server errors (HTTP 500, 502, 503, 504) with exponential backoff, using the same retry strategy as 429 errors.
@@ -89,3 +108,4 @@ As a user, I want the agent to handle cases where the AI provides malformed JSON
 - **AI Response**: The result from the AI service, including content, tool calls, and the finish reason.
 - **Message History**: The list of messages in the current session, which now includes automatic continuation prompts and error blocks.
 - **Debug Data**: Information saved during 400 errors, including original messages, model config, and error details.
+- **Recovered Tool Arguments**: Tool arguments where truncated JSON was successfully repaired (unclosed strings/braces closed). A `jsonRecovered` flag tracks whether recovery occurred, and a warning is appended to the tool result.

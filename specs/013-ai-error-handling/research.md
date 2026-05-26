@@ -10,6 +10,7 @@ This involves:
 1. Detecting the truncation.
 2. Adding a user message to prompt the AI to continue.
 3. Automatically recursing the `sendAIMessage` call.
+4. Attempting to recover truncated tool arguments JSON by closing unclosed strings and braces before giving up, so that Write/Edit tools can still execute with a warning appended.
 
 ## Considerations
 - **Recursion Depth**: The system already has a `recursionDepth` parameter in `sendAIMessage`. This should be incremented for each recursive call, whether triggered by tool calls or truncation.

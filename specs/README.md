@@ -29,7 +29,7 @@ This directory contains feature specifications that serve as the source of truth
 | Metric | Count |
 |--------|-------|
 | Specs | 54 |
-| User Stories | 219 |
+| User Stories | 220 |
 | Functional Requirements | 829 |
 | Test Files | 299 |
 | Test Cases | 3,790 |
@@ -49,7 +49,7 @@ This directory contains feature specifications that serve as the source of truth
 | Subagent | Subagent support for delegating tasks to pre-configured AI personalities | 5 | 23 | [spec](009-subagent/spec.md) · [plan](009-subagent/plan.md) |
 | Usage Tracking | SDK usage tracking callbacks (`onUsagesChange`) for AI calls and compression | 4 | 15 | [spec](010-usage-tracking-callback/spec.md) · [plan](010-usage-tracking-callback/plan.md) |
 | Streaming | Real-time content streaming for assistant messages and tool parameters | 5 | 22 | [spec](012-stream-content-updates/spec.md) · [plan](012-stream-content-updates/plan.md) |
-| AI Error Handling | Handle output token limit exceeded by prompting agent to break work into smaller pieces | 5 | 10 | [spec](013-ai-error-handling/spec.md) · [plan](013-ai-error-handling/plan.md) |
+| AI Error Handling | Handle output token limit exceeded by prompting agent to break work into smaller pieces | 6 | 10 | [spec](013-ai-error-handling/spec.md) · [plan](013-ai-error-handling/plan.md) |
 | Message Compression | Conversation history and user input size management | 4 | 12 | [spec](014-message-compression/spec.md) · [plan](014-message-compression/plan.md) |
 | Image Pasting | Paste images from clipboard into chat input with placeholder and attachment | 3 | 10 | [spec](015-image-pasting/spec.md) · [plan](015-image-pasting/plan.md) |
 | File Selector | Quick file/directory selector UI component | 3 | 8 | [spec](016-file-selector/spec.md) · [plan](016-file-selector/plan.md) |

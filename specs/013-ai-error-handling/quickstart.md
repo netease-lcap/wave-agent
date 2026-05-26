@@ -9,6 +9,7 @@ This feature improves the agent's behavior when its response is truncated due to
 3. If no tools were called, the `AIManager` adds a user message: "Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off."
 4. The `AIManager` then automatically initiates a recursive `sendAIMessage` call.
 5. If tools were called, the `AIManager` still initiates the recursive call after tool execution, but without adding the extra user message.
+6. If tool arguments JSON is truncated (missing closing braces/strings), `recoverTruncatedJson()` attempts to close them. If recovery succeeds, the tool executes with a truncation warning appended to the result. If recovery fails, an error is returned with a truncation hint.
 
 ## Testing
 To test this feature, you can simulate a truncated response in a unit test:

@@ -23,3 +23,16 @@ The continuation prompt is a new hidden user message added to the message histor
 
 ### Content:
 "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."
+
+## Recovered Tool Arguments
+When tool arguments JSON is truncated (missing closing braces/strings), the system attempts recovery before failing.
+
+### Attributes:
+- `jsonRecovered`: A boolean flag indicating whether the tool arguments JSON was recovered from a truncated state.
+- `recoveredArgs`: The JSON string after applying `recoverTruncatedJson()`, which closes unclosed `"` strings and `}` braces.
+- `truncationWarning`: Appended to tool result when `jsonRecovered` is true: `"⚠️ Tool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls."`
+
+### Recovery Rules:
+- Unclosed `"` strings: closed by appending `"`.
+- Unclosed `{` braces: closed by appending `}` for each depth level.
+- Unclosed `[` brackets: NOT recovered (cannot guess array content).

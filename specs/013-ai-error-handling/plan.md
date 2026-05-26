@@ -7,6 +7,7 @@ Modify `packages/agent-sdk/src/managers/aiManager.ts`:
 - **Update Recursion Condition**: Change the condition for recursive `sendAIMessage` calls to include `result.finish_reason === "length"`.
 - **Add Continuation Prompt**: Just before the recursive call, if `finish_reason === "length"`, add a hidden user message (with `isMeta: true`): `"Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."`.
 - **Update UI Rendering**: Update `packages/code/src/components/MessageList.tsx` to filter out messages with `isMeta: true` before rendering.
+- **Truncated JSON Recovery**: When tool arguments fail JSON.parse, attempt recovery via `recoverTruncatedJson()` (in `utils/stringUtils.ts`) before giving up. Track `jsonRecovered` flag and append warning to tool result. Also apply recovery in `convertMessagesForAPI.ts`'s `safeToolArguments()`.
 - **Duplicate Tool Call Detection**: In `sendAIMessage`, after tool execution and before recursion:
     - Retrieve the message history from `MessageManager`.
     - Find the most recent assistant message (before the current one) that contains tool blocks.
@@ -25,6 +26,11 @@ Modify `packages/agent-sdk/src/managers/aiManager.ts`:
     - Test case: Verify that no reminder is added when the tool name is the same but arguments are different.
     - Test case: Verify that no reminder is added when the tool name is different.
     - Test case: Verify that the reminder includes all duplicate tool names.
+- **`packages/agent-sdk/tests/utils/stringUtils.test.ts`**:
+    - Test `recoverTruncatedJson()` for: missing closing braces, unclosed strings, escaped quotes inside strings, unclosed brackets (no recovery), deeply nested truncation, empty object missing closing brace.
+- **`packages/agent-sdk/tests/managers/aiManager.coverage.test.ts`**:
+    - Test that recovered JSON sets `jsonRecovered` flag and appends truncation warning to tool result.
+    - Test that tool calls with malformed JSON and `finish_reason: "length"` include truncation hint in error.
 
 ## Verification Plan
 1. **Unit Tests**: Run the updated tests using `pnpm test packages/agent-sdk/tests/managers/aiManager_finishReason.test.ts` and `pnpm test packages/agent-sdk/tests/managers/aiManager.test.ts`.
