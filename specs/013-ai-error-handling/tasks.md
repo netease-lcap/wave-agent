@@ -15,4 +15,10 @@
 - [x] Add duplicate tool call reminder user message in `AIManager.ts`
 - [x] Create unit tests for duplicate tool call reminder in `packages/agent-sdk/tests/managers/aiManager_duplicateTool.test.ts`
 - [x] Verify duplicate tool call reminder implementation
+- [x] Implement `recoverTruncatedJson()` in `utils/stringUtils.ts` to close unclosed strings and braces
+- [x] Apply `recoverTruncatedJson()` in `aiManager.ts` tool argument parsing with `jsonRecovered` flag
+- [x] Apply `recoverTruncatedJson()` in `convertMessagesForAPI.ts` `safeToolArguments()`
+- [x] Append truncation warning to tool result when JSON was recovered
+- [x] Add unit tests for `recoverTruncatedJson` in `stringUtils.test.ts`
+- [x] Add coverage tests for recovered JSON flag and truncation hint in `aiManager.coverage.test.ts`
 - [ ] Add retry for transient 5xx errors (500, 502, 503, 504) in OpenAI client
