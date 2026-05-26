@@ -72,6 +72,49 @@ export function parseCustomHeaders(
 }
 
 /**
+ * Attempt to recover truncated JSON (e.g., missing closing braces due to max tokens).
+ * Tracks brace depth and only recovers if there are unclosed `{` braces.
+ * Will NOT recover if there are unclosed `[` brackets (can't guess the content).
+ * @param jsonStr Potentially truncated JSON string
+ * @returns Recovered JSON string, or the original if unrecoverable
+ */
+export function recoverTruncatedJson(jsonStr: string): string {
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (const ch of jsonStr) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (ch === "{") braceDepth++;
+      if (ch === "}") braceDepth--;
+      if (ch === "[") bracketDepth++;
+      if (ch === "]") bracketDepth--;
+    }
+  }
+
+  // Build recovery suffix
+  let suffix = "";
+  if (inString) suffix += '"'; // Close unclosed string
+  if (braceDepth > 0 && bracketDepth === 0) {
+    suffix += "}".repeat(braceDepth);
+  }
+  return suffix ? jsonStr + suffix : jsonStr;
+}
+
+/**
  * Function to remove ANSI color codes
  * @param text Text containing ANSI color codes
  * @returns Plain text with color codes removed

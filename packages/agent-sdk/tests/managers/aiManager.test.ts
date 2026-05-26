@@ -53,6 +53,7 @@ describe("AIManager", () => {
       getSessionId: vi.fn().mockReturnValue("test-session-id"),
       getMessages: vi.fn().mockReturnValue([]),
       addAssistantMessage: vi.fn(),
+      addUserMessage: vi.fn(),
       updateCurrentMessageContent: vi.fn(),
       updateToolBlock: vi.fn(),
       mergeAssistantAdditionalFields: vi.fn(),
@@ -186,16 +187,24 @@ describe("AIManager", () => {
       );
     });
 
-    it("should log warning when finish reason is length", async () => {
+    it("should log warning and recurse when finish reason is length", async () => {
       const { callAgent } = await import("../../src/services/aiService.js");
+      vi.mocked(callAgent).mockClear();
       const mockHeaders = { "x-test-header": "test-value" };
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "Truncated response",
-        finish_reason: "length",
-        response_headers: mockHeaders,
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        tool_calls: [],
-      });
+      vi.mocked(callAgent)
+        .mockResolvedValueOnce({
+          content: "Truncated response",
+          finish_reason: "length",
+          response_headers: mockHeaders,
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          tool_calls: [],
+        })
+        .mockResolvedValueOnce({
+          content: "Final response",
+          finish_reason: "stop",
+          usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+          tool_calls: [],
+        });
 
       await aiManager.sendAIMessage();
 
@@ -203,6 +212,7 @@ describe("AIManager", () => {
         "AI response truncated due to length limit. Response headers:",
         mockHeaders,
       );
+      expect(callAgent).toHaveBeenCalledTimes(2);
     });
 
     it("should save session during each recursion regardless of tool execution results", async () => {

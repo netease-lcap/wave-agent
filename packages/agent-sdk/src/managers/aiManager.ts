@@ -32,6 +32,7 @@ import {
   DEFAULT_SYSTEM_PROMPT,
   buildSystemPrompt,
 } from "../constants/prompts.js";
+import { recoverTruncatedJson } from "../utils/stringUtils.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -583,12 +584,6 @@ export class AIManager {
         }
       }
 
-      if (result.finish_reason === "length" && toolCalls.length === 0) {
-        this.messageManager.addErrorBlock(
-          "AI response was truncated due to length limit. Please try to reduce the complexity of your request or split it into smaller parts.",
-        );
-      }
-
       if (toolCalls.length > 0) {
         // Execute all tools in parallel using Promise.all
         const toolExecutionPromises = toolCalls.map(
@@ -606,33 +601,44 @@ export class AIManager {
             const toolName = functionToolCall.function?.name || "";
             // Safely parse tool parameters, handle tools without parameters
             let toolArgs: Record<string, unknown> = {};
+            let jsonRecovered = false;
             const argsString = functionToolCall.function?.arguments?.trim();
 
             if (!argsString || argsString === "") {
               // Tool without parameters, use empty object
               toolArgs = {};
             } else {
+              let recoveredArgs = argsString;
               try {
                 toolArgs = JSON.parse(argsString);
-              } catch (parseError) {
-                // For non-empty but malformed JSON, still throw exception
-                let errorMessage = `Failed to parse tool arguments`;
-                if (result.finish_reason === "length") {
-                  errorMessage +=
-                    " (output truncated, please reduce your output)";
+              } catch {
+                // Attempt to recover truncated JSON (e.g., missing closing braces)
+                recoveredArgs = recoverTruncatedJson(argsString);
+                try {
+                  toolArgs = JSON.parse(recoveredArgs);
+                  jsonRecovered = true;
+                  this.logger?.warn(
+                    `Recovered truncated JSON for tool "${toolName}"`,
+                  );
+                } catch (parseError) {
+                  let errorMessage = `Failed to parse tool arguments`;
+                  if (result.finish_reason === "length") {
+                    errorMessage +=
+                      " (output truncated, please reduce your output)";
+                  }
+                  this.logger?.error(errorMessage, parseError);
+                  this.messageManager.updateToolBlock({
+                    id: toolId,
+                    parameters: argsString,
+                    result: errorMessage,
+                    success: false,
+                    error: errorMessage,
+                    stage: "end",
+                    name: toolName,
+                    compactParams: "",
+                  });
+                  return;
                 }
-                this.logger?.error(errorMessage, parseError);
-                this.messageManager.updateToolBlock({
-                  id: toolId,
-                  parameters: argsString,
-                  result: errorMessage,
-                  success: false,
-                  error: errorMessage,
-                  stage: "end",
-                  name: toolName,
-                  compactParams: "",
-                });
-                return;
               }
             }
 
@@ -683,13 +689,20 @@ export class AIManager {
                 context,
               );
 
+              // Build result content, adding truncation warning if JSON was recovered
+              let toolResultContent =
+                toolResult.content ||
+                (toolResult.error ? `Error: ${toolResult.error}` : "");
+              if (jsonRecovered) {
+                toolResultContent +=
+                  "\n\n⚠️ Tool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.";
+              }
+
               // Update message state - tool execution completed
               this.messageManager.updateToolBlock({
                 id: toolId,
                 parameters: argsString,
-                result:
-                  toolResult.content ||
-                  (toolResult.error ? `Error: ${toolResult.error}` : ""),
+                result: toolResultContent,
                 success: toolResult.success,
                 error: toolResult.error,
                 stage: "end",
@@ -735,13 +748,21 @@ export class AIManager {
         model,
       );
 
-      // Check if there are tool operations, if so automatically initiate next AI service call
-      if (toolCalls.length > 0) {
+      // Check if there are tool operations or response was truncated, if so automatically initiate next AI service call
+      if (toolCalls.length > 0 || result.finish_reason === "length") {
         // Check interruption status
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
 
         if (!isCurrentlyAborted) {
+          // If response was truncated and no tools were called, add a continuation message
+          if (result.finish_reason === "length" && toolCalls.length === 0) {
+            this.messageManager.addUserMessage({
+              content:
+                "Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off.",
+            });
+          }
+
           // Recursively call AI service, increment recursion depth, and pass same configuration
           await this.sendAIMessage({
             recursionDepth: recursionDepth + 1,

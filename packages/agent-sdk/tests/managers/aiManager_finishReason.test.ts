@@ -52,6 +52,7 @@ describe("AIManager finish reason", () => {
       getSessionId: vi.fn().mockReturnValue("test-session-id"),
       getMessages: vi.fn().mockReturnValue([]),
       addAssistantMessage: vi.fn(),
+      addUserMessage: vi.fn(),
       updateCurrentMessageContent: vi.fn(),
       updateToolBlock: vi.fn(),
       mergeAssistantAdditionalFields: vi.fn(),
@@ -92,28 +93,44 @@ describe("AIManager finish reason", () => {
     });
   });
 
-  it("should add an error block when finish reason is length and no tools are called", async () => {
+  it("should add a user message and recurse when finish reason is length and no tools are called", async () => {
     const { callAgent } = await import("../../src/services/aiService.js");
-    vi.mocked(callAgent).mockResolvedValue({
-      content: "Truncated response...",
-      finish_reason: "length",
-      tool_calls: [],
-      usage: {
-        prompt_tokens: 10,
-        completion_tokens: 20,
-        total_tokens: 30,
-      },
-    });
+    vi.mocked(callAgent).mockClear();
+    vi.mocked(callAgent)
+      .mockResolvedValueOnce({
+        content: "Truncated response...",
+        finish_reason: "length",
+        tool_calls: [],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      })
+      .mockResolvedValueOnce({
+        content: "Final response",
+        finish_reason: "stop",
+        tool_calls: [],
+        usage: {
+          prompt_tokens: 5,
+          completion_tokens: 5,
+          total_tokens: 10,
+        },
+      });
 
     await aiManager.sendAIMessage();
 
-    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
-      expect.stringContaining("truncated"),
+    expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining("cut off"),
+      }),
     );
+    expect(callAgent).toHaveBeenCalledTimes(2);
   });
 
-  it("should NOT add an error block when finish reason is length but tools ARE called", async () => {
+  it("should NOT add a user message but still recurse when finish reason is length and tools ARE called", async () => {
     const { callAgent } = await import("../../src/services/aiService.js");
+    vi.mocked(callAgent).mockClear();
     // First call returns tool calls, second call returns stop to prevent infinite recursion
     vi.mocked(callAgent)
       .mockResolvedValueOnce({
@@ -148,9 +165,9 @@ describe("AIManager finish reason", () => {
 
     await aiManager.sendAIMessage();
 
-    // It should NOT call addErrorBlock directly on AIManager level
-    // (The tool block itself might have an error if it fails to parse, but that's different)
-    expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+    // It should NOT call addUserMessage because tool results serve as reminder
+    expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+    expect(callAgent).toHaveBeenCalledTimes(2);
   });
 
   it("should NOT add an error block when finish reason is stop", async () => {
