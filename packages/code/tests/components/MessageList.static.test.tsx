@@ -49,8 +49,8 @@ describe("MessageList Static Rendering", () => {
   });
 
   describe("Static rendering scenarios", () => {
-    it("should render only last 10 messages (23 messages)", () => {
-      const messages = Array.from({ length: 23 }, (_, i) =>
+    it("should render only last 30 messages in collapsed mode (43 messages)", () => {
+      const messages = Array.from({ length: 43 }, (_, i) =>
         createMessage("user", `Message ${i + 1}`, i + 1),
       );
 
@@ -58,17 +58,17 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // Only last 10 messages should be visible
+      // Only last 30 messages should be visible in collapsed mode
       expect(lastFrame()).not.toContain("Message 1 - Message 1");
       expect(lastFrame()).not.toContain("Message 13 - Message 13");
       expect(lastFrame()).toContain("Message 14 - Message 14");
-      expect(lastFrame()).toContain("Message 23 - Message 23");
+      expect(lastFrame()).toContain("Message 43 - Message 43");
 
       // Should not show page info
       expect(lastFrame()).not.toContain("Page");
     });
 
-    it("should render only last 10 messages (15 messages)", () => {
+    it("should render all messages when under collapsed limit (15 messages)", () => {
       const messages = Array.from({ length: 15 }, (_, i) =>
         createMessage("user", `Msg ${i + 1}`, i + 1),
       );
@@ -77,17 +77,15 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // Only last 10 messages should be visible
-      expect(lastFrame()).not.toContain("Msg 1 - Message 1");
-      expect(lastFrame()).not.toContain("Msg 5 - Message 5");
-      expect(lastFrame()).toContain("Msg 6 - Message 6");
+      // All 15 messages should be visible (under 30 limit)
+      expect(lastFrame()).toContain("Msg 1 - Message 1");
       expect(lastFrame()).toContain("Msg 15 - Message 15");
 
       // Should not show page info
       expect(lastFrame()).not.toContain("Page");
     });
 
-    it("should handle large number of messages and show only last 10 (47 messages)", () => {
+    it("should handle large number of messages and show only last 30 in collapsed mode (47 messages)", () => {
       const messages = Array.from({ length: 47 }, (_, i) =>
         createMessage("user", `Bulk ${i + 1}`, i + 1),
       );
@@ -96,13 +94,29 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // Only last 10 messages should be visible
+      // Only last 30 messages should be visible in collapsed mode
       expect(lastFrame()).not.toContain("Bulk 1 - Message 1");
-      expect(lastFrame()).not.toContain("Bulk 37 - Message 37");
-      expect(lastFrame()).toContain("Bulk 38 - Message 38");
+      expect(lastFrame()).not.toContain("Bulk 17 - Message 17");
+      expect(lastFrame()).toContain("Bulk 18 - Message 18");
       expect(lastFrame()).toContain("Bulk 47 - Message 47");
 
       expect(lastFrame()).not.toContain("Page");
+    });
+
+    it("should render only last 10 messages in expanded mode (23 messages)", () => {
+      const messages = Array.from({ length: 23 }, (_, i) =>
+        createMessage("user", `Expanded ${i + 1}`, i + 1),
+      );
+
+      const { lastFrame } = render(
+        <MessageList messages={messages} isExpanded={true} />,
+      );
+
+      // Only last 10 messages should be visible in expanded mode
+      expect(lastFrame()).not.toContain("Expanded 1 - Message 1");
+      expect(lastFrame()).not.toContain("Expanded 13 - Message 13");
+      expect(lastFrame()).toContain("Expanded 14 - Message 14");
+      expect(lastFrame()).toContain("Expanded 23 - Message 23");
     });
   });
 
@@ -198,8 +212,8 @@ describe("MessageList Static Rendering", () => {
   });
 
   describe("Message content and types", () => {
-    it("should render only last 10 messages content (no pagination filtering)", () => {
-      const messages = Array.from({ length: 22 }, (_, i) =>
+    it("should render only last 30 messages content in collapsed mode (no pagination filtering)", () => {
+      const messages = Array.from({ length: 42 }, (_, i) =>
         createMessage("user", `Unique content ${i}`, i + 1),
       );
 
@@ -207,15 +221,15 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // Only last 10 messages should be visible
+      // Only last 30 messages should be visible in collapsed mode
       expect(lastFrame()).not.toContain("Unique content 0"); // Message 1
       expect(lastFrame()).not.toContain("Unique content 11"); // Message 12
       expect(lastFrame()).toContain("Unique content 12"); // Message 13
-      expect(lastFrame()).toContain("Unique content 21"); // Message 22
+      expect(lastFrame()).toContain("Unique content 41"); // Message 42
     });
 
-    it("should handle different message types and preserve structure for last 10 messages", () => {
-      const messages = Array.from({ length: 12 }, (_, i) => {
+    it("should handle different message types and preserve structure for last 30 messages in collapsed mode", () => {
+      const messages = Array.from({ length: 32 }, (_, i) => {
         const role = i % 2 === 0 ? "user" : "assistant";
         return createMessage(role, `Test ${i + 1}`, i + 1);
       });
@@ -224,11 +238,11 @@ describe("MessageList Static Rendering", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      // Only last 10 messages should be visible
+      // Only last 30 messages should be visible in collapsed mode
       expect(lastFrame()).not.toContain("Test 1 - Message 1");
       expect(lastFrame()).not.toContain("Test 2 - Message 2");
       expect(lastFrame()).toContain("Test 3 - Message 3");
-      expect(lastFrame()).toContain("Test 12 - Message 12");
+      expect(lastFrame()).toContain("Test 32 - Message 32");
     });
 
     it("should handle complex message types with mixed blocks", () => {
