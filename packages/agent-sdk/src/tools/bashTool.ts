@@ -208,7 +208,7 @@ The working directory persists between commands. Try to maintain your current wo
       return {
         success: true,
         content: backgroundMsg,
-        shortResult: `Background process ${taskId} started`,
+        shortResult: `Background process ${taskId} started${outputPath ? ` → ${outputPath}` : ""}`,
       };
     }
 
