@@ -145,7 +145,7 @@ Usage:
 - The file_path parameter must be an absolute path, not a relative path
 - By default, it reads up to 2000 lines starting from the beginning of the file
 - You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
-- Any lines longer than 2000 characters will be truncated
+- If the file content exceeds the token limit, use offset and limit parameters to read specific portions of the file, or use Bash with grep/jq to extract specific content
 - Results are returned using cat -n format, with line numbers starting at 1
 - This tool allows Agent to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Agent is a multimodal LLM.
 - You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
@@ -341,12 +341,30 @@ Usage:
       const formattedContent = selectedLines
         .map((line, index) => {
           const lineNumber = startLine + index;
-          // Truncate overly long lines
-          const truncatedLine =
-            line.length > 2000 ? line.substring(0, 2000) + "..." : line;
-          return `${formatLineNumberPrefix(lineNumber)}${truncatedLine}`;
+          return `${formatLineNumberPrefix(lineNumber)}${line}`;
         })
         .join("\n");
+
+      // Token-level validation: estimate tokens and reject if over limit
+      const maxTokens = context.fileReadingLimits?.maxTokens ?? 25000; // Default 25000 tokens
+      const ext = extname(actualFilePath).toLowerCase().slice(1);
+      const bytesPerToken =
+        ext === "json" || ext === "jsonl" || ext === "jsonc" ? 2 : 4;
+      const estimatedTokens = Math.ceil(
+        formattedContent.length / bytesPerToken,
+      );
+      if (estimatedTokens > maxTokens) {
+        return {
+          success: false,
+          content: "",
+          error: `File content (~${estimatedTokens.toLocaleString()} tokens) exceeds maximum allowed tokens (${maxTokens.toLocaleString()}). Use offset and limit parameters to read specific portions of the file, or use Bash with grep/jq to search within it for specific content.`,
+          metadata: {
+            type: "error_token_limit_exceeded",
+            estimatedTokens,
+            maxTokens,
+          },
+        };
+      }
 
       // Add file information header
       let content = `File: ${filePath}\n`;

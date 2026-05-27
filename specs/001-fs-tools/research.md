@@ -13,8 +13,8 @@
 **Rationale**: `ripgrep` is significantly faster than native Node.js implementations for large codebases and is a standard tool in the VS Code ecosystem.
 
 ## Large File Handling
-**Decision**: Implement `offset` and `limit` in the `Read` tool, and truncate long lines.
-**Rationale**: LLMs have context window limits. Reading entire large files or extremely long lines can exhaust tokens or cause performance issues.
+**Decision**: Implement `offset` and `limit` in the `Read` tool, and enforce token-level validation.
+**Rationale**: LLMs have context window limits. Reading entire large files can exhaust tokens. Token-level validation (estimated tokens must not exceed `maxTokens`) prevents oversized content from being returned, with a clear error suggesting offset/limit or grep/jq.
 
 ## Search Feedback
 **Decision**: Suggest specifying the `path` field when `Grep` returns no matches.

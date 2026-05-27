@@ -1,6 +1,6 @@
 # Tasks: File System Tools
 
-- [x] T001 Implement `Read` tool with line numbering and truncation support
+- [x] T001 Implement `Read` tool with line numbering and token-level validation
 - [x] T002 Implement `Write` tool with directory auto-creation
 - [x] T003 Implement `Edit` tool with detailed mismatch analysis
 - [x] T007 Implement `Glob` tool for pattern-based file discovery
