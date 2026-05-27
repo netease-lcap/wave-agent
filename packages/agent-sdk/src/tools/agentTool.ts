@@ -246,7 +246,7 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
               resolve({
                 success: true,
                 content: backgroundMsg,
-                shortResult: `Agent started in background: ${result}`,
+                shortResult: `Agent started in background: ${result}${outputPath ? ` → ${outputPath}` : ""}`,
               });
               return;
             }
