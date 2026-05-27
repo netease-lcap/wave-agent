@@ -1154,7 +1154,7 @@ describe("McpManager", () => {
       expect(result).toEqual({
         success: true,
         content:
-          'Known text\n{"type":"unknown_type","data":"some_data","custom_field":"custom_value"}',
+          'Known text\n{\n  "type": "unknown_type",\n  "data": "some_data",\n  "custom_field": "custom_value"\n}',
         serverName: "test-server",
       });
     });
