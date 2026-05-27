@@ -15,7 +15,7 @@
 - [X] T003 Implement `MessageBlockItem` to handle all block types in `packages/code/src/components/MessageBlockItem.tsx`
 - [X] T004 Implement `MessageList` with static/dynamic split in `packages/code/src/components/MessageList.tsx`
 - [X] T005 [P] Implement welcome message rendering in `MessageList`
-- [X] T006 [P] Implement message limiting logic (max 10 messages) in `MessageList`
+- [X] T006 [P] Implement message limiting logic (max 30 collapsed / 10 expanded) in `MessageList`
 
 ## Phase 3: Dynamic Updates & Measurement
 

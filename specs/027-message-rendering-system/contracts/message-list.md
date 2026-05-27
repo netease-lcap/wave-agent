@@ -36,5 +36,5 @@ export interface MessageListProps {
    - When `isFinished` is true, the entire last message becomes static and is moved into the `<Static>` component.
 4. **Static Rendering**: Uses Ink's `<Static>` component to render static blocks. This ensures they are only rendered once and then "frozen" in the terminal scrollback.
 5. **Dynamic Rendering**: Renders dynamic blocks in a regular `<Box>`. This allows them to re-render and update their display (e.g., showing streaming text or a spinner).
-6. **Message Limiting**: Only renders the last `maxMessages` (default 10) to prevent performance degradation in long sessions.
+6. **Message Limiting**: Renders the last `maxMessages` to prevent performance degradation in long sessions. The limit is 30 in collapsed mode and 10 in expanded mode (since all blocks are static in expanded mode, a smaller limit keeps the view focused).
 7. **Height Measurement**: Uses `measureElement` to calculate the height of dynamic blocks and reports it via `onDynamicBlocksHeightMeasured`.
