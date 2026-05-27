@@ -105,5 +105,6 @@ if (results.length > 0) {
     console.log(`\nTo publish this version, run:\n  git push origin ${tagName}\n`);
   } catch (error) {
     console.error('Git operation failed:', error.message);
+    process.exit(1);
   }
 }
