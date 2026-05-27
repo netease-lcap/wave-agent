@@ -164,6 +164,23 @@
 
 ---
 
+## Task: Per-Agent Environment Variables (env option)
+
+- [x] T045 Add `env?: Record<string, string>` field to `AgentOptions` in `packages/agent-sdk/src/types/agent.ts`
+- [x] T046 Add `env?: Record<string, string>` field to `ToolContext` in `packages/agent-sdk/src/tools/types.ts`
+- [x] T047 Register `MergedEnv` in DI container in `packages/agent-sdk/src/utils/containerSetup.ts`
+- [x] T048 Update PermissionRequest hook env in `containerSetup.ts` to use `mergedEnv`
+- [x] T049 Update bashTool to use `context.env` instead of `process.env`
+- [x] T050 Update backgroundTaskManager to use `MergedEnv` from container
+- [x] T051 Update bangManager to use `MergedEnv` from container
+- [x] T052 Update mcpManager to use `MergedEnv` from container as base env
+- [x] T053 Update aiManager to set `env` in ToolContext and use `MergedEnv` for hook contexts
+- [x] T054 Update hookManager SessionStart/SessionEnd to use `MergedEnv` from container
+- [x] T055 Build and type-check agent-sdk package
+- [x] T056 Run existing tests to verify backwards compatibility
+
+---
+
 ## Task: Make model/fastModel Fully Optional
 
 - [ ] Remove validateModelConfig to make model/fastModel fully optional

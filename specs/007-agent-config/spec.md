@@ -127,6 +127,23 @@ A developer is actively working and needs to modify their settings.json configur
 
 ---
 
+### User Story 9 - Per-Agent Environment Variables (Priority: P1)
+
+SDK users need per-agent-instance environment variables. Currently all subprocesses (bash tool, MCP servers, hooks) hardcode `process.env` with no way to inject or override env vars per agent. This prevents use cases like running multiple agents with different API keys, passing runtime config to MCP servers, or isolating env between agent instances.
+
+**Why this priority**: Essential for multi-tenant and multi-agent scenarios where different agent instances need isolated or different environment configurations.
+
+**Independent Test**: Can be fully tested by creating an Agent with `env: { MY_VAR: "hello" }` and verifying the variable is available in bash tool subprocesses and MCP server processes.
+
+**Acceptance Scenarios**:
+
+1. **Given** a developer creates an Agent with `env: { MY_VAR: "hello" }`, **When** the bash tool runs `echo $MY_VAR`, **Then** the output is "hello"
+2. **Given** a developer creates an Agent with `env: { PATH: "/custom" }`, **When** a child process is spawned, **Then** the custom PATH takes effect over the process-level PATH
+3. **Given** no `env` option is provided, **When** an agent is created, **Then** behavior is unchanged (backwards compatible)
+4. **Given** an Agent with `env: { API_KEY: "agent-key" }`, **When** an MCP server is configured with `config.env: { API_KEY: "mcp-key" }`, **Then** the MCP server receives "mcp-key" (MCP config.env takes precedence)
+
+---
+
 ### Edge Cases
 
 - What happens when partial configuration is provided (e.g., apiKey but no baseURL)?
@@ -172,6 +189,14 @@ A developer is actively working and needs to modify their settings.json configur
 - **FR-028**: Environment variables from env field MUST be available to hook processes and agent execution context
 - **FR-029**: System MUST handle file watcher initialization failures by throwing descriptive error and preventing SDK startup
 - **FR-030**: System MUST reset permissions (allow, deny, additionalDirectories) to empty arrays and permissionMode to undefined when they are missing in the new configuration during reload
+- **FR-031**: `AgentOptions` MUST accept an optional `env?: Record<string, string>` parameter for per-agent environment variables
+- **FR-032**: System MUST compute a `MergedEnv` as `{ ...process.env, ...options.env }` at agent creation time and register it in the DI container as "MergedEnv"
+- **FR-033**: Agent `options.env` values MUST override `process.env` values with the same key for all subprocess spawns
+- **FR-034**: Bash tool, background task manager, and bang manager MUST use `MergedEnv` from the container instead of raw `process.env`
+- **FR-035**: MCP server environment MUST use `MergedEnv` as base, with `server.config.env` overlaying on top (MCP config.env takes highest precedence)
+- **FR-036**: Hook execution contexts (SessionStart, SessionEnd, PreToolUse, PostToolUse, PermissionRequest, Stop) MUST use `MergedEnv` instead of raw `process.env`
+- **FR-037**: `ToolContext` MUST include an `env` field containing `MergedEnv` for tool implementations to access
+- **FR-038**: When no `env` option is provided, system behavior MUST be identical to before (backwards compatible)
 
 ### Key Entities *(include if feature involves data)*
 
@@ -181,6 +206,7 @@ A developer is actively working and needs to modify their settings.json configur
 - **Settings Configuration**: Contains hooks, env variables, and other configuration options, watched for changes
 - **File Watcher**: Monitors configuration files and triggers reload events
 - **Environment Context**: Merged environment variables from user and project settings, passed to agent processes
+- **MergedEnv**: Computed as `{ ...process.env, ...agentOptions.env }`, registered in the DI container and consumed by all spawn sites. Provides per-agent env isolation while maintaining process.env as the base.
 
 ## Success Criteria *(mandatory)*
 
@@ -191,6 +217,20 @@ A developer is actively working and needs to modify their settings.json configur
 - **SC-003**: Agent creation fails with descriptive error messages when required configuration is missing from both sources (except for `apiKey` when custom headers are present).
 - **SC-004**: Constructor parameters override environment variables when both are present.
 - **SC-005**: Testing-related environment variables continue to work as before.
+- **SC-006**: Service uses resolved configuration instead of direct environment variable access.
+- **SC-007**: `maxTokens` is correctly applied to AI service calls with proper precedence.
+- **SC-008**: Custom headers from `WAVE_CUSTOM_HEADERS` are included in outgoing requests.
+- **SC-009**: Agent responds in the configured language while preserving technical terms.
+ Agent instances using optional constructor parameters.
+- **SC-002**: Agent creation falls back to environment variables when constructor parameters not provided.
+- **SC-003**: Agent creation fails with descriptive error messages when required configuration is missing from both sources (except for `apiKey` when custom headers are present).
+- **SC-004**: Constructor parameters override environment variables when both are present.
+- **SC-005**: Testing-related environment variables continue to work as before.
+- **SC-006**: Service uses resolved configuration instead of direct environment variable access.
+- **SC-007**: `maxTokens` is correctly applied to AI service calls with proper precedence.
+- **SC-008**: Custom headers from `WAVE_CUSTOM_HEADERS` are included in outgoing requests.
+- **SC-009**: Agent responds in the configured language while preserving technical terms.
+k as before.
 - **SC-006**: Service uses resolved configuration instead of direct environment variable access.
 - **SC-007**: `maxTokens` is correctly applied to AI service calls with proper precedence.
 - **SC-008**: Custom headers from `WAVE_CUSTOM_HEADERS` are included in outgoing requests.

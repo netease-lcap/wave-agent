@@ -424,8 +424,11 @@ export class McpManager {
           logger?.info(`Connected to MCP server ${name} using SSE (fallback)`);
         }
       } else if (server.config.command) {
+        const agentEnv =
+          this.container.get<Record<string, string>>("MergedEnv") ||
+          (process.env as Record<string, string>);
         const env: Record<string, string> = {
-          ...(process.env as Record<string, string>),
+          ...agentEnv,
           ...(server.config.env || {}),
         };
 
