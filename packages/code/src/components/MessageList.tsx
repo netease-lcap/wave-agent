@@ -4,6 +4,9 @@ import { Box, Text, Static } from "ink";
 import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageBlockItem } from "./MessageBlockItem.js";
 
+const MAX_MESSAGES_COLLAPSED = 30;
+const MAX_MESSAGES_EXPANDED = 10;
+
 export interface MessageListProps {
   messages: Message[];
   isExpanded?: boolean;
@@ -20,6 +23,10 @@ export const MessageList = React.memo(
     version,
     workdir,
   }: MessageListProps) => {
+    const maxMessages = isExpanded
+      ? MAX_MESSAGES_EXPANDED
+      : MAX_MESSAGES_COLLAPSED;
+
     const welcomeMessage = (
       <Box flexDirection="column" paddingTop={1}>
         <Text color="gray">WAVE{version ? ` v${version}` : ""}</Text>
@@ -30,9 +37,6 @@ export const MessageList = React.memo(
         )}
       </Box>
     );
-
-    // Limit messages to prevent long rendering times
-    const maxMessages = 10;
 
     // Filter out meta messages
     const visibleMessages = messages.filter((m) => !m.isMeta);
