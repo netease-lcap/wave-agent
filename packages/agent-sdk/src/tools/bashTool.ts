@@ -1,6 +1,8 @@
 import { spawn, ChildProcess } from "child_process";
 import { logger } from "../utils/globalLogger.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
+import { processToolResult } from "../utils/toolResultStorage.js";
+import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import {
   BASH_TOOL_NAME,
@@ -13,7 +15,6 @@ import {
   WRITE_TOOL_NAME,
 } from "../constants/tools.js";
 
-const MAX_OUTPUT_LENGTH = 30000;
 const BASH_DEFAULT_TIMEOUT_MS = 120000;
 
 /**
@@ -49,7 +50,7 @@ Usage notes:
   - The command argument is required.
   - You can specify an optional timeout in milliseconds (up to ${BASH_DEFAULT_TIMEOUT_MS}ms / ${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes). If not specified, commands will timeout after ${BASH_DEFAULT_TIMEOUT_MS}ms (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes).
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
-  - If the output exceeds ${MAX_OUTPUT_LENGTH} characters, output will be truncated before being returned to you.
+  - If the output exceeds ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters, output will be truncated and the full output will be persisted to a file you can read with the Read tool.
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${BASH_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
   - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
@@ -253,7 +254,12 @@ Usage notes:
 
           resolve({
             success: false,
-            content: outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
+            content:
+              processToolResult(
+                outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
+                BASH_MAX_OUTPUT_CHARS,
+                "bash",
+              ) || reason,
             error: reason,
           });
         }
@@ -293,14 +299,14 @@ Usage notes:
           const combinedOutput =
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 
-          // Handle large output by truncation if needed
+          // Handle large output by persisting to file if needed
           const finalOutput =
             combinedOutput || `Command executed with exit code: ${exitCode}`;
-          const content =
-            finalOutput.length > MAX_OUTPUT_LENGTH
-              ? finalOutput.substring(0, MAX_OUTPUT_LENGTH) +
-                "\n\n... (output truncated)"
-              : finalOutput;
+          const content = processToolResult(
+            finalOutput,
+            BASH_MAX_OUTPUT_CHARS,
+            "bash",
+          );
 
           resolve({
             success: exitCode === 0,
@@ -420,11 +426,11 @@ export const bashOutputTool: ToolPlugin = {
     }
 
     const finalContent = content || "No output available";
-    const processedContent =
-      finalContent.length > MAX_OUTPUT_LENGTH
-        ? finalContent.substring(0, MAX_OUTPUT_LENGTH) +
-          "\n\n... (output truncated)"
-        : finalContent;
+    const processedContent = processToolResult(
+      finalContent,
+      BASH_MAX_OUTPUT_CHARS,
+      "bash",
+    );
 
     return {
       success: true,
