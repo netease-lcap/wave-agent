@@ -29,10 +29,10 @@ This directory contains feature specifications that serve as the source of truth
 | Metric | Count |
 |--------|-------|
 | Specs | 54 |
-| User Stories | 220 |
-| Functional Requirements | 829 |
-| Test Files | 299 |
-| Test Cases | 3,790 |
+| User Stories | 221 |
+| Functional Requirements | 832 |
+| Test Files | 300 |
+| Test Cases | 3,792 |
 
 ## Specs
 
@@ -42,7 +42,7 @@ This directory contains feature specifications that serve as the source of truth
 | Bash Tools | Bash, BashOutput, KillBash tools for shell command execution | 3 | 17 | [spec](002-bash-tools/spec.md) · [plan](002-bash-tools/plan.md) |
 | MCP | Model Context Protocol support for external tools and context sources | 4 | 20 | [spec](003-mcp/spec.md) · [plan](003-mcp/plan.md) |
 | Session Management | Performance-optimized, project-based session management system | 3 | 17 | [spec](004-session-management/spec.md) · [plan](004-session-management/plan.md) |
-| Hooks | Event hooks system for extending Wave behavior | 13 | 52 | [spec](005-hooks/spec.md) · [plan](005-hooks/plan.md) |
+| Hooks | Event hooks system for extending Wave behavior | 14 | 55 | [spec](005-hooks/spec.md) · [plan](005-hooks/plan.md) |
 | Agent Skills | Discoverable skill packages with SKILL.md files for model-invoked capabilities | 8 | 25 | [spec](006-agent-skills/spec.md) · [plan](006-agent-skills/plan.md) |
 | Agent Config | Constructor-based config instead of env vars, with max output tokens and custom headers | 8 | 30 | [spec](007-agent-config/spec.md) · [plan](007-agent-config/plan.md) |
 | Slash Commands | Custom slash command system for user-invoked commands | 6 | 22 | [spec](008-slash-commands/spec.md) · [plan](008-slash-commands/plan.md) |

@@ -56,22 +56,15 @@ describe("HookManager Coverage", () => {
   });
 
   describe("loadConfiguration", () => {
-    it("should merge user and project hooks", () => {
-      const userHooks = {
+    it("should load hooks via loadConfiguration", () => {
+      const hooks = {
         UserPromptSubmit: [
           { hooks: [{ type: "command" as const, command: "echo user" }] },
         ],
       };
-      const projectHooks = {
-        UserPromptSubmit: [
-          { hooks: [{ type: "command" as const, command: "echo project" }] },
-        ],
-      };
-      manager.loadConfiguration(userHooks, projectHooks);
+      manager.loadConfiguration(hooks);
       const config = manager.getConfiguration();
-      expect(config?.UserPromptSubmit?.[0].hooks[0].command).toBe(
-        "echo project",
-      );
+      expect(config?.UserPromptSubmit?.[0].hooks[0].command).toBe("echo user");
     });
 
     it("should throw HookConfigurationError on invalid merged config", () => {
@@ -83,7 +76,6 @@ describe("HookManager Coverage", () => {
           invalidHooks as unknown as Partial<
             Record<HookEvent, HookEventConfig[]>
           >,
-          undefined,
         ),
       ).toThrow(HookConfigurationError);
     });

@@ -20,6 +20,19 @@
 
 **State Transitions**: Static configuration, loaded at runtime
 
+### Programmatic Hook Configuration
+**Purpose**: Hook configuration injected via `AgentOptions.hooks` at `Agent.create()` time
+**Location**: `packages/agent-sdk/src/types/agent.ts` (AgentOptions.hooks field)
+**Type**: `PartialHookConfiguration`
+
+**Loading Order** (all sources concatenate per-event):
+1. Programmatic hooks loaded first via `hookManager.loadConfiguration(options.hooks)` in `containerSetup.ts`
+2. Plugin hooks loaded via `hookManager.registerPluginHooks()` in `PluginManager`
+3. File-based hooks loaded later via `hookManager.loadConfigurationFromWaveConfig()` in `InitializationService`
+4. All sources concatenate per-event — hooks from all sources coexist and execute in order
+
+**Use Case**: Runtime-determined hooks that cannot be expressed in static config files (e.g., hooks conditional on feature flags)
+
 ---
 
 ### HookEventConfig  

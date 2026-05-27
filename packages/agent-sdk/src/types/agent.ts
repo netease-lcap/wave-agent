@@ -14,6 +14,7 @@ import type { MessageManagerCallbacks } from "../managers/messageManager.js";
 import type { BackgroundTaskManagerCallbacks } from "../managers/backgroundTaskManager.js";
 import type { McpManagerCallbacks } from "../managers/mcpManager.js";
 import type { SubagentManagerCallbacks } from "../managers/subagentManager.js";
+import type { PartialHookConfiguration } from "./configuration.js";
 import type { ToolPlugin } from "../tools/types.js";
 
 /**
@@ -89,6 +90,11 @@ export interface AgentOptions {
   mcpServers?: Record<string, McpServerConfig>;
   /** Custom tools provided by the SDK user, registered alongside built-in tools */
   customTools?: ToolPlugin[];
+  /**
+   * Optional hook configuration to inject at creation time.
+   * File-based hooks (from config.json/.waverc.json) merge on top of these.
+   */
+  hooks?: PartialHookConfiguration;
   [key: string]: unknown;
 }
 

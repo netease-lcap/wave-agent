@@ -44,23 +44,13 @@ export class HookManager {
   }
 
   /**
-   * Load and merge hook configurations from user and project settings
-   * Project settings take precedence over user settings
+   * Load hook configuration from programmatic source (AgentOptions.hooks)
    */
-  loadConfiguration(
-    userHooks?: PartialHookConfiguration,
-    projectHooks?: PartialHookConfiguration,
-  ): void {
+  loadConfiguration(hooks?: PartialHookConfiguration): void {
     const merged: PartialHookConfiguration = {};
 
-    // Start with user hooks
-    if (userHooks) {
-      this.mergeHooksConfiguration(merged, userHooks);
-    }
-
-    // Override with project hooks (project settings take precedence)
-    if (projectHooks) {
-      this.mergeHooksConfiguration(merged, projectHooks);
+    if (hooks) {
+      this.mergeHooksConfiguration(merged, hooks);
     }
 
     // Validate merged configuration
@@ -654,9 +644,12 @@ export class HookManager {
   ): void {
     for (const [event, configs] of Object.entries(source)) {
       if (isValidHookEvent(event)) {
-        // For now, completely replace event configs rather than merging
-        // This ensures project settings completely override user settings for each event
-        target[event] = [...configs];
+        // Concatenate hook configs so multiple sources (programmatic, file-based, plugins) coexist
+        if (!target[event]) {
+          target[event] = [...configs];
+        } else {
+          target[event] = [...target[event], ...configs];
+        }
       }
     }
   }

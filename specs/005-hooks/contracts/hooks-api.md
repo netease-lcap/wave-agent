@@ -196,6 +196,22 @@ class Agent {
   // Stop/completion hook
   private async executeStopHooks(): Promise<void>;
 }
+
+// AgentOptions.hooks — programmatic hook configuration
+interface AgentOptions {
+  // ... other options
+  /** Optional hook configuration to inject at creation time.
+   *  Concatenates with file-based hooks — both coexist for the same event. */
+  hooks?: PartialHookConfiguration;
+}
+
+// Usage
+const agent = await Agent.create({
+  hooks: {
+    Stop: [{ hooks: [{ type: "command", command: "nasl check" }] }],
+  },
+});
+```
 ```
 
 ### Settings Service Integration

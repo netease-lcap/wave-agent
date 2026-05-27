@@ -50,8 +50,7 @@ export class HookManager {
   private config: HookConfiguration = { hooks: {} };
   
   loadConfiguration(userSettings?: any, projectSettings?: any): void {
-    // Merge user and project hook configurations
-    // Priority: project settings override user settings
+    // Load hook configurations — all sources concatenate per-event
   }
   
   async executeHooks(event: HookEvent, context: HookExecutionContext): Promise<HookExecutionResult[]> {
@@ -86,8 +85,36 @@ export class Agent {
 // packages/agent-sdk/src/services/settings.ts
 // Extend existing settings utilities to handle hook configuration
 // Load from ~/.wave/settings.json and .wave/settings.json
-// Merge configurations with project taking precedence
+// Merge configurations — all sources concatenate per-event
 ```
+
+### 5. Programmatic Configuration
+
+Hooks can also be injected programmatically via `AgentOptions.hooks` at `Agent.create()` time:
+
+```typescript
+import { Agent } from "wave-agent-sdk";
+
+const agent = await Agent.create({
+  hooks: {
+    Stop: [
+      {
+        hooks: [{ type: "command", command: "nasl check" }],
+      },
+    ],
+    PreToolUse: [
+      {
+        matcher: "Write|Edit",
+        hooks: [{ type: "command", command: "eslint --fix" }],
+      },
+    ],
+  },
+});
+```
+
+**Loading order**: Programmatic hooks are loaded first, then plugin hooks, then file-based hooks. All sources concatenate per-event — hooks from all sources coexist and execute in order (programmatic first, then file-based).
+
+**When to use**: Runtime-determined hooks that cannot be expressed in static config files (e.g., hooks conditional on feature flags or environment).
 
 ---
 

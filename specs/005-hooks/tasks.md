@@ -339,6 +339,22 @@
 
 ---
 
+## Phase 21: User Story 14 - Programmatic Hook Configuration (Priority: P2)
+
+**Goal**: Enable SDK users to inject hook configuration via `AgentOptions.hooks` at `Agent.create()` time
+
+**Independent Test**: Create Agent with `hooks` option and verify `hookManager.hasHooks()` returns true
+
+### Implementation for User Story 14
+
+- [x] T105 [US14] Add `hooks?: PartialHookConfiguration` to `AgentOptions` in packages/agent-sdk/src/types/agent.ts
+- [x] T106 [US14] Load hooks from `options.hooks` in `containerSetup.ts` after HookManager creation
+- [x] T107 [US14] Add test for `Agent.create({ hooks })` in packages/agent-sdk/tests/agentHooksOption.test.ts
+- [x] T108 [US14] Change `mergeHooksConfiguration` to concatenate instead of replace per-event, so programmatic + file-based + plugin hooks coexist
+- [x] T109 [US14] Add verify example in packages/agent-sdk/examples/verify-hooks-option.ts
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

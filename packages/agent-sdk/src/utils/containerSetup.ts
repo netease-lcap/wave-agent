@@ -189,6 +189,9 @@ export function setupAgentContainer(
   container.register("PlanManager", planManager);
 
   const hookManager = new HookManager(container, workdir);
+  if (options.hooks) {
+    hookManager.loadConfiguration(options.hooks);
+  }
   container.register("HookManager", hookManager);
 
   const skillManager = new SkillManager(container, {
