@@ -57,7 +57,7 @@ As an AI agent, I want to search for patterns using glob patterns or regex so th
 
 ### Edge Cases
 
-- **Large Files**: Reading files that exceed memory limits or token windows. Handled via `offset` and `limit`.
+- **Large Files**: Reading files that exceed memory limits or token windows. Handled via `offset` and `limit`. If estimated tokens exceed `maxTokens`, the tool returns an error suggesting offset/limit or grep/jq.
 - **Binary Documents**: Attempting to read PDF, DOCX, or other unsupported binary formats. The tool MUST prevent this and return an error.
 - **Mismatch Analysis**: `Edit` tool must provide detailed mismatch reports when `old_string` is not found, highlighting exactly which lines differ.
 - **File Permissions**: Attempting to write to read-only files or directories without proper permissions.
@@ -67,7 +67,7 @@ As an AI agent, I want to search for patterns using glob patterns or regex so th
 ### Functional Requirements
 
 - **FR-001**: System MUST provide a `Read` tool that supports text, images (PNG, JPEG, GIF, WebP), and Jupyter notebooks.
-- **FR-002**: `Read` tool MUST support pagination via `offset` and `limit`, truncate long lines for text files, and provide structured metadata.
+- **FR-002**: `Read` tool MUST support pagination via `offset` and `limit`, enforce token-level validation (estimated tokens must not exceed `maxTokens`, default 25000, from `context.fileReadingLimits.maxTokens`; bytesPerToken is 2 for JSON/JSONL/JSONC and 4 for other files), and provide structured metadata.
 - **FR-018**: `Read` tool MUST support deduplication by checking file modification time and returning a minimal response if unchanged.
 - **FR-019**: `Read` tool MUST enforce resource limits (e.g., 1MB default) for full file reads.
 - **FR-015**: `Read` tool MUST detect image files by extension case-insensitively and convert content to base64 encoding.

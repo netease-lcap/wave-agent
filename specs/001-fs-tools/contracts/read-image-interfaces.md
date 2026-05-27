@@ -197,6 +197,11 @@ interface TextFileProcessingContract {
     withOffset: number;
     withLimit: number;
   };
+  tokenValidation: {
+    maxTokens: 25000;           // from context.fileReadingLimits.maxTokens
+    bytesPerToken: 2 | 4;       // 2 for JSON/JSONL/JSONC, 4 for other files
+    errorMessage: string;       // Suggests offset/limit or grep/jq
+  };
   contentTruncation: {
     maxBytes: 100 * 1024;       // 100KB for text
     indicator: string;          // "... more lines not shown"

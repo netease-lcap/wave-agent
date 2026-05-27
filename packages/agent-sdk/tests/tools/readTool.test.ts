@@ -54,9 +54,6 @@ Line 5`,
     (_, i) => `Line ${i + 1}`,
   ).join("\n"),
   "/test/workdir/empty.txt": "",
-  "/test/workdir/long-lines.txt": `Short line
-${"x".repeat(2500)}
-Another short line`,
   "/test/workdir/unicode.txt": `Hello 世界
 Emoji: 🚀 🌟 ✨
 Multi-byte: café naïve résumé`,
@@ -175,17 +172,6 @@ describe("readTool", () => {
     expect(result.content).toContain("     1\tLine 1");
     expect(result.content).toContain("    10\tLine 10");
     expect(result.content).not.toContain("Line 11");
-  });
-
-  it("should truncate long lines", async () => {
-    const filePath = "/test/workdir/long-lines.txt";
-    const result = await readTool.execute({ file_path: filePath }, testContext);
-
-    expect(result.success).toBe(true);
-    expect(result.content).toContain("Short line");
-    expect(result.content).toContain("Another short line");
-    // Long lines should be truncated and "..." added
-    expect(result.content).toContain("...");
   });
 
   it("should handle empty file", async () => {
@@ -669,8 +655,8 @@ describe("readTool", () => {
   });
 
   describe("Edge Cases", () => {
-    it("should handle very large files without content truncation at 100KB", async () => {
-      const largeContent = "a".repeat(150 * 1024); // 150KB
+    it("should reject very large single-line files that exceed token limit", async () => {
+      const largeContent = "a".repeat(150 * 1024); // 150KB single line
       mockReadFile.mockResolvedValue(largeContent);
 
       const result = await readTool.execute(
@@ -678,10 +664,9 @@ describe("readTool", () => {
         testContext,
       );
 
-      expect(result.success).toBe(true);
-      expect(result.content).not.toContain("Content truncated at 102400 bytes");
-      // It should still truncate the line itself if it's too long
-      expect(result.content).toContain("...");
+      // 150KB / 4 bytesPerToken = ~38400 tokens, exceeds default 25000 limit
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("exceeds maximum allowed tokens");
     });
 
     it("should be able to read lines beyond the first 100KB", async () => {
