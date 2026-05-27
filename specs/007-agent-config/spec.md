@@ -144,6 +144,23 @@ SDK users need per-agent-instance environment variables. Currently all subproces
 
 ---
 
+### User Story 10 - Per-Subagent-Type Headers (Priority: P2)
+
+SDK users need to configure different HTTP headers per subagent type so that `customFetch` can distinguish main agent calls from subagent calls, enabling request-level routing, rate-limiting, and observability.
+
+**Why this priority**: Important for multi-agent observability and routing but secondary to core configuration.
+
+**Independent Test**: Create an Agent with `subagentHeaders: { "Explore": { "X-Subagent-Type": "Explore" } }`, spawn an Explore subagent, and verify the subagent's `defaultHeaders` includes the type-specific header.
+
+**Acceptance Scenarios**:
+
+1. **Given** an Agent with `subagentHeaders: { "Explore": { "X-Subagent-Type": "Explore" } }`, **When** an Explore subagent is created, **Then** the subagent's `defaultHeaders` includes `X-Subagent-Type: Explore`
+2. **Given** an Agent with `subagentHeaders` configured, **When** a subagent type not in `subagentHeaders` is created, **Then** the subagent only receives parent `defaultHeaders` without extra keys
+3. **Given** an Agent with `defaultHeaders: { "X-Shared": "base" }` and `subagentHeaders: { "Explore": { "X-Shared": "explore-override" } }`, **When** an Explore subagent is created, **Then** the subagent receives `X-Shared: explore-override`
+4. **Given** an Agent with `subagentHeaders` configured, **When** `customFetch` is called for a subagent request, **Then** `init.headers` contains the merged type-specific headers
+
+---
+
 ### Edge Cases
 
 - What happens when partial configuration is provided (e.g., apiKey but no baseURL)?
@@ -197,6 +214,9 @@ SDK users need per-agent-instance environment variables. Currently all subproces
 - **FR-036**: Hook execution contexts (SessionStart, SessionEnd, PreToolUse, PostToolUse, PermissionRequest, Stop) MUST use `MergedEnv` instead of raw `process.env`
 - **FR-037**: `ToolContext` MUST include an `env` field containing `MergedEnv` for tool implementations to access
 - **FR-038**: When no `env` option is provided, system behavior MUST be identical to before (backwards compatible)
+- **FR-039**: `AgentOptions` MUST accept an optional `subagentHeaders?: Record<string, Record<string, string>>` parameter, keyed by subagent type name
+- **FR-040**: When a subagent is created, its `defaultHeaders` MUST be the merge of parent `defaultHeaders` with `subagentHeaders[type]` (type-specific values override parent)
+- **FR-041**: Merged subagent headers MUST be available in `customFetch` via `init.headers`, enabling request-level routing/rate-limiting/observability
 
 ### Key Entities *(include if feature involves data)*
 
