@@ -140,6 +140,7 @@ As a user, I want to see subagent activity reflected within the main conversatio
 - **FR-014**: System MUST validate that specified tools in subagent configurations exist and are available
 - **FR-015**: System MUST gracefully handle cases where no subagent matches a task and fall back to main agent processing
 - **FR-023**: System MUST NOT store subagent message history in the CLI layer's persistent state after task completion (OOM protection)
+- **FR-024**: Subagent instances MUST receive merged `defaultHeaders` from parent `subagentHeaders[type]`, with type-specific headers overriding parent `defaultHeaders`
 
 ### Key Entities
 

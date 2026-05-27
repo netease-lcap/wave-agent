@@ -287,6 +287,10 @@ export class SubagentManager {
     if (parentOptions) {
       const subagentOptions: import("../types/agent.js").AgentOptions = {
         ...parentOptions,
+        defaultHeaders: {
+          ...parentOptions.defaultHeaders,
+          ...parentOptions.subagentHeaders?.[parameters.subagent_type],
+        },
         callbacks: {
           ...parentOptions.callbacks,
           onLoadingChange: undefined,

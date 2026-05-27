@@ -24,6 +24,7 @@ Extended interface for Agent constructor parameters.
 - `workdir?: string` - Existing working directory
 - `systemPrompt?: string` - Existing custom system prompt
 - `env?: Record<string, string>` - Per-agent environment variables, merged on top of process.env for bash, MCP, and hooks
+- `subagentHeaders?: Record<string, Record<string, string>>` - Per-subagent-type headers, merged into defaultHeaders when that subagent type is instantiated
 - `[key: string]: unknown` - Arbitrary additional model-specific parameters (e.g., `temperature`, `reasoning_effort`, `thinking`)
 
 **Validation Rules**:
