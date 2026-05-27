@@ -81,6 +81,12 @@ export function setupAgentContainer(
   container.register("AgentOptions", options);
   container.register("Workdir", workdir);
 
+  const mergedEnv: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    ...(options.env || {}),
+  };
+  container.register("MergedEnv", mergedEnv);
+
   if (options.worktreeName) {
     container.register("WorktreeName", options.worktreeName);
     container.register("MainRepoRoot", getGitMainRepoRoot(workdir));
@@ -218,9 +224,7 @@ export function setupAgentContainer(
             cwd: workdir,
             toolName: context.toolName,
             toolInput: context.toolInput,
-            env: Object.fromEntries(
-              Object.entries(process.env).filter((e) => e[1] !== undefined),
-            ) as Record<string, string>,
+            env: mergedEnv,
           });
 
           if (results.length > 0) {

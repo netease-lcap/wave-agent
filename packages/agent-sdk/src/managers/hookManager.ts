@@ -948,9 +948,9 @@ export class HookManager {
       transcriptPath,
       cwd: this.workdir,
       endSource: source,
-      env: Object.fromEntries(
-        Object.entries(process.env).filter((e) => e[1] !== undefined),
-      ) as Record<string, string>,
+      env:
+        this.container.get<Record<string, string>>("MergedEnv") ||
+        (process.env as Record<string, string>),
     };
 
     const results = await this.executeHooks("SessionEnd", context);

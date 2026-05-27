@@ -48,7 +48,7 @@ export class BangManager {
         shell: true,
         stdio: "pipe",
         cwd: this.workdir,
-        env: {
+        env: this.container.get<Record<string, string>>("MergedEnv") || {
           ...process.env,
         },
       });

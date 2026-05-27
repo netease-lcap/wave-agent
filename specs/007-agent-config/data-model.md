@@ -23,6 +23,7 @@ Extended interface for Agent constructor parameters.
 - `messages?: Message[]` - Existing initial messages
 - `workdir?: string` - Existing working directory
 - `systemPrompt?: string` - Existing custom system prompt
+- `env?: Record<string, string>` - Per-agent environment variables, merged on top of process.env for bash, MCP, and hooks
 - `[key: string]: unknown` - Arbitrary additional model-specific parameters (e.g., `temperature`, `reasoning_effort`, `thinking`)
 
 **Validation Rules**:
@@ -101,6 +102,7 @@ Configuration values resolved in this order:
    - `AgentOptions.maxInputTokens`
    - `AgentOptions.maxTokens`
    - `AgentOptions.language`
+   - `AgentOptions.env`
 
 2. **Environment Variables** (fallback)
    - Settings.json env vars are synced to `process.env` at startup (with override warning)
@@ -137,6 +139,30 @@ interface EnvironmentContext {
 2. Environment variables from settings.json are synced to `process.env` with a warning if overriding existing values
 3. After sync, all code reads directly from `process.env` — no separate env store is maintained
 4. Empty string values are treated as unset
+
+### MergedEnv (Per-Agent Environment)
+
+**Purpose**: Per-agent-instance environment variables for subprocess isolation  
+**Source**: `AgentOptions.env` merged on top of `process.env`  
+**Registration**: Computed once in DI container as `"MergedEnv"`
+
+**Merge Priority** (highest to lowest):
+1. MCP server `config.env` / hook-specific env overrides
+2. `AgentOptions.env` (agent-level)
+3. `process.env` (process-level base)
+
+**Consumers**:
+- `bashTool`: Receives via `ToolContext.env`
+- `backgroundTaskManager`: Retrieves from container
+- `bangManager`: Retrieves from container
+- `mcpManager`: Retrieves from container as base, overlays `server.config.env`
+- `aiManager`: Sets in `ToolContext`, uses for hook contexts
+- `hookManager`: Uses for SessionStart/SessionEnd hook contexts
+
+**Precedence Rules**:
+- Agent `env` values override `process.env` with same key
+- MCP server `config.env` values override agent `env` with same key
+- When no `env` is provided, falls back to `process.env` (backwards compatible)
 
 ### State Transitions
 

@@ -19,6 +19,8 @@ export interface AgentOptions {
   messages?: Message[];
   workdir?: string;
   systemPrompt?: string;
+  /** Per-agent environment variables, merged on top of process.env for bash, MCP, and hooks */
+  env?: Record<string, string>;
 }
 
 export interface GatewayConfig {
@@ -141,4 +143,26 @@ export const CONFIG_ERRORS = {
   EMPTY_API_KEY: 'API key cannot be empty string.',
   EMPTY_BASE_URL: 'Base URL cannot be empty string.',
 } as const;
+```
+
+## MergedEnv Contract
+
+```typescript
+/**
+ * Computed once at agent creation time.
+ * Registered in the DI container as "MergedEnv".
+ * Consumed by all subprocess spawn sites.
+ */
+type MergedEnv = Record<string, string>;
+
+// Computation:
+// const mergedEnv: Record<string, string> = {
+//   ...(process.env as Record<string, string>),
+//   ...(options.env || {}),
+// };
+
+// Merge priority (highest wins):
+// 1. MCP server config.env / hook-specific env
+// 2. AgentOptions.env
+// 3. process.env
 ```

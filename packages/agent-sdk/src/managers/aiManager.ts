@@ -1013,6 +1013,7 @@ export class AIManager {
                 backgroundTaskManager: this.backgroundTaskManager,
                 workdir: this.getWorkdir(),
                 originalWorkdir: this.originalWorkdir,
+                env: this.container.get<Record<string, string>>("MergedEnv"),
                 messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
                 sessionId: this.messageManager.getSessionId(),
                 toolCallId: toolId,
@@ -1524,9 +1525,9 @@ export class AIManager {
         toolInput,
         toolResponse,
         subagentType: this.subagentType, // Include subagent type in hook context
-        env: Object.fromEntries(
-          Object.entries(process.env).filter((e) => e[1] !== undefined),
-        ) as Record<string, string>, // Include environment variables
+        env:
+          this.container.get<Record<string, string>>("MergedEnv") ||
+          (process.env as Record<string, string>),
       };
 
       const results = await this.hookManager.executeHooks(

@@ -111,4 +111,6 @@ export interface ToolContext {
   onCwdChange?: (newCwd: string) => void;
   /** Original working directory (before any cd changes) for CWD reset */
   originalWorkdir?: string;
+  /** Merged environment variables (process.env + agent env) for child processes */
+  env?: Record<string, string>;
 }
