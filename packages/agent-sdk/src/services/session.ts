@@ -59,11 +59,22 @@ export interface SessionIndex {
 }
 
 /**
- * Generate a new session ID using Node.js native crypto.randomUUID()
- * @returns UUID string for session identification
+ * Generate a new session ID with a timestamp prefix for sortability
+ * Format: {YYYYMMDDHHmmss}-{8hex} (e.g. 20260527143025-a1b2c3d4)
+ * @returns Timestamp-prefixed session ID string
  */
 export function generateSessionId(): string {
-  return randomUUID();
+  const now = new Date();
+  const ts = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+    String(now.getSeconds()).padStart(2, "0"),
+  ].join("");
+  const shortId = randomUUID().slice(0, 8);
+  return `${ts}-${shortId}`;
 }
 
 /**
@@ -472,15 +483,17 @@ export async function listSessionsFromJsonl(
       try {
         const filePath = join(projectDir.encodedPath, file);
 
-        // Validate main session filename format (UUID.jsonl)
+        // Validate main session filename format (new timestamp format or legacy UUID)
+        const newFormatMatch = file.match(/^(\d{14}-[0-9a-f]{8})\.jsonl$/);
         const uuidMatch = file.match(
           /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
         );
-        if (!uuidMatch) {
+        const match = newFormatMatch || uuidMatch;
+        if (!match) {
           continue; // Skip invalid filenames
         }
 
-        const sessionId = uuidMatch[1];
+        const sessionId = match[1];
 
         // PERFORMANCE OPTIMIZATION: Only read the last message for timestamps and tokens
         const jsonlHandler = new JsonlHandler();
@@ -667,17 +680,24 @@ export async function cleanupExpiredSessionsFromJsonl(
             );
             const indexContent = await fs.readFile(indexPath, "utf8");
             const index = JSON.parse(indexContent) as SessionIndex;
+            // New timestamp-prefixed format patterns
+            const newMainMatch = file.match(/^(\d{14}-[0-9a-f]{8})\.jsonl$/);
+            const newSubagentMatch = file.match(
+              /^subagent-(\d{14}-[0-9a-f]{8})\.jsonl$/,
+            );
+            // Old UUID format patterns (backward compat)
             const uuidMatch = file.match(
-              /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
+              /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
             );
             const subagentMatch = file.match(
-              /^subagent-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
+              /^subagent-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
             );
-            const sessionId = uuidMatch
-              ? uuidMatch[1]
-              : subagentMatch
-                ? subagentMatch[1]
-                : null;
+            const sessionId =
+              newMainMatch?.[1] ??
+              newSubagentMatch?.[1] ??
+              uuidMatch?.[1] ??
+              subagentMatch?.[1] ??
+              null;
 
             if (sessionId && index.sessions[sessionId]) {
               delete index.sessions[sessionId];
