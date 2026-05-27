@@ -1,6 +1,8 @@
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import type { McpTool, McpServerStatus } from "../types/index.js";
+import { processToolResult } from "./toolResultStorage.js";
+import { DEFAULT_MAX_RESULT_SIZE_CHARS } from "../constants/toolLimits.js";
 
 /**
  * Recursively clean schema to remove unsupported fields
@@ -86,9 +88,15 @@ export function createMcpToolPlugin(
           // Future: Could pass working directory or other context to MCP tools
         }
         const result = await executeTool(prefixedName, args);
+        const processedContent = processToolResult(
+          result.content || `Executed ${mcpTool.name}`,
+          DEFAULT_MAX_RESULT_SIZE_CHARS,
+          `mcp_${serverName}_${mcpTool.name}`,
+        );
         return {
           success: true,
-          content: result.content || `Executed ${mcpTool.name}`,
+          content: processedContent,
+          images: result.images,
         };
       } catch (error) {
         return {

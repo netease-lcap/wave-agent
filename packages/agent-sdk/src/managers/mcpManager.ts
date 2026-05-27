@@ -429,7 +429,7 @@ export class McpManager {
             } else if (c.type === "resource") {
               textContent.push(`[Resource: ${c.resource?.uri || ""}]`);
             } else {
-              textContent.push(JSON.stringify(c));
+              textContent.push(JSON.stringify(c, null, 2));
             }
           },
         );
