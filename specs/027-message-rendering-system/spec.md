@@ -72,7 +72,7 @@ As a user, I want different types of content (text, code, errors, images, tool c
 - **FR-004.2**: All other blocks MUST be rendered as static content, including text/reasoning blocks with `stage === "end"` even when other blocks in the same message are still active.
 - **FR-004.3**: Blocks not in the last message MUST always be static, regardless of whether their message contains active blocks.
 - **FR-005**: System MUST support a "welcome message" at the top of the message list showing version and environment info.
-- **FR-006**: System MUST limit the number of rendered messages to a maximum of 10 by default.
+- **FR-006**: System MUST limit the number of rendered messages to a maximum of 30 in collapsed mode and 10 in expanded mode.
 - **FR-007**: System MUST provide a mechanism to measure the height of dynamic blocks and report it via a callback.
 - **FR-008**: System MUST support both expanded and collapsed views for message blocks.
 

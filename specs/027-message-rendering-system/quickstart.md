@@ -21,7 +21,7 @@ A dispatcher component that renders individual blocks based on their type:
 ## Performance Optimization
 To keep the CLI responsive:
 1. **Static Rendering**: Historical messages are "frozen" after their first render.
-2. **Message Limiting**: Only the most recent 10 messages are rendered by default.
+2. **Message Limiting**: The most recent 30 messages are rendered in collapsed mode, 10 in expanded mode.
 3. **Memoization**: Components use `React.memo` to avoid unnecessary re-renders.
 
 ## Example Usage
