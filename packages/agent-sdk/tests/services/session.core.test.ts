@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
-import { randomUUID } from "crypto";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -254,20 +253,18 @@ describe("Session Core Functionality", () => {
     );
   });
 
-  describe("T016: crypto.randomUUID() Generation and Validation", () => {
-    it("should generate valid UUID format", () => {
+  describe("T016: generateSessionId() Generation and Validation", () => {
+    it("should generate valid timestamp-prefixed format", () => {
       const sessionId = generateSessionId();
 
-      // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-      // where y is 8, 9, A, or B (variant bits)
-      const uuidRegex =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      // Timestamp-prefixed format: {YYYYMMDDHHmmss}-{8hex}
+      const timestampPrefixRegex = /^\d{14}-[0-9a-f]{8}$/;
 
-      expect(sessionId).toMatch(uuidRegex);
+      expect(sessionId).toMatch(timestampPrefixRegex);
       expect(sessionId).toBe(sessionId.toLowerCase());
     });
 
-    it("should generate different UUIDs on multiple calls", () => {
+    it("should generate different session IDs on multiple calls", () => {
       const id1 = generateSessionId();
       const id2 = generateSessionId();
       const id3 = generateSessionId();
@@ -277,59 +274,53 @@ describe("Session Core Functionality", () => {
       expect(id1).not.toBe(id3);
     });
 
-    it("should generate unique UUIDs", () => {
+    it("should generate unique session IDs", () => {
       const ids: string[] = [];
 
-      // Generate multiple UUIDs
+      // Generate multiple session IDs
       for (let i = 0; i < 10; i++) {
         ids.push(generateSessionId());
       }
 
-      // All UUIDs should be unique
+      // All session IDs should be unique
       const uniqueIds = new Set(ids);
       expect(uniqueIds.size).toBe(10);
 
-      // All should be valid UUID format
-      const uuidRegex =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      // All should be valid timestamp-prefixed format
+      const timestampPrefixRegex = /^\d{14}-[0-9a-f]{8}$/;
       ids.forEach((id) => {
-        expect(id).toMatch(uuidRegex);
+        expect(id).toMatch(timestampPrefixRegex);
       });
     });
 
-    it("should validate UUID format using Node.js crypto", () => {
+    it("should validate session ID format correctly", () => {
       const validId = generateSessionId();
       const invalidIds = [
         "invalid-uuid",
-        "12345678-1234-6678-9abc-123456789012", // v6 format (we now use v4)
-        "12345678-1234-5678-9abc-123456789012", // v5 format
+        "12345678-1234-6678-9abc-123456789012", // Old UUID format (not new format)
+        "12345678-1234-5678-9abc-123456789012", // Old UUID format
         "",
-        "not-a-uuid-at-all",
+        "not-a-session-id-at-all",
+        "20260527143025-a1b2c3d4e5f6", // Too many hex chars
+        "20260527-a1b2c3d4", // Not enough digits
       ];
 
-      // Valid UUID should pass format validation
-      const uuidRegex =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      // Valid session ID should pass format validation
+      const timestampPrefixRegex = /^\d{14}-[0-9a-f]{8}$/;
 
-      expect(validId).toMatch(uuidRegex);
-      expect(validId.length).toBe(36);
-      expect(() => randomUUID()).not.toThrow();
-      expect(validId).toBeTruthy();
-      expect(() => randomUUID()).not.toThrow();
+      expect(validId).toMatch(timestampPrefixRegex);
       expect(validId).toBeTruthy();
       expect(typeof validId).toBe("string");
 
-      // Invalid UUIDs should be rejected
+      // Invalid IDs should be rejected
       invalidIds.forEach((id) => {
-        expect(id).not.toMatch(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-        );
+        expect(id).not.toMatch(/^\d{14}-[0-9a-f]{8}$/);
       });
     });
   });
 
   describe("T017: Integration test for session file naming", () => {
-    it("should create session files with clean UUID names", async () => {
+    it("should create session files with clean timestamp-prefixed names", async () => {
       const sessionId = generateSessionId();
       const filePath = await getSessionFilePath(sessionId, testWorkdir);
 
@@ -337,9 +328,7 @@ describe("Session Core Functionality", () => {
       // The session ID itself should not have session- or wave- prefixes
       expect(sessionId).not.toContain("session-");
       expect(sessionId).not.toContain("wave-");
-      expect(filePath).toMatch(
-        /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jsonl$/i,
-      );
+      expect(filePath).toMatch(/\d{14}-[0-9a-f]{8}\.jsonl$/);
     });
 
     it("should use .jsonl file extension", async () => {
