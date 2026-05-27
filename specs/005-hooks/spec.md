@@ -232,6 +232,22 @@ When a hook script encounters a non-critical error, users need to see the error 
 1. **Given** any hook returns an exit code other than 0 or 2 with stderr content, **When** the hook completes, **Then** stderr is displayed to the user and execution continues normally
 2. **Given** any hook returns an exit code other than 0 or 2 with stdout content, **When** the hook completes, **Then** stdout is ignored and execution continues normally
 
+---
+
+### User Story 14 - Programmatic Hook Configuration (Priority: P2)
+
+As an SDK user, I want to inject hook configuration programmatically via `Agent.create({ hooks })`, so that I can configure hooks determined at runtime without accessing private members or relying solely on static config files.
+
+**Why this priority**: Enables programmatic use cases (e.g., conditional hooks based on runtime flags) that cannot be expressed in static config files. Follows the same pattern as `mcpServers` and `customTools` options.
+
+**Independent Test**: Can be fully tested by creating an Agent with `hooks` option and verifying `hookManager.hasHooks()` returns true for the configured events.
+
+**Acceptance Scenarios**:
+
+1. **Given** an `Agent.create()` call with `hooks: { Stop: [{ hooks: [{ type: "command", command: "echo done" }] }] }`, **When** the agent is created, **Then** the HookManager has the Stop hook configured and `hookManager.hasHooks("Stop")` returns true
+2. **Given** an `Agent.create()` call without `hooks` option, **When** the agent is created, **Then** the HookManager has no programmatic hooks and `hookManager.hasHooks("Stop")` returns false
+3. **Given** both `AgentOptions.hooks` and file-based hooks configure the same event (e.g., Stop), **When** the agent is created, **Then** both programmatic and file-based hooks coexist and all execute in order (programmatic first, then file-based)
+
 ## Edge Cases
 
 - What happens when a hook command fails or times out?
@@ -297,6 +313,9 @@ When a hook script encounters a non-critical error, users need to see the error 
 - **FR-042**: System MUST display stderr to Wave Agent when `Stop` hook returns exit code 2
 - **FR-043**: System MUST display stderr to user and continue execution for non-blocking errors (exit codes other than 0 or 2)
 - **FR-044**: System MUST distinguish between different hook event types (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop`) for appropriate behavior
+- **FR-053**: System MUST support `hooks` option in `AgentOptions` to inject hook configuration programmatically at `Agent.create()` time
+- **FR-054**: System MUST concatenate hooks from `AgentOptions.hooks` with file-based hooks, so that both programmatic and file-based hooks coexist for the same event
+- **FR-055**: System MUST validate hooks provided via `AgentOptions.hooks` using the same validation rules as file-based hook configuration
 
 ### Testing Validation Requirements
 
@@ -323,6 +342,7 @@ When a hook script encounters a non-critical error, users need to see the error 
 - **ToolBlock**: Data structure in agent messages that contains tool execution results and error information for PreToolUse and PostToolUse hooks
 - **ErrorBlock**: Data structure in assistant messages that contains user-visible error information for UserPromptSubmit hooks, excluded from API conversion
 - **Agent Message Collection**: The `agent.messages` array that serves as the primary validation point for testing hook behavior correctness
+- **Programmatic Hook Configuration**: `AgentOptions.hooks` field of type `PartialHookConfiguration` that allows SDK users to inject hooks at creation time, supplementing file-based configuration
 
 ## Success Criteria *(mandatory)*
 

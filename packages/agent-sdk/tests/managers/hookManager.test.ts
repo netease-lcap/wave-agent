@@ -361,10 +361,13 @@ describe("HookManager", () => {
       };
       manager.loadConfigurationFromWaveConfig(waveConfig);
 
-      // Wave config replaces plugin hooks for same event (per merge design)
+      // Wave config concatenates with plugin hooks for same event
       const config = manager.getConfiguration();
-      expect(config?.PostToolUse).toHaveLength(1);
-      expect(config?.PostToolUse?.[0].hooks[0].command).toBe("wave-edit-hook");
+      expect(config?.PostToolUse).toHaveLength(2);
+      expect(config?.PostToolUse?.[0].hooks[0].command).toBe(
+        "plugin-read-hook",
+      );
+      expect(config?.PostToolUse?.[1].hooks[0].command).toBe("wave-edit-hook");
     });
   });
 });
