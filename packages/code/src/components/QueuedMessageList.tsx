@@ -14,7 +14,8 @@ export const QueuedMessageList: React.FC = () => {
       {queuedMessages.map((msg, index) => {
         const content = msg.content.trim();
         const hasImages = msg.images && msg.images.length > 0;
-        const displayText = content || (hasImages ? "[Images]" : "");
+        const prefix = msg.type === "bang" ? "! " : "";
+        const displayText = prefix + (content || (hasImages ? "[Images]" : ""));
 
         return (
           <Box key={index}>
