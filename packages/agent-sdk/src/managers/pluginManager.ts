@@ -109,14 +109,60 @@ export class PluginManager {
           );
 
           if (isMarketplaceKnown) {
+            // Pre-check: verify the plugin still exists in the marketplace manifest
+            // before acquiring the lock in installPlugin (which can block ~8s during autoUpdate)
+            const marketplace = knownMarketplaces.find(
+              (m) => m.name === marketplaceName,
+            );
+            if (!marketplace) continue;
+            try {
+              const marketplacePath = marketplaceService.getMarketplacePath(
+                marketplace.source,
+              );
+              const manifest =
+                await marketplaceService.loadMarketplaceManifest(
+                  marketplacePath,
+                );
+              const pluginExists = manifest.plugins.some(
+                (p) => p.name === name,
+              );
+              if (!pluginExists) {
+                logger?.warn(
+                  `Plugin ${pluginId} is enabled but no longer exists in marketplace ${marketplaceName}. Removing from enabledPlugins.`,
+                );
+                await this.configurationService?.removeEnabledPlugin(
+                  this.workdir,
+                  "user",
+                  pluginId,
+                );
+                continue;
+              }
+            } catch {
+              // Manifest read failed (marketplace not cloned yet?) — fall through to installPlugin
+            }
+
             logger?.info(`Auto-installing missing plugin: ${pluginId}`);
             try {
               await marketplaceService.installPlugin(pluginId);
             } catch (installError) {
-              logger?.error(
-                `Failed to auto-install plugin ${pluginId}:`,
-                installError,
-              );
+              if (
+                installError instanceof Error &&
+                installError.message.includes("not found in marketplace")
+              ) {
+                logger?.warn(
+                  `Plugin ${pluginId} no longer found in marketplace. Removing from enabledPlugins.`,
+                );
+                await this.configurationService?.removeEnabledPlugin(
+                  this.workdir,
+                  "user",
+                  pluginId,
+                );
+              } else {
+                logger?.error(
+                  `Failed to auto-install plugin ${pluginId}:`,
+                  installError,
+                );
+              }
             }
           } else {
             logger?.warn(
