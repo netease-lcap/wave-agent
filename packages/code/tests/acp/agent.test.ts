@@ -2003,6 +2003,7 @@ describe("WaveAcpAgent", () => {
 
     expect(capturedOptions!.mcpServers).toEqual({
       "api-server": {
+        type: "http",
         url: "https://api.example.com/mcp",
         headers: { Authorization: "Bearer token123" },
       },
@@ -2037,6 +2038,7 @@ describe("WaveAcpAgent", () => {
 
     expect(capturedOptions!.mcpServers).toEqual({
       "event-stream": {
+        type: "sse",
         url: "https://events.example.com/mcp",
         headers: { "X-API-Key": "apikey456" },
       },
