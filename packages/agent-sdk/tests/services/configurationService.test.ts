@@ -667,7 +667,7 @@ describe("ConfigurationService", () => {
       }
     });
 
-    it("should prioritize WAVE_MODEL env var over currentConfiguration.model", async () => {
+    it("should prioritize currentConfiguration.model over WAVE_MODEL env var", async () => {
       const config = { model: "config-model" };
       mockExistsSync.mockReturnValue(true);
       mockReadFileSync.mockReturnValue(JSON.stringify(config));
@@ -680,7 +680,7 @@ describe("ConfigurationService", () => {
         await configService.loadMergedConfiguration(tempDir);
         configService.setOptions({}); // no options.model
         const resolved = configService.resolveModelConfig();
-        expect(resolved.model).toBe("env-model");
+        expect(resolved.model).toBe("config-model");
       } finally {
         if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
         else delete process.env.WAVE_MODEL;

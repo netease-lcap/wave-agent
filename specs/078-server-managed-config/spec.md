@@ -18,7 +18,7 @@ As an organization admin, I want to push managed settings (allowed tools, model 
 
 1. **Given** the user is authenticated via SSO and the server has managed settings, **When** Wave initializes, **Then** it downloads managed settings from `WAVE_SERVER_URL/api/v1/managed-settings` and applies them.
 2. **Given** the user is not authenticated via SSO, **When** Wave initializes, **Then** no managed settings are downloaded and local-only settings are used.
-3. **Given** managed settings include a `model` field, **When** settings are resolved, **Then** the managed model takes precedence over the local `settings.json` model.
+3. **Given** managed settings include a `model` scalar field, **When** settings are resolved, **Then** the managed model takes precedence over the local `settings.json` model (admin enforces). **Given** managed settings include `env.WAVE_MODEL` but no `model` field, **When** the user has a `model` field in `settings.json`, **Then** the user's model takes precedence (user overrides admin's default).
 
 ---
 
@@ -58,7 +58,7 @@ As an organization admin, I want my managed settings to override local user sett
 - **What happens if the managed settings endpoint is unreachable?** Wave MUST proceed with cached settings if available, or local-only settings if not. A warning is logged but startup is not blocked.
 - **What happens if managed settings contain invalid JSON?** Wave MUST log an error and fall back to local-only settings.
 - **What happens if the user logs out of SSO?** Managed settings are no longer downloaded on subsequent startups, but previously cached managed settings remain in effect until overwritten by local changes.
-- **What happens if managed settings conflict with environment variables?** Environment variables (e.g., `WAVE_MODEL`) still override managed settings. Managed settings only override local `settings.json` values, not env vars.
+- **What happens if managed settings conflict with environment variables?** User's `settings.json` `model` field overrides admin's `env.WAVE_MODEL` default. If admin wants hard enforcement, they use the `model` scalar field which overwrites the local value during merge. Shell env vars (set before Wave starts) are the lowest priority fallback.
 - **What happens during a settings reload (file watcher)?** Managed settings are NOT re-downloaded on file change — they are only downloaded during initialization.
 
 ## Requirements *(mandatory)*
@@ -69,7 +69,7 @@ As an organization admin, I want my managed settings to override local user sett
 - **FR-002**: System MUST include the SSO token as Bearer auth in the managed settings download request.
 - **FR-003**: System MUST cache the checksum (ETag or response header) of the last downloaded settings to avoid redundant downloads on subsequent startups.
 - **FR-004**: System MUST store cached managed settings and their checksum locally (in `~/.wave/` directory).
-- **FR-005**: System MUST merge remote managed settings with local settings using priority: remote managed > local user settings > local project settings. Environment variables always override managed settings.
+- **FR-005**: System MUST merge remote managed settings with local settings using priority: in-memory override > user `settings.json` `model` field > remote managed `model` scalar (admin enforces) / remote `env.WAVE_MODEL` (admin default, user can override) > shell env vars > local project settings.
 - **FR-006**: System MUST NOT override local-only settings (hooks, env vars not present in managed settings) with empty values from managed settings — managed settings only override keys they explicitly include.
 - **FR-007**: System MUST handle network errors gracefully — if the download fails, use cached managed settings if available, otherwise proceed with local-only settings.
 - **FR-008**: System MUST log a warning when managed settings download fails but NOT block agent startup.

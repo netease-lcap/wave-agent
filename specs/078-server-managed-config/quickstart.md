@@ -27,7 +27,7 @@ On the Wave AI server, an admin configures managed settings:
 }
 ```
 
-When a team member starts Wave, the Bash tool is disabled and the model is set to `gpt-4o`, regardless of their local `settings.json`.
+When a team member starts Wave, the Bash tool is disabled and the model is set to `gpt-4o`, regardless of their local `settings.json` (because the `model` scalar field overrides local in the merge). If the admin instead uses `env.WAVE_MODEL`, the user can override it by setting `"model"` in their local `settings.json`.
 
 ## Fallback Behavior
 

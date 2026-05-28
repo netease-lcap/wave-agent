@@ -33,9 +33,10 @@ A model entry for display in the selector UI.
 ### Model Resolution Priority (highest to lowest)
 
 1. In-memory override (set during current session via `/model`)
-2. `WAVE_MODEL` environment variable
-3. `settings.json` `model` field (local or remote managed)
-4. Provider default
+2. `settings.json` `model` field (user's explicit choice; overrides admin's `env.WAVE_MODEL` default)
+3. Remote managed `model` scalar field (admin enforces — overwrites local via `mergeRemoteSettings`)
+4. `WAVE_MODEL` environment variable (admin default via `env.WAVE_MODEL`, or shell fallback)
+5. Provider default
 
 ## Validation Rules
 - Model IDs must be non-empty strings.
