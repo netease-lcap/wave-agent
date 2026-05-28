@@ -4,6 +4,7 @@
  */
 
 export interface McpServerConfig {
+  type?: "stdio" | "sse" | "http";
   command?: string;
   args?: string[];
   env?: Record<string, string>;

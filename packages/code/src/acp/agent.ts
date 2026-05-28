@@ -211,7 +211,8 @@ export class WaveAcpAgent implements AcpAgent {
           callbacks.onPermissionModeChange?.(mode),
         onModelChange: (model) => callbacks.onModelChange?.(model),
         onUserMessageAdded: (params) => callbacks.onUserMessageAdded?.(params),
-        onMcpServersChange: (servers) => callbacks.onMcpServersChange?.(servers),
+        onMcpServersChange: (servers) =>
+          callbacks.onMcpServersChange?.(servers),
       },
     });
 
@@ -1043,9 +1044,11 @@ function convertAcpMcpServers(
   for (const server of servers) {
     const config: McpServerConfig = {};
     if ("type" in server && server.type === "http") {
+      config.type = "http";
       config.url = server.url;
       config.headers = convertHttpHeaders(server.headers);
     } else if ("type" in server && server.type === "sse") {
+      config.type = "sse";
       config.url = server.url;
       config.headers = convertHttpHeaders(server.headers);
     } else {

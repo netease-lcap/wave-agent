@@ -562,6 +562,7 @@ describe("McpManager", () => {
       const sseConfig = {
         mcpServers: {
           "sse-server": {
+            type: "sse",
             url: "https://example.com/sse",
           },
         },
@@ -569,11 +570,6 @@ describe("McpManager", () => {
       const { promises: fs } = await import("fs");
       vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(sseConfig));
       await mcpManager.loadConfig();
-
-      // Mock Streamable HTTP to fail to trigger fallback
-      vi.mocked(StreamableHTTPClientTransport).mockImplementation(function () {
-        throw new Error("Streamable HTTP not supported");
-      });
 
       const result = await mcpManager.connectServer("sse-server");
 
@@ -594,6 +590,7 @@ describe("McpManager", () => {
       const streamableConfig = {
         mcpServers: {
           "streamable-server": {
+            type: "http",
             url: "https://example.com/streamable",
             headers: { Authorization: "Bearer test-token" },
           },
@@ -626,11 +623,12 @@ describe("McpManager", () => {
       expect(server?.status).toBe("connected");
     });
 
-    it("should fallback to SSE if Streamable HTTP fails", async () => {
+    it("should not fallback to SSE when type is 'http'", async () => {
       const config = {
         mcpServers: {
-          "fallback-server": {
-            url: "https://example.com/fallback",
+          "http-server": {
+            type: "http",
+            url: "https://example.com/http",
             headers: { "X-Custom": "value" },
           },
         },
@@ -639,24 +637,20 @@ describe("McpManager", () => {
       vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(config));
       await mcpManager.loadConfig();
 
-      // First call to connect (Streamable HTTP) fails
+      // Make client.connect fail for Streamable HTTP
       mockClient.connect.mockRejectedValueOnce(
         new Error("Streamable HTTP failed"),
       );
 
-      const result = await mcpManager.connectServer("fallback-server");
+      const result = await mcpManager.connectServer("http-server");
 
-      expect(result).toBe(true);
+      // Should fail entirely, NOT fall back to SSE
+      expect(result).toBe(false);
       expect(StreamableHTTPClientTransport).toHaveBeenCalled();
-      expect(SSEClientTransport).toHaveBeenCalledWith(
-        new URL("https://example.com/fallback"),
-        {
-          requestInit: { headers: { "X-Custom": "value" } },
-        },
-      );
+      expect(SSEClientTransport).not.toHaveBeenCalled();
 
-      const server = mcpManager.getServer("fallback-server");
-      expect(server?.status).toBe("connected");
+      const server = mcpManager.getServer("http-server");
+      expect(server?.status).toBe("error");
     });
 
     it("should throw error if neither command nor url is provided", async () => {
@@ -675,6 +669,120 @@ describe("McpManager", () => {
       const server = mcpManager.getServer("invalid-server");
       expect(server?.status).toBe("error");
       expect(server?.error).toContain("must include either 'command' or 'url'");
+    });
+
+    it("should reject unknown type value", async () => {
+      const invalidConfig = {
+        mcpServers: {
+          "bad-type-server": {
+            type: "websocket",
+            url: "https://example.com/ws",
+          },
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(invalidConfig));
+      await mcpManager.loadConfig();
+
+      const result = await mcpManager.connectServer("bad-type-server");
+
+      expect(result).toBe(false);
+      const server = mcpManager.getServer("bad-type-server");
+      expect(server?.status).toBe("error");
+      expect(server?.error).toContain('unknown type "websocket"');
+    });
+
+    it("should default URL-based server to Streamable HTTP when type is not specified", async () => {
+      const config = {
+        mcpServers: {
+          "default-http-server": {
+            url: "https://example.com/default",
+          },
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(config));
+      await mcpManager.loadConfig();
+
+      vi.mocked(StreamableHTTPClientTransport).mockImplementation(function () {
+        return mockTransport as never;
+      });
+
+      const result = await mcpManager.connectServer("default-http-server");
+
+      expect(result).toBe(true);
+      expect(StreamableHTTPClientTransport).toHaveBeenCalledWith(
+        new URL("https://example.com/default"),
+        {
+          requestInit: { headers: undefined },
+        },
+      );
+      expect(SSEClientTransport).not.toHaveBeenCalled();
+    });
+
+    it("should reject http type without url", async () => {
+      const invalidConfig = {
+        mcpServers: {
+          "http-no-url": {
+            type: "http",
+          },
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(invalidConfig));
+      await mcpManager.loadConfig();
+
+      const result = await mcpManager.connectServer("http-no-url");
+
+      expect(result).toBe(false);
+      const server = mcpManager.getServer("http-no-url");
+      expect(server?.status).toBe("error");
+      expect(server?.error).toContain("requires a 'url'");
+    });
+
+    it("should reject sse type without url", async () => {
+      const invalidConfig = {
+        mcpServers: {
+          "sse-no-url": {
+            type: "sse",
+          },
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(invalidConfig));
+      await mcpManager.loadConfig();
+
+      const result = await mcpManager.connectServer("sse-no-url");
+
+      expect(result).toBe(false);
+      const server = mcpManager.getServer("sse-no-url");
+      expect(server?.status).toBe("error");
+      expect(server?.error).toContain("requires a 'url'");
+    });
+
+    it("should connect with explicit type 'stdio'", async () => {
+      const stdioConfig = {
+        mcpServers: {
+          "explicit-stdio": {
+            type: "stdio",
+            command: "npx",
+            args: ["explicit-stdio-server"],
+          },
+        },
+      };
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(stdioConfig));
+      await mcpManager.loadConfig();
+
+      const result = await mcpManager.connectServer("explicit-stdio");
+
+      expect(result).toBe(true);
+      expect(StdioClientTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: "npx",
+          args: ["explicit-stdio-server"],
+        }),
+      );
     });
 
     it("should handle connection failure", async () => {
