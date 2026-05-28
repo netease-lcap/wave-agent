@@ -76,14 +76,16 @@ As an ACP client, I want to specify MCP servers when creating or loading a sessi
 - **Invalid Configuration**: If `.mcp.json` is malformed, the agent SHOULD log an error and proceed without MCP tools.
 - **Config Merge**: When multiple config sources exist (constructor, `.mcp.json`, plugins), they are merged with precedence: constructor > workspace (.mcp.json) > plugin servers.
 - **SSE Reconnection**: When an SSE EventSource connection drops unexpectedly, the system MUST attempt auto-reconnection with exponential backoff. During reconnection, the server status MUST show "reconnecting". If reconnection fails after all attempts, the status MUST transition to "error".
+- **No HTTP→SSE Fallback**: When a URL-based server has `type: "http"` (or no type, which defaults to `"http"`), if the Streamable HTTP connection fails, the system MUST NOT fall back to SSE. Users who need SSE must set `type: "sse"` explicitly.
+- **Unknown Type**: If `type` is set to an unrecognized value, the system MUST throw an error at connection time.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: System MUST support loading MCP server configurations from `.mcp.json` in the working directory.
-- **FR-002**: System MUST use `StdioClientTransport` or `SSEClientTransport` to communicate with MCP servers.
-- **FR-010**: System MUST support remote MCP servers via SSE (Server-Sent Events) by providing a `url` in the configuration.
+- **FR-002**: System MUST use `StdioClientTransport`, `SSEClientTransport`, or `StreamableHTTPClientTransport` to communicate with MCP servers based on the `type` field in `McpServerConfig`.
+- **FR-010**: System MUST support remote MCP servers via SSE (Server-Sent Events) or Streamable HTTP by providing a `url` in the configuration. The transport is determined by the `type` field (`"sse"` or `"http"`). When `type` is omitted and `url` is provided, the default is `"http"` (Streamable HTTP).
 - **FR-003**: MCP tools MUST be registered in the `ToolManager` with the prefix `mcp__[serverName]__[toolName]`.
 - **FR-004**: MCP tool schemas MUST be cleaned of unsupported fields (`$schema`, `exclusiveMinimum`, `exclusiveMaximum`).
 - **FR-005**: `McpManager` MUST track the status of each server (connected, disconnected, error).
@@ -101,6 +103,9 @@ As an ACP client, I want to specify MCP servers when creating or loading a sessi
 - **FR-018**: System MUST reconnect all MCP servers when SSO authentication completes (after `/login`).
 - **FR-019**: MCP tool execution results MUST be truncated to 50,000 characters. Excess output MUST be persisted to a file via the shared `toolResultStorage` utility, and the result MUST include a `<persisted-output>` reference.
 - **FR-020**: System MUST store the pre-resolution `originalUrl` for MCP servers configured with a URL, to prevent sensitive tokens from appearing in UI status displays.
+- **FR-021**: `McpServerConfig` MUST include an optional `type` field (`"stdio"`, `"sse"`, `"http"`) to explicitly specify the transport. When `type` is omitted, it is inferred: URL → `"http"`, command → `"stdio"`. System MUST NOT fall back from HTTP to SSE; the `type` must be explicit for SSE servers.
+- **FR-022**: ACP bridge MUST preserve the `type` field when converting ACP `McpServer[]` to SDK `McpServerConfig` format.
+- **FR-023**: MCP manager UI MUST display the transport `type` in the server detail view when present.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -109,7 +114,8 @@ As an ACP client, I want to specify MCP servers when creating or loading a sessi
     - `command`: Executable to run (for stdio).
     - `args`: Command-line arguments (for stdio).
     - `env`: Environment variables (for stdio).
-    - `url`: Endpoint URL (for SSE).
+    - `url`: Endpoint URL (for http/sse).
+    - `type`: Transport type (`"stdio"`, `"http"`, `"sse"`). If omitted, inferred from other fields.
     - `originalUrl`: The original URL before any resolution/substitution (for display purposes).
     - `status`: Current connection state.
     - `transport`: Transport type (`stdio`, `http`, `sse`). (ACP format)

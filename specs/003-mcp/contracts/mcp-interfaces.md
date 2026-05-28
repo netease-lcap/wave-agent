@@ -4,10 +4,14 @@
 
 ```typescript
 export interface McpServerConfig {
+  type?: "stdio" | "sse" | "http";
   command?: string;
   args?: string[];
   env?: Record<string, string>;
   url?: string;
+  headers?: Record<string, string>;
+  /** Internal: plugin directory path when the server is registered by a plugin */
+  pluginRoot?: string;
 }
 
 export interface McpConfig {
@@ -19,11 +23,13 @@ export interface McpConfig {
 
 ```typescript
 export interface McpServer {
+  name: string;
   command?: string;
   args?: string[];
-  env?: Record<string, string>;
+  env?: Array<{ name: string; value: string }>;
   url?: string;
-  transport?: "stdio" | "http" | "sse";
+  headers?: Array<{ name: string; value: string }>;
+  type?: "stdio" | "http" | "sse";
 }
 ```
 
@@ -39,7 +45,9 @@ export interface McpTool {
 export interface McpServerStatus {
   name: string;
   config: McpServerConfig;
-  status: "disconnected" | "connected" | "connecting" | "error";
+  /** Pre-resolution URL with template variables preserved for safe display */
+  originalUrl?: string;
+  status: "disconnected" | "connected" | "connecting" | "reconnecting" | "error";
   tools?: McpTool[];
   toolCount?: number;
   capabilities?: string[];
@@ -81,8 +89,24 @@ export interface McpManagerOptions {
 {
   capabilities: {
     mcpCapabilities: {
-      transports: ["http", "sse"];
+      http: true,
+      sse: true
     }
   }
 }
 ```
+
+## Transport Dispatch (connectServer)
+
+When connecting an MCP server, the `type` field in `McpServerConfig` determines the transport:
+
+| `type` value | Transport | Required fields |
+|---|---|---|
+| `"http"` | `StreamableHTTPClientTransport` | `url` |
+| `"sse"` | `SSEClientTransport` | `url` |
+| `"stdio"` | `StdioClientTransport` | `command` |
+| _(omitted)_ + `url` | `StreamableHTTPClientTransport` (default) | `url` |
+| _(omitted)_ + `command` | `StdioClientTransport` (default) | `command` |
+| unknown | _throws error_ | — |
+
+**No fallback**: When `type` is `"http"` (or defaulted), a failed Streamable HTTP connection does NOT fall back to SSE. Users must set `type: "sse"` explicitly.

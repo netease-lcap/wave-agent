@@ -29,7 +29,7 @@ The `settings` skill is a builtin skill that helps users manage their Wave confi
 - `models`: Model-specific configuration overrides.
 
 ### Other Files
-- `.mcp.json`: Configure external MCP servers.
+- `.mcp.json`: Configure external MCP servers (supports `type`: `"stdio"`, `"sse"`, `"http"`).
 - `.wave/rules/*.md`: Define context-specific instructions (Memory Rules).
 - `.wave/skills/`: Create and manage custom skills.
 - `.wave/agents/`: Create and manage specialized subagents.

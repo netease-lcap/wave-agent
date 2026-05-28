@@ -9,10 +9,23 @@ Create a `.mcp.json` file in your project's working directory:
     "everything": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-everything"]
+    },
+    "remote-api": {
+      "type": "http",
+      "url": "https://mcp-server.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer your-token"
+      }
     }
   }
 }
 ```
+
+### Transport Types
+
+- `"stdio"` (default when `command` is provided): Local subprocess
+- `"http"` (default when `url` is provided): Streamable HTTP — recommended for remote servers
+- `"sse"`: Server-Sent Events — use only for legacy servers that require SSE
 
 ## 2. Initialize Agent
 The agent will automatically connect to the configured MCP servers during initialization.

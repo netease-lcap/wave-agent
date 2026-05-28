@@ -8,10 +8,13 @@ The root configuration object for MCP.
 
 ### McpServerConfig
 Configuration for an individual MCP server (SDK format).
+- `type`: (Optional) Transport type: `"stdio"`, `"sse"`, or `"http"`. If omitted, inferred from other fields (URL → `"http"`, command → `"stdio"`).
 - `command`: The executable to run (for stdio transport).
 - `args`: (Optional) Arguments for the command.
 - `env`: (Optional) Environment variables for the child process.
 - `url`: (Optional) Endpoint URL (for http/sse transport).
+- `headers`: (Optional) HTTP headers to send with requests (for http/sse transport).
+- `pluginRoot`: (Optional, internal) Plugin directory path when the server is registered by a plugin.
 
 ### ACP McpServer (ACP format)
 Configuration from ACP clients, converted to `McpServerConfig`.
@@ -52,7 +55,7 @@ Represents a tool provided by an MCP server.
 ### McpConnection
 Internal representation of an active connection.
 - `client`: The MCP SDK `Client` instance.
-- `transport`: The `StdioClientTransport` or `SSEClientTransport` instance.
+- `transport`: The `StdioClientTransport`, `SSEClientTransport`, or `StreamableHTTPClientTransport` instance.
 - `process`: Currently `null` as transports manage the process internally.
 
 ## Tool Execution Results
@@ -71,9 +74,4 @@ Status updates sent to ACP clients via `ext_notification`.
 
 ## MCP Capabilities
 Advertised in ACP `initialize` response.
-- `mcpCapabilities`: `{ transports: ["http", "sse"] }`
-)`: Writes content to a file and returns a `<persisted-output>` reference.
-
-## MCP Capabilities
-Advertised in ACP `initialize` response.
-- `mcpCapabilities`: `{ transports: ["http", "sse"] }`
+- `mcpCapabilities`: `{ http: true, sse: true }`

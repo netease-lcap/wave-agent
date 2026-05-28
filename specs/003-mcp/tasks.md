@@ -27,3 +27,7 @@
 - [ ] Add MCP server reconnection after SSO login
 - [ ] Add MCP tool result size limiting (50K chars) with shared persistence utility
 - [ ] Add originalUrl storage for URL-based MCP servers to prevent sensitive URL exposure
+- [x] Add `type` field to `McpServerConfig` for explicit transport selection (`"stdio" | "sse" | "http"`)
+- [x] Replace HTTP→SSE fallback with explicit type-based transport dispatch
+- [x] Preserve `type` field in ACP `convertAcpMcpServers` conversion
+- [x] Display transport `type` in MCP manager UI detail view
