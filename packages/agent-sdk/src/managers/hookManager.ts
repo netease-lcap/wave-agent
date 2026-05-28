@@ -31,6 +31,9 @@ import { logger } from "../utils/globalLogger.js";
 
 export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
+  private programmaticHooks: PartialHookConfiguration = {};
+  private pluginHooks: PartialHookConfiguration = {};
+  private waveConfigHooks: PartialHookConfiguration = {};
   private readonly matcher: HookMatcher;
   private readonly workdir: string;
 
@@ -47,14 +50,16 @@ export class HookManager {
    * Load hook configuration from programmatic source (AgentOptions.hooks)
    */
   loadConfiguration(hooks?: PartialHookConfiguration): void {
-    const merged: PartialHookConfiguration = {};
+    this.programmaticHooks = {};
 
     if (hooks) {
-      this.mergeHooksConfiguration(merged, hooks);
+      this.mergeHooksConfiguration(this.programmaticHooks, hooks);
     }
 
     // Validate merged configuration
-    const validation = this.validatePartialConfiguration(merged);
+    const validation = this.validatePartialConfiguration(
+      this.programmaticHooks,
+    );
     if (!validation.valid) {
       throw new HookConfigurationError(
         "merged configuration",
@@ -62,7 +67,7 @@ export class HookManager {
       );
     }
 
-    this.configuration = merged;
+    this.rebuildConfiguration();
   }
 
   /**
@@ -71,8 +76,9 @@ export class HookManager {
    */
   loadConfigurationFromWaveConfig(waveConfig: WaveConfiguration | null): void {
     try {
-      // Merge Wave configuration hooks with existing plugin hooks
-      // (plugin hooks were registered earlier via registerPluginHooks)
+      // Replace (not append) wave config hooks to avoid duplicates on reload
+      this.waveConfigHooks = {};
+
       if (waveConfig?.hooks) {
         const validation = this.validatePartialConfiguration(waveConfig.hooks);
         if (!validation.valid) {
@@ -81,11 +87,10 @@ export class HookManager {
             validation.errors,
           );
         }
-        if (!this.configuration) {
-          this.configuration = {};
-        }
-        this.mergeHooksConfiguration(this.configuration, waveConfig.hooks);
+        this.waveConfigHooks = { ...waveConfig.hooks };
       }
+
+      this.rebuildConfiguration();
     } catch (error) {
       // Re-throw configuration errors, but handle other errors gracefully
       if (error instanceof HookConfigurationError) {
@@ -96,6 +101,19 @@ export class HookManager {
         );
       }
     }
+  }
+
+  /**
+   * Rebuild the full configuration from all sources:
+   * programmatic (AgentOptions.hooks) + plugin + wave config (settings.json)
+   * Order determines precedence on conflict (later sources append).
+   */
+  private rebuildConfiguration(): void {
+    const rebuilt: PartialHookConfiguration = {};
+    this.mergeHooksConfiguration(rebuilt, this.programmaticHooks);
+    this.mergeHooksConfiguration(rebuilt, this.pluginHooks);
+    this.mergeHooksConfiguration(rebuilt, this.waveConfigHooks);
+    this.configuration = Object.keys(rebuilt).length > 0 ? rebuilt : undefined;
   }
 
   /**
@@ -854,10 +872,6 @@ export class HookManager {
     pluginRoot: string,
     hooks: PartialHookConfiguration,
   ): void {
-    if (!this.configuration) {
-      this.configuration = {};
-    }
-
     // Stamp pluginRoot on each hook command
     const stampedHooks: PartialHookConfiguration = {};
     for (const [event, configs] of Object.entries(hooks)) {
@@ -868,7 +882,8 @@ export class HookManager {
       }));
     }
 
-    this.mergeHooksConfiguration(this.configuration, stampedHooks);
+    this.mergeHooksConfiguration(this.pluginHooks, stampedHooks);
+    this.rebuildConfiguration();
   }
 
   /**
