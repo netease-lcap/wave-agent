@@ -432,18 +432,17 @@ The working directory persists between commands. Try to maintain your current wo
           }
 
           // If CWD changed, call the onCwdChange callback and add notification
-          let cwdResetMessage: string | undefined;
+          let cwdMessage: string | undefined;
           if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
             const isInSafeZone =
               context.permissionManager?.isPathInSafeZone?.(newCwd) ?? true;
 
-            if (isInSafeZone) {
-              context.onCwdChange(newCwd);
-            } else if (context.originalWorkdir) {
+            if (!isInSafeZone && context.originalWorkdir) {
               context.onCwdChange(context.originalWorkdir);
-              cwdResetMessage = `Shell cwd was reset to ${context.originalWorkdir}`;
+              cwdMessage = `Shell cwd was reset to ${context.originalWorkdir}`;
             } else {
               context.onCwdChange(newCwd);
+              cwdMessage = `Shell working directory changed to ${newCwd}`;
             }
           }
 
@@ -451,9 +450,9 @@ The working directory persists between commands. Try to maintain your current wo
           const combinedOutput =
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 
-          // Prepend CWD reset message to output if present (like Claude Code's stderr approach)
+          // Prepend CWD change message to output if present
           const finalOutput =
-            (cwdResetMessage ? cwdResetMessage + "\n" : "") +
+            (cwdMessage ? cwdMessage + "\n" : "") +
             (combinedOutput || `Command executed with exit code: ${exitCode}`);
           const content = processToolResult(
             finalOutput,
