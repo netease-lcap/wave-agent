@@ -162,7 +162,7 @@ describe("PluginManager", () => {
         hooksConfig,
       );
 
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining("Loaded plugin: test-plugin"),
       );
     });
@@ -281,12 +281,12 @@ describe("PluginManager", () => {
       expect(pluginManager.getPlugin("plugin1")).toBeDefined();
       expect(pluginManager.getPlugin("plugin2")).toBeUndefined();
       expect(pluginManager.getPlugin("plugin3")).toBeUndefined();
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining(
           "Plugin plugin2@m1 is not enabled via configuration",
         ),
       );
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining(
           "Plugin plugin3@m1 is not enabled via configuration",
         ),

@@ -260,7 +260,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     () =>
       throttle(
         () => {
-          logger.info("requesting remount");
+          logger.debug("requesting remount");
           stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
             setRemountKey((prev) => prev + 1);
           });

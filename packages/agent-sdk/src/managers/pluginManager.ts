@@ -178,7 +178,7 @@ export class PluginManager {
       for (const p of installedRegistry.plugins) {
         const pluginId = `${p.name}@${p.marketplace}`;
         if (this.enabledPlugins[pluginId] !== true) {
-          logger?.info(`Plugin ${pluginId} is not enabled via configuration`);
+          logger?.debug(`Plugin ${pluginId} is not enabled via configuration`);
           continue;
         }
         await this.loadSinglePlugin(p.cachePath);
@@ -249,7 +249,7 @@ export class PluginManager {
       }
 
       this.plugins.set(manifest.name, plugin);
-      logger?.info(`Loaded plugin: ${manifest.name} v${manifest.version}`);
+      logger?.debug(`Loaded plugin: ${manifest.name} v${manifest.version}`);
     } catch (error) {
       logger?.error(`Failed to load plugin from ${absolutePath}`, error);
     }
