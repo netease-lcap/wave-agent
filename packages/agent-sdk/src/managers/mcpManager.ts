@@ -369,9 +369,7 @@ export class McpManager {
             version: "1.0.0",
           },
           {
-            capabilities: {
-              tools: {},
-            },
+            capabilities: {},
           },
         );
 
