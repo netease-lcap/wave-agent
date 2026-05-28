@@ -420,6 +420,30 @@ describe("McpManager", () => {
       expect(output).toContain("KEY2=VAL2");
     });
 
+    it("should display transport type in detail view", async () => {
+      const httpServer: McpServerStatus = {
+        name: "http-server",
+        config: {
+          type: "http",
+          url: "https://example.com/mcp",
+        },
+        originalUrl: "https://example.com/mcp",
+        status: "connected",
+        toolCount: 3,
+      };
+
+      const { lastFrame, stdin } = render(
+        <McpManager {...defaultProps} servers={[httpServer]} />,
+      );
+
+      stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("MCP Server Details: http-server"),
+      );
+      const output = lastFrame();
+      expect(output).toContain("Type: http");
+    });
+
     it("should display error message in detail view", async () => {
       const { lastFrame, stdin } = render(<McpManager {...defaultProps} />);
 

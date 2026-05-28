@@ -122,6 +122,13 @@ export const McpManager: React.FC<McpManagerProps> = ({
               </Text>
             </Text>
           </Box>
+          {selectedServer.config.type && (
+            <Box>
+              <Text>
+                <Text color="blue">Type:</Text> {selectedServer.config.type}
+              </Text>
+            </Box>
+          )}
           <Box>
             <Text>
               <Text color="blue">Command:</Text> {selectedServer.config.command}

@@ -373,55 +373,65 @@ export class McpManager {
           },
         );
 
-      if (server.config.url) {
+      const serverType = server.config.type;
+
+      if (serverType === "http" || (!serverType && server.config.url)) {
+        if (!server.config.url) {
+          throw new Error(
+            `MCP server ${name} with type "http" requires a 'url'`,
+          );
+        }
         const url = new URL(server.config.url);
         const headers = server.config.headers;
-
-        try {
-          logger?.debug(
-            `Attempting Streamable HTTP connection for ${name} at ${url.href}`,
+        logger?.debug(
+          `Connecting to MCP server ${name} using Streamable HTTP at ${url.href}`,
+        );
+        transport = new StreamableHTTPClientTransport(url, {
+          requestInit: { headers },
+        });
+        client = createClient();
+        await client.connect(transport);
+        const toolsResponse = await client.listTools();
+        tools =
+          toolsResponse.tools?.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+          })) || [];
+        logger?.info(`Connected to MCP server ${name} using Streamable HTTP`);
+      } else if (serverType === "sse") {
+        if (!server.config.url) {
+          throw new Error(
+            `MCP server ${name} with type "sse" requires a 'url'`,
           );
-          const streamableTransport = new StreamableHTTPClientTransport(url, {
-            requestInit: { headers },
-          });
-
-          const streamableClient = createClient();
-          await streamableClient.connect(streamableTransport);
-
-          // Try to list tools to verify connection works
-          const toolsResponse = await streamableClient.listTools();
-
-          transport = streamableTransport;
-          client = streamableClient;
-          tools =
-            toolsResponse.tools?.map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              inputSchema: tool.inputSchema,
-            })) || [];
-
-          logger?.info(`Connected to MCP server ${name} using Streamable HTTP`);
-        } catch (error) {
-          logger?.debug(
-            `Streamable HTTP failed for ${name}, falling back to SSE: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          transport = new SSEClientTransport(url, {
-            requestInit: { headers },
-          });
-          client = createClient();
-          await client.connect(transport);
-
-          const toolsResponse = await client.listTools();
-          tools =
-            toolsResponse.tools?.map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              inputSchema: tool.inputSchema,
-            })) || [];
-
-          logger?.info(`Connected to MCP server ${name} using SSE (fallback)`);
         }
-      } else if (server.config.command) {
+        const url = new URL(server.config.url);
+        const headers = server.config.headers;
+        logger?.debug(
+          `Connecting to MCP server ${name} using SSE at ${url.href}`,
+        );
+        transport = new SSEClientTransport(url, {
+          requestInit: { headers },
+        });
+        client = createClient();
+        await client.connect(transport);
+        const toolsResponse = await client.listTools();
+        tools =
+          toolsResponse.tools?.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+          })) || [];
+        logger?.info(`Connected to MCP server ${name} using SSE`);
+      } else if (
+        serverType === "stdio" ||
+        (!serverType && server.config.command)
+      ) {
+        if (!server.config.command) {
+          throw new Error(
+            `MCP server ${name} with type "stdio" requires a 'command'`,
+          );
+        }
         const agentEnv =
           this.container.get<Record<string, string>>("MergedEnv") ||
           (process.env as Record<string, string>);
@@ -490,6 +500,11 @@ export class McpManager {
             description: tool.description,
             inputSchema: tool.inputSchema,
           })) || [];
+      } else if (serverType) {
+        // Unknown type value
+        throw new Error(
+          `MCP server ${name} has unknown type "${serverType}". Must be "stdio", "sse", or "http"`,
+        );
       } else {
         throw new Error(
           `MCP server ${name} configuration must include either 'command' or 'url'`,
