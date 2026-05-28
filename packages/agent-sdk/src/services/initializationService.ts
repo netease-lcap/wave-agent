@@ -123,6 +123,19 @@ export class InitializationService {
       // Don't throw error to prevent app startup failure
     }
 
+    // Initialize remote settings (load disk cache synchronously, then fetch in background)
+    // Must happen BEFORE loadMergedConfiguration so remote env vars are available
+    try {
+      const phaseStart = performance.now();
+      await remoteSettingsService.initialize();
+      logger?.debug(
+        `Initialization Phase [Remote Settings] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
+    } catch (error) {
+      logger?.error("Failed to initialize remote settings:", error);
+      // Don't throw error to prevent app startup failure - continue without remote settings
+    }
+
     // Initialize hooks configuration
     try {
       const phaseStart = performance.now();
@@ -287,18 +300,6 @@ export class InitializationService {
     } catch (error) {
       logger?.error("Failed to initialize live configuration reload:", error);
       // Don't throw error to prevent app startup failure - continue without live reload
-    }
-
-    // Initialize remote settings (fetch server-managed config)
-    try {
-      const phaseStart = performance.now();
-      await remoteSettingsService.initialize();
-      logger?.debug(
-        `Initialization Phase [Remote Settings] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
-      );
-    } catch (error) {
-      logger?.error("Failed to initialize remote settings:", error);
-      // Don't throw error to prevent app startup failure - continue without remote settings
     }
 
     // Memory is lazy-cached on first getCombinedMemoryContent call
