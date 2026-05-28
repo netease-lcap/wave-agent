@@ -62,5 +62,4 @@ As a CLI user, I want to see which models are available from my configuration so
 - **FR-010**: The `Agent` MUST expose `getConfiguredModels()` to provide the list of selectable models.
 - **FR-011**: The `StatusCommand` MUST display the active model name under the "Model:" field.
 - **FR-012**: System MUST persist the selected model to `~/.wave/settings.json` when the user selects a model via `/model`.
-- **FR-013**: Model resolution priority MUST be: in-memory override > `WAVE_MODEL` env var > `settings.json` persisted model. Remote managed settings override local settings.
-e active model name under the "Model:" field.
+- **FR-013**: Model resolution priority MUST be: in-memory override > `settings.json` persisted model > `WAVE_MODEL` env var. Remote managed `model` scalar field overrides local in merge; remote `env.WAVE_MODEL` serves as admin default that user's `settings.json` `model` field can override.

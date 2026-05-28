@@ -14,12 +14,13 @@
   - Always download: Rejected — wasteful for teams where settings rarely change.
   - Time-based caching (TTL): Rejected — doesn't guarantee freshness; checksum is more reliable.
 
-## Decision: Merge Priority — Managed > Local
+## Decision: Merge Priority — Model field vs env.WAVE_MODEL
 
-- **Rationale**: The purpose of managed settings is organizational policy enforcement. If local settings could override managed settings, the feature would be useless for security/compliance. This matches Claude Code's merge priority (priority 1 = highest = server-managed).
+- **Rationale**: Admin should be able to set a default model via `env.WAVE_MODEL` while allowing users to override it via their `settings.json` `model` field. If admin wants hard enforcement, they use the `model` scalar field (which overwrites the local value during `mergeRemoteSettings`). This differs from Claude Code where `ANTHROPIC_MODEL` env var always beats `settings.model`, but Wave's model is more flexible: admin gets a soft default by default, hard enforcement when explicitly chosen.
+- **Priority**: in-memory override > user `settings.json` `model` field > remote `model` scalar (admin enforces) / remote `env.WAVE_MODEL` (admin default) > shell env var
 - **Alternatives considered**:
-  - Local overrides managed: Rejected — defeats the purpose of centralized management.
-  - Per-key priority: Rejected — too complex; a simpler model where managed wins for any key it includes is easier to reason about.
+  - Env var always wins (Claude Code model): Rejected — prevents user from overriding admin's default.
+  - Managed always wins: Rejected — admin cannot offer a soft default that users can customize.
 
 ## Decision: Graceful Degradation on Network Errors
 

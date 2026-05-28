@@ -35,7 +35,8 @@
 - [ ] T007 [US3] Implement `mergeWithLocal(local, managed)` with priority: managed > local
   - Array fields: managed replaces local entirely
   - Env field: managed overrides matching keys, preserves non-overlapping local keys
-  - Other fields: managed value wins
+  - `model` scalar field: managed overwrites local (admin enforces)
+  - Note: `env.WAVE_MODEL` is a lower-priority default — user's `settings.json` `model` field overrides it in `resolveModelConfig()`
 - [ ] T008 [US3] Integrate managed settings into `ConfigurationService.resolveSettings()` merge pipeline
 
 ## Phase 4: Error Handling & Polish

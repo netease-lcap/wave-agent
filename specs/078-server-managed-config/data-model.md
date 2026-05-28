@@ -40,10 +40,12 @@ Stored in: `~/.wave/managed-settings-cache.json`
 
 | Priority | Source | Override Power |
 |----------|--------|---------------|
-| 1 (highest) | Environment variables | Always wins |
-| 2 | Remote managed settings | Overrides local settings |
-| 3 | User-level `settings.json` | Standard local config |
-| 4 (lowest) | Project-level `settings.json` | Project defaults |
+| 1 (highest) | In-memory override (`/model` command) | Always wins |
+| 2 | User `settings.json` `model` field | Overrides admin's env default |
+| 3 | Remote managed `model` field (scalar) | Overrides local `model` in mergeRemoteSettings (admin enforces) |
+| 3 | Remote managed `env.WAVE_MODEL` | Admin default; user `settings.json` `model` field overrides this |
+| 4 | Shell `WAVE_MODEL` env var | System fallback |
+| 5 (lowest) | Project-level `settings.json` | Project defaults |
 
 ### Merge Rules
 

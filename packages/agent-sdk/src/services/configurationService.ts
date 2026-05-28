@@ -511,12 +511,14 @@ export class ConfigurationService {
     maxTokens?: number,
     permissionMode?: PermissionMode,
   ): ModelConfig {
-    // Resolve agent model: override > options > process.env (includes settings.json env)
+    // Resolve agent model: override > options > currentConfiguration (settings.json model, possibly remote-merged) > process.env
+    // Priority: user's explicit model field > admin's env.WAVE_MODEL default.
+    // If admin wants hard enforcement, they set the `model` scalar field (overwrites local in mergeRemoteSettings).
     const resolvedAgentModel =
       model ||
       this.options.model ||
-      process.env.WAVE_MODEL ||
-      this.currentConfiguration?.model;
+      this.currentConfiguration?.model ||
+      process.env.WAVE_MODEL;
 
     // Resolve fast model: override > options > process.env (includes settings.json env)
     const resolvedFastModel =
