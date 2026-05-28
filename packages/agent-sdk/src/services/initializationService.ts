@@ -77,6 +77,9 @@ export class InitializationService {
 
     const startTime = performance.now();
 
+    // Set global logger early so managers can use it during initialization
+    setGlobalLogger(logger || null);
+
     // Initialize managers first
     try {
       const phaseStart = performance.now();
@@ -275,9 +278,6 @@ export class InitializationService {
     } catch (error) {
       logger?.error("Failed to initialize auto-memory directory:", error);
     }
-
-    // Set global logger for SDK-wide access before discovering rules
-    setGlobalLogger(logger || null);
 
     // Discover modular memory rules
     try {
