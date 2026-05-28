@@ -32,24 +32,69 @@ The `.mcp.json` file contains a list of MCP server configurations.
 
 ### Fields for each server:
 
+- `type`: (Optional) The transport type: `"stdio"`, `"sse"`, or `"http"`. If omitted, Wave infers the type from other fields (URL → `"http"`, command → `"stdio"`). Set explicitly for clarity and to avoid the default behavior.
 - `command`: (For stdio) The executable to run (e.g., `npx`, `uvx`, `python`, `node`).
 - `args`: (For stdio) An array of command-line arguments for the executable.
 - `env`: (Optional) A record of environment variables for the server process.
-- `url`: (For SSE) The endpoint URL of a remote MCP server (e.g., `https://example.com/sse`).
+- `url`: (For `sse`/`http`) The endpoint URL of a remote MCP server.
+- `headers`: (For `sse`/`http`) A record of HTTP headers to send with requests (e.g., `{"Authorization": "Bearer token"}`).
 
-## Remote MCP Servers (SSE)
+## Transport Types
 
-Wave also supports connecting to remote MCP servers via SSE (Server-Sent Events).
+Wave supports three MCP transport types. When `type` is not specified, Wave uses the following defaults:
+- If `url` is provided → defaults to `"http"` (Streamable HTTP)
+- If `command` is provided → defaults to `"stdio"`
+
+### stdio
+
+The server is launched as a local subprocess. Use for locally installed MCP servers.
 
 ```json
 {
   "mcpServers": {
-    "remote-server": {
+    "sqlite": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "/path/to/db"]
+    }
+  }
+}
+```
+
+### http (Streamable HTTP)
+
+The recommended transport for remote servers. Uses the MCP Streamable HTTP protocol.
+
+```json
+{
+  "mcpServers": {
+    "remote-api": {
+      "type": "http",
+      "url": "https://mcp-server.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer your-token"
+      }
+    }
+  }
+}
+```
+
+### sse (Server-Sent Events)
+
+Legacy transport for remote servers that only support SSE. Use `"http"` for new servers unless the server requires SSE.
+
+```json
+{
+  "mcpServers": {
+    "legacy-server": {
+      "type": "sse",
       "url": "https://mcp-server.example.com/sse"
     }
   }
 }
 ```
+
+> **Note**: When `type` is not specified, URL-based servers default to `"http"` with no SSE fallback. If you need SSE, set `type: "sse"` explicitly.
 
 ## Using MCP Tools
 

@@ -28,6 +28,7 @@ async function main() {
   const mcpConfig = {
     mcpServers: {
       tavily: {
+        type: "http",
         url: "https://mcp.tavily.com/mcp/",
         // Authenticate using the Authorization header with ${TAVILY_API_KEY} env var expansion
         headers: {
