@@ -27,6 +27,11 @@ vi.mock("../../src/utils/markdownParser.js", async () => {
   };
 });
 
+vi.mock("fs/promises", () => ({
+  readdir: vi.fn().mockResolvedValue([]),
+  stat: vi.fn(),
+}));
+
 describe("SkillManager with Arguments and Bash", () => {
   let skillManager: SkillManager;
   let container: Container;
@@ -37,11 +42,6 @@ describe("SkillManager with Arguments and Bash", () => {
     skillManager = new SkillManager(container, {
       workdir: "/test/workdir",
     });
-    // Initialize to set initialized = true
-    vi.mock("fs/promises", () => ({
-      readdir: vi.fn().mockResolvedValue([]),
-      stat: vi.fn(),
-    }));
     await skillManager.initialize();
   });
 
