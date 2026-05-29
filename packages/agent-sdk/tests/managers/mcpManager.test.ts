@@ -660,6 +660,89 @@ describe("McpManager", () => {
     });
   });
 
+  describe("expandEnvVars in connectServer", () => {
+    let mockClient: MockClient;
+    let mockTransport: MockTransport;
+
+    beforeEach(async () => {
+      const { promises: fs } = await import("fs");
+
+      const configWithEnvVars = {
+        mcpServers: {
+          "proxy-server": {
+            command: "npx",
+            args: ["--proxy=${HTTP_PROXY}", "--timeout=30"],
+            env: { API_KEY: "${MY_API_KEY}", STATIC: "literal" },
+          },
+        },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify(configWithEnvVars),
+      );
+      await mcpManager.loadConfig();
+
+      mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        callTool: vi.fn(),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      mockTransport = {
+        close: vi.fn().mockResolvedValue(undefined),
+        onerror: null,
+        onclose: null,
+      };
+
+      vi.mocked(Client).mockImplementation(() => mockClient as never);
+      vi.mocked(StdioClientTransport).mockImplementation(
+        () => mockTransport as never,
+      );
+    });
+
+    it("should expand ${VAR} in args using process.env", async () => {
+      process.env.HTTP_PROXY = "http://proxy.example.com:8080";
+
+      await mcpManager.connectServer("proxy-server");
+
+      expect(StdioClientTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: ["--proxy=http://proxy.example.com:8080", "--timeout=30"],
+        }),
+      );
+
+      delete process.env.HTTP_PROXY;
+    });
+
+    it("should expand ${VAR} in env values using process.env", async () => {
+      process.env.MY_API_KEY = "secret-key-123";
+
+      await mcpManager.connectServer("proxy-server");
+
+      expect(StdioClientTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: { API_KEY: "secret-key-123", STATIC: "literal" },
+        }),
+      );
+
+      delete process.env.MY_API_KEY;
+    });
+
+    it("should leave ${VAR} as-is when env var is not set", async () => {
+      delete process.env.HTTP_PROXY;
+      delete process.env.MY_API_KEY;
+
+      await mcpManager.connectServer("proxy-server");
+
+      expect(StdioClientTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: ["--proxy=${HTTP_PROXY}", "--timeout=30"],
+          env: { API_KEY: "${MY_API_KEY}", STATIC: "literal" },
+        }),
+      );
+    });
+  });
+
   describe("getAllConnectedTools", () => {
     it("should return empty array when no servers connected", () => {
       const tools = mcpManager.getAllConnectedTools();

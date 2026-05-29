@@ -13,6 +13,16 @@ import type {
   McpServerStatus,
 } from "../types/index.js";
 
+/**
+ * Expand ${VAR} patterns in a string using process.env.
+ * Returns the original string if the variable is not set.
+ */
+function expandEnvVars(value: string): string {
+  return value.replace(/\$\{(\w+)\}/g, (match, varName) => {
+    return process.env[varName] ?? match;
+  });
+}
+
 interface McpConnection {
   client: Client;
   transport: StdioClientTransport;
@@ -225,10 +235,19 @@ export class McpManager {
 
     try {
       // Create transport - it will manage the process
+      // Expand ${VAR} env var references in args and env values
+      const expandedArgs = (server.config.args || []).map(expandEnvVars);
+      const expandedEnv: Record<string, string> = {};
+      if (server.config.env) {
+        for (const [key, val] of Object.entries(server.config.env)) {
+          expandedEnv[key] = expandEnvVars(val);
+        }
+      }
+
       const transport = new StdioClientTransport({
         command: server.config.command,
-        args: server.config.args || [],
-        env: server.config.env || {},
+        args: expandedArgs,
+        env: expandedEnv,
         cwd: this.workdir, // Use the agent's workdir as the process working directory
       });
 
