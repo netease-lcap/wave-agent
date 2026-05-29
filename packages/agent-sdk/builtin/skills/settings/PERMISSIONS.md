@@ -50,6 +50,37 @@ When a tool is called, Wave checks:
 2. If the operation matches an `allow` rule, it is permitted.
 3. If no rules match, the behavior depends on the `permissionMode`.
 
+### Rule Syntax
+
+Rules use the format `ToolName(pattern)`. The wildcard `*` has different semantics depending on the tool type:
+
+**Bash rules** — `*` matches everything including `/` (regex-style):
+
+```json
+{ "allow": ["Bash(git status*)", "Bash(npm run *)"] }
+```
+
+- `Bash(git status*)` matches `git status`, `git status -s`, `git status --short`
+- `Bash(npm run *)` matches `npm run build`, `npm run test:unit`
+- `*` → `.*` regex conversion, so `Bash(node */scripts/*.mjs*)` matches `node plugins/code2cwspec/scripts/check-manifest.mjs`
+
+**File tool rules** (`Read`, `Write`, `Edit`) — `*` does NOT cross `/` (glob-style, use `**` for directories):
+
+```json
+{ "allow": ["Read(**/*.env)", "Write(src/**/*.ts)"] }
+```
+
+- `Read(*.env)` matches `local.env` but NOT `config/local.env`
+- `Read(**/*.env)` matches `local.env`, `config/local.env`, `a/b/c.env`
+- Uses `minimatch` glob semantics
+
+| Tool | `*` matches `/`? | Semantics | Example |
+| :--- | :--- | :--- | :--- |
+| `Bash(...)` | Yes | Regex `.*` | `Bash(npm *)` → any npm command |
+| `Read(...)` | No | Glob (use `**`) | `Read(**/*.env)` → any depth `.env` |
+| `Write(...)` | No | Glob (use `**`) | `Write(src/**/*.ts)` → any `.ts` in src |
+| `Edit(...)` | No | Glob (use `**`) | `Edit(**/*.json)` → any `.json` |
+
 ## Managing Permissions via CLI
 
 You can also manage permissions directly through the Wave interface:
