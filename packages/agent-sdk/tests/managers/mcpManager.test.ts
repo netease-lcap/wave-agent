@@ -728,7 +728,7 @@ describe("McpManager", () => {
       delete process.env.MY_API_KEY;
     });
 
-    it("should leave ${VAR} as-is when env var is not set", async () => {
+    it("should replace ${VAR} with empty string when env var is not set", async () => {
       delete process.env.HTTP_PROXY;
       delete process.env.MY_API_KEY;
 
@@ -736,8 +736,8 @@ describe("McpManager", () => {
 
       expect(StdioClientTransport).toHaveBeenCalledWith(
         expect.objectContaining({
-          args: ["--proxy=${HTTP_PROXY}", "--timeout=30"],
-          env: { API_KEY: "${MY_API_KEY}", STATIC: "literal" },
+          args: ["--proxy=", "--timeout=30"],
+          env: { API_KEY: "", STATIC: "literal" },
         }),
       );
     });

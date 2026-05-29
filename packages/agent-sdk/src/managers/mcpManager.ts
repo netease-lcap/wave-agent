@@ -15,11 +15,11 @@ import type {
 
 /**
  * Expand ${VAR} patterns in a string using process.env.
- * Returns the original string if the variable is not set.
+ * Replaces with empty string if the variable is not set.
  */
 function expandEnvVars(value: string): string {
-  return value.replace(/\$\{(\w+)\}/g, (match, varName) => {
-    return process.env[varName] ?? match;
+  return value.replace(/\$\{(\w+)\}/g, (_match, varName) => {
+    return process.env[varName] ?? "";
   });
 }
 

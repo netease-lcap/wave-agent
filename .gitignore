@@ -10,6 +10,7 @@ coverage/
 Thumbs.db
 *.tmp
 *.swp
+*.tgz
 .vscode/
 .idea/
 nohup.out
