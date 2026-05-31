@@ -30,6 +30,7 @@ import type {
   Message,
   Logger,
   McpServerStatus,
+  McpServerConfig,
   GatewayConfig,
   ModelConfig,
   Usage,
@@ -95,6 +96,11 @@ export interface AgentOptions {
   lspManager?: ILspManager;
   /**Optional local plugins to load */
   plugins?: PluginConfig[];
+  /**
+   * Optional MCP server configs to connect at startup.
+   * Overrides .mcp.json for specified server names.
+   */
+  mcpServers?: Record<string, McpServerConfig>;
   /**Custom environment variables to be passed to tool execution (e.g. bash spawn) */
   env?: Record<string, string>;
 }
@@ -249,7 +255,11 @@ export class Agent {
       callbacks,
       workdir: this.workdir,
     });
-    this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
+    this.mcpManager = new McpManager({
+      callbacks,
+      logger: this.logger,
+      mcpServers: options.mcpServers,
+    }); // Initialize MCP manager
     this.lspManager =
       options.lspManager || new LspManager({ logger: this.logger }); // Initialize LSP manager
 

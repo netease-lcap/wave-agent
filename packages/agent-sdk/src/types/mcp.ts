@@ -4,9 +4,14 @@
  */
 
 export interface McpServerConfig {
-  command: string;
+  type?: "stdio" | "sse" | "http";
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  /** Internal: plugin directory path when the server is registered by a plugin */
+  pluginRoot?: string;
 }
 
 export interface McpConfig {
@@ -22,7 +27,14 @@ export interface McpTool {
 export interface McpServerStatus {
   name: string;
   config: McpServerConfig;
-  status: "disconnected" | "connected" | "connecting" | "error";
+  /** Pre-resolution URL with template variables preserved for safe display */
+  originalUrl?: string;
+  status:
+    | "disconnected"
+    | "connected"
+    | "connecting"
+    | "reconnecting"
+    | "error";
   tools?: McpTool[];
   toolCount?: number;
   capabilities?: string[];

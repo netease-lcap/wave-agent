@@ -36,6 +36,8 @@ export interface McpManagerCallbacks {
 export interface McpManagerOptions {
   callbacks?: McpManagerCallbacks;
   logger?: Logger;
+  /** Pre-configured MCP servers passed from constructor options */
+  mcpServers?: Record<string, McpServerConfig>;
 }
 
 export class McpManager {
@@ -46,10 +48,12 @@ export class McpManager {
   private workdir: string = "";
   private callbacks: McpManagerCallbacks;
   private logger?: Logger;
+  private mcpServers: Record<string, McpServerConfig> | undefined;
 
   constructor(options: McpManagerOptions = {}) {
     this.callbacks = options.callbacks || {};
     this.logger = options.logger;
+    this.mcpServers = options.mcpServers;
   }
 
   /**
@@ -62,19 +66,27 @@ export class McpManager {
     this.configPath = join(workdir, ".mcp.json");
     this.workdir = workdir;
 
+    // Register constructor-provided servers before loading .mcp.json
+    if (this.mcpServers) {
+      for (const [name, config] of Object.entries(this.mcpServers)) {
+        this.addServer(name, config);
+      }
+    }
+
     if (autoConnect) {
       this.logger?.debug("Initializing MCP servers...");
 
-      // Ensure MCP configuration is loaded
-      const config = await this.ensureConfigLoaded();
+      // Load workspace MCP configuration (always read, merge with any constructor servers already added)
+      await this.loadConfig();
+
+      const config = this.config;
 
       if (config && config.mcpServers) {
-        // Connect to all configured servers
-        const connectionPromises = Object.keys(config.mcpServers).map(
-          async (serverName) => {
-            try {
-              this.logger?.debug(`Connecting to MCP server: ${serverName}`);
-              const success = await this.connectServer(serverName);
+        // Connect to all configured servers in background to avoid blocking agent initialization
+        Object.keys(config.mcpServers).forEach((serverName) => {
+          this.logger?.debug(`Connecting to MCP server: ${serverName}`);
+          this.connectServer(serverName)
+            .then((success) => {
               if (success) {
                 this.logger?.debug(
                   `Successfully connected to MCP server: ${serverName}`,
@@ -84,16 +96,13 @@ export class McpManager {
                   `Failed to connect to MCP server: ${serverName}`,
                 );
               }
-            } catch {
+            })
+            .catch(() => {
               this.logger?.error(
                 `Error connecting to MCP server ${serverName}`,
               );
-            }
-          },
-        );
-
-        // Wait for all connection attempts to complete
-        await Promise.all(connectionPromises);
+            });
+        });
       }
 
       this.logger?.debug("MCP servers initialization completed");
@@ -117,7 +126,26 @@ export class McpManager {
 
     try {
       const configContent = await fs.readFile(this.configPath, "utf-8");
-      this.config = JSON.parse(configContent);
+      const rawConfig: McpConfig = JSON.parse(configContent);
+
+      // Extract original (pre-resolution) URLs for safe display
+      const originalUrls: Record<string, string | undefined> = {};
+      for (const [name, serverConfig] of Object.entries(rawConfig.mcpServers)) {
+        originalUrls[name] = serverConfig.url;
+      }
+
+      // Merge workspace config with any existing config (e.g., from plugins or constructor)
+      // Constructor-provided servers take precedence, then workspace config, then existing config
+      const merged: McpConfig = { mcpServers: {} };
+      if (this.config) {
+        Object.assign(merged.mcpServers, this.config.mcpServers);
+      }
+      Object.assign(merged.mcpServers, rawConfig.mcpServers);
+      // Constructor-provided servers override both for same names
+      if (this.mcpServers) {
+        Object.assign(merged.mcpServers, this.mcpServers);
+      }
+      this.config = merged;
 
       // Initialize server statuses (preserve existing status for already known servers)
       if (this.config) {
@@ -129,12 +157,14 @@ export class McpManager {
             this.servers.set(name, {
               ...existingServer,
               config, // Update config in case it changed
+              originalUrl: originalUrls[name] ?? existingServer.originalUrl,
             });
           } else {
             // New server, initialize with disconnected status
             this.servers.set(name, {
               name,
               config,
+              originalUrl: originalUrls[name],
               status: "disconnected",
             });
           }
@@ -188,9 +218,37 @@ export class McpManager {
       return false;
     }
 
+    // Resolve env vars in constructor-provided config
+    const resolvedConfig = { ...config };
+    if (resolvedConfig.command) {
+      resolvedConfig.command = expandEnvVars(resolvedConfig.command);
+    }
+    if (resolvedConfig.args) {
+      resolvedConfig.args = resolvedConfig.args.map(expandEnvVars);
+    }
+    if (resolvedConfig.env) {
+      const resolvedEnv: Record<string, string> = {};
+      for (const [key, val] of Object.entries(resolvedConfig.env)) {
+        resolvedEnv[key] = expandEnvVars(val);
+      }
+      resolvedConfig.env = resolvedEnv;
+    }
+    if (resolvedConfig.url) {
+      resolvedConfig.url = expandEnvVars(resolvedConfig.url);
+    }
+    if (resolvedConfig.headers) {
+      const resolvedHeaders: Record<string, string> = {};
+      for (const [key, val] of Object.entries(resolvedConfig.headers)) {
+        resolvedHeaders[key] = expandEnvVars(val);
+      }
+      resolvedConfig.headers = resolvedHeaders;
+    }
+
+    const originalUrl = config.url;
     const newServer: McpServerStatus = {
       name,
-      config,
+      config: resolvedConfig,
+      originalUrl,
       status: "disconnected",
     };
 
@@ -198,10 +256,10 @@ export class McpManager {
 
     // Update config
     if (this.config) {
-      this.config.mcpServers[name] = config;
+      this.config.mcpServers[name] = resolvedConfig;
     } else {
       this.config = {
-        mcpServers: { [name]: config },
+        mcpServers: { [name]: resolvedConfig },
       };
     }
 
@@ -234,22 +292,40 @@ export class McpManager {
     this.updateServerStatus(name, { status: "connecting" });
 
     try {
-      // Create transport - it will manage the process
-      // Expand ${VAR} env var references in args and env values
-      const expandedArgs = (server.config.args || []).map(expandEnvVars);
-      const expandedEnv: Record<string, string> = {};
-      if (server.config.env) {
-        for (const [key, val] of Object.entries(server.config.env)) {
-          expandedEnv[key] = expandEnvVars(val);
-        }
-      }
+      const serverType = server.config.type;
+      const hasUrl = !!server.config.url;
+      const hasCommand = !!server.config.command;
 
-      const transport = new StdioClientTransport({
-        command: server.config.command,
-        args: expandedArgs,
-        env: expandedEnv,
-        cwd: this.workdir, // Use the agent's workdir as the process working directory
-      });
+      // Determine transport type: explicit type field, or infer from config
+      const effectiveType =
+        serverType || (hasUrl && !hasCommand ? "sse" : "stdio");
+
+      let transport: StdioClientTransport;
+
+      if (effectiveType === "stdio" || (!serverType && hasCommand)) {
+        // Create stdio transport
+        const expandedArgs = (server.config.args || []).map(expandEnvVars);
+        const expandedEnv: Record<string, string> = {};
+        if (server.config.env) {
+          for (const [key, val] of Object.entries(server.config.env)) {
+            expandedEnv[key] = expandEnvVars(val);
+          }
+        }
+
+        transport = new StdioClientTransport({
+          command: server.config.command!,
+          args: expandedArgs,
+          env: expandedEnv,
+          cwd: this.workdir, // Use the agent's workdir as the process working directory
+        });
+      } else {
+        // SSE/HTTP transports not yet supported
+        this.updateServerStatus(name, {
+          status: "error",
+          error: `Transport type '${effectiveType}' is not yet supported. Use stdio transport with 'command' field.`,
+        });
+        return false;
+      }
 
       // Create client
       const client = new Client(

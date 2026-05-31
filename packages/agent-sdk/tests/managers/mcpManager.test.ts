@@ -75,6 +75,91 @@ describe("McpManager", () => {
       });
       expect(manager).toBeInstanceOf(McpManager);
     });
+
+    it("should accept mcpServers parameter", () => {
+      const manager = new McpManager({
+        mcpServers: {
+          "my-server": { command: "npx", args: ["my-mcp-server"] },
+        },
+      });
+      expect(manager).toBeInstanceOf(McpManager);
+    });
+  });
+
+  describe("mcpServers constructor option", () => {
+    it("should register constructor-provided servers on initialize", async () => {
+      const { promises: fs } = await import("fs");
+      vi.mocked(fs.readFile).mockRejectedValue(new Error("File not found"));
+
+      const manager = new McpManager({
+        mcpServers: {
+          "ctor-server": { command: "npx", args: ["ctor-mcp"] },
+        },
+      });
+      await manager.initialize("/test/workdir", false);
+
+      const servers = manager.getAllServers();
+      expect(servers).toHaveLength(1);
+      expect(servers[0]).toMatchObject({
+        name: "ctor-server",
+        status: "disconnected",
+      });
+      expect(servers[0].config.command).toBe("npx");
+
+      await manager.cleanup();
+    });
+
+    it("should override .mcp.json for same server names", async () => {
+      const { promises: fs } = await import("fs");
+      const fileConfig = {
+        mcpServers: {
+          "shared-server": { command: "from-file", args: ["file-arg"] },
+          "file-only": { command: "file-cmd" },
+        },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(fileConfig));
+
+      const manager = new McpManager({
+        mcpServers: {
+          "shared-server": { command: "from-ctor", args: ["ctor-arg"] },
+        },
+      });
+      await manager.initialize("/test/workdir", true);
+
+      const shared = manager.getServer("shared-server");
+      expect(shared?.config.command).toBe("from-ctor");
+      expect(shared?.config.args).toEqual(["ctor-arg"]);
+
+      const fileOnly = manager.getServer("file-only");
+      expect(fileOnly?.config.command).toBe("file-cmd");
+
+      await manager.cleanup();
+    });
+
+    it("should expand env vars in constructor-provided config", async () => {
+      process.env.TEST_MCP_CMD = "resolved-cmd";
+      process.env.TEST_MCP_ARG = "resolved-arg";
+
+      const manager = new McpManager({
+        mcpServers: {
+          "env-server": {
+            command: "${TEST_MCP_CMD}",
+            args: ["${TEST_MCP_ARG}"],
+            env: { KEY: "${TEST_MCP_CMD}" },
+          },
+        },
+      });
+      await manager.initialize("/test/workdir", false);
+
+      const server = manager.getServer("env-server");
+      expect(server?.config.command).toBe("resolved-cmd");
+      expect(server?.config.args).toEqual(["resolved-arg"]);
+      expect(server?.config.env?.KEY).toBe("resolved-cmd");
+
+      delete process.env.TEST_MCP_CMD;
+      delete process.env.TEST_MCP_ARG;
+      await manager.cleanup();
+    });
   });
 
   describe("loadConfig", () => {
