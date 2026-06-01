@@ -25,6 +25,7 @@ export const ChatInterface: React.FC = () => {
     isExpanded,
     sessionId,
     latestTotalTokens,
+    maxInputTokens,
     slashCommands,
     hasSlashCommand,
     isConfirmationVisible,
@@ -99,6 +100,8 @@ export const ChatInterface: React.FC = () => {
             disconnectMcpServer={disconnectMcpServer}
             slashCommands={slashCommands}
             hasSlashCommand={hasSlashCommand}
+            latestTotalTokens={latestTotalTokens}
+            maxInputTokens={maxInputTokens}
           />
         </>
       )}

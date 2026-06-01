@@ -54,6 +54,7 @@ export interface ChatContextType {
   askBtw: (question: string) => Promise<string>;
   abortMessage: () => void;
   latestTotalTokens: number;
+  maxInputTokens: number;
   // Model functionality
   currentModel: string;
   configuredModels: string[];
@@ -162,6 +163,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
+  const [maxInputTokens, setMaxInputTokens] = useState(128000);
 
   const throttledSetMessages = useMemo(
     () =>
@@ -424,6 +426,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setWorkingDirectory(agent.workingDirectory);
         setCurrentModelState(agent.getModelConfig().model);
         setConfiguredModels(agent.getConfiguredModels());
+        setMaxInputTokens(agent.getMaxInputTokens());
 
         // Get initial MCP servers state
         const initialMcpServers = agent.getMcpServers?.() || [];
@@ -471,6 +474,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setSessionId("");
     setIsLoading(false);
     setLatestTotalTokens(0);
+    setMaxInputTokens(128000);
     setIsCommandRunning(false);
     setIsCompacting(false);
     if (currentSessionId) {
@@ -750,6 +754,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     askBtw,
     abortMessage,
     latestTotalTokens,
+    maxInputTokens,
     currentModel,
     configuredModels,
     getConfiguredModels,
