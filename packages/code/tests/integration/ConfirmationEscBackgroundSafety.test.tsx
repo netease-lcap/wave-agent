@@ -105,6 +105,7 @@ describe("Confirmation Escape - Background Safety", () => {
       fastModel: "test-fast",
     })),
     getConfiguredModels: vi.fn(() => []),
+    getMaxInputTokens: vi.fn(() => 128000),
   };
 
   beforeEach(() => {

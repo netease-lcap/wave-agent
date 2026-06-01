@@ -36,6 +36,7 @@ vi.mock("wave-agent-sdk", async () => {
         getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
         getMcpServers: vi.fn().mockReturnValue([]),
         getSlashCommands: vi.fn().mockReturnValue([]),
+        getMaxInputTokens: vi.fn(() => 128000),
       }),
     },
     hasUncommittedChanges: vi.fn(),
