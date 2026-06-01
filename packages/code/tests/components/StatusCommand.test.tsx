@@ -14,6 +14,7 @@ describe("StatusCommand", () => {
     sessionId: "test-session-id",
     workingDirectory: "/test/cwd",
     getGatewayConfig: vi.fn().mockReturnValue({ baseURL: "https://test.api" }),
+    getMaxInputTokens: vi.fn(() => 128000),
     getModelConfig: vi.fn().mockReturnValue({
       model: "test-model",
       fastModel: "test-fast-model",
