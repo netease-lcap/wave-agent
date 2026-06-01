@@ -95,6 +95,7 @@ Plan subagents identify and list the 3-5 most critical files for implementing th
 - **FR-013**: System MUST list Plan subagent in Task tool descriptions with appropriate "whenToUse" guidance
 - **FR-014**: Plan subagent MUST be overridable by user-configured subagents with the same name
 - **FR-015**: System MUST validate that Plan subagent only receives read-only tool access at runtime
+- **FR-016**: When Plan subagent receives a plan mode reminder, the reminder MUST NOT instruct the subagent to write or edit the plan file. Instead, it MUST tell the subagent to return findings as text output and that the parent agent will write the plan file. The reminder MAY include the plan file path for reading context when the file already exists.
 
 ## Success Criteria
 

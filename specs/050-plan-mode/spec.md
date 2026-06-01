@@ -53,12 +53,8 @@ As a user, I want the LLM to be explicitly told how to behave in plan mode, so t
 
 **Acceptance Scenarios**:
 
-1. **Given** the system is in "plan" mode, **When** a message is sent to the LLM, **Then** the system prompt includes the reminder:
-   ```text
-   ## Plan File Info:
-   [Plan file existence info and path]
-   You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
-   ```
+1. **Given** the system is in "plan" mode, **When** a message is sent to the main agent, **Then** the reminder includes the plan file info and instructs the agent to build the plan incrementally by writing to or editing the plan file.
+2. **Given** the system is in "plan" mode, **When** a message is sent to a subagent, **Then** the reminder tells the subagent to return findings as text output and does NOT instruct it to write or edit the plan file (since subagents lack Write/Edit tools).
 
 ---
 
@@ -158,15 +154,22 @@ As a user working in plan mode for an extended session, I want the plan mode rem
 - **FR-003**: When in plan mode, the system MUST restrict the LLM to read-only actions for all files except the designated plan file.
 - **FR-004**: When in plan mode, the system MUST allow the LLM to execute commands.
 - **FR-005**: When plan mode is activated, the system MUST determine a plan file path in `~/.wave/plans/` with a human-readable name (adjective-noun format). This name MUST be deterministic within a session chain by using the `rootSessionId` as a seed, ensuring the same plan file is reused even after message compression or session restoration.
-- **FR-006**: When plan mode is active, the system MUST inject a `<system-reminder>` wrapped user message (isMeta: true) into the conversation messages. This preserves prompt caching by keeping the system prompt constant across mode changes. The reminder MUST contain:
-  ```text
-  Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits, run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received (for example, to make edits). Instead, you should:
+- **FR-006**: When plan mode is active, the system MUST inject a `<system-reminder>` wrapped user message (isMeta: true) into the conversation messages. This preserves prompt caching by keeping the system prompt constant across mode changes. The reminder content depends on the recipient:
+  - **Main agent**: The reminder MUST contain the plan file info and instruct the agent to build the plan incrementally by writing to or editing the plan file:
+    ```text
+    Plan mode is active. ... you MUST NOT make any edits (with the exception of the plan file mentioned below) ...
 
-  ## Plan File Info:
-  ${A.planExists?`A plan file already exists at ${A.planFilePath}. You can read it and make incremental edits using the Edit tool if you need to.`:`No plan file exists yet. You should create your plan at ${A.planFilePath} using the Write tool if you need to.`}
-  You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
-  Answer the user's query comprehensively, using the AskUserQuestion tool if you need to ask the user clarifying questions. If you do use the AskUserQuestion, make sure to ask all clarifying questions you need to fully understand the user's intent before proceeding.
-  ```
+    ## Plan File Info:
+    ${planFileInfo}
+    You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this is the only allowed to take READ-ONLY actions.
+    ```
+  - **Subagent**: The reminder MUST NOT instruct the subagent to write or edit the plan file, since subagents (especially Plan subagents) do not have access to Write/Edit tools. Instead, it MUST tell the subagent to return findings as text output and that the parent agent will write the plan file. The subagent reminder MAY include the plan file path for reading context when the file already exists:
+    ```text
+    Plan mode is active. ... your role is to explore the codebase and return your findings as text output. Do NOT attempt to write or edit any files — the parent agent will write the plan file based on your text response.
+
+    ## Plan File Info:
+    ${subagentPlanFileInfo}
+    ```
 - **FR-007**: The system MUST ensure the `~/.wave/plans/` directory exists before creating a plan file.
 - **FR-008**: The system MUST provide visual feedback to the user indicating the current permission mode.
 - **FR-009**: System MUST provide a tool named `ExitPlanMode`.
