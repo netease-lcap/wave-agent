@@ -3,6 +3,7 @@ import { Container } from "../../src/utils/container.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { callAgent } from "../../src/services/aiService.js";
 import { DEFAULT_SYSTEM_PROMPT } from "../../src/prompts/index.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
@@ -10,6 +11,9 @@ import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
 
 vi.mock("node:fs/promises");
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn(),
+}));
 vi.mock("../../src/services/aiService.js");
 vi.mock("../../src/services/memory.js", () => ({
   MemoryService: vi.fn().mockImplementation(() => ({
@@ -48,6 +52,10 @@ describe("AIManager Plan Mode Prompt", () => {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
       getPlanFilePath: vi.fn().mockReturnValue("/path/to/plan.md"),
       clearTemporaryRules: vi.fn(),
+      setHasExitedPlanMode: vi.fn(),
+      hasExitedPlanModeInSession: vi.fn(() => false),
+      setNeedsPlanModeExitAttachment: vi.fn(),
+      getNeedsPlanModeExitAttachment: vi.fn(() => false),
     } as unknown as Mocked<PermissionManager>;
 
     const container = new Container();
@@ -102,31 +110,47 @@ describe("AIManager Plan Mode Prompt", () => {
 
   it("should add plan reminder in plan mode when file does not exist", async () => {
     mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
+    vi.mocked(existsSync).mockReturnValue(false);
     vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
     await aiManager.sendAIMessage();
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
-    expect(callOptions.systemPrompt).toContain("Plan File Info");
-    expect(callOptions.systemPrompt).toContain(
+    // Plan mode content is now injected as user messages, not in systemPrompt
+    const userMessages = (
+      callOptions.messages as Array<{ role: string; content: string }>
+    ).filter((m) => m.role === "user");
+    const planMessage = userMessages.find((m) =>
+      m.content?.includes("Plan File Info"),
+    );
+    expect(planMessage).toBeDefined();
+    expect(planMessage!.content).toContain(
       "Plan mode is active. The user indicated that they do not want you to execute yet",
     );
-    expect(callOptions.systemPrompt).toContain("No plan file exists yet");
-    expect(callOptions.systemPrompt).toContain("using the Write tool");
+    expect(planMessage!.content).toContain("No plan file exists yet");
+    expect(planMessage!.content).toContain("using the Write tool");
   });
 
   it("should add plan reminder in plan mode when file exists", async () => {
     mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
+    vi.mocked(existsSync).mockReturnValue(true);
     vi.mocked(fs.access).mockResolvedValue(undefined);
 
     await aiManager.sendAIMessage();
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
-    expect(callOptions.systemPrompt).toContain("Plan File Info");
-    expect(callOptions.systemPrompt).toContain(
+    // Plan mode content is now injected as user messages, not in systemPrompt
+    const userMessages = (
+      callOptions.messages as Array<{ role: string; content: string }>
+    ).filter((m) => m.role === "user");
+    const planMessage = userMessages.find((m) =>
+      m.content?.includes("Plan File Info"),
+    );
+    expect(planMessage).toBeDefined();
+    expect(planMessage!.content).toContain(
       "Plan mode is active. The user indicated that they do not want you to execute yet",
     );
-    expect(callOptions.systemPrompt).toContain("A plan file already exists");
-    expect(callOptions.systemPrompt).toContain("using the Edit tool");
+    expect(planMessage!.content).toContain("A plan file already exists");
+    expect(planMessage!.content).toContain("using the Edit tool");
   });
 });

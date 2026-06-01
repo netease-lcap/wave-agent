@@ -107,6 +107,9 @@ Ensure your plan is complete and unambiguous:
         };
       }
 
+      context.permissionManager.setHasExitedPlanMode(true);
+      context.permissionManager.setNeedsPlanModeExitAttachment(true);
+
       return {
         success: true,
         content: "Plan approved. Exiting plan mode.",

@@ -239,10 +239,6 @@ export function buildSystemPrompt(
     memory?: string;
     language?: string;
     isSubagent?: boolean;
-    planMode?: {
-      planFilePath: string;
-      planExists: boolean;
-    };
     autoMemory?: {
       directory: string;
       content: string;
@@ -267,10 +263,6 @@ export function buildSystemPrompt(
 
   if (options.language) {
     prompt += `\n\n# Language\nAlways respond in ${options.language}. Use ${options.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`;
-  }
-
-  if (options.planMode) {
-    prompt += `\n\n${buildPlanModePrompt(options.planMode.planFilePath, options.planMode.planExists, options.isSubagent)}`;
   }
 
   if (options.workdir) {

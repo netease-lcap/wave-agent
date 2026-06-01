@@ -145,6 +145,10 @@ describe("AIManager", () => {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
       clearTemporaryRules: vi.fn(),
       getPlanFilePath: vi.fn().mockReturnValue(undefined),
+      setHasExitedPlanMode: vi.fn(),
+      hasExitedPlanModeInSession: vi.fn(() => false),
+      setNeedsPlanModeExitAttachment: vi.fn(),
+      getNeedsPlanModeExitAttachment: vi.fn(() => false),
     } as unknown as Record<string, unknown>);
 
     // Mock SubagentManager and register it
@@ -212,6 +216,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
       container.register("NotificationQueue", {
         hasPending: vi.fn().mockReturnValue(false),
@@ -273,6 +281,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("dontAsk"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
 
       const aiManagerWithDontAsk = new AIManager(container, {
@@ -323,6 +335,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
       container.register("NotificationQueue", {
         hasPending: vi.fn().mockReturnValue(false),
@@ -513,6 +529,10 @@ describe("AIManager", () => {
         addTemporaryRules: vi.fn(),
         clearTemporaryRules: vi.fn(),
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       };
 
       const taskManager = {
@@ -541,6 +561,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
       container.register(
         "PermissionManager",
@@ -571,6 +595,10 @@ describe("AIManager", () => {
         addTemporaryRules: vi.fn(),
         clearTemporaryRules: vi.fn(),
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       };
 
       const taskManager = {
@@ -599,6 +627,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
       container.register(
         "PermissionManager",
@@ -627,6 +659,10 @@ describe("AIManager", () => {
         addTemporaryRules: vi.fn(),
         clearTemporaryRules: vi.fn(),
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       };
 
       const taskManager = {
@@ -655,6 +691,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
       container.register(
         "PermissionManager",
@@ -710,6 +750,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       });
       container.register("NotificationQueue", {
         hasPending: vi.fn().mockReturnValue(false),
@@ -756,6 +800,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       });
       container.register("NotificationQueue", {
         hasPending: vi.fn().mockReturnValue(false),
@@ -883,6 +931,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
       container.register("SubagentManager", {
         getConfigurations: vi.fn().mockReturnValue([]),
@@ -933,6 +985,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
       container.register("SubagentManager", {
         getConfigurations: vi.fn().mockReturnValue([]),
@@ -995,6 +1051,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
       container.register("SubagentManager", {
         getConfigurations: vi.fn().mockReturnValue([]),
@@ -1057,6 +1117,10 @@ describe("AIManager", () => {
         getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
         clearTemporaryRules: vi.fn(),
         getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
       container.register("SubagentManager", {
         getConfigurations: vi.fn().mockReturnValue([]),

@@ -71,6 +71,23 @@ As an AI agent, after compression replaces conversation history, I want importan
 
 ---
 
+### User Story 5 - Plan Mode Reminder Preservation After Compaction (Priority: P2)
+
+As a user working in plan mode during a long session, I want the plan mode instructions to be re-injected after conversation compaction so that the agent retains its read-only constraints and workflow guidance even after the history is replaced with a summary.
+
+**Why this priority**: Without re-injection, compaction removes all plan mode `<system-reminder>` messages from the conversation history. The agent would then have no awareness of plan mode constraints and might attempt to edit files or take actions outside the plan file.
+
+**Independent Test**: Trigger compaction while in plan mode, then verify that the full plan mode `<system-reminder>` reminder is injected as a user message after compaction, and the agent continues to respect read-only constraints.
+
+**Acceptance Scenarios**:
+
+1. **Given** the agent is in plan mode and compaction occurs, **When** the compaction summary replaces the conversation history, **Then** the full plan mode `<system-reminder>` MUST be injected as a user message in the next API request.
+2. **Given** the agent is in plan mode and compaction occurs, **When** the plan file exists, **Then** the re-injected plan mode reminder MUST include the plan file path and existence status.
+3. **Given** the agent is NOT in plan mode, **When** compaction occurs, **Then** no plan mode reminder is injected.
+4. **Given** the agent is in plan mode and compaction occurs, **When** the re-injected reminder is the first reminder after compaction, **Then** it MUST be the full instructions (not sparse), since all prior reminders were removed by compaction.
+
+---
+
 ### Edge Cases
 
 - **Recursive Compression**: When compressing history that already contains a summary, the entire history (including the old summary) is replaced by a new continuation summary.
@@ -89,11 +106,12 @@ As an AI agent, after compression replaces conversation history, I want importan
 - **FR-005**: System MUST convert `compress` blocks to user-role messages for API calls.
 - **FR-006**: System MUST apply microcompact (clear old tool results) before each API call when the time threshold (>30 min) is exceeded.
 - **FR-007**: System MUST skip compression after 3 consecutive compression failures (circuit breaker).
-- **FR-008**: System MUST re-inject post-compact context (recent file reads, working directory, plan mode, skills, background tasks) into the compression summary.
+- **FR-008**: System MUST re-inject post-compact context (recent file reads, working directory, plan mode, skills, background tasks) into the compression summary. When plan mode is active, the system MUST also re-inject the full plan mode `<system-reminder>` as a user message after compaction.
 - **FR-009**: System MUST strip images from messages before the compress API call.
 - **FR-010**: System MUST use the fast model for compression API calls.
 - **FR-011**: System MUST group messages by API round boundaries (not fixed count) when determining which messages to preserve after compression.
 - **FR-012**: System MUST track recent `read` tool results for post-compact context restoration.
+- **FR-013**: System MUST re-inject plan mode `<system-reminder>` instructions after compaction when plan mode is active. This ensures the model does not lose its read-only constraints and workflow guidance after conversation history is replaced with a summary.
 
 ### Key Entities *(include if feature involves data)*
 

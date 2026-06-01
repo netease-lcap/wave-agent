@@ -12,11 +12,7 @@ vi.mock("fs/promises");
 
 describe("exitPlanModeTool", () => {
   let mockContext: ToolContext;
-  let mockPermissionManager: {
-    getPlanFilePath: ReturnType<typeof vi.fn>;
-    createContext: ReturnType<typeof vi.fn>;
-    checkPermission: ReturnType<typeof vi.fn>;
-  };
+  let mockPermissionManager: PermissionManager;
   const container = new Container();
 
   beforeEach(() => {
@@ -24,12 +20,16 @@ describe("exitPlanModeTool", () => {
       getPlanFilePath: vi.fn(),
       createContext: vi.fn(),
       checkPermission: vi.fn(),
-    };
+      setHasExitedPlanMode: vi.fn(),
+      setNeedsPlanModeExitAttachment: vi.fn(),
+      hasExitedPlanModeInSession: vi.fn(() => false),
+      getNeedsPlanModeExitAttachment: vi.fn(() => false),
+    } as unknown as PermissionManager;
 
     mockContext = {
       workdir: "/test/workdir",
       taskManager: new TaskManager(container, "test-session"),
-      permissionManager: mockPermissionManager as unknown as PermissionManager,
+      permissionManager: mockPermissionManager,
       permissionMode: "plan",
       canUseToolCallback: vi.fn(),
     };
@@ -68,14 +68,16 @@ describe("exitPlanModeTool", () => {
   });
 
   it("should fail if plan file path is not set", async () => {
-    mockPermissionManager.getPlanFilePath.mockReturnValue(undefined);
+    vi.mocked(mockPermissionManager.getPlanFilePath).mockReturnValue(undefined);
     const result = await exitPlanModeTool.execute({}, mockContext);
     expect(result.success).toBe(false);
     expect(result.error).toBe("Plan file path is not set");
   });
 
   it("should fail if plan file cannot be read", async () => {
-    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(mockPermissionManager.getPlanFilePath).mockReturnValue(
+      "/test/plan.md",
+    );
     vi.mocked(readFile).mockRejectedValue(new Error("File not found"));
 
     const result = await exitPlanModeTool.execute({}, mockContext);
@@ -85,12 +87,15 @@ describe("exitPlanModeTool", () => {
 
   it("should succeed if plan is approved", async () => {
     const planContent = "My awesome plan";
-    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(mockPermissionManager.getPlanFilePath).mockReturnValue(
+      "/test/plan.md",
+    );
     vi.mocked(readFile).mockResolvedValue(planContent);
-    mockPermissionManager.createContext.mockReturnValue({
+    vi.mocked(mockPermissionManager.createContext).mockReturnValue({
       toolName: "ExitPlanMode",
+      permissionMode: "plan",
     });
-    mockPermissionManager.checkPermission.mockResolvedValue({
+    vi.mocked(mockPermissionManager.checkPermission).mockResolvedValue({
       behavior: "allow",
     });
 
@@ -111,12 +116,15 @@ describe("exitPlanModeTool", () => {
   it("should return feedback if plan is rejected", async () => {
     const planContent = "My awesome plan";
     const feedback = "Please add more details";
-    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(mockPermissionManager.getPlanFilePath).mockReturnValue(
+      "/test/plan.md",
+    );
     vi.mocked(readFile).mockResolvedValue(planContent);
-    mockPermissionManager.createContext.mockReturnValue({
+    vi.mocked(mockPermissionManager.createContext).mockReturnValue({
       toolName: "ExitPlanMode",
+      permissionMode: "plan",
     });
-    mockPermissionManager.checkPermission.mockResolvedValue({
+    vi.mocked(mockPermissionManager.checkPermission).mockResolvedValue({
       behavior: "deny",
       message: feedback,
     });
@@ -131,12 +139,15 @@ describe("exitPlanModeTool", () => {
   });
 
   it("should return default error if plan is rejected without message", async () => {
-    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(mockPermissionManager.getPlanFilePath).mockReturnValue(
+      "/test/plan.md",
+    );
     vi.mocked(readFile).mockResolvedValue("plan");
-    mockPermissionManager.createContext.mockReturnValue({
+    vi.mocked(mockPermissionManager.createContext).mockReturnValue({
       toolName: "ExitPlanMode",
+      permissionMode: "plan",
     });
-    mockPermissionManager.checkPermission.mockResolvedValue({
+    vi.mocked(mockPermissionManager.checkPermission).mockResolvedValue({
       behavior: "deny",
     });
 
@@ -150,12 +161,15 @@ describe("exitPlanModeTool", () => {
   });
 
   it("should return cancellation message without prefix if cancelled by user", async () => {
-    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(mockPermissionManager.getPlanFilePath).mockReturnValue(
+      "/test/plan.md",
+    );
     vi.mocked(readFile).mockResolvedValue("plan");
-    mockPermissionManager.createContext.mockReturnValue({
+    vi.mocked(mockPermissionManager.createContext).mockReturnValue({
       toolName: "ExitPlanMode",
+      permissionMode: "plan",
     });
-    mockPermissionManager.checkPermission.mockResolvedValue({
+    vi.mocked(mockPermissionManager.checkPermission).mockResolvedValue({
       behavior: "deny",
       message: OPERATION_CANCELLED_BY_USER,
     });
@@ -168,7 +182,7 @@ describe("exitPlanModeTool", () => {
   });
 
   it("should handle unexpected errors in execute", async () => {
-    mockPermissionManager.getPlanFilePath.mockImplementation(() => {
+    vi.mocked(mockPermissionManager.getPlanFilePath).mockImplementation(() => {
       throw new Error("Unexpected error");
     });
 
