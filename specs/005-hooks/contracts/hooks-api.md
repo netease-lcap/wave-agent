@@ -11,7 +11,7 @@
 ```typescript
 // types/hooks.ts
 // Hook event types
-type HookEvent = 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit' | 'Stop' | 'PermissionRequest' | 'SubagentStop' | 'WorktreeCreate';
+type HookEvent = 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit' | 'Stop' | 'PermissionRequest' | 'SubagentStop' | 'WorktreeCreate' | 'CwdChanged' | 'SessionStart' | 'SessionEnd' | 'PreCompact' | 'PostCompact';
 
 // Individual hook command
 interface HookCommand {
@@ -56,6 +56,8 @@ interface ExtendedHookExecutionContext extends HookExecutionContext {
   toolInput?: unknown;
   toolResponse?: unknown;
   userPrompt?: string;
+  compactInstructions?: string;  // PreCompact
+  compactSummary?: string;       // PostCompact
 }
 
 // JSON data structure passed to hook processes via stdin
@@ -70,6 +72,8 @@ interface HookJsonInput {
   prompt?: string;
   subagent_type?: string;
   name?: string;
+  compact_instructions?: string;  // PreCompact
+  compact_summary?: string;       // PostCompact
 }
 
 // Result of hook execution
@@ -106,6 +110,15 @@ class HookManager {
   
   // Validate hook configuration
   validateConfiguration(config: HookConfiguration): ValidationResult;
+
+  // Execute PreCompact hooks before compaction
+  executePreCompactHooks(sessionId: string, transcriptPath: string, customInstructions?: string): Promise<{
+    results: HookExecutionResult[];
+    additionalInstructions?: string;
+  }>;
+  
+  // Execute PostCompact hooks after compaction
+  executePostCompactHooks(sessionId: string, transcriptPath: string, compactSummary: string): Promise<HookExecutionResult[]>;
 }
 
 interface ValidationResult {

@@ -355,6 +355,51 @@
 
 ---
 
+## Phase 22: User Story 15 & 16 - PreCompact/PostCompact Hook Events (Priority: P2)
+
+**Goal**: Add PreCompact and PostCompact hook events that fire before/after conversation compaction
+
+**Independent Test**: Configure PreCompact/PostCompact hooks, trigger compaction, verify hooks receive correct context
+
+### Tests for PreCompact/PostCompact
+
+- [x] T110 [P] [US15] Write tests for PreCompact hook execution in `packages/agent-sdk/tests/managers/aiManager.compactConversation.test.ts`
+- [x] T111 [P] [US16] Write tests for PostCompact hook execution in same file
+
+### Implementation for PreCompact/PostCompact
+
+- [x] T112 [US15] Add PreCompact and PostCompact to HookEvent union and isValidHookEvent in `packages/agent-sdk/src/types/hooks.ts`
+- [x] T113 [US15] Add compactInstructions and compactSummary fields to HookJsonInput and ExtendedHookExecutionContext in `packages/agent-sdk/src/types/hooks.ts`
+- [x] T114 [US15] Add PreCompact/PostCompact to configApplies, validateEventConfig, validateExecutionContext, handleBlockingError, getConfigurationStats in `packages/agent-sdk/src/managers/hookManager.ts`
+- [x] T115 [US15] Add executePreCompactHooks() convenience method to HookManager
+- [x] T116 [US16] Add executePostCompactHooks() convenience method to HookManager
+- [x] T117 [US15] Wire PreCompact hooks into compactConversation() in `packages/agent-sdk/src/managers/aiManager.ts`
+- [x] T118 [US16] Wire PostCompact hooks into compactConversation() in `packages/agent-sdk/src/managers/aiManager.ts`
+
+**Checkpoint**: PreCompact and PostCompact hook events are fully functional
+
+---
+
+## Phase 22: User Story 15 - PreCompact and PostCompact Hook Events (Priority: P2)
+
+**Goal**: Enable hooks before and after conversation compaction
+
+**Independent Test**: Configure PreCompact/PostCompact hooks, trigger compaction, verify execution order
+
+### Implementation for User Story 15
+
+- [X] T110 [US15] Add PreCompact and PostCompact to HookEvent type in packages/agent-sdk/src/types/hooks.ts
+- [X] T111 [US15] Add compactInstructions and compactSummary to ExtendedHookExecutionContext and HookJsonInput in packages/agent-sdk/src/types/hooks.ts
+- [X] T112 [US15] Update HookManager for PreCompact/PostCompact events (configApplies, validateEventConfig, handleBlockingError, getConfigurationStats) in packages/agent-sdk/src/managers/hookManager.ts
+- [X] T113 [US15] Add executePreCompactHooks() and executePostCompactHooks() convenience methods in packages/agent-sdk/src/managers/hookManager.ts
+- [X] T114 [US15] Add customInstructions to CompactMessagesOptions in packages/agent-sdk/src/services/aiService.ts
+- [X] T115 [US15] Extract compactConversation() public method and buildPostCompactContext() private helper in packages/agent-sdk/src/managers/aiManager.ts
+- [X] T116 [US15] Refactor handleTokenUsageAndCompaction() to delegate to compactConversation() in packages/agent-sdk/src/managers/aiManager.ts
+- [X] T117 [US15] Add /compact slash command handler in packages/agent-sdk/src/managers/slashCommandManager.ts
+- [X] T118 [US15] Add tests for compactConversation in packages/agent-sdk/tests/managers/aiManager.compactConversation.test.ts
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

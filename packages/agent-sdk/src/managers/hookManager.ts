@@ -400,6 +400,16 @@ export class HookManager {
         messageManager.addErrorBlock(errorMessage);
         return { shouldBlock: false };
 
+      case "PreCompact":
+        // Non-blocking for compaction, show error in error block
+        messageManager.addErrorBlock(errorMessage);
+        return { shouldBlock: false };
+
+      case "PostCompact":
+        // Non-blocking for compaction, show error in error block
+        messageManager.addErrorBlock(errorMessage);
+        return { shouldBlock: false };
+
       default:
         return { shouldBlock: false };
     }
@@ -606,7 +616,9 @@ export class HookManager {
         event === "WorktreeCreate" ||
         event === "WorktreeRemove" ||
         event === "SessionStart" ||
-        event === "SessionEnd") &&
+        event === "SessionEnd" ||
+        event === "PreCompact" ||
+        event === "PostCompact") &&
       context.toolName !== undefined
     ) {
       logger?.warn(
@@ -689,7 +701,9 @@ export class HookManager {
       event === "WorktreeRemove" ||
       event === "CwdChanged" ||
       event === "SessionStart" ||
-      event === "SessionEnd"
+      event === "SessionEnd" ||
+      event === "PreCompact" ||
+      event === "PostCompact"
     ) {
       return true;
     }
@@ -752,7 +766,9 @@ export class HookManager {
         event === "WorktreeCreate" ||
         event === "WorktreeRemove" ||
         event === "SessionStart" ||
-        event === "SessionEnd") &&
+        event === "SessionEnd" ||
+        event === "PreCompact" ||
+        event === "PostCompact") &&
       config.matcher
     ) {
       errors.push(`${prefix}: Event ${event} should not have a matcher`);
@@ -796,6 +812,8 @@ export class HookManager {
           CwdChanged: 0,
           SessionStart: 0,
           SessionEnd: 0,
+          PreCompact: 0,
+          PostCompact: 0,
         },
       };
     }
@@ -812,6 +830,8 @@ export class HookManager {
       CwdChanged: 0,
       SessionStart: 0,
       SessionEnd: 0,
+      PreCompact: 0,
+      PostCompact: 0,
     };
 
     let totalConfigs = 0;
@@ -975,6 +995,75 @@ export class HookManager {
       this.processHookResults("SessionEnd", results);
     }
 
+    return results;
+  }
+
+  /**
+   * Execute PreCompact hooks before compaction.
+   * Returns custom instructions from hook stdout.
+   */
+  async executePreCompactHooks(
+    sessionId: string,
+    transcriptPath: string,
+    customInstructions?: string,
+  ): Promise<{
+    results: HookExecutionResult[];
+    additionalInstructions?: string;
+  }> {
+    const context: ExtendedHookExecutionContext = {
+      event: "PreCompact",
+      projectDir: this.workdir,
+      timestamp: new Date(),
+      sessionId,
+      transcriptPath,
+      cwd: this.workdir,
+      compactInstructions: customInstructions,
+      env: Object.fromEntries(
+        Object.entries(process.env).filter((e) => e[1] !== undefined),
+      ) as Record<string, string>,
+    };
+
+    const results = await this.executeHooks("PreCompact", context);
+
+    let additionalInstructions: string | undefined;
+    for (const result of results) {
+      if (result.success && result.stdout?.trim()) {
+        const trimmed = result.stdout.trim();
+        additionalInstructions = additionalInstructions
+          ? additionalInstructions + "\n" + trimmed
+          : trimmed;
+      }
+    }
+
+    return { results, additionalInstructions };
+  }
+
+  /**
+   * Execute PostCompact hooks after compaction.
+   * Receives the compact summary text.
+   */
+  async executePostCompactHooks(
+    sessionId: string,
+    transcriptPath: string,
+    compactSummary: string,
+  ): Promise<HookExecutionResult[]> {
+    const context: ExtendedHookExecutionContext = {
+      event: "PostCompact",
+      projectDir: this.workdir,
+      timestamp: new Date(),
+      sessionId,
+      transcriptPath,
+      cwd: this.workdir,
+      compactSummary,
+      env:
+        this.container.get<Record<string, string>>("MergedEnv") ||
+        (process.env as Record<string, string>),
+    };
+
+    const results = await this.executeHooks("PostCompact", context);
+    if (results.length > 0) {
+      this.processHookResults("PostCompact", results);
+    }
     return results;
   }
 }

@@ -758,6 +758,7 @@ export interface CompactMessagesOptions {
   messages: ChatCompletionMessageParam[];
   abortSignal?: AbortSignal;
   model?: string;
+  customInstructions?: string;
 }
 
 export interface CompactMessagesResult {
@@ -835,7 +836,9 @@ export async function compactMessages(
           ...cleanedMessages,
           {
             role: "user",
-            content: `Please create a detailed summary of the conversation so far.`,
+            content: options.customInstructions
+              ? `Please create a detailed summary of the conversation so far. Pay special attention to these instructions: ${options.customInstructions}`
+              : `Please create a detailed summary of the conversation so far.`,
           },
         ],
       },

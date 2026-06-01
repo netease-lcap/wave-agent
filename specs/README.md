@@ -29,10 +29,10 @@ This directory contains feature specifications that serve as the source of truth
 | Metric | Count |
 |--------|-------|
 | Specs | 54 |
-| User Stories | 232 |
-| Functional Requirements | 862 |
-| Test Files | 301 |
-| Test Cases | 3,813 |
+| User Stories | 236 |
+| Functional Requirements | 880 |
+| Test Files | 302 |
+| Test Cases | 3,822 |
 
 ## Specs
 
@@ -42,7 +42,7 @@ This directory contains feature specifications that serve as the source of truth
 | Bash Tools | Bash, BashOutput, KillBash tools for shell command execution | 3 | 17 | [spec](002-bash-tools/spec.md) · [plan](002-bash-tools/plan.md) |
 | MCP | Model Context Protocol support for external tools and context sources | 4 | 23 | [spec](003-mcp/spec.md) · [plan](003-mcp/plan.md) |
 | Session Management | Performance-optimized, project-based session management system | 3 | 17 | [spec](004-session-management/spec.md) · [plan](004-session-management/plan.md) |
-| Hooks | Event hooks system for extending Wave behavior | 14 | 55 | [spec](005-hooks/spec.md) · [plan](005-hooks/plan.md) |
+| Hooks | Event hooks system for extending Wave behavior | 16 | 62 | [spec](005-hooks/spec.md) · [plan](005-hooks/plan.md) |
 | Agent Skills | Discoverable skill packages with SKILL.md files for model-invoked capabilities | 8 | 25 | [spec](006-agent-skills/spec.md) · [plan](006-agent-skills/plan.md) |
 | Agent Config | Constructor-based config instead of env vars, with max output tokens and custom headers | 10 | 41 | [spec](007-agent-config/spec.md) · [plan](007-agent-config/plan.md) |
 | Slash Commands | Custom slash command system for user-invoked commands | 6 | 22 | [spec](008-slash-commands/spec.md) · [plan](008-slash-commands/plan.md) |
@@ -50,7 +50,7 @@ This directory contains feature specifications that serve as the source of truth
 | Usage Tracking | SDK usage tracking callbacks (`onUsagesChange`) for AI calls and compression | 4 | 15 | [spec](010-usage-tracking-callback/spec.md) · [plan](010-usage-tracking-callback/plan.md) |
 | Streaming | Real-time content streaming for assistant messages and tool parameters | 5 | 22 | [spec](012-stream-content-updates/spec.md) · [plan](012-stream-content-updates/plan.md) |
 | AI Error Handling | Handle output token limit exceeded by prompting agent to break work into smaller pieces | 6 | 10 | [spec](013-ai-error-handling/spec.md) · [plan](013-ai-error-handling/plan.md) |
-| Message Compression | Conversation history and user input size management | 5 | 13 | [spec](014-message-compression/spec.md) · [plan](014-message-compression/plan.md) |
+| Message Compression | Conversation history and user input size management | 7 | 24 | [spec](014-message-compression/spec.md) · [plan](014-message-compression/plan.md) |
 | Image Pasting | Paste images from clipboard into chat input with placeholder and attachment | 3 | 10 | [spec](015-image-pasting/spec.md) · [plan](015-image-pasting/plan.md) |
 | File Selector | Quick file/directory selector UI component | 3 | 8 | [spec](016-file-selector/spec.md) · [plan](016-file-selector/plan.md) |
 | WebFetch Tool | Fetch URL content, convert HTML to markdown, process with AI model, with caching | 5 | 14 | [spec](017-web-fetch-tool/spec.md) · [plan](017-web-fetch-tool/plan.md) |

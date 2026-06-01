@@ -414,274 +414,327 @@ export class AIManager {
         `Token usage exceeded ${this.getMaxInputTokens()}, compacting messages...`,
       );
 
-      // Check if messages need compaction
       const messagesToCompact = this.messageManager.getMessages();
+      if (messagesToCompact.length === 0) return;
 
-      // If there are messages to compact, perform compaction
-      if (messagesToCompact.length > 0) {
-        // Circuit breaker: skip compaction after 3 consecutive failures
-        if (this.consecutiveCompactionFailures >= 3) {
-          logger?.warn(
-            `Skipping compaction: ${this.consecutiveCompactionFailures} consecutive failures`,
-          );
-          return;
-        }
+      // Circuit breaker: skip compaction after 3 consecutive failures
+      if (this.consecutiveCompactionFailures >= 3) {
+        logger?.warn(
+          `Skipping compaction: ${this.consecutiveCompactionFailures} consecutive failures`,
+        );
+        return;
+      }
 
-        const recentChatMessages = convertMessagesForAPI(messagesToCompact);
+      await this.compactConversation({
+        abortSignal: abortController.signal,
+      });
+    }
+  }
 
-        // Save session before compaction to preserve original messages
-        await this.messageManager.saveSession();
+  /**
+   * Manually compact the conversation history.
+   * Called by /compact slash command or auto-compaction trigger.
+   */
+  public async compactConversation(
+    options: {
+      customInstructions?: string;
+      abortSignal?: AbortSignal;
+    } = {},
+  ): Promise<void> {
+    const messagesToCompact = this.messageManager.getMessages();
+    if (messagesToCompact.length === 0) {
+      logger?.debug("No messages to compact");
+      return;
+    }
 
-        this.setIsCompacting(true);
-        try {
-          const compactResult = await aiService.compactMessages({
-            gatewayConfig: this.getGatewayConfig(),
-            modelConfig: this.getModelConfig(),
-            messages: recentChatMessages,
-            abortSignal: abortController.signal,
-            model: this.getModelConfig().fastModel,
-          });
+    // Circuit breaker: skip if already compacting
+    if (this.isCompacting) {
+      logger?.warn("Compaction already in progress");
+      return;
+    }
 
-          // Handle usage tracking for compaction operations
-          let compactUsage: Usage | undefined;
-          if (compactResult.usage) {
-            compactUsage = {
-              prompt_tokens: compactResult.usage.prompt_tokens,
-              completion_tokens: compactResult.usage.completion_tokens,
-              total_tokens: compactResult.usage.total_tokens,
-              model: this.getModelConfig().fastModel,
-              operation_type: "compact",
-            };
-          }
-
-          // Build post-compact context restoration
-          const POST_COMPACT_TOKEN_BUDGET = 50_000;
-          const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000;
-          const POST_COMPACT_MAX_FILES_TO_RESTORE = 5;
-          const contextParts: string[] = [];
-
-          // 1. File context restoration
-          const recentFiles = this.messageManager.getRecentFileReads(
-            POST_COMPACT_MAX_FILES_TO_RESTORE,
-            POST_COMPACT_MAX_TOKENS_PER_FILE,
-          );
-          let usedTokens = 0;
-          for (const file of recentFiles) {
-            const fileTokens = Math.ceil(file.content.length / 4);
-            if (usedTokens + fileTokens > POST_COMPACT_MAX_TOKENS_PER_FILE)
-              continue;
-            if (fileTokens > 0) usedTokens += fileTokens;
-            contextParts.push(
-              `\n\n## ${file.path}\n\`\`\`\n${file.content}\n\`\`\``,
-            );
-            if (contextParts.length >= POST_COMPACT_MAX_FILES_TO_RESTORE) break;
-            if (usedTokens >= POST_COMPACT_TOKEN_BUDGET) break;
-          }
-
-          // 2. Working directory
-          contextParts.push(
-            `\n\n[Working Directory]\nCurrent working directory: ${this.getWorkdir()}`,
-          );
-
-          // 3. Plan mode context
-          const currentMode = this.permissionManager?.getCurrentEffectiveMode(
-            this.getModelConfig().permissionMode,
-          );
-          if (currentMode === "plan") {
-            const planFilePath = this.permissionManager?.getPlanFilePath();
-            if (planFilePath) {
-              let planExists = false;
-              try {
-                await fs.access(planFilePath);
-                planExists = true;
-              } catch {
-                // Plan file doesn't exist yet
-              }
-              // Inject full plan mode system-reminder after compaction
-              // so the model retains plan mode constraints and instructions
-              contextParts.push(
-                `\n\n${buildPlanModeReminder(planFilePath, planExists, !!this.subagentType)}`,
-              );
-            }
-          }
-
-          // 4. Invoked skills context (with token budget, matching Claude Code)
-          const POST_COMPACT_SKILLS_TOKEN_BUDGET = 25_000;
-          const POST_COMPACT_MAX_TOKENS_PER_SKILL = 5_000;
-          const invokedSkillNames =
-            this.messageManager.getInvokedSkillNames(10);
-          if (invokedSkillNames.length > 0 && this.skillManager) {
-            const invokedSkillParts: string[] = [];
-            let skillsUsedTokens = 0;
-            for (const skillName of invokedSkillNames) {
-              try {
-                const skill = await this.skillManager.loadSkill(skillName);
-                if (!skill) continue;
-
-                // Extract content after frontmatter (matching prepareSkillContent pattern)
-                const contentMatch = skill.content.match(
-                  /^---\n[\s\S]*?\n---\n([\s\S]*)$/,
-                );
-                let skillContent = contentMatch
-                  ? contentMatch[1].trim()
-                  : skill.content;
-
-                // Per-skill token budget enforcement (~4 chars per token)
-                const maxSkillChars = POST_COMPACT_MAX_TOKENS_PER_SKILL * 4;
-                if (skillContent.length > maxSkillChars) {
-                  skillContent =
-                    skillContent.slice(0, maxSkillChars) +
-                    "\n\n...[truncated]...";
-                }
-
-                const skillTokens = Math.ceil(skillContent.length / 4);
-                if (
-                  skillsUsedTokens + skillTokens >
-                  POST_COMPACT_SKILLS_TOKEN_BUDGET
-                )
-                  break;
-                skillsUsedTokens += skillTokens;
-
-                invokedSkillParts.push(
-                  `\n\n## ${skill.name}\n${skill.description ? `*${skill.description}*\n\n` : ""}\`\`\`\n${skillContent}\n\`\`\``,
-                );
-              } catch {
-                // Skip skills that can't be loaded
-              }
-            }
-            if (invokedSkillParts.length > 0) {
-              contextParts.push(
-                `\n\n[Invoked Skills]\n${invokedSkillParts.join("")}`,
-              );
-            }
-          }
-
-          // 5. Background subagent status (shell tasks excluded, matching Claude Code's createAsyncAgentAttachmentsIfNeeded)
-          const agents =
-            this.backgroundTaskManager
-              ?.getAllTasks()
-              .filter((a) => a.type === "subagent") || [];
-          if (agents.length > 0) {
-            const agentParts: string[] = [];
-            for (const a of agents) {
-              if (a.status === "killed") {
-                agentParts.push(
-                  `Task "${a.description}" (${a.id}) was stopped by the user.`,
-                );
-              } else if (a.status === "running") {
-                const parts = [
-                  `Background agent "${a.description}" (${a.id}) is still running.`,
-                  `Do NOT spawn a duplicate. You will be notified when it completes.`,
-                ];
-                if (a.outputPath) {
-                  parts.push(`You can read partial output at ${a.outputPath}.`);
-                }
-                agentParts.push(parts.join(" "));
-              } else {
-                // completed or failed
-                const parts = [
-                  `Task ${a.id} (status: ${a.status}) (description: ${a.description}).`,
-                ];
-                const deltaText = a.status === "failed" ? a.stderr : a.stdout;
-                if (deltaText && deltaText.length > 0) {
-                  const summary =
-                    deltaText.length > 500
-                      ? deltaText.slice(0, 500) + "..."
-                      : deltaText;
-                  parts.push(`Delta: ${summary}`);
-                }
-                if (a.outputPath) {
-                  parts.push(
-                    `Read the output file to retrieve the result: ${a.outputPath}.`,
-                  );
-                }
-                agentParts.push(parts.join(" "));
-              }
-            }
-            if (agentParts.length > 0) {
-              contextParts.push(
-                `\n\n[Background Tasks]\n${agentParts.join("\n")}`,
-              );
-            }
-          }
-
-          // Merge context restoration into summary
-          const enhancedSummary =
-            compactResult.content +
-            (contextParts.length > 0
-              ? `\n\n[Context Restoration]` + contextParts.join("")
-              : "");
-
-          // Execute message reconstruction and sessionId update after compaction
-          this.messageManager.compactMessagesAndUpdateSession(
-            enhancedSummary,
-            compactUsage,
-          );
-
-          // Notify Agent to add to usage tracking
-          if (compactUsage && this.callbacks?.onUsageAdded) {
-            this.callbacks.onUsageAdded(compactUsage);
-          }
-
-          logger?.debug(
-            `Successfully compacted ${messagesToCompact.length} messages and updated session`,
-          );
-          this.consecutiveCompactionFailures = 0;
-
-          // Log compaction event
-          logOTelEvent("compaction", {
-            beforeTokens: String(messagesToCompact.length),
-            afterTokens: "1",
-            model: this.getModelConfig().fastModel,
-          }).catch(() => {});
-
-          // Run SessionStart hooks after compaction to restore context
-          if (this.hookManager) {
-            try {
-              const newSessionId = this.messageManager.getSessionId();
-              const sessionStartResult =
-                await this.hookManager.executeSessionStartHooks(
-                  "compact",
-                  newSessionId,
-                  this.messageManager.getTranscriptPath(),
-                  this.subagentType,
-                );
-
-              // Inject additionalContext as a meta user message
-              if (sessionStartResult.additionalContext) {
-                this.messageManager.addUserMessage({
-                  content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
-                  isMeta: true,
-                });
-              }
-
-              // Inject initialUserMessage as a meta user message
-              if (sessionStartResult.initialUserMessage) {
-                this.messageManager.addUserMessage({
-                  content: sessionStartResult.initialUserMessage,
-                  isMeta: true,
-                });
-              }
-            } catch (error) {
-              logger?.warn(
-                `SessionStart hooks on compact failed: ${(error as Error).message}`,
-              );
-            }
-          }
-        } catch (compactError) {
-          this.consecutiveCompactionFailures++;
-          logger?.error(
-            `Failed to compact messages (${this.consecutiveCompactionFailures} consecutive):`,
-            compactError,
-          );
-          this.messageManager.addErrorBlock(
-            `Failed to compact conversation history: ${compactError instanceof Error ? compactError.message : String(compactError)}. You may encounter context limit issues.`,
-          );
-        } finally {
-          this.setIsCompacting(false);
-        }
+    // 1. Run PreCompact hooks
+    let hookInstructions: string | undefined;
+    if (this.hookManager) {
+      try {
+        const preResult = await this.hookManager.executePreCompactHooks(
+          this.messageManager.getSessionId(),
+          this.messageManager.getTranscriptPath(),
+          options.customInstructions,
+        );
+        hookInstructions = preResult.additionalInstructions;
+      } catch (error) {
+        logger?.warn(`PreCompact hooks failed: ${(error as Error).message}`);
       }
     }
+
+    // 2. Merge custom instructions
+    const mergedInstructions =
+      [options.customInstructions, hookInstructions]
+        .filter(Boolean)
+        .join("\n") || undefined;
+
+    // 3. Save session before compaction
+    await this.messageManager.saveSession();
+
+    this.setIsCompacting(true);
+    try {
+      const recentChatMessages = convertMessagesForAPI(messagesToCompact);
+
+      // 4. Call compactMessages with optional custom instructions
+      const compactResult = await aiService.compactMessages({
+        gatewayConfig: this.getGatewayConfig(),
+        modelConfig: this.getModelConfig(),
+        messages: recentChatMessages,
+        abortSignal: options.abortSignal,
+        model: this.getModelConfig().fastModel,
+        customInstructions: mergedInstructions,
+      });
+
+      // 5. Handle usage tracking
+      let compactUsage: Usage | undefined;
+      if (compactResult.usage) {
+        compactUsage = {
+          prompt_tokens: compactResult.usage.prompt_tokens,
+          completion_tokens: compactResult.usage.completion_tokens,
+          total_tokens: compactResult.usage.total_tokens,
+          model: this.getModelConfig().fastModel,
+          operation_type: "compact",
+        };
+      }
+
+      // 6. Build post-compact context restoration
+      const enhancedSummary = await this.buildPostCompactContext(
+        compactResult.content,
+      );
+
+      // 7. Execute message reconstruction
+      this.messageManager.compactMessagesAndUpdateSession(
+        enhancedSummary,
+        compactUsage,
+      );
+
+      // 8. Track usage
+      if (compactUsage && this.callbacks?.onUsageAdded) {
+        this.callbacks.onUsageAdded(compactUsage);
+      }
+
+      this.consecutiveCompactionFailures = 0;
+
+      // 9. Log OTEL event
+      logOTelEvent("compaction", {
+        beforeTokens: String(messagesToCompact.length),
+        afterTokens: "1",
+        model: this.getModelConfig().fastModel,
+      }).catch(() => {});
+
+      // 10. Run SessionStart hooks (existing behavior)
+      if (this.hookManager) {
+        try {
+          const newSessionId = this.messageManager.getSessionId();
+          const sessionStartResult =
+            await this.hookManager.executeSessionStartHooks(
+              "compact",
+              newSessionId,
+              this.messageManager.getTranscriptPath(),
+              this.subagentType,
+            );
+          if (sessionStartResult.additionalContext) {
+            this.messageManager.addUserMessage({
+              content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
+              isMeta: true,
+            });
+          }
+          if (sessionStartResult.initialUserMessage) {
+            this.messageManager.addUserMessage({
+              content: sessionStartResult.initialUserMessage,
+              isMeta: true,
+            });
+          }
+        } catch (error) {
+          logger?.warn(
+            `SessionStart hooks on compact failed: ${(error as Error).message}`,
+          );
+        }
+      }
+
+      // 11. Run PostCompact hooks
+      if (this.hookManager) {
+        try {
+          await this.hookManager.executePostCompactHooks(
+            this.messageManager.getSessionId(),
+            this.messageManager.getTranscriptPath(),
+            compactResult.content,
+          );
+        } catch (error) {
+          logger?.warn(`PostCompact hooks failed: ${(error as Error).message}`);
+        }
+      }
+
+      logger?.debug(
+        `Successfully compacted ${messagesToCompact.length} messages`,
+      );
+    } catch (compactError) {
+      this.consecutiveCompactionFailures++;
+      logger?.error(
+        `Failed to compact messages (${this.consecutiveCompactionFailures} consecutive):`,
+        compactError,
+      );
+      this.messageManager.addErrorBlock(
+        `Failed to compact conversation history: ${compactError instanceof Error ? compactError.message : String(compactError)}. You may encounter context limit issues.`,
+      );
+    } finally {
+      this.setIsCompacting(false);
+    }
+  }
+
+  /**
+   * Build post-compact context restoration content.
+   * Restores file reads, working directory, plan mode, skills, and background tasks.
+   */
+  private async buildPostCompactContext(summary: string): Promise<string> {
+    const POST_COMPACT_TOKEN_BUDGET = 50_000;
+    const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000;
+    const POST_COMPACT_MAX_FILES_TO_RESTORE = 5;
+    const contextParts: string[] = [];
+
+    // 1. File context restoration
+    const recentFiles = this.messageManager.getRecentFileReads(
+      POST_COMPACT_MAX_FILES_TO_RESTORE,
+      POST_COMPACT_MAX_TOKENS_PER_FILE,
+    );
+    let usedTokens = 0;
+    for (const file of recentFiles) {
+      const fileTokens = Math.ceil(file.content.length / 4);
+      if (usedTokens + fileTokens > POST_COMPACT_MAX_TOKENS_PER_FILE) continue;
+      if (fileTokens > 0) usedTokens += fileTokens;
+      contextParts.push(`\n\n## ${file.path}\n\`\`\`\n${file.content}\n\`\`\``);
+      if (contextParts.length >= POST_COMPACT_MAX_FILES_TO_RESTORE) break;
+      if (usedTokens >= POST_COMPACT_TOKEN_BUDGET) break;
+    }
+
+    // 2. Working directory
+    contextParts.push(
+      `\n\n[Working Directory]\nCurrent working directory: ${this.getWorkdir()}`,
+    );
+
+    // 3. Plan mode context
+    const currentMode = this.permissionManager?.getCurrentEffectiveMode(
+      this.getModelConfig().permissionMode,
+    );
+    if (currentMode === "plan") {
+      const planFilePath = this.permissionManager?.getPlanFilePath();
+      if (planFilePath) {
+        let planExists = false;
+        try {
+          await fs.access(planFilePath);
+          planExists = true;
+        } catch {
+          // Plan file doesn't exist yet
+        }
+        contextParts.push(
+          `\n\n${buildPlanModeReminder(planFilePath, planExists, !!this.subagentType)}`,
+        );
+      }
+    }
+
+    // 4. Invoked skills context (with token budget, matching Claude Code)
+    const POST_COMPACT_SKILLS_TOKEN_BUDGET = 25_000;
+    const POST_COMPACT_MAX_TOKENS_PER_SKILL = 5_000;
+    const invokedSkillNames = this.messageManager.getInvokedSkillNames(10);
+    if (invokedSkillNames.length > 0 && this.skillManager) {
+      const invokedSkillParts: string[] = [];
+      let skillsUsedTokens = 0;
+      for (const skillName of invokedSkillNames) {
+        try {
+          const skill = await this.skillManager.loadSkill(skillName);
+          if (!skill) continue;
+
+          const contentMatch = skill.content.match(
+            /^---\n[\s\S]*?\n---\n([\s\S]*)$/,
+          );
+          let skillContent = contentMatch
+            ? contentMatch[1].trim()
+            : skill.content;
+
+          const maxSkillChars = POST_COMPACT_MAX_TOKENS_PER_SKILL * 4;
+          if (skillContent.length > maxSkillChars) {
+            skillContent =
+              skillContent.slice(0, maxSkillChars) + "\n\n...[truncated]...";
+          }
+
+          const skillTokens = Math.ceil(skillContent.length / 4);
+          if (skillsUsedTokens + skillTokens > POST_COMPACT_SKILLS_TOKEN_BUDGET)
+            break;
+          skillsUsedTokens += skillTokens;
+
+          invokedSkillParts.push(
+            `\n\n## ${skill.name}\n${skill.description ? `*${skill.description}*\n\n` : ""}\`\`\`\n${skillContent}\n\`\`\``,
+          );
+        } catch {
+          // Skip skills that can't be loaded
+        }
+      }
+      if (invokedSkillParts.length > 0) {
+        contextParts.push(
+          `\n\n[Invoked Skills]\n${invokedSkillParts.join("")}`,
+        );
+      }
+    }
+
+    // 5. Background subagent status (shell tasks excluded, matching Claude Code's createAsyncAgentAttachmentsIfNeeded)
+    const agents =
+      this.backgroundTaskManager
+        ?.getAllTasks()
+        .filter((a) => a.type === "subagent") || [];
+    if (agents.length > 0) {
+      const agentParts: string[] = [];
+      for (const a of agents) {
+        if (a.status === "killed") {
+          agentParts.push(
+            `Task "${a.description}" (${a.id}) was stopped by the user.`,
+          );
+        } else if (a.status === "running") {
+          const parts = [
+            `Background agent "${a.description}" (${a.id}) is still running.`,
+            `Do NOT spawn a duplicate. You will be notified when it completes.`,
+          ];
+          if (a.outputPath) {
+            parts.push(`You can read partial output at ${a.outputPath}.`);
+          }
+          agentParts.push(parts.join(" "));
+        } else {
+          // completed or failed
+          const parts = [
+            `Task ${a.id} (status: ${a.status}) (description: ${a.description}).`,
+          ];
+          const deltaText = a.status === "failed" ? a.stderr : a.stdout;
+          if (deltaText && deltaText.length > 0) {
+            const summary =
+              deltaText.length > 500
+                ? deltaText.slice(0, 500) + "..."
+                : deltaText;
+            parts.push(`Delta: ${summary}`);
+          }
+          if (a.outputPath) {
+            parts.push(
+              `Read the output file to retrieve the result: ${a.outputPath}.`,
+            );
+          }
+          agentParts.push(parts.join(" "));
+        }
+      }
+      if (agentParts.length > 0) {
+        contextParts.push(`\n\n[Background Tasks]\n${agentParts.join("\n")}`);
+      }
+    }
+
+    return (
+      summary +
+      (contextParts.length > 0
+        ? `\n\n[Context Restoration]` + contextParts.join("")
+        : "")
+    );
   }
 
   public getIsCompacting(): boolean {
