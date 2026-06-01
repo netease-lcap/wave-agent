@@ -129,6 +129,8 @@ export class PermissionManager {
   private additionalDirectories: string[] = [];
   private systemAdditionalDirectories: string[] = [];
   private planFilePath?: string;
+  private hasExitedPlanMode: boolean = false;
+  private needsPlanModeExitAttachment: boolean = false;
   private workdir?: string;
   private worktreeName?: string;
   private mainRepoRoot?: string;
@@ -313,6 +315,22 @@ export class PermissionManager {
    */
   public getPlanFilePath(): string | undefined {
     return this.planFilePath;
+  }
+
+  public setHasExitedPlanMode(value: boolean): void {
+    this.hasExitedPlanMode = value;
+  }
+
+  public hasExitedPlanModeInSession(): boolean {
+    return this.hasExitedPlanMode;
+  }
+
+  public setNeedsPlanModeExitAttachment(value: boolean): void {
+    this.needsPlanModeExitAttachment = value;
+  }
+
+  public getNeedsPlanModeExitAttachment(): boolean {
+    return this.needsPlanModeExitAttachment;
   }
 
   /**

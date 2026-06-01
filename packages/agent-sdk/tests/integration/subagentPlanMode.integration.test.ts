@@ -8,14 +8,14 @@ import { Message } from "../../src/types/index.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import { Container } from "../../src/utils/container.js";
 import * as aiService from "../../src/services/aiService.js";
-
-import { buildSystemPrompt } from "../../src/prompts/index.js";
+import { buildPlanModeReminder } from "../../src/prompts/planModeReminders.js";
 
 describe("Subagent Plan Mode Integration", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
   let mockPermissionManager: PermissionManager;
-  let lastSystemPrompt: string | undefined;
+  let lastMessages: import("openai/resources.js").ChatCompletionMessageParam[] =
+    [];
 
   const subagentConfig: SubagentConfiguration = {
     name: "TestSubagent",
@@ -30,11 +30,12 @@ describe("Subagent Plan Mode Integration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    lastSystemPrompt = undefined;
+    lastMessages = [];
 
-    // Mock callAgent to capture the system prompt
+    // Mock callAgent to capture the messages
     vi.spyOn(aiService, "callAgent").mockImplementation(async (options) => {
-      lastSystemPrompt = options.systemPrompt;
+      lastMessages =
+        options.messages as import("openai/resources.js").ChatCompletionMessageParam[];
       return {
         content: "Subagent response",
         tool_calls: [],
@@ -54,6 +55,10 @@ describe("Subagent Plan Mode Integration", () => {
       addTemporaryRules: vi.fn(),
       removeTemporaryRules: vi.fn(),
       clearTemporaryRules: vi.fn(),
+      setHasExitedPlanMode: vi.fn(),
+      hasExitedPlanModeInSession: vi.fn(() => false),
+      setNeedsPlanModeExitAttachment: vi.fn(),
+      getNeedsPlanModeExitAttachment: vi.fn(() => false),
     } as unknown as PermissionManager;
 
     // Mock ToolManager
@@ -116,6 +121,11 @@ describe("Subagent Plan Mode Integration", () => {
       }),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.json"),
       mergeAssistantAdditionalFields: vi.fn(),
+      touchFile: vi.fn(),
+      finalizeStreamingBlocks: vi.fn(),
+      getLatestTotalTokens: vi.fn().mockReturnValue(0),
+      compactMessagesAndUpdateSession: vi.fn(),
+      updateToolBlock: vi.fn(),
     } as unknown as MessageManager;
 
     // Ensure mockMessages is populated for the test
@@ -162,30 +172,25 @@ describe("Subagent Plan Mode Integration", () => {
           }
         ).container.register("MessageManager", mockMessageManager);
         instance.messageManager = mockMessageManager;
-        // Ensure the subagent's AIManager uses the mock callAgent
+        // Override sendAIMessage to avoid MCP manager dependency
+        // Instead, call callAgent directly with plan mode messages injected
         const aiManager = instance.aiManager as unknown as {
           sendAIMessage: () => Promise<void>;
         };
         aiManager.sendAIMessage = async () => {
-          const systemPrompt = buildSystemPrompt(config.systemPrompt, [], {
-            workdir: "/test/project",
-            memory: "",
-            language: undefined,
-            isSubagent: true,
-            planMode: {
-              planFilePath: "/test/project/plan.md",
-              planExists: true,
-            },
-          });
-          lastSystemPrompt = systemPrompt;
+          const planFilePath = "/test/project/plan.md";
+          const planReminder = buildPlanModeReminder(planFilePath, false, true);
+          await aiService.callAgent({
+            messages: [{ role: "user", content: planReminder }],
+            systemPrompt: config.systemPrompt,
+          } as unknown as import("@/services/aiService.js").CallAgentOptions);
           mockMessageManager.addAssistantMessage();
-          return Promise.resolve();
         };
         return instance;
       });
   });
 
-  it("should include plan mode reminder in subagent system prompt when plan mode is active", async () => {
+  it("should include plan mode reminder in subagent messages when plan mode is active", async () => {
     const instance = await subagentManager.createInstance(subagentConfig, {
       description: "Test task",
       prompt: "Test prompt",
@@ -198,12 +203,17 @@ describe("Subagent Plan Mode Integration", () => {
     // Execute task
     await subagentManager.executeAgent(instance, "Test prompt");
 
-    // Verify the system prompt sent to callAgent
-    expect(lastSystemPrompt).toBeDefined();
-    expect(lastSystemPrompt).toContain("Plan mode is active.");
-    expect(lastSystemPrompt).toContain(
+    // Plan mode content is now injected as user messages, not in systemPrompt
+    const userMessages = lastMessages.filter(
+      (m) => m.role === "user",
+    ) as Array<{ role: string; content: string }>;
+    const planMessage = userMessages.find((m) =>
+      m.content?.includes("Plan mode is active"),
+    );
+    expect(planMessage).toBeDefined();
+    expect(planMessage!.content).toContain(
       "The user indicated that they do not want you to execute yet",
     );
-    expect(lastSystemPrompt).toContain("/test/project/plan.md");
+    expect(planMessage!.content).toContain("/test/project/plan.md");
   });
 });

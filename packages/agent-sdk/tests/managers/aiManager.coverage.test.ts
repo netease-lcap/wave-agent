@@ -113,6 +113,10 @@ function makeContainer(overrides: Record<string, unknown> = {}) {
     getDeniedRules: vi.fn().mockReturnValue([]),
     getAdditionalDirectories: vi.fn().mockReturnValue([]),
     getSystemAdditionalDirectories: vi.fn().mockReturnValue([]),
+    setHasExitedPlanMode: vi.fn(),
+    hasExitedPlanModeInSession: vi.fn(() => false),
+    setNeedsPlanModeExitAttachment: vi.fn(),
+    getNeedsPlanModeExitAttachment: vi.fn(() => false),
   });
   c.register("SubagentManager", {
     getConfigurations: vi.fn().mockReturnValue([]),

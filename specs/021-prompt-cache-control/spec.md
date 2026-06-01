@@ -72,6 +72,23 @@ When using Claude models with cache control, developers need accurate token trac
 
 ---
 
+### User Story 5 - System Prompt Stability Across Mode Transitions (Priority: P1)
+
+As a user who switches between permission modes (e.g., default → plan → acceptEdits), I want the system prompt to remain constant so that the cached system prompt prefix is not invalidated on every mode change, reducing token costs and improving response latency.
+
+**Why this priority**: Plan mode previously appended instructions to the system prompt, invalidating the entire cache on every mode transition. For long sessions with frequent mode switches, this causes significant unnecessary token costs. Keeping the system prompt stable maximizes cache hit rates.
+
+**Independent Test**: Enter plan mode, verify the system prompt is identical to the default mode system prompt, and check that plan mode instructions appear as `<system-reminder>` user messages instead.
+
+**Acceptance Scenarios**:
+
+1. **Given** a Claude model is configured and the system prompt has been cached, **When** the user enters plan mode, **Then** the system prompt MUST remain identical to the previous turn's system prompt (no plan mode text appended).
+2. **Given** plan mode is active, **When** the system sends the next API request, **Then** plan mode instructions MUST appear as `<system-reminder>` wrapped user messages in the messages array, not in the system prompt.
+3. **Given** the user exits plan mode, **When** the next API request is made, **Then** the system prompt MUST remain unchanged and usage tracking SHOULD show cache_read_input_tokens indicating a cache hit on the system message.
+4. **Given** a non-Claude model is configured, **When** the user enters plan mode, **Then** plan mode instructions still appear as `<system-reminder>` user messages (the injection pattern is model-agnostic, but caching benefits only apply to Claude models).
+
+---
+
 ### Edge Cases
 
 - **Edge Case 1**: Model name detection MUST be case-insensitive ("Claude-3-Sonnet" and "claude-3-sonnet" both trigger caching)
@@ -85,7 +102,7 @@ When using Claude models with cache control, developers need accurate token trac
 ### Functional Requirements
 
 - **FR-001**: System MUST detect cache-supporting models using the `WAVE_PROMPT_CACHE_REGEX` environment variable (default: "claude"), which allows configurable regex patterns for model matching
-- **FR-002**: System MUST add cache_control markers with type "ephemeral" to the first system message when using Claude models. This ensures core instructions are always cached even if reminders are added later.
+- **FR-002**: System MUST add cache_control markers with type "ephemeral" to the first system message when using Claude models. This ensures core instructions are always cached even if reminders are added later. The system prompt MUST remain constant across plan mode transitions — plan mode instructions are injected as `<system-reminder>` user messages rather than system prompt changes to preserve the cached system prompt prefix.
 - **FR-003**: System MUST create a cache marker when total message count reaches multiples of 20 (20, 40, 60, etc.)
 - **FR-004**: System MUST NOT create cache markers when total message count is below 20 or not a multiple of 20
 - **FR-005**: System MUST maintain cache markers at the most recent multiple-of-20 message position (sliding window)

@@ -74,7 +74,13 @@ export class PlanManager {
       this.container.get<PermissionManager>("PermissionManager");
     const messageManager = this.container.get<MessageManager>("MessageManager");
 
+    const previousMode = this.container.get<PermissionMode>("PermissionMode");
+
     if (mode === "plan") {
+      // Entering plan mode: clear any pending exit attachment
+      // (prevents sending both plan_mode and plan_mode_exit on rapid toggle)
+      permissionManager?.setNeedsPlanModeExitAttachment(false);
+
       this.getOrGeneratePlanFilePath(messageManager?.getRootSessionId())
         .then(({ path }) => {
           logger?.debug("Plan file path generated", { path });
@@ -83,6 +89,11 @@ export class PlanManager {
         .catch((error) => {
           logger?.error("Failed to generate plan file path", error);
         });
+    } else if (previousMode === "plan") {
+      // Leaving plan mode: set flags for exit notification and re-entry detection
+      permissionManager?.setHasExitedPlanMode(true);
+      permissionManager?.setNeedsPlanModeExitAttachment(true);
+      permissionManager?.setPlanFilePath(undefined);
     } else {
       permissionManager?.setPlanFilePath(undefined);
     }

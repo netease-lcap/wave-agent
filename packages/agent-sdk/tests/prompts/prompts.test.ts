@@ -158,11 +158,9 @@ describe("prompts", () => {
       expect(result).toContain("# Language\nAlways respond in Spanish.");
     });
 
-    it("should include plan mode when provided", () => {
-      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-        planMode: { planFilePath: "/plan.md", planExists: true },
-      });
-      expect(result).toContain("Plan mode is active.");
+    it("should not include plan mode in system prompt (moved to system-reminder messages)", () => {
+      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {});
+      expect(result).not.toContain("Plan mode is active.");
     });
 
     it("should include memory context when provided", () => {

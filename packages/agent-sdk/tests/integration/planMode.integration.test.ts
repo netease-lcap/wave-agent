@@ -52,7 +52,7 @@ describe("Plan Mode Integration", () => {
     expect(fs.mkdir).toHaveBeenCalledWith(planDir, { recursive: true });
   });
 
-  it("should include plan reminder in system prompt when in plan mode", async () => {
+  it("should include plan reminder in messages when in plan mode", async () => {
     const agent = await Agent.create({ workdir });
 
     // Transition to plan mode and wait for path generation
@@ -77,20 +77,26 @@ describe("Plan Mode Integration", () => {
     // Check all calls to callAgent
     const calls = vi.mocked(callAgent).mock.calls;
 
-    // In integration test, we want to see if the systemPrompt passed to callAgent contains the reminder
+    // Plan mode content is now injected as user messages, not in systemPrompt
     const callWithPlanInfo = calls.find((call) => {
       const options = call[0];
-      return (
-        options.systemPrompt && options.systemPrompt.includes("Plan File Info")
-      );
+      const userMessages =
+        (options.messages as Array<{ role: string; content: string }>)?.filter(
+          (m) => m.role === "user",
+        ) ?? [];
+      return userMessages.some((m) => m.content?.includes("Plan File Info"));
     });
 
     expect(callWithPlanInfo).toBeDefined();
     if (callWithPlanInfo) {
-      expect(callWithPlanInfo[0].systemPrompt).toContain("Plan File Info");
-      expect(callWithPlanInfo[0].systemPrompt).toContain(
-        "No plan file exists yet",
+      const userMessages = (
+        callWithPlanInfo[0].messages as Array<{ role: string; content: string }>
+      ).filter((m) => m.role === "user");
+      const planMessage = userMessages.find((m) =>
+        m.content?.includes("Plan File Info"),
       );
+      expect(planMessage).toBeDefined();
+      expect(planMessage!.content).toContain("No plan file exists yet");
     }
   });
 
