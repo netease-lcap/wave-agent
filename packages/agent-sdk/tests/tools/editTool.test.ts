@@ -8,8 +8,10 @@ import { Container } from "@/utils/container.js";
 // Mock fs/promises
 vi.mock("fs/promises");
 vi.mock("../../src/utils/editUtils.js", () => ({
-  escapeRegExp: vi.fn((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-  analyzeEditMismatch: vi.fn(() => "old_string not found in file"),
+  escapeRegExp: vi.fn((s) => s.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)),
+  analyzeEditMismatch: vi.fn(
+    (s) => `String to replace not found in file.\nString: ${s}`,
+  ),
 }));
 
 describe("editTool", () => {
@@ -143,7 +145,7 @@ describe("editTool", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("old_string not found in file");
+    expect(result.error).toContain("String to replace not found in file");
   });
 
   it("should fail when file cannot be read", async () => {
@@ -438,5 +440,98 @@ describe("editTool", () => {
       { workdir: "/test" },
     );
     expect(result).toBe("src/index.ts");
+  });
+
+  it("should reject edit when file has not been read first", async () => {
+    const mockMessageManager = {
+      touchFile: vi.fn(),
+      hasFileInContext: vi.fn().mockReturnValue(false),
+    };
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/workdir/file.js",
+        old_string: "old",
+        new_string: "new",
+      },
+      {
+        ...mockContext,
+        messageManager:
+          mockMessageManager as unknown as ToolContext["messageManager"],
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("must read the file");
+    expect(result.error).toContain("Read");
+  });
+
+  it("should allow edit when file has been read first", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const mockMessageManager = {
+      touchFile: vi.fn(),
+      hasFileInContext: vi.fn().mockReturnValue(true),
+    };
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/workdir/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      {
+        ...mockContext,
+        messageManager:
+          mockMessageManager as unknown as ToolContext["messageManager"],
+      },
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("should handle CRLF line endings in file content", async () => {
+    const mockContent = "function hello() {\r\n  console.log('Hello');\r\n}";
+    // CRLF is normalized to LF for matching, so output also uses LF
+    const expectedContent =
+      "function hello() {\n  console.log('Hello World');\n}";
+
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "console.log('Hello');",
+        new_string: "console.log('Hello World');",
+      },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(writeFile).toHaveBeenCalledWith(
+      "/test/file.js",
+      expectedContent,
+      "utf-8",
+    );
+  });
+
+  it("should match old_string with LF against CRLF file", async () => {
+    const mockContent = "line1\r\nline2\r\nline3";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "line1\nline2",
+        new_string: "line1\nmodified",
+      },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
   });
 });

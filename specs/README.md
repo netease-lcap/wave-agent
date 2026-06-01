@@ -30,15 +30,15 @@ This directory contains feature specifications that serve as the source of truth
 |--------|-------|
 | Specs | 54 |
 | User Stories | 236 |
-| Functional Requirements | 880 |
+| Functional Requirements | 884 |
 | Test Files | 302 |
-| Test Cases | 3,822 |
+| Test Cases | 3,828 |
 
 ## Specs
 
 | Feature | Description | US | FR | Links |
 |---------|-------------|----|----|-------|
-| File System Tools | Read, Write, Edit, Glob, Grep tools for file operations | 3 | 15 | [spec](001-fs-tools/spec.md) · [plan](001-fs-tools/plan.md) |
+| File System Tools | Read, Write, Edit, Glob, Grep tools for file operations | 3 | 19 | [spec](001-fs-tools/spec.md) · [plan](001-fs-tools/plan.md) |
 | Bash Tools | Bash, BashOutput, KillBash tools for shell command execution | 3 | 17 | [spec](002-bash-tools/spec.md) · [plan](002-bash-tools/plan.md) |
 | MCP | Model Context Protocol support for external tools and context sources | 4 | 23 | [spec](003-mcp/spec.md) · [plan](003-mcp/plan.md) |
 | Session Management | Performance-optimized, project-based session management system | 3 | 17 | [spec](004-session-management/spec.md) · [plan](004-session-management/plan.md) |

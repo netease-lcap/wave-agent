@@ -43,6 +43,14 @@
 - `new_string: string`: Replacement text.
 - `replace_all?: boolean`: Whether to replace all occurrences.
 
+### EditToolBehavior
+**Purpose**: Behavioral contracts enforced by the Edit tool at execution time.
+**Invariants**:
+- Read-before-edit: File must be in `MessageManager.filesInContext` or edit is rejected.
+- CRLF normalization: `\r\n` → `\n` applied to both file content and `old_string` before matching.
+- Error detail: `old_string` not found errors include the attempted string (truncated to 200 chars).
+- Smallest `old_string` guidance: Tool prompt advises 2-4 adjacent lines for uniqueness.
+
 ### GlobArguments
 **Purpose**: Arguments for the `Glob` tool.
 **Fields**:

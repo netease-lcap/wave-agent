@@ -3,6 +3,11 @@
 - [x] T001 Implement `Read` tool with line numbering and token-level validation
 - [x] T002 Implement `Write` tool with directory auto-creation
 - [x] T003 Implement `Edit` tool with detailed mismatch analysis
+    - [x] T003.1 Add "smallest old_string" guidance to Edit tool prompt (2-4 adjacent lines)
+    - [x] T003.2 Add CRLF normalization (`\r\n` → `\n`) before matching
+    - [x] T003.3 Include attempted `old_string` in error message when not found (truncated to 200 chars)
+    - [x] T003.4 Enforce read-before-edit: reject edits to files not in `filesInContext`
+    - [x] T003.5 Add `hasFileInContext()` method to `MessageManager`
 - [x] T007 Implement `Glob` tool for pattern-based file discovery
 - [x] T008 Implement `Grep` tool using ripgrep for content search
 - [x] T009 Integrate all FS tools with `PermissionManager`

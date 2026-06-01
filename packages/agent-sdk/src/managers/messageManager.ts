@@ -242,6 +242,16 @@ export class MessageManager {
   }
 
   /**
+   * Checks if a file has been read or edited in this conversation.
+   */
+  public hasFileInContext(filePath: string): boolean {
+    const normalizedPath = isAbsolute(filePath)
+      ? relative(this.workdir, filePath)
+      : filePath;
+    return this.filesInContext.has(normalizedPath);
+  }
+
+  /**
    * Extracts and adds file paths from a message's tool blocks.
    */
   private addPathsFromMessage(message: Message): void {
