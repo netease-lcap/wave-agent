@@ -78,6 +78,12 @@ interface EditArgs {
 }
 ```
 
+**Edit Tool Behavioral Contracts**:
+- **Read-before-edit**: The tool MUST reject edits to files that have not been read in the current conversation (tracked via `MessageManager.hasFileInContext()`). Returns error: `"You must read the file with the Read tool before editing it."`
+- **CRLF normalization**: Both file content and `old_string` are normalized (`\r\n` → `\n`) before matching. Output uses normalized (LF) line endings.
+- **Error detail**: When `old_string` is not found, the error includes the attempted string (truncated to 200 chars): `"String to replace not found in file.\nString: <attempted text>"`
+- **Uniqueness check**: When `old_string` appears multiple times and `replace_all` is false, the tool MUST fail with the count of occurrences.
+
 ### LS Tool
 ```typescript
 interface LSArgs {

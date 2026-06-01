@@ -30,6 +30,7 @@ Usage:
 - When editing text from ${READ_TOOL_NAME} tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
+- Use the smallest \`old_string\` that's clearly unique — usually 2-4 adjacent lines is sufficient. Avoid including 10+ lines of context when less uniquely identifies the target. Shorter matches are less likely to contain reproduction errors.
 - The edit will FAIL if \`old_string\` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use \`replace_all\` to change every instance of \`old_string\`. 
 - Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`,
   config: {
@@ -109,6 +110,18 @@ Usage:
     // Touch file to track it in context
     context.messageManager?.touchFile(filePath);
 
+    // Enforce read-before-edit: the file must have been read first
+    if (
+      context.messageManager &&
+      !context.messageManager.hasFileInContext(filePath)
+    ) {
+      return {
+        success: false,
+        content: "",
+        error: `You must read the file with the ${READ_TOOL_NAME} tool before editing it. Use ${READ_TOOL_NAME} on ${filePath} first.`,
+      };
+    }
+
     try {
       const resolvedPath = resolvePath(filePath, context.workdir);
 
@@ -124,19 +137,23 @@ Usage:
         };
       }
 
+      // Normalize line endings for matching
+      const normalizedContent = originalContent.replace(/\r\n/g, "\n");
+      const normalizedOldString = oldString.replace(/\r\n/g, "\n");
+
       // Check if old_string exists
-      const index = originalContent.indexOf(oldString);
-      const matchedOldString = index !== -1 ? oldString : null;
+      const index = normalizedContent.indexOf(normalizedOldString);
+      const matchedOldString = index !== -1 ? normalizedOldString : null;
       const startLineNumber =
         index !== -1
-          ? originalContent.substring(0, index).split("\n").length
+          ? normalizedContent.substring(0, index).split("\n").length
           : undefined;
 
       if (!matchedOldString) {
         return {
           success: false,
           content: "",
-          error: analyzeEditMismatch(),
+          error: analyzeEditMismatch(normalizedOldString),
         };
       }
 
@@ -146,11 +163,11 @@ Usage:
       if (replaceAll) {
         // Replace all matches
         const regex = new RegExp(escapeRegExp(matchedOldString), "g");
-        newContent = originalContent.replace(regex, newString);
-        replacementCount = (originalContent.match(regex) || []).length;
+        newContent = normalizedContent.replace(regex, newString);
+        replacementCount = (normalizedContent.match(regex) || []).length;
       } else {
         // Replace only the first match, but first check if it's unique
-        const matches = originalContent.split(matchedOldString).length - 1;
+        const matches = normalizedContent.split(matchedOldString).length - 1;
         if (matches > 1) {
           return {
             success: false,
@@ -159,7 +176,7 @@ Usage:
           };
         }
 
-        newContent = originalContent.replace(matchedOldString, newString);
+        newContent = normalizedContent.replace(matchedOldString, newString);
         replacementCount = 1;
       }
 

@@ -34,8 +34,11 @@ As an AI agent, I want to modify files using exact string replacements so that I
 **Acceptance Scenarios**:
 
 1. **Given** a file has been read, **When** the agent calls `Edit` with a unique `old_string`, **Then** the file MUST be updated with `new_string`.
-3. **Given** the `old_string` is not unique, **When** the agent calls `Edit` without `replace_all`, **Then** the operation MUST fail.
-4. **Given** an `Edit` tool call, **When** the diff is displayed, **Then** it MUST show word-level highlights for changed parts when the number of removed and added lines match.
+2. **Given** the `old_string` is not unique, **When** the agent calls `Edit` without `replace_all`, **Then** the operation MUST fail.
+3. **Given** an `Edit` tool call, **When** the diff is displayed, **Then** it MUST show word-level highlights for changed parts when the number of removed and added lines match.
+4. **Given** a file with CRLF line endings, **When** the agent calls `Edit` with LF `old_string`, **Then** the match MUST succeed by normalizing line endings before comparison.
+5. **Given** a file that has not been read, **When** the agent calls `Edit`, **Then** the operation MUST fail with a message instructing the agent to read the file first.
+6. **Given** an `Edit` tool call where `old_string` is not found, **When** the error is returned, **Then** it MUST include the attempted string to help the model self-correct.
 
 ---
 
@@ -59,7 +62,10 @@ As an AI agent, I want to search for patterns using glob patterns or regex so th
 
 - **Large Files**: Reading files that exceed memory limits or token windows. Handled via `offset` and `limit`. If estimated tokens exceed `maxTokens`, the tool returns an error suggesting offset/limit or grep/jq.
 - **Binary Documents**: Attempting to read PDF, DOCX, or other unsupported binary formats. The tool MUST prevent this and return an error.
-- **Mismatch Analysis**: `Edit` tool must provide detailed mismatch reports when `old_string` is not found, highlighting exactly which lines differ.
+- **Mismatch Analysis**: `Edit` tool must provide detailed mismatch reports when `old_string` is not found, including the attempted string (truncated to 200 chars) to help the model self-correct.
+- **Read Before Edit**: `Edit` tool must reject edits to files that have not been read in the current conversation, preventing blind edits.
+- **CRLF Normalization**: `Edit` tool must normalize `\r\n` → `\n` before matching, so the model can use LF line endings in `old_string` regardless of the file's actual line endings.
+- **Smallest old_string**: `Edit` tool prompt should guide the model to use the smallest `old_string` that is clearly unique (typically 2-4 adjacent lines), reducing reproduction errors on long template-literal-heavy text.
 - **File Permissions**: Attempting to write to read-only files or directories without proper permissions.
 
 ## Requirements *(mandatory)*
@@ -76,6 +82,10 @@ As an AI agent, I want to search for patterns using glob patterns or regex so th
 - **FR-003**: System MUST provide a `Write` tool that automatically creates parent directories.
 - **FR-004**: `Write` tool SHOULD verify that the file was read before being overwritten to prevent accidental data loss.
 - **FR-005**: System MUST provide an `Edit` tool for exact string replacement with detailed mismatch analysis.
+- **FR-020**: `Edit` tool MUST reject edits to files that have not been read in the current conversation, returning an error instructing the agent to read the file first.
+- **FR-021**: `Edit` tool MUST normalize CRLF (`\r\n`) to LF (`\n`) before matching `old_string`, so models can use LF in `old_string` against CRLF files.
+- **FR-022**: `Edit` tool MUST include the attempted `old_string` (truncated to 200 chars) in the error message when `old_string` is not found.
+- **FR-023**: `Edit` tool prompt SHOULD guide the model to use the smallest `old_string` that is clearly unique (typically 2-4 adjacent lines), reducing reproduction errors on long text.
 - **FR-009**: System MUST provide a `Glob` tool for fast pattern matching. It MUST NOT respect `.gitignore` (but MUST always ignore the `.git` directory), support a configurable `limit`, and provide structured metadata.
 - **FR-010**: System MUST provide a `Grep` tool based on ripgrep for powerful text searching. It MUST respect `.gitignore` and common ignore patterns, support `offset` and `context` arguments, and provide structured metadata.
 - **FR-011**: All tools MUST integrate with the `PermissionManager` for authorization.
