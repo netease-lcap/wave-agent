@@ -214,6 +214,10 @@ describe("Subagent Plan Mode Integration", () => {
     expect(planMessage!.content).toContain(
       "The user indicated that they do not want you to execute yet",
     );
-    expect(planMessage!.content).toContain("/test/project/plan.md");
+    // Subagent reminder tells agent to return text output, not write plan file
+    expect(planMessage!.content).toContain(
+      "return your findings as text output",
+    );
+    expect(planMessage!.content).toContain("No plan file exists yet.");
   });
 });
