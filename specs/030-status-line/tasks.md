@@ -10,3 +10,13 @@
 
 - [x] Run `pnpm -F wave-code run type-check` to verify types.
 - [x] Manually verify the UI in the CLI.
+
+## Phase 3: Token Usage Percentage
+
+- [x] Add `maxInputTokens: number` to `ChatContextType` and state in `useChat.tsx`.
+- [x] Set `maxInputTokens` from `agent.getMaxInputTokens()` in `initializeAgent`.
+- [x] Pass `maxInputTokens` to `LoadingIndicator` and `InputBox` in `ChatInterface.tsx`.
+- [x] Add `latestTotalTokens` and `maxInputTokens` props to `InputBox`, pass to `StatusLine`.
+- [x] Update `StatusLine` to display right-aligned "X% context" with color coding.
+- [x] Update `LoadingIndicator` to show percentage alongside token count.
+- [x] Verify build with `pnpm -F wave-code build`.

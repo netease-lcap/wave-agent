@@ -1,11 +1,11 @@
 # Implementation Plan: Status Line Component Refactoring
 
-**Branch**: `030-status-line` | **Status**: Completed | **Date**: 2026-03-31 | **Spec**: [spec.md](./spec.md)
+**Branch**: `030-status-line` | **Status**: Completed | **Date**: 2026-03-31 | **Updated**: 2026-06-01 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/030-status-line/spec.md`
 
 ## Summary
 
-Move the status line logic (displaying the current mode and shell command status) from `InputBox.tsx` into a dedicated `StatusLine.tsx` component for better modularity.
+Move the status line logic (displaying the current mode and shell command status) from `InputBox.tsx` into a dedicated `StatusLine.tsx` component for better modularity. Extended to include token usage percentage display in both `StatusLine` and `LoadingIndicator`.
 
 ## Technical Context
 
@@ -46,11 +46,21 @@ specs/030-status-line/
 
 ```
 packages/
+├── agent-sdk/
+│   └── src/
+│       ├── agent.ts                           # getMaxInputTokens()
+│       └── utils/
+│           ├── tokenCalculation.ts            # extractLatestTotalTokens()
+│           └── constants.ts                   # DEFAULT_WAVE_MAX_INPUT_TOKENS
 └── code/
-    ├── src/
-    │   └── components/
-    │       ├── InputBox.tsx
-    │       └── StatusLine.tsx
+    └── src/
+        ├── contexts/
+        │   └── useChat.tsx                    # maxInputTokens state + context
+        └── components/
+            ├── ChatInterface.tsx              # passes maxInputTokens to InputBox/LoadingIndicator
+            ├── InputBox.tsx                   # passes latestTotalTokens + maxInputTokens to StatusLine
+            ├── StatusLine.tsx                 # displays "X% context" right-aligned
+            └── LoadingIndicator.tsx           # displays "1,234 tokens (X%)"
 ```
 
 ## Complexity Tracking

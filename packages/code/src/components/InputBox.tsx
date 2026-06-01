@@ -44,6 +44,9 @@ export interface InputBoxProps {
   // Slash Command related properties
   slashCommands?: SlashCommand[];
   hasSlashCommand?: (commandId: string) => boolean;
+  // Token usage
+  latestTotalTokens?: number;
+  maxInputTokens?: number;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
@@ -54,6 +57,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   disconnectMcpServer = async () => false,
   slashCommands = [],
   hasSlashCommand = () => false,
+  latestTotalTokens = 0,
+  maxInputTokens = 128000,
 }) => {
   const {
     permissionMode: chatPermissionMode,
@@ -325,6 +330,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
               permissionMode={permissionMode}
               isShellCommand={isShellCommand}
               isBtwActive={btwState.isActive}
+              latestTotalTokens={latestTotalTokens}
+              maxInputTokens={maxInputTokens}
             />
           </Box>
         )}
