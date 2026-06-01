@@ -23,12 +23,15 @@ export function buildPlanModeReminder(
     ? `A plan file already exists at ${planFilePath}. You can read it and make incremental edits using the ${EDIT_TOOL_NAME} tool if you need to.`
     : `No plan file exists yet. You should create your plan at ${planFilePath} using the ${WRITE_TOOL_NAME} tool if you need to.`;
 
+  const subagentPlanFileInfo = planExists
+    ? `A plan file already exists at ${planFilePath}. You can read it for context if needed.`
+    : `No plan file exists yet.`;
+
   if (isSubagent) {
-    return wrapInSystemReminder(`Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits, run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received (for example, to make edits). Instead, you should:
+    return wrapInSystemReminder(`Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits, run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received (for example, to make edits). Instead, your role is to explore the codebase and return your findings as text output. Do NOT attempt to write or edit any files — the parent agent will write the plan file based on your text response.
 
 ## Plan File Info:
-${planFileInfo}
-You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
+${subagentPlanFileInfo}
 Answer the user's query comprehensively, using the ${ASK_USER_QUESTION_TOOL_NAME} tool if you need to ask the user clarifying questions. If you do use the ${ASK_USER_QUESTION_TOOL_NAME}, make sure to ask all clarifying questions you need to fully understand the user's intent before proceeding.`);
   }
 
