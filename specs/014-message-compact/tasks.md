@@ -1,6 +1,6 @@
-# Tasks: Message Compression
+# Tasks: Message Compact
 
-**Input**: Design documents from `/specs/014-message-compression/`
+**Input**: Design documents from `/specs/014-message-compact/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md
 
 **Tests**: Both unit and integration tests are REQUIRED for all new functionality. Ensure tests are written and failing before implementation.
@@ -132,3 +132,36 @@
 
 - [ ] T017 [P] Investigate if image metadata should be preserved in summaries
 - [ ] T018 [P] Final type-check and linting
+
+---
+
+## Phase 10: User Story 6 - Manual `/compact` Command (Priority: P2)
+
+**Goal**: Enable manual compaction via `/compact` slash command with optional custom instructions
+
+**Independent Test**: Type `/compact` or `/compact custom instructions`, verify compaction occurs
+
+### Implementation for User Story 6
+
+- [X] T070 [US6] Extract `compactConversation()` public method in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T071 [US6] Extract `buildPostCompactContext()` private helper from `handleTokenUsageAndCompaction()` in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T072 [US6] Refactor `handleTokenUsageAndCompaction()` to delegate to `compactConversation()` in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T073 [US6] Add `customInstructions` to `CompactMessagesOptions` in `packages/agent-sdk/src/services/aiService.ts`
+- [X] T074 [US6] Add `/compact` built-in command in `packages/agent-sdk/src/managers/slashCommandManager.ts`
+
+---
+
+## Phase 11: User Story 7 - PreCompact and PostCompact Hook Events (Priority: P2)
+
+**Goal**: Enable hooks before and after conversation compaction
+
+**Independent Test**: Configure PreCompact/PostCompact hooks, trigger compaction, verify execution order
+
+### Implementation for User Story 7
+
+- [X] T080 [US7] Add `PreCompact` and `PostCompact` to `HookEvent` type in `packages/agent-sdk/src/types/hooks.ts`
+- [X] T081 [US7] Add `compactInstructions`, `compactSummary` to `ExtendedHookExecutionContext` and `HookJsonInput` in `packages/agent-sdk/src/types/hooks.ts`
+- [X] T082 [US7] Update `HookManager` for PreCompact/PostCompact events (configApplies, validateEventConfig, handleBlockingError, getConfigurationStats) in `packages/agent-sdk/src/managers/hookManager.ts`
+- [X] T083 [US7] Add `executePreCompactHooks()` and `executePostCompactHooks()` convenience methods in `packages/agent-sdk/src/managers/hookManager.ts`
+- [X] T084 [US7] Wire PreCompact and PostCompact hooks into `compactConversation()` in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T085 [US7] Add tests for `compactConversation` in `packages/agent-sdk/tests/managers/aiManager.compactConversation.test.ts`

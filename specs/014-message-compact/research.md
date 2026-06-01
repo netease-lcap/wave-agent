@@ -1,4 +1,4 @@
-# Research: Message Compression
+# Research: Message Compact
 
 **Decision**: Implement history compression via AI summarization.
 

@@ -151,6 +151,12 @@ exit 1
 | **PreToolUse** | continue execution | stderr → agent, block tool | stderr → user |  
 | **PostToolUse** | continue execution | stderr → agent (tool ran) | stderr → user |
 | **Stop** | allow stop | stderr → agent, block stop | stderr → user |
+| **PreCompact**    | continue execution | stderr → user (non-blocking) | stderr → user |
+| **PostCompact**   | continue execution | stderr → user (non-blocking) | stderr → user |
+| **PreCompact** | continue execution (stdout → additional instructions) | stderr → user (non-blocking) | stderr → user |
+| **PostCompact** | continue execution | stderr → user (non-blocking) | stderr → user |
+| **PreCompact** | stdout → merged into compact instructions | stderr → user (non-blocking) | stderr → user |
+| **PostCompact** | continue execution | stderr → user (non-blocking) | stderr → user |
 
 ### Implementation Integration
 

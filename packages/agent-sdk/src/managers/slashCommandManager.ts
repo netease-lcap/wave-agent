@@ -158,6 +158,23 @@ export class SlashCommandManager {
         }
       },
     });
+
+    // Register built-in compact command
+    this.registerCommand({
+      id: "compact",
+      name: "compact",
+      description: "Compact conversation history to reduce context usage",
+      handler: async (args?: string, signal?: AbortSignal) => {
+        this.aiManager.abortAIMessage();
+
+        const customInstructions = args?.trim() || undefined;
+
+        await this.aiManager.compactConversation({
+          customInstructions,
+          abortSignal: signal,
+        });
+      },
+    });
   }
 
   /**

@@ -82,6 +82,11 @@
 - `PermissionRequest` - Triggered when Wave requests permission to use a tool
 - `SubagentStop` - Triggered when a subagent finishes its response cycle
 - `WorktreeCreate` - Triggered when a new worktree is created
+- `CwdChanged` - Triggered when the current working directory changes
+- `SessionStart` - Triggered when a new session starts (startup, compact, clear)
+- `SessionEnd` - Triggered when a session ends
+- `PreCompact` - Triggered before conversation compaction
+- `PostCompact` - Triggered after successful conversation compaction
 
 **Validation Rules**: Must be one of the four defined values
 
@@ -141,6 +146,8 @@
 - `prompt?: string` - User prompt text (UserPromptSubmit)
 - `subagent_type?: string` - Subagent type when hook is executed by a subagent
 - `name?: string` - Worktree name (WorktreeCreate)
+- `compact_instructions?: string` - Custom instructions for compaction (PreCompact)
+- `compact_summary?: string` - AI-generated compact summary (PostCompact)
 
 **Validation Rules**:
 - session_id must be non-empty
@@ -158,7 +165,7 @@
 Represents the processing context for interpreting hook execution results.
 
 **Fields**:
-- `event: HookEvent` - The hook event type (PreToolUse, PostToolUse, UserPromptSubmit, Stop)
+- `event: HookEvent` - The hook event type (PreToolUse, PostToolUse, UserPromptSubmit, Stop, PreCompact, PostCompact)
 - `exitCode: number` - The hook process exit code
 - `stdout: string` - Hook standard output
 - `stderr: string` - Hook standard error
@@ -336,7 +343,7 @@ interface HookJsonInput {
   session_id: string;           // Unique session identifier
   transcript_path: string;      // Absolute path to session file
   cwd: string;                 // Current working directory  
-  hook_event_name: HookEvent;  // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "PermissionRequest" | "SubagentStop" | "WorktreeCreate"
+  hook_event_name: HookEvent;  // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "PermissionRequest" | "SubagentStop" | "WorktreeCreate" | "CwdChanged" | "SessionStart" | "SessionEnd" | "PreCompact" | "PostCompact"
   
   // Event-specific fields (optional, based on event type)
   tool_name?: string;
@@ -345,6 +352,8 @@ interface HookJsonInput {
   prompt?: string;
   subagent_type?: string;
   name?: string;
+  compact_instructions?: string;
+  compact_summary?: string;
 }
 ```
 
@@ -435,6 +444,8 @@ export interface HookJsonInput {
   tool_input?: unknown;
   tool_response?: unknown;
   prompt?: string;
+  compact_instructions?: string;  // PreCompact
+  compact_summary?: string;       // PostCompact
 }
 
 // Extended execution context for internal use
@@ -443,6 +454,8 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   toolInput?: unknown;
   toolResponse?: unknown;
   userPrompt?: string;
+  compactInstructions?: string;
+  compactSummary?: string;
 }
 
 // JSON construction helper

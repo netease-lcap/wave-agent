@@ -24,7 +24,9 @@ export type HookEvent =
   | "WorktreeRemove"
   | "CwdChanged"
   | "SessionStart"
-  | "SessionEnd";
+  | "SessionEnd"
+  | "PreCompact"
+  | "PostCompact";
 
 // Individual hook command configuration
 export interface HookCommand {
@@ -117,6 +119,8 @@ export function isValidHookEvent(event: string): event is HookEvent {
     "CwdChanged",
     "SessionStart",
     "SessionEnd",
+    "PreCompact",
+    "PostCompact",
   ].includes(event);
 }
 
@@ -187,6 +191,8 @@ export interface HookJsonInput {
   source?: SessionStartSource; // Present for SessionStart events
   agent_type?: string; // Present for SessionStart events
   end_source?: SessionEndSource; // Present for SessionEnd events
+  compact_instructions?: string; // Present for PreCompact events
+  compact_summary?: string; // Present for PostCompact events
 }
 
 // Extended context interface for passing additional data to hook executor
@@ -205,6 +211,8 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   source?: SessionStartSource; // Session start source (SessionStart only)
   agentType?: string; // Agent type identifier (SessionStart only)
   endSource?: SessionEndSource; // Session end source (SessionEnd only)
+  compactInstructions?: string; // Custom instructions for PreCompact
+  compactSummary?: string; // Summary text for PostCompact
 }
 
 // Environment variables injected into hook processes

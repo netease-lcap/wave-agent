@@ -1,22 +1,22 @@
-# Feature Specification: Message Compression
+# Feature Specification: Message Compact
 
-**Feature Branch**: `014-message-compression`  
+**Feature Branch**: `014-message-compact`  
 **Created**: 2026-01-22  
 **Input**: User description: "Manage conversation history and user input size"
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Automatic History Compression (Priority: P1)
+### User Story 1 - Automatic History Compact (Priority: P1)
 
 As an AI agent, when the conversation history becomes too long, I want to automatically summarize older messages so that I stay within the model's token limits while maintaining context.
 
 **Why this priority**: Essential for long-running sessions to prevent "context window exceeded" errors and reduce costs.
 
-**Independent Test**: Mock token usage to exceed the threshold and verify that `AIManager` triggers a compression cycle and replaces old messages with a summary block.
+**Independent Test**: Mock token usage to exceed the threshold and verify that `AIManager` triggers a compact cycle and replaces old messages with a summary block.
 
 **Acceptance Scenarios**:
 
-1. **Given** the total token count exceeds `getMaxInputTokens()`, **When** the next message is processed, **Then** the agent MUST identify messages to compress.
+1. **Given** the total token count exceeds `getMaxInputTokens()`, **When** the next message is processed, **Then** the agent MUST identify messages to compact.
 2. **Given** messages are identified for compression, **When** the summarization is complete, **Then** the original messages MUST be replaced by a `compress` block followed by the last 2 API rounds of the old message list in the session.
 3. **Given** a `compress` block exists, **When** sending messages to the API, **Then** it MUST be converted to a **user** message (matching Claude Code's auto-compact behavior).
 
@@ -38,26 +38,26 @@ As an AI agent, before each API call, I want to clear old tool result content th
 
 ---
 
-### User Story 3 - Compression Circuit Breaker (Priority: P2)
+### User Story 3 - Compact Circuit Breaker (Priority: P2)
 
-As an AI agent, when compression repeatedly fails, I want to stop attempting compression so that I avoid wasting API calls on an irrecoverable context state.
+As an AI agent, when compact repeatedly fails, I want to stop attempting compact so that I avoid wasting API calls on an irrecoverable context state.
 
 **Why this priority**: Prevents cascading failures and unnecessary API costs when the context is corrupted.
 
-**Independent Test**: Simulate 3 consecutive compression failures and verify that the 4th high-token-usage turn skips compression entirely.
+**Independent Test**: Simulate 3 consecutive compact failures and verify that the 4th high-token-usage turn skips compact entirely.
 
 **Acceptance Scenarios**:
 
-1. **Given** compression has failed 3 consecutive times, **When** token usage again exceeds the threshold, **Then** compression MUST be skipped and a warning logged.
-2. **Given** compression succeeds, **When** the next compression cycle runs, **Then** the consecutive failure counter MUST be reset to 0.
+1. **Given** compact has failed 3 consecutive times, **When** token usage again exceeds the threshold, **Then** compact MUST be skipped and a warning logged.
+2. **Given** compact succeeds, **When** the next compact cycle runs, **Then** the consecutive failure counter MUST be reset to 0.
 
 ---
 
 ### User Story 4 - Post-Compact Context Restoration (Priority: P2)
 
-As an AI agent, after compression replaces conversation history, I want important context re-injected so that I can continue working without losing track of files, directory, plan mode, skills, and background tasks.
+As an AI agent, after compact replaces conversation history, I want important context re-injected so that I can continue working without losing track of files, directory, plan mode, skills, and background tasks.
 
-**Why this priority**: Prevents the agent from losing critical environmental context after compression.
+**Why this priority**: Prevents the agent from losing critical environmental context after compact.
 
 **Independent Test**: Verify that after compression, the summary includes sections for recent file reads, working directory, plan mode status, available skills, and background task status.
 
@@ -88,6 +88,41 @@ As a user working in plan mode during a long session, I want the plan mode instr
 
 ---
 
+### User Story 6 - Manual `/compact` Command (Priority: P2)
+
+As a user, I want to manually trigger conversation compaction with optional custom instructions, so that I can proactively reduce context usage and focus the summary on specific aspects of the conversation.
+
+**Why this priority**: Gives users control over context management, enabling proactive compaction before auto-compaction triggers and allowing custom focus for the summary.
+
+**Independent Test**: Type `/compact` or `/compact focus on the bug fix discussion`, verify compaction occurs with the optional instructions applied to the summary.
+
+**Acceptance Scenarios**:
+
+1. **Given** a conversation with messages, **When** the user types `/compact`, **Then** the conversation history MUST be compacted immediately regardless of token usage
+2. **Given** a conversation with messages, **When** the user types `/compact focus on the API design`, **Then** the custom instructions MUST be passed to the compact API call and influence the summary
+3. **Given** an AI response is in progress, **When** the user types `/compact`, **Then** the AI response MUST be aborted before compaction begins
+4. **Given** compaction is already in progress, **When** the user types `/compact` again, **Then** the second compaction MUST be skipped (circuit breaker)
+
+---
+
+### User Story 7 - PreCompact and PostCompact Hook Events (Priority: P2)
+
+As a developer, I want to configure hooks that run before and after conversation compaction, so that I can customize compaction behavior and react to compacted summaries programmatically.
+
+**Why this priority**: Enables customization of the compaction process and allows downstream systems to react to conversation summaries, but not critical for basic functionality.
+
+**Independent Test**: Configure PreCompact and PostCompact hooks, trigger compaction via `/compact` command or auto-compaction, verify PreCompact hooks execute before compaction and PostCompact hooks execute after.
+
+**Acceptance Scenarios**:
+
+1. **Given** a PreCompact hook is configured, **When** compaction is triggered, **Then** the hook MUST execute before the compact API call, receive `compact_instructions` in JSON input if custom instructions were provided, and its stdout MUST be merged as additional instructions
+2. **Given** a PostCompact hook is configured, **When** compaction completes successfully, **Then** the hook MUST execute after the compact API call and receive `compact_summary` in JSON input containing the AI-generated summary
+3. **Given** a PreCompact hook returns exit code 2, **When** the hook completes, **Then** the error MUST be shown to the user but compaction MUST continue (non-blocking)
+4. **Given** a PostCompact hook returns exit code 2, **When** the hook completes, **Then** the error MUST be shown to the user but execution MUST continue (non-blocking)
+5. **Given** both PreCompact and PostCompact hooks are configured, **When** compaction is triggered, **Then** PreCompact MUST run first, then compaction occurs, then SessionStart hooks run, then PostCompact runs last
+
+---
+
 ### Edge Cases
 
 - **Recursive Compression**: When compressing history that already contains a summary, the entire history (including the old summary) is replaced by a new continuation summary.
@@ -109,9 +144,20 @@ As a user working in plan mode during a long session, I want the plan mode instr
 - **FR-008**: System MUST re-inject post-compact context (recent file reads, working directory, plan mode, skills, background tasks) into the compression summary. When plan mode is active, the system MUST also re-inject the full plan mode `<system-reminder>` as a user message after compaction.
 - **FR-009**: System MUST strip images from messages before the compress API call.
 - **FR-010**: System MUST use the fast model for compression API calls.
-- **FR-011**: System MUST group messages by API round boundaries (not fixed count) when determining which messages to preserve after compression.
+- **FR-011**: System MUST group messages by API round boundaries (not fixed count) when determining which messages to preserve after compact.
 - **FR-012**: System MUST track recent `read` tool results for post-compact context restoration.
 - **FR-013**: System MUST re-inject plan mode `<system-reminder>` instructions after compaction when plan mode is active. This ensures the model does not lose its read-only constraints and workflow guidance after conversation history is replaced with a summary.
+- **FR-014**: System MUST support a `/compact` slash command that manually triggers conversation compaction with optional custom instructions
+- **FR-015**: System MUST pass custom instructions from `/compact [instructions]` to the compact API call to influence the generated summary
+- **FR-016**: System MUST abort any running AI response before processing `/compact`
+- **FR-017**: System MUST skip compaction if already in progress (circuit breaker for concurrent compaction)
+- **FR-018**: System MUST support PreCompact hooks that execute before conversation compaction
+- **FR-019**: System MUST support PostCompact hooks that execute after successful conversation compaction
+- **FR-020**: System MUST provide `compact_instructions` field in JSON data for PreCompact events when custom instructions are provided
+- **FR-021**: System MUST provide `compact_summary` field in JSON data for PostCompact events containing the AI-generated summary
+- **FR-022**: System MUST merge PreCompact hook stdout with user-provided custom instructions as additional compaction instructions
+- **FR-023**: System MUST treat PreCompact and PostCompact hook exit code 2 as non-blocking (compaction continues)
+- **FR-024**: System MUST NOT require matchers for PreCompact and PostCompact hook configurations
 
 ### Key Entities *(include if feature involves data)*
 

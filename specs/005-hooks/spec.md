@@ -31,6 +31,8 @@ Hooks communicate status through exit codes, stdout, and stderr:
 | `SubagentStop`     | Blocks stoppage (Subagent continues), shows stderr to Wave |
 | `PermissionRequest`| Blocks (denies) permission, shows stderr to user only |
 | `WorktreeCreate`   | Shows stderr to user only (non-blocking) |
+| `PreCompact`      | Shows stderr to user only (non-blocking) |
+| `PostCompact`     | Shows stderr to user only (non-blocking) |
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -248,6 +250,38 @@ As an SDK user, I want to inject hook configuration programmatically via `Agent.
 2. **Given** an `Agent.create()` call without `hooks` option, **When** the agent is created, **Then** the HookManager has no programmatic hooks and `hookManager.hasHooks("Stop")` returns false
 3. **Given** both `AgentOptions.hooks` and file-based hooks configure the same event (e.g., Stop), **When** the agent is created, **Then** both programmatic and file-based hooks coexist and all execute in order (programmatic first, then file-based)
 
+---
+
+### User Story 15 - PreCompact Hook for Compaction Customization (Priority: P2)
+
+As a developer, I want to run hooks before conversation compaction occurs, so that I can inject custom instructions to guide the summarization or perform pre-compaction actions.
+
+**Why this priority**: Enables customization of the compaction process, allowing teams to ensure specific information is preserved during summarization.
+
+**Independent Test**: Configure a PreCompact hook that outputs instructions via stdout, trigger compaction, and verify the instructions are included in the summarization prompt.
+
+**Acceptance Scenarios**:
+
+1. **Given** a PreCompact hook is configured, **When** compaction is triggered (auto or manual), **Then** the hook executes before the summarization API call
+2. **Given** a PreCompact hook outputs text to stdout, **When** compaction runs, **Then** the stdout content is merged with any user-provided custom instructions and passed to the summarization prompt
+3. **Given** a PreCompact hook fails, **When** compaction runs, **Then** the failure is logged but does not prevent compaction from proceeding
+
+---
+
+### User Story 16 - PostCompact Hook for Post-Compaction Actions (Priority: P2)
+
+As a developer, I want to run hooks after conversation compaction completes, so that I can perform post-compaction actions such as logging, notifications, or state synchronization.
+
+**Why this priority**: Enables downstream systems to react to compaction events, useful for audit trails and external state management.
+
+**Independent Test**: Configure a PostCompact hook, trigger compaction, and verify the hook receives the compact summary text.
+
+**Acceptance Scenarios**:
+
+1. **Given** a PostCompact hook is configured, **When** compaction completes successfully, **Then** the hook executes with the compact summary in the JSON input
+2. **Given** a PostCompact hook fails, **When** compaction runs, **Then** the failure is logged but does not affect the compaction result
+3. **Given** compaction fails, **When** the error is handled, **Then** PostCompact hooks are NOT executed
+
 ## Edge Cases
 
 - What happens when a hook command fails or times out?
@@ -316,6 +350,13 @@ As an SDK user, I want to inject hook configuration programmatically via `Agent.
 - **FR-053**: System MUST support `hooks` option in `AgentOptions` to inject hook configuration programmatically at `Agent.create()` time
 - **FR-054**: System MUST concatenate hooks from `AgentOptions.hooks` with file-based hooks, so that both programmatic and file-based hooks coexist for the same event
 - **FR-055**: System MUST validate hooks provided via `AgentOptions.hooks` using the same validation rules as file-based hook configuration
+- **FR-056**: System MUST support PreCompact hooks that execute before conversation compaction
+- **FR-057**: System MUST merge PreCompact hook stdout with user-provided custom instructions and pass them to the compaction summarization prompt
+- **FR-058**: System MUST support PostCompact hooks that execute after successful conversation compaction
+- **FR-059**: System MUST include `compact_instructions` field in JSON data for PreCompact events containing any custom instructions
+- **FR-060**: System MUST include `compact_summary` field in JSON data for PostCompact events containing the AI-generated summary
+- **FR-061**: System MUST NOT execute PostCompact hooks when compaction fails
+- **FR-062**: System MUST NOT require a matcher for PreCompact or PostCompact hook configurations
 
 ### Testing Validation Requirements
 
@@ -329,7 +370,7 @@ As an SDK user, I want to inject hook configuration programmatically via `Agent.
 ### Key Entities
 
 - **Hook Configuration**: Settings structure containing event mappings, matchers, and command definitions
-- **Hook Event**: Specific trigger points in Wave's execution cycle (PreToolUse, PostToolUse, UserPromptSubmit, Stop, PermissionRequest, SubagentStop, WorktreeCreate)
+- **Hook Event**: Specific trigger points in Wave's execution cycle (PreToolUse, PostToolUse, UserPromptSubmit, Stop, PermissionRequest, SubagentStop, WorktreeCreate, PreCompact, PostCompact)
 - **Hook Matcher**: Pattern matching system for determining which hooks apply to specific tool operations (located in utils/hookMatcher.ts)
 - **Hook Executor**: Function-based service for executing hook commands (located in services/hook.ts)
 - **Hook Settings**: Service for loading and merging hook configurations (located in services/hook.ts)
@@ -343,6 +384,9 @@ As an SDK user, I want to inject hook configuration programmatically via `Agent.
 - **ErrorBlock**: Data structure in assistant messages that contains user-visible error information for UserPromptSubmit hooks, excluded from API conversion
 - **Agent Message Collection**: The `agent.messages` array that serves as the primary validation point for testing hook behavior correctness
 - **Programmatic Hook Configuration**: `AgentOptions.hooks` field of type `PartialHookConfiguration` that allows SDK users to inject hooks at creation time, supplementing file-based configuration
+- **PreCompact Hook**: Lifecycle hook that fires before conversation compaction, receiving custom instructions via stdin JSON and returning additional instructions via stdout
+- **PostCompact Hook**: Lifecycle hook that fires after successful compaction, receiving the compact summary via stdin JSON
+- **Compact Instructions**: Custom text that guides the AI summarization during compaction, merged from user input and PreCompact hook stdout
 
 ## Success Criteria *(mandatory)*
 

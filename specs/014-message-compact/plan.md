@@ -1,11 +1,11 @@
-# Implementation Plan: Message Compression
+# Implementation Plan: Message Compact
 
-**Branch**: `014-message-compression` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/014-message-compression/spec.md`
+**Branch**: `014-message-compact` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/014-message-compact/spec.md`
 
 ## Summary
 
-Implement a history compression system in `agent-sdk` to manage token limits by automatically summarizing older messages.
+Implement a history compact system in `agent-sdk` to manage token limits by automatically summarizing older messages. Includes a `/compact` slash command for manual compaction with optional custom instructions, and PreCompact/PostCompact hook events.
 
 ## Technical Context
 
@@ -16,14 +16,14 @@ Implement a history compression system in `agent-sdk` to manage token limits by 
 **Target Platform**: CLI (Node.js)
 **Project Type**: Monorepo (agent-sdk + code)
 **Performance Goals**: Efficient summarization
-**Constraints**: Full history replacement for history compression
+**Constraints**: Full history replacement for history compaction
 **Scale/Scope**: Core resource management for all agent sessions
 
 ## Constitution Check
 
-- [x] **Package-First Architecture**: History compression in `agent-sdk`.
-- [x] **TypeScript Excellence**: Strict typing for `compress` blocks.
-- [x] **Test Alignment**: Unit tests for compression logic.
+- [x] **Package-First Architecture**: History compaction in `agent-sdk`.
+- [x] **TypeScript Excellence**: Strict typing for `compress` blocks, `compactConversation()` public API, custom instructions support.
+- [x] **Test Alignment**: Unit tests for compaction logic, compactConversation, PreCompact/PostCompact hooks.
 - [x] **Build Dependencies**: `pnpm build` required for `agent-sdk` changes.
 - [x] **Quality Gates**: `type-check` and `lint` must pass.
 - [x] **Test-Driven Development**: Write failing tests for token threshold detection first.
@@ -35,7 +35,7 @@ Implement a history compression system in `agent-sdk` to manage token limits by 
 ### Documentation (this feature)
 
 ```
-specs/014-message-compression/
+specs/014-message-compact/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output
@@ -50,10 +50,11 @@ specs/014-message-compression/
 packages/agent-sdk/
 ├── src/
 │   ├── managers/
-│   │   ├── aiManager.ts        # Trigger history compression, microcompact, circuit breaker
-│   │   └── messageManager.ts   # Compress messages, track file reads, API-round grouping
+│   │   ├── aiManager.ts              # compactConversation(), buildPostCompactContext(), circuit breaker
+│   │   ├── slashCommandManager.ts    # /compact built-in command
+│   │   └── messageManager.ts         # Compress messages, track file reads, API-round grouping
 │   ├── services/
-│   │   └── aiService.ts        # Compress API call, image stripping
+│   │   └── aiService.ts        # Compact API call, custom instructions, image stripping
 │   ├── types/
 │   │   └── messaging.ts        # ToolBlock timestamp field
 │   ├── prompts/
@@ -69,7 +70,8 @@ packages/agent-sdk/
     ├── integration/
     │   └── compactionFlow.test.ts      # Full pipeline integration tests
     ├── managers/
-    │   └── messageManager.coverage.test.ts
+    │   ├── messageManager.coverage.test.ts
+    │   └── aiManager.compactConversation.test.ts  # compactConversation tests
     └── utils/
         ├── groupMessagesByApiRound.test.ts
         └── microcompact.test.ts
