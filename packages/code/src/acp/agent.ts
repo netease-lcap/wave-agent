@@ -17,6 +17,10 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   AskUserQuestion,
   AskUserQuestionOption,
+  type Message,
+  type TextBlock,
+  type ReasoningBlock,
+  type ToolBlock,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import {
@@ -261,6 +265,9 @@ export class WaveAcpAgent implements AcpAgent {
     const { sessionId, cwd, mcpServers } = params;
     logger.info(`Loading session: ${sessionId} in ${cwd}`);
     const agent = await this.createAgent(sessionId, cwd, mcpServers);
+
+    // Replay conversation history via session/update notifications per ACP spec
+    await this.replayConversationHistory(agent);
 
     return {
       modes: this.getSessionModeState(agent),
@@ -796,6 +803,135 @@ export class WaveAcpAgent implements AcpAgent {
         return "other";
       default:
         return "other";
+    }
+  }
+
+  private async replayConversationHistory(agent: WaveAgent): Promise<void> {
+    const sessionId = agent.sessionId as AcpSessionId;
+
+    let history: Message[];
+    try {
+      const thread = await agent.getFullMessageThread();
+      history = thread.messages;
+    } catch {
+      // Fallback to in-memory messages if full thread fails
+      history = agent.messages;
+    }
+
+    for (const message of history) {
+      if (message.isMeta) continue;
+
+      const messageId = message.id;
+
+      for (const block of message.blocks) {
+        if (block.type === "text") {
+          const textBlock = block as TextBlock;
+          const update =
+            message.role === "user"
+              ? {
+                  sessionUpdate: "user_message_chunk" as const,
+                  content: { type: "text" as const, text: textBlock.content },
+                  messageId,
+                }
+              : {
+                  sessionUpdate: "agent_message_chunk" as const,
+                  content: { type: "text" as const, text: textBlock.content },
+                  messageId,
+                };
+          this.connection.sessionUpdate({ sessionId, update });
+        } else if (block.type === "reasoning") {
+          const reasoningBlock = block as ReasoningBlock;
+          this.connection.sessionUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: "agent_thought_chunk",
+              content: { type: "text", text: reasoningBlock.content },
+              messageId,
+            },
+          });
+        } else if (block.type === "tool") {
+          const toolBlock = block as ToolBlock;
+          const toolCallId =
+            toolBlock.id ||
+            "replay-" + Math.random().toString(36).substring(2, 9);
+          const effectiveName = toolBlock.name || "Tool";
+          const effectiveCompactParams = toolBlock.compactParams;
+
+          const displayTitle =
+            effectiveName && effectiveCompactParams
+              ? `${effectiveName}: ${effectiveCompactParams}`
+              : effectiveName;
+
+          let parsedParameters: Record<string, unknown> | undefined;
+          if (toolBlock.parameters) {
+            try {
+              const parsed = JSON.parse(toolBlock.parameters);
+              parsedParameters = Array.isArray(parsed)
+                ? { args: parsed }
+                : parsed;
+            } catch {
+              // Ignore parse errors
+            }
+          }
+
+          const content =
+            effectiveName && (parsedParameters || toolBlock.shortResult)
+              ? this.getToolContent(
+                  effectiveName,
+                  parsedParameters,
+                  toolBlock.shortResult,
+                )
+              : undefined;
+          const locations =
+            effectiveName && parsedParameters
+              ? this.getToolLocations(effectiveName, parsedParameters)
+              : undefined;
+          const kind = effectiveName
+            ? this.getToolKind(effectiveName)
+            : undefined;
+
+          // Emit tool_call (creation)
+          this.connection.sessionUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId,
+              title: displayTitle,
+              status: "pending",
+              content,
+              locations,
+              kind,
+              rawInput: parsedParameters,
+            },
+          });
+
+          // Emit tool_call_update with final status
+          const status: ToolCallStatus =
+            toolBlock.stage === "end"
+              ? toolBlock.success
+                ? "completed"
+                : "failed"
+              : toolBlock.stage === "running"
+                ? "in_progress"
+                : "pending";
+
+          this.connection.sessionUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId,
+              status,
+              title: displayTitle,
+              rawOutput: toolBlock.result || toolBlock.error,
+              content,
+              locations,
+              kind,
+              rawInput: parsedParameters,
+            },
+          });
+        }
+        // Skip: image, bang, compact, error, file_history, task_notification blocks
+      }
     }
   }
 
