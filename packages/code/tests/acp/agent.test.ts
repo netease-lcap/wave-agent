@@ -134,6 +134,7 @@ describe("WaveAcpAgent", () => {
           handler: vi.fn(),
         },
       ]),
+      getFullMessageThread: vi.fn().mockResolvedValue({ messages: [] }),
     };
     vi.mocked(WaveAgent.create).mockResolvedValue(
       mockWaveAgent as unknown as WaveAgent,
@@ -162,6 +163,174 @@ describe("WaveAcpAgent", () => {
         }),
       );
     });
+  });
+
+  it("should replay conversation history when loading a session", async () => {
+    const mockWaveAgent = {
+      sessionId: "replay-session-id",
+      destroy: vi.fn(),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      getFullMessageThread: vi.fn().mockResolvedValue({
+        messages: [
+          {
+            id: "msg-1",
+            role: "user",
+            blocks: [{ type: "text", content: "Hello" }],
+            timestamp: new Date().toISOString(),
+          },
+          {
+            id: "msg-2",
+            role: "assistant",
+            blocks: [
+              { type: "reasoning", content: "Thinking..." },
+              { type: "text", content: "Hi there!" },
+              {
+                type: "tool",
+                id: "tool-1",
+                name: "Read",
+                compactParams: "file.txt",
+                stage: "end",
+                success: true,
+                parameters: JSON.stringify({ file_path: "/test/file.txt" }),
+                result: "file contents",
+                shortResult: "file contents",
+              },
+            ],
+            timestamp: new Date().toISOString(),
+          },
+          {
+            id: "msg-3",
+            role: "user",
+            blocks: [{ type: "text", content: "Thanks" }],
+            timestamp: new Date().toISOString(),
+            isMeta: true,
+          },
+        ],
+      }),
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+
+    await agent.loadSession({
+      sessionId: "replay-session-id",
+      cwd: "/test",
+      mcpServers: [],
+    });
+
+    // Should emit user_message_chunk for user message
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "replay-session-id",
+        update: expect.objectContaining({
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "Hello" },
+          messageId: "msg-1",
+        }),
+      }),
+    );
+
+    // Should emit agent_thought_chunk for reasoning block
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "replay-session-id",
+        update: expect.objectContaining({
+          sessionUpdate: "agent_thought_chunk",
+          content: { type: "text", text: "Thinking..." },
+          messageId: "msg-2",
+        }),
+      }),
+    );
+
+    // Should emit agent_message_chunk for text block
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "replay-session-id",
+        update: expect.objectContaining({
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "Hi there!" },
+          messageId: "msg-2",
+        }),
+      }),
+    );
+
+    // Should emit tool_call then tool_call_update for tool block
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "replay-session-id",
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "tool-1",
+          title: "Read: file.txt",
+          status: "pending",
+        }),
+      }),
+    );
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "replay-session-id",
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "tool-1",
+          title: "Read: file.txt",
+          status: "completed",
+        }),
+      }),
+    );
+
+    // Should NOT emit anything for isMeta messages
+    const allCalls = vi.mocked(mockConnection.sessionUpdate).mock.calls;
+    for (const call of allCalls) {
+      if (
+        "messageId" in (call[0] as { update: { messageId?: string } }).update
+      ) {
+        expect(
+          (call[0] as { update: { messageId?: string } }).update.messageId,
+        ).not.toBe("msg-3");
+      }
+    }
+  });
+
+  it("should fallback to agent.messages when getFullMessageThread fails", async () => {
+    const mockWaveAgent = {
+      sessionId: "fallback-session-id",
+      destroy: vi.fn(),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      getFullMessageThread: vi.fn().mockRejectedValue(new Error("disk error")),
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          blocks: [{ type: "text", content: "Fallback msg" }],
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+
+    await agent.loadSession({
+      sessionId: "fallback-session-id",
+      cwd: "/test",
+      mcpServers: [],
+    });
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "fallback-session-id",
+        update: expect.objectContaining({
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "Fallback msg" },
+        }),
+      }),
+    );
   });
 
   it("should list all sessions when cwd is not provided", async () => {
