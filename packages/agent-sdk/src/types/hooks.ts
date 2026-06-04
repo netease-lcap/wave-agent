@@ -51,6 +51,7 @@ export interface HookExecutionContext {
   timestamp: Date;
   worktreeName?: string; // Present for WorktreeCreate
   worktreePath?: string; // Present for WorktreeRemove
+  planFilePath?: string; // Present when in plan mode
 }
 
 // Result of hook execution
@@ -183,6 +184,7 @@ export interface HookJsonInput {
   tool_name?: string; // Present for PreToolUse, PostToolUse, PermissionRequest
   tool_input?: unknown; // Present for PreToolUse, PostToolUse, PermissionRequest
   tool_response?: unknown; // Present for PostToolUse only
+  plan_file_path?: string; // Present when in plan mode
   user_prompt?: string; // Present for UserPromptSubmit only
   subagent_type?: string; // Present when hook is executed by a subagent
   name?: string; // Present for WorktreeCreate events
