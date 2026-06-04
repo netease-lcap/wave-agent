@@ -488,10 +488,8 @@ describe("SkillManager", () => {
       });
 
       expect(result.content).toContain(
-        "🧠 **test-plugin:test-skill** (personal skill)",
+        "Base directory for this skill: /path/to/skill",
       );
-      expect(result.content).toContain("*A test skill*");
-      expect(result.content).toContain("📁 Skill location: `/path/to/skill`");
       expect(result.content).toContain("# Actual Content");
       expect(result.content).not.toContain("---");
     });
@@ -523,9 +521,9 @@ describe("SkillManager", () => {
       });
 
       expect(result.content).toContain(
-        "🧠 **test-plugin:fork-skill** (personal skill)",
+        "Base directory for this skill: /path/to/skill",
       );
-      expect(result.content).not.toContain("🔄 Context: `fork`");
+      expect(result.content).not.toContain("fork");
       expect(result.content).toContain("# Actual Content");
     });
 
@@ -629,9 +627,9 @@ describe("SkillManager", () => {
         skill_name: "test-skill",
       });
 
-      expect(result.content).toContain("🧠 **test-skill**");
-      expect(result.content).toContain("personal skill");
-      expect(result.content).toContain("A test skill");
+      expect(result.content).toContain(
+        "Base directory for this skill: /path/to/skill",
+      );
       expect(result.content).toContain("# Test Content");
       expect(result.context).toEqual({ skillName: "test-skill" });
     });
@@ -681,7 +679,7 @@ describe("SkillManager", () => {
       });
 
       expect(result.content).toContain(
-        '❌ **Skill not found**: "nonexistent-skill"',
+        '**Skill not found**: "nonexistent-skill"',
       );
       expect(result.content).toContain("Available skills:");
       expect(result.content).toContain("available-skill");
@@ -710,7 +708,7 @@ describe("SkillManager", () => {
         skill_name: "invalid-skill",
       });
 
-      expect(result.content).toContain("❌ **Skill validation failed**");
+      expect(result.content).toContain("**Skill validation failed**");
       expect(result.content).toContain("Formatted Error");
     });
 
@@ -724,7 +722,7 @@ describe("SkillManager", () => {
       });
 
       expect(result.content).toContain(
-        "❌ **Error preparing skill**: Loading failed",
+        "**Error preparing skill**: Loading failed",
       );
       expect(logger.error).toHaveBeenCalledWith(
         "Failed to prepare skill 'error-skill':",
