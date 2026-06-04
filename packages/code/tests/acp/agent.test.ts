@@ -333,6 +333,171 @@ describe("WaveAcpAgent", () => {
     );
   });
 
+  it("should replay tool blocks with various edge cases", async () => {
+    const mockWaveAgent = {
+      sessionId: "edge-case-session",
+      destroy: vi.fn(),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      getFullMessageThread: vi.fn().mockResolvedValue({
+        messages: [
+          {
+            id: "msg-tool-edges",
+            role: "assistant",
+            blocks: [
+              // Tool without id — should generate a replay- prefixed id
+              {
+                type: "tool",
+                name: "Bash",
+                stage: "running",
+                parameters: JSON.stringify({ command: "ls" }),
+              },
+              // Tool with failed stage
+              {
+                type: "tool",
+                id: "tool-fail",
+                name: "Edit",
+                compactParams: "file.ts",
+                stage: "end",
+                success: false,
+                error: "edit failed",
+                parameters: JSON.stringify({
+                  file_path: "/test/file.ts",
+                  old_string: "a",
+                  new_string: "b",
+                }),
+              },
+              // Tool without name — should use "Tool" fallback
+              {
+                type: "tool",
+                id: "tool-no-name",
+                stage: "end",
+                success: true,
+                result: "ok",
+              },
+              // Tool with unparseable parameters
+              {
+                type: "tool",
+                id: "tool-bad-json",
+                name: "Bash",
+                stage: "end",
+                success: true,
+                parameters: "not-json",
+                result: "done",
+              },
+              // Skipped block types (image, bang, compact, error, file_history, task_notification)
+              { type: "image", imageUrls: ["file.png"] },
+              {
+                type: "bang",
+                command: "ls",
+                output: "",
+                stage: "end" as const,
+                exitCode: 0,
+              },
+              { type: "compact", content: "summary", sessionId: "old" },
+              { type: "error", content: "err" },
+            ],
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      }),
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+
+    await agent.loadSession({
+      sessionId: "edge-case-session",
+      cwd: "/test",
+      mcpServers: [],
+    });
+
+    // Tool without id — generated toolCallId starts with "replay-"
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: expect.stringMatching(/^replay-/),
+          title: "Bash",
+          status: "pending",
+        }),
+      }),
+    );
+    // Running stage → in_progress in update
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call_update",
+          toolCallId: expect.stringMatching(/^replay-/),
+          status: "in_progress",
+        }),
+      }),
+    );
+
+    // Failed tool
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "tool-fail",
+          title: "Edit: file.ts",
+          status: "pending",
+        }),
+      }),
+    );
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "tool-fail",
+          status: "failed",
+          rawOutput: "edit failed",
+        }),
+      }),
+    );
+
+    // Tool without name — uses "Tool" fallback, no compactParams → title is just "Tool"
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "tool-no-name",
+          title: "Tool",
+        }),
+      }),
+    );
+
+    // Tool with bad JSON parameters — parse error caught, parsedParameters undefined
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "tool_call",
+          toolCallId: "tool-bad-json",
+          rawInput: undefined,
+        }),
+      }),
+    );
+
+    // Skipped block types should not produce any session updates with these ids
+    const allCalls = vi.mocked(mockConnection.sessionUpdate).mock.calls;
+    const allUpdates = allCalls.map(
+      (c) => (c[0] as { update: { sessionUpdate: string } }).update,
+    );
+    // No extra tool_call or message_chunk for skipped types
+    const skippedTypes = allUpdates.filter(
+      (u) =>
+        u.sessionUpdate !== "tool_call" &&
+        u.sessionUpdate !== "tool_call_update" &&
+        u.sessionUpdate !== "user_message_chunk" &&
+        u.sessionUpdate !== "agent_message_chunk" &&
+        u.sessionUpdate !== "agent_thought_chunk" &&
+        u.sessionUpdate !== "available_commands_update",
+    );
+    expect(skippedTypes).toHaveLength(0);
+  });
+
   it("should list all sessions when cwd is not provided", async () => {
     const {
       listAllSessions: listAllWaveSessions,
