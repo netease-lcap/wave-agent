@@ -72,6 +72,11 @@ async function buildHookJsonInput(
     jsonInput.user_prompt = context.userPrompt;
   }
 
+  // Add plan_file_path if present
+  if (context.planFilePath !== undefined) {
+    jsonInput.plan_file_path = context.planFilePath;
+  }
+
   // Add subagent_type if present
   if (context.subagentType !== undefined) {
     jsonInput.subagent_type = context.subagentType;

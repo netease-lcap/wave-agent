@@ -1688,6 +1688,7 @@ export class AIManager {
         toolInput,
         toolResponse,
         subagentType: this.subagentType, // Include subagent type in hook context
+        planFilePath: this.permissionManager?.getPlanFilePath(),
         env:
           this.container.get<Record<string, string>>("MergedEnv") ||
           (process.env as Record<string, string>),
