@@ -382,7 +382,7 @@ export class SkillManager extends EventEmitter {
     } catch (error) {
       logger?.error(`Failed to execute skill '${skill_name}':`, error);
       return {
-        content: `❌ **Error executing skill**: ${error instanceof Error ? error.message : String(error)}`,
+        content: `**Error executing skill**: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
@@ -404,14 +404,14 @@ export class SkillManager extends EventEmitter {
 
       if (!skill) {
         return {
-          content: `❌ **Skill not found**: "${skill_name}"\n\nAvailable skills:\n${this.formatAvailableSkills()}`,
+          content: `**Skill not found**: "${skill_name}"\n\nAvailable skills:\n${this.formatAvailableSkills()}`,
         };
       }
 
       if (!skill.isValid) {
         const errorMsg = formatSkillError(skill.skillPath, skill.errors);
         return {
-          content: `❌ **Skill validation failed**:\n\n\`\`\`\n${errorMsg}\n\`\`\``,
+          content: `**Skill validation failed**:\n\n\`\`\`\n${errorMsg}\n\`\`\``,
         };
       }
 
@@ -420,7 +420,7 @@ export class SkillManager extends EventEmitter {
     } catch (error) {
       logger?.error(`Failed to prepare skill '${skill_name}':`, error);
       return {
-        content: `❌ **Error preparing skill**: ${error instanceof Error ? error.message : String(error)}`,
+        content: `**Error preparing skill**: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
@@ -429,9 +429,7 @@ export class SkillManager extends EventEmitter {
    * Prepare skill content with arguments but without bash execution
    */
   private prepareSkillContent(skill: Skill, argsString: string): string {
-    const header = `🧠 **${skill.name}** (${skill.type} skill)\n\n`;
-    const description = `*${skill.description}*\n\n`;
-    const skillPath = `📁 Skill location: \`${skill.skillPath}\`\n\n`;
+    const skillPath = `Base directory for this skill: ${skill.skillPath}\n\n`;
 
     // Extract content after frontmatter
     const contentMatch = skill.content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
@@ -451,7 +449,7 @@ export class SkillManager extends EventEmitter {
       );
     }
 
-    return header + description + skillPath + mainContent;
+    return skillPath + mainContent;
   }
 
   /**
