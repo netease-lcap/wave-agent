@@ -96,9 +96,6 @@ function isPermittedRedirect(
   }
 }
 
-const GITHUB_URL_ERROR =
-  "For GitHub URLs, please use the 'gh' CLI via the Bash tool instead (e.g., 'gh pr view', 'gh issue view', 'gh api').";
-
 // --- Tool ---
 
 export const webFetchTool: ToolPlugin = {
@@ -172,15 +169,6 @@ Usage notes:
         success: false,
         content: "",
         error: validation.error,
-      };
-    }
-
-    // Check for GitHub URLs
-    if (url.includes("github.com")) {
-      return {
-        success: false,
-        content: "",
-        error: GITHUB_URL_ERROR,
       };
     }
 
