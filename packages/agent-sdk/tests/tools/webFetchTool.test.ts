@@ -123,7 +123,7 @@ describe("webFetchTool", () => {
 
     const result = await webFetchTool.execute(
       {
-        url: "https://github.com/netese-lcap/wave-agent",
+        url: "https://github.com/netease-lcap/wave-agent",
         prompt: "Summarize",
       },
       context,
@@ -132,7 +132,7 @@ describe("webFetchTool", () => {
     // GitHub URLs are no longer hard-blocked; only a prompt-level suggestion exists
     expect(result.success).toBe(true);
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://github.com/netese-lcap/wave-agent",
+      "https://github.com/netease-lcap/wave-agent",
       expect.any(Object),
     );
   });
