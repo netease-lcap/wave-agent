@@ -109,17 +109,32 @@ describe("webFetchTool", () => {
     expect(result.content).toContain("REDIRECT_TO: https://other.com/page");
   });
 
-  it("should reject GitHub URLs and suggest gh CLI", async () => {
+  it("should allow GitHub URLs (no hard block, only prompt-level suggestion)", async () => {
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: vi
+        .fn()
+        .mockResolvedValue("<html><body>GitHub Page Content</body></html>"),
+      headers: new Headers(),
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockResponse));
+
     const result = await webFetchTool.execute(
       {
-        url: "https://github.com/netease-lcap/wave-agent",
+        url: "https://github.com/netese-lcap/wave-agent",
         prompt: "Summarize",
       },
       context,
     );
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("use the 'gh' CLI");
+    // GitHub URLs are no longer hard-blocked; only a prompt-level suggestion exists
+    expect(result.success).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://github.com/netese-lcap/wave-agent",
+      expect.any(Object),
+    );
   });
 
   it("should use cache for repeated requests", async () => {
