@@ -1232,7 +1232,7 @@ export class AIManager {
                 (toolResult.error ? `Error: ${toolResult.error}` : "");
               if (jsonRecovered) {
                 toolResultContent +=
-                  "\n\n⚠️ Tool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.";
+                  "\n\nTool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.";
               }
 
               // Update message state - tool execution completed

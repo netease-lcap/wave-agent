@@ -180,7 +180,7 @@ describe("readTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain(
-      "⚠️ System reminder: This file exists but has empty contents.",
+      "System reminder: This file exists but has empty contents.",
     );
     expect(result.shortResult).toBe("Empty file");
   });
