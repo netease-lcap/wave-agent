@@ -295,8 +295,7 @@ Usage:
         logger.warn(`File ${filePath} exists but has empty contents`);
         return {
           success: true,
-          content:
-            "⚠️ System reminder: This file exists but has empty contents.",
+          content: "System reminder: This file exists but has empty contents.",
           shortResult: "Empty file",
           metadata: {
             type: "text",
