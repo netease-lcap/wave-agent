@@ -138,7 +138,14 @@ export class PluginManager {
                 continue;
               }
             } catch {
-              // Manifest read failed (marketplace not cloned yet?) — fall through to installPlugin
+              // Manifest read failed — marketplace may not be cloned yet, try to clone/update it
+              try {
+                await marketplaceService.updateMarketplace(marketplaceName);
+              } catch (updateError) {
+                logger?.warn(
+                  `Failed to clone/update marketplace ${marketplaceName}: ${updateError instanceof Error ? updateError.message : String(updateError)}`,
+                );
+              }
             }
 
             logger?.info(`Auto-installing missing plugin: ${pluginId}`);
