@@ -8,6 +8,7 @@ import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BangManager } from "./managers/bangManager.js";
 import { CronManager } from "./managers/cronManager.js";
+import { GoalManager } from "./managers/goalManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { NotificationQueue } from "./managers/notificationQueue.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
@@ -71,6 +72,7 @@ export class Agent {
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
   private cronManager: CronManager; // Add cron manager instance
+  private goalManager: GoalManager; // Add goal manager instance
   private hookManager: HookManager; // Add hooks manager instance
   private reversionManager: ReversionManager;
   private notificationQueue: NotificationQueue; // Add notification queue instance
@@ -202,6 +204,7 @@ export class Agent {
     this.pluginManager = this.container.get("PluginManager")!;
     this.bangManager = this.container.get("BangManager")!;
     this.cronManager = this.container.get("CronManager")!;
+    this.goalManager = this.container.get("GoalManager")!;
     this.notificationQueue = this.container.get("NotificationQueue")!;
     this.messageQueue = this.container.get("MessageQueue")!;
 
@@ -262,6 +265,11 @@ export class Agent {
     if (options.permissionMode) {
       this.setPermissionMode(options.permissionMode);
     }
+
+    // Wire up goal state change callback
+    this.goalManager.setOnGoalStateChange((active, condition, elapsed) => {
+      this.options.callbacks?.onGoalStateChange?.(active, condition, elapsed);
+    });
   }
 
   // Public getter methods
@@ -341,6 +349,16 @@ export class Agent {
   /** Get queued messages */
   public get queuedMessages(): QueuedMessage[] {
     return this.messageQueue.getQueue();
+  }
+
+  /** Get goal status string */
+  public get goalStatus(): string {
+    return this.goalManager.getStatusString();
+  }
+
+  /** Check if a goal is active */
+  public get isGoalActive(): boolean {
+    return this.goalManager.isGoalActive();
   }
 
   /**

@@ -122,6 +122,9 @@ export interface ChatContextType {
   recreateAgent: () => void;
   // Trigger WorktreeRemove hook BEFORE agent destruction
   triggerWorktreeRemoveHook: (worktreePath: string) => Promise<void>;
+  // Goal state
+  isGoalActive: boolean;
+  goalElapsed?: string;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -201,6 +204,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [currentModel, setCurrentModelState] = useState("");
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
+  const [isGoalActive, setIsGoalActive] = useState(false);
+  const [goalElapsed, setGoalElapsed] = useState<string | undefined>();
 
   // MCP State
   const [mcpServerStatuses, setMcpServerStatuses] = useState<McpServerStatus[]>(
@@ -367,6 +372,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onQueuedMessagesChange: (messages) => {
           setQueuedMessages([...messages]);
+        },
+        onGoalStateChange: (active, _condition, elapsed) => {
+          setIsGoalActive(active);
+          setGoalElapsed(elapsed);
         },
       };
 
@@ -791,6 +800,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workdir,
     recreateAgent,
     triggerWorktreeRemoveHook,
+    isGoalActive,
+    goalElapsed,
   };
 
   return (

@@ -1458,23 +1458,82 @@ export class AIManager {
               }
             }
 
-            const shouldContinue = await this.executeStopHooks();
+            // Goal evaluation — supersedes Stop hooks when active
+            const goalManager = this.container.has("GoalManager")
+              ? this.container.get<import("./goalManager.js").GoalManager>(
+                  "GoalManager",
+                )
+              : undefined;
 
-            // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),
-            // restart the AI conversation cycle
-            if (shouldContinue) {
-              logger?.info(
-                `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
-              );
+            let goalContinuing = false;
 
-              // Restart the conversation to let AI fix the issues
-              // Use recursionDepth = 0 to set loading false again for continuation
-              await this.sendAIMessage({
-                recursionDepth: 0,
-                model,
-                allowedRules,
-                maxTokens,
-              });
+            if (goalManager?.isGoalActive() && !this.subagentType) {
+              // 1. Increment turn count and check circuit breakers
+              goalManager.incrementTurnCount();
+              const circuitBreaker = goalManager.checkCircuitBreakers();
+
+              if (circuitBreaker) {
+                goalManager.clearGoal();
+                this.messageManager.addUserMessage({
+                  content: `<system-reminder>${circuitBreaker}</system-reminder>`,
+                  isMeta: true,
+                });
+                // Fall through to normal Stop hooks on the final turn
+              } else {
+                // 2. Evaluate goal
+                const evaluation = await goalManager.evaluateGoal(
+                  abortController.signal,
+                );
+
+                if (evaluation.isMet) {
+                  goalManager.clearGoal();
+                  this.messageManager.addUserMessage({
+                    content: `<system-reminder>Goal achieved: ${evaluation.reason}</system-reminder>`,
+                    isMeta: true,
+                  });
+                  // Fall through to normal Stop hooks on the final turn
+                } else {
+                  const goal = goalManager.getGoal()!;
+                  goal.lastReason = evaluation.reason;
+                  this.messageManager.addUserMessage({
+                    content: `<system-reminder>Goal not yet met: ${evaluation.reason}. Continue working toward: ${goal.condition}</system-reminder>`,
+                    isMeta: true,
+                  });
+                  // Keep loading state active to prevent UI flicker
+                  this.setIsLoading(true);
+                  goalContinuing = true;
+                  await this.sendAIMessage({
+                    recursionDepth: 0,
+                    model,
+                    allowedRules,
+                    maxTokens,
+                  });
+                }
+              }
+            }
+
+            // Skip Stop hooks when goal evaluator is continuing the conversation
+            if (goalContinuing) {
+              // Goal evaluator supersedes Stop hooks
+            } else {
+              const shouldContinue = await this.executeStopHooks();
+
+              // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),
+              // restart the AI conversation cycle
+              if (shouldContinue) {
+                logger?.info(
+                  `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
+                );
+
+                // Restart the conversation to let AI fix the issues
+                // Use recursionDepth = 0 to set loading false again for continuation
+                await this.sendAIMessage({
+                  recursionDepth: 0,
+                  model,
+                  allowedRules,
+                  maxTokens,
+                });
+              }
             }
           }
         }

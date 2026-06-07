@@ -47,6 +47,9 @@ export interface InputBoxProps {
   // Token usage
   latestTotalTokens?: number;
   maxInputTokens?: number;
+  // Goal state
+  isGoalActive?: boolean;
+  goalElapsed?: string;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
@@ -59,6 +62,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   hasSlashCommand = () => false,
   latestTotalTokens = 0,
   maxInputTokens = 128000,
+  isGoalActive,
+  goalElapsed,
 }) => {
   const {
     permissionMode: chatPermissionMode,
@@ -330,6 +335,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
               permissionMode={permissionMode}
               isShellCommand={isShellCommand}
               isBtwActive={btwState.isActive}
+              isGoalActive={isGoalActive}
+              goalElapsed={goalElapsed}
               latestTotalTokens={latestTotalTokens}
               maxInputTokens={maxInputTokens}
             />

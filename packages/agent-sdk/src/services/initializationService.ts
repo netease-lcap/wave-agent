@@ -325,6 +325,19 @@ export class InitializationService {
       if (sessionToRestore) {
         messageManager.initializeFromSession(sessionToRestore);
 
+        // Restore active goal from session metadata
+        if (sessionToRestore.metadata.goalCondition) {
+          const goalManager =
+            container.get<import("../managers/goalManager.js").GoalManager>(
+              "GoalManager",
+            );
+          if (goalManager) {
+            goalManager.restoreFromSession({
+              condition: sessionToRestore.metadata.goalCondition,
+            });
+          }
+        }
+
         // Update task manager with the root session ID to ensure continuity across compactions
         taskManager.setTaskListId(
           sessionToRestore.rootSessionId || sessionToRestore.id,
