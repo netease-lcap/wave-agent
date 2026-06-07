@@ -17,6 +17,7 @@ import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
 import { BangManager } from "../managers/bangManager.js";
 import { CronManager } from "../managers/cronManager.js";
+import { GoalManager } from "../managers/goalManager.js";
 import { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import { ReversionManager } from "../managers/reversionManager.js";
 import { SubagentManager } from "../managers/subagentManager.js";
@@ -346,6 +347,9 @@ export function setupAgentContainer(
   const cronManager = new CronManager(container, messageManager.getSessionId());
   container.register("CronManager", cronManager);
   cronManager.start();
+
+  const goalManager = new GoalManager(container);
+  container.register("GoalManager", goalManager);
 
   return container;
 }

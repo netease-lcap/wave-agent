@@ -37,6 +37,8 @@ export const ChatInterface: React.FC = () => {
     workdir,
     remountKey,
     requestRemount,
+    isGoalActive,
+    goalElapsed,
   } = useChat();
 
   const displayMessages = messages;
@@ -102,6 +104,8 @@ export const ChatInterface: React.FC = () => {
             hasSlashCommand={hasSlashCommand}
             latestTotalTokens={latestTotalTokens}
             maxInputTokens={maxInputTokens}
+            isGoalActive={isGoalActive}
+            goalElapsed={goalElapsed}
           />
         </>
       )}

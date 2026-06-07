@@ -5,6 +5,8 @@ export interface StatusLineProps {
   permissionMode: string;
   isShellCommand: boolean;
   isBtwActive: boolean;
+  isGoalActive?: boolean;
+  goalElapsed?: string;
   latestTotalTokens?: number;
   maxInputTokens?: number;
 }
@@ -13,6 +15,8 @@ export const StatusLine: React.FC<StatusLineProps> = ({
   permissionMode,
   isShellCommand,
   isBtwActive,
+  isGoalActive,
+  goalElapsed,
   latestTotalTokens = 0,
   maxInputTokens = 128000,
 }) => {
@@ -36,6 +40,12 @@ export const StatusLine: React.FC<StatusLineProps> = ({
         </Text>
       ) : (
         <Text color="gray">
+          {isGoalActive && (
+            <>
+              <Text color="cyan">◎ /goal</Text> active{" "}
+              {goalElapsed && <Text>({goalElapsed})</Text>} |{" "}
+            </>
+          )}
           Mode:{" "}
           <Text
             color={

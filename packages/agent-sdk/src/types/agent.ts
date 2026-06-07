@@ -121,4 +121,9 @@ export interface AgentCallbacks
   onCommandRunningChange?: (running: boolean) => void;
   onWorkdirChange?: (newCwd: string) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
+  onGoalStateChange?: (
+    active: boolean,
+    condition?: string,
+    elapsed?: string,
+  ) => void;
 }
