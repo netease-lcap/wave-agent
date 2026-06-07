@@ -424,7 +424,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setIsCompacting(agent.isCompacting);
         setPermissionModeState(agent.getPermissionMode());
         setWorkingDirectory(agent.workingDirectory);
-        setCurrentModelState(agent.getModelConfig().model);
+        setCurrentModelState(agent.getModelConfig().model || "");
         setConfiguredModels(agent.getConfiguredModels());
         setMaxInputTokens(agent.getMaxInputTokens());
 

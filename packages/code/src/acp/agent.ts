@@ -102,7 +102,7 @@ export class WaveAcpAgent implements AcpAgent {
 
   private getSessionConfigOptions(agent: WaveAgent): SessionConfigOption[] {
     const configuredModels = agent.getConfiguredModels();
-    const currentModel = agent.getModelConfig().model;
+    const currentModel = agent.getModelConfig().model || "";
 
     return [
       {

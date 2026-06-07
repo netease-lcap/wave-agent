@@ -518,12 +518,18 @@ export class Agent {
     });
 
     // Log session_start event
-    const modelConfig = this.getModelConfig();
-    logOTelEvent("session_start", {
-      sessionId: this.messageManager.getSessionId(),
-      model: modelConfig.model,
-      workdir: this.workdir,
-    }).catch(() => {}); // Non-blocking
+    try {
+      const modelConfig = this.getModelConfig();
+      if (modelConfig.model) {
+        logOTelEvent("session_start", {
+          sessionId: this.messageManager.getSessionId(),
+          model: modelConfig.model,
+          workdir: this.workdir,
+        }).catch(() => {}); // Non-blocking
+      }
+    } catch {
+      // Model not configured yet - will be available after SSO login
+    }
   }
 
   /**
