@@ -10,6 +10,7 @@ const statusColor: Record<TaskNotificationBlock["status"], string> = {
   completed: "green",
   failed: "red",
   killed: "yellow",
+  aborted: "gray",
 };
 
 export const TaskNotificationMessage = ({

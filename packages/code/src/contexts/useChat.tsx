@@ -18,6 +18,7 @@ import type {
   PermissionDecision,
   PermissionMode,
   QueuedMessage,
+  WorkflowRun,
 } from "wave-agent-sdk";
 import {
   Agent,
@@ -66,6 +67,9 @@ export interface ChatContextType {
   disconnectMcpServer: (serverName: string) => Promise<boolean>;
   // Background tasks
   backgroundTasks: BackgroundTask[];
+  // Workflow runs
+  workflowRuns: WorkflowRun[];
+  stopWorkflowRun: (runId: string) => void;
   // Tasks
   tasks: Task[];
   getBackgroundTaskOutput: (taskId: string) => {
@@ -214,6 +218,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Background tasks state
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
+  // Workflow runs state
+  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
   // Tasks state
   const [tasks, setTasks] = useState<Task[]>([]);
 
@@ -351,6 +357,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onBackgroundTasksChange: (tasks) => {
           setBackgroundTasks([...tasks]);
+          // Also refresh workflow runs since workflows are background tasks
+          const runs = agentRef.current?.getWorkflowRuns();
+          if (runs) setWorkflowRuns([...runs]);
         },
         onTasksChange: (tasks) => {
           setTasks([...tasks]);
@@ -608,6 +617,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return agentRef.current.stopBackgroundTask(taskId);
   }, []);
 
+  const stopWorkflowRun = useCallback((runId: string) => {
+    agentRef.current?.stopWorkflowRun(runId);
+  }, []);
+
   const hasSlashCommand = useCallback((commandId: string) => {
     if (!agentRef.current) return false;
     return agentRef.current.hasSlashCommand(commandId);
@@ -773,6 +786,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     connectMcpServer,
     disconnectMcpServer,
     backgroundTasks,
+    workflowRuns,
+    stopWorkflowRun,
     tasks,
     getBackgroundTaskOutput,
     stopBackgroundTask,

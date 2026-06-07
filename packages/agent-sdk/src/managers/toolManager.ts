@@ -25,6 +25,7 @@ import {
 } from "../tools/taskManagementTools.js";
 import { enterWorktreeTool } from "../tools/enterWorktreeTool.js";
 import { exitWorktreeTool } from "../tools/exitWorktreeTool.js";
+import { workflowTool } from "../tools/workflowTool.js";
 import { McpManager } from "./mcpManager.js";
 import { PermissionManager } from "./permissionManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
@@ -132,6 +133,7 @@ class ToolManager {
       webFetchTool,
       enterWorktreeTool,
       exitWorktreeTool,
+      workflowTool,
     ];
 
     for (const tool of builtInTools) {
@@ -244,6 +246,11 @@ class ToolManager {
       hookManager: this.container.has("HookManager")
         ? this.container.get<import("./hookManager.js").HookManager>(
             "HookManager",
+          )
+        : undefined,
+      workflowManager: this.container.has("WorkflowManager")
+        ? this.container.get<import("./workflowManager.js").WorkflowManager>(
+            "WorkflowManager",
           )
         : undefined,
       sessionId: context.sessionId,

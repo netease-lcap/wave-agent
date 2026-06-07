@@ -371,6 +371,8 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
         } else if (command === "model") {
           dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
+        } else if (command === "workflows") {
+          dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: true });
         } else if (command === "btw") {
           dispatch({
             type: "SET_BTW_STATE",
@@ -756,6 +758,7 @@ export const handleInput = async (
         state.showStatusCommand ||
         state.showPluginManager ||
         state.showModelSelector ||
+        state.showWorkflowManager ||
         state.btwState.isActive
       )
     ) {
@@ -780,6 +783,7 @@ export const handleInput = async (
     state.showStatusCommand ||
     state.showPluginManager ||
     state.showModelSelector ||
+    state.showWorkflowManager ||
     state.btwState.isActive
   ) {
     if (
@@ -790,6 +794,7 @@ export const handleInput = async (
       state.showStatusCommand ||
       state.showPluginManager ||
       state.showModelSelector ||
+      state.showWorkflowManager ||
       state.btwState.isActive
     ) {
       return true;

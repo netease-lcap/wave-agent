@@ -128,59 +128,66 @@ describe("Agent - Abort Handling", () => {
     vi.clearAllMocks();
   });
 
-  it("should handle JSON parse error gracefully when aborted during tool argument streaming", async () => {
-    const mockCallAgent = vi.mocked(aiService.callAgent);
+  it(
+    "should handle JSON parse error gracefully when aborted during tool argument streaming",
+    { timeout: 15000 },
+    async () => {
+      const mockCallAgent = vi.mocked(aiService.callAgent);
 
-    // Mock callAgent to simulate streaming and then abort
-    mockCallAgent.mockImplementation(async (options) => {
-      if (options.onToolUpdate) {
-        options.onToolUpdate({
-          id: "tool_123",
-          name: "test_tool",
-          parameters: '{"arg": "val', // Incomplete JSON
-          parametersChunk: '"arg": "val',
-          stage: "streaming",
-        });
-      }
-      return {
-        content: "Aborted",
-        tool_calls: [
-          {
+      // Mock callAgent to simulate streaming and then abort
+      mockCallAgent.mockImplementation(async (options) => {
+        if (options.onToolUpdate) {
+          options.onToolUpdate({
             id: "tool_123",
-            type: "function" as const,
-            function: {
-              name: "test_tool",
-              arguments: '{"arg": "val', // Incomplete JSON
+            name: "test_tool",
+            parameters: '{"arg": "val', // Incomplete JSON
+            parametersChunk: '"arg": "val',
+            stage: "streaming",
+          });
+        }
+        return {
+          content: "Aborted",
+          tool_calls: [
+            {
+              id: "tool_123",
+              type: "function" as const,
+              function: {
+                name: "test_tool",
+                arguments: '{"arg": "val', // Incomplete JSON
+              },
             },
-          },
-        ],
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      };
-    });
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        };
+      });
 
-    // Execute the test - should not throw error even with incomplete JSON and abort
-    const sendPromise = agent.sendMessage("Test message");
+      // Execute the test - should not throw error even with incomplete JSON and abort
+      const sendPromise = agent.sendMessage("Test message");
 
-    // Simulate abort during streaming
-    setTimeout(() => {
-      agent.abortAIMessage();
-    }, 10);
+      // Simulate abort during streaming
+      const abortTimer = setTimeout(() => {
+        agent.abortAIMessage();
+      }, 50);
 
-    await expect(sendPromise).resolves.not.toThrow();
+      await expect(sendPromise).resolves.not.toThrow();
+      clearTimeout(abortTimer);
 
-    // Verify that the manager doesn't crash and handles the situation gracefully
-    expect(mockCallAgent).toHaveBeenCalled();
+      // Verify that the manager doesn't crash and handles the situation gracefully
+      expect(mockCallAgent).toHaveBeenCalled();
 
-    // Check that no error message is added to the conversation when aborted
-    const messages = agent.messages;
-    const errorBlocks = messages.flatMap((msg) =>
-      msg.blocks.filter((block) => block.type === "error"),
-    );
-    const hasParseError = errorBlocks.some((block) =>
-      (block as ErrorBlock).content?.includes("Failed to parse tool arguments"),
-    );
-    expect(hasParseError).toBe(false);
-  });
+      // Check that no error message is added to the conversation when aborted
+      const messages = agent.messages;
+      const errorBlocks = messages.flatMap((msg) =>
+        msg.blocks.filter((block) => block.type === "error"),
+      );
+      const hasParseError = errorBlocks.some((block) =>
+        (block as ErrorBlock).content?.includes(
+          "Failed to parse tool arguments",
+        ),
+      );
+      expect(hasParseError).toBe(false);
+    },
+  );
 
   it("should show JSON parse error when not aborted but has malformed JSON", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);

@@ -24,11 +24,16 @@ export function parseTaskNotificationXml(
 ): TaskNotificationBlock | null {
   try {
     const taskId = extractTag(xml, "task-id");
-    const taskType = extractTag(xml, "task-type") as "shell" | "agent" | null;
+    const taskType = extractTag(xml, "task-type") as
+      | "shell"
+      | "agent"
+      | "workflow"
+      | null;
     const status = extractTag(xml, "status") as
       | "completed"
       | "failed"
       | "killed"
+      | "aborted"
       | null;
     const summary = extractTag(xml, "summary");
 

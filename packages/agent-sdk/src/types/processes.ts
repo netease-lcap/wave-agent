@@ -10,7 +10,7 @@ export type BackgroundTaskStatus =
   | "completed"
   | "failed"
   | "killed";
-export type BackgroundTaskType = "shell" | "subagent";
+export type BackgroundTaskType = "shell" | "subagent" | "workflow";
 
 export interface BackgroundTaskBase {
   id: string;
@@ -49,7 +49,15 @@ export interface BackgroundSubagent extends BackgroundTaskBase {
   type: "subagent";
 }
 
-export type BackgroundTask = BackgroundShell | BackgroundSubagent;
+export interface BackgroundWorkflow extends BackgroundTaskBase {
+  type: "workflow";
+  runId: string;
+}
+
+export type BackgroundTask =
+  | BackgroundShell
+  | BackgroundSubagent
+  | BackgroundWorkflow;
 
 export interface ForegroundTask {
   id: string;

@@ -106,8 +106,8 @@ export interface FileHistoryBlock {
 export interface TaskNotificationBlock {
   type: "task_notification";
   taskId: string;
-  taskType: "shell" | "agent";
-  status: "completed" | "failed" | "killed";
+  taskType: "shell" | "agent" | "workflow";
+  status: "completed" | "failed" | "killed" | "aborted";
   summary: string;
   outputFile?: string;
 }

@@ -28,11 +28,11 @@ This directory contains feature specifications that serve as the source of truth
 
 | Metric | Count |
 |--------|-------|
-| Specs | 55 |
-| User Stories | 240 |
-| Functional Requirements | 907 |
-| Test Files | 303 |
-| Test Cases | 3,859 |
+| Specs | 56 |
+| User Stories | 244 |
+| Functional Requirements | 927 |
+| Test Files | 312 |
+| Test Cases | 3,976 |
 
 ## Specs
 

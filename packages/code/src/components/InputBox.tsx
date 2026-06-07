@@ -12,6 +12,7 @@ import { StatusCommand } from "./StatusCommand.js";
 import { LoginCommand } from "./LoginCommand.js";
 import { PluginManagerShell } from "./PluginManagerShell.js";
 import { ModelSelector } from "./ModelSelector.js";
+import { WorkflowManager } from "./WorkflowManager.js";
 import { StatusLine } from "./StatusLine.js";
 import { BtwDisplay } from "./BtwDisplay.js";
 import { useInputManager } from "../hooks/useInputManager.js";
@@ -115,6 +116,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showLoginCommand,
     showPluginManager,
     showModelSelector,
+    showWorkflowManager,
     setShowBackgroundTaskManager,
     setShowMcpManager,
     setShowRewindManager,
@@ -123,6 +125,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowLoginCommand,
     setShowPluginManager,
     setShowModelSelector,
+    setShowWorkflowManager,
     // Permission mode
     permissionMode,
     setPermissionMode,
@@ -162,7 +165,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showPluginManager ||
       showModelSelector ||
       showBackgroundTaskManager ||
-      showMcpManager
+      showMcpManager ||
+      showWorkflowManager
     ) {
       return;
     }
@@ -296,13 +300,18 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
+      {showWorkflowManager && (
+        <WorkflowManager onCancel={() => setShowWorkflowManager(false)} />
+      )}
+
       {showBackgroundTaskManager ||
         showMcpManager ||
         showRewindManager ||
         showHelp ||
         showStatusCommand ||
         showLoginCommand ||
-        showPluginManager || (
+        showPluginManager ||
+        showWorkflowManager || (
           <Box flexDirection="column">
             <Box
               borderStyle="single"

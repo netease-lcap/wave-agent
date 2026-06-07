@@ -31,6 +31,7 @@ export const useInputManager = (
     onStatusCommandStateChange,
     onPluginManagerStateChange,
     onModelSelectorStateChange,
+    onWorkflowManagerStateChange,
     onImagesStateChange,
     onSendMessage,
     onHasSlashCommand,
@@ -217,6 +218,8 @@ export const useInputManager = (
                 dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
               } else if (command === "model") {
                 dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
+              } else if (command === "workflows") {
+                dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: true });
               } else if (command === "btw") {
                 dispatch({
                   type: "SET_BTW_STATE",
@@ -312,6 +315,10 @@ export const useInputManager = (
   useEffect(() => {
     onModelSelectorStateChange?.(state.showModelSelector);
   }, [state.showModelSelector, onModelSelectorStateChange]);
+
+  useEffect(() => {
+    onWorkflowManagerStateChange?.(state.showWorkflowManager);
+  }, [state.showWorkflowManager, onWorkflowManagerStateChange]);
 
   useEffect(() => {
     onImagesStateChange?.(state.attachedImages);
@@ -479,6 +486,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: show });
   }, []);
 
+  const setShowWorkflowManager = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: show });
+  }, []);
+
   const setPermissionMode = useCallback(
     (mode: PermissionMode) => {
       dispatch({ type: "SET_PERMISSION_MODE", payload: mode });
@@ -593,6 +604,7 @@ export const useInputManager = (
     showLoginCommand: state.showLoginCommand,
     showPluginManager: state.showPluginManager,
     showModelSelector: state.showModelSelector,
+    showWorkflowManager: state.showWorkflowManager,
     permissionMode: state.permissionMode,
     attachedImages: state.attachedImages,
     btwState: state.btwState,
@@ -636,6 +648,7 @@ export const useInputManager = (
     setShowLoginCommand,
     setShowPluginManager,
     setShowModelSelector,
+    setShowWorkflowManager,
     setPermissionMode,
     setBtwState,
 
