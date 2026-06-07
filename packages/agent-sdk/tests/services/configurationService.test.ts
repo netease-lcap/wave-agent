@@ -429,13 +429,15 @@ describe("ConfigurationService", () => {
       expect(config.maxTokens).toBe(expectedMaxTokens);
     });
 
-    it("should throw when models are missing", () => {
+    it("should return undefined model/fastModel when not configured", () => {
       const originalModel = process.env.WAVE_MODEL;
       const originalFastModel = process.env.WAVE_FAST_MODEL;
       delete process.env.WAVE_MODEL;
       delete process.env.WAVE_FAST_MODEL;
       try {
-        expect(() => configService.resolveModelConfig()).toThrow();
+        const config = configService.resolveModelConfig();
+        expect(config.model).toBeUndefined();
+        expect(config.fastModel).toBeUndefined();
       } finally {
         process.env.WAVE_MODEL = originalModel;
         process.env.WAVE_FAST_MODEL = originalFastModel;

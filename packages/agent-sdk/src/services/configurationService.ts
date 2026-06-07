@@ -33,8 +33,6 @@ import {
 import {
   GatewayConfig,
   ModelConfig,
-  ConfigurationError,
-  CONFIG_ERRORS,
   PermissionMode,
   AgentOptions,
 } from "../types/index.js";
@@ -410,7 +408,7 @@ export class ConfigurationService {
    * @param fetchOptions - Fetch options override (optional)
    * @param fetch - Custom fetch implementation override (optional)
    * @returns Resolved gateway configuration
-   * @throws ConfigurationError if required configuration is missing after fallbacks
+   * @returns Resolved model configuration (model/fastModel may be undefined if not yet configured)
    */
   resolveGatewayConfig(
     apiKey?: string,
@@ -524,25 +522,6 @@ export class ConfigurationService {
     const resolvedFastModel =
       fastModel || this.options.fastModel || process.env.WAVE_FAST_MODEL;
 
-    // Validate required fields
-    if (!resolvedAgentModel) {
-      throw new ConfigurationError(CONFIG_ERRORS.MISSING_MODEL, "model", {
-        constructor: model,
-        environment: process.env.WAVE_MODEL,
-      });
-    }
-
-    if (!resolvedFastModel) {
-      throw new ConfigurationError(
-        CONFIG_ERRORS.MISSING_FAST_MODEL,
-        "fastModel",
-        {
-          constructor: fastModel,
-          environment: process.env.WAVE_FAST_MODEL,
-        },
-      );
-    }
-
     // Resolve max output tokens
     const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);
 
@@ -555,6 +534,7 @@ export class ConfigurationService {
 
     // Merge model-specific settings from configuration
     const modelSpecificConfig =
+      resolvedAgentModel &&
       this.currentConfiguration?.models?.[resolvedAgentModel];
 
     if (modelSpecificConfig) {

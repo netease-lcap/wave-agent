@@ -10,6 +10,7 @@ import { OpenAIClient } from "../utils/openaiClient.js";
 import { logger } from "../utils/globalLogger.js";
 import { addOnceAbortListener } from "../utils/abortUtils.js";
 import type { GatewayConfig, ModelConfig } from "../types/index.js";
+import { ConfigurationError, CONFIG_ERRORS } from "../types/index.js";
 import {
   transformMessagesForClaudeCache,
   addCacheControlToLastTool,
@@ -189,6 +190,27 @@ export interface CallAgentResult {
   additionalFields?: Record<string, unknown>;
 }
 
+function validateModelConfig(
+  modelConfig: ModelConfig,
+): asserts modelConfig is ModelConfig & { model: string; fastModel: string } {
+  if (!modelConfig.model) {
+    throw new ConfigurationError(CONFIG_ERRORS.MISSING_MODEL, "model", {
+      constructor: undefined,
+      environment: process.env.WAVE_MODEL,
+    });
+  }
+  if (!modelConfig.fastModel) {
+    throw new ConfigurationError(
+      CONFIG_ERRORS.MISSING_FAST_MODEL,
+      "fastModel",
+      {
+        constructor: undefined,
+        environment: process.env.WAVE_FAST_MODEL,
+      },
+    );
+  }
+}
+
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
@@ -205,6 +227,9 @@ export async function callAgent(
     onToolUpdate,
     onReasoningUpdate,
   } = options;
+
+  // Validate model config at call time
+  validateModelConfig(modelConfig);
 
   // Apply global 1 QPS rate limit
   if (
@@ -775,6 +800,9 @@ export async function compactMessages(
 ): Promise<CompactMessagesResult> {
   const { gatewayConfig, modelConfig, messages, abortSignal } = options;
 
+  // Validate model config at call time
+  validateModelConfig(modelConfig);
+
   // Apply global 1 QPS rate limit
   if (
     process.env.NODE_ENV !== "test" ||
@@ -901,6 +929,9 @@ export async function processWebContent(
 ): Promise<ProcessWebContentResult> {
   const { gatewayConfig, modelConfig, content, prompt, abortSignal } = options;
 
+  // Validate model config at call time
+  validateModelConfig(modelConfig);
+
   // Apply global 1 QPS rate limit
   if (
     process.env.NODE_ENV !== "test" ||
@@ -1007,6 +1038,9 @@ export interface BtwResult {
 export async function btw(options: BtwOptions): Promise<BtwResult> {
   const { gatewayConfig, modelConfig, messages, question, abortSignal } =
     options;
+
+  // Validate model config at call time
+  validateModelConfig(modelConfig);
 
   // Apply global 1 QPS rate limit
   if (

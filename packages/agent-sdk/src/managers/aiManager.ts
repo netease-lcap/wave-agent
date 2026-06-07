@@ -943,35 +943,13 @@ export class AIManager {
         };
       }
 
-      startLLMRequestSpan(model || this.getModelConfig().model);
-      const apiStartTime = Date.now();
-      let ttftMs: number | undefined;
-
-      // If streaming, track TTFT via callback
-      if (this.stream && callAgentOptions.onContentUpdate) {
-        const originalOnContentUpdate = callAgentOptions.onContentUpdate;
-        let firstTokenReceived = false;
-        callAgentOptions.onContentUpdate = (content: string) => {
-          if (!firstTokenReceived) {
-            ttftMs = Date.now() - apiStartTime;
-            firstTokenReceived = true;
-          }
-          originalOnContentUpdate(content);
-        };
-      }
+      startLLMRequestSpan(model || this.getModelConfig().model || "");
 
       const result = await aiService.callAgent(callAgentOptions);
-      const ttltMs = Date.now() - apiStartTime;
 
       // End LLM span with usage data
       endLLMRequestSpan({
-        model: model || this.getModelConfig().model,
-        inputTokens: result.usage?.prompt_tokens,
-        outputTokens: result.usage?.completion_tokens,
-        cacheReadTokens: result.usage?.cache_read_input_tokens,
-        cacheCreationTokens: result.usage?.cache_creation_input_tokens,
-        ttftMs,
-        ttltMs,
+        model: model || this.getModelConfig().model || "",
         success: true,
         hasToolCall: !!(result.tool_calls && result.tool_calls.length > 0),
       });
@@ -1407,7 +1385,7 @@ export class AIManager {
     } catch (error) {
       // End LLM span with error
       endLLMRequestSpan({
-        model: model || this.getModelConfig().model,
+        model: model || this.getModelConfig().model || "",
         success: false,
         error: error instanceof Error ? error.message : String(error),
       });
