@@ -62,8 +62,8 @@ export interface MessageManagerCallbacks {
   // Notification callback
   onNotificationMessageAdded?: (params: {
     taskId: string;
-    taskType: "shell" | "agent";
-    status: "completed" | "failed" | "killed";
+    taskType: "shell" | "agent" | "workflow";
+    status: "completed" | "failed" | "killed" | "aborted";
     summary: string;
   }) => void;
 }

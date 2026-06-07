@@ -113,4 +113,6 @@ export interface ToolContext {
   originalWorkdir?: string;
   /** Merged environment variables (process.env + agent env) for child processes */
   env?: Record<string, string>;
+  /** Workflow manager instance for workflow orchestration */
+  workflowManager?: import("../managers/workflowManager.js").WorkflowManager;
 }

@@ -597,8 +597,8 @@ export function getMessageContent(message: Message): string {
 export interface AddNotificationMessageParams {
   messages: Message[];
   taskId: string;
-  taskType: "shell" | "agent";
-  status: "completed" | "failed" | "killed";
+  taskType: "shell" | "agent" | "workflow";
+  status: "completed" | "failed" | "killed" | "aborted";
   summary: string;
   outputFile?: string;
 }

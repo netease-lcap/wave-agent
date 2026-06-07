@@ -62,4 +62,10 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "Clear SSO authentication",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "workflows",
+    name: "workflows",
+    description: "View and manage workflow runs",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];

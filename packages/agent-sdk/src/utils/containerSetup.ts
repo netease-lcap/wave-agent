@@ -18,6 +18,7 @@ import { PluginManager } from "../managers/pluginManager.js";
 import { BangManager } from "../managers/bangManager.js";
 import { CronManager } from "../managers/cronManager.js";
 import { GoalManager } from "../managers/goalManager.js";
+import { WorkflowManager } from "../managers/workflowManager.js";
 import { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import { ReversionManager } from "../managers/reversionManager.js";
 import { SubagentManager } from "../managers/subagentManager.js";
@@ -350,6 +351,9 @@ export function setupAgentContainer(
 
   const goalManager = new GoalManager(container);
   container.register("GoalManager", goalManager);
+
+  const workflowManager = new WorkflowManager(container);
+  container.register("WorkflowManager", workflowManager);
 
   return container;
 }

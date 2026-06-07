@@ -432,6 +432,38 @@ export class Agent {
     return this.backgroundTaskManager.stopTask(id);
   }
 
+  /** Get all workflow runs */
+  public getWorkflowRuns(): import("./workflow/types.js").WorkflowRun[] {
+    if (!this.container.has("WorkflowManager")) return [];
+    return this.container
+      .get<
+        import("./managers/workflowManager.js").WorkflowManager
+      >("WorkflowManager")!
+      .listRuns();
+  }
+
+  /** Get a specific workflow run by ID */
+  public getWorkflowRun(
+    runId: string,
+  ): import("./workflow/types.js").WorkflowRun | undefined {
+    if (!this.container.has("WorkflowManager")) return undefined;
+    return this.container
+      .get<
+        import("./managers/workflowManager.js").WorkflowManager
+      >("WorkflowManager")!
+      .getRun(runId);
+  }
+
+  /** Stop a workflow run */
+  public stopWorkflowRun(runId: string): void {
+    if (!this.container.has("WorkflowManager")) return;
+    this.container
+      .get<
+        import("./managers/workflowManager.js").WorkflowManager
+      >("WorkflowManager")!
+      .stopRun(runId);
+  }
+
   /**
    * Static async factory method for creating Agent instances
    *

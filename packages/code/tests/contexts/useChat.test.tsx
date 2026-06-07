@@ -99,6 +99,7 @@ describe("ChatProvider", () => {
     getConfiguredModels: vi.fn(() => []),
     getGatewayConfig: vi.fn(() => ({ serverUrl: "http://localhost:8080" })),
     getMaxInputTokens: vi.fn(() => 128000),
+    getWorkflowRuns: vi.fn(() => []),
   };
 
   beforeEach(() => {
