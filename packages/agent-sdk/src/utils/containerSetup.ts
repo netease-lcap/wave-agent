@@ -226,6 +226,7 @@ export function setupAgentContainer(
             cwd: workdir,
             toolName: context.toolName,
             toolInput: context.toolInput,
+            planFilePath: permissionManager.getPlanFilePath(),
             env: mergedEnv,
           });
 
