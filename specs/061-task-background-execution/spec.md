@@ -107,13 +107,16 @@ As a user, I want to be automatically notified in the chat when a background tas
 - **Concurrent Access**: Multiple requests for output from the same background task.
 - **Ctrl-B pressed when no tool is running**: The system should ignore the keypress.
 - **Direct user bash commands (`!command`)**: Commands initiated directly by the user using the `!` prefix MUST NOT be affected by Ctrl-B.
+- **Timeout auto-backgrounding**: When a foreground Bash command times out, the process is auto-backgrounded instead of killed (unless the command starts with `sleep`). This preserves long-running work that just needs more time.
+- **Background tasks have no timeout**: Explicitly backgrounded tasks (`run_in_background: true`) ignore both default and explicit timeouts, running until completion or manual stop.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: The `Task` tool MUST support a `run_in_background` boolean parameter.
-- **FR-002**: When `run_in_background` is true, the system MUST initiate the task asynchronously and return a unique `task_id` and an `outputPath` to a real-time log file immediately.
+- **FR-002**: When `run_in_background` is true, the system MUST initiate the task asynchronously and return a unique `task_id` and an `outputPath` to a real-time log file immediately. The task MUST run without any timeout — background tasks continue until completion or manual stop.
+- **FR-027**: When a foreground Bash command times out, the system MUST auto-background it (via `BackgroundTaskManager.adoptProcess`) instead of killing it, unless the command's base command is in `DISALLOWED_AUTO_BACKGROUND_COMMANDS` (currently `["sleep"]`). Auto-backgrounded tasks receive a completion notification just like explicitly backgrounded tasks.
 - **FR-003**: The system MUST NOT provide a `TaskOutput` tool; instead, agents SHOULD use the `Read` tool to read the `outputPath`.
 - **FR-007**: The system MUST provide a `TaskStop` tool to terminate running background tasks.
 - **FR-008**: `TaskStop` MUST support a `task_id` parameter.

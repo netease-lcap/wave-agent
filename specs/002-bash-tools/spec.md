@@ -17,7 +17,8 @@ As an AI agent, I want to execute shell commands in the foreground so that I can
 **Acceptance Scenarios**:
 
 1. **Given** a command to execute, **When** the `Bash` tool is called, **Then** it MUST return the command's output (stdout and stderr).
-2. **Given** a command that takes time, **When** it exceeds the timeout, **Then** it MUST be terminated and return a timeout error.
+2. **Given** a foreground command that takes time, **When** it exceeds the timeout, **Then** it MUST be auto-backgrounded (if the command is allowed) or terminated (if not allowed, e.g. `sleep`).
+3. **Given** a foreground command that times out and is auto-backgrounded, **Then** the agent MUST receive a message indicating the process was moved to background with its task ID and output path.
 
 ---
 
@@ -32,8 +33,9 @@ As an AI agent, I want to run long-running commands in the background and retrie
 **Acceptance Scenarios**:
 
 1. **Given** `run_in_background` is true, **When** `Bash` is called, **Then** it MUST return a `bash_id` and an `outputPath` to a real-time log file immediately.
-2. **Given** a running background process, **When** `TaskStop` (formerly `KillBash`) is called with its ID, **Then** the process MUST be terminated.
-3. **Given** a background process started, **When** I read the provided `outputPath` file using the `Read` tool, **Then** I should see the real-time output of the process.
+2. **Given** `run_in_background` is true, **Then** the command MUST run without any timeout — it continues until completion or manual stop.
+3. **Given** a running background process, **When** `TaskStop` (formerly `KillBash`) is called with its ID, **Then** the process MUST be terminated.
+4. **Given** a background process started, **When** I read the provided `outputPath` file using the `Read` tool, **Then** I should see the real-time output of the process.
 
 ---
 
@@ -60,14 +62,17 @@ As an AI agent, I want to see the output of foreground commands in real-time so 
 - **Process Group Termination**: When killing a background process, it should terminate the entire process group to avoid leaving orphan processes.
 - **Invalid Task ID**: Calling `TaskStop` with a non-existent or expired ID should return a clear error message.
 - **Fresh Shell per Command**: Each foreground command spawns a new shell; `cd` and env changes do not persist between calls.
+- **Timeout Auto-Backgrounding**: When a foreground command times out, the system MUST auto-background it (move to `BackgroundTaskManager`) instead of killing it, unless the command starts with `sleep` (which is killed as before).
+- **Background No Timeout**: When `run_in_background` is explicitly `true`, any timeout (default or explicit) MUST be cancelled — the process runs indefinitely until completion or manual stop.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: System MUST provide a `Bash` tool for executing shell commands.
-- **FR-002**: `Bash` tool MUST support an optional `timeout` parameter (default 120s for foreground).
+- **FR-002**: `Bash` tool MUST support an optional `timeout` parameter (default 120s for foreground). When `run_in_background` is true, the timeout MUST be cancelled (no timeout applied) — background processes run until completion or manual stop.
 - **FR-003**: `Bash` tool MUST support a `run_in_background` parameter.
+- **FR-019**: When a foreground command times out, the system MUST auto-background it (via `adoptProcess`) instead of killing it, unless the command's base command is in `DISALLOWED_AUTO_BACKGROUND_COMMANDS` (currently `["sleep"]`), in which case it MUST be killed as before.
 - **FR-004**: System MUST NOT provide a `TaskOutput` (formerly `BashOutput`) tool; instead, agents SHOULD use the `Read` tool to read the `outputPath`.
 - **FR-006**: System MUST provide a `TaskStop` (formerly `KillBash`) tool to terminate background processes.
 - **FR-007**: All bash output MUST have ANSI color codes stripped.
