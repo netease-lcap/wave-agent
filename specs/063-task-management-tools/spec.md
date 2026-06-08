@@ -84,7 +84,7 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
 - **What happens when a task ID does not exist?** TaskGet and TaskUpdate should return a clear error message indicating the task was not found.
 - **How does the system handle invalid status transitions?** The system should validate that the provided status is one of the allowed values.
 - **What happens if the storage directory is not writable?** The tools should handle filesystem errors gracefully.
-- **What happens when there are many tasks?** The UI should handle a large number of tasks gracefully (e.g., by using a compact format).
+- **What happens when there are many tasks?** The TaskList component handles long task lists with terminal-adaptive display limits, priority sorting, collapsed summaries, and auto-hide of completed tasks.
 
 ## Requirements *(mandatory)*
 
@@ -105,6 +105,13 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
 - **FR-013**: Each task in the list MUST show its current status and subject.
 - **FR-014**: The task list MUST update automatically when tasks are created or updated.
 - **FR-015**: The task list MUST be distinct from "background tasks" (running processes).
+- **FR-016**: The TaskList component MUST display a header line showing total task count and breakdown: `N tasks (N done, N in progress, N open)`.
+- **FR-017**: The TaskList component MUST use a terminal-adaptive display limit: `Math.min(8, Math.max(3, rows - 12))`, where `rows` comes from Ink's `useStdout()`.
+- **FR-018**: When tasks exceed the display limit, the component MUST sort by priority: recently completed (<30s) → in_progress → pending (unblocked first) → pending blocked → older completed → deleted.
+- **FR-019**: When tasks are hidden by the display limit, the component MUST show a collapsed summary line: `+N in progress, M pending, K completed`.
+- **FR-020**: The TaskList component MUST auto-hide 5 seconds after all active tasks are completed, and reappear when a new non-completed task is added.
+- **FR-021**: Task subject text MUST use `wrap="truncate-end"` to handle long subjects gracefully.
+- **FR-022**: The component MUST track recently completed tasks (within 30s) via a ref map of taskId → completion timestamp, with expired entries pruned to trigger re-render.
 
 ### Key Entities *(include if feature involves data)*
 
