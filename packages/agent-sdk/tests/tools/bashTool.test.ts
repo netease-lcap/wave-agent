@@ -275,7 +275,37 @@ describe("bashTool", () => {
       expect(result3).toBe("say hello");
     });
 
-    it("should handle command timeout", async () => {
+    it("should auto-background on timeout for allowed commands", async () => {
+      vi.useFakeTimers();
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const promise = bashTool.execute(
+        {
+          command: "long-build",
+          timeout: 1000,
+        },
+        context,
+      );
+
+      vi.advanceTimersByTime(1001);
+      const result = await promise;
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("timed out after 1 seconds");
+      expect(result.content).toContain("moved to background");
+      expect(result.shortResult).toContain("auto-backgrounded (timeout)");
+      vi.useRealTimers();
+    });
+
+    it("should kill on timeout for sleep commands (not auto-backgrounded)", async () => {
       vi.useFakeTimers();
       const mockProcess = {
         pid: 1234,
@@ -304,7 +334,7 @@ describe("bashTool", () => {
       vi.useRealTimers();
     });
 
-    it("should handle command timeout with existing output", async () => {
+    it("should auto-background on timeout with existing output", async () => {
       vi.useFakeTimers();
       const mockProcess = {
         pid: 1234,
@@ -324,7 +354,7 @@ describe("bashTool", () => {
 
       const promise = bashTool.execute(
         {
-          command: "sleep 10",
+          command: "long-build",
           timeout: 1000,
         },
         context,
@@ -336,9 +366,8 @@ describe("bashTool", () => {
       vi.advanceTimersByTime(1001);
       const result = await promise;
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Command timed out");
-      expect(result.content).toBe("some output\n\nCommand timed out");
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("moved to background");
       vi.useRealTimers();
     });
 

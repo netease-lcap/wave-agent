@@ -30,16 +30,16 @@ This directory contains feature specifications that serve as the source of truth
 |--------|-------|
 | Specs | 56 |
 | User Stories | 244 |
-| Functional Requirements | 927 |
-| Test Files | 312 |
-| Test Cases | 3,976 |
+| Functional Requirements | 929 |
+| Test Files | 314 |
+| Test Cases | 4,013 |
 
 ## Specs
 
 | Feature | Description | US | FR | Links |
 |---------|-------------|----|----|-------|
 | File System Tools | Read, Write, Edit, Glob, Grep tools for file operations | 3 | 19 | [spec](001-fs-tools/spec.md) · [plan](001-fs-tools/plan.md) |
-| Bash Tools | Bash, BashOutput, KillBash tools for shell command execution | 3 | 17 | [spec](002-bash-tools/spec.md) · [plan](002-bash-tools/plan.md) |
+| Bash Tools | Bash, BashOutput, KillBash tools for shell command execution | 3 | 18 | [spec](002-bash-tools/spec.md) · [plan](002-bash-tools/plan.md) |
 | MCP | Model Context Protocol support for external tools and context sources | 4 | 23 | [spec](003-mcp/spec.md) · [plan](003-mcp/plan.md) |
 | Session Management | Performance-optimized, project-based session management system | 3 | 17 | [spec](004-session-management/spec.md) · [plan](004-session-management/plan.md) |
 | Hooks | Event hooks system for extending Wave behavior | 16 | 62 | [spec](005-hooks/spec.md) · [plan](005-hooks/plan.md) |
@@ -78,7 +78,7 @@ This directory contains feature specifications that serve as the source of truth
 | Rewind Command | `/rewind` to revert conversation to a previous user message, reverting file changes | 3 | 10 | [spec](056-rewind-command/spec.md) · [plan](056-rewind-command/plan.md) |
 | History Search | Ctrl+R history search for reusing previous prompts from `~/.wave/history.jsonl` | 2 | 10 | [spec](057-history-search-prompt/spec.md) · [plan](057-history-search-prompt/plan.md) |
 | General Purpose Agent | Built-in subagent for complex research, code search, and multi-step tasks | 2 | 7 | [spec](058-general-purpose-agent/spec.md) · [plan](058-general-purpose-agent/plan.md) |
-| Task Background Execution | `run_in_background`, `TaskOutput`/`TaskStop` tools, `/tasks` command replacing `/bashes` | 6 | 23 | [spec](061-task-background-execution/spec.md) · [plan](061-task-background-execution/plan.md) |
+| Task Background Execution | `run_in_background`, `TaskOutput`/`TaskStop` tools, `/tasks` command replacing `/bashes` | 6 | 24 | [spec](061-task-background-execution/spec.md) · [plan](061-task-background-execution/plan.md) |
 | Task Management Tools | TaskCreate/TaskGet/TaskUpdate/TaskList with `~/.wave/tasks/` storage and task list UI | 5 | 15 | [spec](063-task-management-tools/spec.md) · [plan](063-task-management-tools/plan.md) |
 | Plan Subagent | Built-in Plan subagent for designing implementation plans before coding | 4 | 16 | [spec](065-plan-subagent/spec.md) · [plan](065-plan-subagent/plan.md) |
 | Bash Subagent | Built-in Bash subagent for executing shell commands | 1 | 7 | [spec](066-bash-subagent/spec.md) · [plan](066-bash-subagent/plan.md) |

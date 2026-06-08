@@ -18,6 +18,17 @@ import {
 
 const BASH_DEFAULT_TIMEOUT_MS = 120000;
 
+// Commands that should not be auto-backgrounded on timeout (e.g. sleep should just be killed)
+const DISALLOWED_AUTO_BACKGROUND_COMMANDS = ["sleep"];
+
+function isAutobackgroundingAllowed(command: string): boolean {
+  const trimmed = command.trim();
+  // Get the first word of the command
+  const baseCommand = trimmed.split(/\s+/)[0];
+  if (!baseCommand) return true;
+  return !DISALLOWED_AUTO_BACKGROUND_COMMANDS.includes(baseCommand);
+}
+
 /**
  * Bash command execution tool - supports both foreground and background execution
  */
@@ -125,9 +136,12 @@ The working directory persists between commands. Try to maintain your current wo
     const runInBackground = args.run_in_background as boolean | undefined;
     const description = args.description as string | undefined;
     // Set default timeout: BASH_DEFAULT_TIMEOUT_MS for foreground, no timeout for background
-    const timeout =
-      (args.timeout as number | undefined) ??
-      (runInBackground ? undefined : BASH_DEFAULT_TIMEOUT_MS);
+    // When run_in_background is explicitly set, cancel any timeout — the intent is to
+    // let the process run to completion (matching Claude Code behavior where background()
+    // clears the timeout via cleanupListeners).
+    const timeout = runInBackground
+      ? undefined
+      : ((args.timeout as number | undefined) ?? BASH_DEFAULT_TIMEOUT_MS);
 
     if (!command || typeof command !== "string") {
       return {
@@ -195,7 +209,7 @@ The working directory persists between commands. Try to maintain your current wo
         };
       }
 
-      const { id: taskId } = backgroundTaskManager.startShell(command, timeout);
+      const { id: taskId } = backgroundTaskManager.startShell(command);
       const task = backgroundTaskManager.getTask(taskId);
       const outputPath = task?.outputPath;
       const backgroundMsg = [
@@ -300,12 +314,47 @@ The working directory persists between commands. Try to maintain your current wo
         });
       }
 
-      // Set up timeout
+      // Set up timeout — auto-background if allowed, otherwise kill
       let timeoutHandle: NodeJS.Timeout | undefined;
+      const shouldAutoBackground =
+        !!context.backgroundTaskManager && isAutobackgroundingAllowed(command);
       if (timeout && timeout > 0) {
         timeoutHandle = setTimeout(() => {
-          if (!isAborted) {
-            handleAbort("Command timed out");
+          if (!isAborted && !isBackgrounded) {
+            if (shouldAutoBackground) {
+              // Auto-background: move the process to background task manager instead of killing it
+              isBackgrounded = true;
+              if (timeoutHandle) {
+                clearTimeout(timeoutHandle);
+              }
+
+              // Unregister foreground task since it's now backgrounded
+              if (context.foregroundTaskManager) {
+                context.foregroundTaskManager.unregisterForegroundTask(
+                  foregroundTaskId,
+                );
+              }
+
+              const backgroundTaskManager = context.backgroundTaskManager!;
+              const taskId = backgroundTaskManager.adoptProcess(
+                child,
+                command,
+                outputBuffer,
+                errorBuffer,
+              );
+              const task = backgroundTaskManager.getTask(taskId);
+              const outputPath = task?.outputPath;
+              logger.info(
+                `[Bash] Command timed out after ${timeout}ms, auto-backgrounded as ${taskId}`,
+              );
+              resolve({
+                success: true,
+                content: `Command timed out after ${timeout / 1000} seconds and was moved to background with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
+                shortResult: `Process ${taskId} auto-backgrounded (timeout)`,
+              });
+            } else {
+              handleAbort("Command timed out");
+            }
           }
         }, timeout);
       }
