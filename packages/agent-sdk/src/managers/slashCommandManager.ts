@@ -102,6 +102,7 @@ export class SlashCommandManager {
       id: "clear",
       name: "clear",
       description: "Clear conversation history and reset session",
+      immediate: true,
       handler: async () => {
         this.aiManager.abortAIMessage();
 
@@ -172,6 +173,7 @@ export class SlashCommandManager {
       id: "compact",
       name: "compact",
       description: "Compact conversation history to reduce context usage",
+      immediate: true,
       handler: async (args?: string, signal?: AbortSignal) => {
         this.aiManager.abortAIMessage();
 
@@ -189,6 +191,13 @@ export class SlashCommandManager {
       id: "goal",
       name: "goal",
       description: "Set, check, or clear an autonomous goal for the session",
+      immediate: (args?: string) => {
+        const trimmed = args?.trim() ?? "";
+        return (
+          !trimmed ||
+          ["clear", "stop", "off", "reset", "none", "cancel"].includes(trimmed)
+        );
+      },
       handler: async (args?: string) => {
         const goalManager = this.goalManager;
         if (!goalManager) {
@@ -670,6 +679,18 @@ export class SlashCommandManager {
    */
   public hasCommand(commandId: string): boolean {
     return this.commands.has(commandId);
+  }
+
+  /**
+   * Check if a slash command should bypass the message queue when AI is busy.
+   * Returns true for commands marked as immediate (boolean or function).
+   */
+  public isImmediateCommand(input: string): boolean {
+    const { command: commandId, args } = parseSlashCommandInput(input);
+    const command = this.commands.get(commandId);
+    if (!command?.immediate) return false;
+    if (typeof command.immediate === "boolean") return command.immediate;
+    return command.immediate(args);
   }
 
   /**

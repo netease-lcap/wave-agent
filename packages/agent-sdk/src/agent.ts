@@ -852,11 +852,22 @@ export class Agent {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
   ): Promise<void> {
-    // If the agent is busy, enqueue the message
+    // If the agent is busy, enqueue the message — unless it's an immediate
+    // slash command (e.g., /goal clear, /clear, /compact) that should execute
+    // right away even while AI is processing
     if (this.aiManager.isLoading || this.isCommandRunning) {
-      this.messageQueue.enqueue({ content, images });
-      this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
-      return;
+      const trimmed = content.trim();
+      const isImmediate =
+        trimmed.startsWith("/") &&
+        trimmed !== "/" &&
+        this.slashCommandManager.isImmediateCommand(trimmed);
+
+      if (!isImmediate) {
+        this.messageQueue.enqueue({ content, images });
+        this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+        return;
+      }
+      // Immediate slash command: fall through to InteractionService
     }
 
     await InteractionService.sendMessage(

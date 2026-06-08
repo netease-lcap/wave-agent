@@ -8,6 +8,10 @@ export interface SlashCommand {
   name: string;
   description: string;
   handler: (args?: string, signal?: AbortSignal) => Promise<void> | void;
+  /** Whether this command should bypass the message queue when AI is busy.
+   * - `true`: always immediate
+   * - Function: receives args, returns true for immediate variants */
+  immediate?: boolean | ((args?: string) => boolean);
 }
 
 export interface CustomSlashCommandConfig {
