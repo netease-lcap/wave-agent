@@ -39,28 +39,30 @@ export const StatusLine: React.FC<StatusLineProps> = ({
           Shell: <Text color="yellow">Run shell command</Text>
         </Text>
       ) : (
-        <Text color="gray">
+        <Box>
           {isGoalActive && (
-            <>
+            <Text color="gray">
               <Text color="cyan">◎ /goal</Text> active{" "}
               {goalElapsed && <Text>({goalElapsed})</Text>} |{" "}
-            </>
+            </Text>
           )}
-          Mode:{" "}
-          <Text
-            color={
-              permissionMode === "plan"
-                ? "yellow"
-                : permissionMode === "bypassPermissions"
-                  ? "red"
-                  : "cyan"
-            }
-            bold={permissionMode === "bypassPermissions"}
-          >
-            {permissionMode}
-          </Text>{" "}
-          (Shift+Tab to cycle)
-        </Text>
+          <Text color="gray">
+            Mode:{" "}
+            <Text
+              color={
+                permissionMode === "plan"
+                  ? "yellow"
+                  : permissionMode === "bypassPermissions"
+                    ? "red"
+                    : "cyan"
+              }
+              bold={permissionMode === "bypassPermissions"}
+            >
+              {permissionMode}
+            </Text>{" "}
+            (Shift+Tab to cycle)
+          </Text>
+        </Box>
       )}
       {percentage > 0 && (
         <Text color={contextColor}>{percentage}% context</Text>
