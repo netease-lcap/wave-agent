@@ -28,6 +28,8 @@ let totalFR = 0;
 // Count US/FR per spec dir
 const counts = new Map(); // dir -> { usCount, frCount }
 
+let hasWarnings = false;
+
 for (const dir of specDirs) {
   const specFile = path.join(specsDir, dir, "spec.md");
   if (!fs.existsSync(specFile)) continue;
@@ -45,10 +47,27 @@ for (const dir of specDirs) {
 
   counts.set(dir, { usCount, frCount });
   console.log(`${dir}  US: ${usCount}  FR: ${frCount}`);
+
+  // Validate spec follows standard template
+  const warnings = [];
+  if (!content.includes("## User Scenarios & Testing *(mandatory)*"))
+    warnings.push('missing "## User Scenarios & Testing *(mandatory)*" section');
+  if (usCount === 0) warnings.push("no User Stories found (expected `### User Story N`)");
+  if (frCount === 0) warnings.push("no Functional Requirements found (expected `- **FR-N**`)");
+  for (let i = 1; i <= usCount; i++) {
+    if (!content.includes(`### User Story ${i}`))
+      warnings.push(`User Story ${i} heading skipped (non-sequential numbering)`);
+  }
+  if (!content.match(/\*\*FR-001\*\*/)) warnings.push("FR numbering doesn't start from FR-001");
+  if (warnings.length) {
+    hasWarnings = true;
+    console.warn(`  ⚠ ${dir}: ${warnings.join("; ")}`);
+  }
 }
 
 console.log("---");
 console.log(`Specs: ${totalSpecs}  User Stories: ${totalUS}  Functional Requirements: ${totalFR}`);
+if (hasWarnings) console.warn("⚠ Some specs have template warnings — see above.");
 
 // Count test files and test cases
 const rootDir = path.join(__dirname, "..");
@@ -130,16 +149,22 @@ for (const line of lines) {
       if (dirMatch) {
         const linkDir = dirMatch[1];
         let c = counts.get(linkDir);
+        let actualDir = linkDir;
         // Fallback: match by numeric prefix if dir name differs
         if (!c) {
           const prefix = linkDir.match(/^\d+/)?.[0];
           if (prefix) {
             const match = [...counts.keys()].find((d) => d.startsWith(prefix));
-            if (match) c = counts.get(match);
+            if (match) {
+              c = counts.get(match);
+              actualDir = match;
+            }
           }
         }
         if (c) {
-          newLines.push(`| ${feature} | ${description} | ${c.usCount} | ${c.frCount} | ${linksCell} |`);
+          // Fix stale links to point to actual dir name
+          const fixedLinks = linksCell.replace(new RegExp(`\\b${linkDir}\\b`, "g"), actualDir);
+          newLines.push(`| ${feature} | ${description} | ${c.usCount} | ${c.frCount} | ${fixedLinks} |`);
           continue;
         }
       }
@@ -150,6 +175,32 @@ for (const line of lines) {
   }
   if (inSpecsTable && !line.startsWith("|")) {
     inSpecsTable = false;
+    // Append any spec dirs not already in the table
+    const existingPrefixes = new Set(
+      newLines
+        .filter((l) => l.startsWith("|"))
+        .map((l) => {
+          const m = l.match(/\[spec\]\(([^/]+)\/spec\.md\)/);
+          return m ? m[1].match(/^\d+/)?.[0] : null;
+        })
+        .filter(Boolean),
+    );
+    for (const dir of specDirs) {
+      const specFile = path.join(specsDir, dir, "spec.md");
+      if (!fs.existsSync(specFile)) continue;
+      const prefix = dir.match(/^\d+/)?.[0];
+      if (prefix && existingPrefixes.has(prefix)) continue;
+      const c = counts.get(dir);
+      if (!c) continue;
+      const content = fs.readFileSync(specFile, "utf-8");
+      const titleMatch = content.match(/^# Feature Specification: (.+)/m);
+      const title = titleMatch ? titleMatch[1] : dir;
+      const hasPlan = fs.existsSync(path.join(specsDir, dir, "plan.md"));
+      const links = hasPlan
+        ? `[spec](${dir}/spec.md) · [plan](${dir}/plan.md)`
+        : `[spec](${dir}/spec.md)`;
+      newLines.push(`| ${title} | <!-- TODO: add description --> | ${c.usCount} | ${c.frCount} | ${links} |`);
+    }
   }
   newLines.push(line);
 }
