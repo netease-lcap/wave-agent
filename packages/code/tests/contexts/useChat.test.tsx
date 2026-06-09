@@ -228,6 +228,109 @@ describe("ChatProvider", () => {
     });
   });
 
+  it("updates goal elapsed time via interval when goal is active", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    // Activate goal
+    callbacks.onGoalStateChange!(true, "fix all bugs", "0m");
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isGoalActive).toBe(true);
+      expect(lastValue?.goalElapsed).toBe("<1m");
+    });
+
+    // Advance 90 seconds — should show 1m
+    vi.advanceTimersByTime(90_000);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.goalElapsed).toBe("1m");
+    });
+
+    // Advance another 2 minutes — should show 3m
+    vi.advanceTimersByTime(120_000);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.goalElapsed).toBe("3m");
+    });
+  });
+
+  it("stops goal elapsed timer when goal is cleared", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    // Activate goal
+    callbacks.onGoalStateChange!(true, "fix all bugs", "0m");
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isGoalActive).toBe(true);
+    });
+
+    // Clear goal
+    callbacks.onGoalStateChange!(false);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isGoalActive).toBe(false);
+    });
+
+    // Advance time — elapsed should NOT change (timer was stopped)
+    const elapsedAfterClear = lastValue?.goalElapsed;
+    vi.advanceTimersByTime(120_000);
+    expect(lastValue?.goalElapsed).toBe(elapsedAfterClear);
+  });
+
+  it("formats goal elapsed time with hours", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    // Activate goal
+    callbacks.onGoalStateChange!(true, "long running task", "0m");
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isGoalActive).toBe(true);
+    });
+
+    // Advance 95 minutes — should show 1h35m
+    vi.advanceTimersByTime(95 * 60_000);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.goalElapsed).toBe("1h35m");
+    });
+  });
+
   it("handles sendMessage for normal AI messages", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
