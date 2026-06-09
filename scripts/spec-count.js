@@ -50,8 +50,8 @@ for (const dir of specDirs) {
 
   // Validate spec follows standard template
   const warnings = [];
-  if (!content.includes("## User Scenarios & Testing *(mandatory)*"))
-    warnings.push('missing "## User Scenarios & Testing *(mandatory)*" section');
+  if (!content.match(/^## User Scenarios & Testing/m))
+    warnings.push('missing "## User Scenarios & Testing" section');
   if (usCount === 0) warnings.push("no User Stories found (expected `### User Story N`)");
   if (frCount === 0) warnings.push("no Functional Requirements found (expected `- **FR-N**`)");
   for (let i = 1; i <= usCount; i++) {
