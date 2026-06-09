@@ -92,6 +92,5 @@ This directory contains feature specifications that serve as the source of truth
 | SSO Authentication | /login for browser-based SSO, token storage, auto API proxy routing | 3 | 27 | [spec](076-sso-auth/spec.md) · [plan](076-sso-auth/plan.md) |
 | Custom Tools via buildTool() | buildTool() factory for SDK users to define custom tools | 3 | 11 | [spec](077-custom-tools/spec.md) · [plan](077-custom-tools/plan.md) |
 | Server-Managed Config | Download and apply managed settings from Wave AI with checksum caching and merge priority | 3 | 11 | [spec](078-server-managed-config/spec.md) · [plan](078-server-managed-config/plan.md) |
-| /goal Command | <!-- TODO: add description --> | 3 | 16 | [spec](079-goal-command/spec.md) · [plan](079-goal-command/plan.md) |
+| /goal Command | Autonomous multi-turn goal pursuit with fast-model evaluation and circuit breakers | 3 | 16 | [spec](079-goal-command/spec.md) · [plan](079-goal-command/plan.md) |
 | Workflow — Deterministic Multi-Subagent Orchestration | Deterministic multi-subagent orchestration with pipeline, parallel, and phase control flow | 4 | 20 | [spec](080-workflow/spec.md) · [plan](080-workflow/plan.md) |
-ow/plan.md) |
