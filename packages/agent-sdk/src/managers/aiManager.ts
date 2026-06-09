@@ -613,12 +613,7 @@ export class AIManager {
       if (usedTokens >= POST_COMPACT_TOKEN_BUDGET) break;
     }
 
-    // 2. Working directory
-    contextParts.push(
-      `\n\n[Working Directory]\nCurrent working directory: ${this.getWorkdir()}`,
-    );
-
-    // 3. Plan mode context
+    // 2. Plan mode context
     const currentMode = this.permissionManager?.getCurrentEffectiveMode(
       this.getModelConfig().permissionMode,
     );
@@ -894,6 +889,7 @@ export class AIManager {
           filteredToolPlugins,
           {
             workdir: this.getWorkdir(),
+            originalWorkdir: this.getOriginalWorkdir(),
             memory: combinedMemory,
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,

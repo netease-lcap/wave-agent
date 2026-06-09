@@ -114,6 +114,31 @@ interface ClaudeUsage extends CompletionUsage {
 - Simplified cache metrics: Rejected due to insufficient cost tracking granularity
 - Breaking usage interface changes: Rejected for backward compatibility requirements
 
+## System Prompt Stability: CWD Changes
+
+**Decision**: Use `originalWorkdir` (immutable) instead of `workdir` (dynamic, tracks `cd`) for the `Primary working directory` field in the system prompt's `<env>` section.
+
+**Rationale**:
+- The system prompt is rebuilt every AI turn with `this.getWorkdir()` (current CWD from DI container)
+- When an agent runs `cd subdir` in Bash, `workdir` updates, causing the `<env>` section to change
+- This invalidates the entire cached system prompt prefix, negating cache benefits
+- Claude Code accidentally avoids this by caching/freezing the env section at first computation
+- Using `originalWorkdir` (set once at session start, never updated) keeps the `<env>` section stable
+- The model still learns about CWD changes from the Bash tool's `"Shell working directory changed to X"` output
+- The `buildPostCompactContext` `[Working Directory]` section was removed since it's redundant (system prompt already shows `Primary working directory`) and could vary across compactions
+
+**Implementation**:
+- `buildSystemPrompt` options: added `originalWorkdir?: string` field
+- `<env>` section: `Working directory: ${options.workdir}` → `Primary working directory: ${options.originalWorkdir ?? options.workdir}`
+- `enhanceSystemPromptWithEnvDetails`: added `originalWorkdir` parameter, same change
+- `aiManager.ts` call site: pass `originalWorkdir: this.getOriginalWorkdir()`
+- `buildPostCompactContext`: removed `[Working Directory]` section (Claude Code doesn't include it)
+
+**Alternatives considered**:
+- Show both `Primary working directory` and `Current shell directory`: Rejected because adding a varying field to the `<env>` section would still break prompt cache
+- Reset CWD after every bash command (like Claude Code's opt-in `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR`): Rejected as too disruptive to agent workflow; the model may legitimately need to run commands in a subdirectory
+- Freeze/cached the env section like Claude Code: Rejected because Wave rebuilds the system prompt every turn (intentionally, for freshness of other fields like date); the better fix is to make the env section content stable
+
 ## Type Safety Strategy
 
 **Decision**: Create Claude-specific type extensions without breaking existing contracts
