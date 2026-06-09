@@ -28,11 +28,11 @@ This directory contains feature specifications that serve as the source of truth
 
 | Metric | Count |
 |--------|-------|
-| Specs | 56 |
-| User Stories | 244 |
-| Functional Requirements | 936 |
+| Specs | 57 |
+| User Stories | 247 |
+| Functional Requirements | 943 |
 | Test Files | 314 |
-| Test Cases | 4,021 |
+| Test Cases | 4,023 |
 
 ## Specs
 
@@ -70,6 +70,7 @@ This directory contains feature specifications that serve as the source of truth
 | BTW Command | `/btw` for side questions bypassing the main message queue | 3 | 10 | [spec](032-btw-command/spec.md) |
 | Model Command | `/model` interactive UI to switch between configured AI models | 3 | 13 | [spec](033-model-command/spec.md) |
 | Confirm UI | Confirmation dialog UI components for tool permission approvals | 5 | 13 | [spec](034-confirm-ui/spec.md) · [plan](034-confirm-ui/plan.md) |
+| Print Mode | Clean response-only output in `-p` mode, suppressing all subagent internals | 3 | 7 | [spec](035-print-mode/spec.md) · [plan](035-print-mode/plan.md) |
 | LSP Integration | Language Server Protocol for code intelligence (definitions, references, hover) | 3 | 8 | [spec](039-lsp-integration/spec.md) · [plan](039-lsp-integration/plan.md) |
 | Plugin | Plugin system with marketplace, scopes, Skills, LSP, MCP, Hooks, Agents | 6 | 28 | [spec](042-plugin/spec.md) · [plan](042-plugin/plan.md) |
 | Plan Mode | Shift+Tab plan mode for read-only analysis with incremental plan file editing | 8 | 25 | [spec](050-plan-mode/spec.md) · [plan](050-plan-mode/plan.md) |
