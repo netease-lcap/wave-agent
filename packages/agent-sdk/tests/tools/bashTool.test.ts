@@ -34,7 +34,7 @@ vi.mock("os", async () => {
   };
 });
 
-// Mock logger
+// Mock logger (legacy path — may not intercept actual globalLogger import)
 vi.mock("../../utils/logger", () => ({
   logger: {
     error: vi.fn(),
@@ -43,7 +43,21 @@ vi.mock("../../utils/logger", () => ({
   },
 }));
 
+// Mock globalLogger — the actual module used by bashTool.ts
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
+  setGlobalLogger: vi.fn(),
+  clearGlobalLogger: vi.fn(),
+  isLoggerConfigured: vi.fn(),
+}));
+
 import { spawn } from "child_process";
+import { logger } from "../../src/utils/globalLogger.js";
 const mockSpawn = vi.mocked(spawn);
 
 describe("bashTool", () => {
@@ -790,6 +804,142 @@ describe("bashTool", () => {
       const params = { task_id: "task_1" };
       const result = taskStopTool.formatCompactParams?.(params, context);
       expect(result).toBe("task_1");
+    });
+  });
+
+  describe("ESRCH handling in force-kill timeout (abort path)", () => {
+    let mockKill: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      mockKill = vi.spyOn(process, "kill").mockReturnValue(true as never);
+    });
+
+    afterEach(() => {
+      mockKill.mockRestore();
+    });
+
+    it("should not log error when SIGKILL throws ESRCH after abort (process already exited)", async () => {
+      vi.useFakeTimers();
+
+      mockKill.mockImplementation(((pid: number, signal?: string | number) => {
+        if (signal === "SIGKILL") {
+          const error: NodeJS.ErrnoException = new Error("kill ESRCH");
+          error.code = "ESRCH";
+          throw error;
+        }
+        return true;
+      }) as never);
+
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const abortController = new AbortController();
+      const testContext: ToolContext = {
+        abortSignal: abortController.signal,
+        backgroundTaskManager,
+        workdir: "/test/workdir",
+        taskManager: createMockTaskManager(),
+      };
+
+      const promise = bashTool.execute({ command: "sleep 10" }, testContext);
+
+      // Abort triggers the force-kill path
+      abortController.abort();
+
+      // Advance past the 1-second force-kill timeout
+      vi.advanceTimersByTime(1000);
+
+      const result = await promise;
+      expect(result.success).toBe(false);
+      expect(logger.error).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it("should log error when SIGKILL throws a non-ESRCH error after abort", async () => {
+      vi.useFakeTimers();
+
+      mockKill.mockImplementation(((pid: number, signal?: string | number) => {
+        if (signal === "SIGKILL") {
+          const error: NodeJS.ErrnoException = new Error("kill EPERM");
+          error.code = "EPERM";
+          throw error;
+        }
+        return true;
+      }) as never);
+
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const abortController = new AbortController();
+      const testContext: ToolContext = {
+        abortSignal: abortController.signal,
+        backgroundTaskManager,
+        workdir: "/test/workdir",
+        taskManager: createMockTaskManager(),
+      };
+
+      const promise = bashTool.execute({ command: "sleep 10" }, testContext);
+
+      abortController.abort();
+      vi.advanceTimersByTime(1000);
+
+      await promise;
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "Failed to force kill process:",
+        expect.objectContaining({ code: "EPERM" }),
+      );
+
+      vi.useRealTimers();
+    });
+
+    it("should not log error when SIGKILL succeeds after abort (no throw)", async () => {
+      vi.useFakeTimers();
+
+      // Default mock — no throw, SIGKILL succeeds
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const abortController = new AbortController();
+      const testContext: ToolContext = {
+        abortSignal: abortController.signal,
+        backgroundTaskManager,
+        workdir: "/test/workdir",
+        taskManager: createMockTaskManager(),
+      };
+
+      const promise = bashTool.execute({ command: "sleep 10" }, testContext);
+
+      abortController.abort();
+      vi.advanceTimersByTime(1000);
+
+      const result = await promise;
+      expect(result.success).toBe(false);
+      expect(logger.error).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
     });
   });
 });

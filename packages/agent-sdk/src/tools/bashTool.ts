@@ -379,8 +379,14 @@ The working directory persists between commands. Try to maintain your current wo
                 if (child.pid && !child.killed) {
                   try {
                     process.kill(-child.pid, "SIGKILL");
-                  } catch (killError) {
-                    logger.error("Failed to force kill process:", killError);
+                  } catch (killError: unknown) {
+                    // ESRCH means the process already exited — not an error
+                    if (
+                      !(killError instanceof Error) ||
+                      (killError as NodeJS.ErrnoException).code !== "ESRCH"
+                    ) {
+                      logger.error("Failed to force kill process:", killError);
+                    }
                   }
                 }
               }, 1000);
