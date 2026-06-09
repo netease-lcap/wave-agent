@@ -65,15 +65,15 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   let agent: Agent;
   let isReasoning = false;
   let isContent = false;
-  const subagentReasoningStates = new Map<string, boolean>();
-  const subagentContentStates = new Map<string, boolean>();
 
   // Setup callbacks for agent
+  // Print mode only outputs the main agent's response (matching Claude Code's
+  // behavior). Subagent output is internal — the main agent incorporates
+  // relevant results in its own response.
   const callbacks: AgentCallbacks = {
     onAssistantMessageAdded: () => {
       isReasoning = false;
       isContent = false;
-      // Assistant message started - no content to output yet
     },
     onAssistantReasoningUpdated: (chunk: string) => {
       if (!isReasoning) {
@@ -91,41 +91,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         }
         isContent = true;
       }
-      // FR-001: Stream content updates for real-time display - output only the new chunk
       process.stdout.write(chunk);
-    },
-
-    // Subagent message callbacks
-    onSubagentAssistantMessageAdded: (subagentId: string) => {
-      subagentReasoningStates.set(subagentId, false);
-      subagentContentStates.set(subagentId, false);
-    },
-    onSubagentAssistantReasoningUpdated: (
-      subagentId: string,
-      chunk: string,
-    ) => {
-      if (!subagentReasoningStates.get(subagentId)) {
-        process.stdout.write("\n   💭 Reasoning: ");
-        subagentReasoningStates.set(subagentId, true);
-      }
-      process.stdout.write(chunk);
-    },
-    onSubagentAssistantContentUpdated: (subagentId: string, chunk: string) => {
-      if (!subagentContentStates.get(subagentId)) {
-        if (subagentReasoningStates.get(subagentId)) {
-          process.stdout.write("\n   📝 Response: ");
-        } else {
-          process.stdout.write("\n   ");
-        }
-        subagentContentStates.set(subagentId, true);
-      }
-      process.stdout.write(chunk);
-    },
-    onSubagentUserMessageAdded: (
-      _subagentId: string,
-      params: { content: string },
-    ) => {
-      process.stdout.write(`\n   👤 User: ${params.content}\n`);
     },
 
     // Tool block callback - display tool name when tool starts
