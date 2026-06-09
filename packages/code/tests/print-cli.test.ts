@@ -229,7 +229,7 @@ test("startPrintCli handles sendMessage errors and displays usage summary", asyn
   consoleErrorSpy.mockRestore();
 });
 
-test("subagent content callbacks output correctly", async () => {
+test("subagent content callbacks are not registered in print mode", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
@@ -253,7 +253,6 @@ test("subagent content callbacks output correctly", async () => {
     .spyOn(process.stdout, "write")
     .mockImplementation(() => true);
 
-  // Mock console.error to suppress stderr output
   const consoleErrorSpy = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
@@ -262,21 +261,23 @@ test("subagent content callbacks output correctly", async () => {
 
   stdoutSpy.mockClear();
 
-  // Test onSubagentAssistantMessageAdded callback (starts subagent response)
-  // This callback only initializes state, no output
-  capturedCallbacks?.onSubagentAssistantMessageAdded?.("test-subagent-123");
-  expect(stdoutSpy).not.toHaveBeenCalled();
+  // Subagent callbacks should not be registered in print mode
+  expect(capturedCallbacks?.onSubagentAssistantMessageAdded).toBeUndefined();
+  expect(capturedCallbacks?.onSubagentAssistantContentUpdated).toBeUndefined();
+  expect(
+    capturedCallbacks?.onSubagentAssistantReasoningUpdated,
+  ).toBeUndefined();
+  expect(capturedCallbacks?.onSubagentUserMessageAdded).toBeUndefined();
 
-  // Test onSubagentAssistantContentUpdated callback (streams subagent content)
+  // Calling them as undefined should not produce output
   capturedCallbacks?.onSubagentAssistantContentUpdated?.(
     "test-subagent-123",
     "Hello from subagent",
     "Hello from subagent",
   );
-  expect(stdoutSpy).toHaveBeenCalledWith("\n   ");
-  expect(stdoutSpy).toHaveBeenCalledWith("Hello from subagent");
+  expect(stdoutSpy).not.toHaveBeenCalled();
 
-  // Test onErrorBlockAdded callback
+  // Error callback still works
   capturedCallbacks?.onErrorBlockAdded?.("Something went wrong");
   expect(stdoutSpy).toHaveBeenCalledWith("\n❌ Error: Something went wrong\n");
 
@@ -435,45 +436,11 @@ test("reasoning callbacks output correctly", async () => {
   expect(stdoutSpy).not.toHaveBeenCalledWith("\n\n📝 Response:\n");
   expect(stdoutSpy).toHaveBeenCalledWith(" world");
 
-  // 3. Trigger onSubagentAssistantReasoningUpdated and verify the output
-  stdoutSpy.mockClear();
-  capturedCallbacks?.onSubagentAssistantReasoningUpdated?.(
-    "sub-1",
-    "Sub thinking...",
-    "Sub thinking...",
-  );
-  expect(stdoutSpy).toHaveBeenCalledWith("\n   💭 Reasoning: ");
-  expect(stdoutSpy).toHaveBeenCalledWith("Sub thinking...");
-
-  // Verify header is not printed again
-  stdoutSpy.mockClear();
-  capturedCallbacks?.onSubagentAssistantReasoningUpdated?.(
-    "sub-1",
-    " more sub thinking",
-    "Sub thinking... more sub thinking",
-  );
-  expect(stdoutSpy).not.toHaveBeenCalledWith("\n   💭 Reasoning: ");
-  expect(stdoutSpy).toHaveBeenCalledWith(" more sub thinking");
-
-  // 4. Trigger onSubagentAssistantContentUpdated after subagent reasoning and verify the "📝 Response:" header
-  stdoutSpy.mockClear();
-  capturedCallbacks?.onSubagentAssistantContentUpdated?.(
-    "sub-1",
-    "Sub hello!",
-    "Sub hello!",
-  );
-  expect(stdoutSpy).toHaveBeenCalledWith("\n   📝 Response: ");
-  expect(stdoutSpy).toHaveBeenCalledWith("Sub hello!");
-
-  // Verify header is not printed again
-  stdoutSpy.mockClear();
-  capturedCallbacks?.onSubagentAssistantContentUpdated?.(
-    "sub-1",
-    " world",
-    "Sub hello! world",
-  );
-  expect(stdoutSpy).not.toHaveBeenCalledWith("\n   📝 Response: ");
-  expect(stdoutSpy).toHaveBeenCalledWith(" world");
+  // 3. Subagent callbacks are not registered in print mode
+  expect(
+    capturedCallbacks?.onSubagentAssistantReasoningUpdated,
+  ).toBeUndefined();
+  expect(capturedCallbacks?.onSubagentAssistantContentUpdated).toBeUndefined();
 
   stdoutSpy.mockRestore();
 });
