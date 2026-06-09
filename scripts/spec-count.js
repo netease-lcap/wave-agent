@@ -199,7 +199,7 @@ for (const line of lines) {
       const links = hasPlan
         ? `[spec](${dir}/spec.md) · [plan](${dir}/plan.md)`
         : `[spec](${dir}/spec.md)`;
-      newLines.push(`| ${title} | <!-- TODO: add description --> | ${c.usCount} | ${c.frCount} | ${links} |`);
+      newLines.push(`| ${title} |  | ${c.usCount} | ${c.frCount} | ${links} |`);
     }
   }
   newLines.push(line);
