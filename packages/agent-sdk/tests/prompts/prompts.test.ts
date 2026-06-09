@@ -98,10 +98,30 @@ describe("prompts", () => {
       });
 
       expect(result).toContain("Shell: zsh");
-      expect(result).toContain("Working directory: /some/path");
+      expect(result).toContain("Primary working directory: /some/path");
       expect(result).toContain("Is directory a git repo: Yes");
 
       process.env.SHELL = originalShell;
+    });
+
+    it("should use originalWorkdir for Primary working directory when provided", () => {
+      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+        workdir: "/some/path/subdir",
+        originalWorkdir: "/some/path",
+      });
+
+      expect(result).toContain("Primary working directory: /some/path");
+      expect(result).not.toContain(
+        "Primary working directory: /some/path/subdir",
+      );
+    });
+
+    it("should fall back to workdir when originalWorkdir is not provided", () => {
+      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+        workdir: "/some/path",
+      });
+
+      expect(result).toContain("Primary working directory: /some/path");
     });
 
     it("should handle bash shell in buildSystemPrompt", () => {

@@ -236,6 +236,7 @@ export function buildSystemPrompt(
   tools: ToolPlugin[],
   options: {
     workdir?: string;
+    originalWorkdir?: string;
     memory?: string;
     language?: string;
     isSubagent?: boolean;
@@ -283,7 +284,7 @@ export function buildSystemPrompt(
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: ${options.workdir}${worktreeSession ? `\nThis is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root at ${worktreeSession.originalCwd}.` : ""}
+Primary working directory: ${options.originalWorkdir ?? options.workdir}${worktreeSession ? `\nThis is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root at ${worktreeSession.originalCwd}.` : ""}
 Is directory a git repo: ${isGitRepo}
 Platform: ${platform}
 Shell: ${shellName}
@@ -310,6 +311,7 @@ Today's date: ${today}
 export function enhanceSystemPromptWithEnvDetails(
   existingSystemPrompt: string,
   workdir: string,
+  originalWorkdir?: string,
 ): string {
   const isGitRepo = isGitRepository(workdir);
   const platform = os.platform();
@@ -336,7 +338,7 @@ ${notes}
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: ${workdir}${worktreeSession ? `\nThis is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root at ${worktreeSession.originalCwd}.` : ""}
+Primary working directory: ${originalWorkdir ?? workdir}${worktreeSession ? `\nThis is a git worktree — an isolated copy of the repository. Run all commands from this directory. Do NOT \`cd\` to the original repository root at ${worktreeSession.originalCwd}.` : ""}
 Is directory a git repo: ${isGitRepo}
 Platform: ${platform}
 Shell: ${shellName}
