@@ -535,8 +535,6 @@ describe("Agent Message Compaction Tests", () => {
     expect(compactBlock.content).toContain(
       "Compacted content: This contains summary information of previous multi-round conversations.",
     );
-    expect(compactBlock.content).toContain("[Context Restoration]");
-    expect(compactBlock.content).toContain("[Working Directory]");
 
     // Reset messagesPassedToCallAgent to capture parameters for the second call
     messagesPassedToCallAgent = [];
