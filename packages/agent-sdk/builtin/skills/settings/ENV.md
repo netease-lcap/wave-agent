@@ -23,14 +23,17 @@ Wave uses several environment variables to control its core functionality.
 | :--- | :--- | :--- |
 | `WAVE_API_KEY` | API key for the AI gateway. | - |
 | `WAVE_BASE_URL` | Base URL for the AI gateway. | - |
-| `WAVE_CUSTOM_HEADERS` | Custom HTTP headers for the AI gateway (JSON string). | - |
+| `WAVE_SERVER_URL` | Server URL for SSO authentication. | - |
+| `WAVE_CUSTOM_HEADERS` | Custom HTTP headers for the AI gateway. Newline-separated `Key: Value` pairs (e.g., `"X-Foo: bar\nAuthorization: Bearer xxx"`). | - |
 | `WAVE_MODEL` | The primary AI model to use for the agent. | `gemini-3-flash` |
 | `WAVE_FAST_MODEL` | The fast AI model to use for quick tasks. | `gemini-2.5-flash` |
-| `WAVE_MAX_INPUT_TOKENS` | Maximum number of input tokens allowed. | `96000` |
-| `WAVE_MAX_OUTPUT_TOKENS` | Maximum number of output tokens allowed. | `8192` |
+| `WAVE_MAX_INPUT_TOKENS` | Maximum number of input tokens allowed. | `128000` |
+| `WAVE_MAX_OUTPUT_TOKENS` | Maximum number of output tokens allowed. | `16384` |
 | `WAVE_DISABLE_AUTO_MEMORY` | Set to `1` or `true` to disable the auto-memory feature. | `false` |
+| `WAVE_AUTO_MEMORY_FREQUENCY` | Auto memory update frequency. `1` = every turn, `2` = every 2 turns, etc. | `1` |
 | `WAVE_TASK_LIST_ID` | Explicitly set the task list ID for the session. | (Session ID) |
 | `WAVE_PROMPT_CACHE_REGEX` | Regex pattern to match model names that support prompt caching. Models matching this pattern will have cache control markers applied. | `claude` |
+| `WAVE_PLUGIN_GIT_TIMEOUT_MS` | Timeout in milliseconds for git operations when installing plugins. | `300000` |
 
 ## Configuration Scopes
 
