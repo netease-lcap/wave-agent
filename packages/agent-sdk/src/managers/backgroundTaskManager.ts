@@ -96,8 +96,14 @@ export class BackgroundTaskManager {
               if (child.pid && !child.killed) {
                 try {
                   process.kill(-child.pid, "SIGKILL");
-                } catch (error) {
-                  logger.error("Failed to force kill process:", error);
+                } catch (error: unknown) {
+                  // ESRCH means the process already exited — not an error
+                  if (
+                    !(error instanceof Error) ||
+                    (error as NodeJS.ErrnoException).code !== "ESRCH"
+                  ) {
+                    logger.error("Failed to force kill process:", error);
+                  }
                 }
               }
             }, 1000);
@@ -267,8 +273,14 @@ export class BackgroundTaskManager {
               if (child.pid && !child.killed) {
                 try {
                   process.kill(-child.pid, "SIGKILL");
-                } catch (error) {
-                  logger.error("Failed to force kill process:", error);
+                } catch (error: unknown) {
+                  // ESRCH means the process already exited — not an error
+                  if (
+                    !(error instanceof Error) ||
+                    (error as NodeJS.ErrnoException).code !== "ESRCH"
+                  ) {
+                    logger.error("Failed to force kill process:", error);
+                  }
                 }
               }
             }, 1000);

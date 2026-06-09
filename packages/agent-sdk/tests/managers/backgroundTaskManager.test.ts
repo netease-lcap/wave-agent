@@ -3,6 +3,22 @@ import { Container } from "../../src/utils/container.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { NotificationQueue } from "../../src/managers/notificationQueue.js";
 import type { BackgroundSubagent } from "../../src/types/processes.js";
+import type { ChildProcess } from "child_process";
+
+// Mock globalLogger so we can assert on logger.error
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
+  setGlobalLogger: vi.fn(),
+  clearGlobalLogger: vi.fn(),
+  isLoggerConfigured: vi.fn(),
+}));
+
+import { logger } from "../../src/utils/globalLogger.js";
 
 describe("BackgroundTaskManager notification deduplication", () => {
   let container: Container;
@@ -147,6 +163,99 @@ describe("BackgroundTaskManager notification deduplication", () => {
       expect(completedTask.status).toBe("completed");
       const notifications = notificationQueue.dequeueAll();
       expect(notifications.length).toBe(0);
+    });
+  });
+
+  describe("ESRCH handling in onStop callback (adoptProcess)", () => {
+    let mockKill: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      mockKill = vi.spyOn(process, "kill").mockReturnValue(true as never);
+    });
+
+    afterEach(() => {
+      mockKill.mockRestore();
+    });
+
+    it("should not log error when SIGKILL throws ESRCH (process already exited)", () => {
+      mockKill.mockImplementation(((pid: number, signal?: string | number) => {
+        if (signal === "SIGKILL") {
+          const error: NodeJS.ErrnoException = new Error("kill ESRCH");
+          error.code = "ESRCH";
+          throw error;
+        }
+        return true;
+      }) as never);
+
+      const mockChild = {
+        pid: 12345,
+        killed: false,
+        kill: vi.fn(),
+        stdout: { on: vi.fn(), off: vi.fn() },
+        stderr: { on: vi.fn(), off: vi.fn() },
+        on: vi.fn(),
+        off: vi.fn(),
+      } as unknown as ChildProcess;
+
+      manager.adoptProcess(mockChild, "test-command");
+      const taskId = manager.getAllTasks()[0].id;
+
+      manager.stopTask(taskId);
+      vi.advanceTimersByTime(1000);
+
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it("should log error when SIGKILL throws a non-ESRCH error", () => {
+      mockKill.mockImplementation(((pid: number, signal?: string | number) => {
+        if (signal === "SIGKILL") {
+          const error: NodeJS.ErrnoException = new Error("kill EPERM");
+          error.code = "EPERM";
+          throw error;
+        }
+        return true;
+      }) as never);
+
+      const mockChild = {
+        pid: 12345,
+        killed: false,
+        kill: vi.fn(),
+        stdout: { on: vi.fn(), off: vi.fn() },
+        stderr: { on: vi.fn(), off: vi.fn() },
+        on: vi.fn(),
+        off: vi.fn(),
+      } as unknown as ChildProcess;
+
+      manager.adoptProcess(mockChild, "test-command");
+      const taskId = manager.getAllTasks()[0].id;
+
+      manager.stopTask(taskId);
+      vi.advanceTimersByTime(1000);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "Failed to force kill process:",
+        expect.objectContaining({ code: "EPERM" }),
+      );
+    });
+
+    it("should not log error when SIGKILL succeeds (no throw)", () => {
+      const mockChild = {
+        pid: 12345,
+        killed: false,
+        kill: vi.fn(),
+        stdout: { on: vi.fn(), off: vi.fn() },
+        stderr: { on: vi.fn(), off: vi.fn() },
+        on: vi.fn(),
+        off: vi.fn(),
+      } as unknown as ChildProcess;
+
+      manager.adoptProcess(mockChild, "test-command");
+      const taskId = manager.getAllTasks()[0].id;
+
+      manager.stopTask(taskId);
+      vi.advanceTimersByTime(1000);
+
+      expect(logger.error).not.toHaveBeenCalled();
     });
   });
 });
