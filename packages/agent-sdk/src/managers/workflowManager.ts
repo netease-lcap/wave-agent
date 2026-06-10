@@ -68,8 +68,6 @@ export class WorkflowManager {
     args?: unknown,
     opts?: { budget?: number | null; resumeFromRunId?: string },
   ): Promise<WorkflowRun> {
-    // opts is reserved for future use (resume, budget override)
-    void opts;
     // Validate script
     const validation = validateScript(script);
     if (!validation.valid) {
@@ -80,6 +78,14 @@ export class WorkflowManager {
 
     // Parse meta for the run object
     const { meta } = parseScript(script);
+
+    // Validate resumeFromRunId if provided
+    if (opts?.resumeFromRunId) {
+      const prevRun = this.runs.get(opts.resumeFromRunId);
+      if (!prevRun) {
+        throw new Error(`Cannot resume: run ${opts.resumeFromRunId} not found`);
+      }
+    }
 
     // Generate run ID and persist script
     const runId = `wf_${randomUUID().slice(0, 8)}`;
@@ -98,6 +104,7 @@ export class WorkflowManager {
       phases: [],
       totalAgents: 0,
       totalTokens: 0,
+      resumeFromRunId: opts?.resumeFromRunId,
     };
 
     this.runs.set(runId, run);
@@ -131,14 +138,32 @@ export class WorkflowManager {
     );
     const progressReporter = new ProgressReporter(run.meta);
 
-    // Journal
-    const journalPath = path.join(
-      this.sessionDir,
-      "workflows",
-      `journal-${runId}.jsonl`,
-    );
-    const journal = new Journal(journalPath);
-    await journal.init();
+    // Journal — load previous journal if resuming
+    let journal: Journal;
+    let initialAgentCount = 0;
+    if (run.resumeFromRunId) {
+      const prevJournalPath = path.join(
+        this.sessionDir,
+        "workflows",
+        `journal-${run.resumeFromRunId}.jsonl`,
+      );
+      journal = await Journal.load(prevJournalPath);
+      // Count existing agent entries to offset the counter
+      initialAgentCount = journal.agentEntryCount;
+      // Re-open for appending (load() doesn't open the write stream)
+      await journal.init();
+      logger.info(
+        `[Workflow] Resuming from ${run.resumeFromRunId} with ${initialAgentCount} cached agent results`,
+      );
+    } else {
+      const journalPath = path.join(
+        this.sessionDir,
+        "workflows",
+        `journal-${runId}.jsonl`,
+      );
+      journal = new Journal(journalPath);
+      await journal.init();
+    }
 
     // Register as background task
     const taskId = this.backgroundTaskManager.generateId();
@@ -165,6 +190,7 @@ export class WorkflowManager {
       journal,
       abortSignal: abortController.signal,
       args: run.args,
+      initialAgentCount,
       onLog: (message: string) => {
         logger.info(`[Workflow:${runId}] ${message}`);
       },

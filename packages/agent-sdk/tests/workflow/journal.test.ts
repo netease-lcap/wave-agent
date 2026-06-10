@@ -127,4 +127,67 @@ describe("Journal", () => {
     expect(journal.length).toBe(0);
     expect(journal.getCachedResult(0)).toBeUndefined();
   });
+
+  it("agentEntryCount excludes log entries", async () => {
+    const filePath = tmpPath("test.journal");
+    const journal = new Journal(filePath);
+    await journal.init();
+
+    journal.append({
+      agentIndex: 0,
+      prompt: "hello",
+      opts: {},
+      result: "ok",
+      tokens: 10,
+    });
+    journal.appendLog("some log message");
+    journal.append({
+      agentIndex: 1,
+      prompt: "world",
+      opts: {},
+      result: "done",
+      tokens: 20,
+    });
+
+    expect(journal.length).toBe(3);
+    expect(journal.agentEntryCount).toBe(2);
+    await journal.close();
+  });
+
+  it("load + init allows appending to existing journal (resume)", async () => {
+    const filePath = tmpPath("resume.journal");
+
+    // Phase 1: write initial entries
+    const j1 = new Journal(filePath);
+    await j1.init();
+    j1.append({
+      agentIndex: 0,
+      prompt: "first",
+      opts: {},
+      result: "cached",
+      tokens: 10,
+    });
+    j1.appendLog("some log");
+    await j1.close();
+
+    // Phase 2: load, init, append more (simulate resume)
+    const j2 = await Journal.load(filePath);
+    expect(j2.agentEntryCount).toBe(1);
+    expect(j2.getCachedResult(0)).toBe("cached");
+
+    await j2.init(); // re-open for append
+    j2.append({
+      agentIndex: 1,
+      prompt: "second",
+      opts: {},
+      result: "new",
+      tokens: 20,
+    });
+    await j2.close();
+
+    // Verify file has 3 lines (1 agent + 1 log + 1 agent)
+    const content = await fs.promises.readFile(filePath, "utf-8");
+    const lines = content.split("\n").filter((l) => l.trim());
+    expect(lines).toHaveLength(3);
+  });
 });

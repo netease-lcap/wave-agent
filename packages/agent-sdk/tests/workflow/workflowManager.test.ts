@@ -308,6 +308,24 @@ describe("WorkflowManager", () => {
     });
   });
 
+  describe("createRun with resumeFromRunId", () => {
+    it("throws if resumeFromRunId does not exist", async () => {
+      const script = `export const meta = { name: "test-wf", description: "A test" };\nreturn 1;`;
+      await expect(
+        manager.createRun(script, undefined, { resumeFromRunId: "wf_nope" }),
+      ).rejects.toThrow("Cannot resume: run wf_nope not found");
+    });
+
+    it("stores resumeFromRunId on the run", async () => {
+      const script = `export const meta = { name: "test-wf", description: "A test" };\nreturn 1;`;
+      const prevRun = await manager.createRun(script);
+      const newRun = await manager.createRun(script, undefined, {
+        resumeFromRunId: prevRun.runId,
+      });
+      expect(newRun.resumeFromRunId).toBe(prevRun.runId);
+    });
+  });
+
   describe("cleanup", () => {
     it("aborts all running workflows", async () => {
       const script = `export const meta = { name: "test-wf", description: "A test" };\nreturn 1;`;

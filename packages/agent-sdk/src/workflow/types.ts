@@ -34,6 +34,8 @@ export interface WorkflowRun {
   error?: string;
   /** Resolves when the background execution finishes (completed/failed/aborted) */
   completionPromise?: Promise<void>;
+  /** If set, this run resumes from a previous run's journal */
+  resumeFromRunId?: string;
 }
 
 export interface JournalEntry {
@@ -43,6 +45,13 @@ export interface JournalEntry {
   result: unknown;
   tokens: number;
 }
+
+export interface LogEntry {
+  type: "log";
+  message: string;
+}
+
+export type JournalLine = JournalEntry | LogEntry;
 
 export interface BudgetInfo {
   total: number | null;

@@ -1,9 +1,9 @@
 import * as fs from "fs";
 import * as path from "path";
-import type { JournalEntry } from "./types.js";
+import type { JournalLine } from "./types.js";
 
 export class Journal {
-  private entries: JournalEntry[] = [];
+  private entries: JournalLine[] = [];
   private stream: fs.WriteStream | null = null;
 
   constructor(private filePath: string) {}
@@ -15,22 +15,36 @@ export class Journal {
     this.stream = fs.createWriteStream(this.filePath, { flags: "a" });
   }
 
-  append(entry: JournalEntry): void {
+  append(entry: JournalLine): void {
     this.entries.push(entry);
     if (this.stream) {
       this.stream.write(JSON.stringify(entry) + "\n");
     }
   }
 
+  appendLog(message: string): void {
+    this.append({ type: "log", message });
+  }
+
   getCachedResult(agentIndex: number): unknown | undefined {
-    if (agentIndex < this.entries.length) {
-      return this.entries[agentIndex].result;
+    const agentEntries = this.entries.filter(
+      (e): e is import("./types.js").JournalEntry => !("type" in e),
+    );
+    if (agentIndex < agentEntries.length) {
+      return agentEntries[agentIndex].result;
     }
     return undefined;
   }
 
   get length(): number {
     return this.entries.length;
+  }
+
+  /** Count of agent entries (excluding log entries) */
+  get agentEntryCount(): number {
+    return this.entries.filter(
+      (e): e is import("./types.js").JournalEntry => !("type" in e),
+    ).length;
   }
 
   async close(): Promise<void> {
