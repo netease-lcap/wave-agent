@@ -62,6 +62,7 @@ function createTestContext(overrides?: Record<string, unknown>) {
       journal: {
         init: vi.fn(),
         append: vi.fn(),
+        appendLog: vi.fn(),
         getCachedResult: vi.fn().mockReturnValue(undefined),
         close: vi.fn(),
         get length() {
@@ -387,26 +388,6 @@ describe("createWorkflowApis", () => {
 
       apis.log("hello");
       expect(onLog).toHaveBeenCalledWith("hello");
-    });
-  });
-
-  describe("workflow", () => {
-    it("throws when nested workflows not supported", async () => {
-      const { ctx } = createTestContext();
-      const apis = createWorkflowApis(ctx);
-
-      await expect(apis.workflow("test")).rejects.toThrow(
-        "Nested workflows are not supported in this context",
-      );
-    });
-
-    it("throws not yet implemented when executeWorkflowScript exists", async () => {
-      const { ctx } = createTestContext({ executeWorkflowScript: vi.fn() });
-      const apis = createWorkflowApis(ctx);
-
-      await expect(apis.workflow("test")).rejects.toThrow(
-        "Nested workflow execution is not yet implemented",
-      );
     });
   });
 });

@@ -209,7 +209,6 @@ export async function executeScript(
     log: (message: string) => void;
     args: unknown;
     budget: unknown;
-    workflow: (nameOrRef: unknown, args?: unknown) => Promise<unknown>;
   },
   abortSignal?: AbortSignal,
 ): Promise<{ meta: WorkflowMeta; result: unknown }> {
@@ -237,7 +236,6 @@ export async function executeScript(
     "log",
     "args",
     "budget",
-    "workflow",
     `"use strict"; return (async () => { ${body} })();`,
   );
 
@@ -250,7 +248,6 @@ export async function executeScript(
     apis.log,
     apis.args,
     apis.budget,
-    apis.workflow,
   );
 
   let result: unknown;

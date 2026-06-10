@@ -128,8 +128,6 @@ describe("executeScript", () => {
     log: () => {},
     args: {},
     budget: {},
-    workflow: async (nameOrRef: unknown) =>
-      `workflow-result: ${typeof nameOrRef === "string" ? nameOrRef : JSON.stringify(nameOrRef)}`,
   };
 
   it("runs a simple script and returns the result", async () => {

@@ -87,7 +87,6 @@ Script body hooks:
 - **phase(title: string)**: void — start a new phase; subsequent agent() calls are grouped under this title
 - **args**: any — the value passed as Workflow's args input, verbatim
 - **budget**: {total: number|null, spent(): number, remaining(): number} — the turn's token target
-- **workflow(nameOrRef, args?)**: Promise<any> — run another workflow inline (one nesting level only)
 
 Scripts are plain JavaScript, NOT TypeScript — type annotations fail to parse. The script body runs in an async context — use await directly. Standard JS built-ins (JSON, Math, Array, etc.) are available — EXCEPT Date.now()/Math.random()/argless new Date(), which throw (they would break resume). No filesystem or Node.js API access.
 

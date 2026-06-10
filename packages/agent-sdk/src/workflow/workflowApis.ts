@@ -12,6 +12,26 @@ import {
 import { AGENT_TOOL_NAME, WORKFLOW_TOOL_NAME } from "../constants/tools.js";
 import { logger } from "../utils/globalLogger.js";
 
+/**
+ * Attempt to parse args if it was passed as a JSON string.
+ * LLMs may serialize array/object args as a string (e.g. "[3,8,15,42,7]")
+ * which would cause `for...of` to iterate character-by-character.
+ */
+function parseArgsIfNeeded(args: unknown): unknown {
+  if (typeof args === "string") {
+    try {
+      const parsed = JSON.parse(args);
+      // Only accept parsed arrays/objects, not primitives like "42" → 42
+      if (typeof parsed === "object" && parsed !== null) {
+        return parsed;
+      }
+    } catch {
+      // Not valid JSON — use as-is (string)
+    }
+  }
+  return args;
+}
+
 const MAX_TOTAL_AGENTS = 1000;
 const MAX_ITEMS_PER_CALL = 4096;
 
@@ -24,8 +44,8 @@ interface WorkflowApiContext {
   abortSignal: AbortSignal;
   args: unknown;
   onLog?: (message: string) => void;
-  // For nested workflow support
-  executeWorkflowScript?: (script: string, args: unknown) => Promise<unknown>;
+  /** When resuming, offset the agent counter by this many existing entries */
+  initialAgentCount?: number;
 }
 
 interface AgentOpts {
@@ -50,11 +70,10 @@ export interface WorkflowApis {
   log: (message: string) => void;
   args: unknown;
   budget: BudgetInfo;
-  workflow: (nameOrRef: unknown, args?: unknown) => Promise<unknown>;
 }
 
 export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
-  let agentCounter = 0;
+  let agentCounter = ctx.initialAgentCount ?? 0;
 
   const agent = async (prompt: string, opts?: AgentOpts): Promise<unknown> => {
     const index = agentCounter++;
@@ -281,16 +300,8 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
   };
 
   const log = (message: string): void => {
+    ctx.journal.appendLog(message);
     ctx.onLog?.(message);
-  };
-
-  const workflow = async (): Promise<unknown> => {
-    if (!ctx.executeWorkflowScript) {
-      throw new Error("Nested workflows are not supported in this context");
-    }
-    // The name resolution and script loading will be handled by the workflowManager
-    // For now, this is a placeholder that delegates to the manager
-    throw new Error("Nested workflow execution is not yet implemented");
   };
 
   return {
@@ -299,8 +310,7 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
     pipeline,
     phase,
     log,
-    args: ctx.args,
+    args: parseArgsIfNeeded(ctx.args),
     budget: ctx.budgetTracker.toBudgetInfo(),
-    workflow,
   };
 }
