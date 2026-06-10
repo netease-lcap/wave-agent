@@ -241,7 +241,7 @@ describe("createWorkflowApis", () => {
         required: ["answer"],
       };
 
-      // Mock messages with a StructuredOutput tool call
+      // Mock messages with a StructuredOutput tool block
       const instance = (
         subagentManager as unknown as ReturnType<
           typeof createMockSubagentManager
@@ -255,18 +255,18 @@ describe("createWorkflowApis", () => {
         const inst = {
           subagentId: "subagent-structured",
           toolManager: { register: vi.fn() },
+          aiManager: { toolChoiceOverride: undefined },
           permissionManager: { addTemporaryRules: vi.fn() },
           messageManager: {
             getMessages: vi.fn().mockReturnValue([
               {
                 role: "assistant",
-                blocks: [],
-                tool_calls: [
+                blocks: [
                   {
-                    function: {
-                      name: "StructuredOutput",
-                      arguments: '{"answer": "42"}',
-                    },
+                    type: "tool",
+                    name: "StructuredOutput",
+                    parameters: '{"answer": "42"}',
+                    stage: "end",
                   },
                 ],
               },

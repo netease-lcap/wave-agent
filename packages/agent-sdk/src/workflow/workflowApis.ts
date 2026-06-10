@@ -142,9 +142,14 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
       });
 
       // If schema provided, register StructuredOutput tool on the subagent's tool manager
+      // and force the model to call it via tool_choice
       if (opts?.schema) {
         const structuredTool = createStructuredOutputTool(opts.schema);
         instance.toolManager.register(structuredTool);
+        instance.aiManager.toolChoiceOverride = {
+          type: "function",
+          function: { name: "StructuredOutput" },
+        };
       }
 
       // Deny Agent and Workflow tools in workflow subagents
@@ -182,29 +187,60 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
       let finalResult: unknown;
       if (opts?.schema) {
         const messages = instance.messageManager.getMessages();
-        finalResult = extractStructuredResult(
-          messages.map((m) => {
-            const textBlock = m.blocks.find(
-              (b): b is import("../types/messaging.js").TextBlock =>
-                b.type === "text",
-            );
-            return {
-              role: m.role,
-              content: textBlock?.content,
-              tool_calls: (
-                m as unknown as {
-                  tool_calls?: Array<{
-                    function: { name: string; arguments: string };
-                  }>;
-                }
-              ).tool_calls,
-            };
-          }),
-          opts.schema,
-        );
-        if (finalResult === null) {
-          // Schema enforcement failed — return the raw text
-          finalResult = result;
+        // Build the format extractStructuredResult expects:
+        // Look for StructuredOutput tool calls in ToolBlocks
+        const structuredToolBlocks = messages
+          .filter((m) => m.role === "assistant")
+          .flatMap((m) => m.blocks)
+          .filter(
+            (b): b is import("../types/messaging.js").ToolBlock =>
+              b.type === "tool" &&
+              b.name === "StructuredOutput" &&
+              b.stage === "end",
+          );
+
+        if (structuredToolBlocks.length > 0) {
+          // Parse the StructuredOutput tool call parameters
+          const lastBlock =
+            structuredToolBlocks[structuredToolBlocks.length - 1];
+          try {
+            const parsed = JSON.parse(lastBlock.parameters || "{}");
+            finalResult = parsed;
+          } catch {
+            // Parameters parse failed, try result
+            try {
+              const parsed = JSON.parse(lastBlock.result || "null");
+              finalResult = parsed;
+            } catch {
+              finalResult = result;
+            }
+          }
+        } else {
+          // Fallback: try extractStructuredResult with message content
+          finalResult = extractStructuredResult(
+            messages.map((m) => {
+              const textBlock = m.blocks.find(
+                (b): b is import("../types/messaging.js").TextBlock =>
+                  b.type === "text",
+              );
+              return {
+                role: m.role,
+                content: textBlock?.content,
+                tool_calls: (
+                  m as unknown as {
+                    tool_calls?: Array<{
+                      function: { name: string; arguments: string };
+                    }>;
+                  }
+                ).tool_calls,
+              };
+            }),
+            opts.schema,
+          );
+          if (finalResult === null) {
+            // Schema enforcement failed — return the raw text
+            finalResult = result;
+          }
         }
       } else {
         finalResult = result;
