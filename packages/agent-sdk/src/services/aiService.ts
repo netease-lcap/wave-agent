@@ -162,6 +162,11 @@ export interface CallAgentOptions {
   model?: string; // Custom model
   systemPrompt?: string; // Custom system prompt
   maxTokens?: number; // Maximum output tokens
+  toolChoice?:
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "function"; function: { name: string } }; // Force tool selection
 
   // NEW: Streaming callbacks
   onContentUpdate?: (content: string) => void;
@@ -325,6 +330,11 @@ export async function callAgent(
     // Only add tools if they exist
     if (processedTools && processedTools.length > 0) {
       createParams.tools = processedTools;
+    }
+
+    // Add tool_choice if specified
+    if (options.toolChoice) {
+      createParams.tool_choice = options.toolChoice;
     }
 
     if (isStreaming) {

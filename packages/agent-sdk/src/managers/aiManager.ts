@@ -76,6 +76,12 @@ export class AIManager {
   private originalWorkdir: string;
   private consecutiveCompactionFailures: number = 0;
   private readonly maxTurns?: number;
+  /** Override tool_choice for this AI manager (e.g. for structured output) */
+  public toolChoiceOverride?:
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "function"; function: { name: string } };
 
   // Service overrides
   constructor(
@@ -898,6 +904,7 @@ export class AIManager {
           },
         ), // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override
+        toolChoice: this.toolChoiceOverride, // Pass tool_choice override
       };
 
       // Add streaming callbacks only if streaming is enabled
