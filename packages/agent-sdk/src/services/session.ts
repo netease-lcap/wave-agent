@@ -35,7 +35,6 @@ export interface SessionData {
     workdir: string;
     lastActiveAt: string;
     latestTotalTokens: number;
-    goalCondition?: string;
   };
 }
 
@@ -110,40 +109,6 @@ export function parseSessionIdTimestamp(sessionId: string): Date {
  */
 export function generateSubagentFilename(sessionId: string): string {
   return `subagent-${sessionId}.jsonl`;
-}
-
-/**
- * Extract the active goal condition from session messages.
- * Scans for "Goal set: X" and checks if it was subsequently cleared/achieved/cancelled.
- */
-function extractGoalCondition(messages: Message[]): string | undefined {
-  let activeGoal: string | undefined;
-
-  for (const msg of messages) {
-    if (msg.role !== "user") continue;
-    for (const block of msg.blocks) {
-      if (block.type !== "text") continue;
-      const content = block.content;
-
-      // Check for goal set
-      const setMatch = content.match(/Goal set: (.+?)\./);
-      if (setMatch) {
-        activeGoal = setMatch[1];
-        continue;
-      }
-
-      // Check for goal cleared/achieved/cancelled
-      if (
-        content.includes("Goal cleared") ||
-        content.includes("Goal achieved:") ||
-        content.includes("Goal cancelled:")
-      ) {
-        activeGoal = undefined;
-      }
-    }
-  }
-
-  return activeGoal;
 }
 
 // Constants
@@ -418,7 +383,6 @@ export async function loadSessionFromJsonl(
         latestTotalTokens: lastMessage?.usage
           ? extractLatestTotalTokens([lastMessage])
           : 0,
-        goalCondition: extractGoalCondition(messages),
       },
     };
 
