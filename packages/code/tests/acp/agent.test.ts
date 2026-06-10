@@ -507,6 +507,7 @@ describe("WaveAcpAgent", () => {
       {
         id: "session-all-1",
         workdir: "/cwd/all",
+        createdAt: new Date("2023-03-01T00:00:00Z"),
         lastActiveAt: new Date("2023-03-01T00:00:00Z"),
         sessionType: "main",
         latestTotalTokens: 200,
@@ -538,6 +539,7 @@ describe("WaveAcpAgent", () => {
       {
         id: "session-sdk-1",
         workdir: "/cwd/sdk",
+        createdAt: new Date("2023-02-01T00:00:00Z"),
         lastActiveAt: new Date("2023-02-01T00:00:00Z"),
         sessionType: "main",
         latestTotalTokens: 100,

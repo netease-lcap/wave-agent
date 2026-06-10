@@ -46,6 +46,7 @@ export interface SessionMetadata {
   sessionType: "main" | "subagent";
   subagentType?: string;
   workdir: string;
+  createdAt: Date;
   lastActiveAt: Date;
   latestTotalTokens: number;
   firstMessage?: string;
@@ -54,7 +55,10 @@ export interface SessionMetadata {
 export interface SessionIndex {
   sessions: Record<
     string,
-    Omit<SessionMetadata, "id" | "lastActiveAt"> & { lastActiveAt: string }
+    Omit<SessionMetadata, "id" | "lastActiveAt" | "createdAt"> & {
+      lastActiveAt: string;
+      createdAt: string;
+    }
   >;
   lastUpdated: string;
 }
@@ -76,6 +80,27 @@ export function generateSessionId(): string {
   ].join("");
   const shortId = randomUUID().slice(0, 8);
   return `${ts}-${shortId}`;
+}
+
+/**
+ * Parse the timestamp prefix from a session ID back into a Date
+ * Format: {YYYYMMDDHHmmss}-{8hex} (e.g. 20260527143025-a1b2c3d4)
+ * @returns Date from the session ID timestamp prefix
+ */
+export function parseSessionIdTimestamp(sessionId: string): Date {
+  const match = sessionId.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
+  if (!match) {
+    return new Date(); // Fallback to now for legacy UUID-format session IDs
+  }
+  const [, year, month, day, hour, minute, second] = match;
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
 }
 
 /**
@@ -149,6 +174,7 @@ async function updateSessionIndex(
   const { id, ...rest } = metadata;
   index.sessions[id] = {
     ...rest,
+    createdAt: metadata.createdAt.toISOString(),
     lastActiveAt: metadata.lastActiveAt.toISOString(),
     firstMessage: metadata.firstMessage || index.sessions[id]?.firstMessage,
     parentSessionId: metadata.parentSessionId,
@@ -282,8 +308,9 @@ export async function appendMessages(
   const projectDir = await encoder.getProjectDirectory(workdir, SESSION_DIR);
   const lastMessage = newMessages[newMessages.length - 1];
 
-  // Get first message content if it's a new session or we don't have it
+  // Get first message content and createdAt from existing index
   let firstMessage: string | undefined;
+  let createdAt: Date | undefined;
   try {
     const indexPath = join(projectDir.encodedPath, SESSION_INDEX_FILENAME);
     const content = await fs.readFile(indexPath, "utf8");
@@ -292,10 +319,18 @@ export async function appendMessages(
       firstMessage =
         (await getFirstMessageContent(sessionId, workdir)) || undefined;
     }
+    if (index.sessions[sessionId]?.createdAt) {
+      createdAt = new Date(index.sessions[sessionId].createdAt);
+    }
   } catch {
     // If index doesn't exist, this might be the first message
     firstMessage =
       (await getFirstMessageContent(sessionId, workdir)) || undefined;
+  }
+
+  // Derive createdAt from session ID timestamp if not in index
+  if (!createdAt) {
+    createdAt = new Date(parseSessionIdTimestamp(sessionId));
   }
 
   await updateSessionIndex(projectDir.encodedPath, {
@@ -304,6 +339,7 @@ export async function appendMessages(
     parentSessionId,
     sessionType,
     workdir,
+    createdAt,
     lastActiveAt: new Date(lastMessage.timestamp),
     latestTotalTokens: lastMessage.usage
       ? extractLatestTotalTokens([lastMessage])
@@ -483,6 +519,7 @@ export async function listSessionsFromJsonl(
         .map(([id, meta]) => ({
           id,
           ...meta,
+          createdAt: new Date(meta.createdAt),
           lastActiveAt: new Date(meta.lastActiveAt),
         }));
 
@@ -556,6 +593,7 @@ export async function listSessionsFromJsonl(
           sessionType: "main",
           subagentType: undefined, // No longer stored in metadata
           workdir: projectDir.originalPath,
+          createdAt: new Date(parseSessionIdTimestamp(sessionId)),
           lastActiveAt,
           latestTotalTokens: lastMessage?.usage
             ? extractLatestTotalTokens([lastMessage])
@@ -594,6 +632,7 @@ export async function listSessionsFromJsonl(
         const { id, ...rest } = session;
         index.sessions[id] = {
           ...rest,
+          createdAt: session.createdAt.toISOString(),
           lastActiveAt: session.lastActiveAt.toISOString(),
         };
       }
@@ -649,6 +688,7 @@ export async function listAllSessions(): Promise<SessionMetadata[]> {
               allSessions.push({
                 id,
                 ...meta,
+                createdAt: new Date(meta.createdAt),
                 lastActiveAt,
               });
             }

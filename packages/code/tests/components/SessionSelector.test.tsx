@@ -8,6 +8,7 @@ describe("SessionSelector", () => {
   const mockSessions: (SessionMetadata & { firstMessage?: string })[] = [
     {
       id: "session-1",
+      createdAt: new Date("2023-01-01T10:00:00Z"),
       lastActiveAt: new Date("2023-01-01T10:00:00Z"),
       latestTotalTokens: 100,
       firstMessage: "Hello world",
@@ -16,6 +17,7 @@ describe("SessionSelector", () => {
     },
     {
       id: "session-2",
+      createdAt: new Date("2023-01-01T11:00:00Z"),
       lastActiveAt: new Date("2023-01-01T11:00:00Z"),
       latestTotalTokens: 200,
       firstMessage: "How are you?",
@@ -99,6 +101,7 @@ describe("SessionSelector", () => {
     const manySessions: (SessionMetadata & { firstMessage?: string })[] =
       Array.from({ length: 15 }, (_, i) => ({
         id: `session-${i}`,
+        createdAt: new Date(),
         lastActiveAt: new Date(),
         latestTotalTokens: 0,
         firstMessage: `Message ${i}`,
