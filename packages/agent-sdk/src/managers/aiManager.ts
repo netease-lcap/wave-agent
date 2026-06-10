@@ -1470,6 +1470,7 @@ export class AIManager {
 
               if (circuitBreaker) {
                 goalManager.clearGoal();
+                logger?.info(`[Goal] ${circuitBreaker}`);
                 this.messageManager.addUserMessage({
                   content: `<system-reminder>${circuitBreaker}</system-reminder>`,
                   isMeta: true,
@@ -1483,6 +1484,7 @@ export class AIManager {
 
                 if (evaluation.isMet) {
                   goalManager.clearGoal();
+                  logger?.info(`[Goal] Goal achieved: ${evaluation.reason}`);
                   this.messageManager.addUserMessage({
                     content: `<system-reminder>Goal achieved: ${evaluation.reason}</system-reminder>`,
                     isMeta: true,
@@ -1491,6 +1493,7 @@ export class AIManager {
                 } else {
                   const goal = goalManager.getGoal()!;
                   goal.lastReason = evaluation.reason;
+                  logger?.info(`[Goal] Not yet met: ${evaluation.reason}`);
                   this.messageManager.addUserMessage({
                     content: `<system-reminder>Goal not yet met: ${evaluation.reason}. Continue working toward: ${goal.condition}</system-reminder>`,
                     isMeta: true,

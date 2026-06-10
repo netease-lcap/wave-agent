@@ -19,22 +19,19 @@ Result of a goal evaluation call.
 - **reason**: `string` (Short explanation, 1-2 sentences)
 
 ### Session Persistence
-Only the `condition` string persists across sessions. All counters (turnCount, startedAt, consecutiveEvalFailures) reset on restore.
+Goal state is in-memory only. No persistence across process restarts.
 
 ## Relationships
 
 - **GoalManager** holds a single optional `GoalState | null`. Only one goal can be active at a time.
 - **GoalManager** is registered in the DI container as `"GoalManager"`.
 - **GoalManager** depends on `MessageManager` (for messages and token tracking) and `AIManager` (for gateway/model config).
-- **aiService.evaluateGoal()** makes a direct non-streaming OpenAI call with no rate limiter.
+- **aiService.evaluateGoal()** makes a direct non-streaming OpenAI call with no rate limiter, receiving `ChatCompletionMessageParam[]` (from `convertMessagesForAPI`) instead of a flat transcript string.
 
 ## Storage
 
 ### In-memory
-`GoalState` lives in `GoalManager.state`. Lost on process exit (unless restored from session).
-
-### Session persistence
-Goal condition is stored in `SessionData.metadata.goalCondition`. On session restore, `GoalManager.restoreFromSession({ condition })` rehydrates with reset counters.
+`GoalState` lives in `GoalManager.state`. Lost on process exit.
 
 ## Circuit Breakers
 

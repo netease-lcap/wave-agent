@@ -69,11 +69,9 @@ packages/agent-sdk/
 │   │   └── containerSetup.ts     # + register GoalManager
 │   ├── agent.ts                  # + goalManager exposure, callback
 │   ├── types/
-│   │   ├── agent.ts              # + onGoalStateChange callback
+│   │   ├── agent.ts              # + onGoalStateChange, onGoalEvaluating callbacks
 │   │   ├── core.ts               # + "goal_evaluation" operation_type
 │   └── services/
-│       ├── session.ts            # + goalCondition in SessionData
-│       └── initializationService.ts # + restore goal on startup
 └── tests/
     └── goalManager.test.ts
 
@@ -98,5 +96,8 @@ packages/agent-sdk/
 *Fill ONLY if Constitution Check has violations that must be justified*
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| N/A | | |
+Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
 | N/A | | |

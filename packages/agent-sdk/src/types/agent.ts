@@ -126,4 +126,5 @@ export interface AgentCallbacks
     condition?: string,
     elapsed?: string,
   ) => void;
+  onGoalEvaluating?: (evaluating: boolean) => void;
 }

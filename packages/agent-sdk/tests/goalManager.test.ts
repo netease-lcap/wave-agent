@@ -3,7 +3,6 @@ import { GoalManager } from "../src/managers/goalManager.js";
 import { Container } from "../src/utils/container.js";
 import type { MessageManager } from "../src/managers/messageManager.js";
 import type { AIManager } from "../src/managers/aiManager.js";
-import type { Message } from "../src/types/index.js";
 
 vi.mock("../src/utils/globalLogger.js", () => ({
   logger: {
@@ -169,82 +168,6 @@ describe("GoalManager", () => {
     });
   });
 
-  describe("condenseTranscript", () => {
-    it("should produce condensed text from messages", () => {
-      goalManager.setGoal("all tests pass");
-
-      const messages: Message[] = [
-        {
-          id: "1",
-          role: "user",
-          blocks: [{ type: "text", content: "/goal all tests pass" }],
-          timestamp: new Date().toISOString(),
-        },
-        {
-          id: "2",
-          role: "assistant",
-          blocks: [
-            { type: "text", content: "I'll work on making tests pass." },
-          ],
-          timestamp: new Date().toISOString(),
-        },
-        {
-          id: "3",
-          role: "user",
-          blocks: [{ type: "text", content: "continue" }],
-          timestamp: new Date().toISOString(),
-        },
-      ];
-
-      const result = goalManager.condenseTranscript(messages);
-      expect(result).toContain("/goal all tests pass");
-      expect(result).toContain("I'll work on making tests pass.");
-    });
-
-    it("should truncate tool results longer than 500 chars", () => {
-      goalManager.setGoal("all tests pass");
-
-      const messages: Message[] = [
-        {
-          id: "1",
-          role: "assistant",
-          blocks: [
-            {
-              type: "tool",
-              name: "bash",
-              result: "x".repeat(600),
-              stage: "end" as const,
-            },
-          ],
-          timestamp: new Date().toISOString(),
-        },
-      ];
-
-      const result = goalManager.condenseTranscript(messages);
-      expect(result).toContain("[Tool: bash]");
-      // Should be truncated
-      expect(result.length).toBeLessThan(700);
-    });
-
-    it("should cap transcript at max length", () => {
-      goalManager.setGoal("all tests pass");
-
-      // Create a very long transcript
-      const messages: Message[] = [];
-      for (let i = 0; i < 100; i++) {
-        messages.push({
-          id: `msg-${i}`,
-          role: i % 2 === 0 ? "user" : "assistant",
-          blocks: [{ type: "text", content: "x".repeat(1000) }],
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      const result = goalManager.condenseTranscript(messages);
-      expect(result.length).toBeLessThanOrEqual(32000);
-    });
-  });
-
   describe("evaluateGoal", () => {
     it("should return not met when no goal is active", async () => {
       const result = await goalManager.evaluateGoal();
@@ -404,113 +327,6 @@ describe("GoalManager", () => {
           model: "fast-model",
         }),
       );
-    });
-  });
-
-  describe("condenseTranscript - additional coverage", () => {
-    it("should include goal-setting message when it falls outside the recent window", () => {
-      goalManager.setGoal("all tests pass");
-
-      const messages: Message[] = [];
-      // Goal-setting message at index 0 (far outside window)
-      messages.push({
-        id: "0",
-        role: "user",
-        blocks: [{ type: "text", content: "/goal all tests pass" }],
-        timestamp: new Date().toISOString(),
-      });
-      // Fill with enough messages to push goal outside window
-      for (let i = 1; i <= 25; i++) {
-        messages.push({
-          id: `msg-${i}`,
-          role: i % 2 === 0 ? "user" : "assistant",
-          blocks: [{ type: "text", content: `Message ${i}` }],
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      const result = goalManager.condenseTranscript(messages);
-      expect(result).toContain("/goal all tests pass");
-    });
-
-    it("should serialize bang blocks", () => {
-      goalManager.setGoal("all tests pass");
-
-      const messages: Message[] = [
-        {
-          id: "1",
-          role: "assistant",
-          blocks: [
-            {
-              type: "bang",
-              command: "npm test",
-              output: "2 tests passed",
-              stage: "end" as const,
-              exitCode: 0,
-            },
-          ],
-          timestamp: new Date().toISOString(),
-        },
-      ];
-
-      const result = goalManager.condenseTranscript(messages);
-      expect(result).toContain("[Command: npm test]");
-      expect(result).toContain("2 tests passed");
-    });
-
-    it("should serialize error blocks", () => {
-      goalManager.setGoal("all tests pass");
-
-      const messages: Message[] = [
-        {
-          id: "1",
-          role: "assistant",
-          blocks: [{ type: "error", content: "Something went wrong" }],
-          timestamp: new Date().toISOString(),
-        },
-      ];
-
-      const result = goalManager.condenseTranscript(messages);
-      expect(result).toContain("[Error: Something went wrong]");
-    });
-
-    it("should serialize tool blocks without name", () => {
-      goalManager.setGoal("all tests pass");
-
-      const messages: Message[] = [
-        {
-          id: "1",
-          role: "assistant",
-          blocks: [
-            {
-              type: "tool",
-              result: "short result",
-              stage: "end" as const,
-            },
-          ],
-          timestamp: new Date().toISOString(),
-        },
-      ];
-
-      const result = goalManager.condenseTranscript(messages);
-      expect(result).toContain("short result");
-    });
-
-    it("should handle messages with empty serialization", () => {
-      goalManager.setGoal("all tests pass");
-
-      const messages: Message[] = [
-        {
-          id: "1",
-          role: "user",
-          blocks: [{ type: "image", imageUrls: ["test.png"] }],
-          timestamp: new Date().toISOString(),
-        },
-      ];
-
-      const result = goalManager.condenseTranscript(messages);
-      // Image-only message should produce empty serialization, not added to lines
-      expect(result).toBe("");
     });
   });
 

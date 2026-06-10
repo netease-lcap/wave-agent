@@ -1133,7 +1133,7 @@ export interface EvaluateGoalOptions {
   modelConfig: ModelConfig;
   model: string;
   goalCondition: string;
-  transcript: string;
+  messages: ChatCompletionMessageParam[];
   abortSignal?: AbortSignal;
 }
 
@@ -1154,7 +1154,7 @@ export async function evaluateGoal(
     modelConfig,
     model,
     goalCondition,
-    transcript,
+    messages,
     abortSignal,
   } = options;
 
@@ -1185,6 +1185,18 @@ export async function evaluateGoal(
     ...extraParams,
   });
 
+  // Strip images from messages to reduce token usage (same as compact)
+  const cleanedMessages = messages.map((msg) => {
+    if (Array.isArray(msg.content)) {
+      const textParts = msg.content.filter(
+        (part) => part.type === "text",
+      ) as import("openai/resources.js").ChatCompletionContentPartText[];
+      const text = textParts.map((p) => p.text).join("\n");
+      return { ...msg, content: text || "(empty message)" };
+    }
+    return msg;
+  });
+
   try {
     const response = await openai.chat.completions.create(
       {
@@ -1194,9 +1206,10 @@ export async function evaluateGoal(
             role: "system",
             content: GOAL_EVALUATION_SYSTEM_PROMPT,
           },
+          ...cleanedMessages,
           {
             role: "user",
-            content: `Goal condition: ${goalCondition}\n\nTranscript:\n${transcript}`,
+            content: `Goal condition: ${goalCondition}\n\nHas this goal been achieved based on the conversation above?`,
           },
         ],
       },

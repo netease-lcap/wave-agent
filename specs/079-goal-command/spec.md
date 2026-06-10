@@ -74,17 +74,18 @@ As a user, I want to cancel an active goal so that the agent stops the autonomou
 - **FR-003**: System MUST support `/goal clear|stop|off|reset|none|cancel` to deactivate an active goal.
 - **FR-004**: After each AI turn (at recursionDepth=0), if a goal is active and not in a subagent, the system MUST evaluate the goal using the fast model.
 - **FR-005**: Goal evaluation MUST bypass the 1 QPS rate limiter (direct non-streaming call, no `acquireSlot`).
-- **FR-006**: Goal evaluation MUST use a condensed transcript (sliding window of last 10 exchange pairs, capped at ~8K tokens), not raw messages.
+- **FR-006**: Goal evaluation MUST pass conversation messages via `convertMessagesForAPI()` (same as compact), with images stripped to reduce token usage.
 - **FR-007**: System MUST track evaluation tokens separately with `operation_type: "goal_evaluation"`, not mixed with agent tokens.
 - **FR-008**: System MUST implement circuit breakers: max 50 turns, max 30 minutes duration, max 3 consecutive evaluation failures.
 - **FR-009**: When a goal is active, goal evaluation MUST supersede Stop hooks. On goal achievement or force-clear, Stop hooks run normally.
 - **FR-010**: System MUST reject setting a goal in plan mode.
 - **FR-011**: System MUST reject goal conditions exceeding 4000 characters.
 - **FR-012**: `/clear` MUST also clear any active goal.
-- **FR-013**: Goal condition MUST persist across session restore (only the condition string; counters reset).
+- **FR-013**: Goal state is in-memory only. No session persistence across process restarts.
 - **FR-014**: UI status line MUST display `◎ /goal active (<elapsed>)` in cyan when a goal is active.
 - **FR-015**: Goal evaluation MUST drain pending notifications before evaluating, so the evaluator sees fresh results.
 - **FR-016**: Between goal turns, loading state MUST remain active to prevent UI flicker.
+- **FR-017**: UI MUST display a loading indicator (`✻ Evaluating goal...`) during goal evaluation.
 
 ### Key Entities
 
