@@ -169,32 +169,6 @@ describe("GoalManager", () => {
     });
   });
 
-  describe("serializeForSession / restoreFromSession", () => {
-    it("should serialize goal condition", () => {
-      goalManager.setGoal("all tests pass");
-      const data = goalManager.serializeForSession();
-      expect(data).toEqual({ condition: "all tests pass" });
-    });
-
-    it("should return null when no goal is active", () => {
-      expect(goalManager.serializeForSession()).toBeNull();
-    });
-
-    it("should restore goal from session with reset counters", () => {
-      goalManager.setGoal("first goal");
-      goalManager.incrementTurnCount();
-      goalManager.incrementTurnCount();
-
-      const data = goalManager.serializeForSession()!;
-      goalManager.clearGoal();
-
-      goalManager.restoreFromSession(data);
-      expect(goalManager.isGoalActive()).toBe(true);
-      expect(goalManager.getGoal()?.condition).toBe("first goal");
-      expect(goalManager.getGoal()?.turnCount).toBe(0);
-    });
-  });
-
   describe("condenseTranscript", () => {
     it("should produce condensed text from messages", () => {
       goalManager.setGoal("all tests pass");

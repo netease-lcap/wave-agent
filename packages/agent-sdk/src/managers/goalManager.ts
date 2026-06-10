@@ -98,24 +98,6 @@ export class GoalManager {
     return status;
   }
 
-  public serializeForSession(): { condition: string } | null {
-    if (!this.state) return null;
-    return { condition: this.state.condition };
-  }
-
-  public restoreFromSession(data: { condition: string }): void {
-    const totalTokens = this.messageManager.getLatestTotalTokens?.() ?? 0;
-    this.state = {
-      condition: data.condition,
-      startedAt: Date.now(),
-      turnCount: 0,
-      tokenBaseline: totalTokens,
-      consecutiveEvalFailures: 0,
-    };
-    this.onGoalStateChange?.(true, data.condition, "0m");
-    logger?.info(`[Goal] Restored goal from session: ${data.condition}`);
-  }
-
   /**
    * Check circuit breakers. Returns a clear reason if goal should be force-cleared, null otherwise.
    */
