@@ -5,6 +5,7 @@ export interface LoadingIndicatorProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
   isCompacting?: boolean;
+  isGoalEvaluating?: boolean;
   latestTotalTokens?: number;
 }
 
@@ -12,11 +13,12 @@ export const LoadingIndicator = ({
   isLoading = false,
   isCommandRunning = false,
   isCompacting = false,
+  isGoalEvaluating = false,
   latestTotalTokens = 0,
 }: LoadingIndicatorProps) => {
   return (
     <Box flexDirection="column">
-      {isLoading && !isCompacting && (
+      {isLoading && !isCompacting && !isGoalEvaluating && (
         <Box>
           <Text color="yellow">✻ AI is thinking... </Text>
           {latestTotalTokens > 0 && (
@@ -49,6 +51,7 @@ export const LoadingIndicator = ({
       {isCompacting && (
         <Text color="magenta">✻ Compacting message history...</Text>
       )}
+      {isGoalEvaluating && <Text color="cyan">✻ Evaluating goal...</Text>}
     </Box>
   );
 };

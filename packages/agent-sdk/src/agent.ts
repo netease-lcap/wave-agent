@@ -270,6 +270,11 @@ export class Agent {
     this.goalManager.setOnGoalStateChange((active, condition, elapsed) => {
       this.options.callbacks?.onGoalStateChange?.(active, condition, elapsed);
     });
+
+    // Wire up goal evaluating callback
+    this.goalManager.setOnGoalEvaluating((evaluating) => {
+      this.options.callbacks?.onGoalEvaluating?.(evaluating);
+    });
   }
 
   // Public getter methods

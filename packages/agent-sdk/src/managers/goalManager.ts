@@ -1,8 +1,9 @@
 import { Container } from "../utils/container.js";
 import type { MessageManager } from "./messageManager.js";
 import type { AIManager } from "./aiManager.js";
-import type { Message, Usage } from "../types/index.js";
+import type { Usage } from "../types/index.js";
 import { evaluateGoal as aiEvaluateGoal } from "../services/aiService.js";
+import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { logger } from "../utils/globalLogger.js";
 
 export interface GoalState {
@@ -18,8 +19,6 @@ const MAX_GOAL_TURNS = 50;
 const MAX_GOAL_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_CONSECUTIVE_EVAL_FAILURES = 3;
 const MAX_CONDITION_LENGTH = 4000;
-const TRANSCRIPT_WINDOW_SIZE = 10; // Last 10 user+assistant exchange pairs
-const MAX_TRANSCRIPT_CHARS = 32000; // ~8K tokens
 
 export class GoalManager {
   private state: GoalState | null = null;
@@ -28,6 +27,7 @@ export class GoalManager {
     condition?: string,
     elapsed?: string,
   ) => void;
+  private onGoalEvaluating?: (evaluating: boolean) => void;
 
   constructor(private container: Container) {}
 
@@ -43,6 +43,10 @@ export class GoalManager {
     callback: (active: boolean, condition?: string, elapsed?: string) => void,
   ): void {
     this.onGoalStateChange = callback;
+  }
+
+  public setOnGoalEvaluating(callback: (evaluating: boolean) => void): void {
+    this.onGoalEvaluating = callback;
   }
 
   public setGoal(condition: string): void {
@@ -132,7 +136,7 @@ export class GoalManager {
 
     try {
       const messages = this.messageManager.getMessages();
-      const transcript = this.condenseTranscript(messages);
+      const apiMessages = convertMessagesForAPI(messages);
       const gatewayConfig = this.aiManager.getGatewayConfig();
       const modelConfig = this.aiManager.getModelConfig();
       const fastModel = modelConfig.fastModel || modelConfig.model;
@@ -143,12 +147,13 @@ export class GoalManager {
         };
       }
 
+      this.onGoalEvaluating?.(true);
       const result = await aiEvaluateGoal({
         gatewayConfig,
         modelConfig,
         model: fastModel,
         goalCondition: this.state.condition,
-        transcript,
+        messages: apiMessages,
         abortSignal,
       });
 
@@ -165,9 +170,12 @@ export class GoalManager {
       // Reset failure counter on success
       this.state.consecutiveEvalFailures = 0;
 
+      this.onGoalEvaluating?.(false);
+
       // Parse the response
       return this.parseEvaluationResponse(result.content);
     } catch (error) {
+      this.onGoalEvaluating?.(false);
       this.state.consecutiveEvalFailures++;
       logger?.warn(
         `[Goal] Evaluation failed (${this.state.consecutiveEvalFailures}/${MAX_CONSECUTIVE_EVAL_FAILURES}): ${(error as Error).message}`,
@@ -211,106 +219,6 @@ export class GoalManager {
 
     // Default: not met
     return { isMet: false, reason: "Could not parse evaluation response" };
-  }
-
-  /**
-   * Condense message transcript for goal evaluation.
-   * Uses a sliding window of recent messages, always including the initial goal-setting message.
-   */
-  public condenseTranscript(messages: Message[]): string {
-    const lines: string[] = [];
-
-    // Find the goal-setting user message (first message with goal directive)
-    let goalMessageIndex = -1;
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
-      if (msg.role === "user") {
-        for (const block of msg.blocks) {
-          if (
-            block.type === "text" &&
-            block.content.includes("/goal") &&
-            block.content.includes(this.state!.condition)
-          ) {
-            goalMessageIndex = i;
-            break;
-          }
-        }
-      }
-      if (goalMessageIndex >= 0) break;
-    }
-
-    // Collect recent exchange pairs (user + assistant)
-    const recentMessages = messages.slice(-TRANSCRIPT_WINDOW_SIZE * 2);
-
-    // Always include the goal-setting message if it's not already in the window
-    const includeGoalMessage =
-      goalMessageIndex >= 0 &&
-      goalMessageIndex < messages.length - TRANSCRIPT_WINDOW_SIZE * 2;
-
-    if (includeGoalMessage && goalMessageIndex >= 0) {
-      const goalMsg = messages[goalMessageIndex];
-      const goalText = this.serializeMessage(goalMsg);
-      if (goalText) {
-        lines.push(`[User]: ${goalText}`);
-      }
-    }
-
-    // Add recent messages
-    for (const msg of recentMessages) {
-      const text = this.serializeMessage(msg);
-      if (text) {
-        const prefix = msg.role === "user" ? "[User]" : "[Assistant]";
-        lines.push(`${prefix}: ${text}`);
-      }
-    }
-
-    // Cap at max transcript length
-    let result = lines.join("\n\n");
-    if (result.length > MAX_TRANSCRIPT_CHARS) {
-      result = result.slice(-MAX_TRANSCRIPT_CHARS);
-    }
-
-    return result;
-  }
-
-  /**
-   * Serialize a message to condensed text for the evaluator.
-   */
-  private serializeMessage(msg: Message): string {
-    const parts: string[] = [];
-
-    for (const block of msg.blocks) {
-      switch (block.type) {
-        case "text":
-          parts.push(block.content);
-          break;
-        case "tool":
-          if (block.name) {
-            parts.push(`[Tool: ${block.name}]`);
-          }
-          if (block.result) {
-            // Truncate tool results to avoid overwhelming the evaluator
-            const truncated =
-              block.result.length > 500
-                ? block.result.slice(0, 500) + "..."
-                : block.result;
-            parts.push(truncated);
-          }
-          break;
-        case "bang":
-          parts.push(
-            `[Command: ${block.command}]\n${block.output?.slice(0, 500) || ""}`,
-          );
-          break;
-        case "error":
-          parts.push(`[Error: ${block.content}]`);
-          break;
-        default:
-          break;
-      }
-    }
-
-    return parts.join("\n");
   }
 
   private formatElapsed(ms: number): string {

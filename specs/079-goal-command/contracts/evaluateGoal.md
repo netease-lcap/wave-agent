@@ -8,7 +8,7 @@ Lightweight fast-model call to evaluate whether a goal condition has been met. B
 - **modelConfig**: `ModelConfig` (Model configuration with extra params)
 - **model**: `string` (The fast model to use)
 - **goalCondition**: `string` (The goal condition to evaluate)
-- **transcript**: `string` (Condensed conversation transcript)
+- **messages**: `ChatCompletionMessageParam[]` (Conversation messages via `convertMessagesForAPI`, with images stripped)
 - **abortSignal**: `AbortSignal | undefined` (For cancellation)
 
 ## Returns
@@ -17,8 +17,9 @@ Lightweight fast-model call to evaluate whether a goal condition has been met. B
 
 ## Behavior
 1. Create OpenAI client with injected configuration.
-2. Build messages: system prompt (goal evaluator) + user message (condition + transcript).
-3. Non-streaming call with `temperature: 0`, `max_tokens: 200`.
+2. Strip images from messages to reduce token usage.
+3. Build messages: system prompt + conversation messages + trailing user message (goal condition + evaluation question).
+4. Non-streaming call with `temperature: 0`, `max_tokens: 200`.
 4. No `acquireSlot()` — bypasses 1 QPS rate limiter.
 5. On abort: throw "Goal evaluation was aborted".
 6. On error: throw with context.

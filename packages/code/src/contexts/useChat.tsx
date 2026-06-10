@@ -129,6 +129,7 @@ export interface ChatContextType {
   // Goal state
   isGoalActive: boolean;
   goalElapsed?: string;
+  isGoalEvaluating: boolean;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -210,6 +211,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
   const [isGoalActive, setIsGoalActive] = useState(false);
   const [goalElapsed, setGoalElapsed] = useState<string | undefined>();
+  const [isGoalEvaluating, setIsGoalEvaluating] = useState(false);
   const goalStartedAt = useRef<number | null>(null);
 
   // Update goal elapsed time every 30s while active
@@ -409,6 +411,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             goalStartedAt.current = null;
           }
           setGoalElapsed(elapsed);
+        },
+        onGoalEvaluating: (evaluating) => {
+          setIsGoalEvaluating(evaluating);
         },
       };
 
@@ -841,6 +846,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     triggerWorktreeRemoveHook,
     isGoalActive,
     goalElapsed,
+    isGoalEvaluating,
   };
 
   return (

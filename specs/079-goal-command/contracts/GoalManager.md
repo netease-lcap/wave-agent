@@ -27,19 +27,13 @@ Increment the turn counter. Used by the evaluation loop in AIManager.
 Check circuit breaker thresholds. Returns a clear-reason string if a breaker has tripped, null otherwise.
 
 ### evaluateGoal(abortSignal?: AbortSignal): Promise<{ isMet: boolean; reason: string }>
-Evaluate the goal using the fast model. Increments `consecutiveEvalFailures` on failure; resets on success. Tracks evaluation tokens with `operation_type: "goal_evaluation"`.
-
-### condenseTranscript(messages: Message[]): string
-Convert recent messages to condensed text for the evaluator. Uses a sliding window of 10 exchange pairs, always including the goal-setting message. Capped at ~32K chars (~8K tokens).
+Evaluate the goal using the fast model. Converts messages via `convertMessagesForAPI()` and passes them as structured `ChatCompletionMessageParam[]`. Fires `onGoalEvaluating(true)` before and `onGoalEvaluating(false)` after. Increments `consecutiveEvalFailures` on failure; resets on success. Tracks evaluation tokens with `operation_type: "goal_evaluation"`.
 
 ### getStatusString(): string
 Return a formatted status string for the `/goal` command (condition, elapsed, turn count, last reason).
 
-### serializeForSession(): { condition: string } | null
-Return the condition string for session persistence, or null if inactive.
-
-### restoreFromSession(data: { condition: string }): void
-Restore a goal from session data with reset counters. Fires `onGoalStateChange(true, condition, "0m")`.
-
 ### setOnGoalStateChange(callback): void
 Register a callback for goal state changes. Used to update the UI status line.
+
+### setOnGoalEvaluating(callback): void
+Register a callback for goal evaluation state. Used to show/hide the evaluating indicator in the UI.

@@ -45,7 +45,7 @@
 
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
-- [X] T010 [P] [US1] Unit tests for GoalManager in `packages/agent-sdk/tests/goalManager.test.ts` — setGoal, clearGoal, circuit breakers, evaluateGoal, condenseTranscript, parseEvaluationResponse
+- [X] T010 [P] [US1] Unit tests for GoalManager in `packages/agent-sdk/tests/goalManager.test.ts` — setGoal, clearGoal, circuit breakers, evaluateGoal, parseEvaluationResponse
 
 ### Implementation for User Story 1
 
@@ -73,8 +73,8 @@
 - [X] T016 [P] Add goal indicator `◎ /goal active (<elapsed>)` to `packages/code/src/components/StatusLine.tsx`
 - [X] T017 [P] Thread goal props through `InputBox.tsx` → `ChatInterface.tsx` → `useChat.tsx`
 - [X] T018 [P] Add `onGoalStateChange` callback wiring in `packages/code/src/contexts/useChat.tsx`
-- [X] T019 Add `goalCondition` to `SessionData.metadata` and `extractGoalCondition()` in `packages/agent-sdk/src/services/session.ts`
-- [X] T020 Restore goal on session startup in `packages/agent-sdk/src/services/initializationService.ts`
+- [X] T019 (Removed — session persistence for goal removed)
+- [X] T020 (Removed — session persistence for goal removed)
 - [X] T021 [P] Create example script `packages/agent-sdk/examples/goal-demo.ts`
 
 ---

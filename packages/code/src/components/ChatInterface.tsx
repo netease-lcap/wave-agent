@@ -39,6 +39,7 @@ export const ChatInterface: React.FC = () => {
     requestRemount,
     isGoalActive,
     goalElapsed,
+    isGoalEvaluating,
   } = useChat();
 
   const displayMessages = messages;
@@ -82,11 +83,15 @@ export const ChatInterface: React.FC = () => {
 
       {!isConfirmationVisible && !isExpanded && (
         <>
-          {(isLoading || isCommandRunning || isCompacting) && (
+          {(isLoading ||
+            isCommandRunning ||
+            isCompacting ||
+            isGoalEvaluating) && (
             <LoadingIndicator
               isLoading={isLoading}
               isCommandRunning={isCommandRunning}
               isCompacting={isCompacting}
+              isGoalEvaluating={isGoalEvaluating}
               latestTotalTokens={latestTotalTokens}
             />
           )}

@@ -56,7 +56,7 @@ The autonomous loop has built-in circuit breakers:
 
 1. You set a goal condition.
 2. The agent works on it for one turn.
-3. After the turn, the fast model evaluates the conversation transcript against the goal condition.
+3. After the turn, the fast model evaluates the conversation against the goal condition (shows `✻ Evaluating goal...`).
 4. If the goal is not met, the agent continues with a reminder of the reason and the goal.
 5. If the goal is met, the loop stops and the agent returns to normal interactive mode.
 
