@@ -283,7 +283,12 @@ describe("session service - additional coverage", () => {
 
       vi.mocked(fs.readFile).mockResolvedValue(
         JSON.stringify({
-          sessions: { [sessionId]: { lastActiveAt: new Date().toISOString() } },
+          sessions: {
+            [sessionId]: {
+              lastActiveAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+            },
+          },
           lastUpdated: new Date().toISOString(),
         }),
       );
