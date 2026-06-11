@@ -59,7 +59,12 @@ export const TaskList: React.FC = () => {
   const autoHideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const [autoHidden, setAutoHidden] = React.useState(false);
+  const [autoHidden, setAutoHidden] = React.useState(() => {
+    // If all tasks are already completed on mount (e.g. session restore),
+    // start hidden immediately instead of flashing for 5 seconds.
+    const active = tasks.filter((t) => t.status !== "deleted");
+    return active.length > 0 && active.every((t) => t.status === "completed");
+  });
   const [, setTick] = React.useState(0);
 
   const now = Date.now();
