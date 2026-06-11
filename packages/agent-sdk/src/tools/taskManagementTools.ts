@@ -7,6 +7,42 @@ import {
   TASK_LIST_TOOL_NAME,
 } from "../constants/tools.js";
 
+/**
+ * Helper to record and commit a reversion snapshot for a task file.
+ */
+async function recordSnapshot(
+  context: ToolContext,
+  taskManager: { getTaskPath: (id: string) => string },
+  taskId: string,
+  operation: "create" | "modify" | "delete",
+): Promise<string | undefined> {
+  if (!context.reversionManager || !context.messageId) return undefined;
+  const snapshotId = await context.reversionManager.recordSnapshot(
+    context.messageId,
+    taskManager.getTaskPath(taskId),
+    operation,
+  );
+  await context.reversionManager.commitSnapshot(snapshotId);
+  return snapshotId;
+}
+
+/**
+ * Helper to update a target task's blocks/blockedBy array and record a reversion snapshot.
+ */
+async function updateTaskField(
+  context: ToolContext,
+  taskManager: {
+    getTaskPath: (id: string) => string;
+    updateTask: (task: Task) => Promise<void>;
+  },
+  targetTask: Task,
+  field: "blocks" | "blockedBy",
+  value: string[],
+): Promise<void> {
+  await recordSnapshot(context, taskManager, targetTask.id, "modify");
+  await taskManager.updateTask({ ...targetTask, [field]: value });
+}
+
 export const taskCreateTool: ToolPlugin = {
   name: TASK_CREATE_TOOL_NAME,
   config: {
@@ -23,31 +59,12 @@ export const taskCreateTool: ToolPlugin = {
           },
           description: {
             type: "string",
-            description: "A detailed description of what needs to be done",
-          },
-          status: {
-            type: "string",
-            enum: ["pending", "in_progress", "completed", "deleted"],
-            description: "Initial status of the task. Defaults to 'pending'.",
+            description: "What needs to be done",
           },
           activeForm: {
             type: "string",
             description:
               'Present continuous form shown in spinner when in_progress (e.g., "Running tests")',
-          },
-          owner: {
-            type: "string",
-            description: "Optional owner of the task.",
-          },
-          blocks: {
-            type: "array",
-            items: { type: "string" },
-            description: "List of task IDs that this task blocks.",
-          },
-          blockedBy: {
-            type: "array",
-            items: { type: "string" },
-            description: "List of task IDs that block this task.",
           },
           metadata: {
             type: "object",
@@ -88,7 +105,7 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 ## Task Fields
 
 - **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
-- **description**: Detailed description of what needs to be done, including context and acceptance criteria
+- **description**: What needs to be done, including context and acceptance criteria
 - **activeForm**: Present continuous form shown in spinner when task is in_progress (e.g., "Fixing authentication bug"). This is displayed to the user while you work on the task.
 
 **IMPORTANT**: Always provide activeForm when creating tasks. The subject should be imperative ("Run tests") while activeForm should be present continuous ("Running tests"). All tasks are created with status \`pending\`.
@@ -102,40 +119,23 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const taskManager = context.taskManager;
 
-    if (args.status === "deleted") {
-      return {
-        success: true,
-        content: `Task creation skipped because status was set to 'deleted'.`,
-        shortResult: `Skipped deleted task`,
-      };
-    }
-
     const task: Omit<Task, "id"> = {
       subject: args.subject as string,
       description: args.description as string,
-      status: (args.status as TaskStatus) || "pending",
+      status: "pending",
       activeForm: args.activeForm as string,
-      owner: args.owner as string,
-      blocks: (args.blocks as string[]) || [],
-      blockedBy: (args.blockedBy as string[]) || [],
+      owner: undefined,
+      blocks: [],
+      blockedBy: [],
       metadata: (args.metadata as Record<string, unknown>) || {},
     };
 
     const taskId = await taskManager.createTask(task);
-
-    if (context.reversionManager && context.messageId) {
-      const taskPath = taskManager.getTaskPath(taskId);
-      const snapshotId = await context.reversionManager.recordSnapshot(
-        context.messageId,
-        taskPath,
-        "create",
-      );
-      await context.reversionManager.commitSnapshot(snapshotId);
-    }
+    await recordSnapshot(context, taskManager, taskId, "create");
 
     return {
       success: true,
-      content: `Task created with ID: ${taskId}`,
+      content: `Task #${taskId} created successfully: ${task.subject}`,
       shortResult: `Created task ${taskId}: ${task.subject}`,
     };
   },
@@ -189,13 +189,28 @@ Returns full task details:
     if (!task) {
       return {
         success: false,
-        content: `Task with ID ${taskId} not found.`,
+        content: `Task not found`,
       };
+    }
+
+    // Format like Claude Code: structured text instead of raw JSON
+    const lines = [
+      `Task #${task.id}: ${task.subject}`,
+      `Status: ${task.status}`,
+      `Description: ${task.description}`,
+    ];
+    if (task.blockedBy.length > 0) {
+      lines.push(
+        `Blocked by: ${task.blockedBy.map((id) => `#${id}`).join(", ")}`,
+      );
+    }
+    if (task.blocks.length > 0) {
+      lines.push(`Blocks: ${task.blocks.map((id) => `#${id}`).join(", ")}`);
     }
 
     return {
       success: true,
-      content: JSON.stringify(task, null, 2),
+      content: lines.join("\n"),
     };
   },
 };
@@ -339,210 +354,139 @@ Set up task dependencies:
     if (!existingTask) {
       return {
         success: false,
-        content: `Task with ID ${taskId} not found.`,
+        content: `Task #${taskId} not found`,
       };
     }
 
+    // Handle deletion — just delete the task file (like Claude Code)
     if (args.status === "deleted") {
-      // Reciprocal Dependency Cleanup
-      // For each task in the deleted task's blocks list, remove the deleted task's ID from their blockedBy list.
-      for (const targetId of existingTask.blocks) {
-        const targetTask = await taskManager.getTask(targetId);
-        if (targetTask && targetTask.blockedBy.includes(taskId)) {
-          let targetSnapshotId: string | undefined;
-          if (context.reversionManager && context.messageId) {
-            const targetPath = taskManager.getTaskPath(targetId);
-            targetSnapshotId = await context.reversionManager.recordSnapshot(
-              context.messageId,
-              targetPath,
-              "modify",
-            );
-          }
-          await taskManager.updateTask({
-            ...targetTask,
-            blockedBy: targetTask.blockedBy.filter((id) => id !== taskId),
-          });
-          if (context.reversionManager && targetSnapshotId) {
-            await context.reversionManager.commitSnapshot(targetSnapshotId);
-          }
-        }
-      }
-
-      // For each task in the deleted task's blockedBy list, remove the deleted task's ID from their blocks list.
-      for (const targetId of existingTask.blockedBy) {
-        const targetTask = await taskManager.getTask(targetId);
-        if (targetTask && targetTask.blocks.includes(taskId)) {
-          let targetSnapshotId: string | undefined;
-          if (context.reversionManager && context.messageId) {
-            const targetPath = taskManager.getTaskPath(targetId);
-            targetSnapshotId = await context.reversionManager.recordSnapshot(
-              context.messageId,
-              targetPath,
-              "modify",
-            );
-          }
-          await taskManager.updateTask({
-            ...targetTask,
-            blocks: targetTask.blocks.filter((id) => id !== taskId),
-          });
-          if (context.reversionManager && targetSnapshotId) {
-            await context.reversionManager.commitSnapshot(targetSnapshotId);
-          }
-        }
-      }
-
-      // Record delete snapshot for the task itself
-      if (context.reversionManager && context.messageId) {
-        const taskPath = taskManager.getTaskPath(taskId);
-        const deleteSnapshotId = await context.reversionManager.recordSnapshot(
-          context.messageId,
-          taskPath,
-          "delete",
-        );
-        await context.reversionManager.commitSnapshot(deleteSnapshotId);
-      }
-
+      await recordSnapshot(context, taskManager, taskId, "delete");
       await taskManager.deleteTask(taskId);
 
       return {
         success: true,
-        content: `Task #${taskId} deleted and removed from disk.`,
+        content: `Task #${taskId} deleted`,
         shortResult: `Deleted task ${taskId}`,
       };
     }
 
-    let snapshotId: string | undefined;
-    if (context.reversionManager && context.messageId) {
-      const taskPath = taskManager.getTaskPath(taskId);
-      snapshotId = await context.reversionManager.recordSnapshot(
-        context.messageId,
-        taskPath,
-        "modify",
-      );
-    }
-
+    // Build updates object — only include changed fields
     const updatedFields: string[] = [];
-
-    const updatedTask: Task = {
-      ...existingTask,
-    };
+    const updates: {
+      subject?: string;
+      description?: string;
+      activeForm?: string;
+      status?: TaskStatus;
+      owner?: string;
+      metadata?: Record<string, unknown>;
+    } = {};
 
     if (args.subject !== undefined && args.subject !== existingTask.subject) {
-      updatedTask.subject = args.subject as string;
+      updates.subject = args.subject as string;
       updatedFields.push("subject");
     }
     if (
       args.description !== undefined &&
       args.description !== existingTask.description
     ) {
-      updatedTask.description = args.description as string;
+      updates.description = args.description as string;
       updatedFields.push("description");
-    }
-    if (args.status !== undefined && args.status !== existingTask.status) {
-      updatedTask.status = args.status as TaskStatus;
-      updatedFields.push("status");
     }
     if (
       args.activeForm !== undefined &&
       args.activeForm !== existingTask.activeForm
     ) {
-      updatedTask.activeForm = args.activeForm as string;
+      updates.activeForm = args.activeForm as string;
       updatedFields.push("activeForm");
     }
     if (args.owner !== undefined && args.owner !== existingTask.owner) {
-      updatedTask.owner = args.owner as string;
+      updates.owner = args.owner as string;
       updatedFields.push("owner");
     }
+    if (args.status !== undefined && args.status !== existingTask.status) {
+      updates.status = args.status as TaskStatus;
+      updatedFields.push("status");
+    }
 
+    // Merge metadata (null values delete keys)
     if (args.metadata !== undefined) {
-      const newMetadata = { ...(existingTask.metadata || {}) };
+      const merged = { ...(existingTask.metadata ?? {}) };
       for (const [key, value] of Object.entries(
         args.metadata as Record<string, unknown>,
       )) {
         if (value === null) {
-          delete newMetadata[key];
+          delete merged[key];
         } else {
-          newMetadata[key] = value;
+          merged[key] = value;
         }
       }
-      updatedTask.metadata = newMetadata;
+      updates.metadata = merged;
       updatedFields.push("metadata");
     }
 
+    // Apply basic field updates
+    if (Object.keys(updates).length > 0) {
+      await recordSnapshot(context, taskManager, taskId, "modify");
+      await taskManager.updateTask({ ...existingTask, ...updates });
+    }
+
+    // Add blocks: update this task's blocks + reciprocal blockedBy on targets
     if (args.addBlocks !== undefined) {
       const blocksToAdd = (args.addBlocks as string[]).filter(
-        (id) => !updatedTask.blocks.includes(id),
+        (id) => !existingTask.blocks.includes(id),
       );
       if (blocksToAdd.length > 0) {
-        updatedTask.blocks = [...updatedTask.blocks, ...blocksToAdd];
+        await recordSnapshot(context, taskManager, taskId, "modify");
+        await taskManager.updateTask({
+          ...existingTask,
+          ...updates,
+          blocks: [...existingTask.blocks, ...blocksToAdd],
+        });
         updatedFields.push("blocks");
 
-        // Also update the blockedBy of the target tasks
         for (const targetId of blocksToAdd) {
           const targetTask = await taskManager.getTask(targetId);
           if (targetTask && !targetTask.blockedBy.includes(taskId)) {
-            let targetSnapshotId: string | undefined;
-            if (context.reversionManager && context.messageId) {
-              const targetPath = taskManager.getTaskPath(targetId);
-              targetSnapshotId = await context.reversionManager.recordSnapshot(
-                context.messageId,
-                targetPath,
-                "modify",
-              );
-            }
-            await taskManager.updateTask({
-              ...targetTask,
-              blockedBy: [...targetTask.blockedBy, taskId],
-            });
-            if (context.reversionManager && targetSnapshotId) {
-              await context.reversionManager.commitSnapshot(targetSnapshotId);
-            }
+            await updateTaskField(
+              context,
+              taskManager,
+              targetTask,
+              "blockedBy",
+              [...targetTask.blockedBy, taskId],
+            );
           }
         }
       }
     }
 
+    // Add blockedBy: update this task's blockedBy + reciprocal blocks on targets
     if (args.addBlockedBy !== undefined) {
       const blockedByToAdd = (args.addBlockedBy as string[]).filter(
-        (id) => !updatedTask.blockedBy.includes(id),
+        (id) => !existingTask.blockedBy.includes(id),
       );
       if (blockedByToAdd.length > 0) {
-        updatedTask.blockedBy = [...updatedTask.blockedBy, ...blockedByToAdd];
+        await recordSnapshot(context, taskManager, taskId, "modify");
+        await taskManager.updateTask({
+          ...existingTask,
+          ...updates,
+          blockedBy: [...existingTask.blockedBy, ...blockedByToAdd],
+        });
         updatedFields.push("blockedBy");
 
-        // Also update the blocks of the target tasks
         for (const targetId of blockedByToAdd) {
           const targetTask = await taskManager.getTask(targetId);
           if (targetTask && !targetTask.blocks.includes(taskId)) {
-            let targetSnapshotId: string | undefined;
-            if (context.reversionManager && context.messageId) {
-              const targetPath = taskManager.getTaskPath(targetId);
-              targetSnapshotId = await context.reversionManager.recordSnapshot(
-                context.messageId,
-                targetPath,
-                "modify",
-              );
-            }
-            await taskManager.updateTask({
-              ...targetTask,
-              blocks: [...targetTask.blocks, taskId],
-            });
-            if (context.reversionManager && targetSnapshotId) {
-              await context.reversionManager.commitSnapshot(targetSnapshotId);
-            }
+            await updateTaskField(context, taskManager, targetTask, "blocks", [
+              ...targetTask.blocks,
+              taskId,
+            ]);
           }
         }
       }
     }
 
-    await taskManager.updateTask(updatedTask);
-
-    if (context.reversionManager && snapshotId) {
-      await context.reversionManager.commitSnapshot(snapshotId);
-    }
-
     let content = `Updated task #${taskId} ${updatedFields.join(", ")}`;
-    if (updatedTask.status === "completed") {
+    if (updates.status === "completed") {
       content += `\n\nTask completed. Call TaskList now to find your next available task or see if your work unblocked others.`;
     }
 
@@ -563,13 +507,7 @@ export const taskListTool: ToolPlugin = {
       description: "List all tasks in the task list",
       parameters: {
         type: "object",
-        properties: {
-          status: {
-            type: "string",
-            enum: ["pending", "in_progress", "completed", "deleted"],
-            description: "Optional filter by status.",
-          },
-        },
+        properties: {},
       },
     },
   },
@@ -593,26 +531,39 @@ Returns a summary of each task:
 - **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
 
 Use TaskGet with a specific task ID to view full details including description and comments.`,
-  execute: async (args, context: ToolContext): Promise<ToolResult> => {
+  execute: async (_args, context: ToolContext): Promise<ToolResult> => {
     const taskManager = context.taskManager;
 
-    let tasks = await taskManager.listTasks();
-    if (args.status) {
-      tasks = tasks.filter((t) => t.status === args.status);
-    }
+    // Filter out internal metadata tasks (like Claude Code)
+    const allTasks = (await taskManager.listTasks()).filter(
+      (t) => !(t.metadata as Record<string, unknown>)?._internal,
+    );
 
-    if (tasks.length === 0) {
+    if (allTasks.length === 0) {
       return {
         success: true,
-        content: "No tasks found.",
+        content: "No tasks found",
       };
     }
 
     // Sort by ID numerically
-    tasks.sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10));
+    allTasks.sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10));
 
-    const content = tasks
-      .map((t) => `[${t.id}] ${t.subject} (${t.status})`)
+    // Filter resolved blockers from blockedBy
+    const completedIds = new Set(
+      allTasks.filter((t) => t.status === "completed").map((t) => t.id),
+    );
+
+    const content = allTasks
+      .map((t) => {
+        const blockedBy = t.blockedBy.filter((id) => !completedIds.has(id));
+        const owner = t.owner ? ` (${t.owner})` : "";
+        const blocked =
+          blockedBy.length > 0
+            ? ` [blocked by ${blockedBy.map((id) => `#${id}`).join(", ")}]`
+            : "";
+        return `#${t.id} [${t.status}] ${t.subject}${owner}${blocked}`;
+      })
       .join("\n");
 
     return {

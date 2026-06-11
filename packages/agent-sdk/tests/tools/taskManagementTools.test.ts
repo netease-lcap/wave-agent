@@ -65,7 +65,7 @@ describe("Task Management Tools", () => {
       const args = {
         subject: "Test Task",
         description: "Test Description",
-        status: "in_progress",
+        activeForm: "Testing",
       };
       mockTaskManager.createTask.mockResolvedValue("1");
 
@@ -74,15 +74,15 @@ describe("Task Management Tools", () => {
       expect(mockTaskManager.createTask).toHaveBeenCalledWith({
         subject: "Test Task",
         description: "Test Description",
-        status: "in_progress",
-        activeForm: undefined,
+        status: "pending",
+        activeForm: "Testing",
         owner: undefined,
         blocks: [],
         blockedBy: [],
         metadata: {},
       });
       expect(result.success).toBe(true);
-      expect(result.content).toContain("Task created with ID: 1");
+      expect(result.content).toContain("Task #1 created successfully");
     });
 
     it("should use default values when optional arguments are missing", async () => {
@@ -121,20 +121,6 @@ describe("Task Management Tools", () => {
     });
   });
 
-  describe("TaskCreate tool - skip deleted", () => {
-    it("should skip task creation if status is deleted", async () => {
-      const args = {
-        subject: "Deleted Task",
-        description: "Should not be created",
-        status: "deleted",
-      };
-      const result = await taskCreateTool.execute(args, context);
-      expect(mockTaskManager.createTask).not.toHaveBeenCalled();
-      expect(result.success).toBe(true);
-      expect(result.content).toContain("Task creation skipped");
-    });
-  });
-
   describe("TaskGet tool", () => {
     it("should retrieve a task by ID", async () => {
       const task: Task = {
@@ -152,7 +138,9 @@ describe("Task Management Tools", () => {
 
       expect(mockTaskManager.getTask).toHaveBeenCalledWith("1");
       expect(result.success).toBe(true);
-      expect(JSON.parse(result.content as string)).toEqual(task);
+      expect(result.content).toContain("Task #1: Test Task");
+      expect(result.content).toContain("Status: pending");
+      expect(result.content).toContain("Description: Test Description");
     });
 
     it("should return error if task is not found", async () => {
@@ -164,7 +152,7 @@ describe("Task Management Tools", () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.content).toBe("Task with ID non-existent not found.");
+      expect(result.content).toBe("Task not found");
     });
   });
 
@@ -235,7 +223,7 @@ describe("Task Management Tools", () => {
       const result = await taskUpdateTool.execute({ taskId: "2" }, context);
 
       expect(result.success).toBe(false);
-      expect(result.content).toBe("Task with ID 2 not found.");
+      expect(result.content).toBe("Task #2 not found");
     });
   });
 
@@ -267,47 +255,45 @@ describe("Task Management Tools", () => {
 
       expect(mockTaskManager.listTasks).toHaveBeenCalled();
       expect(result.success).toBe(true);
-      expect(result.content).toBe(
-        "[1] Task 1 (completed)\n[2] Task 2 (pending)",
-      );
+      expect(result.content).toBe("#1 [completed] Task 1\n#2 [pending] Task 2");
     });
 
-    it("should filter tasks by status", async () => {
+    it("should filter out _internal metadata tasks", async () => {
       const tasks: Task[] = [
         {
           id: "1",
-          subject: "Task 1",
-          description: "",
-          status: "completed",
-          blocks: [],
-          blockedBy: [],
-          metadata: {},
-        },
-        {
-          id: "2",
-          subject: "Task 2",
+          subject: "Real Task",
           description: "",
           status: "pending",
           blocks: [],
           blockedBy: [],
           metadata: {},
         },
+        {
+          id: "2",
+          subject: "Internal Task",
+          description: "",
+          status: "pending",
+          blocks: [],
+          blockedBy: [],
+          metadata: { _internal: true },
+        },
       ];
       mockTaskManager.listTasks.mockResolvedValue(tasks);
 
-      const result = await taskListTool.execute({ status: "pending" }, context);
+      const result = await taskListTool.execute({}, context);
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe("[2] Task 2 (pending)");
+      expect(result.content).toBe("#1 [pending] Real Task");
     });
 
-    it("should return 'No tasks found.' if list is empty", async () => {
+    it("should return 'No tasks found' if list is empty", async () => {
       mockTaskManager.listTasks.mockResolvedValue([]);
 
       const result = await taskListTool.execute({}, context);
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe("No tasks found.");
+      expect(result.content).toBe("No tasks found");
     });
   });
 
@@ -429,8 +415,8 @@ describe("Task Management Tools", () => {
     });
   });
 
-  describe("TaskUpdate tool - physical deletion", () => {
-    it("should physically delete task and cleanup reciprocal dependencies", async () => {
+  describe("TaskUpdate tool - deletion", () => {
+    it("should delete task (no reciprocal cleanup, like Claude Code)", async () => {
       const task1: Task = {
         id: "1",
         subject: "Task 1",
@@ -440,31 +426,8 @@ describe("Task Management Tools", () => {
         blockedBy: ["3"],
         metadata: {},
       };
-      const task2: Task = {
-        id: "2",
-        subject: "Task 2",
-        description: "",
-        status: "pending",
-        blocks: [],
-        blockedBy: ["1"],
-        metadata: {},
-      };
-      const task3: Task = {
-        id: "3",
-        subject: "Task 3",
-        description: "",
-        status: "pending",
-        blocks: ["1"],
-        blockedBy: [],
-        metadata: {},
-      };
 
-      mockTaskManager.getTask.mockImplementation(async (id) => {
-        if (id === "1") return task1;
-        if (id === "2") return task2;
-        if (id === "3") return task3;
-        return null;
-      });
+      mockTaskManager.getTask.mockResolvedValue(task1);
 
       const result = await taskUpdateTool.execute(
         { taskId: "1", status: "deleted" },
@@ -472,22 +435,10 @@ describe("Task Management Tools", () => {
       );
 
       expect(mockTaskManager.deleteTask).toHaveBeenCalledWith("1");
-      // Check reciprocal cleanup for task 2 (which was blocked by 1)
-      expect(mockTaskManager.updateTask).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "2",
-          blockedBy: [],
-        }),
-      );
-      // Check reciprocal cleanup for task 3 (which blocked 1)
-      expect(mockTaskManager.updateTask).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "3",
-          blocks: [],
-        }),
-      );
+      // No reciprocal cleanup — just delete the task file
+      expect(mockTaskManager.updateTask).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
-      expect(result.content).toContain("deleted and removed from disk");
+      expect(result.content).toContain("Task #1 deleted");
     });
   });
 });

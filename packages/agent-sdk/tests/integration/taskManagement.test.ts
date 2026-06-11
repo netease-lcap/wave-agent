@@ -92,24 +92,20 @@ describe("Task Management Integration Tests", () => {
     const createArgs = {
       subject: "Integration Task",
       description: "Testing create and get flow",
-      status: "pending",
       metadata: { priority: "high" },
     };
     const createResult = await taskCreateTool.execute(createArgs, context);
     expect(createResult.success).toBe(true);
-    expect(createResult.content).toContain("Task created with ID: 1");
+    expect(createResult.content).toContain("Task #1 created successfully");
 
     // 2. Get the task
     const getResult = await taskGetTool.execute({ taskId: "1" }, context);
     expect(getResult.success).toBe(true);
-    const task = JSON.parse(getResult.content as string);
-    expect(task).toMatchObject({
-      id: "1",
-      subject: "Integration Task",
-      description: "Testing create and get flow",
-      status: "pending",
-      metadata: { priority: "high" },
-    });
+    expect(getResult.content).toContain("Task #1: Integration Task");
+    expect(getResult.content).toContain("Status: pending");
+    expect(getResult.content).toContain(
+      "Description: Testing create and get flow",
+    );
   });
 
   it("Flow 2: Create -> Update -> Get", async () => {
@@ -131,10 +127,8 @@ describe("Task Management Integration Tests", () => {
     // 3. Get and verify
     const getResult = await taskGetTool.execute({ taskId: "1" }, context);
     expect(getResult.success).toBe(true);
-    const task = JSON.parse(getResult.content as string);
-    expect(task.status).toBe("in_progress");
-    expect(task.metadata.progress).toBe(50);
-    expect(task.subject).toBe("Initial Task"); // Should remain unchanged
+    expect(getResult.content).toContain("Status: in_progress");
+    expect(getResult.content).toContain("Initial Task");
   });
 
   it("Flow 3: Create multiple -> List", async () => {
@@ -144,7 +138,7 @@ describe("Task Management Integration Tests", () => {
       context,
     );
     await taskCreateTool.execute(
-      { subject: "Task B", description: "Desc B", status: "completed" },
+      { subject: "Task B", description: "Desc B" },
       context,
     );
     await taskCreateTool.execute(
@@ -152,28 +146,19 @@ describe("Task Management Integration Tests", () => {
       context,
     );
 
-    // 2. List all
+    // 2. List all — all pending since TaskCreate no longer accepts status
     const listAllResult = await taskListTool.execute({}, context);
     expect(listAllResult.success).toBe(true);
-    expect(listAllResult.content).toContain("[1] Task A (pending)");
-    expect(listAllResult.content).toContain("[2] Task B (completed)");
-    expect(listAllResult.content).toContain("[3] Task C (pending)");
-
-    // 3. List with filter
-    const listFilteredResult = await taskListTool.execute(
-      { status: "completed" },
-      context,
-    );
-    expect(listFilteredResult.success).toBe(true);
-    expect(listFilteredResult.content).toBe("[2] Task B (completed)");
-    expect(listFilteredResult.content).not.toContain("Task A");
+    expect(listAllResult.content).toContain("#1 [pending] Task A");
+    expect(listAllResult.content).toContain("#2 [pending] Task B");
+    expect(listAllResult.content).toContain("#3 [pending] Task C");
   });
 
   it("Flow 4: Error cases", async () => {
     // 1. Get non-existent task
     const getResult = await taskGetTool.execute({ taskId: "999" }, context);
     expect(getResult.success).toBe(false);
-    expect(getResult.content).toContain("Task with ID 999 not found");
+    expect(getResult.content).toContain("not found");
 
     // 2. Update non-existent task
     const updateResult = await taskUpdateTool.execute(
@@ -181,6 +166,6 @@ describe("Task Management Integration Tests", () => {
       context,
     );
     expect(updateResult.success).toBe(false);
-    expect(updateResult.content).toContain("Task with ID 999 not found");
+    expect(updateResult.content).toContain("not found");
   });
 });

@@ -117,7 +117,7 @@ describe("TaskCreate Concurrency", () => {
 
     const taskIds = results.map((r) => {
       if (r.success) {
-        const match = r.content.match(/ID: (\d+)/);
+        const match = r.content.match(/Task #(\d+) created/);
         return match ? match[1] : null;
       }
       return null;

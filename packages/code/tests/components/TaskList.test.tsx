@@ -125,8 +125,6 @@ describe("TaskList", () => {
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame()!;
 
-    // The text should still contain the subject (ink-testing-library may not
-    // actually truncate in test env, but the wrap prop is set)
     expect(output).toContain(longSubject);
   });
 
@@ -157,7 +155,7 @@ describe("TaskList", () => {
 
   it("should limit displayed tasks based on terminal height", () => {
     vi.mocked(useStdout).mockReturnValue({
-      stdout: { rows: 10 },
+      stdout: { rows: 16 },
     } as unknown as ReturnType<typeof useStdout>);
 
     const mockTasks: Task[] = Array.from({ length: 8 }, (_, i) =>
@@ -172,18 +170,37 @@ describe("TaskList", () => {
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame()!;
 
-    // rows=10 → displayLimit = min(8, max(3, 10-12)) = min(8, max(3, -2)) = min(8, 3) = 3
+    // rows=16 → displayLimit = min(10, max(3, 16-14)) = min(10, max(3, 2)) = min(10, 3) = 3
     expect(output).toContain("Task 1");
     expect(output).toContain("Task 2");
     expect(output).toContain("Task 3");
     // Tasks beyond the limit should be in the summary
-    expect(output).toContain("+5 5 pending");
+    expect(output).toMatch(/… \+5 pending/);
+  });
+
+  it("should show nothing when terminal rows <= 10", () => {
+    vi.mocked(useStdout).mockReturnValue({
+      stdout: { rows: 10 },
+    } as unknown as ReturnType<typeof useStdout>);
+
+    const mockTasks: Task[] = [
+      makeTask({ id: "1", subject: "Task 1", status: "pending" }),
+    ];
+    vi.mocked(useTasks).mockReturnValue(mockTasks);
+
+    const { lastFrame } = render(<TaskList />);
+    // displayLimit = 0 when rows <= 10, so no task rows rendered
+    // But header still shows. Actually let's check the component still renders the header.
+    const output = lastFrame()!;
+    expect(output).toContain("1 tasks");
+    // But no task rows displayed
+    expect(output).not.toContain("□ Task 1");
   });
 
   it("should show summary line for hidden tasks", () => {
-    // Use rows=10 → displayLimit=3 to force truncation with mixed statuses
+    // Use rows=16 → displayLimit=3 to force truncation with mixed statuses
     vi.mocked(useStdout).mockReturnValue({
-      stdout: { rows: 10 },
+      stdout: { rows: 16 },
     } as unknown as ReturnType<typeof useStdout>);
 
     const mockTasks: Task[] = [
@@ -198,17 +215,14 @@ describe("TaskList", () => {
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame()!;
 
-    // displayLimit=3: shows "Working", "Done", "Also Done" (recently completed first, then in_progress)
-    // Hidden: 2 pending → summary
-    expect(output).toMatch(/\+2.*2 pending/);
+    // With new sorting: in_progress > pending > older completed (no recently completed since fresh mount)
+    // displayLimit=3: shows "Working", "Pending 1", "Pending 2"
+    // Hidden: 2 completed → summary
+    expect(output).toMatch(/… \+2 completed/);
   });
 
   it("should sort by priority when tasks exceed display limit", () => {
-    vi.mocked(useStdout).mockReturnValue({
-      stdout: { rows: 10 },
-    } as unknown as ReturnType<typeof useStdout>);
-
-    const recentlyCompleted = new Map<string, number>();
+    const completionTimestamps = new Map<string, number>();
     const now = Date.now();
 
     const tasks: Task[] = [
@@ -223,29 +237,68 @@ describe("TaskList", () => {
       makeTask({ id: "4", subject: "Old completed", status: "completed" }),
     ];
 
-    const sorted = sortTasksByPriority(tasks, recentlyCompleted, now);
+    const sorted = sortTasksByPriority(tasks, completionTimestamps, now, true);
 
-    // in_progress first, then pending unblocked, then pending blocked, then completed
+    // in_progress first, then pending unblocked, then pending blocked, then older completed
     expect(sorted[0].subject).toBe("In progress");
     expect(sorted[1].subject).toBe("Pending unblocked");
     expect(sorted[2].subject).toBe("Pending blocked");
     expect(sorted[3].subject).toBe("Old completed");
   });
 
-  it("should sort recently completed tasks before in_progress", () => {
-    const recentlyCompleted = new Map<string, number>();
+  it("should sort recently completed tasks before in_progress when truncating", () => {
+    const completionTimestamps = new Map<string, number>();
     const now = Date.now();
-    recentlyCompleted.set("1", now - 1000); // 1s ago
+    completionTimestamps.set("1", now - 1000); // 1s ago
 
     const tasks: Task[] = [
       makeTask({ id: "1", subject: "Just completed", status: "completed" }),
       makeTask({ id: "2", subject: "In progress", status: "in_progress" }),
     ];
 
-    const sorted = sortTasksByPriority(tasks, recentlyCompleted, now);
+    const sorted = sortTasksByPriority(tasks, completionTimestamps, now, true);
 
     expect(sorted[0].subject).toBe("Just completed");
     expect(sorted[1].subject).toBe("In progress");
+  });
+
+  it("should sort by ID when no truncation needed", () => {
+    const completionTimestamps = new Map<string, number>();
+    const now = Date.now();
+
+    const tasks: Task[] = [
+      makeTask({ id: "3", subject: "Task C", status: "in_progress" }),
+      makeTask({ id: "1", subject: "Task A", status: "pending" }),
+      makeTask({ id: "2", subject: "Task B", status: "completed" }),
+    ];
+
+    const sorted = sortTasksByPriority(tasks, completionTimestamps, now, false);
+
+    // When no truncation, just sort by ID for stable ordering
+    expect(sorted[0].id).toBe("1");
+    expect(sorted[1].id).toBe("2");
+    expect(sorted[2].id).toBe("3");
+  });
+
+  it("should put older completed after pending when truncating", () => {
+    const completionTimestamps = new Map<string, number>();
+    const now = Date.now();
+    // No timestamps → all completed are "older"
+
+    const tasks: Task[] = [
+      makeTask({ id: "1", subject: "Old done 1", status: "completed" }),
+      makeTask({ id: "2", subject: "Old done 2", status: "completed" }),
+      makeTask({ id: "3", subject: "Working", status: "in_progress" }),
+      makeTask({ id: "4", subject: "Waiting", status: "pending" }),
+    ];
+
+    const sorted = sortTasksByPriority(tasks, completionTimestamps, now, true);
+
+    // in_progress > pending > older completed
+    expect(sorted[0].subject).toBe("Working");
+    expect(sorted[1].subject).toBe("Waiting");
+    expect(sorted[2].subject).toBe("Old done 1");
+    expect(sorted[3].subject).toBe("Old done 2");
   });
 
   it("should auto-hide after all tasks completed", () => {
