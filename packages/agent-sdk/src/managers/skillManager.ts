@@ -34,6 +34,8 @@ export class SkillManager extends EventEmitter {
 
   private skillMetadata = new Map<string, SkillMetadata>();
   private skillContent = new Map<string, Skill>();
+  private pluginSkillMetadata = new Map<string, SkillMetadata>();
+  private pluginSkillContent = new Map<string, Skill>();
   private initialized = false;
   private fileWatcher: FileWatcherService | null = null;
   private watchEnabled: boolean;
@@ -77,7 +79,7 @@ export class SkillManager extends EventEmitter {
    * Refresh skills by re-discovering them
    */
   private async refreshSkills(): Promise<void> {
-    // Clear existing data before discovery
+    // Clear only discovered skills (builtin/personal/project), preserve plugin skills
     this.skillMetadata.clear();
     this.skillContent.clear();
 
@@ -92,6 +94,14 @@ export class SkillManager extends EventEmitter {
     });
     discovery.projectSkills.forEach((skill, name) => {
       this.skillMetadata.set(name, skill);
+    });
+
+    // Restore plugin skills
+    this.pluginSkillMetadata.forEach((metadata, name) => {
+      this.skillMetadata.set(name, metadata);
+    });
+    this.pluginSkillContent.forEach((skill, name) => {
+      this.skillContent.set(name, skill);
     });
 
     // Log any discovery errors
@@ -506,6 +516,9 @@ export class SkillManager extends EventEmitter {
 
       this.skillMetadata.set(namespacedName, metadata);
       this.skillContent.set(namespacedName, skill);
+      // Also store in plugin-specific maps so they survive refreshSkills()
+      this.pluginSkillMetadata.set(namespacedName, metadata);
+      this.pluginSkillContent.set(namespacedName, skill);
     }
     logger?.debug(
       `Registered ${skills.length} plugin skills from ${pluginName}. Total skills: ${this.skillMetadata.size}`,

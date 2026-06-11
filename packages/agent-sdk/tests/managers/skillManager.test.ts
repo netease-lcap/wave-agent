@@ -901,5 +901,74 @@ describe("SkillManager", () => {
 
       expect(mockFileWatcher.cleanup).toHaveBeenCalled();
     });
+
+    it("should preserve plugin skills when refreshSkills is triggered by file watcher", async () => {
+      const manager = new SkillManager(container, {
+        workdir: "/test/workdir",
+        watch: true,
+      });
+      container.register("SkillManager", manager);
+
+      const slashCommandManager = new SlashCommandManager(container, {
+        workdir: "/test/workdir",
+      });
+      slashCommandManager.initialize();
+
+      // Initialize with no discovered skills
+      vi.mocked(readdir).mockResolvedValue([]);
+      await manager.initialize();
+
+      // Register plugin skills
+      const pluginSkill: Skill = {
+        name: "commit-push-mr",
+        description: "Commit and push MR",
+        type: "personal",
+        skillPath: "/path/to/plugin/skills/commit-push-mr",
+        content: "---\nname: commit-push-mr\n---\nTask content",
+        frontmatter: {
+          name: "commit-push-mr",
+          description: "Commit and push MR",
+        },
+        isValid: true,
+        errors: [],
+        pluginRoot: "/path/to/plugin",
+      };
+      manager.registerPluginSkills("commit-skills", [pluginSkill]);
+
+      // Verify plugin skill is available
+      let skills = manager.getAvailableSkills();
+      expect(
+        skills.find((s) => s.name === "commit-skills:commit-push-mr"),
+      ).toBeDefined();
+
+      // Register skill commands after plugin registration
+      slashCommandManager.registerSkillCommands(manager.getAvailableSkills());
+      expect(
+        slashCommandManager.hasCommand("commit-skills:commit-push-mr"),
+      ).toBe(true);
+
+      // Get the file watcher callback
+      const onEventCallback = mockFileWatcher.watchFile.mock.calls[0][1];
+
+      // Trigger refreshSkills via file watcher (simulating a SKILL.md change)
+      await onEventCallback({
+        type: "change",
+        path: "/test/workdir/.wave/skills/some-skill/SKILL.md",
+        timestamp: Date.now(),
+      });
+
+      // Plugin skills should still be available after refresh
+      skills = manager.getAvailableSkills();
+      expect(
+        skills.find((s) => s.name === "commit-skills:commit-push-mr"),
+      ).toBeDefined();
+
+      // Plugin skill slash commands should still be registered
+      expect(
+        slashCommandManager.hasCommand("commit-skills:commit-push-mr"),
+      ).toBe(true);
+
+      await manager.destroy();
+    });
   });
 });
