@@ -232,13 +232,22 @@ describe("TaskList", () => {
 
   it("should auto-hide after all tasks completed", () => {
     vi.useFakeTimers();
+    // Start with an in-progress task so the list is visible
     const mockTasks: Task[] = [
-      makeTask({ id: "1", subject: "Done 1", status: "completed" }),
-      makeTask({ id: "2", subject: "Done 2", status: "completed" }),
+      makeTask({ id: "1", subject: "Working", status: "in_progress" }),
+      makeTask({ id: "2", subject: "Done", status: "completed" }),
     ];
     vi.mocked(useTasks).mockReturnValue(mockTasks);
 
     const { lastFrame, rerender } = render(<TaskList />);
+    expect(lastFrame()).toBeTruthy();
+
+    // Complete the remaining task
+    vi.mocked(useTasks).mockReturnValue([
+      makeTask({ id: "1", subject: "Working", status: "completed" }),
+      makeTask({ id: "2", subject: "Done", status: "completed" }),
+    ]);
+    rerender(<TaskList />);
     expect(lastFrame()).toBeTruthy();
 
     vi.advanceTimersByTime(5000);
@@ -248,26 +257,45 @@ describe("TaskList", () => {
     vi.useRealTimers();
   });
 
-  it("should reappear when new task added after auto-hide", () => {
-    vi.useFakeTimers();
-    const completedTasks: Task[] = [
+  it("should be hidden immediately when mounted with all completed tasks", () => {
+    const mockTasks: Task[] = [
       makeTask({ id: "1", subject: "Done 1", status: "completed" }),
       makeTask({ id: "2", subject: "Done 2", status: "completed" }),
     ];
-    vi.mocked(useTasks).mockReturnValue(completedTasks);
+    vi.mocked(useTasks).mockReturnValue(mockTasks);
+
+    const { lastFrame } = render(<TaskList />);
+    // Should be hidden immediately, no 5-second flash
+    expect(lastFrame()).toBeFalsy();
+  });
+
+  it("should reappear when new task added after auto-hide", () => {
+    vi.useFakeTimers();
+    // Start with in-progress so list is visible initially
+    const initialTasks: Task[] = [
+      makeTask({ id: "1", subject: "Working", status: "in_progress" }),
+      makeTask({ id: "2", subject: "Done", status: "completed" }),
+    ];
+    vi.mocked(useTasks).mockReturnValue(initialTasks);
 
     const { lastFrame, rerender, unmount } = render(<TaskList />);
     expect(lastFrame()).toBeTruthy();
 
+    // Complete all tasks → auto-hide after delay
+    vi.mocked(useTasks).mockReturnValue([
+      makeTask({ id: "1", subject: "Working", status: "completed" }),
+      makeTask({ id: "2", subject: "Done", status: "completed" }),
+    ]);
+    rerender(<TaskList />);
     vi.advanceTimersByTime(5000);
-    // Rerender to pick up the state change from the timer
     rerender(<TaskList />);
     expect(lastFrame()).toBeFalsy();
     unmount();
 
     // Add a new pending task and mount fresh
     vi.mocked(useTasks).mockReturnValue([
-      ...completedTasks,
+      makeTask({ id: "1", subject: "Working", status: "completed" }),
+      makeTask({ id: "2", subject: "Done", status: "completed" }),
       makeTask({ id: "3", subject: "New Task", status: "pending" }),
     ]);
     const { lastFrame: lastFrame2 } = render(<TaskList />);

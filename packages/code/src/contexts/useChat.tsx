@@ -382,8 +382,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           const runs = agentRef.current?.getWorkflowRuns();
           if (runs) setWorkflowRuns([...runs]);
         },
-        onTasksChange: (tasks) => {
-          setTasks([...tasks]);
+        onTasksChange: (newTasks) => {
+          setTasks((prev) => {
+            if (
+              prev.length === newTasks.length &&
+              prev.every(
+                (t, i) =>
+                  t.id === newTasks[i].id && t.status === newTasks[i].status,
+              )
+            ) {
+              return prev;
+            }
+            return [...newTasks];
+          });
         },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
