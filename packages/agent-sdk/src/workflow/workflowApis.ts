@@ -1,9 +1,11 @@
 import type { SubagentManager } from "../managers/subagentManager.js";
+import * as fs from "fs";
+import * as path from "path";
 import { ConcurrencyLimiter } from "./concurrencyLimiter.js";
 import { BudgetTracker } from "./budgetTracker.js";
 import { ProgressReporter } from "./progressReporter.js";
 import { Journal } from "./journal.js";
-import type { BudgetInfo } from "./types.js";
+import type { BudgetInfo, AgentMeta, WorkflowProgressEvent } from "./types.js";
 import {
   createStructuredOutputPrompt,
   createStructuredOutputTool,
@@ -46,6 +48,14 @@ interface WorkflowApiContext {
   onLog?: (message: string) => void;
   /** When resuming, offset the agent counter by this many existing entries */
   initialAgentCount?: number;
+  /** Session directory for computing transcript paths */
+  sessionDir: string;
+  /** Per-run directory for writing agent metadata sidecars */
+  runDir: string;
+  /** Per-agent abort controllers for kill/skip support */
+  agentControllers: Map<number, AbortController>;
+  /** Optional callback for progress events */
+  onProgress?: (event: WorkflowProgressEvent) => void;
 }
 
 interface AgentOpts {
@@ -105,6 +115,17 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
     // Acquire concurrency slot
     await ctx.concurrencyLimiter.acquire();
 
+    // Create per-agent abort controller linked to the run's signal
+    const agentController = new AbortController();
+    ctx.agentControllers.set(index, agentController);
+    // If the run is already aborted, abort this agent immediately
+    if (ctx.abortSignal.aborted) {
+      agentController.abort();
+    }
+    // Propagate run abort to agent abort
+    const onRunAbort = () => agentController.abort();
+    ctx.abortSignal.addEventListener("abort", onRunAbort);
+
     try {
       // Resolve subagent type
       const subagentType = opts?.agentType || "general-purpose";
@@ -141,6 +162,10 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
         model: opts?.model,
       });
 
+      // Capture subagent linkage info
+      const subagentId = instance.subagentId;
+      const transcriptPath = instance.messageManager.getTranscriptPath();
+
       // If schema provided, register StructuredOutput tool on the subagent's tool manager
       // and force the model to call it via tool_choice
       if (opts?.schema) {
@@ -163,7 +188,7 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
       const result = await ctx.subagentManager.executeAgent(
         instance,
         effectivePrompt,
-        ctx.abortSignal,
+        agentController.signal,
         false,
       );
 
@@ -253,7 +278,30 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
         opts: { ...opts } as Record<string, unknown>,
         result: finalResult,
         tokens,
+        subagentId,
+        transcriptPath,
       });
+
+      // Write agent metadata sidecar
+      try {
+        const agentMeta: AgentMeta = {
+          agentType: subagentType,
+          subagentId,
+          transcriptPath,
+          label: opts?.label,
+          phase: opts?.phase,
+        };
+        const metaPath = path.join(ctx.runDir, "agents", `${index}.meta.json`);
+        await fs.promises.writeFile(
+          metaPath,
+          JSON.stringify(agentMeta, null, 2),
+          "utf-8",
+        );
+      } catch (metaErr) {
+        logger.warn(
+          `[Workflow] Failed to write agent meta for ${index}: ${metaErr instanceof Error ? metaErr.message : String(metaErr)}`,
+        );
+      }
 
       // Cleanup
       ctx.subagentManager.cleanupInstance(instance.subagentId);
@@ -262,11 +310,23 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
     } catch (error) {
       // Agent errors are logged but don't crash the workflow
       // Return null so the caller can filter with .filter(Boolean)
-      logger.warn(
-        `[Workflow] agent(${index}) failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.warn(`[Workflow] agent(${index}) failed: ${errorMsg}`);
+
+      // Write agent_failed entry to journal for skip/retry tracking
+      ctx.journal.append({
+        type: "agent_failed",
+        agentIndex: index,
+        error: errorMsg,
+      });
+
+      // Emit progress event for agent failure
+      ctx.progressReporter.agentFailed(index);
+
       return null;
     } finally {
+      ctx.agentControllers.delete(index);
+      ctx.abortSignal.removeEventListener("abort", onRunAbort);
       ctx.concurrencyLimiter.release();
     }
   };

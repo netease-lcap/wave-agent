@@ -36,6 +36,10 @@ export interface WorkflowRun {
   completionPromise?: Promise<void>;
   /** If set, this run resumes from a previous run's journal */
   resumeFromRunId?: string;
+  /** Index of the agent that caused the workflow to fail */
+  failedAgentIndex?: number;
+  /** Error message from the failed agent */
+  failedAgentError?: string;
 }
 
 export interface JournalEntry {
@@ -44,6 +48,18 @@ export interface JournalEntry {
   opts: Record<string, unknown>;
   result: unknown;
   tokens: number;
+  /** Subagent instance ID for linking to the full conversation transcript */
+  subagentId?: string;
+  /** Path to the subagent's transcript JSONL file */
+  transcriptPath?: string;
+}
+
+export interface AgentMeta {
+  agentType: string;
+  subagentId: string;
+  transcriptPath: string;
+  label?: string;
+  phase?: string;
 }
 
 export interface LogEntry {
@@ -51,10 +67,29 @@ export interface LogEntry {
   message: string;
 }
 
-export type JournalLine = JournalEntry | LogEntry;
+export interface AgentFailedEntry {
+  type: "agent_failed";
+  agentIndex: number;
+  error: string;
+}
+
+export type JournalLine = JournalEntry | LogEntry | AgentFailedEntry;
 
 export interface BudgetInfo {
   total: number | null;
   spent: () => number;
   remaining: () => number;
+}
+
+export interface WorkflowProgressEvent {
+  type:
+    | "phase_started"
+    | "phase_completed"
+    | "agent_started"
+    | "agent_completed"
+    | "agent_failed";
+  runId: string;
+  phaseIndex: number;
+  agentIndex?: number;
+  timestamp: number;
 }

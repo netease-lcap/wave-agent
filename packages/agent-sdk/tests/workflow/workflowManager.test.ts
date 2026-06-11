@@ -8,6 +8,11 @@ import * as os from "os";
 function createMockContainer(sessionDir?: string) {
   const container = new Container();
 
+  // Use a unique temp dir to avoid interference between test runs
+  const testSessionDir =
+    sessionDir ||
+    path.join(os.tmpdir(), `wave-test-sessions-${process.pid}-${Date.now()}`);
+
   const mockBackgroundTaskManager = {
     generateId: vi.fn().mockReturnValue("task-1"),
     addTask: vi.fn(),
@@ -34,9 +39,7 @@ function createMockContainer(sessionDir?: string) {
   };
 
   const mockMessageManager = {
-    getSessionDir: vi
-      .fn()
-      .mockReturnValue(sessionDir || "/tmp/wave-test-sessions"),
+    getSessionDir: vi.fn().mockReturnValue(testSessionDir),
   };
 
   container.register("BackgroundTaskManager", mockBackgroundTaskManager);
@@ -95,14 +98,14 @@ describe("WorkflowManager", () => {
   });
 
   describe("listRuns", () => {
-    it("returns empty list initially", () => {
-      expect(manager.listRuns()).toEqual([]);
+    it("returns empty list initially", async () => {
+      expect(await manager.listRuns()).toEqual([]);
     });
 
     it("returns created runs", async () => {
       const script = `export const meta = { name: "test-wf", description: "A test" };\nreturn 1;`;
       await manager.createRun(script);
-      expect(manager.listRuns()).toHaveLength(1);
+      expect(await manager.listRuns()).toHaveLength(1);
     });
   });
 

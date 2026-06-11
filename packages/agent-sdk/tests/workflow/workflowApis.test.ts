@@ -31,6 +31,9 @@ function createMockSubagentManager() {
           getMessages: vi.fn().mockReturnValue([]),
           getLatestTotalTokens: vi.fn().mockReturnValue(100),
           getUsages: vi.fn().mockReturnValue([{ total_tokens: 100 }]),
+          getTranscriptPath: vi
+            .fn()
+            .mockReturnValue(`/tmp/sessions/subagent-${instanceCounter}.jsonl`),
         },
       };
       instances.push(instance);
@@ -72,6 +75,9 @@ function createTestContext(overrides?: Record<string, unknown>) {
       abortSignal: abortController.signal,
       args: {},
       onLog: vi.fn(),
+      sessionDir: "/tmp/sessions",
+      runDir: "/tmp/sessions/workflows/wf_test123",
+      agentControllers: new Map<number, AbortController>(),
       ...overrides,
     },
     abortController,
@@ -273,6 +279,9 @@ describe("createWorkflowApis", () => {
             ]),
             getLatestTotalTokens: vi.fn().mockReturnValue(100),
             getUsages: vi.fn().mockReturnValue([{ total_tokens: 100 }]),
+            getTranscriptPath: vi
+              .fn()
+              .mockReturnValue("/tmp/sessions/subagent-structured.jsonl"),
           },
         };
         instance.push(inst);

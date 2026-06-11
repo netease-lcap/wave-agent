@@ -438,7 +438,9 @@ export class Agent {
   }
 
   /** Get all workflow runs */
-  public getWorkflowRuns(): import("./workflow/types.js").WorkflowRun[] {
+  public async getWorkflowRuns(): Promise<
+    import("./workflow/types.js").WorkflowRun[]
+  > {
     if (!this.container.has("WorkflowManager")) return [];
     return this.container
       .get<

@@ -87,7 +87,7 @@ async function main() {
     let run: import("../src/workflow/types.js").WorkflowRun | undefined;
     for (let i = 0; i < 24; i++) {
       await new Promise((r) => setTimeout(r, 5000));
-      const runs = agent.getWorkflowRuns();
+      const runs = await agent.getWorkflowRuns();
       const latest = runs[runs.length - 1];
       if (latest && latest.status !== "running") {
         run = latest;
