@@ -22,32 +22,71 @@ export const getStatusIcon = (status: TaskStatus): React.ReactNode => {
   }
 };
 
+function byIdAsc(a: Task, b: Task): number {
+  const aNum = parseInt(a.id, 10);
+  const bNum = parseInt(b.id, 10);
+  if (!isNaN(aNum) && !isNaN(bNum)) {
+    return aNum - bNum;
+  }
+  return a.id.localeCompare(b.id);
+}
+
 export function sortTasksByPriority(
   tasks: Task[],
-  recentlyCompleted: Map<string, number>,
+  completionTimestamps: Map<string, number>,
   now: number,
+  needsTruncation: boolean,
 ): Task[] {
-  const getPriority = (task: Task): number => {
-    const completedAt = recentlyCompleted.get(task.id);
-    const isRecentlyCompleted =
-      completedAt !== undefined &&
-      now - completedAt < RECENTLY_COMPLETED_TTL_MS;
+  if (!needsTruncation) {
+    // No truncation needed — sort by ID for stable ordering
+    return [...tasks].sort(byIdAsc);
+  }
 
-    if (isRecentlyCompleted) return 0;
-    if (task.status === "in_progress") return 1;
-    if (task.status === "pending" && task.blockedBy.length === 0) return 2;
-    if (task.status === "pending" && task.blockedBy.length > 0) return 3;
-    if (task.status === "completed") return 4;
-    if (task.status === "deleted") return 5;
-    return 6;
-  };
+  // When truncation is needed, prioritize:
+  // recently completed > in_progress > pending (unblocked first) > older completed > deleted
+  const recentCompleted: Task[] = [];
+  const olderCompleted: Task[] = [];
+  for (const task of tasks.filter((t) => t.status === "completed")) {
+    const ts = completionTimestamps.get(task.id);
+    if (ts && now - ts < RECENTLY_COMPLETED_TTL_MS) {
+      recentCompleted.push(task);
+    } else {
+      olderCompleted.push(task);
+    }
+  }
+  recentCompleted.sort(byIdAsc);
+  olderCompleted.sort(byIdAsc);
 
-  return [...tasks].sort((a, b) => getPriority(a) - getPriority(b));
+  const inProgress = tasks
+    .filter((t) => t.status === "in_progress")
+    .sort(byIdAsc);
+
+  const unresolvedTaskIds = new Set(
+    tasks.filter((t) => t.status !== "completed").map((t) => t.id),
+  );
+  const pending = tasks
+    .filter((t) => t.status === "pending")
+    .sort((a, b) => {
+      const aBlocked = a.blockedBy.some((id) => unresolvedTaskIds.has(id));
+      const bBlocked = b.blockedBy.some((id) => unresolvedTaskIds.has(id));
+      if (aBlocked !== bBlocked) return aBlocked ? 1 : -1;
+      return byIdAsc(a, b);
+    });
+
+  const deleted = tasks.filter((t) => t.status === "deleted").sort(byIdAsc);
+
+  return [
+    ...recentCompleted,
+    ...inProgress,
+    ...pending,
+    ...olderCompleted,
+    ...deleted,
+  ];
 }
 
 function getDisplayLimit(rows: number | undefined): number {
   const available = rows ?? 24;
-  return Math.min(8, Math.max(3, available - 12));
+  return available <= 10 ? 0 : Math.min(10, Math.max(3, available - 14));
 }
 
 export const TaskList: React.FC = () => {
@@ -55,7 +94,8 @@ export const TaskList: React.FC = () => {
   const { isTaskListVisible } = useChat();
   const { stdout } = useStdout();
 
-  const recentlyCompletedRef = React.useRef<Map<string, number>>(new Map());
+  const completionTimestampsRef = React.useRef<Map<string, number>>(new Map());
+  const previousCompletedIdsRef = React.useRef<Set<string> | null>(null);
   const autoHideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -65,38 +105,50 @@ export const TaskList: React.FC = () => {
     const active = tasks.filter((t) => t.status !== "deleted");
     return active.length > 0 && active.every((t) => t.status === "completed");
   });
-  const [, setTick] = React.useState(0);
+  const [, forceUpdate] = React.useState(0);
 
   const now = Date.now();
   const activeTasks = tasks.filter((t) => t.status !== "deleted");
 
-  // Track recently completed tasks
-  for (const task of tasks) {
-    if (
-      task.status === "completed" &&
-      !recentlyCompletedRef.current.has(task.id)
-    ) {
-      recentlyCompletedRef.current.set(task.id, now);
+  // Track completion timestamps: only set when a task newly transitions to completed
+  if (previousCompletedIdsRef.current === null) {
+    previousCompletedIdsRef.current = new Set(
+      tasks.filter((t) => t.status === "completed").map((t) => t.id),
+    );
+  }
+  const currentCompletedIds = new Set(
+    tasks.filter((t) => t.status === "completed").map((t) => t.id),
+  );
+  for (const id of currentCompletedIds) {
+    if (!previousCompletedIdsRef.current.has(id)) {
+      completionTimestampsRef.current.set(id, now);
     }
   }
+  for (const id of completionTimestampsRef.current.keys()) {
+    if (!currentCompletedIds.has(id)) {
+      completionTimestampsRef.current.delete(id);
+    }
+  }
+  previousCompletedIdsRef.current = currentCompletedIds;
 
-  // Prune expired entries and force re-render if any expired
-  const needsTick = React.useMemo(() => {
-    let expired = false;
-    for (const [id, ts] of recentlyCompletedRef.current) {
-      if (now - ts >= RECENTLY_COMPLETED_TTL_MS) {
-        recentlyCompletedRef.current.delete(id);
-        expired = true;
+  // Schedule re-render when the next recent completion expires
+  React.useEffect(() => {
+    if (completionTimestampsRef.current.size === 0) return;
+    const currentNow = Date.now();
+    let earliestExpiry = Infinity;
+    for (const ts of completionTimestampsRef.current.values()) {
+      const expiry = ts + RECENTLY_COMPLETED_TTL_MS;
+      if (expiry > currentNow && expiry < earliestExpiry) {
+        earliestExpiry = expiry;
       }
     }
-    return expired;
-  }, [now]);
-
-  React.useEffect(() => {
-    if (needsTick) {
-      setTick((t) => t + 1);
-    }
-  }, [needsTick]);
+    if (earliestExpiry === Infinity) return;
+    const timer = setTimeout(
+      () => forceUpdate((n) => n + 1),
+      earliestExpiry - currentNow,
+    );
+    return () => clearTimeout(timer);
+  }, [tasks]);
 
   // Auto-hide logic: when all active tasks are completed
   const allCompleted =
@@ -125,9 +177,15 @@ export const TaskList: React.FC = () => {
   }
 
   const displayLimit = getDisplayLimit(stdout?.rows);
-  const sorted = sortTasksByPriority(tasks, recentlyCompletedRef.current, now);
-  const displayed = sorted.slice(0, displayLimit);
-  const hidden = sorted.slice(displayLimit);
+  const needsTruncation = tasks.length > displayLimit;
+  const sorted = sortTasksByPriority(
+    tasks,
+    completionTimestampsRef.current,
+    now,
+    needsTruncation,
+  );
+  const displayed = displayLimit > 0 ? sorted.slice(0, displayLimit) : [];
+  const hidden = displayLimit > 0 ? sorted.slice(displayLimit) : sorted;
 
   const doneCount = tasks.filter((t) => t.status === "completed").length;
   const inProgressCount = tasks.filter(
@@ -157,7 +215,12 @@ export const TaskList: React.FC = () => {
       {displayed.map((task) => {
         const isDimmed =
           task.status === "completed" || task.status === "deleted";
-        const isBlocked = task.blockedBy && task.blockedBy.length > 0;
+        const unresolvedTaskIds = new Set(
+          tasks.filter((t) => t.status !== "completed").map((t) => t.id),
+        );
+        const isBlocked =
+          task.blockedBy &&
+          task.blockedBy.some((id) => unresolvedTaskIds.has(id));
         const blockingTaskIds = isBlocked
           ? task.blockedBy.map((id) => `#${id}`)
           : [];
@@ -178,11 +241,8 @@ export const TaskList: React.FC = () => {
           </Box>
         );
       })}
-      {hidden.length > 0 && (
-        <Text dimColor>
-          {" "}
-          +{hidden.length} {summaryParts.join(", ")}
-        </Text>
+      {displayLimit > 0 && hidden.length > 0 && (
+        <Text dimColor> … +{summaryParts.join(", ")}</Text>
       )}
     </Box>
   );

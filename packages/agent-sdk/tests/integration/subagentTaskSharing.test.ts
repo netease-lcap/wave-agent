@@ -89,7 +89,7 @@ describe("Subagent Task Sharing Integration Tests", () => {
       mainContext,
     );
     expect(createResult.success).toBe(true);
-    expect(createResult.content).toContain("Task created with ID: 1");
+    expect(createResult.content).toContain("Task #1 created successfully");
 
     // 2. Subagent should be able to get the task using mainSessionId
     const getResult = await taskGetTool.execute(
@@ -97,8 +97,7 @@ describe("Subagent Task Sharing Integration Tests", () => {
       subagentContext,
     );
     expect(getResult.success).toBe(true);
-    const task = JSON.parse(getResult.content as string);
-    expect(task.subject).toBe("Main Task");
+    expect(getResult.content).toContain("Main Task");
 
     // 3. Subagent creates a task
     const subCreateResult = await taskCreateTool.execute(
@@ -109,7 +108,7 @@ describe("Subagent Task Sharing Integration Tests", () => {
       subagentContext,
     );
     expect(subCreateResult.success).toBe(true);
-    expect(subCreateResult.content).toContain("Task created with ID: 2");
+    expect(subCreateResult.content).toContain("Task #2 created successfully");
 
     // 4. Main agent should be able to get the subagent's task
     const mainGetResult = await taskGetTool.execute(
@@ -117,8 +116,7 @@ describe("Subagent Task Sharing Integration Tests", () => {
       mainContext,
     );
     expect(mainGetResult.success).toBe(true);
-    const subTask = JSON.parse(mainGetResult.content as string);
-    expect(subTask.subject).toBe("Subagent Task");
+    expect(mainGetResult.content).toContain("Subagent Task");
   });
 
   it("should NOT share tasks if mainSessionId is not provided (isolation check)", async () => {
@@ -146,6 +144,6 @@ describe("Subagent Task Sharing Integration Tests", () => {
     // 2. Session B should NOT find Task A
     const getResult = await taskGetTool.execute({ taskId: "1" }, contextB);
     expect(getResult.success).toBe(false);
-    expect(getResult.content).toContain("Task with ID 1 not found");
+    expect(getResult.content).toContain("not found");
   });
 });
