@@ -94,7 +94,25 @@ describe("TaskList", () => {
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame()!;
 
-    expect(output).toContain("4 tasks (2 done, 1 in progress, 2 open)");
+    // "open" counts only pending tasks, not in_progress (no double-counting)
+    expect(output).toContain("4 tasks (2 done, 1 in progress, 1 open)");
+  });
+
+  it("should not double-count in_progress in open count", () => {
+    const mockTasks: Task[] = [
+      makeTask({ id: "1", subject: "Task 1", status: "in_progress" }),
+      makeTask({ id: "2", subject: "Task 2", status: "in_progress" }),
+      makeTask({ id: "3", subject: "Task 3", status: "pending" }),
+      makeTask({ id: "4", subject: "Task 4", status: "completed" }),
+    ];
+    vi.mocked(useTasks).mockReturnValue(mockTasks);
+
+    const { lastFrame } = render(<TaskList />);
+    const output = lastFrame()!;
+
+    // open = pending only (1), not pending + in_progress (3)
+    expect(output).toContain("4 tasks (1 done, 2 in progress, 1 open)");
+    expect(output).not.toContain("3 open");
   });
 
   it("should truncate long task subjects with wrap=truncate-end", () => {
