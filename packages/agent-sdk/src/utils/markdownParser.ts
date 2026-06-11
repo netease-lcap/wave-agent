@@ -8,6 +8,7 @@ import {
   SKILL_BASH_MAX_OUTPUT_CHARS,
   PREVIEW_SIZE_BYTES,
 } from "../constants/toolLimits.js";
+import { logger } from "./globalLogger.js";
 
 const execAsync = promisify(exec);
 
@@ -223,6 +224,18 @@ export function truncateOutput(output: string): string {
 }
 
 /**
+ * Format a bash command result for inclusion in skill content.
+ * Failed commands (non-zero exit code) are wrapped with an error indicator.
+ */
+function formatBashResult(result: BashCommandResult): string {
+  const output = truncateOutput(result.output);
+  if (result.exitCode !== 0) {
+    return `<error>Command failed (exit code ${result.exitCode}): ${output}</error>`;
+  }
+  return output;
+}
+
+/**
  * Replace bash command placeholders with their outputs.
  * Uses function replacer to avoid $$, $&, $' corruption in shell output.
  * Handles both inline (!`cmd`) and block (```! cmd ```) syntax.
@@ -238,7 +251,7 @@ export function replaceBashCommandsWithOutput(
   processedContent = processedContent.replace(BLOCK_BASH_REGEX, () => {
     if (commandIndex < results.length) {
       const result = results[commandIndex++];
-      return truncateOutput(result.output);
+      return formatBashResult(result);
     }
     return "";
   });
@@ -247,7 +260,7 @@ export function replaceBashCommandsWithOutput(
   processedContent = processedContent.replace(INLINE_BASH_REGEX, () => {
     if (commandIndex < results.length) {
       const result = results[commandIndex++];
-      return truncateOutput(result.output);
+      return formatBashResult(result);
     }
     return "";
   });
@@ -283,14 +296,19 @@ export async function executeBashCommands(
         message?: string;
         code?: number;
       };
+      const errorOutput = (
+        (execError.stdout || "") +
+        (execError.stderr || "") +
+        (execError.message || "")
+      ).trim();
+      const exitCode = execError.code || 1;
+      logger?.warn(
+        `[Skill bash] Command failed (exit code ${exitCode}): ${command}\n${errorOutput}`,
+      );
       results.push({
         command,
-        output: (
-          (execError.stdout || "") +
-          (execError.stderr || "") +
-          (execError.message || "")
-        ).trim(),
-        exitCode: execError.code || 1,
+        output: errorOutput,
+        exitCode,
       });
     }
   }
