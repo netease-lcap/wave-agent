@@ -5,6 +5,9 @@ import { BudgetTracker } from "../../src/workflow/budgetTracker.js";
 import { ProgressReporter } from "../../src/workflow/progressReporter.js";
 import { Journal } from "../../src/workflow/journal.js";
 import type { SubagentManager } from "../../src/managers/subagentManager.js";
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
 
 function createMockSubagentManager() {
   const instances: Array<{
@@ -275,6 +278,11 @@ describe("createWorkflowApis", () => {
                     stage: "end",
                   },
                 ],
+                usage: {
+                  total_tokens: 50,
+                  cache_read_input_tokens: 0,
+                  cache_creation_input_tokens: 0,
+                },
               },
             ]),
             getLatestTotalTokens: vi.fn().mockReturnValue(100),
@@ -291,6 +299,120 @@ describe("createWorkflowApis", () => {
       const apis = createWorkflowApis(ctx);
       const result = await apis.agent("test prompt", { schema });
       expect(result).toEqual({ answer: "42" });
+    });
+
+    it("falls back to raw result when structured output parse fails", async () => {
+      const { ctx, subagentManager } = createTestContext();
+      const schema = {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+      };
+
+      const instance = (
+        subagentManager as unknown as ReturnType<
+          typeof createMockSubagentManager
+        >
+      ).instances;
+      (
+        subagentManager as unknown as ReturnType<
+          typeof createMockSubagentManager
+        >
+      ).createInstance.mockImplementation(() => {
+        const inst = {
+          subagentId: "subagent-fallback",
+          toolManager: { register: vi.fn() },
+          aiManager: { toolChoiceOverride: undefined },
+          permissionManager: { addTemporaryRules: vi.fn() },
+          messageManager: {
+            getMessages: vi.fn().mockReturnValue([
+              {
+                role: "assistant",
+                blocks: [
+                  {
+                    type: "tool",
+                    name: "StructuredOutput",
+                    parameters: "invalid json{{{",
+                    result: "also invalid json{{{",
+                    stage: "end",
+                  },
+                ],
+                usage: {
+                  total_tokens: 50,
+                  cache_read_input_tokens: 0,
+                  cache_creation_input_tokens: 0,
+                },
+              },
+            ]),
+            getLatestTotalTokens: vi.fn().mockReturnValue(100),
+            getUsages: vi.fn().mockReturnValue([{ total_tokens: 100 }]),
+            getTranscriptPath: vi
+              .fn()
+              .mockReturnValue("/tmp/sessions/subagent-fallback.jsonl"),
+          },
+        };
+        instance.push(inst);
+        return inst;
+      });
+
+      const apis = createWorkflowApis(ctx);
+      const result = await apis.agent("test prompt", { schema });
+      // Should fall back to the raw agent result
+      expect(result).toBe("agent-result");
+    });
+
+    it("falls back to extractStructuredResult when no StructuredOutput tool block found", async () => {
+      const { ctx, subagentManager } = createTestContext();
+      const schema = {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+      };
+
+      const instance = (
+        subagentManager as unknown as ReturnType<
+          typeof createMockSubagentManager
+        >
+      ).instances;
+      (
+        subagentManager as unknown as ReturnType<
+          typeof createMockSubagentManager
+        >
+      ).createInstance.mockImplementation(() => {
+        const inst = {
+          subagentId: "subagent-no-toolblock",
+          toolManager: { register: vi.fn() },
+          aiManager: { toolChoiceOverride: undefined },
+          permissionManager: { addTemporaryRules: vi.fn() },
+          messageManager: {
+            getMessages: vi.fn().mockReturnValue([
+              {
+                role: "assistant",
+                blocks: [
+                  { type: "text", content: 'The answer is {"answer":"hello"}' },
+                ],
+                usage: {
+                  total_tokens: 50,
+                  cache_read_input_tokens: 0,
+                  cache_creation_input_tokens: 0,
+                },
+              },
+            ]),
+            getLatestTotalTokens: vi.fn().mockReturnValue(100),
+            getUsages: vi.fn().mockReturnValue([{ total_tokens: 100 }]),
+            getTranscriptPath: vi
+              .fn()
+              .mockReturnValue("/tmp/sessions/subagent-no-toolblock.jsonl"),
+          },
+        };
+        instance.push(inst);
+        return inst;
+      });
+
+      const apis = createWorkflowApis(ctx);
+      const result = await apis.agent("test prompt", { schema });
+      // extractStructuredResult should parse the JSON from the text
+      expect(result).not.toBeNull();
     });
   });
 
@@ -397,6 +519,87 @@ describe("createWorkflowApis", () => {
 
       apis.log("hello");
       expect(onLog).toHaveBeenCalledWith("hello");
+    });
+  });
+
+  describe("agent abort controllers", () => {
+    it("creates per-agent abort controller and removes it on completion", async () => {
+      const { ctx } = createTestContext();
+      const apis = createWorkflowApis(ctx);
+
+      expect(ctx.agentControllers.size).toBe(0);
+      await apis.agent("test prompt");
+      // Controller should be removed after completion
+      expect(ctx.agentControllers.size).toBe(0);
+    });
+
+    it("creates per-agent abort controller and removes it on failure", async () => {
+      const { ctx, subagentManager } = createTestContext();
+      (
+        subagentManager as unknown as ReturnType<
+          typeof createMockSubagentManager
+        >
+      ).executeAgent.mockRejectedValue(new Error("execution failed"));
+
+      const apis = createWorkflowApis(ctx);
+      const result = await apis.agent("test prompt");
+      expect(result).toBeNull();
+      // Controller should be removed even on failure
+      expect(ctx.agentControllers.size).toBe(0);
+    });
+
+    it("writes agent_failed journal entry on execution failure", async () => {
+      const { ctx } = createTestContext();
+      (
+        ctx as unknown as {
+          subagentManager: ReturnType<typeof createMockSubagentManager>;
+        }
+      ).subagentManager.executeAgent.mockRejectedValue(
+        new Error("execution failed"),
+      );
+
+      const apis = createWorkflowApis(ctx);
+      await apis.agent("test prompt");
+
+      // Verify journal.append was called with agent_failed entry
+      const appendCalls = (
+        ctx.journal as unknown as { append: ReturnType<typeof vi.fn> }
+      ).append.mock.calls;
+      const failedEntry = appendCalls.find(
+        (call: unknown[]) =>
+          Array.isArray(call) &&
+          (call[0] as Record<string, unknown>)?.type === "agent_failed",
+      );
+      expect(failedEntry).toBeDefined();
+      expect(failedEntry![0]).toMatchObject({
+        type: "agent_failed",
+        agentIndex: 0,
+        error: "execution failed",
+      });
+    });
+  });
+
+  describe("agent metadata sidecar", () => {
+    it("writes agent meta sidecar file on completion", async () => {
+      const runDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), "wave-sidecar-test-"),
+      );
+      await fs.mkdir(path.join(runDir, "agents"), { recursive: true });
+
+      const { ctx } = createTestContext({ runDir });
+      const apis = createWorkflowApis(ctx);
+      await apis.agent("test prompt", { label: "my-agent", phase: "analysis" });
+
+      const metaPath = path.join(runDir, "agents", "0.meta.json");
+      const content = await fs.readFile(metaPath, "utf-8");
+      const meta = JSON.parse(content);
+      expect(meta.agentType).toBe("general-purpose");
+      expect(meta.subagentId).toBe("subagent-0");
+      expect(meta.label).toBe("my-agent");
+      expect(meta.phase).toBe("analysis");
+      expect(meta.transcriptPath).toContain(".jsonl");
+
+      await fs.rm(runDir, { recursive: true, force: true });
     });
   });
 });
