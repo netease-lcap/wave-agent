@@ -45,16 +45,6 @@ export const useInputManager = (
     logger,
   } = callbacks;
 
-  // Handle selectorJustUsed reset
-  useEffect(() => {
-    if (state.selectorJustUsed) {
-      const timer = setTimeout(() => {
-        dispatch({ type: "SET_SELECTOR_JUST_USED", payload: false });
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [state.selectorJustUsed]);
-
   // Handle debounced file search
   useEffect(() => {
     if (state.showFileSelector) {

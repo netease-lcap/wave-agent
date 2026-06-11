@@ -13,6 +13,7 @@ import {
   SELECTOR_TRIGGERS,
   getProjectedState,
 } from "../utils/inputUtils.js";
+import { AVAILABLE_COMMANDS } from "../constants/commands.js";
 
 export interface AttachedImage {
   id: number;
@@ -682,10 +683,6 @@ export function inputReducer(
     case "HANDLE_KEY": {
       const { input, key } = action.payload;
 
-      if (state.selectorJustUsed) {
-        return state;
-      }
-
       // 1. BTW State Handling
       if (state.btwState.isActive) {
         if (key.escape) {
@@ -1030,6 +1027,34 @@ export function inputReducer(
               },
               pendingEffect: question ? { type: "ASK_BTW", question } : null,
             };
+          }
+
+          // Check if the content is a CLI-internal slash command (help, tasks,
+          // etc.) that should be executed locally rather than sent as a message.
+          // Agent slash commands and unknown /commands always go to SEND_MESSAGE.
+          if (contentWithPlaceholders.startsWith("/")) {
+            const spaceIndex = contentWithPlaceholders.indexOf(" ");
+            const commandName =
+              spaceIndex === -1
+                ? contentWithPlaceholders.substring(1)
+                : contentWithPlaceholders.substring(1, spaceIndex);
+
+            const isInternalCommand = AVAILABLE_COMMANDS.some(
+              (cmd) => cmd.id === commandName,
+            );
+            if (isInternalCommand) {
+              return {
+                ...state,
+                inputText: "",
+                cursorPosition: 0,
+                historyIndex: -1,
+                longTextMap: {},
+                pendingEffect: {
+                  type: "EXECUTE_COMMAND",
+                  command: commandName,
+                },
+              };
+            }
           }
 
           return {
