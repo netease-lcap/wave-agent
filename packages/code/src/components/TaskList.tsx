@@ -133,9 +133,7 @@ export const TaskList: React.FC = () => {
   const inProgressCount = tasks.filter(
     (t) => t.status === "in_progress",
   ).length;
-  const openCount = tasks.filter(
-    (t) => t.status === "pending" || t.status === "in_progress",
-  ).length;
+  const openCount = tasks.filter((t) => t.status === "pending").length;
 
   // Summary parts for hidden tasks
   const hiddenInProgress = hidden.filter(
