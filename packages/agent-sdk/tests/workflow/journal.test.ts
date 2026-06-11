@@ -190,4 +190,97 @@ describe("Journal", () => {
     const lines = content.split("\n").filter((l) => l.trim());
     expect(lines).toHaveLength(3);
   });
+
+  it("getCachedResult returns undefined for failed agent", async () => {
+    const filePath = tmpPath("test.journal");
+    const journal = new Journal(filePath);
+    await journal.init();
+
+    journal.append({
+      agentIndex: 0,
+      prompt: "hello",
+      opts: {},
+      result: "ok",
+      tokens: 10,
+    });
+    journal.append({
+      type: "agent_failed",
+      agentIndex: 1,
+      error: "something went wrong",
+    });
+
+    expect(journal.getCachedResult(0)).toBe("ok");
+    expect(journal.getCachedResult(1)).toBeUndefined();
+    await journal.close();
+  });
+
+  it("removeFailedEntry removes agent_failed entry", async () => {
+    const filePath = tmpPath("test.journal");
+    const journal = new Journal(filePath);
+    await journal.init();
+
+    journal.append({
+      agentIndex: 0,
+      prompt: "hello",
+      opts: {},
+      result: "ok",
+      tokens: 10,
+    });
+    journal.append({
+      type: "agent_failed",
+      agentIndex: 1,
+      error: "failed",
+    });
+    journal.append({
+      type: "agent_failed",
+      agentIndex: 2,
+      error: "also failed",
+    });
+
+    expect(journal.length).toBe(3);
+
+    // Remove only agent 1's failed entry
+    journal.removeFailedEntry(1);
+    expect(journal.length).toBe(2);
+
+    // Agent 2's failed entry is still there
+    expect(journal.getCachedResult(2)).toBeUndefined();
+
+    // Agent 0 is unaffected
+    expect(journal.getCachedResult(0)).toBe("ok");
+
+    await journal.close();
+  });
+
+  it("does not write to closed stream", async () => {
+    const filePath = tmpPath("test.journal");
+    const journal = new Journal(filePath);
+    await journal.init();
+
+    journal.append({
+      agentIndex: 0,
+      prompt: "hello",
+      opts: {},
+      result: "ok",
+      tokens: 10,
+    });
+
+    await journal.close();
+
+    // Append after close should not throw
+    journal.append({
+      agentIndex: 1,
+      prompt: "after close",
+      opts: {},
+      result: "should not persist",
+      tokens: 5,
+    });
+
+    // In-memory entry is added
+    expect(journal.length).toBe(2);
+    // But file only has 1 entry (written before close)
+    const content = await fs.promises.readFile(filePath, "utf-8");
+    const lines = content.split("\n").filter((l) => l.trim());
+    expect(lines).toHaveLength(1);
+  });
 });

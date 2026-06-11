@@ -347,4 +347,35 @@ describe("WorkflowManager", () => {
       expect(run.status).toBe("completed");
     });
   });
+
+  describe("killRun", () => {
+    it("aborts a running workflow", async () => {
+      const script = `export const meta = { name: "test-wf", description: "A test" };\nawait new Promise(r => setTimeout(r, 60000));\nreturn 1;`;
+      const run = await manager.createRun(script);
+
+      const task: Record<string, unknown> = { id: "task-1", status: "running" };
+      mocks.mockBackgroundTaskManager.getTask.mockReturnValue(task);
+
+      await manager.startRun(run.runId);
+      manager.killRun(run.runId);
+
+      await run.completionPromise;
+      expect(run.status).toBe("aborted");
+    });
+  });
+
+  describe("skipAgent", () => {
+    it("does nothing for non-running run", () => {
+      // Should not throw
+      manager.skipAgent("wf_nonexistent", 0);
+    });
+  });
+
+  describe("retryAgent", () => {
+    it("throws for unknown run", async () => {
+      await expect(manager.retryAgent("wf_nonexistent", 0)).rejects.toThrow(
+        "not found",
+      );
+    });
+  });
 });
