@@ -6,7 +6,7 @@ export class Journal {
   private entries: JournalLine[] = [];
   private stream: fs.WriteStream | null = null;
 
-  constructor(private filePath: string) {}
+  constructor(public readonly filePath: string) {}
 
   async init(): Promise<void> {
     // Ensure directory exists
@@ -17,7 +17,7 @@ export class Journal {
 
   append(entry: JournalLine): void {
     this.entries.push(entry);
-    if (this.stream) {
+    if (this.stream && !this.stream.destroyed && !this.stream.writableEnded) {
       this.stream.write(JSON.stringify(entry) + "\n");
     }
   }
@@ -30,6 +30,14 @@ export class Journal {
     const agentEntries = this.entries.filter(
       (e): e is import("./types.js").JournalEntry => !("type" in e),
     );
+    // Check if this agent was marked as failed
+    const failedEntry = this.entries.find(
+      (e): e is import("./types.js").AgentFailedEntry =>
+        "type" in e && e.type === "agent_failed" && e.agentIndex === agentIndex,
+    );
+    if (failedEntry) {
+      return undefined; // Failed agents don't have cached results
+    }
     if (agentIndex < agentEntries.length) {
       return agentEntries[agentIndex].result;
     }
@@ -47,12 +55,25 @@ export class Journal {
     ).length;
   }
 
+  /** Remove the agent_failed entry for a given agent index (for retry support) */
+  removeFailedEntry(agentIndex: number): void {
+    this.entries = this.entries.filter(
+      (e) =>
+        !(
+          "type" in e &&
+          e.type === "agent_failed" &&
+          e.agentIndex === agentIndex
+        ),
+    );
+  }
+
   async close(): Promise<void> {
-    if (this.stream) {
+    const s = this.stream;
+    this.stream = null;
+    if (s) {
       await new Promise<void>((resolve) => {
-        this.stream!.end(() => resolve());
+        s.end(() => resolve());
       });
-      this.stream = null;
     }
   }
 

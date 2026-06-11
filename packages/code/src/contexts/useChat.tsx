@@ -376,10 +376,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onCompactionStateChange: (isCompactingState) => {
           setIsCompacting(isCompactingState);
         },
-        onBackgroundTasksChange: (tasks) => {
+        onBackgroundTasksChange: async (tasks) => {
           setBackgroundTasks([...tasks]);
           // Also refresh workflow runs since workflows are background tasks
-          const runs = agentRef.current?.getWorkflowRuns();
+          const runs = await agentRef.current?.getWorkflowRuns();
           if (runs) setWorkflowRuns([...runs]);
         },
         onTasksChange: (newTasks) => {
