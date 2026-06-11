@@ -917,7 +917,10 @@ describe("inputHandlers", () => {
   });
 
   describe("handleInput", () => {
-    it("should return true if selectorJustUsed is true and not call other handlers", async () => {
+    it("should not block input when selectorJustUsed is true", async () => {
+      // selectorJustUsed no longer blocks HANDLE_KEY - the specific key
+      // handlers (Escape, Enter) already prevent double processing via
+      // early returns and selector-active checks.
       const state = {
         ...initialState,
         selectorJustUsed: true,
@@ -926,7 +929,8 @@ describe("inputHandlers", () => {
       const key = { return: true } as Key;
       const result = await handleInput(state, dispatch, callbacks, "", key);
       expect(result).toBe(true);
-      expect(callbacks.onSendMessage).not.toHaveBeenCalled();
+      // Enter should still send the message even when selectorJustUsed is true
+      expect(callbacks.onSendMessage).toHaveBeenCalled();
     });
 
     it("should handle escape to abort message", async () => {

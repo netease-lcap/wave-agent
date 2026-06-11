@@ -1270,4 +1270,298 @@ describe("inputReducer", () => {
       });
     });
   });
+
+  describe("selectorJustUsed blocking input after command selection", () => {
+    const hasSlashCommand = (cmd: string) => cmd === "custom";
+
+    it("should NOT block Enter after INSERT_COMMAND (Tab insert)", () => {
+      // Scenario: user types /, Tab-inserts a command, then types text and presses Enter
+      // INSERT_COMMAND sets selectorJustUsed=true which blocks HANDLE_KEY
+      let state: InputState = {
+        ...initialState,
+        inputText: "/",
+        cursorPosition: 1,
+        showCommandSelector: true,
+        slashPosition: 0,
+      };
+
+      // Tab-insert an agent command (not an internal CLI command)
+      state = inputReducer(state, {
+        type: "INSERT_COMMAND",
+        payload: "custom",
+      });
+      // After insert: inputText="/custom ", selectorJustUsed=true, showCommandSelector=false
+      expect(state.inputText).toBe("/custom ");
+      expect(state.selectorJustUsed).toBe(true);
+      expect(state.showCommandSelector).toBe(false);
+
+      // User types additional text
+      state = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "a",
+          key: {} as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+      // selectorJustUsed no longer blocks this keystroke
+      expect(state.inputText).toBe("/custom a");
+
+      // User presses Enter to send
+      state = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+      // /custom is an agent command — sent as SEND_MESSAGE
+      expect(state.pendingEffect).toEqual({
+        type: "SEND_MESSAGE",
+        content: "/custom a",
+        images: undefined,
+        longTextMap: {},
+      });
+    });
+
+    it("should NOT block Enter after SELECT_COMMAND (Enter select)", () => {
+      // Scenario: user types /, presses Enter to select a command
+      // SELECT_COMMAND sets selectorJustUsed=true, pendingEffect=EXECUTE_COMMAND
+      // After the command executes, user should be able to type and send normally
+      let state: InputState = {
+        ...initialState,
+        inputText: "/",
+        cursorPosition: 1,
+        showCommandSelector: true,
+        slashPosition: 0,
+      };
+
+      // Select the command (Enter)
+      state = inputReducer(state, {
+        type: "SELECT_COMMAND",
+        payload: "help",
+      });
+      expect(state.selectorJustUsed).toBe(true);
+      expect(state.pendingEffect).toEqual({
+        type: "EXECUTE_COMMAND",
+        command: "help",
+      });
+
+      // After command executes, user types and sends
+      // First, simulate selectorJustUsed being reset (setTimeout in useInputManager)
+      state = inputReducer(state, {
+        type: "SET_SELECTOR_JUST_USED",
+        payload: false,
+      });
+
+      // Now type and send should work
+      state = inputReducer(state, {
+        type: "SET_INPUT_TEXT",
+        payload: "hello world",
+      });
+      state = { ...state, cursorPosition: 11 };
+
+      state = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+      expect(state.pendingEffect).toEqual({
+        type: "SEND_MESSAGE",
+        content: "hello world",
+        images: undefined,
+        longTextMap: {},
+      });
+    });
+
+    it("should NOT block input after closing a view opened by command", () => {
+      // Scenario: user runs /help, help view opens, user presses Escape to close
+      // SET_SHOW_HELP false sets selectorJustUsed=true
+      // User should be able to type and send immediately after
+      let state: InputState = {
+        ...initialState,
+        showHelp: true,
+      };
+
+      // Close help view (Escape)
+      state = inputReducer(state, {
+        type: "SET_SHOW_HELP",
+        payload: false,
+      });
+      expect(state.showHelp).toBe(false);
+      expect(state.selectorJustUsed).toBe(true);
+
+      // User types text
+      state = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "h",
+          key: {} as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+      // selectorJustUsed no longer blocks this keystroke
+      expect(state.inputText).toBe("h");
+
+      // User presses Enter
+      state = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "i",
+          key: {} as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+      state = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+      expect(state.pendingEffect).toEqual({
+        type: "SEND_MESSAGE",
+        content: "hi",
+        images: undefined,
+        longTextMap: {},
+      });
+    });
+
+    it("reproduces stuck state: Enter swallowed when showCommandSelector is active", () => {
+      // This tests the race condition where both CommandSelector's useInput
+      // and InputBox's useInput handle the same Enter keypress.
+      // The inputReducer swallows Enter when showCommandSelector is true (line 989-991).
+      // Meanwhile, CommandSelector handles it via its own reducer/effect pipeline.
+      // After SELECT_COMMAND closes the selector, the Enter was already consumed.
+      const state: InputState = {
+        ...initialState,
+        inputText: "/help",
+        cursorPosition: 5,
+        showCommandSelector: true,
+        slashPosition: 0,
+      };
+
+      // InputBox's useInput fires HANDLE_KEY for Enter while selector is still active
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+
+      // Enter is swallowed because showCommandSelector is true
+      // The CommandSelector's separate reducer handles it, but from
+      // inputReducer's perspective, the Enter was consumed.
+      // After SELECT_COMMAND fires asynchronously, selectorJustUsed=true
+      // which would also block the NEXT Enter.
+      expect(result.inputText).toBe("/help"); // unchanged - Enter was swallowed
+      expect(result.pendingEffect).toBeNull(); // no message sent
+    });
+
+    it("should execute CLI-internal command when Tab-inserted and Enter pressed", () => {
+      // Scenario: user types /, Tab-inserts /help, then presses Enter
+      // /help is an internal CLI command — should be EXECUTE_COMMAND, not SEND_MESSAGE
+      const state: InputState = {
+        ...initialState,
+        inputText: "/help ",
+        cursorPosition: 6,
+      };
+
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand: (cmd: string) => cmd === "help",
+        },
+      });
+
+      expect(result.inputText).toBe("");
+      expect(result.pendingEffect).toEqual({
+        type: "EXECUTE_COMMAND",
+        command: "help",
+      });
+    });
+
+    it("should send agent slash command as message even without arguments", () => {
+      // Agent commands (registered via hasSlashCommand) are NOT internal CLI
+      // commands — they should always be sent as SEND_MESSAGE
+      const state: InputState = {
+        ...initialState,
+        inputText: "/custom",
+        cursorPosition: 7,
+      };
+
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand: (cmd: string) => cmd === "custom",
+        },
+      });
+
+      expect(result.pendingEffect).toEqual({
+        type: "SEND_MESSAGE",
+        content: "/custom",
+        images: undefined,
+        longTextMap: {},
+      });
+    });
+
+    it("should send agent slash command with arguments as message", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "/custom arg1 arg2",
+        cursorPosition: 17,
+      };
+
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand: (cmd: string) => cmd === "custom",
+        },
+      });
+
+      expect(result.pendingEffect).toEqual({
+        type: "SEND_MESSAGE",
+        content: "/custom arg1 arg2",
+        images: undefined,
+        longTextMap: {},
+      });
+    });
+
+    it("should send unknown /command as message", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "/unknown thing",
+        cursorPosition: 14,
+      };
+
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+
+      expect(result.pendingEffect).toEqual({
+        type: "SEND_MESSAGE",
+        content: "/unknown thing",
+        images: undefined,
+        longTextMap: {},
+      });
+    });
+  });
 });

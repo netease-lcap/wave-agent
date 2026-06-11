@@ -701,10 +701,6 @@ export const handleInput = async (
   key: Key,
   clearImages?: () => void,
 ): Promise<boolean> => {
-  if (state.selectorJustUsed) {
-    return true;
-  }
-
   if (state.btwState.isActive) {
     if (key.escape) {
       dispatch({

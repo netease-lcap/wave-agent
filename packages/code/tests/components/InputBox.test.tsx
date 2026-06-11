@@ -193,7 +193,7 @@ describe("InputBox Smoke Tests", () => {
       });
     });
 
-    it("should send complete slash command as message", async () => {
+    it("should send complete slash command with arguments as message", async () => {
       mockHasSlashCommand.mockReturnValue(true);
       mockSendMessage.mockResolvedValue(undefined);
 
@@ -211,6 +211,8 @@ describe("InputBox Smoke Tests", () => {
       );
 
       stdin.write("\r");
+      // Slash commands with arguments are sent as SEND_MESSAGE so the
+      // full content (including arguments) reaches the agent
       await vi.waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           "/git-commit some arguments",
