@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { Box, Text } from "ink";
 import { useInput } from "ink";
 import { FileSelector } from "./FileSelector.js";
@@ -80,7 +80,22 @@ export const InputBox: React.FC<InputBoxProps> = ({
     configuredModels,
     setModel,
     recreateAgent,
+    recallQueuedMessage,
+    queuedMessages,
   } = useChat();
+
+  // Ref to hold setInputText so queue callbacks can access it before useInputManager returns
+  const setInputTextRef = useRef<(text: string) => void>(() => {});
+
+  const hasQueuedMessages = (queuedMessages?.length ?? 0) > 0;
+
+  const onRecallQueuedMessage = useCallback(() => {
+    const msg = recallQueuedMessage();
+    if (msg) {
+      const prefix = msg.type === "bang" ? "!" : "";
+      setInputTextRef.current(prefix + msg.content);
+    }
+  }, [recallQueuedMessage]);
 
   // Input manager with all input state and functionality (including images)
   const {
@@ -135,6 +150,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
     handleInput,
     // Manager ready state
     isManagerReady,
+    // Direct state setters
+    setInputText,
   } = useInputManager({
     onSendMessage: sendMessage,
     onAskBtw: askBtw,
@@ -145,7 +162,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
     sessionId,
     workdir: workingDirectory,
     getFullMessageThread,
+    hasQueuedMessages,
+    onRecallQueuedMessage,
   });
+
+  // Keep setInputText ref updated for queue callbacks
+  useEffect(() => {
+    setInputTextRef.current = setInputText;
+  }, [setInputText]);
 
   // Sync permission mode from useChat to InputManager
   useEffect(() => {

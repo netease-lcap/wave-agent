@@ -232,33 +232,17 @@ export class Agent {
     });
 
     // Wire up message queue to process when agent becomes idle
-    this.messageQueue.onMessageEnqueued = () => {
-      // If the AI is NOT loading and command is not running, trigger dequeue
-      if (!this.aiManager.isLoading && !this.isCommandRunning) {
-        this.processQueuedMessage().catch((error) => {
-          this.logger?.error("Failed to process queued message:", error);
-        });
-      }
-    };
+    this.messageQueue.onMessageEnqueued = () => this.tryDequeue();
 
     // Wire up AI loading changes to process queue when AI becomes idle
     this.aiManager.onLoadingChange = (loading: boolean) => {
-      if (!loading && !this.isCommandRunning) {
-        this.processQueuedMessage().catch((error) => {
-          this.logger?.error("Failed to process queued message:", error);
-        });
-      }
+      if (!loading) this.tryDequeue();
     };
 
     // Wire up bang manager callback for command running changes
     this.bangManager.onCommandRunningChange = (running: boolean) => {
       this.options.callbacks?.onCommandRunningChange?.(running);
-      // When command stops and AI is idle, process queue
-      if (!running && !this.aiManager.isLoading) {
-        this.processQueuedMessage().catch((error) => {
-          this.logger?.error("Failed to process queued message:", error);
-        });
-      }
+      if (!running) this.tryDequeue();
     };
 
     // Set initial permission mode if provided
@@ -380,13 +364,59 @@ export class Agent {
   }
 
   /**
+   * Recall the last editable queued message (for inline editing)
+   * @returns The recalled message, or null if no editable message exists
+   */
+  public recallQueuedMessage(): QueuedMessage | null {
+    const msg = this.messageQueue.popLastEditable();
+    if (msg) {
+      this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+    }
+    return msg;
+  }
+
+  /**
+   * Remove a queued message by its ID
+   * @param id - The ID of the message to remove
+   * @returns true if the message was removed, false if not found
+   */
+  public removeQueuedMessageById(id: string): boolean {
+    const removed = this.messageQueue.removeById(id);
+    if (removed) {
+      this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+    }
+    return removed;
+  }
+
+  /**
+   * Unified dequeue trigger — checks state machine before processing.
+   * Called from onMessageEnqueued, onLoadingChange(false), and
+   * onCommandRunningChange(false).
+   */
+  private tryDequeue(): void {
+    if (this.messageQueue.state !== "idle") return;
+    if (!this.messageQueue.hasPending()) return;
+    if (this.aiManager.isLoading || this.isCommandRunning) return;
+
+    this.messageQueue.transitionTo("dispatching");
+    this.processQueuedMessage()
+      .catch((error) => {
+        this.logger?.error("Failed to process queued message:", error);
+      })
+      .finally(() => {
+        this.messageQueue.transitionTo("idle");
+        this.tryDequeue(); // Re-check after processing
+      });
+  }
+
+  /**
    * Process the next queued message when the agent becomes idle.
-   * Dequeues the next message and handles it based on type.
    */
   private async processQueuedMessage(): Promise<void> {
     const next = this.messageQueue.dequeue();
     if (!next) return;
 
+    this.messageQueue.transitionTo("running");
     this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
 
     if (next.type === "bang") {
@@ -658,10 +688,13 @@ export class Agent {
 
   /** Unified interrupt method, interrupts both AI messages and command execution */
   public abortMessage(): void {
-    // Clear queue first to prevent processQueuedMessage from dequeuing
-    // when abortAIMessage triggers onLoadingChange(false)
-    this.messageQueue.clear();
-    this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+    if (this.aiManager.isLoading || this.isCommandRunning) {
+      // Clear queue first to prevent processQueuedMessage from dequeuing
+      // when abortAIMessage triggers onLoadingChange(false)
+      this.messageQueue.clear();
+      this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+    }
+    this.messageQueue.transitionTo("idle"); // Reset state on abort
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
@@ -868,7 +901,10 @@ export class Agent {
         this.slashCommandManager.isImmediateCommand(trimmed);
 
       if (!isImmediate) {
-        this.messageQueue.enqueue({ content, images });
+        this.messageQueue.enqueue({
+          content,
+          images,
+        });
         this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
         return;
       }

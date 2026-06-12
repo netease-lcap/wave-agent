@@ -54,6 +54,8 @@ export interface ChatContextType {
   ) => Promise<void>;
   askBtw: (question: string) => Promise<string>;
   abortMessage: () => void;
+  recallQueuedMessage: () => QueuedMessage | null;
+  removeQueuedMessageById: (id: string) => boolean;
   latestTotalTokens: number;
   maxInputTokens: number;
   // Model functionality
@@ -626,6 +628,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     agentRef.current?.abortMessage();
   }, []);
 
+  const recallQueuedMessage = useCallback((): QueuedMessage | null => {
+    return agentRef.current?.recallQueuedMessage() ?? null;
+  }, []);
+
+  const removeQueuedMessageById = useCallback((id: string): boolean => {
+    return agentRef.current?.removeQueuedMessageById(id) ?? false;
+  }, []);
+
   // Permission management methods
   const setPermissionMode = useCallback((mode: PermissionMode) => {
     setPermissionModeState((prev) => {
@@ -815,6 +825,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     sendMessage,
     askBtw,
     abortMessage,
+    recallQueuedMessage,
+    removeQueuedMessageById,
     latestTotalTokens,
     maxInputTokens,
     currentModel,

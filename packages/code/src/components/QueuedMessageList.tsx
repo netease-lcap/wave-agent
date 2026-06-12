@@ -18,15 +18,19 @@ export const QueuedMessageList: React.FC = () => {
         const displayText = prefix + (content || (hasImages ? "[Images]" : ""));
 
         return (
-          <Box key={index}>
+          <Box key={msg.id ?? index}>
+            <Text color="gray">[{index + 1}] </Text>
             <Text color="gray" italic>
-              {displayText.length > 60
-                ? `${displayText.substring(0, 57)}...`
+              {displayText.length > 55
+                ? `${displayText.substring(0, 52)}...`
                 : displayText}
             </Text>
           </Box>
         );
       })}
+      <Text color="gray" dimColor>
+        {"  "}↑ recall
+      </Text>
     </Box>
   );
 };

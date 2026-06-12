@@ -459,6 +459,527 @@ describe("Agent - Abort Handling", () => {
     expect(mockCallbacks.onQueuedMessagesChange).toHaveBeenCalledWith([]);
   });
 
+  describe("abortMessage queue behavior", () => {
+    it("should not clear queue when agent is idle", async () => {
+      const mockCallbacks = {
+        onMessagesChange: vi.fn(),
+        onLoadingChange: vi.fn(),
+        onQueuedMessagesChange: vi.fn(),
+      };
+
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-abort-queue-idle",
+        callbacks: mockCallbacks,
+      });
+
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      // Disconnect onMessageEnqueued to prevent auto-dequeue during test setup
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      messageQueue.onMessageEnqueued = undefined;
+
+      // Enqueue messages directly — agent is idle (not loading, no command running)
+      messageQueue.enqueue({ content: "queued msg 1" });
+      messageQueue.enqueue({ content: "queued msg 2" });
+      expect(messageQueue.hasPending()).toBe(true);
+
+      // Spy on messageQueue.clear to verify it is NOT called when idle
+      const clearSpy = vi.spyOn(messageQueue, "clear");
+
+      // Also disconnect onLoadingChange to prevent tryDequeue from draining the queue
+      // after abortAIMessage triggers onLoadingChange(false)
+      const aiManager = (testAgent as unknown as { aiManager: AIManager })
+        .aiManager;
+      aiManager.onLoadingChange = undefined;
+
+      // Call abortMessage while idle
+      testAgent.abortMessage();
+
+      // clear() should NOT have been called because agent was not busy
+      expect(clearSpy).not.toHaveBeenCalled();
+      // Queue should still have messages (not explicitly cleared)
+      expect(messageQueue.hasPending()).toBe(true);
+
+      clearSpy.mockRestore();
+    });
+
+    it("should clear queue when agent is busy (loading)", async () => {
+      const mockCallbacks = {
+        onMessagesChange: vi.fn(),
+        onLoadingChange: vi.fn(),
+        onQueuedMessagesChange: vi.fn(),
+      };
+
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-abort-queue-busy",
+        callbacks: mockCallbacks,
+      });
+
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      // Disconnect onMessageEnqueued to prevent auto-dequeue during test setup
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      messageQueue.onMessageEnqueued = undefined;
+
+      // Enqueue messages
+      messageQueue.enqueue({ content: "queued msg 1" });
+      messageQueue.enqueue({ content: "queued msg 2" });
+      expect(messageQueue.hasPending()).toBe(true);
+
+      // Set agent as busy
+      const aiManager = (testAgent as unknown as { aiManager: AIManager })
+        .aiManager;
+      aiManager.setIsLoading(true);
+
+      // Call abortMessage while busy
+      testAgent.abortMessage();
+
+      // Queue should be cleared
+      expect(messageQueue.hasPending()).toBe(false);
+      expect(messageQueue.getQueue()).toHaveLength(0);
+    });
+
+    it("should reset queue state to idle on abort", async () => {
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-abort-queue-state",
+        callbacks: {
+          onMessagesChange: vi.fn(),
+          onLoadingChange: vi.fn(),
+        },
+      });
+
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+
+      // Transition queue to "dispatching" state
+      expect(messageQueue.transitionTo("dispatching")).toBe(true);
+      expect(messageQueue.state).toBe("dispatching");
+
+      // Call abortMessage — should reset queue state to idle
+      testAgent.abortMessage();
+
+      expect(messageQueue.state).toBe("idle");
+    });
+  });
+
+  describe("recallQueuedMessage", () => {
+    it("should recall last editable message from queue", async () => {
+      const mockCallbacks = {
+        onMessagesChange: vi.fn(),
+        onLoadingChange: vi.fn(),
+        onQueuedMessagesChange: vi.fn(),
+      };
+
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-recall-queue",
+        callbacks: mockCallbacks,
+      });
+
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      // Disconnect onMessageEnqueued to prevent auto-dequeue
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      messageQueue.onMessageEnqueued = undefined;
+
+      messageQueue.enqueue({ content: "first" });
+      messageQueue.enqueue({ content: "second" });
+      messageQueue.enqueue({ content: "third" });
+      expect(messageQueue.getQueue()).toHaveLength(3);
+
+      // Recall should return the last editable message
+      const recalled = testAgent.recallQueuedMessage();
+      expect(recalled).not.toBeNull();
+      expect(recalled!.content).toBe("third");
+
+      // Third message should be removed from queue
+      expect(messageQueue.getQueue()).toHaveLength(2);
+      expect(messageQueue.getQueue().map((m) => m.content)).toEqual([
+        "first",
+        "second",
+      ]);
+    });
+
+    it("should return null when queue is empty", async () => {
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-recall-empty",
+        callbacks: {
+          onMessagesChange: vi.fn(),
+          onLoadingChange: vi.fn(),
+        },
+      });
+
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      const result = testAgent.recallQueuedMessage();
+      expect(result).toBeNull();
+    });
+
+    it("should fire onQueuedMessagesChange callback", async () => {
+      const mockCallbacks = {
+        onMessagesChange: vi.fn(),
+        onLoadingChange: vi.fn(),
+        onQueuedMessagesChange: vi.fn(),
+      };
+
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-recall-callback",
+        callbacks: mockCallbacks,
+      });
+
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      // Disconnect onMessageEnqueued to prevent auto-dequeue
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      messageQueue.onMessageEnqueued = undefined;
+
+      messageQueue.enqueue({ content: "msg1" });
+      messageQueue.enqueue({ content: "msg2" });
+
+      vi.clearAllMocks();
+
+      testAgent.recallQueuedMessage();
+
+      expect(mockCallbacks.onQueuedMessagesChange).toHaveBeenCalledTimes(1);
+      // The callback should receive the remaining queue (1 message)
+      const calledWith = mockCallbacks.onQueuedMessagesChange.mock.calls[0][0];
+      expect(calledWith).toHaveLength(1);
+      expect(calledWith[0].content).toBe("msg1");
+    });
+  });
+
+  describe("removeQueuedMessageById", () => {
+    it("should remove message by id", async () => {
+      const mockCallbacks = {
+        onMessagesChange: vi.fn(),
+        onLoadingChange: vi.fn(),
+        onQueuedMessagesChange: vi.fn(),
+      };
+
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-remove-by-id",
+        callbacks: mockCallbacks,
+      });
+
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      // Disconnect onMessageEnqueued to prevent auto-dequeue
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      messageQueue.onMessageEnqueued = undefined;
+
+      messageQueue.enqueue({ id: "msg-a", content: "first" });
+      messageQueue.enqueue({ id: "msg-b", content: "second" });
+      messageQueue.enqueue({ id: "msg-c", content: "third" });
+
+      const result = testAgent.removeQueuedMessageById("msg-b");
+      expect(result).toBe(true);
+
+      const remaining = messageQueue.getQueue();
+      expect(remaining).toHaveLength(2);
+      expect(remaining.map((m) => m.content)).toEqual(["first", "third"]);
+    });
+
+    it("should return false for unknown id", async () => {
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-remove-unknown-id",
+        callbacks: {
+          onMessagesChange: vi.fn(),
+          onLoadingChange: vi.fn(),
+        },
+      });
+
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      // Disconnect onMessageEnqueued to prevent auto-dequeue
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      messageQueue.onMessageEnqueued = undefined;
+
+      messageQueue.enqueue({ id: "msg-a", content: "first" });
+
+      const result = testAgent.removeQueuedMessageById("nonexistent");
+      expect(result).toBe(false);
+
+      // Queue should be unchanged
+      expect(messageQueue.getQueue()).toHaveLength(1);
+    });
+  });
+
   it("should not accumulate abort listeners when using same signal multiple times", async () => {
     // Create a shared abort signal to simulate reuse scenario
     const abortController = new AbortController();

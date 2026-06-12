@@ -41,7 +41,8 @@ export type PendingEffect =
   | { type: "PERMISSION_MODE_CHANGE"; mode: PermissionMode }
   | { type: "FETCH_HISTORY" }
   | { type: "PASTE_IMAGE" }
-  | { type: "EXECUTE_COMMAND"; command: string };
+  | { type: "EXECUTE_COMMAND"; command: string }
+  | { type: "RECALL_QUEUED_MESSAGE" };
 
 export interface InputManagerCallbacks {
   onInputTextChange?: (text: string) => void;
@@ -84,6 +85,8 @@ export interface InputManagerCallbacks {
     sessionIds: string[];
   }>;
   logger?: Logger;
+  hasQueuedMessages?: boolean;
+  onRecallQueuedMessage?: () => void;
 }
 
 export interface InputState {
@@ -227,6 +230,7 @@ export type InputAction =
         input: string;
         key: Key;
         hasSlashCommand: (cmd: string) => boolean;
+        hasQueuedMessages?: boolean;
       };
     };
 
@@ -682,6 +686,7 @@ export function inputReducer(
       return { ...state, pendingEffect: null };
     case "HANDLE_KEY": {
       const { input, key } = action.payload;
+      const hasQueuedMessages = action.payload.hasQueuedMessages ?? false;
 
       // 1. BTW State Handling
       if (state.btwState.isActive) {
@@ -820,6 +825,13 @@ export function inputReducer(
         !state.showFileSelector &&
         !state.showCommandSelector
       ) {
+        // If queue has messages, recall from queue first (before history)
+        if (hasQueuedMessages) {
+          return {
+            ...state,
+            pendingEffect: { type: "RECALL_QUEUED_MESSAGE" },
+          };
+        }
         if (state.history.length === 0) {
           return { ...state, pendingEffect: { type: "FETCH_HISTORY" } };
         }

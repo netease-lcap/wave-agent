@@ -43,6 +43,8 @@ export const useInputManager = (
     workdir,
     getFullMessageThread,
     logger,
+    hasQueuedMessages: hasQueuedMessagesProp,
+    onRecallQueuedMessage,
   } = callbacks;
 
   // Handle debounced file search
@@ -218,6 +220,9 @@ export const useInputManager = (
               }
             }
             break;
+          case "RECALL_QUEUED_MESSAGE":
+            onRecallQueuedMessage?.();
+            break;
         }
       } catch (error) {
         console.error("Effect execution error:", error);
@@ -237,6 +242,7 @@ export const useInputManager = (
     getFullMessageThread,
     logger,
     onHasSlashCommand,
+    onRecallQueuedMessage,
   ]);
 
   useEffect(() => {
@@ -519,10 +525,11 @@ export const useInputManager = (
           input,
           key: {} as Key,
           hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
+          hasQueuedMessages: hasQueuedMessagesProp ?? false,
         },
       });
     },
-    [onHasSlashCommand],
+    [onHasSlashCommand, hasQueuedMessagesProp],
   );
 
   const handleSubmit = useCallback(async () => {
@@ -532,9 +539,10 @@ export const useInputManager = (
         input: "",
         key: { return: true } as Key,
         hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
+        hasQueuedMessages: hasQueuedMessagesProp ?? false,
       },
     });
-  }, [onHasSlashCommand]);
+  }, [onHasSlashCommand, hasQueuedMessagesProp]);
 
   const expandLongTextPlaceholders = useCallback(
     (text: string) => {
@@ -565,11 +573,12 @@ export const useInputManager = (
           input,
           key,
           hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
+          hasQueuedMessages: hasQueuedMessagesProp ?? false,
         },
       });
       return true;
     },
-    [onHasSlashCommand],
+    [onHasSlashCommand, hasQueuedMessagesProp],
   );
 
   return {
