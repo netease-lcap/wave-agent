@@ -1,4 +1,4 @@
-# Implementation Plan: Prompt Cache Control for Claude Models
+# Implementation Plan: Prompt Cache Control
 
 **Branch**: `021-prompt-cache-control` | **Date**: 2025-12-02 | **Spec**: [spec.md](spec.md)
 **Input**: Feature specification from `/specs/021-prompt-cache-control/spec.md`
@@ -7,7 +7,7 @@
 
 ## Summary
 
-Implement cache_control functionality for Claude models in the OpenAI provider to optimize token usage and reduce costs. The feature adds ephemeral cache markers to the first system message, messages at 20-message intervals, and the last tool definition when the model matches the configurable `WAVE_PROMPT_CACHE_REGEX` pattern (default: "claude"). Cache control is applied only at the block level (content blocks and tool definitions), never at the message level. This includes extending usage tracking to capture cache-related metrics (cache_read_input_tokens, cache_creation_input_tokens) and maintaining backward compatibility with existing message processing.
+Implement cache_control functionality for Claude models in the OpenAI provider to optimize token usage and reduce costs. The feature adds ephemeral cache markers to the first system message, messages at 20-message intervals, and the last tool definition when the model matches the configurable `WAVE_PROMPT_CACHE_REGEX` pattern (default: "claude"). Cache control is applied only at the block level (content blocks and tool definitions), never at the message level. This includes extending usage tracking to capture cache-related metrics from both Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens) and OpenAI-standard prompt_tokens_details (cached_tokens, cache_creation_input_tokens), with Claude top-level fields taking priority. This ensures cache token tracking works across Claude, Gemini, DeepSeek, and other models that return cache data.
 
 ## Technical Context
 

@@ -1568,6 +1568,127 @@ describe("AI Service - Claude Cache Control", () => {
       });
     });
 
+    describe("prompt_tokens_details cache extraction", () => {
+      it("should extract cached_tokens from prompt_tokens_details for non-Claude models", async () => {
+        const mockWithResponse = vi.fn().mockResolvedValue({
+          data: {
+            choices: [
+              {
+                message: { content: "Test response" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 100,
+              completion_tokens: 50,
+              total_tokens: 150,
+              prompt_tokens_details: {
+                cached_tokens: 80,
+              },
+            },
+          },
+          response: {
+            headers: new Map([["x-request-id", "req-12345"]]),
+          },
+        });
+        mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+        const result = await callAgent({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: { model: "gpt-4o", fastModel: "gpt-4o-mini" },
+          messages: [{ role: "user", content: "Test message" }],
+          workdir: "/test/workdir",
+        });
+
+        expect(result).toBeDefined();
+        expect(result.usage).toBeDefined();
+        expect(result.usage?.prompt_tokens).toBe(100);
+        expect(result.usage?.completion_tokens).toBe(50);
+        expect(result.usage?.total_tokens).toBe(150);
+        expect(result.usage?.cache_read_input_tokens).toBe(80);
+      });
+
+      it("should extract cache_creation_input_tokens from prompt_tokens_details", async () => {
+        const mockWithResponse = vi.fn().mockResolvedValue({
+          data: {
+            choices: [
+              {
+                message: { content: "Test response" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 200,
+              completion_tokens: 50,
+              total_tokens: 250,
+              prompt_tokens_details: {
+                cached_tokens: 120,
+                cache_creation_input_tokens: 40,
+              },
+            },
+          },
+          response: {
+            headers: new Map([["x-request-id", "req-12345"]]),
+          },
+        });
+        mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+        const result = await callAgent({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: {
+            model: "gemini-2.5-pro",
+            fastModel: "gemini-2.5-flash",
+          },
+          messages: [{ role: "user", content: "Test message" }],
+          workdir: "/test/workdir",
+        });
+
+        expect(result).toBeDefined();
+        expect(result.usage?.cache_read_input_tokens).toBe(120);
+        expect(result.usage?.cache_creation_input_tokens).toBe(40);
+      });
+
+      it("should prefer Claude top-level fields over prompt_tokens_details when both present", async () => {
+        const mockWithResponse = vi.fn().mockResolvedValue({
+          data: {
+            choices: [
+              {
+                message: { content: "Test response" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 100,
+              completion_tokens: 50,
+              total_tokens: 150,
+              cache_read_input_tokens: 30,
+              cache_creation_input_tokens: 70,
+              prompt_tokens_details: {
+                cached_tokens: 999,
+                cache_creation_input_tokens: 888,
+              },
+            },
+          },
+          response: {
+            headers: new Map([["x-request-id", "req-12345"]]),
+          },
+        });
+        mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+        const result = await callAgent({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: CLAUDE_MODEL_CONFIG,
+          messages: [{ role: "user", content: "Test message" }],
+          workdir: "/test/workdir",
+        });
+
+        expect(result).toBeDefined();
+        // Claude top-level fields take priority
+        expect(result.usage?.cache_read_input_tokens).toBe(30);
+        expect(result.usage?.cache_creation_input_tokens).toBe(70);
+      });
+    });
+
     describe("Edge Cases", () => {
       it("should handle empty conversation gracefully", async () => {
         const result = await callAgent({

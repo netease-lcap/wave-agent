@@ -1,4 +1,4 @@
-# Quickstart: Claude Cache Control Implementation
+# Quickstart: Cache Control Implementation
 
 **Feature**: Prompt Cache Control for Claude Models  
 **Date**: 2025-12-02  
@@ -86,12 +86,15 @@ if (supportsPromptCaching(model || modelConfig.model)) {
 }
 ```
 
-**Usage Extension**: Modify usage processing (lines 246-252 and 484-486)
+**Usage Extension**: Modify usage processing to extract cache metrics from all models
 
 ```typescript
-// Extend usage object for Claude models
-if (response.usage && supportsPromptCaching(model || modelConfig.model)) {
-  totalUsage = extendUsageWithCacheMetrics(response.usage, responseHeaders);
+// Extend usage object with cache metrics (Claude top-level + OpenAI prompt_tokens_details)
+if (totalUsage && response.usage) {
+  totalUsage = extendUsageWithCacheMetrics(
+    totalUsage,
+    response.usage as Partial<ClaudeUsage>,
+  );
 }
 ```
 
@@ -223,10 +226,10 @@ describe('Claude Cache Control', () => {
 // Standard OpenAI usage
 { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 }
 
-// Extended Claude usage  
+// Extended Claude usage (cache from Claude top-level fields)
 {
   prompt_tokens: 100,
-  completion_tokens: 50, 
+  completion_tokens: 50,
   total_tokens: 150,
   cache_read_input_tokens: 0,
   cache_creation_input_tokens: 80,
@@ -234,6 +237,16 @@ describe('Claude Cache Control', () => {
     ephemeral_5m_input_tokens: 80,
     ephemeral_1h_input_tokens: 0
   }
+}
+
+// Extended usage from non-Claude models (cache from prompt_tokens_details)
+// Input: { prompt_tokens: 200, total_tokens: 250, prompt_tokens_details: { cached_tokens: 120 } }
+// Output:
+{
+  prompt_tokens: 200,
+  completion_tokens: 50,
+  total_tokens: 250,
+  cache_read_input_tokens: 120,  // extracted from prompt_tokens_details.cached_tokens
 }
 ```
 

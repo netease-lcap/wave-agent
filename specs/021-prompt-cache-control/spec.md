@@ -1,4 +1,4 @@
-# Feature Specification: Prompt Cache Control for Claude Models
+# Feature Specification: Prompt Cache Control
 
 **Feature Branch**: `021-prompt-cache-control`  
 **Created**: 2025-12-02  
@@ -56,18 +56,20 @@ Tool definitions (function schemas) should be cached for Claude models since the
 
 ### User Story 4 - Comprehensive Token Tracking for Cache-Enabled Models (Priority: P1)
 
-When using Claude models with cache control, developers need accurate token tracking that includes all cache-related costs (cache reads, cache creation) in addition to the base prompt and completion tokens to understand the true cost and token usage of their requests.
+When using cache-enabled models (Claude or others like Gemini/DeepSeek that return cache tokens), developers need accurate token tracking that includes all cache-related costs (cache reads, cache creation) in addition to the base prompt and completion tokens to understand the true cost and token usage of their requests.
 
 **Why this priority**: Accurate cost tracking is critical for developers to understand the financial impact of caching and make informed decisions about their usage patterns. Without comprehensive token tracking, cache benefits might appear misleading.
 
-**Independent Test**: Can be fully tested by making cached requests with Claude models and verifying that the displayed token count includes prompt_tokens + completion_tokens + cache_read_input_tokens + cache_creation_input_tokens.
+**Independent Test**: Can be fully tested by making cached requests with any cache-enabled model and verifying that the displayed token count includes prompt_tokens + completion_tokens + cache_read_input_tokens + cache_creation_input_tokens.
 
 **Acceptance Scenarios**:
 
-1. **Given** a Claude model request with cache creation, **When** the response includes cache_creation_input_tokens, **Then** latestTotalTokens shows total_tokens + cache_creation_input_tokens
-2. **Given** a Claude model request with cache hits, **When** the response includes cache_read_input_tokens, **Then** latestTotalTokens shows total_tokens + cache_read_input_tokens
-3. **Given** a Claude model request with both cache creation and reads, **When** the response includes both token types, **Then** latestTotalTokens shows total_tokens + cache_read_input_tokens + cache_creation_input_tokens
-4. **Given** a non-cached request or non-Claude model, **When** no cache tokens are present, **Then** latestTotalTokens shows only total_tokens as before
+1. **Given** a Claude model request with cache creation, **When** the response includes cache_creation_input_tokens (at the usage top level), **Then** latestTotalTokens shows total_tokens + cache_creation_input_tokens
+2. **Given** a Claude model request with cache hits, **When** the response includes cache_read_input_tokens (at the usage top level), **Then** latestTotalTokens shows total_tokens + cache_read_input_tokens
+3. **Given** a non-Claude model request (e.g., Gemini, DeepSeek), **When** the response includes prompt_tokens_details.cached_tokens, **Then** cache_read_input_tokens is populated from cached_tokens and latestTotalTokens includes it
+4. **Given** a non-Claude model request, **When** the response includes prompt_tokens_details.cache_creation_input_tokens, **Then** cache_creation_input_tokens is populated from that field and latestTotalTokens includes it
+5. **Given** a model response with both Claude top-level cache fields and prompt_tokens_details, **When** both are present, **Then** the Claude top-level fields take priority
+6. **Given** a non-cached request or model with no cache tokens, **When** no cache tokens are present, **Then** latestTotalTokens shows only total_tokens as before
 
 ---
 
@@ -109,7 +111,7 @@ As a user who switches between permission modes (e.g., default → plan → acce
 - **FR-005**: System MUST maintain cache markers at the most recent multiple-of-20 message position (sliding window)
 - **FR-006**: System MUST include cached messages in the context provided to the AI agent
 - **FR-007**: System MUST not add cache_control markers when using non-Claude models
-- **FR-008**: System MUST extend usage tracking to include cache-related metrics (cache_read_input_tokens, cache_creation_input_tokens, cache_creation object)
+- **FR-008**: System MUST extend usage tracking to include cache-related metrics. Cache tokens are extracted from two sources with priority ordering: (1) Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens, cache_creation object) take priority, (2) OpenAI-standard prompt_tokens_details fields (cached_tokens → cache_read_input_tokens, cache_creation_input_tokens → cache_creation_input_tokens) serve as fallback for non-Claude models that return cache data via prompt_tokens_details
 - **FR-009**: System MUST apply cache_control markers identically for both streaming and non-streaming requests during message preparation phase
 - **FR-010**: System MUST maintain backward compatibility with existing message processing logic (except for the cache strategy itself which is a breaking change)
 - **FR-011**: System MUST support caching for different message roles at interval positions, applying cache_control only at block level:
