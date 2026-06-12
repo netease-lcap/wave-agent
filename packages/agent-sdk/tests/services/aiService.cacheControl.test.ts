@@ -261,10 +261,10 @@ describe("AI Service - Claude Cache Control", () => {
         );
 
         expect(result).toHaveLength(2);
+        // Only the last text part gets cache_control
         expect(result[0]).toEqual({
           type: "text",
           text: "First part",
-          cache_control: { type: "ephemeral" },
         });
         expect(result[1]).toEqual({
           type: "text",
@@ -287,7 +287,7 @@ describe("AI Service - Claude Cache Control", () => {
         expect(result[0]).not.toHaveProperty("cache_control");
       });
 
-      it("should filter out non-text content parts", async () => {
+      it("should preserve non-text content parts and cache last text part", async () => {
         const mixedContent = [
           { type: "text" as const, text: "Text part" },
           {
@@ -298,11 +298,15 @@ describe("AI Service - Claude Cache Control", () => {
 
         const result = cacheUtils.addCacheControlToContent(mixedContent, true);
 
-        expect(result).toHaveLength(1);
+        expect(result).toHaveLength(2);
         expect(result[0]).toEqual({
           type: "text",
           text: "Text part",
           cache_control: { type: "ephemeral" },
+        });
+        expect(result[1]).toEqual({
+          type: "image_url",
+          image_url: { url: "https://example.com/image.jpg" },
         });
       });
     });
@@ -366,7 +370,7 @@ describe("AI Service - Claude Cache Control", () => {
     });
 
     describe("transformMessagesForClaudeCache", () => {
-      it("should only cache first system message", async () => {
+      it("should cache first system message and last user message", async () => {
         const messages = [
           { role: "user" as const, content: "First user message" },
           { role: "system" as const, content: "System message in middle" },
@@ -392,6 +396,71 @@ describe("AI Service - Claude Cache Control", () => {
         // Last system message (index 4) should NOT have cache control
         expect(typeof result[4].content).toBe("string");
         expect(result[4].content).toBe("Last system message");
+
+        // Last user message (index 3) should have cache control
+        expect(Array.isArray(result[3].content)).toBe(true);
+        const lastUserContent = result[3].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(lastUserContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
+
+        // First user message (index 0) should NOT have cache control
+        expect(typeof result[0].content).toBe("string");
+        expect(result[0].content).toBe("First user message");
+      });
+
+      it("should cache only the last user message in multi-turn conversation", async () => {
+        const messages = [
+          { role: "system" as const, content: "You are helpful" },
+          { role: "user" as const, content: "Hello" },
+          { role: "assistant" as const, content: "Hi there!" },
+          { role: "user" as const, content: "How are you?" },
+          { role: "assistant" as const, content: "I'm good!" },
+          { role: "user" as const, content: "What can you do?" },
+        ];
+
+        const result = cacheUtils.transformMessagesForClaudeCache(
+          messages,
+          "claude-3-sonnet",
+        );
+
+        // System message (index 0) should have cache control
+        expect(Array.isArray(result[0].content)).toBe(true);
+
+        // First user message (index 1) should NOT have cache control
+        expect(typeof result[1].content).toBe("string");
+
+        // Second user message (index 3) should NOT have cache control
+        expect(typeof result[3].content).toBe("string");
+
+        // Last user message (index 5) should have cache control
+        expect(Array.isArray(result[5].content)).toBe(true);
+        const lastUserContent = result[5].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(lastUserContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
+      });
+
+      it("should handle conversation with no user messages", async () => {
+        const messages = [
+          { role: "system" as const, content: "You are helpful" },
+          { role: "assistant" as const, content: "Hello!" },
+        ];
+
+        const result = cacheUtils.transformMessagesForClaudeCache(
+          messages,
+          "claude-3-sonnet",
+        );
+
+        // System message should have cache control
+        expect(Array.isArray(result[0].content)).toBe(true);
+
+        // Assistant message should NOT have cache control
+        expect(typeof result[1].content).toBe("string");
       });
 
       it("should not cache assistant messages with tool calls", async () => {
@@ -424,12 +493,21 @@ describe("AI Service - Claude Cache Control", () => {
         expect(typeof result[2].content).toBe("string");
         expect(result[2].content).toBe("I'll use the tool");
 
-        // Only system message should have cache control (it's the last system message)
+        // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
         const systemContent = result[0].content as Array<{
           cache_control?: { type: string };
         }>;
         expect(systemContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
+
+        // Last user message (index 1) should have cache control
+        expect(Array.isArray(result[1].content)).toBe(true);
+        const userContent = result[1].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(userContent[0]).toHaveProperty("cache_control", {
           type: "ephemeral",
         });
       });
@@ -497,9 +575,20 @@ describe("AI Service - Claude Cache Control", () => {
         // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
 
-        // User message with mixed content should preserve its structure
+        // User message with mixed content should preserve structure and add cache control on last text part
         expect(Array.isArray(result[1].content)).toBe(true);
-        expect(result[1].content).toEqual(messages[1].content);
+        const userContent = result[1].content as unknown as Array<
+          Record<string, unknown>
+        >;
+        expect(userContent[0]).toEqual({
+          type: "text",
+          text: "Describe this image",
+          cache_control: { type: "ephemeral" },
+        });
+        expect(userContent[1]).toEqual({
+          type: "image_url",
+          image_url: { url: "data:image/jpeg;base64,..." },
+        });
 
         // Assistant message should remain as string
         expect(typeof result[2].content).toBe("string");
@@ -751,11 +840,27 @@ describe("AI Service - Claude Cache Control", () => {
         // System message should have cache control
         expect(Array.isArray(callArgs.messages[0].content)).toBe(true);
 
-        // Mixed content messages should remain unchanged (< 20 total messages)
+        // Mixed content user message should preserve structure with cache control on last text part
         expect(Array.isArray(callArgs.messages[1].content)).toBe(true);
-        expect(callArgs.messages[1].content).toEqual(
-          mixedContentMessages[0].content,
-        );
+        const userContent = callArgs.messages[1].content as Array<
+          Record<string, unknown>
+        >;
+        expect(userContent).toHaveLength(3);
+        expect(userContent[0]).toEqual({
+          type: "text",
+          text: "Here's an image:",
+        });
+        expect(userContent[1]).toEqual({
+          type: "image_url",
+          image_url: {
+            url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+          },
+        });
+        expect(userContent[2]).toEqual({
+          type: "text",
+          text: "What do you see?",
+          cache_control: { type: "ephemeral" },
+        });
 
         expect(typeof callArgs.messages[2].content).toBe("string");
       });

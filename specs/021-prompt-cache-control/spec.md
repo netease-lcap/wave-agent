@@ -21,6 +21,23 @@ When developers use Claude models through the OpenAI provider, the system messag
 
 ---
 
+### User Story 2 - Last User Message Cache Optimization (Priority: P1)
+
+When users engage in multi-turn conversations with Claude models, the last user message should be automatically cached to capture recent conversation history. This provides a cache breakpoint that includes the system prompt, tools, and conversation history up to the most recent user input, maximizing cache hits on every turn.
+
+**Why this priority**: Claude's cache is prefix-based — it caches everything from the start of the conversation up to each breakpoint. By placing a cache marker on the last user message, every consecutive turn reuses the entire prefix (system + tools + history), making this the most effective strategy for reducing token costs in interactive sessions.
+
+**Independent Test**: Can be fully tested by making agent calls with multiple user messages and verifying that only the last user message has cache_control markers, while earlier user messages remain unchanged.
+
+**Acceptance Scenarios**:
+
+1. **Given** a conversation has multiple user messages, **When** the system processes the next interaction with a Claude model, **Then** only the last user message has cache_control with type "ephemeral"
+2. **Given** a conversation has a single user message, **When** the system processes the interaction, **Then** that user message has cache_control markers
+3. **Given** a conversation has no user messages (only system or assistant), **When** the system processes the interaction, **Then** no user message cache markers are added
+4. **Given** a non-Claude model is configured, **When** an agent call is made, **Then** no cache_control markers are added to user messages
+
+---
+
 ### User Story 3 - Tool Definition Cache Optimization (Priority: P3)
 
 Tool definitions (function schemas) should be cached for Claude models since they remain relatively static during a session and can be substantial in size when many tools are available.
@@ -88,10 +105,11 @@ As a user who switches between permission modes (e.g., default → plan → acce
 
 - **FR-001**: System MUST detect cache-supporting models for cache_control marker injection using the `WAVE_PROMPT_CACHE_REGEX` environment variable (default: "claude"), which allows configurable regex patterns for model matching. This gate controls ONLY the injection of `cache_control: {type: "ephemeral"}` markers into messages and tool definitions — it does NOT gate cache token extraction from usage responses, which applies to all models.
 - **FR-002**: System MUST add cache_control markers with type "ephemeral" to the first system message when using Claude models. This ensures core instructions are always cached even if reminders are added later. The system prompt MUST remain constant across plan mode transitions — plan mode instructions are injected as `<system-reminder>` user messages rather than system prompt changes to preserve the cached system prompt prefix. The `<env>` section's `Primary working directory` field MUST use the immutable `originalWorkdir` (set once at session start) rather than the dynamic `workdir` (which tracks `cd` changes), so that CWD changes do not invalidate the cached system prompt.
-- **FR-003**: System MUST NOT add cache_control markers when using non-Claude models (as determined by `WAVE_PROMPT_CACHE_REGEX`). However, cache token extraction from usage (FR-004) applies to all models regardless of this gate.
-- **FR-004**: System MUST extend usage tracking to include cache-related metrics for ALL models (not gated by `supportsPromptCaching`). Cache tokens are extracted from two sources with priority ordering: (1) Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens, cache_creation object) take priority, (2) OpenAI-standard prompt_tokens_details fields (cached_tokens → cache_read_input_tokens, cache_creation_input_tokens → cache_creation_input_tokens) serve as fallback for non-Claude models that return cache data via prompt_tokens_details
-- **FR-005**: System MUST apply cache_control markers identically for both streaming and non-streaming requests during message preparation phase
-- **FR-006**: System MUST maintain backward compatibility with existing message processing logic (except for the cache strategy itself which is a breaking change)
+- **FR-003**: System MUST add cache_control markers with type "ephemeral" to the last user message when using Claude models. This captures recent conversation history as a cache breakpoint, maximizing cache hits on every turn since Claude's cache is prefix-based (caching everything from the start up to each breakpoint). Only the last user message receives cache markers; earlier user messages remain unchanged.
+- **FR-004**: System MUST NOT add cache_control markers when using non-Claude models (as determined by `WAVE_PROMPT_CACHE_REGEX`). However, cache token extraction from usage (FR-005) applies to all models regardless of this gate.
+- **FR-005**: System MUST extend usage tracking to include cache-related metrics for ALL models (not gated by `supportsPromptCaching`). Cache tokens are extracted from two sources with priority ordering: (1) Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens, cache_creation object) take priority, (2) OpenAI-standard prompt_tokens_details fields (cached_tokens → cache_read_input_tokens, cache_creation_input_tokens → cache_creation_input_tokens) serve as fallback for non-Claude models that return cache data via prompt_tokens_details
+- **FR-006**: System MUST apply cache_control markers identically for both streaming and non-streaming requests during message preparation phase
+- **FR-007**: System MUST maintain backward compatibility with existing message processing logic (except for the cache strategy itself which is a breaking change)
 
 ### Key Entities *(include if feature involves data)*
 
