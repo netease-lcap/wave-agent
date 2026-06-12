@@ -2,7 +2,7 @@
 
 **Feature Branch**: `071-builtin-settings-skill`  
 **Created**: 2026-03-18  
-**Input**: User description: "support builtin settings skill, guide user how to write settings.json, explore codebase to learn current setting.json function. for complex hooks config, you should create another md and link to SKILL.md"
+"support builtin settings skill, guide user how to write settings.json, explore codebase to learn current setting.json function. for complex hooks config, you should create another md and link to SKILL.md"
 
 ## User Scenarios & Testing *(mandatory)*
 

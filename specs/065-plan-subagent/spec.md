@@ -2,7 +2,7 @@
 
 **Feature Branch**: `065-plan-subagent`
 **Created**: 2026-02-12
-**Input**: User description: "Implement builtin Plan subagent for designing implementation plans"
+"Implement builtin Plan subagent for designing implementation plans"
 
 ## User Scenarios & Testing *(mandatory)*
 

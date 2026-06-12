@@ -2,7 +2,7 @@
 
 **Feature Branch**: `039-lsp-integration`  
 **Created**: 2025-12-24  
-**Input**: User description: "LSP (Language Server Protocol) integration allows Wave to provide advanced code intelligence features to the agent, such as finding definitions, references, and hover information."
+"LSP (Language Server Protocol) integration allows Wave to provide advanced code intelligence features to the agent, such as finding definitions, references, and hover information."
 
 ## User Scenarios & Testing *(mandatory)*
 

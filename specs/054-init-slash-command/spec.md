@@ -2,7 +2,7 @@
 
 **Feature Branch**: `054-init-slash-command`  
 **Created**: 2026-01-27  
-**Input**: User description: "support /init slash command, use init-prompt.md as prompt"
+"support /init slash command, use init-prompt.md as prompt"
 
 ## User Scenarios & Testing *(mandatory)*
 

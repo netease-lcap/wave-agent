@@ -2,7 +2,7 @@
 
 **Feature Branch**: `057-history-search-prompt`  
 **Created**: 2026-02-02  
-**Input**: User description: "refer to ~/.wave/history.jsonl, support ctrl r search history prompt, and remove bash history"
+"refer to ~/.wave/history.jsonl, support ctrl r search history prompt, and remove bash history"
 
 ## User Scenarios & Testing *(mandatory)*
 

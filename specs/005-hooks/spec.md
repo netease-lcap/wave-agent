@@ -2,7 +2,7 @@
 
 **Feature Branch**: `005-hooks`  
 **Created**: 2024-12-19  
-**Input**: User description: "Support hooks, refer to hooks.md"
+"Support hooks, refer to hooks.md"
 
 ## Hook Output
 
