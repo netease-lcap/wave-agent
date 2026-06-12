@@ -1,8 +1,10 @@
 /**
- * TypeScript Interface Definitions for Claude Cache Control
- * 
+ * TypeScript Interface Definitions for Cache Control
+ *
  * This file contains the core type definitions that will be implemented
- * in the agent-sdk package for Claude cache control functionality.
+ * in the agent-sdk package for cache control functionality.
+ * Supports both Claude-specific top-level cache fields and OpenAI-standard
+ * prompt_tokens_details for cross-model cache token tracking.
  */
 
 import type { 
@@ -71,7 +73,17 @@ export type ClaudeMessageContent = string | Array<
 // ============================================================================
 
 /**
- * Extended usage metrics including Claude cache information
+ * Extended prompt_tokens_details with cache_creation_input_tokens
+ * Some models (e.g. Gemini, DeepSeek) return this field inside prompt_tokens_details
+ */
+export interface ExtendedPromptTokensDetails extends CompletionUsage.PromptTokensDetails {
+  /** Cache creation tokens (non-standard, used by some models via prompt_tokens_details) */
+  cache_creation_input_tokens?: number;
+}
+
+/**
+ * Extended usage metrics including cache information
+ * Supports both Claude-specific top-level fields and OpenAI-standard prompt_tokens_details
  * Backward compatible with standard OpenAI CompletionUsage
  */
 export interface ClaudeUsage extends CompletionUsage {
@@ -79,22 +91,24 @@ export interface ClaudeUsage extends CompletionUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
-  
-  // Claude-specific cache extensions
-  /** 
+
+  // Cache extensions (from Claude top-level OR OpenAI prompt_tokens_details)
+  /**
    * Number of tokens read from existing cache
-   * Indicates cost savings from cache hits
+   * Claude: usage.cache_read_input_tokens
+   * OpenAI: usage.prompt_tokens_details.cached_tokens
    */
   cache_read_input_tokens?: number;
-  
-  /** 
+
+  /**
    * Number of tokens used to create new cache entries
-   * Investment in future cache hits
+   * Claude: usage.cache_creation_input_tokens
+   * OpenAI: usage.prompt_tokens_details.cache_creation_input_tokens
    */
   cache_creation_input_tokens?: number;
-  
-  /** 
-   * Detailed breakdown of cache creation by duration
+
+  /**
+   * Detailed breakdown of cache creation by duration (Claude-specific)
    */
   cache_creation?: {
     /** Tokens cached for 5 minute duration */
@@ -102,6 +116,9 @@ export interface ClaudeUsage extends CompletionUsage {
     /** Tokens cached for 1 hour duration */
     ephemeral_1h_input_tokens: number;
   };
+
+  // Override prompt_tokens_details to include cache_creation_input_tokens
+  prompt_tokens_details?: ExtendedPromptTokensDetails;
 }
 
 // ============================================================================

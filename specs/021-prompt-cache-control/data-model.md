@@ -1,4 +1,4 @@
-# Data Model: Prompt Cache Control for Claude Models
+# Data Model: Prompt Cache Control
 
 **Date**: 2025-12-02  
 **Feature**: 021-prompt-cache-control  
@@ -29,31 +29,49 @@ interface CacheControl {
 
 ### Enhanced Usage Metrics
 
-**Purpose**: Extended usage tracking including cache-related token counts
+**Purpose**: Extended usage tracking including cache-related token counts from both Claude top-level fields and OpenAI-standard `prompt_tokens_details`
 
 **Structure**:
 ```typescript
+interface ExtendedPromptTokensDetails extends CompletionUsage.PromptTokensDetails {
+  // Standard OpenAI fields (inherited): audio_tokens, cached_tokens
+  // Extended field for models that return cache creation via prompt_tokens_details
+  cache_creation_input_tokens?: number;
+}
+
 interface ClaudeUsage extends CompletionUsage {
   // Standard OpenAI usage fields (unchanged)
   prompt_tokens: number;
-  completion_tokens: number; 
+  completion_tokens: number;
   total_tokens: number;
-  
-  // Claude cache-specific extensions
+
+  // Cache extensions (from Claude top-level OR OpenAI prompt_tokens_details)
+  // Claude: usage.cache_read_input_tokens / OpenAI: usage.prompt_tokens_details.cached_tokens
   cache_read_input_tokens?: number;
+  // Claude: usage.cache_creation_input_tokens / OpenAI: usage.prompt_tokens_details.cache_creation_input_tokens
   cache_creation_input_tokens?: number;
   cache_creation?: {
     ephemeral_5m_input_tokens: number;
     ephemeral_1h_input_tokens: number;
   };
+
+  // Override to include cache_creation_input_tokens in prompt_tokens_details
+  prompt_tokens_details?: ExtendedPromptTokensDetails;
 }
 ```
 
 **Validation Rules**:
 - All cache fields are optional (only present when cache is used)
-- `cache_creation_input_tokens` equals sum of ephemeral cache tokens
+- `cache_creation_input_tokens` equals sum of ephemeral cache tokens (Claude-specific)
 - `cache_read_input_tokens` indicates tokens served from existing cache
+- When both Claude top-level and `prompt_tokens_details` cache fields are present, top-level takes priority
 - All token counts must be non-negative integers
+
+**Extraction Priority**:
+1. Claude top-level `cache_read_input_tokens` → used directly
+2. OpenAI `prompt_tokens_details.cached_tokens` → mapped to `cache_read_input_tokens` as fallback
+3. Claude top-level `cache_creation_input_tokens` → used directly
+4. OpenAI `prompt_tokens_details.cache_creation_input_tokens` → mapped to `cache_creation_input_tokens` as fallback
 
 **Relationships**:
 - Extends existing `CompletionUsage` from OpenAI SDK
@@ -202,9 +220,9 @@ When applying cache control at an interval position:
 ### Usage Tracking Extension
 
 1. **Input**: Standard OpenAI usage response
-2. **Detection**: Presence of cache-related fields
-3. **Extension**: Add cache metrics to existing usage object
-4. **Integration**: Maintain compatibility with existing usage tracking
+2. **Detection**: Presence of cache-related fields (Claude top-level OR prompt_tokens_details)
+3. **Extension**: Add cache metrics to existing usage object, extracting from both sources with priority
+4. **Integration**: Maintain compatibility with existing usage tracking; extraction applies to all models (not just Claude)
 5. **Output**: Enhanced usage object with cache information
 
 ## Validation Schema

@@ -27,8 +27,8 @@ export interface Usage {
   model?: string; // Model used for the operation (e.g., "gpt-4", "gpt-3.5-turbo")
   operation_type?: "agent" | "compact" | "goal_evaluation"; // Type of operation that generated usage
 
-  // Cache-related tokens (Claude models only)
-  cache_read_input_tokens?: number; // Tokens read from cache
+  // Cache-related tokens (Claude top-level + OpenAI prompt_tokens_details)
+  cache_read_input_tokens?: number; // Tokens read from cache (Claude) or cached_tokens (OpenAI prompt_tokens_details)
   cache_creation_input_tokens?: number; // Tokens used to create cache entries
   cache_creation?: {
     ephemeral_5m_input_tokens: number; // Tokens cached for 5 minutes

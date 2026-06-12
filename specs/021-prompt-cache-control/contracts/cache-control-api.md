@@ -59,28 +59,38 @@ type ClaudeMessageContent = string | Array<
 
 ```typescript
 /**
- * Extended usage metrics including Claude cache information
+ * Extended prompt_tokens_details with cache_creation_input_tokens
+ * Some models (e.g. Gemini, DeepSeek) return this field inside prompt_tokens_details
+ */
+interface ExtendedPromptTokensDetails extends CompletionUsage.PromptTokensDetails {
+  cache_creation_input_tokens?: number;
+}
+
+/**
+ * Extended usage metrics including cache information
+ * Supports both Claude-specific top-level fields and OpenAI-standard prompt_tokens_details
  */
 interface ClaudeUsage extends CompletionUsage {
   // Standard OpenAI fields
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
-  
-  // Claude cache extensions
-  /** Tokens read from existing cache (cost savings) */
+
+  // Cache extensions (from Claude top-level OR OpenAI prompt_tokens_details)
+  /** Tokens read from cache. Claude: cache_read_input_tokens / OpenAI: prompt_tokens_details.cached_tokens */
   cache_read_input_tokens?: number;
-  
-  /** Tokens used to create new cache entries */
+
+  /** Tokens used to create cache. Claude: cache_creation_input_tokens / OpenAI: prompt_tokens_details.cache_creation_input_tokens */
   cache_creation_input_tokens?: number;
-  
-  /** Detailed breakdown of cache creation */
+
+  /** Detailed breakdown of cache creation (Claude-specific) */
   cache_creation?: {
-    /** Tokens cached for 5 minutes */
     ephemeral_5m_input_tokens: number;
-    /** Tokens cached for 1 hour */
     ephemeral_1h_input_tokens: number;
   };
+
+  /** Override to include cache_creation_input_tokens in prompt_tokens_details */
+  prompt_tokens_details?: ExtendedPromptTokensDetails;
 }
 ```
 
@@ -110,6 +120,8 @@ const isClaudeModel: typeof supportsPromptCaching;
 - `WAVE_PROMPT_CACHE_REGEX`: Regex pattern for matching model names (default: "claude")
 - Example: `WAVE_PROMPT_CACHE_REGEX="claude|qwen"` matches both claude and qwen models
 - Invalid regex patterns fall back to simple "claude" matching
+
+**Note**: While `supportsPromptCaching` controls cache_control marker injection (only for Claude-like models), cache token extraction from usage applies to ALL models. Non-Claude models (Gemini, DeepSeek) return cache data via `prompt_tokens_details` which is an OpenAI-standard field.
 
 ### Cache Control Application
 
@@ -181,8 +193,13 @@ function addCacheControlToLastToolCall(
 ```typescript
 /**
  * Extends standard usage with cache metrics
+ * Extracts cache tokens from both Claude-specific top-level fields and
+ * OpenAI-standard prompt_tokens_details (used by Gemini, DeepSeek, etc.)
+ *
+ * Priority: Claude top-level fields > prompt_tokens_details fallback
+ *
  * @param standardUsage - OpenAI usage response
- * @param cacheMetrics - Additional cache metrics from Claude
+ * @param cacheMetrics - Additional cache metrics from the API response
  * @returns Extended usage with cache information
  */
 function extendUsageWithCacheMetrics(

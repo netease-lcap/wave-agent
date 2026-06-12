@@ -1,4 +1,4 @@
-# Research: Prompt Cache Control for Claude Models
+# Research: Prompt Cache Control
 
 **Date**: 2025-12-02  
 **Feature**: 021-prompt-cache-control  
@@ -85,34 +85,44 @@
 
 ## Extended Usage Tracking Schema
 
-**Decision**: Extend existing usage tracking with cache-specific metrics
+**Decision**: Extend existing usage tracking with cache-specific metrics from both Claude top-level fields and OpenAI-standard `prompt_tokens_details`
 
 **Rationale**:
 ```typescript
+interface ExtendedPromptTokensDetails extends CompletionUsage.PromptTokensDetails {
+  cache_creation_input_tokens?: number;  // Used by some non-Claude models
+}
+
 interface ClaudeUsage extends CompletionUsage {
   // Standard fields unchanged
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
-  
-  // New cache fields  
-  cache_read_input_tokens?: number;        // Cost savings indicator
-  cache_creation_input_tokens?: number;    // Cache investment indicator
+
+  // Cache fields (from Claude top-level OR OpenAI prompt_tokens_details)
+  cache_read_input_tokens?: number;        // Claude: top-level / OpenAI: prompt_tokens_details.cached_tokens
+  cache_creation_input_tokens?: number;    // Claude: top-level / OpenAI: prompt_tokens_details.cache_creation_input_tokens
   cache_creation?: {
-    ephemeral_5m_input_tokens: number;     // Short-term cache
-    ephemeral_1h_input_tokens: number;     // Extended cache
+    ephemeral_5m_input_tokens: number;     // Short-term cache (Claude-specific)
+    ephemeral_1h_input_tokens: number;     // Extended cache (Claude-specific)
   };
+
+  prompt_tokens_details?: ExtendedPromptTokensDetails;  // Override to include cache_creation_input_tokens
 }
 ```
 
 **Field Relationships**:
-- `cache_creation_input_tokens = ephemeral_5m_input_tokens + ephemeral_1h_input_tokens`
+- `cache_creation_input_tokens = ephemeral_5m_input_tokens + ephemeral_1h_input_tokens` (Claude-specific)
+- Claude top-level fields take priority over `prompt_tokens_details` when both are present
+- `prompt_tokens_details.cached_tokens` maps to `cache_read_input_tokens` as fallback
+- `prompt_tokens_details.cache_creation_input_tokens` maps to `cache_creation_input_tokens` as fallback
 - Backward compatibility maintained for existing usage tracking consumers
 
 **Alternatives considered**:
 - Separate cache usage object: Rejected for API consistency and complexity
 - Simplified cache metrics: Rejected due to insufficient cost tracking granularity
 - Breaking usage interface changes: Rejected for backward compatibility requirements
+- Only support Claude top-level fields: Rejected because non-Claude models (Gemini, DeepSeek) return cache data via `prompt_tokens_details`
 
 ## System Prompt Stability: CWD Changes
 

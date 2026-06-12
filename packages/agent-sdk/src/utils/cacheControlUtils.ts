@@ -48,20 +48,33 @@ export interface ClaudeChatCompletionFunctionTool
 }
 
 /**
- * Enhanced usage metrics including Claude cache information
+ * Extended prompt_tokens_details with cache_creation_input_tokens
+ * Some models (e.g. Gemini, DeepSeek) return this field inside prompt_tokens_details
+ */
+export interface ExtendedPromptTokensDetails
+  extends CompletionUsage.PromptTokensDetails {
+  cache_creation_input_tokens?: number;
+}
+
+/**
+ * Enhanced usage metrics including cache information
+ * Supports both Claude-specific top-level fields and OpenAI-standard prompt_tokens_details
  */
 export interface ClaudeUsage extends CompletionUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
 
-  // Claude cache extensions
-  cache_read_input_tokens?: number;
-  cache_creation_input_tokens?: number;
+  // Cache extensions (from Claude top-level or OpenAI prompt_tokens_details)
+  cache_read_input_tokens?: number; // Claude: cache_read_input_tokens / OpenAI: prompt_tokens_details.cached_tokens
+  cache_creation_input_tokens?: number; // Claude: cache_creation_input_tokens / OpenAI: prompt_tokens_details.cache_creation_input_tokens
   cache_creation?: {
     ephemeral_5m_input_tokens: number;
     ephemeral_1h_input_tokens: number;
   };
+
+  // Override prompt_tokens_details to include cache_creation_input_tokens
+  prompt_tokens_details?: ExtendedPromptTokensDetails;
 }
 
 // ============================================================================
@@ -410,8 +423,10 @@ export function transformMessagesForClaudeCache(
 
 /**
  * Extends standard usage with cache metrics
+ * Extracts cache tokens from both Claude-specific top-level fields and
+ * OpenAI-standard prompt_tokens_details (used by Gemini, DeepSeek, etc.)
  * @param standardUsage - OpenAI usage response
- * @param cacheMetrics - Additional cache metrics from Claude
+ * @param cacheMetrics - Additional cache metrics from the API response
  * @returns Extended usage with cache information
  */
 export function extendUsageWithCacheMetrics(
@@ -424,30 +439,45 @@ export function extendUsageWithCacheMetrics(
     total_tokens: standardUsage.total_tokens,
   };
 
-  // Add cache metrics if provided
-  if (cacheMetrics) {
-    if (typeof cacheMetrics.cache_read_input_tokens === "number") {
-      baseUsage.cache_read_input_tokens = cacheMetrics.cache_read_input_tokens;
-    }
+  if (!cacheMetrics) {
+    return baseUsage;
+  }
 
-    if (typeof cacheMetrics.cache_creation_input_tokens === "number") {
-      baseUsage.cache_creation_input_tokens =
-        cacheMetrics.cache_creation_input_tokens;
-    }
+  // Extract cache_read_input_tokens from Claude top-level field
+  if (typeof cacheMetrics.cache_read_input_tokens === "number") {
+    baseUsage.cache_read_input_tokens = cacheMetrics.cache_read_input_tokens;
+  }
+  // Fallback to prompt_tokens_details.cached_tokens (OpenAI standard)
+  else if (cacheMetrics.prompt_tokens_details?.cached_tokens != null) {
+    baseUsage.cache_read_input_tokens =
+      cacheMetrics.prompt_tokens_details.cached_tokens;
+  }
 
-    if (
-      cacheMetrics.cache_creation &&
-      typeof cacheMetrics.cache_creation.ephemeral_5m_input_tokens ===
-        "number" &&
-      typeof cacheMetrics.cache_creation.ephemeral_1h_input_tokens === "number"
-    ) {
-      baseUsage.cache_creation = {
-        ephemeral_5m_input_tokens:
-          cacheMetrics.cache_creation.ephemeral_5m_input_tokens,
-        ephemeral_1h_input_tokens:
-          cacheMetrics.cache_creation.ephemeral_1h_input_tokens,
-      };
-    }
+  // Extract cache_creation_input_tokens from Claude top-level field
+  if (typeof cacheMetrics.cache_creation_input_tokens === "number") {
+    baseUsage.cache_creation_input_tokens =
+      cacheMetrics.cache_creation_input_tokens;
+  }
+  // Fallback to prompt_tokens_details.cache_creation_input_tokens
+  else if (
+    cacheMetrics.prompt_tokens_details?.cache_creation_input_tokens != null
+  ) {
+    baseUsage.cache_creation_input_tokens =
+      cacheMetrics.prompt_tokens_details.cache_creation_input_tokens;
+  }
+
+  // Extract cache_creation breakdown (Claude-specific)
+  if (
+    cacheMetrics.cache_creation &&
+    typeof cacheMetrics.cache_creation.ephemeral_5m_input_tokens === "number" &&
+    typeof cacheMetrics.cache_creation.ephemeral_1h_input_tokens === "number"
+  ) {
+    baseUsage.cache_creation = {
+      ephemeral_5m_input_tokens:
+        cacheMetrics.cache_creation.ephemeral_5m_input_tokens,
+      ephemeral_1h_input_tokens:
+        cacheMetrics.cache_creation.ephemeral_1h_input_tokens,
+    };
   }
 
   return baseUsage;

@@ -1,4 +1,4 @@
-# Implementation Tasks: Prompt Cache Optimization for Claude Models
+# Implementation Tasks: Prompt Cache Optimization
 
 **Feature**: Prompt Cache Control for Claude Models  
 **Branch**: `021-prompt-cache-control`  

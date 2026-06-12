@@ -358,7 +358,6 @@ export async function callAgent(
         onReasoningUpdate,
         abortSignal,
         responseHeaders,
-        currentModel,
       );
     } else {
       // Handle non-streaming response
@@ -386,8 +385,8 @@ export async function callAgent(
           }
         : undefined;
 
-      // Extend usage with cache metrics for Claude models
-      if (totalUsage && supportsPromptCaching(currentModel) && response.usage) {
+      // Extend usage with cache metrics (Claude top-level + OpenAI prompt_tokens_details)
+      if (totalUsage && response.usage) {
         totalUsage = extendUsageWithCacheMetrics(
           totalUsage,
           response.usage as Partial<ClaudeUsage>,
@@ -557,7 +556,6 @@ export async function callAgent(
  * @param onToolUpdate Callback for tool updates
  * @param abortSignal Optional abort signal
  * @param responseHeaders Response headers from the initial request
- * @param modelName Model name for cache control processing
  * @returns Final result with accumulated content and tool calls
  */
 async function processStreamingResponse(
@@ -573,7 +571,6 @@ async function processStreamingResponse(
   onReasoningUpdate?: (content: string) => void,
   abortSignal?: AbortSignal,
   responseHeaders?: Record<string, string>,
-  modelName?: string,
 ): Promise<CallAgentResult> {
   let accumulatedContent = "";
   let accumulatedReasoningContent = "";
@@ -605,13 +602,11 @@ async function processStreamingResponse(
           total_tokens: chunk.usage.total_tokens,
         };
 
-        // Extend usage with cache metrics for Claude models
-        if (modelName && supportsPromptCaching(modelName)) {
-          chunkUsage = extendUsageWithCacheMetrics(
-            chunkUsage,
-            chunk.usage as Partial<ClaudeUsage>,
-          );
-        }
+        // Extend usage with cache metrics (Claude top-level + OpenAI prompt_tokens_details)
+        chunkUsage = extendUsageWithCacheMetrics(
+          chunkUsage,
+          chunk.usage as Partial<ClaudeUsage>,
+        );
 
         usage = chunkUsage;
       }
