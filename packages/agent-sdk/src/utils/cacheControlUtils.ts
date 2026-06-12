@@ -196,19 +196,36 @@ export function addCacheControlToContent(
     return [];
   }
 
-  // Handle structured content - preserve existing structure, add cache control to text parts
-  return content
-    .filter((part): part is ChatCompletionContentPartText => {
-      if (!part || typeof part !== "object") {
-        return false;
-      }
-      return part.type === "text" && typeof part.text === "string";
-    })
-    .map((part) => ({
-      type: "text",
-      text: part.text,
-      cache_control: { type: "ephemeral" },
-    }));
+  // Handle structured content - preserve all parts, add cache control to last text part only
+  let lastTextIndex = -1;
+  for (let i = content.length - 1; i >= 0; i--) {
+    const part = content[i];
+    if (
+      part &&
+      typeof part === "object" &&
+      part.type === "text" &&
+      typeof (part as ChatCompletionContentPartText).text === "string"
+    ) {
+      lastTextIndex = i;
+      break;
+    }
+  }
+
+  return content.map((part, index) => {
+    if (
+      index === lastTextIndex &&
+      part &&
+      typeof part === "object" &&
+      part.type === "text" &&
+      typeof (part as ChatCompletionContentPartText).text === "string"
+    ) {
+      return {
+        ...(part as ChatCompletionContentPartText),
+        cache_control: { type: "ephemeral" },
+      };
+    }
+    return part;
+  }) as ClaudeChatCompletionContentPartText[];
 }
 
 /**
@@ -290,6 +307,15 @@ export function transformMessagesForClaudeCache(
   // Find first system message index
   const firstSystemIndex = messages.findIndex((m) => m.role === "system");
 
+  // Find last user message index
+  let lastUserIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      lastUserIndex = i;
+      break;
+    }
+  }
+
   const result = messages.map((message, index) => {
     // Validate message structure
     if (!message || typeof message !== "object" || !message.role) {
@@ -313,6 +339,18 @@ export function transformMessagesForClaudeCache(
         }
       }
 
+      const transformedContent = addCacheControlToContent(content, true);
+
+      return {
+        ...message,
+        content: transformedContent,
+      } as ChatCompletionMessageParam;
+    }
+
+    // Last user message: cache recent conversation history
+    if (message.role === "user" && index === lastUserIndex) {
+      const content =
+        (message.content as string | ChatCompletionContentPart[]) || "";
       const transformedContent = addCacheControlToContent(content, true);
 
       return {
