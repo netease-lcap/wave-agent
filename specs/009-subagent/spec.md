@@ -2,20 +2,6 @@
 
 **Feature Branch**: `009-subagent`  
 **Created**: 2024-12-19  
-"Support Subagents. Subagents are pre-configured AI personalities that Wave Agent can delegate tasks to. Each subagent has a specific purpose and expertise area, uses its own context window separate from the main conversation, can be configured with specific tools it's allowed to use, and includes a custom system prompt that guides its behavior.
-
-Subagent configuration files are stored as Markdown files with YAML frontmatter in `.wave/agents/` (project-level) and `~/.wave/agents/` (user-level) directories. Example format:
-
-```
----
-name: test-runner
-description: Use proactively to run tests and fix failures
----
-
-You are a test automation expert. When you see code changes, proactively run the appropriate tests. If tests fail, analyze the failures and fix them while preserving the original test intent.
-```
-
-Project-level subagents take precedence over user-level subagents when names conflict."
 
 ## User Scenarios & Testing *(mandatory)*
 

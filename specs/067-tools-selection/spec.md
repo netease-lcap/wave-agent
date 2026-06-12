@@ -2,7 +2,6 @@
 
 **Feature Branch**: `067-tools-selection`  
 **Created**: 2026-02-25  
-"cli support --tools, Use \"\" to disable all, \"default\" for all, or tool names like \"Bash,Edit,Read\".  agent sdk support tools arg, string[] or undefined"
 
 ## User Scenarios & Testing *(mandatory)*
 

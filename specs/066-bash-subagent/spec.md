@@ -2,7 +2,6 @@
 
 **Feature Branch**: `066-bash-subagent`  
 **Created**: 2026-02-12  
-"add bash builtin subagent"
 
 ## User Scenarios & Testing *(mandatory)*
 

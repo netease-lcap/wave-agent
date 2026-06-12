@@ -2,7 +2,6 @@
 
 **Feature Branch**: `023-long-text-placeholder`  
 **Created**: 2026-03-24  
-"Manage long pasted text in the input field"
 
 ## User Scenarios & Testing *(mandatory)*
 

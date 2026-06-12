@@ -2,7 +2,6 @@
 
 **Feature Branch**: `078-server-managed-config`
 **Created**: 2026-05-25
-**Input**: "Download and apply server-managed settings from Wave AI when SSO is authenticated, supporting checksum caching, merge priority, and graceful error handling."
 
 ## User Scenarios & Testing *(mandatory)*
 

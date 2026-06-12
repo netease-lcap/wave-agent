@@ -2,7 +2,6 @@
 
 **Feature Branch**: `005-hooks`  
 **Created**: 2024-12-19  
-"Support hooks, refer to hooks.md"
 
 ## Hook Output
 

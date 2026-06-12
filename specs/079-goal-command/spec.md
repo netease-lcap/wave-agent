@@ -2,7 +2,6 @@
 
 **Feature Branch**: `079-goal-command`  
 **Created**: 2026-06-07  
-**Input**: Claude Code `/goal` reference — https://code.claude.com/docs/en/goal
 
 ## User Scenarios & Testing *(mandatory)*
 

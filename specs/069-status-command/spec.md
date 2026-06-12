@@ -2,13 +2,6 @@
 
 **Feature Branch**: `069-status-command`  
 **Created**: 2026-02-27  
-"add /status to show sth like:   Version: 2.1.62
-  Session ID: 083e4351-f98e-4ee2-afce-ec9b689473e3
-  cwd: /home/liuyiqi/personal-projects/wave-agent
-  Wave base URL: https://aigw.netease.com
-  Model: xxx
-
-  Esc to cancel"
 
 ## User Scenarios & Testing *(mandatory)*
 

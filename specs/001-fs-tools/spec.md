@@ -2,7 +2,6 @@
 
 **Feature Branch**: `001-fs-tools`  
 **Created**: 2024-12-19  
-"Support file system tools: Read, Write, Edit, Glob, Grep"
 
 ## User Scenarios & Testing *(mandatory)*
 

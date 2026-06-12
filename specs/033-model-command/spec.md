@@ -2,7 +2,6 @@
 
 **Feature Branch**: `033-model-command`
 **Created**: 2026-04-16
-**Input**: "Allow users to interactively switch AI models via /model command with a visual selector UI."
 
 ## User Scenarios & Testing *(mandatory)*
 

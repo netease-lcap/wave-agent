@@ -2,8 +2,7 @@
 
 **Feature Branch**: `017-web-fetch-tool`  
 **Created**: 2026-03-31  
-**Updated**: 2026-04-21  
-"support WebFetch tool, fetches content from a specified URL and processes it using an AI model. Takes a URL and a prompt as input. Fetches the URL content, converts HTML to markdown. Processes the content with the prompt using a small, fast model. Returns the model's response about the content. Includes a self-cleaning 15-minute cache. Handles redirects to different hosts by informing the user. Suggests gh CLI for GitHub URLs."
+**Updated**: 2026-04-21
 
 ## User Scenarios & Testing *(mandatory)*
 

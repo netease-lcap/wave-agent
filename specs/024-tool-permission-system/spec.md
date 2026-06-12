@@ -1,7 +1,6 @@
 # Feature Specification: Tool Permission System
 
-**Feature Branch**: `024-tool-permission-system`  
-**Input**: Comprehensive merge of tool permission features including basic modes, wildcard matching, secure pipeline validation, deny rules, persistent configuration, interactive trust, acceptEdits mode, dontAsk mode, and secure file access (Safe Zone).
+**Feature Branch**: `024-tool-permission-system`
 
 ## Overview
 

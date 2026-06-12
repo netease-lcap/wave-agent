@@ -2,7 +2,6 @@
 
 **Feature Branch**: `028-bang-shell-command`  
 **Created**: 2026-03-25  
-"support bang shell command to execute shell command directly from chat input. prefix with ! to trigger. for example, !ls -la or !fdfind . the output should be displayed in a dedicated block."
 
 ## User Scenarios & Testing *(mandatory)*
 

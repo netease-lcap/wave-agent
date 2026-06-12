@@ -2,7 +2,6 @@
 
 **Feature Branch**: `031-update-command`  
 **Created**: 2026-03-31  
-"Support `wave update` or `wave-code update` to update the tool to the latest version."
 
 ## User Scenarios & Testing *(mandatory)*
 

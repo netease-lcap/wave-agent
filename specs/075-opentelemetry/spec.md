@@ -2,7 +2,6 @@
 
 **Feature Branch**: `075-opentelemetry`
 **Created**: 2026-05-09
-**Input**: "Add OpenTelemetry instrumentation following Claude Code patterns, supporting metrics, traces, and logs with multiple exporters (jsonl, OTLP)."
 
 ## User Scenarios & Testing *(mandatory)*
 
