@@ -12,10 +12,9 @@
 | Phase 1 | Setup | 3 tasks | 1 hour |
 | Phase 2 | Foundational | 4 tasks | 1.5 hours |
 | Phase 3 | US1 - System Message Cache | 5 tasks | 2 hours |
-| Phase 4 | US2 - User Message Cache | 4 tasks | 1.5 hours |
-| Phase 5 | US3 - Tool Definition Cache | 3 tasks | 1 hour |
-| Phase 6 | Polish & Integration | 4 tasks | 1.25 hours |
-| **Total** | **3 User Stories** | **23 tasks** | **8.25 hours** |
+| Phase 4 | US2 - Tool Definition Cache | 3 tasks | 1 hour |
+| Phase 5 | Polish & Integration | 4 tasks | 1.25 hours |
+| **Total** | **2 User Stories** | **19 tasks** | **6.75 hours** |
 
 ## Dependencies
 
@@ -24,15 +23,13 @@
 graph TD
     Setup[Phase 1: Setup] --> Foundational[Phase 2: Foundational]
     Foundational --> US1[Phase 3: US1 - System Message Cache]
-    US1 --> US2[Phase 4: US2 - User Message Cache]
-    US2 --> US3[Phase 5: US3 - Tool Definition Cache]
-    US3 --> Polish[Phase 6: Polish & Integration]
+    US1 --> US2[Phase 4: US2 - Tool Definition Cache]
+    US2 --> Polish[Phase 5: Polish & Integration]
 ```
 
 ### Parallel Execution Opportunities
 - **US1 Tasks**: T008, T009, T010 can be developed in parallel after T007
 - **US2 Tasks**: T013, T014 can be developed in parallel after T012
-- **US3 Tasks**: T016, T017 can be developed in parallel after T015
 - **Testing**: All test files can be developed in parallel with their corresponding implementation
 
 ## Implementation Strategy
@@ -84,22 +81,7 @@ graph TD
 
 ---
 
-## Phase 4: User Story 2 - Interval-Based Message Cache Optimization (1.5 hours)
-
-**Goal**: Implement selective caching for messages at 20-message intervals to optimize long-running conversations.
-
-**Independent Test Criteria**: Can create a conversation with 40 messages and verify cache marker is only on 40th message (20th marker removed).
-
-### Tasks
-
-- [X] T013 [P] [US2] Implement `findIntervalMessageIndex` function returning single number in packages/agent-sdk/src/utils/cacheControlUtils.ts
-- [X] T014 [P] [US2] Add interval-based cache integration to aiService message transformation in packages/agent-sdk/src/services/aiService.ts
-- [X] T015 [US2] Write tests for interval-based selection and caching logic in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
-- [X] T016 [US2] Test sliding window behavior (e.g., 19->no cache, 20->cache 20th, 39->keep 20th, 40->move to 40th) in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
-
----
-
-## Phase 5: User Story 3 - Tool Definition Cache Optimization (1 hour)
+## Phase 4: User Story 2 - Tool Definition Cache Optimization (1 hour)
 
 **Goal**: Implement caching for tool definitions to optimize repeated tool usage scenarios.
 
@@ -107,22 +89,22 @@ graph TD
 
 ### Tasks
 
-- [X] T017 [P] [US3] Implement tool definition transformation utility addCacheControlToLastTool() in packages/agent-sdk/src/utils/cacheControlUtils.ts
-- [X] T018 [US3] Integrate tool definition caching into aiService tool processing in packages/agent-sdk/src/services/aiService.ts
-- [X] T019 [US3] Write tests for tool definition caching logic in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
+- [X] T013 [P] [US2] Implement tool definition transformation utility addCacheControlToLastTool() in packages/agent-sdk/src/utils/cacheControlUtils.ts
+- [X] T014 [US2] Integrate tool definition caching into aiService tool processing in packages/agent-sdk/src/services/aiService.ts
+- [X] T015 [US2] Write tests for tool definition caching logic in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
 
 ---
 
-## Phase 6: Polish & Cross-Cutting Concerns (1 hour)
+## Phase 5: Polish & Cross-Cutting Concerns (1 hour)
 
 **Goal**: Ensure robustness, backward compatibility, and production readiness across all user stories.
 
 ### Tasks
 
-- [X] T020 [P] Add comprehensive error handling and edge case coverage across all cache control utilities in packages/agent-sdk/src/utils/cacheControlUtils.ts
-- [X] T021 [P] Validate backward compatibility with non-Claude models and existing usage tracking in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
-- [X] T022 Run complete test suite and performance validation across all modified files in packages/agent-sdk/
-- [X] T023 [P] Create performance benchmark tests to validate <50ms latency increase in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
+- [X] T016 [P] Add comprehensive error handling and edge case coverage across all cache control utilities in packages/agent-sdk/src/utils/cacheControlUtils.ts
+- [X] T017 [P] Validate backward compatibility with non-Claude models and existing usage tracking in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
+- [X] T018 Run complete test suite and performance validation across all modified files in packages/agent-sdk/
+- [X] T019 [P] Create performance benchmark tests to validate <50ms latency increase in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
 
 ---
 

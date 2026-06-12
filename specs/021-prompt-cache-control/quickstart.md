@@ -107,18 +107,6 @@ if (totalUsage && response.usage) {
 **File**: `packages/agent-sdk/src/utils/cacheControlUtils.ts`
 
 ```typescript
-export function findIntervalMessageIndex(
-  messages: ChatCompletionMessageParam[]
-): number {
-  let latestIntervalIndex = -1;
-  for (let i = 0; i < messages.length; i++) {
-    if ((i + 1) % 20 === 0) {
-      latestIntervalIndex = i;
-    }
-  }
-  return latestIntervalIndex;
-}
-
 export function transformMessagesForClaudeCache(
   messages: ChatCompletionMessageParam[],
   modelName: string
@@ -127,36 +115,9 @@ export function transformMessagesForClaudeCache(
     return messages;
   }
 
-  const indexToCache = findIntervalMessageIndex(messages);
-
   return messages.map((message, index) => {
     // System message: always cache
     if (message.role === 'system') {
-      return {
-        ...message,
-        content: addCacheControlToContent(message.content, true)
-      };
-    }
-
-    // Interval-based message caching (every 20th message)
-    // Note: cache_control is applied at BLOCK level, not message level
-    if (index === indexToCache) {
-      // For tool role: add cache_control to content block
-      if (message.role === 'tool') {
-        const content = typeof message.content === 'string' ? message.content : '';
-        return {
-          ...message,
-          content: addCacheControlToContent(content, true)
-        };
-      }
-      // For assistant with tool_calls: add cache_control to last tool call
-      if (message.role === 'assistant' && message.tool_calls?.length) {
-        return {
-          ...message,
-          tool_calls: addCacheControlToLastToolCall(message.tool_calls)
-        };
-      }
-      // For other roles: add cache_control to content blocks
       return {
         ...message,
         content: addCacheControlToContent(message.content, true)
@@ -178,10 +139,6 @@ describe('Claude Cache Control', () => {
     // Test system message transformation
   });
   
-  test('should cache every 20th message (interval-based)', async () => {
-    // Test interval-based selection and sliding window behavior
-  });
-  
   test('should cache last tool definition', async () => {
     // Test tool caching logic
   });
@@ -201,9 +158,8 @@ describe('Claude Cache Control', () => {
 ### Cache Control Application Rules
 
 1. **System Messages**: Always cached for Claude models
-2. **Interval Messages**: Every 20th message in conversation (sliding window)
-3. **Tool Definitions**: Only the last tool in the tools array
-4. **Content Types**: Only text content parts, never images
+2. **Tool Definitions**: Only the last tool in the tools array
+3. **Content Types**: Only text content parts, never images
 
 ### Message Transformation Pattern
 
@@ -264,7 +220,6 @@ describe('Claude Cache Control', () => {
 - Basic content transformation
 
 **P2 - Selection Logic**:
-- Last 2 user messages selection
 - Last tool definition caching
 - Mixed content preservation
 
@@ -299,7 +254,6 @@ vi.mocked(openai.chat.completions.create).mockResolvedValue({
 
 ### Cache Hit Rates
 - **System Messages**: 70% (highly reusable)
-- **User Messages**: 40% (context-dependent)
 - **Tool Definitions**: 60% (moderately stable)
 
 ## Rollback Strategy
