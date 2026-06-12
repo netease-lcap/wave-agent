@@ -2,7 +2,7 @@
 
 **Feature Branch**: `031-update-command`  
 **Created**: 2026-03-31  
-**Input**: User description: "Support `wave update` or `wave-code update` to update the tool to the latest version."
+"Support `wave update` or `wave-code update` to update the tool to the latest version."
 
 ## User Scenarios & Testing *(mandatory)*
 

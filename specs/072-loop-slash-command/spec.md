@@ -2,7 +2,7 @@
 
 **Feature Branch**: `072-loop-slash-command`  
 **Created**: 2026-03-24  
-**Input**: User description: "support @loop.md , refer to @cron-tools.md @skill-loop-slash-command.md"
+"support @loop.md , refer to @cron-tools.md @skill-loop-slash-command.md"
 
 ## User Scenarios & Testing *(mandatory)*
 

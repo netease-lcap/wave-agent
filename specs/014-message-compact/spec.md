@@ -2,7 +2,7 @@
 
 **Feature Branch**: `014-message-compact`  
 **Created**: 2026-01-22  
-**Input**: User description: "Manage conversation history and user input size"
+"Manage conversation history and user input size"
 
 ## User Scenarios & Testing *(mandatory)*
 

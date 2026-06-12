@@ -2,7 +2,7 @@
 
 **Feature Branch**: `008-slash-commands`  
 **Created**: December 19, 2024  
-**Input**: User description: "custom slash commands are already implemented without specs, can you generate spec based on current implement?"
+"custom slash commands are already implemented without specs, can you generate spec based on current implement?"
 
 ## User Scenarios & Testing *(mandatory)*
 

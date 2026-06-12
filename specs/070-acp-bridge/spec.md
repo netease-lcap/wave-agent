@@ -2,7 +2,7 @@
 
 **Feature Branch**: `070-acp-bridge`  
 **Created**: 2026-03-16  
-**Input**: User description: "read @packages/code/src/acp/ and write 070 spec in @specs/"
+"read @packages/code/src/acp/ and write 070 spec in @specs/"
 
 ## User Scenarios & Testing *(mandatory)*
 

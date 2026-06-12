@@ -2,7 +2,7 @@
 
 **Feature Branch**: `052-ask-user-tool`  
 **Created**: 2026-01-19  
-**Input**: User description: "support AskUserQuestion tool"
+"support AskUserQuestion tool"
 
 ## User Scenarios & Testing *(mandatory)*
 

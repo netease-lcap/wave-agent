@@ -2,7 +2,7 @@
 
 **Feature Branch**: `007-agent-config`  
 **Created**: 2025-01-27  
-**Input**: User description: "agent sdk remove process.env.xxx, change to pass them through Agent.create constructor args. remember the vitest ci NODE_ENV WAVE_TEST_HOOKS_EXECUTION those testing related envs are not needed to change. Also support max output tokens, custom headers from env, and language setting."
+"agent sdk remove process.env.xxx, change to pass them through Agent.create constructor args. remember the vitest ci NODE_ENV WAVE_TEST_HOOKS_EXECUTION those testing related envs are not needed to change. Also support max output tokens, custom headers from env, and language setting."
 
 ## User Scenarios & Testing *(mandatory)*
 

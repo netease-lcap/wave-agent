@@ -2,7 +2,7 @@
 
 **Feature Branch**: `016-file-selector`  
 **Created**: 2026-01-22  
-**Input**: User description: "File Selector for quick file/directory selection"
+"File Selector for quick file/directory selection"
 
 ## User Scenarios & Testing *(mandatory)*
 
