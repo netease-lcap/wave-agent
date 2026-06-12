@@ -63,7 +63,7 @@ describe("AI Service - Claude Cache Control", () => {
   });
 
   // ============================================================================
-  // Cache Control Utility Tests - Interval-Based Implementation
+  // Cache Control Utility Tests
   // ============================================================================
 
   describe("Cache Control Utilities", () => {
@@ -173,84 +173,6 @@ describe("AI Service - Claude Cache Control", () => {
         expect(cacheUtils.isClaudeModel("gpt-4o")).toBe(
           cacheUtils.supportsPromptCaching("gpt-4o"),
         );
-      });
-    });
-
-    describe("findIntervalMessageIndex", () => {
-      it("should return -1 for conversations with fewer than 20 messages", async () => {
-        // Test with various message counts under 20
-        for (let i = 0; i < 20; i++) {
-          const messages = Array.from({ length: i }, (_, idx) => ({
-            role: idx % 2 === 0 ? "user" : "assistant",
-            content: `Message ${idx + 1}`,
-          })) as ChatCompletionMessageParam[];
-
-          expect(cacheUtils.findIntervalMessageIndex(messages)).toBe(-1);
-        }
-      });
-
-      it("should return 19 (20th message, 0-based) for exactly 20 messages", async () => {
-        const messages = Array.from({ length: 20 }, (_, i) => ({
-          role: i % 2 === 0 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
-
-        expect(cacheUtils.findIntervalMessageIndex(messages)).toBe(19);
-      });
-
-      it("should return 19 for 21-39 messages (keeps 20th message)", async () => {
-        for (let messageCount = 21; messageCount <= 39; messageCount++) {
-          const messages = Array.from({ length: messageCount }, (_, i) => ({
-            role: i % 2 === 0 ? "user" : "assistant",
-            content: `Message ${i + 1}`,
-          })) as ChatCompletionMessageParam[];
-
-          expect(cacheUtils.findIntervalMessageIndex(messages)).toBe(19);
-        }
-      });
-
-      it("should return 39 (40th message) for exactly 40 messages (sliding window)", async () => {
-        const messages = Array.from({ length: 40 }, (_, i) => ({
-          role: i % 2 === 0 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
-
-        expect(cacheUtils.findIntervalMessageIndex(messages)).toBe(39);
-      });
-
-      it("should return correct index for larger conversation (sliding window behavior)", async () => {
-        // Test 60-message conversation (should return index 59 for 60th message)
-        const messages60 = Array.from({ length: 60 }, (_, i) => ({
-          role: i % 2 === 0 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
-
-        expect(cacheUtils.findIntervalMessageIndex(messages60)).toBe(59);
-
-        // Test 80-message conversation (should return index 79 for 80th message)
-        const messages80 = Array.from({ length: 80 }, (_, i) => ({
-          role: i % 2 === 0 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
-
-        expect(cacheUtils.findIntervalMessageIndex(messages80)).toBe(79);
-      });
-
-      it("should handle edge cases gracefully", async () => {
-        // Empty array
-        expect(cacheUtils.findIntervalMessageIndex([])).toBe(-1);
-
-        // Invalid input
-        expect(
-          cacheUtils.findIntervalMessageIndex(
-            null as unknown as ChatCompletionMessageParam[],
-          ),
-        ).toBe(-1);
-        expect(
-          cacheUtils.findIntervalMessageIndex(
-            undefined as unknown as ChatCompletionMessageParam[],
-          ),
-        ).toBe(-1);
       });
     });
 
@@ -444,114 +366,6 @@ describe("AI Service - Claude Cache Control", () => {
     });
 
     describe("transformMessagesForClaudeCache", () => {
-      it("should not add cache markers for conversations with fewer than 20 total messages", async () => {
-        const messages = [
-          { role: "system" as const, content: "You are helpful" },
-          { role: "user" as const, content: "Hello" },
-          { role: "assistant" as const, content: "Hi there!" },
-        ];
-
-        const result = cacheUtils.transformMessagesForClaudeCache(
-          messages,
-          "claude-3-sonnet",
-        );
-
-        expect(result).toHaveLength(3);
-
-        // System message should have cache control (always cached)
-        const systemMessage = result[0];
-        expect(systemMessage.role).toBe("system");
-        expect(Array.isArray(systemMessage.content)).toBe(true);
-
-        // User and assistant messages should not have cache control (< 20 messages)
-        expect(typeof result[1].content).toBe("string");
-        expect(typeof result[2].content).toBe("string");
-      });
-
-      it("should add cache marker on 20th message exactly for 20-message conversations", async () => {
-        const messages = Array.from({ length: 20 }, (_, i) => ({
-          role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
-
-        const result = cacheUtils.transformMessagesForClaudeCache(
-          messages,
-          "claude-3-sonnet",
-        );
-
-        expect(result).toHaveLength(20);
-
-        // System message (first) should have cache control
-        expect(Array.isArray(result[0].content)).toBe(true);
-
-        // 20th message (index 19) should have cache control
-        expect(Array.isArray(result[19].content)).toBe(true);
-        const intervalContent = result[19].content as Array<{
-          cache_control?: { type: string };
-        }>;
-        expect(intervalContent[0]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-
-        // Other messages should not have cache control
-        for (let i = 1; i < 19; i++) {
-          expect(typeof result[i].content).toBe("string");
-        }
-      });
-
-      it("should maintain 20th cache marker for 21-39 message conversations", async () => {
-        // Test with 25 messages
-        const messages = Array.from({ length: 25 }, (_, i) => ({
-          role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
-
-        const result = cacheUtils.transformMessagesForClaudeCache(
-          messages,
-          "claude-3-sonnet",
-        );
-
-        expect(result).toHaveLength(25);
-
-        // System message should have cache control
-        expect(Array.isArray(result[0].content)).toBe(true);
-
-        // 20th message (index 19) should still have cache control (sliding window keeps it)
-        expect(Array.isArray(result[19].content)).toBe(true);
-
-        // 25th message (index 24) should NOT have cache control (not at interval boundary)
-        expect(typeof result[24].content).toBe("string");
-      });
-
-      it("should move cache to 40th message for 40-message conversations (sliding window)", async () => {
-        const messages = Array.from({ length: 40 }, (_, i) => ({
-          role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
-
-        const result = cacheUtils.transformMessagesForClaudeCache(
-          messages,
-          "claude-3-sonnet",
-        );
-
-        expect(result).toHaveLength(40);
-
-        // System message should have cache control
-        expect(Array.isArray(result[0].content)).toBe(true);
-
-        // 20th message (index 19) should NOT have cache control anymore
-        expect(typeof result[19].content).toBe("string");
-
-        // 40th message (index 39) should have cache control (latest interval)
-        expect(Array.isArray(result[39].content)).toBe(true);
-        const intervalContent = result[39].content as Array<{
-          cache_control?: { type: string };
-        }>;
-        expect(intervalContent[0]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-      });
-
       it("should only cache first system message", async () => {
         const messages = [
           { role: "user" as const, content: "First user message" },
@@ -620,126 +434,6 @@ describe("AI Service - Claude Cache Control", () => {
         });
       });
 
-      it("should cache last tool call in interval messages with tool_calls", async () => {
-        // Create a 20-message conversation where the 20th message has tool calls
-        const messages = Array.from({ length: 19 }, (_, i) => ({
-          role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
-
-        // Add the 20th message with tool calls (this will be at interval position 19, 0-based)
-        messages.push({
-          role: "assistant" as const,
-          content: "",
-          tool_calls: [
-            {
-              id: "call_1",
-              type: "function" as const,
-              function: {
-                name: "first_tool",
-                arguments: '{"param": "value1"}',
-              },
-            },
-            {
-              id: "call_2",
-              type: "function" as const,
-              function: {
-                name: "second_tool",
-                arguments: '{"param": "value2"}',
-              },
-            },
-          ],
-        });
-
-        const result = cacheUtils.transformMessagesForClaudeCache(
-          messages,
-          "claude-3-sonnet",
-        );
-
-        expect(result).toHaveLength(20);
-
-        // System message (first) should have cache control
-        expect(Array.isArray(result[0].content)).toBe(true);
-
-        // 20th message (index 19) should have cache control on the LAST tool call, not content
-        const intervalMessage = result[19];
-        expect(intervalMessage.role).toBe("assistant");
-
-        // Type check for assistant message with tool calls
-        if (
-          intervalMessage.role === "assistant" &&
-          intervalMessage.tool_calls
-        ) {
-          expect(intervalMessage.tool_calls).toBeDefined();
-          expect(intervalMessage.tool_calls).toHaveLength(2);
-
-          // First tool call should NOT have cache control
-          expect(intervalMessage.tool_calls[0]).not.toHaveProperty(
-            "cache_control",
-          );
-
-          // Last tool call should have cache control
-          expect(intervalMessage.tool_calls[1]).toHaveProperty(
-            "cache_control",
-            {
-              type: "ephemeral",
-            },
-          );
-        } else {
-          throw new Error("Expected assistant message with tool_calls");
-        }
-
-        // Content should remain unchanged (not cached)
-        expect(intervalMessage.content).toBe("");
-      });
-
-      it("should cache tool role messages at interval positions", async () => {
-        // Create a 20-message conversation where the 20th message is a tool response
-        const messages = Array.from({ length: 19 }, (_, i) => ({
-          role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
-
-        // Add the 20th message as a tool response (this will be at interval position 19, 0-based)
-        messages.push({
-          role: "tool" as const,
-          content: "rain",
-          tool_call_id: "toolu_vrtx_01SPwKHBh5KmA6dhcmZmCaRg",
-        });
-
-        const result = cacheUtils.transformMessagesForClaudeCache(
-          messages,
-          "claude-3-sonnet",
-        );
-
-        expect(result).toHaveLength(20);
-
-        // System message (first) should have cache control
-        expect(Array.isArray(result[0].content)).toBe(true);
-
-        // 20th message (index 19) should be a tool role with cache control on content block
-        const intervalMessage = result[19];
-        expect(intervalMessage.role).toBe("tool");
-        // Cache control is on the content block, not on the message itself
-        expect(Array.isArray(intervalMessage.content)).toBe(true);
-        const content = intervalMessage.content as Array<{
-          type: string;
-          text: string;
-          cache_control?: { type: string };
-        }>;
-        expect(content[0]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-        expect(content[0].text).toBe("rain");
-
-        // Type guard for tool message
-        if (intervalMessage.role === "tool") {
-          expect(intervalMessage.tool_call_id).toBe(
-            "toolu_vrtx_01SPwKHBh5KmA6dhcmZmCaRg",
-          );
-        }
-      });
-
       it("should not apply cache control for non-Claude models", async () => {
         const messages = Array.from({ length: 25 }, (_, i) => ({
           role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
@@ -803,7 +497,7 @@ describe("AI Service - Claude Cache Control", () => {
         // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
 
-        // User message with mixed content should remain unchanged (no cache for < 20 messages)
+        // User message with mixed content should preserve its structure
         expect(Array.isArray(result[1].content)).toBe(true);
         expect(result[1].content).toEqual(messages[1].content);
 
@@ -814,7 +508,7 @@ describe("AI Service - Claude Cache Control", () => {
   });
 
   // ============================================================================
-  // Integration Tests with AI Service - Interval-Based Cache Control
+  // Integration Tests with AI Service
   // ============================================================================
 
   describe("AI Service Integration", () => {
@@ -904,139 +598,6 @@ describe("AI Service - Claude Cache Control", () => {
         const systemMessage = callArgs.messages[0];
         expect(systemMessage.role).toBe("system");
         expect(typeof systemMessage.content).toBe("string"); // Should remain as string
-      });
-    });
-
-    describe("Interval-Based Message Caching for Claude Models", () => {
-      it("should not cache messages for conversations with fewer than 20 messages", async () => {
-        const shortConversation = Array.from({ length: 10 }, (_, i) => ({
-          role: i % 2 === 0 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as Array<{ role: "user" | "assistant"; content: string }>;
-
-        const result = await callAgent({
-          gatewayConfig: TEST_GATEWAY_CONFIG,
-          modelConfig: CLAUDE_MODEL_CONFIG,
-          messages: shortConversation,
-          workdir: "/test/workdir",
-        });
-
-        expect(result).toBeDefined();
-        expect(mockCreate).toHaveBeenCalledOnce();
-
-        const callArgs = mockCreate.mock.calls[0][0];
-
-        // System message (index 0) should have cache control
-        expect(Array.isArray(callArgs.messages[0].content)).toBe(true);
-
-        // All other messages should be strings (no interval caching for < 20 messages)
-        for (let i = 1; i < callArgs.messages.length; i++) {
-          expect(typeof callArgs.messages[i].content).toBe("string");
-        }
-      });
-
-      it("should cache 20th message exactly in 20-message conversations", async () => {
-        // Create 19 messages (system will be added automatically to make 20 total)
-        const twentyMessageConversation = Array.from(
-          { length: 19 },
-          (_, i) => ({
-            role: i % 2 === 0 ? "user" : "assistant",
-            content: `Message ${i + 1}`,
-          }),
-        ) as Array<{ role: "user" | "assistant"; content: string }>;
-
-        const result = await callAgent({
-          gatewayConfig: TEST_GATEWAY_CONFIG,
-          modelConfig: CLAUDE_MODEL_CONFIG,
-          messages: twentyMessageConversation,
-          workdir: "/test/workdir",
-        });
-
-        expect(result).toBeDefined();
-        expect(mockCreate).toHaveBeenCalledOnce();
-
-        const callArgs = mockCreate.mock.calls[0][0];
-        expect(callArgs.messages).toHaveLength(20); // system + 19 messages
-
-        // System message (index 0) should have cache control
-        expect(Array.isArray(callArgs.messages[0].content)).toBe(true);
-
-        // 20th message (index 19) should have cache control
-        expect(Array.isArray(callArgs.messages[19].content)).toBe(true);
-        const intervalContent = callArgs.messages[19].content as Array<{
-          cache_control?: { type: string };
-        }>;
-        expect(intervalContent[0]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-
-        // Messages 1-18 should be strings (no cache control)
-        for (let i = 1; i < 19; i++) {
-          expect(typeof callArgs.messages[i].content).toBe("string");
-        }
-      });
-
-      it("should maintain sliding window behavior for 40+ message conversations", async () => {
-        // Create 39 messages (system will be added automatically to make 40 total)
-        const fortyMessageConversation = Array.from({ length: 39 }, (_, i) => ({
-          role: i % 2 === 0 ? "user" : "assistant",
-          content: `Message ${i + 1}`,
-        })) as Array<{ role: "user" | "assistant"; content: string }>;
-
-        const result = await callAgent({
-          gatewayConfig: TEST_GATEWAY_CONFIG,
-          modelConfig: CLAUDE_MODEL_CONFIG,
-          messages: fortyMessageConversation,
-          workdir: "/test/workdir",
-        });
-
-        expect(result).toBeDefined();
-        expect(mockCreate).toHaveBeenCalledOnce();
-
-        const callArgs = mockCreate.mock.calls[0][0];
-        expect(callArgs.messages).toHaveLength(40); // system + 39 messages
-
-        // System message (index 0) should have cache control
-        expect(Array.isArray(callArgs.messages[0].content)).toBe(true);
-
-        // 20th message (index 19) should NOT have cache control (sliding window moved)
-        expect(typeof callArgs.messages[19].content).toBe("string");
-
-        // 40th message (index 39) should have cache control (latest interval)
-        expect(Array.isArray(callArgs.messages[39].content)).toBe(true);
-        const intervalContent = callArgs.messages[39].content as Array<{
-          cache_control?: { type: string };
-        }>;
-        expect(intervalContent[0]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-      });
-
-      it("should not cache interval messages for non-Claude models", async () => {
-        const twentyMessageConversation = Array.from(
-          { length: 19 },
-          (_, i) => ({
-            role: i % 2 === 0 ? "user" : "assistant",
-            content: `Message ${i + 1}`,
-          }),
-        ) as Array<{ role: "user" | "assistant"; content: string }>;
-
-        const result = await callAgent({
-          gatewayConfig: TEST_GATEWAY_CONFIG,
-          modelConfig: NON_CLAUDE_MODEL_CONFIG,
-          messages: twentyMessageConversation,
-          workdir: "/test/workdir",
-        });
-
-        expect(result).toBeDefined();
-        expect(mockCreate).toHaveBeenCalledOnce();
-
-        const callArgs = mockCreate.mock.calls[0][0];
-
-        // All messages should remain as strings for non-Claude models
-        callArgs.messages.forEach((message: { content: unknown }) => {
-          expect(typeof message.content).toBe("string");
-        });
       });
     });
 

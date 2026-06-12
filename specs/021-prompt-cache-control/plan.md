@@ -7,7 +7,7 @@
 
 ## Summary
 
-Implement cache_control functionality for Claude models in the OpenAI provider to optimize token usage and reduce costs. The feature adds ephemeral cache markers to the first system message, messages at 20-message intervals, and the last tool definition when the model matches the configurable `WAVE_PROMPT_CACHE_REGEX` pattern (default: "claude"). Cache control is applied only at the block level (content blocks and tool definitions), never at the message level. This includes extending usage tracking to capture cache-related metrics from both Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens) and OpenAI-standard prompt_tokens_details (cached_tokens, cache_creation_input_tokens), with Claude top-level fields taking priority. This ensures cache token tracking works across Claude, Gemini, DeepSeek, and other models that return cache data.
+Implement cache_control functionality for Claude models in the OpenAI provider to optimize token usage and reduce costs. The feature adds ephemeral cache markers to the first system message and the last tool definition when the model matches the configurable `WAVE_PROMPT_CACHE_REGEX` pattern (default: "claude"). Cache control is applied only at the block level (content blocks and tool definitions), never at the message level. This includes extending usage tracking to capture cache-related metrics from both Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens) and OpenAI-standard prompt_tokens_details (cached_tokens, cache_creation_input_tokens), with Claude top-level fields taking priority. This ensures cache token tracking works across Claude, Gemini, DeepSeek, and other models that return cache data.
 
 ## Technical Context
 
@@ -124,7 +124,6 @@ packages/agent-sdk/
 
 | Breaking Change | Why Needed | Simpler Alternative Rejected Because |
 |----------------|------------|-------------------------------------|
-| Replace "last 2 user messages" with interval-based caching | Better context for long-running tasks with few user messages | Keeping both would add unnecessary complexity |
-| Remove `cacheUserMessageCount` from config | Strategy is now hardcoded or interval-based | Maintaining unused properties creates technical debt |
+| Remove `cacheUserMessageCount` from config | Strategy is now hardcoded (system message + last tool only) | Maintaining unused properties creates technical debt |
 | Delete `findRecentUserMessageIndices` | Function implements old strategy being replaced | Maintaining unused code creates technical debt |
 

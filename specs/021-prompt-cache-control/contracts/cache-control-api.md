@@ -127,27 +127,6 @@ const isClaudeModel: typeof supportsPromptCaching;
 
 ```typescript
 /**
- * Configuration for cache control application
- */
-interface CacheControlConfig {
-  /** Whether to apply cache control to system messages */
-  cacheSystemMessage: boolean;
-  /** Interval for periodic message caching (e.g., 20 = every 20th message) */
-  cacheMessageInterval: number;
-  /** Whether to cache the last tool definition */
-  cacheLastTool: boolean;
-}
-
-/**
- * Finds the index of the latest message at the specified interval
- * @param messages - Array of messages
- * @returns Single message index at latest interval position (20, 40, 60, etc.) or -1
- */
-function findIntervalMessageIndex(
-  messages: ChatCompletionMessageParam[]
-): number;
-
-/**
  * Adds cache control markers to message content
  * @param content - Original content (string or structured)
  * @param shouldCache - Whether to add cache control
@@ -178,14 +157,6 @@ function transformMessagesForClaudeCache(
   modelName: string
 ): ChatCompletionMessageParam[];
 
-/**
- * Adds cache control to the last tool call in an array
- * @param toolCalls - Array of tool calls
- * @returns Tool calls array with cache control on the last tool call
- */
-function addCacheControlToLastToolCall(
-  toolCalls: ChatCompletionMessageToolCall[]
-): ChatCompletionMessageToolCall[];
 ```
 
 ### Usage Tracking Extension
@@ -254,7 +225,6 @@ interface CacheControlIntegration {
  */
 const DEFAULT_CACHE_CONTROL_CONFIG: CacheControlConfig = {
   cacheSystemMessage: true,
-  cacheUserMessageCount: 2,
   cacheLastTool: true,
 };
 
@@ -339,7 +309,6 @@ interface CacheControlPerformanceContract {
   /** Cache hit rate expectations */
   expectedCacheHitRate: {
     systemMessages: 0.7; // 70%
-    userMessages: 0.4;   // 40%
     toolDefinitions: 0.6; // 60%
   };
 }

@@ -11,7 +11,6 @@ import type {
   ChatCompletionContentPart,
   ChatCompletionContentPartText,
   ChatCompletionFunctionTool,
-  ChatCompletionMessageToolCall,
   CompletionUsage,
 } from "openai/resources";
 import { logger } from "./globalLogger.js";
@@ -133,30 +132,6 @@ export function isValidCacheControl(control: unknown): control is CacheControl {
     "type" in control &&
     (control as { type: unknown }).type === "ephemeral"
   );
-}
-
-/**
- * Adds cache control to the last tool call in an array
- * @param toolCalls - Array of tool calls
- * @returns Tool calls array with cache control on the last tool call
- */
-function addCacheControlToLastToolCall(
-  toolCalls: ChatCompletionMessageToolCall[],
-): ChatCompletionMessageToolCall[] {
-  if (!toolCalls || toolCalls.length === 0) {
-    return toolCalls;
-  }
-
-  const result = [...toolCalls];
-  const lastIndex = result.length - 1;
-
-  // Add cache control to the last tool call
-  result[lastIndex] = {
-    ...result[lastIndex],
-    cache_control: { type: "ephemeral" },
-  } as ChatCompletionMessageToolCall & { cache_control: CacheControl };
-
-  return result;
 }
 
 /**
@@ -286,35 +261,6 @@ export function addCacheControlToLastTool(
 }
 
 /**
- * Finds the latest message index at 20-message intervals (sliding window approach)
- * @param messages - Array of chat completion messages
- * @returns Index of the latest interval message (20th, 40th, 60th, etc.) or -1 if none
- */
-export function findIntervalMessageIndex(
-  messages: ChatCompletionMessageParam[],
-): number {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return -1;
-  }
-
-  const interval = 20; // Hardcoded interval
-  const messageCount = messages.length;
-
-  // Find the largest interval that fits within the message count
-  // Math.floor(messageCount / interval) gives us how many complete intervals we have
-  // Multiply by interval to get the position of the latest interval message
-  const latestIntervalPosition = Math.floor(messageCount / interval) * interval;
-
-  // If no complete intervals exist, return -1
-  if (latestIntervalPosition === 0) {
-    return -1;
-  }
-
-  // Convert from 1-based position to 0-based index
-  return latestIntervalPosition - 1;
-}
-
-/**
  * Transforms messages for Claude cache control with hardcoded strategy
  * @param messages - Original OpenAI message array
  * @param modelName - Model name for cache detection
@@ -340,9 +286,6 @@ export function transformMessagesForClaudeCache(
   if (!supportsPromptCaching(modelName)) {
     return messages;
   }
-
-  // Find the latest interval message index (20th, 40th, 60th, etc.)
-  const intervalMessageIndex = findIntervalMessageIndex(messages);
 
   // Find first system message index
   const firstSystemIndex = messages.findIndex((m) => m.role === "system");
@@ -376,42 +319,6 @@ export function transformMessagesForClaudeCache(
         ...message,
         content: transformedContent,
       } as ChatCompletionMessageParam;
-    }
-
-    // Interval-based message caching: cache message at latest interval position (sliding window)
-    if (index === intervalMessageIndex) {
-      // If the message is a tool role, add cache control to the content block
-      if (message.role === "tool") {
-        const content =
-          typeof message.content === "string" ? message.content : "";
-        const transformedContent = addCacheControlToContent(content, true);
-
-        return {
-          ...message,
-          content: transformedContent,
-        } as ChatCompletionMessageParam;
-      }
-      // If the message has tool calls, cache the last tool call instead of content
-      else if (
-        message.role === "assistant" &&
-        message.tool_calls &&
-        message.tool_calls.length > 0
-      ) {
-        return {
-          ...message,
-          tool_calls: addCacheControlToLastToolCall(message.tool_calls),
-        } as ChatCompletionMessageParam;
-      } else {
-        // For other message types without tool calls, cache the content
-        const content =
-          (message.content as string | ChatCompletionContentPart[]) || "";
-        const transformedContent = addCacheControlToContent(content, true);
-
-        return {
-          ...message,
-          content: transformedContent,
-        } as ChatCompletionMessageParam;
-      }
     }
 
     // Return message unchanged
