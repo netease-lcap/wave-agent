@@ -121,7 +121,7 @@ const isClaudeModel: typeof supportsPromptCaching;
 - Example: `WAVE_PROMPT_CACHE_REGEX="claude|qwen"` matches both claude and qwen models
 - Invalid regex patterns fall back to simple "claude" matching
 
-**Note**: While `supportsPromptCaching` controls cache_control marker injection (only for Claude-like models), cache token extraction from usage applies to ALL models. Non-Claude models (Gemini, DeepSeek) return cache data via `prompt_tokens_details` which is an OpenAI-standard field.
+**Scope of `supportsPromptCaching`**: This function gates ONLY cache_control marker injection (adding `cache_control: {type: "ephemeral"}` to messages and tool definitions). It does NOT gate cache token extraction from usage responses — that applies to ALL models, since `prompt_tokens_details` is an OpenAI-standard field returned by Gemini, DeepSeek, and others.
 
 ### Cache Control Application
 

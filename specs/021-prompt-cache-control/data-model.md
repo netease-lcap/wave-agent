@@ -106,9 +106,9 @@ interface ModelCacheConfig {
   - `"claude|qwen3\\.6-plus"` - matches "claude" or exact "qwen3.6-plus"
 
 **Relationships**:
-- Determines cache control application for entire request
+- Determines cache_control marker injection for the request (messages and tools)
+- Does NOT gate cache token extraction from usage — that applies to all models
 - Affects message transformation and tool processing
-- Influences usage tracking structure
 
 **Legacy Support**:
 - `isClaudeModel()` is deprecated alias for `supportsPromptCaching()`
@@ -173,7 +173,10 @@ Request 2+: cache_creation_input_tokens = 0, cache_read_input_tokens > 0 (cache 
 ### Model Detection Flow
 
 ```
-ModelName -> isClaudeModel() -> shouldApplyCache -> Message Transformation
+ModelName -> supportsPromptCaching() -> shouldInjectCacheControlMarkers -> Message Transformation
+
+Note: Cache token extraction from usage is NOT gated by supportsPromptCaching.
+All models' usage responses are checked for cache tokens (Claude top-level + prompt_tokens_details).
 ```
 
 ## Data Flow Patterns
