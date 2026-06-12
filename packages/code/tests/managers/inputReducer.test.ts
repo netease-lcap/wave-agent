@@ -1540,6 +1540,80 @@ describe("inputReducer", () => {
       });
     });
 
+    describe("UP arrow queue recall", () => {
+      it("should dispatch RECALL_QUEUED_MESSAGE when hasQueuedMessages is true", () => {
+        const result = inputReducer(initialState, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "",
+            key: { upArrow: true } as unknown as Key,
+            hasSlashCommand: () => false,
+            hasQueuedMessages: true,
+          },
+        });
+        expect(result.pendingEffect).toEqual({
+          type: "RECALL_QUEUED_MESSAGE",
+        });
+      });
+
+      it("should dispatch FETCH_HISTORY when hasQueuedMessages is false and history is empty", () => {
+        const result = inputReducer(initialState, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "",
+            key: { upArrow: true } as unknown as Key,
+            hasSlashCommand: () => false,
+            hasQueuedMessages: false,
+          },
+        });
+        expect(result.pendingEffect).toEqual({ type: "FETCH_HISTORY" });
+      });
+
+      it("should navigate history when hasQueuedMessages is false and history exists", () => {
+        const state = {
+          ...initialState,
+          history: [
+            { prompt: "first", timestamp: 1000 },
+            { prompt: "second", timestamp: 2000 },
+          ],
+          inputText: "current",
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "",
+            key: { upArrow: true } as unknown as Key,
+            hasSlashCommand: () => false,
+            hasQueuedMessages: false,
+          },
+        });
+        expect(result.historyIndex).toBe(0);
+        expect(result.inputText).toBe("first");
+        expect(result.originalInputText).toBe("current");
+      });
+
+      it("should dispatch RECALL_QUEUED_MESSAGE even when input has content", () => {
+        const state = {
+          ...initialState,
+          inputText: "some existing text",
+          cursorPosition: 18,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "",
+            key: { upArrow: true } as unknown as Key,
+            hasSlashCommand: () => false,
+            hasQueuedMessages: true,
+          },
+        });
+        // Queue recall takes priority over history navigation, regardless of input content
+        expect(result.pendingEffect).toEqual({
+          type: "RECALL_QUEUED_MESSAGE",
+        });
+      });
+    });
+
     it("should send unknown /command as message", () => {
       const state: InputState = {
         ...initialState,
