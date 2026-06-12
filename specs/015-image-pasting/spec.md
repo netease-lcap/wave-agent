@@ -2,7 +2,6 @@
 
 **Feature Branch**: `015-image-pasting`  
 **Created**: 2026-03-24  
-"support pasting images from clipboard into the chat input. when an image is pasted, it should be saved to a temporary file and a placeholder should be inserted into the input text. when the message is sent, the image should be attached to the message."
 
 ## User Scenarios & Testing *(mandatory)*
 

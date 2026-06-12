@@ -2,7 +2,6 @@
 
 **Feature Branch**: `027-message-rendering-system`  
 **Created**: 2026-03-24  
-"The Wave Agent CLI needs a robust and performant way to render a list of messages and their constituent blocks in the terminal using Ink components. This includes support for static rendering of historical messages and dynamic rendering of active tool/command executions."
 
 ## User Scenarios & Testing *(mandatory)*
 

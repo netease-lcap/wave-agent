@@ -2,7 +2,6 @@
 
 **Feature Branch**: `080-workflow`
 **Created**: 2026-06-07
-**Input**: Claude Code Dynamic Workflows — https://code.claude.com/docs/en/workflows
 
 ## User Scenarios & Testing *(mandatory)*
 

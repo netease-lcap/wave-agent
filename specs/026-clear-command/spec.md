@@ -2,7 +2,6 @@
 
 **Feature Branch**: `026-clear-command`
 **Created**: 2026-04-01
-**Input**: "Provide a built-in /clear slash command that resets conversation history and session state."
 
 ## User Scenarios & Testing *(mandatory)*
 

@@ -2,7 +2,6 @@
 
 **Feature Branch**: `076-sso-auth`
 **Created**: 2026-05-12
-**Input**: "Add /login slash command for SSO authentication via Wave AI, supporting browser-based SSO flow, token storage, and automatic API proxy routing."
 
 ## User Scenarios & Testing *(mandatory)*
 

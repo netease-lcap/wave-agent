@@ -2,7 +2,6 @@
 
 **Feature Branch**: `070-acp-bridge`  
 **Created**: 2026-03-16  
-"read @packages/code/src/acp/ and write 070 spec in @specs/"
 
 ## User Scenarios & Testing *(mandatory)*
 

@@ -2,21 +2,6 @@
 
 **Feature Branch**: `068-worktree`  
 **Created**: 2026-02-27  
-"wave code cli support -w or --worktree <feat-name> to create worktree at .wave/worktrees/<feat-name>. if no <feat-name>, system should generate one, just like plan file name do. when exit wave code cli, it should popup this: Exiting worktree session
- You have 1 uncommitted file. These will be lost if you remove the worktree.
-
- ❯ Keep worktree    Stays at /path/to/repo/.wave/worktrees/merry-crafting-sutherland
-   Remove worktree  All changes and commits will be lost.
-
- Enter to confirm · Esc to cancel
-
-Exiting worktree session
- You have 1 commit on worktree-merry-crafting-sutherland. The branch will be deleted if you remove the worktree.
-
- ❯ Keep worktree    Stays at /path/to/repo/.wave/worktrees/merry-crafting-sutherland
-   Remove worktree  All changes and commits will be lost.
-
- Enter to confirm · Esc to cancel. if no commit or uncommit, exit without confirm."
 
 ## User Scenarios & Testing *(mandatory)*
 

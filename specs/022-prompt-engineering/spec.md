@@ -2,7 +2,6 @@
 
 **Feature Branch**: `022-prompt-engineering`  
 **Created**: 2026-03-25  
-"read @packages/agent-sdk/src/prompts/ and prompt() in @packages/agent-sdk/src/tools/ write a prompt engineering in specs"
 
 ## User Scenarios & Testing *(mandatory)*
 

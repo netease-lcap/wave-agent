@@ -2,7 +2,6 @@
 
 **Feature Branch**: `035-print-mode`
 **Created**: 2026-06-09
-**Input**: Bug report — `wave -p 'hi'` dumps auto-memory subagent system prompts and 200+ file lists to stdout; analysis of Claude Code's print mode behavior
 
 ## User Scenarios & Testing *(mandatory)*
 

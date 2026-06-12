@@ -2,7 +2,6 @@
 
 **Feature Branch**: `077-custom-tools`
 **Created**: 2026-05-15
-**Input**: "Allow SDK users to define and register custom tools via a buildTool() factory, inspired by Claude Code's custom tools API."
 
 ## User Scenarios & Testing *(mandatory)*
 

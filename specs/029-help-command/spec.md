@@ -2,7 +2,6 @@
 
 **Feature Branch**: `029-help-command`  
 **Created**: 2026-03-25  
-"support /help builtin command to show help and key bindings. the help view should be interactive and show general key bindings, built-in commands, and custom commands from plugins."
 
 ## User Scenarios & Testing *(mandatory)*
 

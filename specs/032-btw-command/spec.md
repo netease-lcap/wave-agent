@@ -2,7 +2,6 @@
 
 **Feature Branch**: `032-btw-command`
 **Created**: 2026-04-15
-**Input**: "Allow users to ask side questions via /btw without triggering tools, processed immediately even while the AI is busy."
 
 ## User Scenarios & Testing *(mandatory)*
 
