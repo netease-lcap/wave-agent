@@ -93,7 +93,7 @@ As a user who switches between permission modes (e.g., default → plan → acce
 
 ### Edge Cases
 
-- **Edge Case 1**: Model name detection MUST be case-insensitive ("Claude-3-Sonnet" and "claude-3-sonnet" both trigger caching)
+- **Edge Case 1**: Model name detection MUST be case-insensitive ("Claude-3-Sonnet" and "claude-3-sonnet" both trigger cache_control marker injection). Cache token extraction from usage applies regardless of model name.
 - **Edge Case 2**: Mixed content messages MUST apply cache_control only to text content parts, preserving images unchanged
 - **Edge Case 3**: Empty conversation history MUST skip user message caching, apply system message caching only
 - **Edge Case 4**: Streaming and non-streaming requests MUST apply identical cache_control transformation logic
@@ -104,14 +104,14 @@ As a user who switches between permission modes (e.g., default → plan → acce
 
 ### Functional Requirements
 
-- **FR-001**: System MUST detect cache-supporting models using the `WAVE_PROMPT_CACHE_REGEX` environment variable (default: "claude"), which allows configurable regex patterns for model matching
+- **FR-001**: System MUST detect cache-supporting models for cache_control marker injection using the `WAVE_PROMPT_CACHE_REGEX` environment variable (default: "claude"), which allows configurable regex patterns for model matching. This gate controls ONLY the injection of `cache_control: {type: "ephemeral"}` markers into messages and tool definitions — it does NOT gate cache token extraction from usage responses, which applies to all models.
 - **FR-002**: System MUST add cache_control markers with type "ephemeral" to the first system message when using Claude models. This ensures core instructions are always cached even if reminders are added later. The system prompt MUST remain constant across plan mode transitions — plan mode instructions are injected as `<system-reminder>` user messages rather than system prompt changes to preserve the cached system prompt prefix. The `<env>` section's `Primary working directory` field MUST use the immutable `originalWorkdir` (set once at session start) rather than the dynamic `workdir` (which tracks `cd` changes), so that CWD changes do not invalidate the cached system prompt.
 - **FR-003**: System MUST create a cache marker when total message count reaches multiples of 20 (20, 40, 60, etc.)
 - **FR-004**: System MUST NOT create cache markers when total message count is below 20 or not a multiple of 20
 - **FR-005**: System MUST maintain cache markers at the most recent multiple-of-20 message position (sliding window)
 - **FR-006**: System MUST include cached messages in the context provided to the AI agent
-- **FR-007**: System MUST not add cache_control markers when using non-Claude models
-- **FR-008**: System MUST extend usage tracking to include cache-related metrics. Cache tokens are extracted from two sources with priority ordering: (1) Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens, cache_creation object) take priority, (2) OpenAI-standard prompt_tokens_details fields (cached_tokens → cache_read_input_tokens, cache_creation_input_tokens → cache_creation_input_tokens) serve as fallback for non-Claude models that return cache data via prompt_tokens_details
+- **FR-007**: System MUST NOT add cache_control markers when using non-Claude models (as determined by `WAVE_PROMPT_CACHE_REGEX`). However, cache token extraction from usage (FR-008) applies to all models regardless of this gate.
+- **FR-008**: System MUST extend usage tracking to include cache-related metrics for ALL models (not gated by `supportsPromptCaching`). Cache tokens are extracted from two sources with priority ordering: (1) Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens, cache_creation object) take priority, (2) OpenAI-standard prompt_tokens_details fields (cached_tokens → cache_read_input_tokens, cache_creation_input_tokens → cache_creation_input_tokens) serve as fallback for non-Claude models that return cache data via prompt_tokens_details
 - **FR-009**: System MUST apply cache_control markers identically for both streaming and non-streaming requests during message preparation phase
 - **FR-010**: System MUST maintain backward compatibility with existing message processing logic (except for the cache strategy itself which is a breaking change)
 - **FR-011**: System MUST support caching for different message roles at interval positions, applying cache_control only at block level:
@@ -126,5 +126,5 @@ As a user who switches between permission modes (e.g., default → plan → acce
 - **Cache Marker**: Represents a point in the conversation where messages are preserved for context, containing the message position and associated conversation content
 - **Message Context**: Represents the combination of system prompt, tools, and cached messages that provide context for AI agent responses
 - **Enhanced Usage Metrics**: Extended usage object including cache-related token counts and creation breakdown
-- **Claude Model Detection**: Boolean determination based on case-insensitive model name matching
+- **Claude Model Detection**: Boolean determination based on case-insensitive model name matching. Gates cache_control marker injection only — cache token extraction applies to all models.
 - **Structured Message Content**: Array-based message content format supporting cache_control on individual content parts

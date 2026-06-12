@@ -71,8 +71,12 @@ export interface CacheControl {
 
 **Integration Point**: After line 183 (`openaiMessages` construction)
 
+> **Important**: Cache control has two distinct concerns:
+> 1. **Marker injection** (adding `cache_control: {type: "ephemeral"}` to messages/tools) — gated by `supportsPromptCaching`, only for Claude-like models
+> 2. **Cache token extraction** (reading cache metrics from usage responses) — NOT gated, applies to all models
+
 ```typescript
-// Add before createParams construction (line ~195)
+// Marker injection: gated by supportsPromptCaching
 if (supportsPromptCaching(model || modelConfig.model)) {
   openaiMessages = transformMessagesForClaudeCache(
     openaiMessages,
@@ -86,7 +90,7 @@ if (supportsPromptCaching(model || modelConfig.model)) {
 }
 ```
 
-**Usage Extension**: Modify usage processing to extract cache metrics from all models
+**Usage Extension**: Cache token extraction applies to all models (no gate)
 
 ```typescript
 // Extend usage object with cache metrics (Claude top-level + OpenAI prompt_tokens_details)

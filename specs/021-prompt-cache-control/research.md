@@ -30,7 +30,8 @@
 
 **Alternatives considered**:
 - Custom cache duration: Not supported by Claude API
-- Universal caching: Rejected due to cost and limited benefit for non-Claude models
+- Universal cache_control marker injection: Rejected due to cost and limited benefit for non-Claude models (only Claude API supports `cache_control: {type: "ephemeral"}` markers)
+- Universal cache token extraction: Accepted — `prompt_tokens_details` is an OpenAI-standard field; extracting cache metrics from all models' usage is zero-cost and provides visibility
 - Image content caching: Not supported by Claude API
 
 ## Implementation Architecture Research
