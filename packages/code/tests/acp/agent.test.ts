@@ -1982,7 +1982,7 @@ describe("WaveAcpAgent", () => {
     );
   });
 
-  it("should include formatted bash command in tool call content", async () => {
+  it("should not include bash command text in tool call content", async () => {
     let capturedCallbacks: AgentOptions["callbacks"];
     const mockWaveAgent = {
       sessionId: "session-1",
@@ -2012,15 +2012,7 @@ describe("WaveAcpAgent", () => {
         update: expect.objectContaining({
           sessionUpdate: "tool_call",
           toolCallId: "1",
-          content: [
-            {
-              type: "content",
-              content: {
-                type: "text",
-                text: "**Command:**\n```bash\nls -la\n```",
-              },
-            },
-          ],
+          content: undefined,
         }),
       }),
     );
