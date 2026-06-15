@@ -679,17 +679,6 @@ export class WaveAcpAgent implements AcpAgent {
           oldText: parameters.old_string,
           newText: parameters.new_string,
         });
-      } else if (
-        name === BASH_TOOL_NAME &&
-        typeof parameters.command === "string"
-      ) {
-        contents.push({
-          type: "content",
-          content: {
-            type: "text",
-            text: "**Command:**\n```bash\n" + parameters.command + "\n```",
-          },
-        });
       } else if (name === EXIT_PLAN_MODE_TOOL_NAME && planContent) {
         contents.push({
           type: "content",
