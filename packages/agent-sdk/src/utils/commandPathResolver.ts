@@ -26,7 +26,9 @@ export function generateCommandId(filePath: string, rootDir: string): string {
     throw new Error("Command filename cannot be empty");
   }
 
-  const segments = relativePath.split("/").filter((segment) => segment !== "");
+  const segments = relativePath
+    .split(/[\\/]/)
+    .filter((segment) => segment !== "");
 
   // Remove .md extension from the last segment
   const lastSegment = segments[segments.length - 1];

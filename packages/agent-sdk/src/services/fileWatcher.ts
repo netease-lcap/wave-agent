@@ -281,12 +281,11 @@ export class FileWatcherService extends EventEmitter {
 
     // Notify all watchers that match the path or are parents of the path
     for (const [watchedPath, entry] of this.watchers.entries()) {
+      const normalizedFilePath = filePath.replace(/\\/g, "/");
+      const normalizedWatchedPath = watchedPath.replace(/\\/g, "/");
       if (
-        filePath === watchedPath ||
-        filePath.startsWith(watchedPath + "/") ||
-        // Handle cases where the watched path might be a file and we get an event for it
-        // (already covered by filePath === watchedPath)
-        false
+        normalizedFilePath === normalizedWatchedPath ||
+        normalizedFilePath.startsWith(normalizedWatchedPath + "/")
       ) {
         entry.lastEvent = event.timestamp;
 

@@ -442,7 +442,9 @@ export class SkillManager extends EventEmitter {
     const skillPath = `Base directory for this skill: ${skill.skillPath}\n\n`;
 
     // Extract content after frontmatter
-    const contentMatch = skill.content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+    const contentMatch = skill.content.match(
+      /^---\r?\n[\s\S]*?\r?\n---\r?\n([\s\S]*)$/,
+    );
     let mainContent = contentMatch ? contentMatch[1].trim() : skill.content;
 
     // 1. Substitute parameters ($1, $ARGUMENTS, etc.)

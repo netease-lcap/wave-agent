@@ -30,7 +30,8 @@ function parseFrontmatter(content: string): {
   frontmatter: SubagentFrontmatter;
   body: string;
 } {
-  const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/;
+  const frontmatterRegex =
+    /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n([\s\S]*)$/;
   const match = content.match(frontmatterRegex);
 
   if (!match) {
