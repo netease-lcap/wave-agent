@@ -328,53 +328,47 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <WorkflowManager onCancel={() => setShowWorkflowManager(false)} />
       )}
 
-      {showBackgroundTaskManager ||
-        showMcpManager ||
-        showRewindManager ||
-        showHelp ||
-        showStatusCommand ||
-        showLoginCommand ||
-        showPluginManager ||
-        showWorkflowManager || (
-          <Box flexDirection="column">
-            <Box
-              borderStyle="single"
-              borderColor={btwState.isActive ? "cyan" : "gray"}
-              borderLeft={false}
-              borderRight={false}
-            >
-              <Text color={isPlaceholder ? "gray" : "white"}>
-                {btwState.isActive && isPlaceholder ? (
-                  <>
-                    <Text backgroundColor="white" color="black">
-                      {" "}
-                    </Text>
-                    <Text color="cyan">Type your side question...</Text>
-                  </>
-                ) : shouldShowCursor ? (
-                  <>
-                    {beforeCursor}
-                    <Text backgroundColor="white" color="black">
-                      {atCursor}
-                    </Text>
-                    {afterCursor}
-                  </>
-                ) : (
-                  displayText
-                )}
-              </Text>
+      {btwState.question
+        ? null
+        : showBackgroundTaskManager ||
+          showMcpManager ||
+          showRewindManager ||
+          showHelp ||
+          showStatusCommand ||
+          showLoginCommand ||
+          showPluginManager ||
+          showWorkflowManager || (
+            <Box flexDirection="column">
+              <Box
+                borderStyle="single"
+                borderColor="gray"
+                borderLeft={false}
+                borderRight={false}
+              >
+                <Text color={isPlaceholder ? "gray" : "white"}>
+                  {shouldShowCursor ? (
+                    <>
+                      {beforeCursor}
+                      <Text backgroundColor="white" color="black">
+                        {atCursor}
+                      </Text>
+                      {afterCursor}
+                    </>
+                  ) : (
+                    displayText
+                  )}
+                </Text>
+              </Box>
+              <StatusLine
+                permissionMode={permissionMode}
+                isShellCommand={isShellCommand}
+                isGoalActive={isGoalActive}
+                goalElapsed={goalElapsed}
+                latestTotalTokens={latestTotalTokens}
+                maxInputTokens={maxInputTokens}
+              />
             </Box>
-            <StatusLine
-              permissionMode={permissionMode}
-              isShellCommand={isShellCommand}
-              isBtwActive={btwState.isActive}
-              isGoalActive={isGoalActive}
-              goalElapsed={goalElapsed}
-              latestTotalTokens={latestTotalTokens}
-              maxInputTokens={maxInputTokens}
-            />
-          </Box>
-        )}
+          )}
     </Box>
   );
 };

@@ -373,11 +373,6 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
         } else if (command === "workflows") {
           dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: true });
-        } else if (command === "btw") {
-          dispatch({
-            type: "SET_BTW_STATE",
-            payload: { isActive: true, question: "", isLoading: false },
-          });
         }
       }
     })();
@@ -701,46 +696,6 @@ export const handleInput = async (
   key: Key,
   clearImages?: () => void,
 ): Promise<boolean> => {
-  if (state.btwState.isActive) {
-    if (key.escape) {
-      dispatch({
-        type: "SET_BTW_STATE",
-        payload: {
-          isActive: false,
-          question: "",
-          answer: undefined,
-          isLoading: false,
-        },
-      });
-      return true;
-    }
-
-    if (key.return) {
-      if (state.inputText.trim() && !state.btwState.isLoading) {
-        dispatch({
-          type: "SET_BTW_STATE",
-          payload: {
-            question: state.inputText.trim(),
-            isLoading: true,
-            answer: undefined,
-          },
-        });
-        dispatch({ type: "CLEAR_INPUT" });
-      }
-      return true;
-    }
-
-    // Handle normal input for the question
-    return await handleNormalInput(
-      state,
-      dispatch,
-      callbacks,
-      input,
-      key,
-      clearImages,
-    );
-  }
-
   if (key.escape) {
     if (
       !(
@@ -754,8 +709,7 @@ export const handleInput = async (
         state.showStatusCommand ||
         state.showPluginManager ||
         state.showModelSelector ||
-        state.showWorkflowManager ||
-        state.btwState.isActive
+        state.showWorkflowManager
       )
     ) {
       callbacks.onAbortMessage?.();
@@ -779,8 +733,7 @@ export const handleInput = async (
     state.showStatusCommand ||
     state.showPluginManager ||
     state.showModelSelector ||
-    state.showWorkflowManager ||
-    state.btwState.isActive
+    state.showWorkflowManager
   ) {
     if (
       state.showBackgroundTaskManager ||
@@ -790,8 +743,7 @@ export const handleInput = async (
       state.showStatusCommand ||
       state.showPluginManager ||
       state.showModelSelector ||
-      state.showWorkflowManager ||
-      state.btwState.isActive
+      state.showWorkflowManager
     ) {
       return true;
     }

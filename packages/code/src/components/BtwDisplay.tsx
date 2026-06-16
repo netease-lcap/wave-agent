@@ -8,7 +8,7 @@ interface BtwDisplayProps {
 }
 
 export const BtwDisplay: React.FC<BtwDisplayProps> = ({ btwState }) => {
-  if (!btwState.isActive) {
+  if (!btwState.question) {
     return null;
   }
 
