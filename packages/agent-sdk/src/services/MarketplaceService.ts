@@ -68,6 +68,9 @@ export class MarketplaceService {
 
     this.ensureDirectoryStructure();
     this.runMigration();
+    // Stored dynamically to avoid widening keyof MarketplaceService
+    (this as Record<string, unknown>)._seedComplete =
+      this.seedBuiltinMarketplace();
   }
 
   /**
@@ -119,6 +122,63 @@ export class MarketplaceService {
     } catch {
       // Migration failure should not block startup
     }
+  }
+
+  /**
+   * Seeds the builtin marketplace on first startup.
+   * Adds it to user-scope settings and marks the cache as seeded.
+   */
+  private async seedBuiltinMarketplace(): Promise<void> {
+    try {
+      const cache = await this.getCacheRegistry();
+      if (cache?.builtinSeeded) return;
+
+      const builtin = MarketplaceService.BUILTIN_MARKETPLACE;
+
+      // Add to user-scope settings if not already in any scope
+      const scoped = this.configurationService.getMergedMarketplaces(
+        this.workdir,
+      );
+      if (!scoped[builtin.name]) {
+        await this.configurationService.addMarketplaceToScope(
+          this.workdir,
+          "user",
+          builtin.name,
+          { source: builtin.source, autoUpdate: builtin.autoUpdate },
+        );
+      }
+
+      // Update cache: add entry + set builtinSeeded flag
+      await this.updateCacheMarketplace(builtin.name, {
+        source: builtin.source,
+        autoUpdate: builtin.autoUpdate,
+        isBuiltin: true,
+        declaredScope: "builtin",
+      });
+      await this.setBuiltinSeeded(true);
+    } catch {
+      // Seeding failure should not block startup
+    }
+  }
+
+  /**
+   * Sets the builtinSeeded flag in the cache registry, preserving all other fields.
+   */
+  private async setBuiltinSeeded(value: boolean): Promise<void> {
+    const registry = await this.getCacheRegistry();
+    const tmpPath = `${this.knownMarketplacesPath}.tmp`;
+    await fs.writeFile(
+      tmpPath,
+      JSON.stringify(
+        {
+          builtinSeeded: value,
+          marketplaces: registry?.marketplaces ?? [],
+        },
+        null,
+        2,
+      ),
+    );
+    await fs.rename(tmpPath, this.knownMarketplacesPath);
   }
 
   /**
@@ -258,7 +318,17 @@ export class MarketplaceService {
       });
     }
     const tmpPath = `${this.knownMarketplacesPath}.tmp`;
-    await fs.writeFile(tmpPath, JSON.stringify({ marketplaces }, null, 2));
+    await fs.writeFile(
+      tmpPath,
+      JSON.stringify(
+        {
+          builtinSeeded: registry?.builtinSeeded ?? false,
+          marketplaces,
+        },
+        null,
+        2,
+      ),
+    );
     await fs.rename(tmpPath, this.knownMarketplacesPath);
   }
 
@@ -272,7 +342,14 @@ export class MarketplaceService {
     const tmpPath = `${this.knownMarketplacesPath}.tmp`;
     await fs.writeFile(
       tmpPath,
-      JSON.stringify({ marketplaces: filtered }, null, 2),
+      JSON.stringify(
+        {
+          builtinSeeded: registry?.builtinSeeded ?? false,
+          marketplaces: filtered,
+        },
+        null,
+        2,
+      ),
     );
     await fs.rename(tmpPath, this.knownMarketplacesPath);
   }
