@@ -688,6 +688,17 @@ export function inputReducer(
 
       // 1. Escape Handling
       if (key.escape) {
+        // Dismiss btw answer
+        if (state.btwState.question && !state.btwState.isLoading) {
+          return {
+            ...state,
+            btwState: {
+              question: "",
+              answer: undefined,
+              isLoading: false,
+            },
+          };
+        }
         if (state.showFileSelector) {
           return {
             ...state,

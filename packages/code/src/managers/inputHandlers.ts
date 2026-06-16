@@ -696,6 +696,19 @@ export const handleInput = async (
   key: Key,
   clearImages?: () => void,
 ): Promise<boolean> => {
+  // Handle ESC to dismiss btw answer
+  if (key.escape && state.btwState.question && !state.btwState.isLoading) {
+    dispatch({
+      type: "SET_BTW_STATE",
+      payload: {
+        question: "",
+        answer: undefined,
+        isLoading: false,
+      },
+    });
+    return true;
+  }
+
   if (key.escape) {
     if (
       !(
