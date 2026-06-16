@@ -320,39 +320,7 @@ export const useInputManager = (
     onImagesStateChange?.(state.attachedImages);
   }, [state.attachedImages, onImagesStateChange]);
 
-  // Handle /btw side question
-  useEffect(() => {
-    if (
-      state.btwState.isActive &&
-      state.btwState.isLoading &&
-      state.btwState.question
-    ) {
-      const askBtw = async () => {
-        try {
-          const answer = await onAskBtw?.(state.btwState.question);
-          dispatch({
-            type: "SET_BTW_STATE",
-            payload: { answer, isLoading: false },
-          });
-        } catch (error) {
-          console.error("Failed to ask side question:", error);
-          dispatch({
-            type: "SET_BTW_STATE",
-            payload: {
-              answer: "Error: Failed to get an answer for your side question.",
-              isLoading: false,
-            },
-          });
-        }
-      };
-      askBtw();
-    }
-  }, [
-    state.btwState.isActive,
-    state.btwState.isLoading,
-    state.btwState.question,
-    onAskBtw,
-  ]);
+  // /btw side question is handled via pendingEffect "ASK_BTW" above
 
   // Methods
   const insertTextAtCursor = useCallback((text: string) => {
