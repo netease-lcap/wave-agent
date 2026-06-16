@@ -53,6 +53,7 @@ export interface KnownMarketplace {
 }
 
 export interface KnownMarketplacesRegistry {
+  builtinSeeded?: boolean;
   marketplaces: KnownMarketplace[];
 }
 

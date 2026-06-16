@@ -66,7 +66,15 @@ describe("MarketplaceService - Builtin Marketplace", () => {
     if (existsSync(mockPluginsDir)) {
       await fs.rm(mockPluginsDir, { recursive: true, force: true });
     }
+    // Pre-create directory and seed cache so constructor's async seed is a no-op
+    await fs.mkdir(mockPluginsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(mockPluginsDir, "known_marketplaces.json"),
+      JSON.stringify({ builtinSeeded: true, marketplaces: [] }),
+    );
     service = new MarketplaceService();
+    await (service as unknown as { _seedComplete: Promise<void> })
+      ._seedComplete;
     // Reset static variable
     (
       MarketplaceService as unknown as { isLockedInProcess: boolean }
@@ -95,10 +103,14 @@ describe("MarketplaceService - Builtin Marketplace", () => {
   });
 
   afterEach(async () => {
-    vi.restoreAllMocks();
-    if (existsSync(mockPluginsDir)) {
-      await fs.rm(mockPluginsDir, { recursive: true, force: true });
+    try {
+      if (existsSync(mockPluginsDir)) {
+        await fs.rm(mockPluginsDir, { recursive: true, force: true });
+      }
+    } catch {
+      // Ignore cleanup errors from race conditions with async constructor operations
     }
+    vi.restoreAllMocks();
   });
 
   it("should return empty list when no config file exists", async () => {
@@ -286,7 +298,15 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     if (existsSync(mockPluginsDir)) {
       await fs.rm(mockPluginsDir, { recursive: true, force: true });
     }
+    // Pre-create directory and seed cache so constructor's async seed is a no-op
+    await fs.mkdir(mockPluginsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(mockPluginsDir, "known_marketplaces.json"),
+      JSON.stringify({ builtinSeeded: true, marketplaces: [] }),
+    );
     service = new MarketplaceService();
+    await (service as unknown as { _seedComplete: Promise<void> })
+      ._seedComplete;
     (
       MarketplaceService as unknown as { isLockedInProcess: boolean }
     ).isLockedInProcess = false;
@@ -313,10 +333,14 @@ describe("MarketplaceService - Scoped Marketplace", () => {
   });
 
   afterEach(async () => {
-    vi.restoreAllMocks();
-    if (existsSync(mockPluginsDir)) {
-      await fs.rm(mockPluginsDir, { recursive: true, force: true });
+    try {
+      if (existsSync(mockPluginsDir)) {
+        await fs.rm(mockPluginsDir, { recursive: true, force: true });
+      }
+    } catch {
+      // Ignore cleanup errors from race conditions with async constructor operations
     }
+    vi.restoreAllMocks();
   });
 
   it("should list marketplaces from scoped settings", async () => {
@@ -667,7 +691,15 @@ describe("MarketplaceService - Coverage Targets", () => {
     if (existsSync(mockPluginsDir)) {
       await fs.rm(mockPluginsDir, { recursive: true, force: true });
     }
+    // Pre-create directory and seed cache so constructor's async seed is a no-op
+    await fs.mkdir(mockPluginsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(mockPluginsDir, "known_marketplaces.json"),
+      JSON.stringify({ builtinSeeded: true, marketplaces: [] }),
+    );
     service = new MarketplaceService();
+    await (service as unknown as { _seedComplete: Promise<void> })
+      ._seedComplete;
     (
       MarketplaceService as unknown as { isLockedInProcess: boolean }
     ).isLockedInProcess = false;
@@ -694,10 +726,14 @@ describe("MarketplaceService - Coverage Targets", () => {
   });
 
   afterEach(async () => {
-    vi.restoreAllMocks();
-    if (existsSync(mockPluginsDir)) {
-      await fs.rm(mockPluginsDir, { recursive: true, force: true });
+    try {
+      if (existsSync(mockPluginsDir)) {
+        await fs.rm(mockPluginsDir, { recursive: true, force: true });
+      }
+    } catch {
+      // Ignore cleanup errors from race conditions with async constructor operations
     }
+    vi.restoreAllMocks();
   });
 
   // Line 105: migration skip for builtin marketplace
@@ -1465,5 +1501,297 @@ describe("MarketplaceService - Coverage Targets", () => {
     expect(saved.plugins).toHaveLength(1);
     expect(saved.plugins[0].version).toBe("2.0.0");
     expect(result.version).toBe("2.0.0");
+  });
+});
+
+describe("MarketplaceService - Builtin Seeding", () => {
+  const mockPluginsDir = path.join(process.cwd(), "tmp-test-plugins-seed");
+  const knownMarketplacesPath = path.join(
+    mockPluginsDir,
+    "known_marketplaces.json",
+  );
+
+  beforeEach(async () => {
+    // Re-establish fs mock implementations after previous describe's restoreAllMocks
+    const actualFs = await vi.importActual<typeof import("fs")>("fs");
+    vi.mocked(fs.writeFile).mockImplementation(
+      actualFs.promises.writeFile as unknown as typeof fs.writeFile,
+    );
+    vi.mocked(fs.readFile).mockImplementation(
+      actualFs.promises.readFile as unknown as typeof fs.readFile,
+    );
+    vi.mocked(fs.rename).mockImplementation(
+      actualFs.promises.rename as unknown as typeof fs.rename,
+    );
+    vi.mocked(fs.mkdir).mockImplementation(
+      actualFs.promises.mkdir as unknown as typeof fs.mkdir,
+    );
+    vi.mocked(fs.rm).mockImplementation(
+      actualFs.promises.rm as unknown as typeof fs.rm,
+    );
+    vi.mocked(existsSync).mockImplementation(
+      actualFs.existsSync as typeof existsSync,
+    );
+
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(getPluginsDir).mockReturnValue(mockPluginsDir);
+    if (existsSync(mockPluginsDir)) {
+      await fs.rm(mockPluginsDir, { recursive: true, force: true });
+    }
+  });
+
+  afterEach(async () => {
+    if (existsSync(mockPluginsDir)) {
+      await fs.rm(mockPluginsDir, { recursive: true, force: true });
+    }
+  });
+
+  function createService(): MarketplaceService {
+    const svc = new MarketplaceService();
+    (
+      MarketplaceService as unknown as { isLockedInProcess: boolean }
+    ).isLockedInProcess = false;
+    vi.spyOn(
+      svc["gitService"] as unknown as {
+        isGitAvailable: () => Promise<boolean>;
+      },
+      "isGitAvailable",
+    ).mockResolvedValue(true);
+    vi.spyOn(
+      svc["gitService"] as unknown as { clone: () => Promise<void> },
+      "clone",
+    ).mockResolvedValue();
+    vi.spyOn(
+      svc["gitService"] as unknown as { pull: () => Promise<void> },
+      "pull",
+    ).mockResolvedValue();
+    vi.mocked(fs.open).mockResolvedValue({
+      close: vi.fn(),
+    } as unknown as Awaited<ReturnType<typeof fs.open>>);
+    vi.mocked(fs.unlink).mockResolvedValue(undefined);
+    return svc;
+  }
+
+  it("should seed builtin on first run when no cache exists", async () => {
+    // No cache file exists — constructor should trigger seeding
+    const service = createService();
+
+    // Wait for async seed to complete
+    await vi.waitFor(
+      async () => {
+        const registry = await service.getCacheRegistry();
+        expect(registry?.builtinSeeded).toBe(true);
+      },
+      { timeout: 2000 },
+    );
+
+    // Verify addMarketplaceToScope was called for the builtin
+    expect(
+      vi.mocked(
+        (service["configurationService"] as ConfigurationService)
+          .addMarketplaceToScope,
+      ),
+    ).toHaveBeenCalledWith(
+      expect.any(String),
+      "user",
+      "wave-plugins-official",
+      expect.objectContaining({
+        source: {
+          source: "github",
+          repo: "netease-lcap/wave-plugins-official",
+        },
+        autoUpdate: true,
+      }),
+    );
+
+    // Verify cache has the builtin entry
+    const registry = await service.getCacheRegistry();
+    expect(registry?.builtinSeeded).toBe(true);
+    expect(
+      registry?.marketplaces.some((m) => m.name === "wave-plugins-official"),
+    ).toBe(true);
+  });
+
+  it("should not re-seed when cache already has builtinSeeded true", async () => {
+    // Pre-write cache with builtinSeeded: true
+    await fs.mkdir(mockPluginsDir, { recursive: true });
+    await fs.writeFile(
+      knownMarketplacesPath,
+      JSON.stringify({
+        builtinSeeded: true,
+        marketplaces: [
+          {
+            name: "wave-plugins-official",
+            source: {
+              source: "github",
+              repo: "netease-lcap/wave-plugins-official",
+            },
+          },
+        ],
+      }),
+    );
+
+    const service = createService();
+
+    // Wait for the seed to complete (it should return early)
+    await (service as unknown as { _seedComplete: Promise<void> })
+      ._seedComplete;
+
+    // addMarketplaceToScope should NOT have been called for the builtin
+    expect(
+      vi.mocked(
+        (service["configurationService"] as ConfigurationService)
+          .addMarketplaceToScope,
+      ),
+    ).not.toHaveBeenCalledWith(
+      expect.any(String),
+      "user",
+      "wave-plugins-official",
+      expect.anything(),
+    );
+  });
+
+  it("should not re-seed after builtin removal", async () => {
+    // Pre-write cache with builtinSeeded: true and the builtin entry
+    await fs.mkdir(mockPluginsDir, { recursive: true });
+    await fs.writeFile(
+      knownMarketplacesPath,
+      JSON.stringify({
+        builtinSeeded: true,
+        marketplaces: [
+          {
+            name: "wave-plugins-official",
+            source: {
+              source: "github",
+              repo: "netease-lcap/wave-plugins-official",
+            },
+          },
+        ],
+      }),
+    );
+
+    const service1 = createService();
+
+    // Remove builtin from cache
+    await (
+      service1 as unknown as {
+        removeFromCache: (name: string) => Promise<void>;
+      }
+    ).removeFromCache("wave-plugins-official");
+
+    // Verify it was removed
+    const registry = await service1.getCacheRegistry();
+    expect(
+      registry?.marketplaces.some((m) => m.name === "wave-plugins-official"),
+    ).toBe(false);
+    // But builtinSeeded flag should still be true
+    expect(registry?.builtinSeeded).toBe(true);
+
+    // Construct a new service — should NOT re-seed
+    const service2 = createService();
+    await (service2 as unknown as { _seedComplete: Promise<void> })
+      ._seedComplete;
+
+    expect(
+      vi.mocked(
+        (service2["configurationService"] as ConfigurationService)
+          .addMarketplaceToScope,
+      ),
+    ).not.toHaveBeenCalledWith(
+      expect.any(String),
+      "user",
+      "wave-plugins-official",
+      expect.anything(),
+    );
+  });
+
+  it("should seed when cache exists but builtinSeeded is undefined", async () => {
+    // Pre-write cache WITHOUT builtinSeeded flag
+    await fs.mkdir(mockPluginsDir, { recursive: true });
+    await fs.writeFile(
+      knownMarketplacesPath,
+      JSON.stringify({
+        marketplaces: [
+          {
+            name: "some-other-mkt",
+            source: { source: "directory", path: "/some/path" },
+          },
+        ],
+      }),
+    );
+
+    const service = createService();
+
+    // Wait for async seed to complete
+    await vi.waitFor(
+      async () => {
+        const registry = await service.getCacheRegistry();
+        expect(registry?.builtinSeeded).toBe(true);
+      },
+      { timeout: 2000 },
+    );
+
+    // addMarketplaceToScope should have been called for the builtin
+    expect(
+      vi.mocked(
+        (service["configurationService"] as ConfigurationService)
+          .addMarketplaceToScope,
+      ),
+    ).toHaveBeenCalledWith(
+      expect.any(String),
+      "user",
+      "wave-plugins-official",
+      expect.anything(),
+    );
+
+    // Cache should now have both entries and the flag
+    const registry = await service.getCacheRegistry();
+    expect(registry?.builtinSeeded).toBe(true);
+    expect(
+      registry?.marketplaces.some((m) => m.name === "wave-plugins-official"),
+    ).toBe(true);
+    expect(
+      registry?.marketplaces.some((m) => m.name === "some-other-mkt"),
+    ).toBe(true);
+  });
+
+  it("should preserve builtinSeeded flag when removeFromCache is called", async () => {
+    // Pre-write cache with builtinSeeded: true and multiple entries
+    await fs.mkdir(mockPluginsDir, { recursive: true });
+    await fs.writeFile(
+      knownMarketplacesPath,
+      JSON.stringify({
+        builtinSeeded: true,
+        marketplaces: [
+          {
+            name: "wave-plugins-official",
+            source: {
+              source: "github",
+              repo: "netease-lcap/wave-plugins-official",
+            },
+          },
+          {
+            name: "custom-mkt",
+            source: { source: "directory", path: "/custom" },
+          },
+        ],
+      }),
+    );
+
+    const service = createService();
+
+    // Remove one entry from cache
+    await (
+      service as unknown as {
+        removeFromCache: (name: string) => Promise<void>;
+      }
+    ).removeFromCache("custom-mkt");
+
+    // Read back the written file and verify builtinSeeded is preserved
+    const registry = await service.getCacheRegistry();
+    expect(registry?.builtinSeeded).toBe(true);
+    expect(registry?.marketplaces).toHaveLength(1);
+    expect(registry?.marketplaces[0].name).toBe("wave-plugins-official");
   });
 });
