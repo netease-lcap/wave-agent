@@ -35,7 +35,7 @@ export function parseSkillFile(
     result.content = content;
 
     // Parse YAML frontmatter
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!frontmatterMatch) {
       result.validationErrors.push("Missing YAML frontmatter");
       return result;
@@ -53,9 +53,11 @@ export function parseSkillFile(
 
     // Determine skill type and path
     const skillPath = basePath || dirname(filePath);
-    const skillType = skillPath.includes("/.wave/skills")
-      ? "project"
-      : "personal";
+    const skillType =
+      skillPath.includes("/.wave/skills") ||
+      skillPath.includes("\\.wave\\skills")
+        ? "project"
+        : "personal";
 
     // Extract allowed tools
     let allowedTools: string[] | undefined;
