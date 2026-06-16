@@ -6,7 +6,6 @@ The `/btw` command introduces a new state to the `InputState` and `ChatContextTy
 
 ```typescript
 export interface BtwState {
-  isActive: boolean;
   question: string;
   answer?: string;
   isLoading: boolean;

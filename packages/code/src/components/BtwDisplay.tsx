@@ -26,6 +26,9 @@ export const BtwDisplay: React.FC<BtwDisplayProps> = ({ btwState }) => {
       {btwState.answer && (
         <Box flexDirection="column">
           <Markdown>{btwState.answer}</Markdown>
+          <Text color="gray" dimColor>
+            ESC to dismiss
+          </Text>
         </Box>
       )}
     </Box>
