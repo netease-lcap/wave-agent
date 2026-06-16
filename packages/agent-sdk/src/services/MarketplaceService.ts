@@ -217,33 +217,20 @@ export class MarketplaceService {
   }
 
   /**
-   * Legacy method: loads known marketplaces with builtin injection.
+   * Legacy method: loads known marketplaces from cache.
    * @deprecated Use listMarketplaces() instead, which combines scoped settings.
    */
   async getKnownMarketplaces(): Promise<KnownMarketplacesRegistry> {
     const cache = await this.getCacheRegistry();
-    // If cache is null (file doesn't exist or has no parseable content), inject builtin
     if (cache === null) {
-      return {
-        marketplaces: [
-          {
-            ...MarketplaceService.BUILTIN_MARKETPLACE,
-            isBuiltin: true,
-            declaredScope: "builtin",
-          },
-        ],
-      };
+      return { marketplaces: [] };
     }
-    // File has valid JSON - respect user's explicit choice even if empty
-    const hasBuiltin = cache.marketplaces.some(
-      (m) => m.name === MarketplaceService.BUILTIN_MARKETPLACE.name,
-    );
     return {
       marketplaces: cache.marketplaces.map((m) => ({
         ...m,
         isBuiltin:
           m.isBuiltin || m.name === MarketplaceService.BUILTIN_MARKETPLACE.name,
-        declaredScope: m.declaredScope ?? (hasBuiltin ? "builtin" : "user"),
+        declaredScope: m.declaredScope ?? "user",
       })),
     };
   }
@@ -385,8 +372,6 @@ export class MarketplaceService {
    * Finds which scope declared a marketplace (user, project, local, or builtin)
    */
   getMarketplaceDeclaringSource(name: string): Scope | "builtin" | null {
-    if (name === MarketplaceService.BUILTIN_MARKETPLACE.name) return "builtin";
-
     const scopes: Scope[] = ["local", "project", "user"];
     for (const scope of scopes) {
       const scoped = this.configurationService.getScopedMarketplaces(
@@ -395,6 +380,7 @@ export class MarketplaceService {
       );
       if (scoped[name]) return scope;
     }
+    if (name === MarketplaceService.BUILTIN_MARKETPLACE.name) return "builtin";
     return null;
   }
 
@@ -503,7 +489,7 @@ export class MarketplaceService {
   }
 
   /**
-   * Lists all registered marketplaces by combining scoped settings + built-in
+   * Lists all registered marketplaces by combining scoped settings + cache
    */
   async listMarketplaces(): Promise<KnownMarketplace[]> {
     const scopedMarketplaces = this.configurationService.getMergedMarketplaces(
@@ -516,16 +502,8 @@ export class MarketplaceService {
 
     const result: KnownMarketplace[] = [];
 
-    // Add built-in marketplace
-    result.push({
-      ...MarketplaceService.BUILTIN_MARKETPLACE,
-      isBuiltin: true,
-      declaredScope: "builtin",
-    });
-
     // Add all scoped marketplaces (local overrides project overrides user)
     for (const [name, config] of Object.entries(scopedMarketplaces)) {
-      if (name === MarketplaceService.BUILTIN_MARKETPLACE.name) continue;
       const cache = cacheMap.get(name);
       const declaredScope = this.getMarketplaceDeclaringSource(name) as
         | "user"
@@ -538,12 +516,12 @@ export class MarketplaceService {
 
     // Add cache entries not yet in scoped settings (backwards compatibility)
     for (const [name, cache] of cacheMap.entries()) {
-      if (name === MarketplaceService.BUILTIN_MARKETPLACE.name) continue;
       if (scopedMarketplaces[name]) continue;
+      const isBuiltin = name === MarketplaceService.BUILTIN_MARKETPLACE.name;
       result.push({
         ...cache,
-        isBuiltin: false,
-        declaredScope: cache.declaredScope ?? "user",
+        isBuiltin,
+        declaredScope: cache.declaredScope ?? (isBuiltin ? "builtin" : "user"),
       });
     }
 
@@ -558,15 +536,13 @@ export class MarketplaceService {
       const targetScope =
         scope || this.getMarketplaceDeclaringSource(name) || "user";
 
-      if (targetScope === "builtin") {
-        throw new Error("Cannot remove built-in marketplace");
+      if (targetScope !== "builtin") {
+        await this.configurationService.removeMarketplaceFromScope(
+          this.workdir,
+          targetScope,
+          name,
+        );
       }
-
-      await this.configurationService.removeMarketplaceFromScope(
-        this.workdir,
-        targetScope,
-        name,
-      );
 
       // Also remove from cache
       await this.removeFromCache(name);
