@@ -49,7 +49,7 @@ describe("ChatInterface Loading State", () => {
   const mockInputManager = {
     isManagerReady: true,
     showRewindManager: false,
-    btwState: { isActive: false, question: "", isLoading: false },
+    btwState: { question: "", isLoading: false },
     setPermissionMode: vi.fn(),
     setAllowBypassInCycle: vi.fn(),
   };

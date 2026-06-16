@@ -77,7 +77,7 @@ describe("ChatInterface Rewind Visibility", () => {
       handleInput: mockHandleInput,
       setPermissionMode: vi.fn(),
       setAllowBypassInCycle: vi.fn(),
-      btwState: { isActive: false, question: "", isLoading: false },
+      btwState: { question: "", isLoading: false },
       isManagerReady: true,
       showRewindManager: true, // Rewind is visible
     } as unknown as ReturnType<typeof useInputManager>);
@@ -158,7 +158,7 @@ describe("ChatInterface Rewind Visibility", () => {
       handleInput: mockHandleInput,
       setPermissionMode: vi.fn(),
       setAllowBypassInCycle: vi.fn(),
-      btwState: { isActive: false, question: "", isLoading: false },
+      btwState: { question: "", isLoading: false },
       isManagerReady: true,
       showRewindManager: false, // Rewind is NOT visible
     } as unknown as ReturnType<typeof useInputManager>);

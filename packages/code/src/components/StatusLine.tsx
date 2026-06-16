@@ -4,7 +4,6 @@ import { Box, Text } from "ink";
 export interface StatusLineProps {
   permissionMode: string;
   isShellCommand: boolean;
-  isBtwActive: boolean;
   isGoalActive?: boolean;
   goalElapsed?: string;
   latestTotalTokens?: number;
@@ -14,7 +13,6 @@ export interface StatusLineProps {
 export const StatusLine: React.FC<StatusLineProps> = ({
   permissionMode,
   isShellCommand,
-  isBtwActive,
   isGoalActive,
   goalElapsed,
   latestTotalTokens = 0,
@@ -30,11 +28,7 @@ export const StatusLine: React.FC<StatusLineProps> = ({
 
   return (
     <Box paddingRight={1} justifyContent="space-between" width="100%">
-      {isBtwActive ? (
-        <Text color="gray">
-          Mode: <Text color="cyan">BTW</Text> (ESC to dismiss)
-        </Text>
-      ) : isShellCommand ? (
+      {isShellCommand ? (
         <Text color="gray">
           Shell: <Text color="yellow">Run shell command</Text>
         </Text>

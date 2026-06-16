@@ -22,7 +22,6 @@ export interface AttachedImage {
 }
 
 export interface BtwState {
-  isActive: boolean;
   question: string;
   answer?: string;
   isLoading: boolean;
@@ -164,7 +163,6 @@ export const initialState: InputState = {
   originalLongTextMap: {},
   isFileSearching: false,
   btwState: {
-    isActive: false,
     question: "",
     isLoading: false,
   },
@@ -688,41 +686,7 @@ export function inputReducer(
       const { input, key } = action.payload;
       const hasQueuedMessages = action.payload.hasQueuedMessages ?? false;
 
-      // 1. BTW State Handling
-      if (state.btwState.isActive) {
-        if (key.escape) {
-          return {
-            ...state,
-            btwState: {
-              isActive: false,
-              question: "",
-              answer: undefined,
-              isLoading: false,
-            },
-          };
-        }
-
-        if (key.return) {
-          const question = state.inputText.trim();
-          if (question && !state.btwState.isLoading) {
-            return {
-              ...state,
-              inputText: "",
-              cursorPosition: 0,
-              btwState: {
-                ...state.btwState,
-                question,
-                isLoading: true,
-                answer: undefined,
-              },
-              pendingEffect: { type: "ASK_BTW", question },
-            };
-          }
-          return state;
-        }
-      }
-
-      // 2. Escape Handling
+      // 1. Escape Handling
       if (key.escape) {
         if (state.showFileSelector) {
           return {
@@ -1017,13 +981,12 @@ export function inputReducer(
             .replace(imageRegex, "")
             .trim();
 
-          if (
-            contentWithPlaceholders === "/btw" ||
-            contentWithPlaceholders.startsWith("/btw ")
-          ) {
-            const question = contentWithPlaceholders.startsWith("/btw ")
-              ? contentWithPlaceholders.substring(5).trim()
-              : "";
+          if (contentWithPlaceholders.startsWith("/btw ")) {
+            const question = contentWithPlaceholders.substring(5).trim();
+            if (!question) {
+              // Bare /btw with no question text — ignore
+              return state;
+            }
 
             return {
               ...state,
@@ -1032,13 +995,17 @@ export function inputReducer(
               historyIndex: -1,
               longTextMap: {},
               btwState: {
-                isActive: true,
                 question,
-                isLoading: question !== "",
+                isLoading: true,
                 answer: undefined,
               },
-              pendingEffect: question ? { type: "ASK_BTW", question } : null,
+              pendingEffect: { type: "ASK_BTW", question },
             };
+          }
+
+          if (contentWithPlaceholders === "/btw") {
+            // Bare /btw — ignore
+            return state;
           }
 
           // Check if the content is a CLI-internal slash command (help, tasks,

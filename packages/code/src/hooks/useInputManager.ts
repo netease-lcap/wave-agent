@@ -212,11 +212,6 @@ export const useInputManager = (
                 dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
               } else if (command === "workflows") {
                 dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: true });
-              } else if (command === "btw") {
-                dispatch({
-                  type: "SET_BTW_STATE",
-                  payload: { isActive: true, question: "", isLoading: false },
-                });
               }
             }
             break;

@@ -45,7 +45,6 @@ describe("inputReducer", () => {
       originalLongTextMap: {},
       isFileSearching: false,
       btwState: {
-        isActive: false,
         question: "",
         isLoading: false,
       },
@@ -873,8 +872,8 @@ describe("inputReducer", () => {
           hasSlashCommand,
         },
       });
-      expect(result.btwState.isActive).toBe(true);
       expect(result.btwState.question).toBe("what is life?");
+      expect(result.btwState.isLoading).toBe(true);
       expect(result.pendingEffect).toEqual({
         type: "ASK_BTW",
         question: "what is life?",
@@ -1226,34 +1225,13 @@ describe("inputReducer", () => {
     it("should handle SET_BTW_STATE", () => {
       const result = inputReducer(initialState, {
         type: "SET_BTW_STATE",
-        payload: { isActive: true, question: "test?" },
+        payload: { question: "test?" },
       });
-      expect(result.btwState.isActive).toBe(true);
       expect(result.btwState.question).toBe("test?");
     });
 
-    it("should handle escape in BTW mode", () => {
-      const state = {
-        ...initialState,
-        btwState: { isActive: true, question: "q", isLoading: false },
-      };
-      const result = inputReducer(state, {
-        type: "HANDLE_KEY",
-        payload: {
-          input: "",
-          key: { escape: true } as unknown as Key,
-          hasSlashCommand: () => false,
-        },
-      });
-      expect(result.btwState.isActive).toBe(false);
-    });
-
-    it("should handle return in BTW mode", () => {
-      const state = {
-        ...initialState,
-        inputText: "my question",
-        btwState: { isActive: true, question: "", isLoading: false },
-      };
+    it("should ignore bare /btw without question", () => {
+      const state = { ...initialState, inputText: "/btw" };
       const result = inputReducer(state, {
         type: "HANDLE_KEY",
         payload: {
@@ -1262,12 +1240,7 @@ describe("inputReducer", () => {
           hasSlashCommand: () => false,
         },
       });
-      expect(result.btwState.question).toBe("my question");
-      expect(result.btwState.isLoading).toBe(true);
-      expect(result.pendingEffect).toEqual({
-        type: "ASK_BTW",
-        question: "my question",
-      });
+      expect(result).toBe(state);
     });
   });
 
