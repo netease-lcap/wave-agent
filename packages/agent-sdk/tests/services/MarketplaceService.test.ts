@@ -101,11 +101,9 @@ describe("MarketplaceService - Builtin Marketplace", () => {
     }
   });
 
-  it("should return the builtin marketplace when no config file exists", async () => {
+  it("should return empty list when no config file exists", async () => {
     const registry = await service.getKnownMarketplaces();
-    expect(registry.marketplaces).toHaveLength(1);
-    expect(registry.marketplaces[0].name).toBe("wave-plugins-official");
-    expect(registry.marketplaces[0].isBuiltin).toBe(true);
+    expect(registry.marketplaces).toHaveLength(0);
   });
 
   it("should return empty list if builtin is explicitly removed (config file exists but empty)", async () => {
@@ -122,7 +120,7 @@ describe("MarketplaceService - Builtin Marketplace", () => {
     expect(registry.marketplaces).toHaveLength(0);
   });
 
-  it("should persist builtin marketplace when adding a custom one for the first time", async () => {
+  it("should persist custom marketplace when adding for the first time", async () => {
     // Mock git clone and manifest loading
     vi.spyOn(
       service,
@@ -136,14 +134,10 @@ describe("MarketplaceService - Builtin Marketplace", () => {
     const added = await service.addMarketplace("custom-mkt");
     expect(added.name).toBe("custom-mkt");
 
-    // listMarketplaces combines scoped settings + builtin
+    // listMarketplaces returns the custom marketplace
     const marketplaces = await service.listMarketplaces();
     expect(marketplaces.length).toBeGreaterThan(0);
-    expect(
-      marketplaces.some(
-        (m) => m.name === "wave-plugins-official" && m.isBuiltin,
-      ),
-    ).toBe(true);
+    expect(marketplaces.some((m) => m.name === "custom-mkt")).toBe(true);
   });
 
   it("should not duplicate builtin marketplace if it already exists", async () => {
@@ -214,8 +208,7 @@ describe("MarketplaceService - Builtin Marketplace", () => {
     await fs.writeFile(knownMarketplacesPath, "   \n\t  ");
 
     const registry = await service.getKnownMarketplaces();
-    expect(registry.marketplaces).toHaveLength(1);
-    expect(registry.marketplaces[0].isBuiltin).toBe(true);
+    expect(registry.marketplaces).toHaveLength(0);
   });
 
   it("should handle known marketplaces file with empty array", async () => {
@@ -338,9 +331,8 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     });
 
     const marketplaces = await service.listMarketplaces();
-    expect(marketplaces).toHaveLength(2); // builtin + custom
-    expect(marketplaces[0].name).toBe("wave-plugins-official");
-    expect(marketplaces[1].name).toBe("my-marketplace");
+    expect(marketplaces).toHaveLength(1);
+    expect(marketplaces[0].name).toBe("my-marketplace");
   });
 
   it("should list marketplaces combining scoped settings with cache fallback", async () => {
@@ -369,7 +361,7 @@ describe("MarketplaceService - Scoped Marketplace", () => {
             source: { source: "directory", path: "/old/path" },
           },
           {
-            name: "wave-plugins-official", // builtin in cache, should skip
+            name: "wave-plugins-official", // builtin in cache
             source: {
               source: "github",
               repo: "netease-lcap/wave-plugins-official",
@@ -380,9 +372,12 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     );
 
     const marketplaces = await service.listMarketplaces();
-    // builtin + scoped-mkt(from settings) + cached-mkt(from cache fallback)
+    // scoped-mkt(from settings) + cached-mkt(from cache) + wave-plugins-official(from cache)
     expect(marketplaces).toHaveLength(3);
     expect(marketplaces.some((m) => m.name === "cached-mkt")).toBe(true);
+    expect(marketplaces.some((m) => m.name === "wave-plugins-official")).toBe(
+      true,
+    );
   });
 
   it("should return declaring scope for a marketplace", () => {
@@ -441,10 +436,38 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     ).toHaveBeenCalled();
   });
 
-  it("should throw when trying to remove builtin marketplace", async () => {
-    await expect(
-      service.removeMarketplace("wave-plugins-official"),
-    ).rejects.toThrow("Cannot remove built-in marketplace");
+  it("should remove builtin marketplace from cache", async () => {
+    // Pre-populate cache with builtin marketplace
+    const registry = {
+      marketplaces: [
+        {
+          name: "wave-plugins-official",
+          source: {
+            source: "github",
+            repo: "netease-lcap/wave-plugins-official",
+          },
+          isBuiltin: true,
+          declaredScope: "builtin",
+        },
+      ],
+    };
+    vi.spyOn(
+      service as unknown as {
+        getCacheRegistry: () => Promise<typeof registry>;
+      },
+      "getCacheRegistry",
+    ).mockResolvedValue(registry);
+    const removeFromCacheSpy = vi
+      .spyOn(
+        service as unknown as {
+          removeFromCache: (name: string) => Promise<void>;
+        },
+        "removeFromCache",
+      )
+      .mockResolvedValue(undefined);
+
+    await service.removeMarketplace("wave-plugins-official");
+    expect(removeFromCacheSpy).toHaveBeenCalledWith("wave-plugins-official");
   });
 
   it("should remove marketplace with inferred scope", async () => {
@@ -726,11 +749,8 @@ describe("MarketplaceService - Coverage Targets", () => {
   // e.g., updateMarketplace calling updateCacheMarketplace with only lastUpdated
   // for a marketplace not yet in the cache
   it("should use default source fallback when updating cache for unknown marketplace", async () => {
-    // Ensure no cache file exists
-    const knownPath = path.join(mockPluginsDir, "known_marketplaces.json");
-    if (fsModule.existsSync(knownPath)) {
-      await fs.rm(knownPath, { force: true });
-    }
+    // Mock getCacheRegistry to return null (no cache)
+    vi.spyOn(service, "getCacheRegistry").mockResolvedValue(null);
 
     vi.spyOn(
       service["configurationService"],
@@ -899,8 +919,8 @@ describe("MarketplaceService - Coverage Targets", () => {
     );
   });
 
-  // Line 540-541: listMarketplaces cache fallback skip conditions
-  it("should skip builtin marketplace in cache fallback iteration", async () => {
+  // listMarketplaces cache fallback: builtin gets isBuiltin and declaredScope from cache
+  it("should handle builtin marketplace in cache fallback iteration", async () => {
     vi.spyOn(
       service["configurationService"],
       "getMergedMarketplaces",
