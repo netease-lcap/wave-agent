@@ -613,6 +613,9 @@ export class MarketplaceService {
       const targetScope =
         scope || this.getMarketplaceDeclaringSource(name) || "user";
 
+      // Uninstall all plugins from this marketplace
+      await this.uninstallPluginsByMarketplace(name);
+
       if (targetScope !== "builtin") {
         await this.configurationService.removeMarketplaceFromScope(
           this.workdir,
@@ -624,6 +627,54 @@ export class MarketplaceService {
       // Also remove from cache
       await this.removeFromCache(name);
     });
+  }
+
+  /**
+   * Uninstalls all plugins belonging to a given marketplace.
+   * Removes them from installed_plugins.json, deletes cache files,
+   * and cleans up enabledPlugins entries from all scopes.
+   */
+  private async uninstallPluginsByMarketplace(
+    marketplaceName: string,
+  ): Promise<void> {
+    const installedRegistry = await this.getInstalledPlugins();
+    const pluginsFromMarketplace = installedRegistry.plugins.filter(
+      (p) => p.marketplace === marketplaceName,
+    );
+
+    if (pluginsFromMarketplace.length === 0) return;
+
+    // Remove all plugins from this marketplace from the registry
+    installedRegistry.plugins = installedRegistry.plugins.filter(
+      (p) => p.marketplace !== marketplaceName,
+    );
+    await this.saveInstalledPlugins(installedRegistry);
+
+    // Delete cache files that are no longer referenced
+    const remainingCachePaths = new Set(
+      installedRegistry.plugins.map((p) => p.cachePath),
+    );
+    for (const plugin of pluginsFromMarketplace) {
+      if (
+        !remainingCachePaths.has(plugin.cachePath) &&
+        existsSync(plugin.cachePath)
+      ) {
+        await fs.rm(plugin.cachePath, { recursive: true, force: true });
+      }
+    }
+
+    // Remove enabledPlugins entries from all scopes
+    const scopes: Scope[] = ["user", "project", "local"];
+    for (const plugin of pluginsFromMarketplace) {
+      const pluginId = `${plugin.name}@${plugin.marketplace}`;
+      for (const s of scopes) {
+        await this.configurationService.removeEnabledPlugin(
+          this.workdir,
+          s,
+          pluginId,
+        );
+      }
+    }
   }
 
   /**
