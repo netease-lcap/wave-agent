@@ -61,6 +61,20 @@ As an ACP client, I want to provide MCP server configurations when creating or l
 
 ---
 
+### User Story 5 - Extension Methods for Structured Interactions (Priority: P2)
+
+As an ACP client developer, I want to receive structured extension method calls for questions and plan approvals so that I can render proper UI instead of parsing permission options.
+
+**Why this priority**: Improves the client developer experience and enables richer UI interactions beyond the generic permission request mechanism.
+
+**Acceptance Scenarios**:
+
+1. **Given** the agent calls `AskUserQuestion`, **When** the client supports `wave/ask_question`, **Then** the client receives structured questions with options and returns selected answers.
+2. **Given** the agent calls `ExitPlanMode`, **When** the client supports `wave/create_plan`, **Then** the client receives plan content with todos and returns accept/reject.
+3. **Given** the client does not support an extension method, **When** the agent calls it, **Then** the agent falls back to the standard `requestPermission` mechanism.
+
+---
+
 ### Edge Cases
 
 - **Connection Closure**: If the ACP connection (stdio) is closed, the agent should clean up all active sessions and resources.

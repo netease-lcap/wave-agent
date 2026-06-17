@@ -58,9 +58,31 @@ import {
 } from "@agentclientprotocol/sdk";
 import type { McpServerConfig, McpServerStatus } from "wave-agent-sdk";
 
+interface WaveAskQuestionRequest {
+  toolCallId: string;
+  title?: string;
+  questions: Array<{
+    id: string;
+    prompt: string;
+    options: Array<{ id: string; label: string; description?: string }>;
+    allowMultiple?: boolean;
+  }>;
+}
+
+interface WaveCreatePlanRequest {
+  toolCallId: string;
+  plan: string;
+  todos?: Array<{
+    id: string;
+    content: string;
+    status: "pending" | "in_progress" | "completed";
+  }>;
+}
+
 export class WaveAcpAgent implements AcpAgent {
   private agents: Map<string, WaveAgent> = new Map();
   private connection: AgentSideConnection;
+  private taskCache = new Map<string, Task[]>();
 
   constructor(connection: AgentSideConnection) {
     this.connection = connection;
@@ -458,6 +480,124 @@ export class WaveAcpAgent implements AcpAgent {
     return "Allow Always";
   }
 
+  private async handleAskQuestion(
+    sessionId: string,
+    toolCallId: string,
+    context: ToolPermissionContext,
+  ): Promise<PermissionDecision | null> {
+    try {
+      const questions =
+        (context.toolInput?.questions as Array<{
+          question: string;
+          header?: string;
+          options: Array<{ label: string; description?: string }>;
+          multiSelect?: boolean;
+        }>) || [];
+
+      const request: WaveAskQuestionRequest = {
+        toolCallId,
+        title: questions.length === 1 ? questions[0].header : undefined,
+        questions: questions.map((q, qi) => ({
+          id: `q${qi}`,
+          prompt: q.question,
+          options: q.options.map((opt, oi) => ({
+            id: String(oi),
+            label: opt.label,
+            description: opt.description,
+          })),
+          allowMultiple: q.multiSelect,
+        })),
+      };
+
+      const response = await this.connection.extMethod(
+        "wave/ask_question",
+        request as unknown as Record<string, unknown>,
+      );
+
+      const outcome = (response as { outcome?: string }).outcome;
+      if (outcome === "cancelled") {
+        return { behavior: "deny", message: "Cancelled by user" };
+      }
+
+      // outcome === "answered"
+      const answers =
+        (
+          response as {
+            answers?: Array<{
+              questionId: string;
+              selectedOptionIds: string[];
+            }>;
+          }
+        ).answers || [];
+      const answerMap: Record<string, string> = {};
+      for (const answer of answers) {
+        const qIndex = parseInt(answer.questionId.replace("q", ""), 10);
+        const question = questions[qIndex];
+        if (!question) continue;
+        const selectedLabels = answer.selectedOptionIds
+          .map((id) => question.options[parseInt(id, 10)]?.label)
+          .filter(Boolean);
+        answerMap[question.question] = selectedLabels.join(", ");
+      }
+
+      return { behavior: "allow", message: JSON.stringify(answerMap) };
+    } catch (error) {
+      logger.warn(
+        "wave/ask_question extMethod failed, falling back to requestPermission",
+        { error },
+      );
+      return null;
+    }
+  }
+
+  private async handleCreatePlan(
+    sessionId: string,
+    toolCallId: string,
+    context: ToolPermissionContext,
+  ): Promise<PermissionDecision | null> {
+    try {
+      const cachedTasks = this.taskCache.get(sessionId) || [];
+      const request: WaveCreatePlanRequest = {
+        toolCallId,
+        plan: context.planContent || "",
+        todos: cachedTasks
+          .filter((t) => t.status !== "deleted")
+          .map((t) => ({
+            id: t.id,
+            content: t.subject,
+            status:
+              t.status === "completed"
+                ? ("completed" as const)
+                : t.status === "in_progress"
+                  ? ("in_progress" as const)
+                  : ("pending" as const),
+          })),
+      };
+
+      const response = await this.connection.extMethod(
+        "wave/create_plan",
+        request as unknown as Record<string, unknown>,
+      );
+
+      const outcome = (response as { outcome?: string }).outcome;
+      if (outcome === "accepted") {
+        return { behavior: "allow", newPermissionMode: "default" };
+      }
+      if (outcome === "rejected") {
+        const reason = (response as { reason?: string }).reason;
+        return { behavior: "deny", message: reason || "Plan rejected" };
+      }
+      // cancelled or unknown outcome
+      return { behavior: "deny", message: "Cancelled by user" };
+    } catch (error) {
+      logger.warn(
+        "wave/create_plan extMethod failed, falling back to requestPermission",
+        { error },
+      );
+      return null;
+    }
+  }
+
   private async handlePermissionRequest(
     sessionId: string,
     context: ToolPermissionContext,
@@ -572,6 +712,27 @@ export class WaveAcpAgent implements AcpAgent {
     const kind = context.toolName
       ? this.getToolKind(context.toolName)
       : undefined;
+
+    // Try extension methods first, fall back to requestPermission
+    if (context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+      const extResult = await this.handleAskQuestion(
+        sessionId,
+        toolCallId,
+        context,
+      );
+      if (extResult !== null) return extResult;
+      // Fall through to existing requestPermission logic
+    }
+
+    if (context.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+      const extResult = await this.handleCreatePlan(
+        sessionId,
+        toolCallId,
+        context,
+      );
+      if (extResult !== null) return extResult;
+      // Fall through to existing requestPermission logic
+    }
 
     try {
       const response = await this.connection.requestPermission({
@@ -1081,20 +1242,23 @@ export class WaveAcpAgent implements AcpAgent {
         }
       },
       onTasksChange: (tasks) => {
+        this.taskCache.set(sessionId, tasks);
         this.connection.sessionUpdate({
           sessionId: sessionId as AcpSessionId,
           update: {
             sessionUpdate: "plan",
-            entries: tasks.map((task) => ({
-              content: task.subject,
-              status:
-                task.status === "completed"
-                  ? "completed"
-                  : task.status === "in_progress"
-                    ? "in_progress"
-                    : "pending",
-              priority: "medium",
-            })),
+            entries: tasks
+              .filter((t) => t.status !== "deleted")
+              .map((task) => ({
+                content: task.subject,
+                status:
+                  task.status === "completed"
+                    ? "completed"
+                    : task.status === "in_progress"
+                      ? "in_progress"
+                      : "pending",
+                priority: "medium" as const,
+              })),
           },
         });
       },

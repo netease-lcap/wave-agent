@@ -25,6 +25,13 @@ The bridge will implement the `canUseTool` callback in `WaveAgent.create`. When 
 #### 4. Streaming Updates
 The bridge will use the `callbacks` in `WaveAgent.create` to listen for assistant content chunks, reasoning chunks, and tool call updates. These will be forwarded to the client as `sessionUpdate` notifications.
 
+#### 5. Extension Methods
+The ACP SDK's `AgentSideConnection.extMethod()` API allows the agent to send custom requests to the client. Following Cursor's `cursor/` prefix convention, Wave uses `wave/`-prefixed extension methods:
+- `wave/ask_question`: Structured multi-choice questions for `AskUserQuestion` tool.
+- `wave/create_plan`: Plan approval with accept/reject for `ExitPlanMode` tool.
+
+Both methods gracefully fall back to the standard `requestPermission` mechanism if the client does not implement the `extMethod` handler, ensuring backwards compatibility with existing ACP clients.
+
 ### Alternatives Considered
 
 #### 1. MCP (Model Context Protocol)

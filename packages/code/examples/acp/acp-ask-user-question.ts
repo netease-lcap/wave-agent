@@ -68,6 +68,24 @@ async function runAskUserQuestionExample() {
         },
       };
     },
+    extMethod: async (method, params) => {
+      if (method === "wave/ask_question") {
+        console.log("wave/ask_question:", JSON.stringify(params, null, 2));
+        const questions = (params as Record<string, unknown>)
+          .questions as Array<{
+          id: string;
+          options: Array<{ id: string }>;
+        }>;
+        return {
+          outcome: "answered",
+          answers: questions.map((q) => ({
+            questionId: q.id,
+            selectedOptionIds: [q.options[0].id],
+          })),
+        };
+      }
+      throw new Error(`Unknown method: ${method}`);
+    },
     sessionUpdate: async (notification: SessionNotification) => {
       if (notification.update.sessionUpdate === "tool_call") {
         console.log(

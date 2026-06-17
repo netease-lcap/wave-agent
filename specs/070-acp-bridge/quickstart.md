@@ -68,3 +68,42 @@ The ACP (Agent Control Protocol) bridge allows you to connect external clients, 
   }
 }
 ```
+
+## Extension Methods
+
+ACP clients can optionally implement `extMethod` to receive structured requests from the agent:
+
+### `wave/ask_question`
+
+Sent when the agent calls `AskUserQuestion`. Provides structured questions with options instead of empty permission options.
+
+**Client handler example:**
+```typescript
+extMethod: async (method, params) => {
+  if (method === "wave/ask_question") {
+    // Render questions UI and collect answers
+    return {
+      outcome: "answered",
+      answers: [{ questionId: "q0", selectedOptionIds: ["0"] }],
+    };
+  }
+  throw new Error(`Unknown method: ${method}`);
+},
+```
+
+### `wave/create_plan`
+
+Sent when the agent calls `ExitPlanMode`. Provides plan content and current task list for approval.
+
+**Client handler example:**
+```typescript
+extMethod: async (method, params) => {
+  if (method === "wave/create_plan") {
+    // Render plan approval UI
+    return { outcome: "accepted" };
+  }
+  throw new Error(`Unknown method: ${method}`);
+},
+```
+
+If the client does not implement `extMethod`, the agent falls back to the standard `requestPermission` mechanism.
