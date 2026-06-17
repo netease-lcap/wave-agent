@@ -230,20 +230,34 @@ function scanSubagentDirectory(
 export async function loadSubagentConfigurations(
   workdir: string,
 ): Promise<SubagentConfiguration[]> {
-  const projectDir = join(workdir, ".wave", "agents");
-  const userDir = join(process.env.HOME || "~", ".wave", "agents");
+  const projectWaveDir = join(workdir, ".wave", "agents");
+  const projectClaudeDir = join(workdir, ".claude", "agents");
+  const userWaveDir = join(process.env.HOME || "~", ".wave", "agents");
+  const userClaudeDir = join(process.env.HOME || "~", ".claude", "agents");
   const builtinDir = getBuiltinSubagentsDir();
 
   // Load configurations from all sources
   const builtinConfigs = scanSubagentDirectory(builtinDir, "builtin");
-  const projectConfigs = scanSubagentDirectory(projectDir, "project");
-  const userConfigs = scanSubagentDirectory(userDir, "user");
+  const userClaudeConfigs = scanSubagentDirectory(userClaudeDir, "user");
+  const userWaveConfigs = scanSubagentDirectory(userWaveDir, "user");
+  const projectClaudeConfigs = scanSubagentDirectory(
+    projectClaudeDir,
+    "project",
+  );
+  const projectWaveConfigs = scanSubagentDirectory(projectWaveDir, "project");
 
-  // Merge configurations, with project configs taking highest precedence
+  // Merge configurations, with .wave taking priority over .claude
   const configMap = new Map<string, SubagentConfiguration>();
 
-  // Process in reverse priority order (built-in first, then user, then project)
-  for (const config of [...builtinConfigs, ...userConfigs, ...projectConfigs]) {
+  // Merge order: builtin → userClaude → userWave → projectClaude → projectWave
+  // Later writes override earlier ones, so .wave takes priority over .claude
+  for (const config of [
+    ...builtinConfigs,
+    ...userClaudeConfigs,
+    ...userWaveConfigs,
+    ...projectClaudeConfigs,
+    ...projectWaveConfigs,
+  ]) {
     configMap.set(config.name, config);
   }
 

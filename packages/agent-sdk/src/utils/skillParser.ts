@@ -55,7 +55,9 @@ export function parseSkillFile(
     const skillPath = basePath || dirname(filePath);
     const skillType =
       skillPath.includes("/.wave/skills") ||
-      skillPath.includes("\\.wave\\skills")
+      skillPath.includes("\\.wave\\skills") ||
+      skillPath.includes("/.claude/skills") ||
+      skillPath.includes("\\.claude\\skills")
         ? "project"
         : "personal";
 

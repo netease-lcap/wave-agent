@@ -171,5 +171,102 @@ describe("MemoryRuleManager", () => {
 
       parseRuleSpy.mockRestore();
     });
+
+    it("should discover rules from .claude/rules at project and user level", async () => {
+      const projectClaudeRulesDir = path.join(workdir, ".claude", "rules");
+      const userClaudeRulesDir = path.join(homedir, ".claude", "rules");
+
+      vi.mocked(fs.readdir).mockImplementation(async (dir) => {
+        if (dir === userClaudeRulesDir) {
+          return [
+            { isFile: () => true, name: "claude-user-rule.md" },
+          ] as unknown as Awaited<ReturnType<typeof fs.readdir>>;
+        }
+        if (dir === projectClaudeRulesDir) {
+          return [
+            { isFile: () => true, name: "claude-project-rule.md" },
+          ] as unknown as Awaited<ReturnType<typeof fs.readdir>>;
+        }
+        return [] as unknown as Awaited<ReturnType<typeof fs.readdir>>;
+      });
+
+      vi.mocked(fs.readFile).mockImplementation(async (filePath) => {
+        if (
+          typeof filePath === "string" &&
+          filePath.includes("claude-user-rule.md")
+        ) {
+          return "User claude rule content";
+        }
+        if (
+          typeof filePath === "string" &&
+          filePath.includes("claude-project-rule.md")
+        ) {
+          return "Project claude rule content";
+        }
+        return "";
+      });
+
+      await manager.discoverRules();
+
+      const rules = manager.getActiveRules([]);
+      expect(rules).toHaveLength(2);
+
+      const userRule = rules.find((r) => r.source === "user");
+      expect(userRule?.content).toBe("User claude rule content");
+
+      const projectRule = rules.find((r) => r.source === "project");
+      expect(projectRule?.content).toBe("Project claude rule content");
+    });
+
+    it("should let .wave/rules override .claude/rules for same-named rule", async () => {
+      const projectClaudeRulesDir = path.join(workdir, ".claude", "rules");
+      const projectWaveRulesDir = path.join(workdir, ".wave", "rules");
+
+      vi.mocked(fs.readdir).mockImplementation(async (dir) => {
+        if (dir === projectClaudeRulesDir || dir === projectWaveRulesDir) {
+          return [
+            { isFile: () => true, name: "common.md" },
+          ] as unknown as Awaited<ReturnType<typeof fs.readdir>>;
+        }
+        return [] as unknown as Awaited<ReturnType<typeof fs.readdir>>;
+      });
+
+      vi.mocked(fs.readFile).mockImplementation(async (filePath) => {
+        if (
+          typeof filePath === "string" &&
+          filePath.includes(projectClaudeRulesDir)
+        )
+          return "Claude version";
+        if (
+          typeof filePath === "string" &&
+          filePath.includes(projectWaveRulesDir)
+        )
+          return "Wave version";
+        return "";
+      });
+
+      const { MemoryRuleService } = await import(
+        "../src/services/MemoryRuleService.js"
+      );
+      const parseRuleSpy = vi.spyOn(MemoryRuleService.prototype, "parseRule");
+      parseRuleSpy.mockImplementation((content, filePath, source) => {
+        return {
+          id: "common.md",
+          content: content.trim(),
+          metadata: {},
+          source,
+          filePath,
+        };
+      });
+
+      await manager.discoverRules();
+
+      const rules = manager.getActiveRules([]);
+      expect(rules).toHaveLength(1);
+      expect(rules[0].source).toBe("project");
+      expect(rules[0].content).toBe("Wave version");
+
+      parseRuleSpy.mockRestore();
+    });
   });
 });

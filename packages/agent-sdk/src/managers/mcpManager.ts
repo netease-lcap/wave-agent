@@ -40,7 +40,7 @@ export interface McpManagerOptions {
  * Expand environment variables in a string value.
  * Supports ${VAR} and ${VAR:-default} patterns.
  */
-const WAVE_TEMPLATE_VARS = ["WAVE_PLUGIN_ROOT"];
+const WAVE_TEMPLATE_VARS = ["WAVE_PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT"];
 
 export function expandEnvVars(value: string): string {
   return value.replace(/\$\{([^}]+)\}/g, (_match, expr: string) => {
@@ -440,25 +440,42 @@ export class McpManager {
           ...(server.config.env || {}),
         };
 
-        // For plugin servers, substitute ${WAVE_PLUGIN_ROOT} in command/args/env
-        // (same pattern as Claude Code's substitutePluginVariables)
+        // For plugin servers, substitute ${WAVE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT}
         let command = server.config.command;
         let args = server.config.args || [];
         if (server.config.pluginRoot) {
           env.WAVE_PLUGIN_ROOT = server.config.pluginRoot;
+          env.CLAUDE_PLUGIN_ROOT = server.config.pluginRoot;
           command = command.replace(
             /\$\{WAVE_PLUGIN_ROOT\}/g,
             server.config.pluginRoot,
           );
-          args = args.map((arg) =>
-            arg.replace(/\$\{WAVE_PLUGIN_ROOT\}/g, server.config.pluginRoot!),
+          command = command.replace(
+            /\$\{CLAUDE_PLUGIN_ROOT\}/g,
+            server.config.pluginRoot,
           );
-          // Also expand WAVE_PLUGIN_ROOT in user-provided env values
-          for (const [key, value] of Object.entries(server.config.env || {})) {
-            env[key] = value.replace(
+          args = args.map((arg) => {
+            let result = arg.replace(
               /\$\{WAVE_PLUGIN_ROOT\}/g,
               server.config.pluginRoot!,
             );
+            result = result.replace(
+              /\$\{CLAUDE_PLUGIN_ROOT\}/g,
+              server.config.pluginRoot!,
+            );
+            return result;
+          });
+          // Also expand plugin root in user-provided env values
+          for (const [key, value] of Object.entries(server.config.env || {})) {
+            let expanded = value.replace(
+              /\$\{WAVE_PLUGIN_ROOT\}/g,
+              server.config.pluginRoot!,
+            );
+            expanded = expanded.replace(
+              /\$\{CLAUDE_PLUGIN_ROOT\}/g,
+              server.config.pluginRoot!,
+            );
+            env[key] = expanded;
           }
         }
         transport = new StdioClientTransport({

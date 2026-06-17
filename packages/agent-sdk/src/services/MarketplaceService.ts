@@ -390,13 +390,21 @@ export class MarketplaceService {
   async loadMarketplaceManifest(
     marketplacePath: string,
   ): Promise<MarketplaceManifest> {
-    const manifestPath = path.join(
+    let manifestPath = path.join(
       marketplacePath,
       ".wave-plugin",
       "marketplace.json",
     );
     if (!existsSync(manifestPath)) {
-      throw new Error(`Marketplace manifest not found at ${manifestPath}`);
+      // Fallback to .claude-plugin/marketplace.json
+      manifestPath = path.join(
+        marketplacePath,
+        ".claude-plugin",
+        "marketplace.json",
+      );
+      if (!existsSync(manifestPath)) {
+        throw new Error(`Marketplace manifest not found at ${manifestPath}`);
+      }
     }
     const content = await fs.readFile(manifestPath, "utf-8");
     const manifest = JSON.parse(content);
@@ -899,13 +907,23 @@ export class MarketplaceService {
           pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
         }
 
-        const pluginManifestPath = path.join(
+        let pluginManifestPath = path.join(
           pluginSrcPath,
           ".wave-plugin",
           "plugin.json",
         );
         if (!existsSync(pluginManifestPath)) {
-          throw new Error(`Plugin manifest not found at ${pluginManifestPath}`);
+          // Fallback to .claude-plugin/plugin.json
+          pluginManifestPath = path.join(
+            pluginSrcPath,
+            ".claude-plugin",
+            "plugin.json",
+          );
+          if (!existsSync(pluginManifestPath)) {
+            throw new Error(
+              `Plugin manifest not found at ${pluginManifestPath}`,
+            );
+          }
         }
 
         const pluginManifestContent = await fs.readFile(

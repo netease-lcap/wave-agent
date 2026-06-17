@@ -1370,6 +1370,48 @@ describe("MarketplaceService - Coverage Targets", () => {
     );
   });
 
+  // Claude Code ecosystem compatibility: .claude-plugin fallback for plugin.json
+  it("should fallback to .claude-plugin/plugin.json when .wave-plugin/plugin.json does not exist", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "compat-mkt": {
+        source: { source: "directory", path: mockPluginsDir },
+        autoUpdate: false,
+      },
+    });
+
+    // Create plugin manifest ONLY in .claude-plugin (not .wave-plugin)
+    const claudePluginDir = path.join(mockPluginsDir, ".claude-plugin");
+    await fs.mkdir(claudePluginDir, { recursive: true });
+    await fs.writeFile(
+      path.join(claudePluginDir, "plugin.json"),
+      JSON.stringify({ name: "compat-plugin", version: "3.0.0" }),
+    );
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "compat-mkt",
+      owner: { name: "test" },
+      plugins: [{ name: "compat-plugin", source: ".", description: "" }],
+    });
+
+    // Mock installed plugins file
+    const installedPath = path.join(mockPluginsDir, "installed_plugins.json");
+    await fs.writeFile(installedPath, JSON.stringify({ plugins: [] }));
+
+    // Mock fs.cp and fs.rename
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+
+    const result = await service.installPlugin("compat-plugin@compat-mkt");
+    expect(result.version).toBe("3.0.0");
+  });
+
   // Line 831: installPlugin cache exists and rm
   it("should remove existing cache when installing same version again", async () => {
     vi.spyOn(

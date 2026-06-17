@@ -150,6 +150,28 @@ describe("MemoryService", () => {
       );
       expect(result).toBe("User memory content");
     });
+
+    it("should use ~/.claude/AGENTS.md content when ~/.wave/AGENTS.md is the default empty template", async () => {
+      const defaultTemplate =
+        "# User Memory\n\nThis is the user-level memory file, recording important information and context across projects.\n\n";
+      const claudeContent = "# Claude User Memory\n\nCustom claude memory data";
+
+      vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+      // USER_MEMORY_FILE (~/.wave/AGENTS.md) returns the default template
+      const readImpl = async (filePath: unknown): Promise<string> => {
+        const p = String(filePath);
+        if (p.includes(".claude")) return claudeContent;
+        return defaultTemplate;
+      };
+      vi.mocked(fsPromises.readFile).mockImplementation(
+        readImpl as typeof fsPromises.readFile,
+      );
+
+      const result = await memoryService.getUserMemoryContent();
+
+      expect(result).toBe(claudeContent);
+    });
   });
 
   describe("ensureUserMemoryFile", () => {
@@ -200,6 +222,46 @@ describe("MemoryService", () => {
         expect.stringContaining("AGENTS.md"),
         "utf-8",
       );
+    });
+
+    it("should fallback to CLAUDE.md when AGENTS.md does not exist", async () => {
+      // First call for AGENTS.md fails with ENOENT, second call for CLAUDE.md succeeds
+      vi.mocked(fsPromises.readFile)
+        .mockRejectedValueOnce({ code: "ENOENT" })
+        .mockResolvedValueOnce("# Claude Memory\n\nClaude memory data");
+
+      const result = await memoryService.readMemoryFile("/mock/workdir");
+
+      expect(result).toBe("# Claude Memory\n\nClaude memory data");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
+        path.join("/mock/workdir", "CLAUDE.md"),
+        "utf-8",
+      );
+    });
+
+    it("should prefer AGENTS.md over CLAUDE.md when both exist", async () => {
+      vi.mocked(fsPromises.readFile).mockResolvedValue(
+        "# Agents Memory\n\nAgents content",
+      );
+
+      const result = await memoryService.readMemoryFile("/mock/workdir");
+
+      expect(result).toBe("# Agents Memory\n\nAgents content");
+      // Should only read AGENTS.md, not CLAUDE.md
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
+        path.join("/mock/workdir", "AGENTS.md"),
+        "utf-8",
+      );
+    });
+
+    it("should return empty string when neither AGENTS.md nor CLAUDE.md exists", async () => {
+      vi.mocked(fsPromises.readFile).mockRejectedValue({ code: "ENOENT" });
+
+      const result = await memoryService.readMemoryFile("/mock/workdir");
+
+      expect(result).toBe("");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
     });
   });
 

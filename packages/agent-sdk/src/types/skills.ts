@@ -73,6 +73,7 @@ export interface SkillToolArgs {
 
 export interface SkillManagerOptions {
   personalSkillsPath?: string;
+  personalClaudeSkillsPath?: string;
   scanTimeout?: number;
   workdir?: string;
   watch?: boolean;

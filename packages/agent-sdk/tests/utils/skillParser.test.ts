@@ -145,6 +145,24 @@ description: A project skill
       expect(result.skillMetadata.type).toBe("project");
     });
 
+    it("should detect project skills from .claude/skills path (Claude Code compatibility)", () => {
+      const mockContent = `---
+name: claude-project-skill
+description: A Claude Code compatible project skill
+---
+
+# Claude Project Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile(
+        "/project/.claude/skills/claude-project-skill/SKILL.md",
+      );
+
+      expect(result.isValid).toBe(true);
+      expect(result.skillMetadata.type).toBe("project");
+    });
+
     it("should handle file read errors", () => {
       mockReadFileSync.mockImplementation(() => {
         throw new Error("File not found");
