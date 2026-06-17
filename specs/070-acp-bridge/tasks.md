@@ -30,3 +30,11 @@
 - [x] **Task 17**: Implement `resource_link` and `resource` block handling in `prompt` method.
 - [x] **Task 18**: Advertise `image` and `embeddedContext` in `promptCapabilities` during initialization.
 - [x] **Task 19**: Improve block joining in `prompt` method to preserve inline spacing.
+
+## Phase 5: Extension Methods (Completed)
+
+- [x] **Task 20**: Implement `wave/ask_question` extension method for `AskUserQuestion` tool calls with `requestPermission` fallback.
+- [x] **Task 21**: Implement `wave/create_plan` extension method for `ExitPlanMode` tool calls with `requestPermission` fallback.
+- [x] **Task 22**: Add task cache to `onTasksChange` and fix plan mapping bug (filter out deleted tasks).
+- [x] **Task 23**: Update ACP examples with `extMethod` client handlers.
+- [x] **Task 24**: Add tests for extension methods and fallback behavior.

@@ -71,6 +71,13 @@ async function runExitPlanModeExample() {
         },
       };
     },
+    extMethod: async (method, params) => {
+      if (method === "wave/create_plan") {
+        console.log("wave/create_plan:", JSON.stringify(params, null, 2));
+        return { outcome: "accepted" };
+      }
+      throw new Error(`Unknown method: ${method}`);
+    },
     sessionUpdate: async (notification: SessionNotification) => {
       if (notification.update.sessionUpdate === "current_mode_update") {
         console.log("Mode updated to:", notification.update.currentModeId);

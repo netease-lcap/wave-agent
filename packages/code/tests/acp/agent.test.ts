@@ -40,6 +40,7 @@ describe("WaveAcpAgent", () => {
     closed: Promise<void>;
     requestPermission: ReturnType<typeof vi.fn>;
     sessionUpdate: ReturnType<typeof vi.fn>;
+    extMethod: ReturnType<typeof vi.fn>;
   };
   let agent: WaveAcpAgent;
 
@@ -48,6 +49,7 @@ describe("WaveAcpAgent", () => {
       closed: new Promise(() => {}),
       requestPermission: vi.fn(),
       sessionUpdate: vi.fn(),
+      extMethod: vi.fn(),
     };
     agent = new WaveAcpAgent(mockConnection as unknown as AgentSideConnection);
   });
@@ -2488,6 +2490,319 @@ describe("WaveAcpAgent", () => {
             },
           ],
         }),
+      }),
+    );
+  });
+
+  it("should use wave/ask_question extMethod for AskUserQuestion", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.extMethod).mockResolvedValue({
+      outcome: "answered",
+      answers: [{ questionId: "q0", selectedOptionIds: ["0"] }],
+    });
+
+    const decision = await canUseToolCallback!({
+      toolName: "AskUserQuestion",
+      toolInput: {
+        questions: [
+          {
+            question: "Which library?",
+            header: "Library choice",
+            options: [
+              { label: "date-fns", description: "Lightweight" },
+              { label: "moment", description: "Legacy" },
+            ],
+          },
+        ],
+      },
+      permissionMode: "default",
+      toolCallId: "tool-call-1",
+    });
+
+    expect(decision.behavior).toBe("allow");
+    expect(JSON.parse(decision.message!)).toEqual({
+      "Which library?": "date-fns",
+    });
+    expect(mockConnection.extMethod).toHaveBeenCalledWith(
+      "wave/ask_question",
+      expect.objectContaining({
+        toolCallId: "tool-call-1",
+        questions: expect.arrayContaining([
+          expect.objectContaining({
+            id: "q0",
+            prompt: "Which library?",
+          }),
+        ]),
+      }),
+    );
+    expect(mockConnection.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("should fall back to requestPermission when wave/ask_question extMethod fails", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.extMethod).mockRejectedValue(
+      new Error("not implemented"),
+    );
+    vi.mocked(mockConnection.requestPermission).mockResolvedValue({
+      outcome: { outcome: "selected", optionId: "allow_once" },
+      message: JSON.stringify({ "Which?": "A" }),
+    } as unknown as RequestPermissionResponse);
+
+    const decision = await canUseToolCallback!({
+      toolName: "AskUserQuestion",
+      toolInput: {
+        questions: [
+          { question: "Which?", header: "h", options: [{ label: "A" }] },
+        ],
+      },
+      permissionMode: "default",
+    });
+
+    expect(decision.behavior).toBe("allow");
+    expect(mockConnection.requestPermission).toHaveBeenCalled();
+  });
+
+  it("should use wave/create_plan extMethod for ExitPlanMode (accepted)", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.extMethod).mockResolvedValue({
+      outcome: "accepted",
+    });
+
+    const decision = await canUseToolCallback!({
+      toolName: "ExitPlanMode",
+      toolInput: {},
+      permissionMode: "plan",
+      planContent: "# My Plan\nDo stuff",
+      toolCallId: "plan-tool-1",
+    });
+
+    expect(decision.behavior).toBe("allow");
+    expect(decision.newPermissionMode).toBe("default");
+    expect(mockConnection.extMethod).toHaveBeenCalledWith(
+      "wave/create_plan",
+      expect.objectContaining({
+        toolCallId: "plan-tool-1",
+        plan: "# My Plan\nDo stuff",
+      }),
+    );
+    expect(mockConnection.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("should use wave/create_plan extMethod for ExitPlanMode (rejected)", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.extMethod).mockResolvedValue({
+      outcome: "rejected",
+      reason: "too complex",
+    });
+
+    const decision = await canUseToolCallback!({
+      toolName: "ExitPlanMode",
+      toolInput: {},
+      permissionMode: "plan",
+      planContent: "# Plan",
+    });
+
+    expect(decision.behavior).toBe("deny");
+    expect(decision.message).toBe("too complex");
+  });
+
+  it("should fall back to requestPermission when wave/create_plan extMethod fails", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.extMethod).mockRejectedValue(
+      new Error("not implemented"),
+    );
+    vi.mocked(mockConnection.requestPermission).mockResolvedValue({
+      outcome: { outcome: "selected", optionId: "allow_once" },
+    } as unknown as RequestPermissionResponse);
+
+    const decision = await canUseToolCallback!({
+      toolName: "ExitPlanMode",
+      toolInput: {},
+      permissionMode: "plan",
+      planContent: "# Plan",
+    });
+
+    expect(decision.behavior).toBe("allow");
+    expect(decision.newPermissionMode).toBe("default");
+    expect(mockConnection.requestPermission).toHaveBeenCalled();
+  });
+
+  it("should populate taskCache and filter deleted tasks in onTasksChange", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    capturedCallbacks!.onTasksChange!([
+      {
+        id: "t1",
+        subject: "Task 1",
+        description: "",
+        status: "completed",
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      },
+      {
+        id: "t2",
+        subject: "Task 2",
+        description: "",
+        status: "deleted",
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      },
+      {
+        id: "t3",
+        subject: "Task 3",
+        description: "",
+        status: "in_progress",
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      },
+      {
+        id: "t4",
+        subject: "Task 4",
+        description: "",
+        status: "pending",
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      },
+    ]);
+
+    // Verify plan session update excludes deleted task
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "plan",
+          entries: [
+            { content: "Task 1", status: "completed", priority: "medium" },
+            { content: "Task 3", status: "in_progress", priority: "medium" },
+            { content: "Task 4", status: "pending", priority: "medium" },
+          ],
+        }),
+      }),
+    );
+
+    // Verify taskCache is populated (test via handleCreatePlan using the cache)
+    vi.mocked(mockConnection.extMethod).mockResolvedValue({
+      outcome: "accepted",
+    });
+
+    let canUseToolCallback: PermissionCallback;
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    // Trigger onTasksChange again for the new session
+    capturedCallbacks!.onTasksChange!([
+      {
+        id: "t1",
+        subject: "Cached Task",
+        description: "",
+        status: "pending",
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      },
+    ]);
+
+    const decision = await canUseToolCallback!({
+      toolName: "ExitPlanMode",
+      toolInput: {},
+      permissionMode: "plan",
+      planContent: "test plan",
+    });
+
+    expect(decision.behavior).toBe("allow");
+    expect(mockConnection.extMethod).toHaveBeenCalledWith(
+      "wave/create_plan",
+      expect.objectContaining({
+        todos: [{ id: "t1", content: "Cached Task", status: "pending" }],
       }),
     );
   });
