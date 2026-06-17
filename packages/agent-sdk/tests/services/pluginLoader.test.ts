@@ -48,9 +48,31 @@ describe("PluginLoader", () => {
       const error = new Error("Directory not found");
       (error as Error & { code?: string }).code = "ENOENT";
       vi.mocked(fs.readdir).mockRejectedValue(error);
+      vi.mocked(fs.readFile).mockRejectedValue(error);
 
       await expect(PluginLoader.loadManifest(mockPluginPath)).rejects.toThrow(
-        `Plugin manifest directory not found at /mock/plugin/path/.wave-plugin`,
+        `Plugin manifest not found at /mock/plugin/path/.wave-plugin or /mock/plugin/path/.claude-plugin`,
+      );
+    });
+
+    it("should fallback to .claude-plugin/ when .wave-plugin/ does not exist", async () => {
+      const error = new Error("Directory not found");
+      (error as Error & { code?: string }).code = "ENOENT";
+      vi.mocked(fs.readdir).mockRejectedValue(error);
+
+      const mockManifest = {
+        name: "test-plugin",
+        description: "A test plugin",
+        version: "1.0.0",
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockManifest));
+
+      const result = await PluginLoader.loadManifest(mockPluginPath);
+
+      expect(result).toEqual(mockManifest);
+      expect(fs.readFile).toHaveBeenCalledWith(
+        "/mock/plugin/path/.claude-plugin/plugin.json",
+        "utf-8",
       );
     });
 

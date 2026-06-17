@@ -39,23 +39,26 @@ export class MemoryRuleManager {
    * Scans .wave/rules and ~/.wave/rules for memory rule files.
    */
   async discoverRules(): Promise<void> {
-    const projectRulesDir = path.join(this.workdir, ".wave", "rules");
-    const userRulesDir = path.join(os.homedir(), ".wave", "rules");
+    const projectWaveRulesDir = path.join(this.workdir, ".wave", "rules");
+    const projectClaudeRulesDir = path.join(this.workdir, ".claude", "rules");
+    const userWaveRulesDir = path.join(os.homedir(), ".wave", "rules");
+    const userClaudeRulesDir = path.join(os.homedir(), ".claude", "rules");
 
     logger.debug(`Scanning for modular memory rules...`);
-    logger.debug(`  User rules directory: ${userRulesDir}`);
-    logger.debug(`  Project rules directory: ${projectRulesDir}`);
+    logger.debug(`  User rules directory: ${userWaveRulesDir}`);
+    logger.debug(`  Project rules directory: ${projectWaveRulesDir}`);
 
     const newRules: Record<string, MemoryRule> = {};
 
-    // Discover user rules first, then project rules so project rules can override if needed
-    // (though IDs are based on file path, so they shouldn't collide unless same path)
-    await this.scanDirectory(userRulesDir, "user", newRules);
-    await this.scanDirectory(projectRulesDir, "project", newRules);
+    // Scan order: userClaude → userWave → projectClaude → projectWave
+    // Later writes override, so .wave takes priority over .claude
+    await this.scanDirectory(userClaudeRulesDir, "user", newRules);
+    await this.scanDirectory(userWaveRulesDir, "user", newRules);
+    await this.scanDirectory(projectClaudeRulesDir, "project", newRules);
+    await this.scanDirectory(projectWaveRulesDir, "project", newRules);
 
     this.state.rules = newRules;
     const ruleCount = Object.keys(newRules).length;
-    // Removed verbose logging of all discovered rules
     logger.debug(`Discovered ${ruleCount} modular memory rules`);
   }
 
@@ -124,11 +127,23 @@ export class MemoryRuleManager {
     try {
       const content = await fs.readFile(filePath, "utf-8");
       const rule = this.service.parseRule(content, filePath, source);
-      // Use relative path from rules root as ID to allow project rules to override user rules
-      const rulesRoot =
-        source === "project"
-          ? path.join(this.workdir, ".wave", "rules")
-          : path.join(os.homedir(), ".wave", "rules");
+
+      // Determine rulesRoot dynamically based on actual file path
+      let rulesRoot: string;
+      if (source === "project") {
+        if (filePath.includes(path.join(".claude", "rules"))) {
+          rulesRoot = path.join(this.workdir, ".claude", "rules");
+        } else {
+          rulesRoot = path.join(this.workdir, ".wave", "rules");
+        }
+      } else {
+        if (filePath.includes(path.join(".claude", "rules"))) {
+          rulesRoot = path.join(os.homedir(), ".claude", "rules");
+        } else {
+          rulesRoot = path.join(os.homedir(), ".wave", "rules");
+        }
+      }
+
       const relativeId = path.relative(rulesRoot, filePath);
       rule.id = relativeId;
       registry[rule.id] = rule;

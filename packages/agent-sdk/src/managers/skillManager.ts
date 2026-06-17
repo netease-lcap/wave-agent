@@ -29,6 +29,7 @@ import { logger } from "../utils/globalLogger.js";
  */
 export class SkillManager extends EventEmitter {
   private personalSkillsPath: string;
+  private personalClaudeSkillsPath: string;
   private scanTimeout: number;
   private workdir: string;
 
@@ -47,6 +48,8 @@ export class SkillManager extends EventEmitter {
     super();
     this.personalSkillsPath =
       options.personalSkillsPath || join(homedir(), ".wave", "skills");
+    this.personalClaudeSkillsPath =
+      options.personalClaudeSkillsPath || join(homedir(), ".claude", "skills");
     this.scanTimeout = options.scanTimeout || 5000;
     this.workdir = options.workdir || process.cwd();
     this.watchEnabled = options.watch ?? false;
@@ -127,7 +130,9 @@ export class SkillManager extends EventEmitter {
 
     const pathsToWatch = [
       this.personalSkillsPath,
+      this.personalClaudeSkillsPath,
       join(this.workdir, ".wave", "skills"),
+      join(this.workdir, ".claude", "skills"),
     ];
 
     logger?.debug(`Setting up skill watcher for: ${pathsToWatch.join(", ")}`);
@@ -220,6 +225,11 @@ export class SkillManager extends EventEmitter {
       "builtin",
     );
 
+    const personalClaudeCollection = await this.discoverSkillCollection(
+      this.personalClaudeSkillsPath,
+      "personal",
+    );
+
     const personalCollection = await this.discoverSkillCollection(
       this.personalSkillsPath,
       "personal",
@@ -232,10 +242,14 @@ export class SkillManager extends EventEmitter {
 
     return {
       builtinSkills: builtinCollection.skills,
-      personalSkills: personalCollection.skills,
+      personalSkills: new Map([
+        ...personalClaudeCollection.skills,
+        ...personalCollection.skills, // .wave overrides .claude
+      ]),
       projectSkills: projectCollection.skills,
       errors: [
         ...builtinCollection.errors,
+        ...personalClaudeCollection.errors,
         ...personalCollection.errors,
         ...projectCollection.errors,
       ],
@@ -256,77 +270,88 @@ export class SkillManager extends EventEmitter {
       errors: [],
     };
 
-    let skillsPath: string;
-    if (type === "personal") {
-      skillsPath = basePath;
-    } else if (type === "builtin") {
-      skillsPath = basePath;
+    if (type === "project") {
+      // Scan .claude/skills first, then .wave/skills (wave overrides)
+      const claudePath = join(basePath, ".claude", "skills");
+      const wavePath = join(basePath, ".wave", "skills");
+      await this.scanSkillPath(claudePath, collection);
+      await this.scanSkillPath(wavePath, collection);
     } else {
-      skillsPath = join(basePath, ".wave", "skills");
+      await this.scanSkillPath(basePath, collection);
     }
 
+    return collection;
+  }
+
+  private async scanSkillPath(
+    skillsPath: string,
+    collection: SkillCollection,
+  ): Promise<void> {
     try {
       const skillDirs = await this.findSkillDirectories(skillsPath);
       logger?.debug(
         `Found ${skillDirs.length} potential skill directories in ${skillsPath}`,
       );
-
-      for (const skillDir of skillDirs) {
-        try {
-          const skillFilePath = join(skillDir, "SKILL.md");
-
-          // Check if SKILL.md exists
-          try {
-            await stat(skillFilePath);
-          } catch {
-            continue; // Skip directories without SKILL.md
-          }
-
-          const parsed = parseSkillFile(skillFilePath, {
-            basePath: skillDir,
-            validateMetadata: true,
-          });
-
-          if (parsed.isValid) {
-            // Override the skill type with the collection type
-            const skillMetadata: SkillMetadata = {
-              ...parsed.skillMetadata,
-              type,
-            };
-
-            // Create full skill object with content
-            const skill: Skill = {
-              ...skillMetadata,
-              content: parsed.content,
-              frontmatter: parsed.frontmatter,
-              isValid: parsed.isValid,
-              errors: parsed.validationErrors,
-            };
-
-            collection.skills.set(skillMetadata.name, skillMetadata);
-            // Store the full skill content in the manager's skillContent map
-            this.skillContent.set(skillMetadata.name, skill);
-          } else {
-            collection.errors.push({
-              skillPath: skillDir,
-              message: parsed.validationErrors.join("; "),
-            });
-          }
-        } catch (error) {
-          collection.errors.push({
-            skillPath: skillDir,
-            message: `Failed to process skill: ${error instanceof Error ? error.message : String(error)}`,
-          });
-        }
-      }
+      await this.processSkillDirs(skillDirs, collection);
     } catch (error) {
       logger?.debug(
         `Could not scan ${skillsPath}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      // Not an error - the directory might not exist yet
     }
+  }
 
-    return collection;
+  private async processSkillDirs(
+    skillDirs: string[],
+    collection: SkillCollection,
+  ): Promise<void> {
+    for (const skillDir of skillDirs) {
+      try {
+        const skillFilePath = join(skillDir, "SKILL.md");
+
+        // Check if SKILL.md exists
+        try {
+          await stat(skillFilePath);
+        } catch {
+          continue; // Skip directories without SKILL.md
+        }
+
+        const parsed = parseSkillFile(skillFilePath, {
+          basePath: skillDir,
+          validateMetadata: true,
+        });
+
+        if (parsed.isValid) {
+          // Override the skill type with the collection type
+          const skillMetadata: SkillMetadata = {
+            ...parsed.skillMetadata,
+            type: collection.type,
+          };
+
+          // Create full skill object with content
+          const skill: Skill = {
+            ...skillMetadata,
+            content: parsed.content,
+            frontmatter: parsed.frontmatter,
+            isValid: parsed.isValid,
+            errors: parsed.validationErrors,
+          };
+
+          collection.skills.set(skillMetadata.name, skillMetadata);
+          // Store the full skill content in the manager's skillContent map
+          this.skillContent.set(skillMetadata.name, skill);
+        } else {
+          collection.errors.push({
+            skillPath: skillDir,
+            message: parsed.validationErrors.join("; "),
+          });
+        }
+      } catch (error) {
+        collection.errors.push({
+          skillPath: skillDir,
+          message: `Failed to process skill: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
   }
 
   /**
@@ -450,13 +475,21 @@ export class SkillManager extends EventEmitter {
     // 1. Substitute parameters ($1, $ARGUMENTS, etc.)
     mainContent = substituteCommandParameters(mainContent, argsString);
 
-    // 2. Substitute ${WAVE_SKILL_DIR} with the skill's directory path
+    // 2. Substitute ${WAVE_SKILL_DIR} and ${CLAUDE_SKILL_DIR}
     mainContent = mainContent.replace(/\$\{WAVE_SKILL_DIR\}/g, skill.skillPath);
+    mainContent = mainContent.replace(
+      /\$\{CLAUDE_SKILL_DIR\}/g,
+      skill.skillPath,
+    );
 
-    // 3. Substitute ${WAVE_PLUGIN_ROOT} with the skill's plugin root path
+    // 3. Substitute ${WAVE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT}
     if (skill.pluginRoot) {
       mainContent = mainContent.replace(
         /\$\{WAVE_PLUGIN_ROOT\}/g,
+        skill.pluginRoot,
+      );
+      mainContent = mainContent.replace(
+        /\$\{CLAUDE_PLUGIN_ROOT\}/g,
         skill.pluginRoot,
       );
     }

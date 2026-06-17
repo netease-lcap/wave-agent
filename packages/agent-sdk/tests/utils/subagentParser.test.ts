@@ -190,5 +190,114 @@ Custom system prompt for user override`;
         "Custom system prompt for user override",
       );
     });
+
+    it("should load subagents from .claude/agents directories", async () => {
+      const mockFs = await import("fs");
+      const originalHome = process.env.HOME;
+      process.env.HOME = "/home/testuser";
+
+      vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
+        if (dirPath === "/home/testuser/.claude/agents") {
+          return ["claude-agent.md"] as unknown as ReturnType<
+            typeof import("fs").readdirSync
+          >;
+        }
+        if (dirPath === "/test/workdir/.claude/agents") {
+          return ["project-claude-agent.md"] as unknown as ReturnType<
+            typeof import("fs").readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof import("fs").readdirSync>;
+      });
+
+      vi.mocked(mockFs.statSync).mockReturnValue({
+        isFile: () => true,
+      } as import("fs").Stats);
+
+      vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
+        if (filePath === "/home/testuser/.claude/agents/claude-agent.md") {
+          return `---
+description: User-level Claude agent
+---
+Claude agent system prompt`;
+        }
+        if (
+          filePath === "/test/workdir/.claude/agents/project-claude-agent.md"
+        ) {
+          return `---
+description: Project-level Claude agent
+---
+Project Claude agent system prompt`;
+        }
+        return "";
+      });
+
+      const configs = await loadSubagentConfigurations("/test/workdir");
+
+      process.env.HOME = originalHome;
+
+      const userClaudeAgent = configs.find((c) => c.name === "claude-agent");
+      expect(userClaudeAgent).toBeDefined();
+      expect(userClaudeAgent?.scope).toBe("user");
+      expect(userClaudeAgent?.description).toBe("User-level Claude agent");
+
+      const projectClaudeAgent = configs.find(
+        (c) => c.name === "project-claude-agent",
+      );
+      expect(projectClaudeAgent).toBeDefined();
+      expect(projectClaudeAgent?.scope).toBe("project");
+      expect(projectClaudeAgent?.description).toBe(
+        "Project-level Claude agent",
+      );
+    });
+
+    it("should let .wave/agents override .claude/agents for same-named agent", async () => {
+      const mockFs = await import("fs");
+      const originalHome = process.env.HOME;
+      process.env.HOME = "/home/testuser";
+
+      vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
+        if (
+          dirPath === "/home/testuser/.claude/agents" ||
+          dirPath === "/home/testuser/.wave/agents"
+        ) {
+          return ["shared-agent.md"] as unknown as ReturnType<
+            typeof import("fs").readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof import("fs").readdirSync>;
+      });
+
+      vi.mocked(mockFs.statSync).mockReturnValue({
+        isFile: () => true,
+      } as import("fs").Stats);
+
+      vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
+        if (filePath === "/home/testuser/.claude/agents/shared-agent.md") {
+          return `---
+name: shared-agent
+description: Claude version
+---
+Claude version prompt`;
+        }
+        if (filePath === "/home/testuser/.wave/agents/shared-agent.md") {
+          return `---
+name: shared-agent
+description: Wave version
+---
+Wave version prompt`;
+        }
+        return "";
+      });
+
+      const configs = await loadSubagentConfigurations("/test/workdir");
+
+      process.env.HOME = originalHome;
+
+      const agent = configs.find((c) => c.name === "shared-agent");
+      expect(agent).toBeDefined();
+      expect(agent?.description).toBe("Wave version");
+      expect(agent?.systemPrompt).toBe("Wave version prompt");
+    });
   });
 });

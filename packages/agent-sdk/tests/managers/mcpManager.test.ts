@@ -836,6 +836,7 @@ describe("McpManager", () => {
         env: {
           ...process.env,
           WAVE_PLUGIN_ROOT: "/path/to/plugin",
+          CLAUDE_PLUGIN_ROOT: "/path/to/plugin",
         },
         cwd: "/test/workdir",
         stderr: "pipe",
@@ -858,6 +859,7 @@ describe("McpManager", () => {
         env: {
           ...process.env,
           WAVE_PLUGIN_ROOT: "/path/to/plugin",
+          CLAUDE_PLUGIN_ROOT: "/path/to/plugin",
         },
         cwd: "/test/workdir",
         stderr: "pipe",
@@ -884,6 +886,7 @@ describe("McpManager", () => {
         env: {
           ...process.env,
           WAVE_PLUGIN_ROOT: "/path/to/plugin",
+          CLAUDE_PLUGIN_ROOT: "/path/to/plugin",
           CONFIG_PATH: "/path/to/plugin/config/server.json",
           OTHER_VAR: "static-value",
         },

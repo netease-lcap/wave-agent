@@ -130,6 +130,27 @@ export class MemoryService {
         userMemoryFile: USER_MEMORY_FILE,
         contentLength: content.length,
       });
+
+      // If the file is still the default empty template, fallback to ~/.claude/AGENTS.md
+      const defaultTemplate =
+        "# User Memory\n\nThis is the user-level memory file, recording important information and context across projects.\n\n";
+      if (content === defaultTemplate) {
+        const claudeMemoryPath = path.join(homedir(), ".claude", "AGENTS.md");
+        try {
+          const claudeContent = await fs.readFile(claudeMemoryPath, "utf-8");
+          logger.debug(
+            "User memory content read from ~/.claude/AGENTS.md fallback",
+            {
+              claudeMemoryPath,
+              contentLength: claudeContent.length,
+            },
+          );
+          return claudeContent;
+        } catch {
+          // CLAUDE.md doesn't exist or can't be read, return the default template
+        }
+      }
+
       return content;
     } catch (error) {
       logger.error("Failed to read user memory:", error);
@@ -139,8 +160,6 @@ export class MemoryService {
 
   async readMemoryFile(workdir: string): Promise<string> {
     const memoryFilePath = path.join(workdir, "AGENTS.md");
-
-    // Direct file access
     try {
       const content = await fs.readFile(memoryFilePath, "utf-8");
       logger.debug("Memory file read successfully via direct file access", {
@@ -150,10 +169,28 @@ export class MemoryService {
       return content;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        logger.debug("Memory file does not exist, returning empty content", {
-          memoryFilePath,
-        });
-        return "";
+        // Fallback to CLAUDE.md
+        const claudeMemoryPath = path.join(workdir, "CLAUDE.md");
+        try {
+          const content = await fs.readFile(claudeMemoryPath, "utf-8");
+          logger.debug("Memory file read from CLAUDE.md fallback", {
+            memoryFilePath: claudeMemoryPath,
+            contentLength: content.length,
+          });
+          return content;
+        } catch (claudeError) {
+          if ((claudeError as NodeJS.ErrnoException).code === "ENOENT") {
+            logger.debug("Neither AGENTS.md nor CLAUDE.md found", {
+              memoryFilePath,
+            });
+            return "";
+          }
+          logger.error("Failed to read CLAUDE.md fallback", {
+            memoryFilePath: claudeMemoryPath,
+            error: claudeError,
+          });
+          return "";
+        }
       }
       logger.error("Failed to read memory file", { memoryFilePath, error });
       return "";

@@ -183,14 +183,19 @@ export class HookManager {
                 env: {
                   ...("env" in context ? (context.env ?? {}) : {}),
                   WAVE_PLUGIN_ROOT: hookCommand.pluginRoot,
+                  CLAUDE_PLUGIN_ROOT: hookCommand.pluginRoot,
                 },
               }
             : context;
 
-          // Substitute ${WAVE_PLUGIN_ROOT} in the command string (same pattern as Claude Code)
+          // Substitute ${WAVE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT} in the command string
           if (hookCommand.pluginRoot) {
             command = command.replace(
               /\$\{WAVE_PLUGIN_ROOT\}/g,
+              hookCommand.pluginRoot,
+            );
+            command = command.replace(
+              /\$\{CLAUDE_PLUGIN_ROOT\}/g,
               hookCommand.pluginRoot,
             );
           }

@@ -70,21 +70,26 @@ export function scanCommandsDirectory(dirPath: string): CustomSlashCommand[] {
  * Load all custom slash commands from both project and user directories
  */
 export function loadCustomSlashCommands(workdir: string): CustomSlashCommand[] {
-  const projectCommands = scanCommandsDirectory(getProjectCommandsDir(workdir));
-  const userCommands = scanCommandsDirectory(getUserCommandsDir());
+  const userClaudeCommands = scanCommandsDirectory(
+    join(homedir(), ".claude", "commands"),
+  );
+  const userWaveCommands = scanCommandsDirectory(getUserCommandsDir());
+  const projectClaudeCommands = scanCommandsDirectory(
+    join(workdir, ".claude", "commands"),
+  );
+  const projectWaveCommands = scanCommandsDirectory(
+    getProjectCommandsDir(workdir),
+  );
 
-  // Project commands take precedence over user commands with the same name
   const commandMap = new Map<string, CustomSlashCommand>();
-
-  // Add user commands first
-  for (const command of userCommands) {
+  // Write in priority order: lowest first, highest last (overwrites)
+  for (const command of [
+    ...userClaudeCommands,
+    ...userWaveCommands,
+    ...projectClaudeCommands,
+    ...projectWaveCommands,
+  ]) {
     commandMap.set(command.id, command);
   }
-
-  // Add project commands (will overwrite user commands with same name)
-  for (const command of projectCommands) {
-    commandMap.set(command.id, command);
-  }
-
   return Array.from(commandMap.values());
 }

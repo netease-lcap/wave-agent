@@ -92,22 +92,40 @@ export class LspManager implements ILspManager {
     try {
       const env = { ...process.env, ...config.env };
 
-      // For plugin servers, substitute ${WAVE_PLUGIN_ROOT} in command/args/env
+      // For plugin servers, substitute ${WAVE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT}
       let command = config.command;
       let args = config.args || [];
       if (config.pluginRoot) {
         env.WAVE_PLUGIN_ROOT = config.pluginRoot;
+        env.CLAUDE_PLUGIN_ROOT = config.pluginRoot;
         command = command.replace(/\$\{WAVE_PLUGIN_ROOT\}/g, config.pluginRoot);
-        args = args.map((arg) =>
-          arg.replace(/\$\{WAVE_PLUGIN_ROOT\}/g, config.pluginRoot!),
+        command = command.replace(
+          /\$\{CLAUDE_PLUGIN_ROOT\}/g,
+          config.pluginRoot,
         );
-        // Also expand WAVE_PLUGIN_ROOT in user-provided env values
+        args = args.map((arg) => {
+          let result = arg.replace(
+            /\$\{WAVE_PLUGIN_ROOT\}/g,
+            config.pluginRoot!,
+          );
+          result = result.replace(
+            /\$\{CLAUDE_PLUGIN_ROOT\}/g,
+            config.pluginRoot!,
+          );
+          return result;
+        });
+        // Also expand plugin root in user-provided env values
         if (config.env) {
           for (const [key, value] of Object.entries(config.env)) {
-            env[key] = value.replace(
+            let expanded = value.replace(
               /\$\{WAVE_PLUGIN_ROOT\}/g,
               config.pluginRoot!,
             );
+            expanded = expanded.replace(
+              /\$\{CLAUDE_PLUGIN_ROOT\}/g,
+              config.pluginRoot!,
+            );
+            env[key] = expanded;
           }
         }
       }

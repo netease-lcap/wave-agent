@@ -106,4 +106,100 @@ This is a test command without description.`;
     expect(testCommand?.description).toBeUndefined();
     expect(testCommand?.config).toBeUndefined();
   });
+
+  describe("Claude ecosystem compatibility", () => {
+    it("should load commands from .claude/commands directories", () => {
+      const claudeUserDir = "/mock/home/.claude/commands";
+      const claudeProjectDir = "/mock/tmp/wave-test-123/.claude/commands";
+
+      vi.mocked(fs.existsSync).mockImplementation((p) => {
+        const path = p.toString();
+        return path === claudeUserDir || path === claudeProjectDir;
+      });
+
+      vi.mocked(fs.readdirSync).mockImplementation((dirPath) => {
+        const dir = dirPath.toString();
+        if (dir === claudeUserDir) {
+          return ["user-claude-cmd.md"] as unknown as ReturnType<
+            typeof fs.readdirSync
+          >;
+        }
+        if (dir === claudeProjectDir) {
+          return ["project-claude-cmd.md"] as unknown as ReturnType<
+            typeof fs.readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof fs.readdirSync>;
+      });
+
+      vi.mocked(fs.readFileSync).mockImplementation((filePath) => {
+        const p = filePath.toString();
+        if (p.includes("user-claude-cmd.md")) {
+          return `---
+description: User Claude command
+---
+User claude command content`;
+        }
+        if (p.includes("project-claude-cmd.md")) {
+          return `---
+description: Project Claude command
+---
+Project claude command content`;
+        }
+        return "";
+      });
+
+      const commands = loadCustomSlashCommands(mockTestDir);
+
+      expect(commands.find((c) => c.name === "user-claude-cmd")).toBeDefined();
+      expect(
+        commands.find((c) => c.name === "project-claude-cmd"),
+      ).toBeDefined();
+    });
+
+    it("should let .wave/commands override .claude/commands for same-named command", () => {
+      const claudeProjectDir = "/mock/tmp/wave-test-123/.claude/commands";
+      const waveProjectDir = "/mock/tmp/wave-test-123/.wave/commands";
+
+      vi.mocked(fs.existsSync).mockImplementation((p) => {
+        const path = p.toString();
+        return path === claudeProjectDir || path === waveProjectDir;
+      });
+
+      vi.mocked(fs.readdirSync).mockImplementation((dirPath) => {
+        const dir = dirPath.toString();
+        if (dir === claudeProjectDir || dir === waveProjectDir) {
+          return ["shared-cmd.md"] as unknown as ReturnType<
+            typeof fs.readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof fs.readdirSync>;
+      });
+
+      vi.mocked(fs.readFileSync).mockImplementation((filePath) => {
+        const p = filePath.toString();
+        if (p.includes(".claude/commands") && p.includes("shared-cmd.md")) {
+          return `---
+description: Claude version
+---
+Claude content`;
+        }
+        if (p.includes(".wave/commands") && p.includes("shared-cmd.md")) {
+          return `---
+description: Wave version
+---
+Wave content`;
+        }
+        return "";
+      });
+
+      const commands = loadCustomSlashCommands(mockTestDir);
+
+      // Same command name from both dirs should result in one entry (wave wins)
+      const matching = commands.filter((c) => c.name === "shared-cmd");
+      expect(matching).toHaveLength(1);
+      expect(matching[0].description).toBe("Wave version");
+      expect(matching[0].content).toBe("Wave content");
+    });
+  });
 });
