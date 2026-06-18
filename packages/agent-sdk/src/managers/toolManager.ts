@@ -433,6 +433,25 @@ class ToolManager {
   }
 
   /**
+   * Request a full permission mode transition (planManager + UI callback).
+   * Used by tools like EnterPlanMode in bypass mode where the canUseTool
+   * callback (which normally handles the transition) is not invoked.
+   * In normal mode, the callback already handles the transition.
+   */
+  public requestPermissionModeChange(mode: PermissionMode): void {
+    if (this.container.has("PermissionModeTransition")) {
+      const transition = this.container.get<(mode: PermissionMode) => void>(
+        "PermissionModeTransition",
+      );
+      if (transition) {
+        transition(mode);
+        return;
+      }
+    }
+    this.setPermissionMode(mode);
+  }
+
+  /**
    * Get the permission manager
    */
   public getPermissionManager(): PermissionManager | undefined {
