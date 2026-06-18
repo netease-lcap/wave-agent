@@ -545,8 +545,25 @@ describe("PermissionManager", () => {
 
           const result = await permissionManager.checkPermission(context);
 
-          expect(result).toEqual({ behavior: "allow" });
+          // AskUserQuestion requires user interaction, so it's not auto-approved
+          if (toolName === "AskUserQuestion") {
+            expect(result.behavior).toBe("deny");
+          } else {
+            expect(result).toEqual({ behavior: "allow" });
+          }
         }
+      });
+
+      it("should not auto-approve AskUserQuestion in bypassPermissions mode", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "AskUserQuestion",
+          permissionMode: "bypassPermissions",
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        // AskUserQuestion requires user interaction, falls through to deny without callback
+        expect(result.behavior).toBe("deny");
       });
 
       it("should allow mkdir in bypassPermissions mode", async () => {
