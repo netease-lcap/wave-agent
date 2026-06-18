@@ -581,7 +581,16 @@ export class WaveAcpAgent implements AcpAgent {
 
       const outcome = (response as { outcome?: string }).outcome;
       if (outcome === "accepted") {
-        return { behavior: "allow", newPermissionMode: "default" };
+        const mode = (response as { mode?: string }).mode;
+        return {
+          behavior: "allow",
+          newPermissionMode: (mode || "default") as
+            | "default"
+            | "acceptEdits"
+            | "plan"
+            | "bypassPermissions"
+            | "dontAsk",
+        };
       }
       if (outcome === "rejected") {
         const reason = (response as { reason?: string }).reason;
