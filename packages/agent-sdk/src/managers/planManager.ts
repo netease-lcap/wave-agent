@@ -16,6 +16,7 @@ import { logger } from "../utils/globalLogger.js";
 export class PlanManager {
   private planDir: string;
   private currentPlanFilePath: string | null = null;
+  private planEntryReminderPending: boolean = false;
 
   constructor(private container: Container) {
     this.planDir = path.join(os.homedir(), ".wave", "plans");
@@ -80,6 +81,7 @@ export class PlanManager {
       // Entering plan mode: clear any pending exit attachment
       // (prevents sending both plan_mode and plan_mode_exit on rapid toggle)
       permissionManager?.setNeedsPlanModeExitAttachment(false);
+      this.planEntryReminderPending = true;
 
       this.getOrGeneratePlanFilePath(messageManager?.getRootSessionId())
         .then(({ path }) => {
@@ -94,8 +96,17 @@ export class PlanManager {
       permissionManager?.setHasExitedPlanMode(true);
       permissionManager?.setNeedsPlanModeExitAttachment(true);
       permissionManager?.setPlanFilePath(undefined);
+      this.planEntryReminderPending = false;
     } else {
       permissionManager?.setPlanFilePath(undefined);
     }
+  }
+
+  public isPlanEntryReminderPending(): boolean {
+    return this.planEntryReminderPending;
+  }
+
+  public consumePlanEntryReminder(): void {
+    this.planEntryReminderPending = false;
   }
 }

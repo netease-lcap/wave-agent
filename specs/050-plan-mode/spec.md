@@ -128,20 +128,19 @@ As a user who has just approved a plan, I want the agent to be explicitly told i
 
 ---
 
-### User Story 8 - Throttled Plan Mode Reminders (Priority: P2)
+### User Story 8 - One-Time Plan Entry Reminder (Priority: P2)
 
-As a user working in plan mode for an extended session, I want the plan mode reminders to be throttled so they don't waste tokens on every tool round, but I still want periodic full instructions to prevent the agent from forgetting constraints.
+As a user entering plan mode, I want the agent to receive plan mode instructions exactly once when I enter plan mode and send a message, so that tokens are not wasted on repeated reminders.
 
-**Why this priority**: Sending full plan mode instructions on every tool round wastes tokens; throttling reduces cost while maintaining constraint awareness.
+**Why this priority**: The previous throttling mechanism (scanning messages for meta reminders) was broken — reminders were transient and never stored, so throttling never fired and every AI call injected a full ~90-line reminder. The simplified approach fires the reminder exactly once per plan mode entry.
 
-**Independent Test**: Work in plan mode for multiple turns and verify reminders appear every 5 human turns, alternating between full and sparse.
+**Independent Test**: Enter plan mode, send a message, verify the reminder appears. Send another message, verify no reminder. Exit and re-enter plan mode, verify the reminder appears again.
 
 **Acceptance Scenarios**:
 
-1. **Given** plan mode is active and a full reminder was just injected, **When** fewer than 5 human turns have passed, **Then** no plan mode reminder is injected.
-2. **Given** plan mode is active and 5 human turns have passed since the last reminder, **When** the next API call is made, **Then** a plan mode reminder is injected.
-3. **Given** every 5th plan mode reminder injection, **When** the reminder is injected, **Then** it is the full 5-phase workflow instructions.
-4. **Given** a non-5th plan mode reminder injection, **When** the reminder is injected, **Then** it is a short sparse reminder referencing the earlier full instructions.
+1. **Given** the user enters plan mode, **When** the first message is sent, **Then** a full plan mode `<system-reminder>` is injected (including the 5-phase workflow).
+2. **Given** the plan entry reminder was already injected, **When** subsequent messages are sent in the same plan mode session, **Then** no plan mode reminder is injected.
+3. **Given** the user exits plan mode and re-enters, **When** the next message is sent, **Then** a re-entry reminder is injected (small reminder about reading the existing plan file).
 
 ## Requirements *(mandatory)*
 
@@ -188,10 +187,10 @@ As a user working in plan mode for an extended session, I want the plan mode rem
 - **FR-017**: When used via the ACP bridge, `ExitPlanMode` MAY provide a simplified approval process (e.g., "Approve Plan" and "Reject Plan") and automatically transition to `default` mode upon approval.
 - **FR-018**: System MUST track `hasExitedPlanMode` state. When the agent exits plan mode (via ExitPlanMode or mode transition), this flag MUST be set to true.
 - **FR-019**: When entering plan mode and `hasExitedPlanMode` is true and a plan file already exists, the system MUST inject a re-entry `<system-reminder>` message instructing the model to: (a) read the existing plan file, (b) evaluate whether the user's request is a new task or continuation, (c) always edit the plan file before calling ExitPlanMode. The flag MUST be cleared after injection (one-time).
-- **FR-020**: When plan mode is active, the system MUST inject plan mode reminders every 5 human turns (non-meta, non-tool-result user messages), not on every tool round. Every 5th reminder MUST be the full instructions; intermediate reminders MUST be sparse (short reminder referencing earlier full instructions).
+- **FR-020**: When plan mode is active, the system MUST inject a plan mode reminder exactly once per entry — on the first AI call after entering plan mode. The `PlanManager` tracks a `planEntryReminderPending` flag that is set `true` on entering plan mode and consumed (set `false`) after the reminder is injected. No recurring or throttled reminders are injected on subsequent turns.
 - **FR-021**: When exiting plan mode, the system MUST inject a one-time "exited plan mode" `<system-reminder>` message on the next turn, notifying the model it can now make edits and take actions. If the plan file exists, the message MUST include the plan file path for reference.
 - **FR-022**: All plan mode `<system-reminder>` messages MUST use `isMeta: true` and MUST NOT be rendered in the UI.
-- **FR-023**: After compaction, if plan mode is active, the system MUST re-inject the full plan mode reminder so the model retains its instructions.
+- **FR-023**: After compaction, if plan mode is active, the plan mode instructions from the initial reminder are preserved in the compacted summary. No re-injection is needed since the reminder is one-time per entry.
 - **FR-024**: The `hasExitedPlanMode` flag MUST be tracked in `PermissionManager` and persist across mode transitions within the same session.
 - **FR-025**: The "needs plan mode exit attachment" flag (`needsPlanModeExitAttachment`) MUST be set when transitioning away from plan mode and cleared after the exit `<system-reminder>` is injected (one-time).
 
