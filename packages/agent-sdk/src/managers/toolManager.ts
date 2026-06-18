@@ -364,11 +364,7 @@ class ToolManager {
           return false;
         }
         if (effectivePermissionMode === "bypassPermissions") {
-          if (
-            tool.name === "ExitPlanMode" ||
-            tool.name === "AskUserQuestion" ||
-            tool.name === "EnterPlanMode"
-          ) {
+          if (tool.name === "ExitPlanMode") {
             return false;
           }
         }
@@ -376,10 +372,7 @@ class ToolManager {
           return effectivePermissionMode === "plan";
         }
         if (tool.name === "EnterPlanMode") {
-          return (
-            effectivePermissionMode !== "plan" &&
-            effectivePermissionMode !== "bypassPermissions"
-          );
+          return effectivePermissionMode !== "plan";
         }
         return true;
       })

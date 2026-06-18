@@ -123,7 +123,7 @@ describe("ToolManager - Additional Coverage", () => {
     ).toBeUndefined();
     expect(
       config.find((c) => c.function.name === "AskUserQuestion"),
-    ).toBeUndefined();
+    ).toBeDefined();
     expect(config.find((c) => c.function.name === "NormalTool")).toBeDefined();
   });
 });

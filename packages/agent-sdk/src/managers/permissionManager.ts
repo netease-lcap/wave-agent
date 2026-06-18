@@ -31,6 +31,7 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
   READ_TOOL_NAME,
+  ASK_USER_QUESTION_TOOL_NAME,
 } from "../constants/tools.js";
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
@@ -440,8 +441,14 @@ export class PermissionManager {
     }
 
     // 1. If bypassPermissions mode, always allow
+    // Exception: tools that require user interaction (e.g. AskUserQuestion)
+    // must still prompt the user, matching Claude Code's requiresUserInteraction behavior.
     if (context.permissionMode === "bypassPermissions") {
-      return { behavior: "allow" };
+      const requiresUserInteraction =
+        context.toolName === ASK_USER_QUESTION_TOOL_NAME;
+      if (!requiresUserInteraction) {
+        return { behavior: "allow" };
+      }
     }
 
     // 1.0 Check worktree safety for Write and Edit tools
