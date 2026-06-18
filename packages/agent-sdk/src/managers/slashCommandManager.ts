@@ -1,7 +1,5 @@
 import type { MessageManager } from "./messageManager.js";
 import type { AIManager } from "./aiManager.js";
-import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
-import type { TaskManager } from "../services/taskManager.js";
 import type { SlashCommand, CustomSlashCommand } from "../types/index.js";
 import { loadCustomSlashCommands } from "../utils/customCommands.js";
 
@@ -23,10 +21,6 @@ import {
 import type { SkillManager } from "./skillManager.js";
 import type { SkillMetadata } from "../types/skills.js";
 import type { SubagentManager } from "./subagentManager.js";
-import type { MemoryService } from "../services/memory.js";
-import type { HookManager } from "./hookManager.js";
-import type { GoalManager } from "./goalManager.js";
-
 import { logger } from "../utils/globalLogger.js";
 
 export interface SlashCommandManagerOptions {
@@ -48,7 +42,6 @@ export class SlashCommandManager {
   }
 
   public initialize(): void {
-    this.initializeBuiltinCommands();
     this.loadCustomCommands();
 
     // Listen for skill refreshes and update skill commands
@@ -68,220 +61,12 @@ export class SlashCommandManager {
     return this.container.get<AIManager>("AIManager")!;
   }
 
-  private get backgroundTaskManager(): BackgroundTaskManager {
-    return this.container.get<BackgroundTaskManager>("BackgroundTaskManager")!;
-  }
-
-  private get taskManager(): TaskManager {
-    return this.container.get<TaskManager>("TaskManager")!;
-  }
-
   private get skillManager(): SkillManager {
     return this.container.get<SkillManager>("SkillManager")!;
   }
 
   private get subagentManager(): SubagentManager {
     return this.container.get<SubagentManager>("SubagentManager")!;
-  }
-
-  private get memoryService(): MemoryService {
-    return this.container.get<MemoryService>("MemoryService")!;
-  }
-
-  private get hookManager(): HookManager | undefined {
-    return this.container.get<HookManager>("HookManager");
-  }
-
-  private get goalManager(): GoalManager | undefined {
-    return this.container.get<GoalManager>("GoalManager");
-  }
-
-  private initializeBuiltinCommands(): void {
-    // Register built-in clear command
-    this.registerCommand({
-      id: "clear",
-      name: "clear",
-      description: "Clear conversation history and reset session",
-      immediate: true,
-      handler: async () => {
-        this.aiManager.abortAIMessage();
-
-        // Clear any active goal
-        this.goalManager?.clearGoal();
-
-        // Capture old session info before clearing
-        const oldSessionId = this.messageManager.getSessionId();
-        const transcriptPath = this.messageManager.getTranscriptPath();
-
-        // Run SessionEnd hooks (cleanup before clear)
-        if (this.hookManager) {
-          try {
-            await this.hookManager.executeSessionEndHooks(
-              "clear",
-              oldSessionId,
-              transcriptPath,
-            );
-          } catch (error) {
-            logger?.warn(
-              `SessionEnd hooks on clear failed: ${(error as Error).message}`,
-            );
-          }
-        }
-
-        // Clear messages and generate new session
-        this.messageManager.clearMessages();
-        this.memoryService.clearCache();
-        await this.taskManager.syncWithSession();
-
-        // Run SessionStart hooks (restore context for new session)
-        if (this.hookManager) {
-          try {
-            const newSessionId = this.messageManager.getSessionId();
-            const sessionStartResult =
-              await this.hookManager.executeSessionStartHooks(
-                "clear",
-                newSessionId,
-                this.messageManager.getTranscriptPath(),
-              );
-
-            // Inject additionalContext as a meta user message
-            if (sessionStartResult.additionalContext) {
-              this.messageManager.addUserMessage({
-                content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
-                isMeta: true,
-              });
-            }
-
-            // Inject initialUserMessage as a meta user message
-            if (sessionStartResult.initialUserMessage) {
-              this.messageManager.addUserMessage({
-                content: sessionStartResult.initialUserMessage,
-                isMeta: true,
-              });
-            }
-          } catch (error) {
-            logger?.warn(
-              `SessionStart hooks on clear failed: ${(error as Error).message}`,
-            );
-          }
-        }
-      },
-    });
-
-    // Register built-in compact command
-    this.registerCommand({
-      id: "compact",
-      name: "compact",
-      description: "Compact conversation history to reduce context usage",
-      immediate: true,
-      handler: async (args?: string, signal?: AbortSignal) => {
-        this.aiManager.abortAIMessage();
-
-        const customInstructions = args?.trim() || undefined;
-
-        await this.aiManager.compactConversation({
-          customInstructions,
-          abortSignal: signal,
-        });
-      },
-    });
-
-    // Register built-in goal command
-    this.registerCommand({
-      id: "goal",
-      name: "goal",
-      description: "Set, check, or clear an autonomous goal for the session",
-      immediate: (args?: string) => {
-        const trimmed = args?.trim() ?? "";
-        return (
-          !trimmed ||
-          ["clear", "stop", "off", "reset", "none", "cancel"].includes(trimmed)
-        );
-      },
-      handler: async (args?: string) => {
-        const goalManager = this.goalManager;
-        if (!goalManager) {
-          this.messageManager.addUserMessage({
-            content: "Goal manager is not available",
-            isMeta: true,
-          });
-          return;
-        }
-
-        const trimmed = args?.trim() ?? "";
-
-        // Clear aliases
-        if (
-          ["clear", "stop", "off", "reset", "none", "cancel"].includes(trimmed)
-        ) {
-          if (goalManager.isGoalActive()) {
-            goalManager.clearGoal();
-            this.messageManager.addUserMessage({
-              content: "<system-reminder>Goal cleared.</system-reminder>",
-              isMeta: true,
-            });
-          } else {
-            this.messageManager.addUserMessage({
-              content:
-                "<system-reminder>No active goal to clear.</system-reminder>",
-              isMeta: true,
-            });
-          }
-          return;
-        }
-
-        // Show status
-        if (!trimmed) {
-          if (goalManager.isGoalActive()) {
-            this.messageManager.addUserMessage({
-              content: `<system-reminder>${goalManager.getStatusString()}</system-reminder>`,
-              isMeta: true,
-            });
-          } else {
-            this.messageManager.addUserMessage({
-              content:
-                "<system-reminder>No active goal. Use /goal <condition> to set one.</system-reminder>",
-              isMeta: true,
-            });
-          }
-          return;
-        }
-
-        // Check plan mode
-        const permissionMode = this.container.has("PermissionMode")
-          ? this.container.get<
-              import("../types/permissions.js").PermissionMode
-            >("PermissionMode")
-          : undefined;
-        if (permissionMode === "plan") {
-          this.messageManager.addUserMessage({
-            content:
-              "<system-reminder>Cannot set a goal in plan mode. Exit plan mode first.</system-reminder>",
-            isMeta: true,
-          });
-          return;
-        }
-
-        // Set goal
-        try {
-          goalManager.setGoal(trimmed);
-          this.messageManager.addUserMessage({
-            content: `<system-reminder>Goal set: ${trimmed}. The agent will work autonomously until this goal is achieved.</system-reminder>`,
-            isMeta: true,
-          });
-          // Add the goal as a user directive to start working
-          this.messageManager.addUserMessage({
-            content: trimmed,
-          });
-          this.aiManager.sendAIMessage();
-        } catch (error) {
-          this.messageManager.addUserMessage({
-            content: `<system-reminder>Failed to set goal: ${(error as Error).message}</system-reminder>`,
-            isMeta: true,
-          });
-        }
-      },
-    });
   }
 
   /**

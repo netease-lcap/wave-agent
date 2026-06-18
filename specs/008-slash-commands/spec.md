@@ -125,7 +125,7 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **FR-005**: System MUST execute embedded bash commands within command content and replace them with their raw stdout
 - **FR-006**: System MUST provide a command selector interface triggered by typing `/` with search filtering capabilities
 - **FR-007**: System MUST prioritize project-level commands over user-level commands when names conflict
-- **FR-008**: System MUST include built-in commands (like `clear`) alongside custom commands in the interface
+- **FR-008**: System MUST include CLI-internal commands (such as `clear`, `compact`, `goal`) alongside custom commands in the interface. These commands are registered via `AVAILABLE_COMMANDS` in the CLI layer and backed by `Agent` public methods (`clearMessages()`, `compact()`, `setGoal()`, `clearGoal()`, `showGoalStatus()`), not by `SlashCommandManager`. `SlashCommandManager` only manages custom/file-based commands and plugin commands.
 - **FR-009**: System MUST reload custom commands when files are modified without requiring application restart
 - **FR-010**: System MUST validate slash command syntax and provide appropriate error handling for malformed commands
 - **FR-011**: System MUST support command abortion/cancellation for long-running operations

@@ -33,9 +33,15 @@ interface SlashCommandManager {
 
 ## Command Registration Contract
 
-### Built-in Command Registration
+### Built-in Commands (Moved to CLI)
+
+Built-in commands (`clear`, `compact`, `goal`) have been moved out of `SlashCommandManager` and are now CLI-internal commands registered via `AVAILABLE_COMMANDS` in `packages/code/src/constants/commands.ts`. They are backed by `Agent` public methods (`clearMessages()`, `compact()`, `setGoal()`, `clearGoal()`, `showGoalStatus()`).
+
+The `BuiltinCommand` interface and `initializeBuiltinCommands()` method have been removed. `SlashCommandManager` now only manages custom/file-based commands and plugin commands.
+
+### Custom Command Registration
 ```typescript
-interface BuiltinCommand {
+interface CustomCommand {
   id: string          // Must be unique, no whitespace
   name: string        // Display name for UI
   description: string // Help text for users
@@ -44,7 +50,6 @@ interface BuiltinCommand {
 ```
 
 **Invariants**:
-- Built-in commands cannot be overridden
 - Command IDs must be unique across registry
 - Handlers must be callable functions
 
@@ -287,7 +292,6 @@ interface RegistryState {
   
   // State transitions
   lifecycle: [
-    "initialize-builtin-commands",
     "discover-custom-commands", 
     "parse-and-register",
     "ready-for-execution",
@@ -317,8 +321,7 @@ interface ReloadContract {
     "clear-existing-custom-commands",
     "unregister-from-command-map",
     "re-scan-directories", 
-    "re-parse-and-register",
-    "preserve-builtin-commands"
+    "re-parse-and-register"
   ]
   
   // Atomicity

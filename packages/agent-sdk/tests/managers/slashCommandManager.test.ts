@@ -14,8 +14,6 @@ import type { SubagentManager } from "../../src/managers/subagentManager.js";
 import type { SkillManager } from "../../src/managers/skillManager.js";
 import type { TextBlock } from "../../src/types/index.js";
 import type { MemoryService } from "../../src/services/memory.js";
-import type { HookManager } from "../../src/managers/hookManager.js";
-
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
 vi.mock("child_process", () => ({
@@ -123,160 +121,13 @@ describe("SlashCommandManager", () => {
   });
 
   describe("Basic Command Management", () => {
-    it("should have a built-in clear command", () => {
-      const commands = slashCommandManager.getCommands();
-
-      const clearCommand = commands.find((cmd) => cmd.id === "clear");
-      expect(clearCommand).toBeDefined();
-      expect(clearCommand?.name).toBe("clear");
-      expect(clearCommand?.description).toBe(
-        "Clear conversation history and reset session",
-      );
-    });
-
-    it("should be able to check if clear command exists", () => {
-      expect(slashCommandManager.hasCommand("clear")).toBe(true);
-      expect(slashCommandManager.hasCommand("nonexistent")).toBe(false);
-    });
-
-    it("should be able to execute clear command", async () => {
-      const result = await slashCommandManager.executeCommand("clear");
-      expect(result).toBe(true);
-    });
-
     it("should return false when executing non-existent command", async () => {
       const result = await slashCommandManager.executeCommand("nonexistent");
       expect(result).toBe(false);
     });
 
-    it("should return correct command by id", () => {
-      const clearCommand = slashCommandManager.getCommand("clear");
-      expect(clearCommand).toBeDefined();
-      expect(clearCommand?.id).toBe("clear");
-
-      const nonExistentCommand = slashCommandManager.getCommand("nonexistent");
-      expect(nonExistentCommand).toBeUndefined();
-    });
-
-    it("should call memoryService.clearCache() when executing clear command", async () => {
-      const clearCacheSpy = vi.fn();
-      const mockMemoryService = {
-        clearCache: clearCacheSpy,
-      } as unknown as MemoryService;
-
-      const container = (
-        slashCommandManager as unknown as { container: Container }
-      ).container;
-      container.register("MemoryService", mockMemoryService);
-
-      const result = await slashCommandManager.executeCommand("clear");
-      expect(result).toBe(true);
-      expect(clearCacheSpy).toHaveBeenCalled();
-    });
-  });
-
-  describe("Clear Command Session Hooks", () => {
-    let mockHookManager: HookManager;
-
-    beforeEach(() => {
-      const container = (
-        slashCommandManager as unknown as { container: Container }
-      ).container;
-
-      mockHookManager = {
-        executeSessionEndHooks: vi.fn().mockResolvedValue([]),
-        executeSessionStartHooks: vi.fn().mockResolvedValue({
-          results: [],
-          additionalContext: undefined,
-          initialUserMessage: undefined,
-        }),
-      } as unknown as HookManager;
-
-      container.register("HookManager", mockHookManager);
-    });
-
-    it("should call SessionEnd hooks before clearing messages", async () => {
-      const oldSessionId = messageManager.getSessionId();
-
-      await slashCommandManager.executeCommand("clear");
-
-      expect(mockHookManager.executeSessionEndHooks).toHaveBeenCalledWith(
-        "clear",
-        oldSessionId,
-        expect.any(String),
-      );
-    });
-
-    it("should call SessionStart hooks after clearing messages", async () => {
-      await slashCommandManager.executeCommand("clear");
-
-      expect(mockHookManager.executeSessionStartHooks).toHaveBeenCalledWith(
-        "clear",
-        expect.any(String),
-        expect.any(String),
-      );
-    });
-
-    it("should inject additionalContext as meta user message", async () => {
-      vi.mocked(mockHookManager.executeSessionStartHooks).mockResolvedValue({
-        results: [],
-        additionalContext: "Project context from hook",
-        initialUserMessage: undefined,
-      });
-
-      await slashCommandManager.executeCommand("clear");
-
-      const messages = messageManager.getMessages();
-      const contextMessage = messages.find(
-        (m) =>
-          m.blocks[0]?.type === "text" &&
-          (
-            m.blocks[0] as import("../../src/types/index.js").TextBlock
-          ).content?.includes("SessionStart hook additional context"),
-      );
-      expect(contextMessage).toBeDefined();
-      expect(contextMessage?.isMeta).toBe(true);
-    });
-
-    it("should inject initialUserMessage as meta user message", async () => {
-      vi.mocked(mockHookManager.executeSessionStartHooks).mockResolvedValue({
-        results: [],
-        additionalContext: undefined,
-        initialUserMessage: "Hello from hook",
-      });
-
-      await slashCommandManager.executeCommand("clear");
-
-      const messages = messageManager.getMessages();
-      const hookMessage = messages.find(
-        (m) =>
-          m.blocks[0]?.type === "text" &&
-          (m.blocks[0] as import("../../src/types/index.js").TextBlock)
-            .content === "Hello from hook",
-      );
-      expect(hookMessage).toBeDefined();
-      expect(hookMessage?.isMeta).toBe(true);
-    });
-
-    it("should continue gracefully if SessionEnd hooks fail", async () => {
-      vi.mocked(mockHookManager.executeSessionEndHooks).mockRejectedValue(
-        new Error("SessionEnd hook failed"),
-      );
-
-      const result = await slashCommandManager.executeCommand("clear");
-
-      expect(result).toBe(true);
-      expect(mockHookManager.executeSessionStartHooks).toHaveBeenCalled();
-    });
-
-    it("should continue gracefully if SessionStart hooks fail", async () => {
-      vi.mocked(mockHookManager.executeSessionStartHooks).mockRejectedValue(
-        new Error("SessionStart hook failed"),
-      );
-
-      const result = await slashCommandManager.executeCommand("clear");
-
-      expect(result).toBe(true);
+    it("should be able to check if command exists", () => {
+      expect(slashCommandManager.hasCommand("nonexistent")).toBe(false);
     });
   });
 
@@ -288,14 +139,6 @@ describe("SlashCommandManager", () => {
 
       expect(result.isValid).toBe(false);
       expect(result.commandId).toBeUndefined();
-      expect(result.args).toBeUndefined();
-    });
-
-    it("should validate existing slash commands correctly", () => {
-      const result = slashCommandManager.parseAndValidateSlashCommand("/clear");
-
-      expect(result.isValid).toBe(true);
-      expect(result.commandId).toBe("clear");
       expect(result.args).toBeUndefined();
     });
 
@@ -330,15 +173,6 @@ describe("SlashCommandManager", () => {
       // Test with just slash and spaces
       const result2 = slashCommandManager.parseAndValidateSlashCommand("/   ");
       expect(result2.isValid).toBe(false);
-    });
-
-    it("should handle command with empty args correctly", () => {
-      const result =
-        slashCommandManager.parseAndValidateSlashCommand("/clear   ");
-
-      expect(result.isValid).toBe(true);
-      expect(result.commandId).toBe("clear");
-      expect(result.args).toBeUndefined(); // Empty args should be undefined
     });
 
     it("should handle parsing errors gracefully", () => {

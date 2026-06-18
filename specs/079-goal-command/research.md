@@ -1,9 +1,9 @@
 # Research: /goal Command
 
-## Decision: Built-in Slash Command
-- **Choice**: Implement `/goal` as a built-in slash command in `SlashCommandManager`.
-- **Rationale**: Unlike `/loop` which uses a skill-based approach for flexible interval parsing, `/goal` has simple, fixed argument parsing (the entire argument is the condition string). No skill or AI parsing needed.
-- **Alternatives considered**: Built-in skill (like `/loop`). Rejected because the command logic is trivial and doesn't benefit from Markdown-based prompt templates.
+## Decision: CLI-Internal Command with Agent Methods
+- **Choice**: Implement `/goal` as a CLI-internal command registered in `AVAILABLE_COMMANDS`, with logic in `Agent.setGoal()`, `Agent.clearGoal()`, and `Agent.showGoalStatus()`.
+- **Rationale**: Unlike `/loop` which uses a skill-based approach for flexible interval parsing, `/goal` has simple, fixed argument parsing (the entire argument is the condition string). No skill or AI parsing needed. The command is registered in the CLI layer (`AVAILABLE_COMMANDS`) rather than in `SlashCommandManager`, keeping the SDK logic as public `Agent` methods.
+- **Alternatives considered**: Built-in skill (like `/loop`). Rejected because the command logic is trivial and doesn't benefit from Markdown-based prompt templates. Built-in slash command in `SlashCommandManager`. Rejected in favor of CLI-internal command pattern shared with `/clear` and `/compact`.
 
 ## Decision: GoalManager Class
 - **Choice**: Create a `GoalManager` in `packages/agent-sdk/src/managers/goalManager.ts`.

@@ -49,7 +49,7 @@
 
 ### Implementation for User Story 1
 
-- [X] T011 [US1] Add `/goal` command handler in `packages/agent-sdk/src/managers/slashCommandManager.ts` — set/status/clear sub-commands
+- [X] T011 [US1] Add `/goal` as CLI-internal command via `Agent.setGoal()`, `Agent.clearGoal()`, `Agent.showGoalStatus()` in `packages/agent-sdk/src/agent.ts` — registered in `AVAILABLE_COMMANDS` in CLI
 - [X] T012 [US1] Implement goal evaluation in `packages/agent-sdk/src/managers/aiManager.ts` finally block — goal supersedes Stop hooks, notification drain, circuit breakers, loading state fix
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
@@ -60,9 +60,9 @@
 
 **Goal**: Allow users to check goal status and cancel active goals.
 
-- [X] T013 [US2] Implement `/goal` status display in slash command handler (condition, elapsed, turns, last reason)
-- [X] T014 [US3] Implement `/goal clear|stop|off|reset|none|cancel` aliases in slash command handler
-- [X] T015 [US3] Add `goalManager.clearGoal()` to `/clear` handler in slash command handler
+- [X] T013 [US2] Implement `/goal` status display via `Agent.showGoalStatus()` (condition, elapsed, turns, last reason)
+- [X] T014 [US3] Implement `/goal clear|stop|off|reset|none|cancel` aliases via `Agent.clearGoal()` in CLI-internal command handler
+- [X] T015 [US3] Add `goalManager.clearGoal()` to `/clear` handler via `Agent.clearMessages()` clearing goal state
 
 ---
 

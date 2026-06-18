@@ -147,7 +147,7 @@
 - [X] T071 [US6] Extract `buildPostCompactContext()` private helper from `handleTokenUsageAndCompaction()` in `packages/agent-sdk/src/managers/aiManager.ts`
 - [X] T072 [US6] Refactor `handleTokenUsageAndCompaction()` to delegate to `compactConversation()` in `packages/agent-sdk/src/managers/aiManager.ts`
 - [X] T073 [US6] Add `customInstructions` to `CompactMessagesOptions` in `packages/agent-sdk/src/services/aiService.ts`
-- [X] T074 [US6] Add `/compact` built-in command in `packages/agent-sdk/src/managers/slashCommandManager.ts`
+- [X] T074 [US6] Add `/compact` as CLI-internal command via `Agent.compact()` in `packages/agent-sdk/src/agent.ts`, registered in `AVAILABLE_COMMANDS` in CLI
 
 ---
 

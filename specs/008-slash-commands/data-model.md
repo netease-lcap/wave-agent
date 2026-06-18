@@ -82,10 +82,10 @@
 ## Command Registry Structure
 
 ### SlashCommandManager
-**Purpose**: Central registry and lifecycle manager for all commands
+**Purpose**: Central registry and lifecycle manager for custom, skill, and plugin commands. Built-in commands like `clear`, `compact`, and `goal` are no longer registered here; they are CLI-internal commands in `AVAILABLE_COMMANDS` backed by `Agent` public methods.
 
 **Internal State**:
-- `commands: Map<string, SlashCommand>` - Active command registry
+- `commands: Map<string, SlashCommand>` - Active command registry (custom, skill, and plugin commands only)
 - `customCommands: Map<string, CustomSlashCommand>` - Custom command metadata cache
 
 ### PermissionManager (State Extension)
@@ -109,7 +109,7 @@
 
 **Invariants**:
 - Command IDs must be unique within registry
-- Built-in commands cannot be overridden by custom commands
+- CLI-internal commands (clear, compact, goal) are registered separately via `AVAILABLE_COMMANDS` and cannot be overridden by custom commands in `SlashCommandManager`
 - Custom commands with identical names prioritize project-level over user-level
 
 ## File System Layout

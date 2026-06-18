@@ -685,7 +685,152 @@ export class Agent {
   }
 
   public async clearMessages(): Promise<void> {
-    await this.slashCommandManager.executeCommand("clear");
+    this.aiManager.abortAIMessage();
+
+    // Clear any active goal
+    this.goalManager.clearGoal();
+
+    // Capture old session info before clearing
+    const oldSessionId = this.messageManager.getSessionId();
+    const transcriptPath = this.messageManager.getTranscriptPath();
+
+    // Run SessionEnd hooks (cleanup before clear)
+    try {
+      await this.hookManager.executeSessionEndHooks(
+        "clear",
+        oldSessionId,
+        transcriptPath,
+      );
+    } catch (error) {
+      this.logger?.warn(
+        `SessionEnd hooks on clear failed: ${(error as Error).message}`,
+      );
+    }
+
+    // Clear messages and generate new session
+    this.messageManager.clearMessages();
+    const memoryService =
+      this.container.get<import("./services/memory.js").MemoryService>(
+        "MemoryService",
+      );
+    memoryService?.clearCache();
+    await this.taskManager.syncWithSession();
+
+    // Run SessionStart hooks (restore context for new session)
+    try {
+      const newSessionId = this.messageManager.getSessionId();
+      const sessionStartResult =
+        await this.hookManager.executeSessionStartHooks(
+          "clear",
+          newSessionId,
+          this.messageManager.getTranscriptPath(),
+        );
+
+      // Inject additionalContext as a meta user message
+      if (sessionStartResult.additionalContext) {
+        this.messageManager.addUserMessage({
+          content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
+          isMeta: true,
+        });
+      }
+
+      // Inject initialUserMessage as a meta user message
+      if (sessionStartResult.initialUserMessage) {
+        this.messageManager.addUserMessage({
+          content: sessionStartResult.initialUserMessage,
+          isMeta: true,
+        });
+      }
+    } catch (error) {
+      this.logger?.warn(
+        `SessionStart hooks on clear failed: ${(error as Error).message}`,
+      );
+    }
+
+    await this.messageManager.saveSession();
+  }
+
+  /**
+   * Compact conversation history to reduce context usage
+   * @param customInstructions - Optional custom instructions for compaction
+   */
+  public async compact(customInstructions?: string): Promise<void> {
+    this.aiManager.abortAIMessage();
+
+    await this.aiManager.compactConversation({
+      customInstructions,
+    });
+
+    await this.messageManager.saveSession();
+  }
+
+  /**
+   * Set an autonomous goal for the session
+   * @param condition - The goal condition to achieve
+   */
+  public async setGoal(condition: string): Promise<void> {
+    // Check plan mode
+    if (this.getPermissionMode() === "plan") {
+      this.messageManager.addUserMessage({
+        content:
+          "<system-reminder>Cannot set a goal in plan mode. Exit plan mode first.</system-reminder>",
+        isMeta: true,
+      });
+      return;
+    }
+
+    this.goalManager.setGoal(condition);
+    this.messageManager.addUserMessage({
+      content: `<system-reminder>Goal set: ${condition}. The agent will work autonomously until this goal is achieved.</system-reminder>`,
+      isMeta: true,
+    });
+    // Add the goal as a user directive to start working
+    this.messageManager.addUserMessage({
+      content: condition,
+    });
+    this.aiManager.sendAIMessage();
+
+    await this.messageManager.saveSession();
+  }
+
+  /**
+   * Clear the current autonomous goal
+   */
+  public async clearGoal(): Promise<void> {
+    if (this.goalManager.isGoalActive()) {
+      this.goalManager.clearGoal();
+      this.messageManager.addUserMessage({
+        content: "<system-reminder>Goal cleared.</system-reminder>",
+        isMeta: true,
+      });
+    } else {
+      this.messageManager.addUserMessage({
+        content: "<system-reminder>No active goal to clear.</system-reminder>",
+        isMeta: true,
+      });
+    }
+
+    await this.messageManager.saveSession();
+  }
+
+  /**
+   * Show the current goal status
+   */
+  public async showGoalStatus(): Promise<void> {
+    if (this.goalManager.isGoalActive()) {
+      this.messageManager.addUserMessage({
+        content: `<system-reminder>${this.goalManager.getStatusString()}</system-reminder>`,
+        isMeta: true,
+      });
+    } else {
+      this.messageManager.addUserMessage({
+        content:
+          "<system-reminder>No active goal. Use /goal <condition> to set one.</system-reminder>",
+        isMeta: true,
+      });
+    }
+
+    await this.messageManager.saveSession();
   }
 
   /** Unified interrupt method, interrupts both AI messages and command execution */

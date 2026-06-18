@@ -373,6 +373,12 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
         } else if (command === "workflows") {
           dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: true });
+        } else if (command === "clear") {
+          await callbacks.onClearMessages?.();
+        } else if (command === "compact") {
+          await callbacks.onCompact?.();
+        } else if (command === "goal") {
+          await callbacks.onGoalCommand?.();
         }
       }
     })();

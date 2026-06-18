@@ -1,23 +1,22 @@
-# Data Model: Clear Command Move to SDK
+# Data Model: Clear Command
 
-## SlashCommandManager
-The `clear` command is registered as a built-in slash command in the `SlashCommandManager`.
-
-### SlashCommand
-- **id**: "clear"
-- **name**: "clear"
-- **description**: "Clear conversation history and reset session"
-- **handler**: An async function that performs the following actions:
-    - `this.aiManager.abortAIMessage()`
-    - `this.messageManager.clearMessages()`
-    - `await this.taskManager.syncWithSession()`
+## CLI-Internal Command
+The `/clear` command is registered as a CLI-internal command in `AVAILABLE_COMMANDS` (in `packages/code/src/constants/commands.ts`). It is not registered in `SlashCommandManager` (that method, `initializeBuiltinCommands()`, was removed entirely).
 
 ## Agent
-The `Agent` class provides an async `clearMessages()` method that delegates to the `clear` slash command.
+The `Agent` class provides an async `clearMessages()` method that contains the full clear logic directly.
 
 ### Agent.clearMessages()
 - **Signature**: `public async clearMessages(): Promise<void>`
-- **Implementation**: `await this.slashCommandManager.executeCommand("clear")`
+- **Implementation**: Performs the following actions in order:
+    1. `this.aiManager.abortAIMessage()` — stop any ongoing AI processing.
+    2. `this.goalManager.clearGoal()` — clear the active goal (if a goal is currently active).
+    3. `await this.hookManager.executeSessionEndHooks()` — fire SessionEnd hooks before clearing.
+    4. `this.messageManager.clearMessages()` — reset the conversation history and session ID.
+    5. `this.memoryService.clearCache()` — clear the auto-memory cache.
+    6. `await this.taskManager.syncWithSession()` — update the task list to match the new session ID.
+    7. `await this.hookManager.executeSessionStartHooks()` — fire SessionStart hooks, injecting any `additionalContext` or `initialUserMessage` as meta messages.
+    8. `await this.saveSession()` — persist the fresh session.
 
 ## MessageManager
 The `MessageManager` class provides a `clearMessages()` method that resets the conversation history and session ID.
