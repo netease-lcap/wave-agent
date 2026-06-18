@@ -27,6 +27,12 @@ Represents a plan file created during Plan Mode.
   - `name`: Human-readable name (adjective-noun). This name is deterministic within a session chain, generated using the `rootSessionId` as a seed.
   - `createdAt`: Timestamp of creation.
 
+### PlanEntryReminderPending (Flag in PlanManager)
+Tracks whether a plan entry reminder needs to be injected on the next AI call.
+- **Set to `true`**: When entering plan mode (`handlePlanModeTransition("plan")`).
+- **Consumed (set to `false`)**: After the reminder is injected in `buildPlanModeMessages()`, or when leaving plan mode.
+- **Purpose**: Ensures the plan mode reminder is injected exactly once per entry, not on every turn.
+
 ## State Transitions
 - **default -> acceptEdits**: Triggered by Shift+Tab.
 - **acceptEdits -> plan**: Triggered by Shift+Tab. Determines or reuses a `PlanFile` based on the `rootSessionId`.

@@ -26,7 +26,6 @@ import type { SkillManager } from "./skillManager.js";
 import { buildSystemPrompt } from "../prompts/index.js";
 import {
   buildPlanModeReminder,
-  buildPlanModeSparseReminder,
   buildPlanModeReEntryReminder,
   buildExitedPlanModeReminder,
 } from "../prompts/planModeReminders.js";
@@ -136,6 +135,14 @@ export class AIManager {
 
   private get permissionManager(): PermissionManager | undefined {
     return this.container.get<PermissionManager>("PermissionManager");
+  }
+
+  private get planManager():
+    | import("./planManager.js").PlanManager
+    | undefined {
+    return this.container.get<import("./planManager.js").PlanManager>(
+      "PlanManager",
+    );
   }
 
   private get configurationService(): ConfigurationService {
@@ -253,7 +260,6 @@ export class AIManager {
       this.permissionManager.setNeedsPlanModeExitAttachment(false);
     }
 
-    // Handle plan mode reminders
     if (currentMode !== "plan") return messages;
 
     const planFilePath = this.permissionManager.getPlanFilePath();
@@ -261,83 +267,27 @@ export class AIManager {
 
     const planExists = existsSync(planFilePath);
 
-    // Check for re-entry: flag is set AND plan file exists
-    if (this.permissionManager.hasExitedPlanModeInSession() && planExists) {
-      messages.push({
-        role: "user",
-        content: buildPlanModeReEntryReminder(planFilePath),
-      });
-      this.permissionManager.setHasExitedPlanMode(false); // One-time
-    }
-
-    // Count plan_mode system-reminders in existing messages to determine full vs sparse
-    // and count human turns since last reminder for throttling
-    const recentApiMessages = this.messageManager.getMessages();
-    let planModeReminderCount = 0;
-    let humanTurnsSinceLastReminder = 0;
-    let foundLastReminder = false;
-
-    for (let i = recentApiMessages.length - 1; i >= 0; i--) {
-      const msg = recentApiMessages[i];
-      if (msg.role === "user" && !msg.isMeta) {
-        // Count human turns (non-meta user messages without tool results)
-        const hasToolResult = msg.blocks?.some(
-          (b: { type: string }) => b.type === "tool",
-        );
-        if (!hasToolResult) {
-          if (!foundLastReminder) {
-            humanTurnsSinceLastReminder++;
-          }
-        }
+    // One-time plan entry reminder
+    const planMgr = this.planManager;
+    if (planMgr?.isPlanEntryReminderPending()) {
+      if (this.permissionManager.hasExitedPlanModeInSession() && planExists) {
+        // Re-entry: use small reminder
+        messages.push({
+          role: "user",
+          content: buildPlanModeReEntryReminder(planFilePath),
+        });
+      } else {
+        // First entry: use full reminder
+        messages.push({
+          role: "user",
+          content: buildPlanModeReminder(
+            planFilePath,
+            planExists,
+            !!this.subagentType,
+          ),
+        });
       }
-      // Check for existing plan mode system-reminders
-      if (msg.role === "user" && msg.isMeta) {
-        const textContent = msg.blocks
-          ?.filter((b) => b.type === "text")
-          .map((b) => ("content" in b ? b.content : ""))
-          .join("");
-        if (
-          textContent?.includes("Plan mode is active") ||
-          textContent?.includes("Plan mode still active")
-        ) {
-          planModeReminderCount++;
-          if (!foundLastReminder) {
-            foundLastReminder = true;
-          }
-        }
-      }
-    }
-
-    // Throttle: only inject every 5 human turns (but always inject on first turn)
-    const TURNS_BETWEEN_REMINDERS = 5;
-    const FULL_REMINDER_EVERY_N = 5;
-
-    if (
-      foundLastReminder &&
-      humanTurnsSinceLastReminder < TURNS_BETWEEN_REMINDERS
-    ) {
-      return messages; // Throttled — skip reminder
-    }
-
-    // Determine full vs sparse
-    // Every 5th reminder is full; rest are sparse
-    const reminderNumber = planModeReminderCount + 1;
-    const isFull = reminderNumber % FULL_REMINDER_EVERY_N === 1;
-
-    if (isFull) {
-      messages.push({
-        role: "user",
-        content: buildPlanModeReminder(
-          planFilePath,
-          planExists,
-          !!this.subagentType,
-        ),
-      });
-    } else {
-      messages.push({
-        role: "user",
-        content: buildPlanModeSparseReminder(planFilePath),
-      });
+      planMgr.consumePlanEntryReminder();
     }
 
     return messages;

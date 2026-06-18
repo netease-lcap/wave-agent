@@ -9,6 +9,7 @@ import { DEFAULT_SYSTEM_PROMPT } from "../../src/prompts/index.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
+import type { PlanManager } from "../../src/managers/planManager.js";
 
 vi.mock("node:fs/promises");
 vi.mock("node:fs", () => ({
@@ -30,6 +31,7 @@ describe("AIManager Plan Mode Prompt", () => {
   let mockMessageManager: Mocked<MessageManager>;
   let mockToolManager: Mocked<ToolManager>;
   let mockPermissionManager: Mocked<PermissionManager>;
+  let mockPlanManager: Mocked<PlanManager>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,6 +60,11 @@ describe("AIManager Plan Mode Prompt", () => {
       getNeedsPlanModeExitAttachment: vi.fn(() => false),
     } as unknown as Mocked<PermissionManager>;
 
+    mockPlanManager = {
+      isPlanEntryReminderPending: vi.fn(() => true),
+      consumePlanEntryReminder: vi.fn(),
+    } as unknown as Mocked<PlanManager>;
+
     const container = new Container();
     container.register("ConfigurationService", {
       resolveGatewayConfig: vi.fn().mockReturnValue({}),
@@ -76,6 +83,7 @@ describe("AIManager Plan Mode Prompt", () => {
       getAutoMemoryContent: vi.fn().mockResolvedValue(""),
     });
     container.register("PermissionManager", mockPermissionManager);
+    container.register("PlanManager", mockPlanManager);
 
     // Mock SubagentManager and register it
     container.register("SubagentManager", {
@@ -116,7 +124,6 @@ describe("AIManager Plan Mode Prompt", () => {
     await aiManager.sendAIMessage();
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
-    // Plan mode content is now injected as user messages, not in systemPrompt
     const userMessages = (
       callOptions.messages as Array<{ role: string; content: string }>
     ).filter((m) => m.role === "user");
@@ -139,7 +146,6 @@ describe("AIManager Plan Mode Prompt", () => {
     await aiManager.sendAIMessage();
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
-    // Plan mode content is now injected as user messages, not in systemPrompt
     const userMessages = (
       callOptions.messages as Array<{ role: string; content: string }>
     ).filter((m) => m.role === "user");
@@ -152,5 +158,51 @@ describe("AIManager Plan Mode Prompt", () => {
     );
     expect(planMessage!.content).toContain("A plan file already exists");
     expect(planMessage!.content).toContain("using the Edit tool");
+  });
+
+  it("should not add plan reminder on second call (one-time)", async () => {
+    mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
+    vi.mocked(existsSync).mockReturnValue(false);
+    vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
+
+    // First call: reminder is pending
+    mockPlanManager.isPlanEntryReminderPending.mockReturnValue(true);
+    await aiManager.sendAIMessage();
+
+    // consumePlanEntryReminder was called, making pending = false
+    expect(mockPlanManager.consumePlanEntryReminder).toHaveBeenCalled();
+
+    // Second call: reminder consumed, no longer pending
+    mockPlanManager.isPlanEntryReminderPending.mockReturnValue(false);
+    await aiManager.sendAIMessage();
+
+    const callOptions = vi.mocked(callAgent).mock.calls[1][0];
+    const userMessages = (
+      callOptions.messages as Array<{ role: string; content: string }>
+    ).filter((m) => m.role === "user");
+    const planMessage = userMessages.find((m) =>
+      m.content?.includes("Plan mode is active"),
+    );
+    expect(planMessage).toBeUndefined();
+  });
+
+  it("should add re-entry reminder when re-entering plan mode", async () => {
+    mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
+    mockPermissionManager.hasExitedPlanModeInSession.mockReturnValue(true);
+    vi.mocked(existsSync).mockReturnValue(true);
+    vi.mocked(fs.access).mockResolvedValue(undefined);
+    mockPlanManager.isPlanEntryReminderPending.mockReturnValue(true);
+
+    await aiManager.sendAIMessage();
+
+    const callOptions = vi.mocked(callAgent).mock.calls[0][0];
+    const userMessages = (
+      callOptions.messages as Array<{ role: string; content: string }>
+    ).filter((m) => m.role === "user");
+    const planMessage = userMessages.find((m) =>
+      m.content?.includes("Re-entering Plan Mode"),
+    );
+    expect(planMessage).toBeDefined();
+    expect(planMessage!.content).toContain("returning to plan mode");
   });
 });

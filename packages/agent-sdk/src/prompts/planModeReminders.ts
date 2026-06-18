@@ -106,26 +106,14 @@ This is critical - your turn should only end with either using the ${ASK_USER_QU
 NOTE: At any point in time through this workflow you should feel free to ask the user questions or clarifications using the ${ASK_USER_QUESTION_TOOL_NAME} tool. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins.`);
 }
 
-export function buildPlanModeSparseReminder(planFilePath: string): string {
-  return wrapInSystemReminder(
-    `Plan mode still active (see full instructions earlier in conversation). Read-only except plan file at ${planFilePath}. End turns with ${ASK_USER_QUESTION_TOOL_NAME} or ${EXIT_PLAN_MODE_TOOL_NAME}.`,
-  );
-}
-
 export function buildPlanModeReEntryReminder(planFilePath: string): string {
   return wrapInSystemReminder(`## Re-entering Plan Mode
 
-You are returning to plan mode after having previously exited it. A plan file exists at ${planFilePath} from your previous planning session.
+You are returning to plan mode. A plan file exists at ${planFilePath} from your previous session.
 
-**Before proceeding with any new planning, you should:**
 1. Read the existing plan file to understand what was previously planned
-2. Evaluate the user's current request against that plan
-3. Decide how to proceed:
-   - **Different task**: If the user's request is for a different task—even if it's similar or related—start fresh by overwriting the existing plan
-   - **Same task, continuing**: If this is explicitly a continuation or refinement of the exact same task, modify the existing plan while cleaning up outdated or irrelevant sections
-4. Continue on with the plan process and most importantly you should always edit the plan file one way or the other before calling ${EXIT_PLAN_MODE_TOOL_NAME}
-
-Treat this as a fresh planning session. Do not assume the existing plan is relevant without evaluating it first.`);
+2. Decide: if the user's request is a different task, start fresh by overwriting the plan; if it's a continuation, modify the existing plan
+3. Edit the plan file as needed, then call ${EXIT_PLAN_MODE_TOOL_NAME}`);
 }
 
 export function buildExitedPlanModeReminder(
