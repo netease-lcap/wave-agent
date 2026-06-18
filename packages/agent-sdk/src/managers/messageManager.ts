@@ -548,11 +548,6 @@ export class MessageManager {
     this.setSessionId(generateSessionId());
     this.parentSessionId = oldSessionId;
 
-    // Trigger task list update if this is the main session to ensure continuity
-    if (this.sessionType === "main") {
-      this.callbacks.onSessionIdChange?.(this.sessionId);
-    }
-
     // Set new message list
     this.setMessages(newMessages);
 

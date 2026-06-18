@@ -136,7 +136,7 @@ describe("WaveAcpAgent", () => {
           handler: vi.fn(),
         },
       ]),
-      getFullMessageThread: vi.fn().mockResolvedValue({ messages: [] }),
+      messages: [],
     };
     vi.mocked(WaveAgent.create).mockResolvedValue(
       mockWaveAgent as unknown as WaveAgent,
@@ -175,43 +175,41 @@ describe("WaveAcpAgent", () => {
       getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
       getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
-      getFullMessageThread: vi.fn().mockResolvedValue({
-        messages: [
-          {
-            id: "msg-1",
-            role: "user",
-            blocks: [{ type: "text", content: "Hello" }],
-            timestamp: new Date().toISOString(),
-          },
-          {
-            id: "msg-2",
-            role: "assistant",
-            blocks: [
-              { type: "reasoning", content: "Thinking..." },
-              { type: "text", content: "Hi there!" },
-              {
-                type: "tool",
-                id: "tool-1",
-                name: "Read",
-                compactParams: "file.txt",
-                stage: "end",
-                success: true,
-                parameters: JSON.stringify({ file_path: "/test/file.txt" }),
-                result: "file contents",
-                shortResult: "file contents",
-              },
-            ],
-            timestamp: new Date().toISOString(),
-          },
-          {
-            id: "msg-3",
-            role: "user",
-            blocks: [{ type: "text", content: "Thanks" }],
-            timestamp: new Date().toISOString(),
-            isMeta: true,
-          },
-        ],
-      }),
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          blocks: [{ type: "text", content: "Hello" }],
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: "msg-2",
+          role: "assistant",
+          blocks: [
+            { type: "reasoning", content: "Thinking..." },
+            { type: "text", content: "Hi there!" },
+            {
+              type: "tool",
+              id: "tool-1",
+              name: "Read",
+              compactParams: "file.txt",
+              stage: "end",
+              success: true,
+              parameters: JSON.stringify({ file_path: "/test/file.txt" }),
+              result: "file contents",
+              shortResult: "file contents",
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: "msg-3",
+          role: "user",
+          blocks: [{ type: "text", content: "Thanks" }],
+          timestamp: new Date().toISOString(),
+          isMeta: true,
+        },
+      ],
     };
     vi.mocked(WaveAgent.create).mockResolvedValue(
       mockWaveAgent as unknown as WaveAgent,
@@ -343,68 +341,65 @@ describe("WaveAcpAgent", () => {
       getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
       getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
       getSlashCommands: vi.fn().mockReturnValue([]),
-      getFullMessageThread: vi.fn().mockResolvedValue({
-        messages: [
-          {
-            id: "msg-tool-edges",
-            role: "assistant",
-            blocks: [
-              // Tool without id — should generate a replay- prefixed id
-              {
-                type: "tool",
-                name: "Bash",
-                stage: "running",
-                parameters: JSON.stringify({ command: "ls" }),
-              },
-              // Tool with failed stage
-              {
-                type: "tool",
-                id: "tool-fail",
-                name: "Edit",
-                compactParams: "file.ts",
-                stage: "end",
-                success: false,
-                error: "edit failed",
-                parameters: JSON.stringify({
-                  file_path: "/test/file.ts",
-                  old_string: "a",
-                  new_string: "b",
-                }),
-              },
-              // Tool without name — should use "Tool" fallback
-              {
-                type: "tool",
-                id: "tool-no-name",
-                stage: "end",
-                success: true,
-                result: "ok",
-              },
-              // Tool with unparseable parameters
-              {
-                type: "tool",
-                id: "tool-bad-json",
-                name: "Bash",
-                stage: "end",
-                success: true,
-                parameters: "not-json",
-                result: "done",
-              },
-              // Skipped block types (image, bang, compact, error, file_history, task_notification)
-              { type: "image", imageUrls: ["file.png"] },
-              {
-                type: "bang",
-                command: "ls",
-                output: "",
-                stage: "end" as const,
-                exitCode: 0,
-              },
-              { type: "compact", content: "summary", sessionId: "old" },
-              { type: "error", content: "err" },
-            ],
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      }),
+      messages: [
+        {
+          id: "msg-tool-edges",
+          role: "assistant",
+          blocks: [
+            // Tool without id — should generate a replay- prefixed id
+            {
+              type: "tool",
+              name: "Bash",
+              stage: "running",
+              parameters: JSON.stringify({ command: "ls" }),
+            },
+            // Tool with failed stage
+            {
+              type: "tool",
+              id: "tool-fail",
+              name: "Edit",
+              compactParams: "file.ts",
+              stage: "end",
+              success: false,
+              error: "edit failed",
+              parameters: JSON.stringify({
+                file_path: "/test/file.ts",
+                old_string: "a",
+                new_string: "b",
+              }),
+            },
+            // Tool without name — should use "Tool" fallback
+            {
+              type: "tool",
+              id: "tool-no-name",
+              stage: "end",
+              success: true,
+              result: "ok",
+            },
+            // Tool with unparseable parameters
+            {
+              type: "tool",
+              id: "tool-bad-json",
+              name: "Bash",
+              stage: "end",
+              success: true,
+              parameters: "not-json",
+              result: "done",
+            },
+            // Skipped block types (image, bang, error, file_history, task_notification)
+            { type: "image", imageUrls: ["file.png"] },
+            {
+              type: "bang",
+              command: "ls",
+              output: "",
+              stage: "end" as const,
+              exitCode: 0,
+            },
+            { type: "error", content: "err" },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ],
     };
     vi.mocked(WaveAgent.create).mockResolvedValue(
       mockWaveAgent as unknown as WaveAgent,
@@ -2803,6 +2798,171 @@ describe("WaveAcpAgent", () => {
       "wave/create_plan",
       expect.objectContaining({
         todos: [{ id: "t1", content: "Cached Task", status: "pending" }],
+      }),
+    );
+  });
+
+  it("should handle session ID change via onSessionIdChange callback", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-a",
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      messages: [],
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    // onSessionIdChange should be available in the wrapper callbacks
+    const callbacks = capturedCallbacks as unknown as Record<string, unknown>;
+    expect(typeof callbacks.onSessionIdChange).toBe("function");
+
+    const onSessionIdChange = callbacks.onSessionIdChange as (
+      newSessionId: string,
+    ) => void;
+
+    // Trigger session ID change
+    onSessionIdChange("session-b");
+
+    // Verify ext_notification was sent with session_id_change
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-a",
+        update: expect.objectContaining({
+          sessionUpdate: "ext_notification",
+          method: "session_id_change",
+          params: { oldSessionId: "session-a", newSessionId: "session-b" },
+        }),
+      }),
+    );
+
+    // Verify the agent is now accessible under the new session ID
+    // by successfully calling prompt with the new ID
+    const response = await agent.prompt({
+      sessionId: "session-b",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+    expect(response.stopReason).toBe("end_turn");
+    expect(mockWaveAgent.sendMessage).toHaveBeenCalledWith("hello", undefined);
+
+    // Old session ID should no longer work
+    await expect(
+      agent.prompt({
+        sessionId: "session-a",
+        prompt: [{ type: "text", text: "hello" }],
+      }),
+    ).rejects.toThrow("Session session-a not found");
+  });
+
+  it("should be a no-op when onSessionIdChange receives the same ID", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-same",
+      destroy: vi.fn(),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      messages: [],
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+    vi.mocked(mockConnection.sessionUpdate).mockClear();
+
+    const callbacks = capturedCallbacks as unknown as Record<string, unknown>;
+    const onSessionIdChange = callbacks.onSessionIdChange as (
+      newSessionId: string,
+    ) => void;
+
+    // Same ID should be a no-op
+    onSessionIdChange("session-same");
+
+    // No ext_notification should be sent
+    const sessionUpdateCalls = vi.mocked(mockConnection.sessionUpdate).mock
+      .calls;
+    const sessionIdChangeCalls = sessionUpdateCalls.filter(
+      (call) =>
+        (call[0] as { update: { method?: string } }).update.method ===
+        "session_id_change",
+    );
+    expect(sessionIdChangeCalls).toHaveLength(0);
+  });
+
+  it("should replay compact block content as agent_message_chunk", async () => {
+    const mockWaveAgent = {
+      sessionId: "compact-replay-session",
+      destroy: vi.fn(),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      messages: [
+        {
+          id: "msg-compact",
+          role: "assistant",
+          blocks: [
+            {
+              type: "compact",
+              content: "Summary of previous conversation",
+              sessionId: "old-session",
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: "msg-after",
+          role: "user",
+          blocks: [{ type: "text", content: "Continue from summary" }],
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+
+    await agent.loadSession({
+      sessionId: "compact-replay-session",
+      cwd: "/test",
+      mcpServers: [],
+    });
+
+    // Compact block should be replayed as agent_message_chunk
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "compact-replay-session",
+        update: expect.objectContaining({
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: "Summary of previous conversation",
+          },
+          messageId: "msg-compact",
+        }),
+      }),
+    );
+
+    // User message after compact should also be replayed
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "compact-replay-session",
+        update: expect.objectContaining({
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "Continue from summary" },
+          messageId: "msg-after",
+        }),
       }),
     );
   });
