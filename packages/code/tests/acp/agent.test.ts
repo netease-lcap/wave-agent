@@ -2630,6 +2630,39 @@ describe("WaveAcpAgent", () => {
     expect(mockConnection.requestPermission).not.toHaveBeenCalled();
   });
 
+  it("should use custom mode from wave/create_plan response when accepted", async () => {
+    let canUseToolCallback: PermissionCallback;
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      getPermissionMode: vi.fn().mockReturnValue("bypassPermissions"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      canUseToolCallback = options.canUseTool as PermissionCallback;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    vi.mocked(mockConnection.extMethod).mockResolvedValue({
+      outcome: "accepted",
+      mode: "bypassPermissions",
+    });
+
+    const decision = await canUseToolCallback!({
+      toolName: "ExitPlanMode",
+      toolInput: {},
+      permissionMode: "plan",
+      planContent: "# My Plan\nDo stuff",
+      toolCallId: "plan-tool-1",
+    });
+
+    expect(decision.behavior).toBe("allow");
+    expect(decision.newPermissionMode).toBe("bypassPermissions");
+  });
+
   it("should use wave/create_plan extMethod for ExitPlanMode (rejected)", async () => {
     let canUseToolCallback: PermissionCallback;
     const mockWaveAgent = {
