@@ -17,10 +17,10 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   AskUserQuestion,
   AskUserQuestionOption,
-  type Message,
   type TextBlock,
   type ReasoningBlock,
   type ToolBlock,
+  type CompactBlock,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import {
@@ -239,6 +239,8 @@ export class WaveAcpAgent implements AcpAgent {
         onUserMessageAdded: (params) => callbacks.onUserMessageAdded?.(params),
         onMcpServersChange: (servers) =>
           callbacks.onMcpServersChange?.(servers),
+        onSessionIdChange: (newSessionId: string) =>
+          callbacks.onSessionIdChange?.(newSessionId),
       },
     });
 
@@ -247,7 +249,8 @@ export class WaveAcpAgent implements AcpAgent {
     this.agents.set(actualSessionId, agent);
 
     // Update the callbacks object with the correct sessionId
-    Object.assign(callbacks, this.createCallbacks(actualSessionId));
+    const { callbacks: cb } = this.createCallbacks(actualSessionId);
+    Object.assign(callbacks, cb);
 
     // Send initial available commands after agent creation
     // Use setImmediate to ensure the client receives the session response before the update
@@ -968,14 +971,7 @@ export class WaveAcpAgent implements AcpAgent {
   private async replayConversationHistory(agent: WaveAgent): Promise<void> {
     const sessionId = agent.sessionId as AcpSessionId;
 
-    let history: Message[];
-    try {
-      const thread = await agent.getFullMessageThread();
-      history = thread.messages;
-    } catch {
-      // Fallback to in-memory messages if full thread fails
-      history = agent.messages;
-    }
+    const history = agent.messages;
 
     for (const message of history) {
       if (message.isMeta) continue;
@@ -1088,14 +1084,28 @@ export class WaveAcpAgent implements AcpAgent {
               rawInput: parsedParameters,
             },
           });
+        } else if (block.type === "compact") {
+          const compactBlock = block as CompactBlock;
+          this.connection.sessionUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: compactBlock.content },
+              messageId,
+            },
+          });
         }
-        // Skip: image, bang, compact, error, file_history, task_notification blocks
+        // Skip: image, bang, error, file_history, task_notification blocks
       }
     }
   }
 
-  private createCallbacks(sessionId: string): AgentOptions["callbacks"] {
-    const getAgent = () => this.agents.get(sessionId);
+  private createCallbacks(sessionId: string): {
+    callbacks: AgentOptions["callbacks"];
+    sessionRef: { id: string };
+  } {
+    const sessionRef = { id: sessionId };
+    const getAgent = () => this.agents.get(sessionRef.id);
     const toolStates = new Map<
       string,
       {
@@ -1106,228 +1116,262 @@ export class WaveAcpAgent implements AcpAgent {
       }
     >();
     return {
-      onAssistantContentUpdated: (chunk: string) => {
-        this.connection.sessionUpdate({
-          sessionId: sessionId as AcpSessionId,
-          update: {
-            sessionUpdate: "agent_message_chunk",
-            content: {
-              type: "text",
-              text: chunk,
-            },
-          },
-        });
-      },
-      onAssistantReasoningUpdated: (chunk: string) => {
-        this.connection.sessionUpdate({
-          sessionId: sessionId as AcpSessionId,
-          update: {
-            sessionUpdate: "agent_thought_chunk",
-            content: {
-              type: "text",
-              text: chunk,
-            },
-          },
-        });
-      },
-      onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
-        const {
-          id,
-          name,
-          stage,
-          success,
-          error,
-          result,
-          parameters,
-          compactParams,
-          shortResult,
-          startLineNumber,
-        } = params;
-
-        let state = toolStates.get(id);
-        if (!state) {
-          state = {};
-          toolStates.set(id, state);
-        }
-        if (name) state.name = name;
-        if (compactParams) state.compactParams = compactParams;
-        if (shortResult) state.shortResult = shortResult;
-        if (startLineNumber !== undefined)
-          state.startLineNumber = startLineNumber;
-
-        const effectiveName = state.name || name;
-        const effectiveCompactParams = state.compactParams || compactParams;
-        const effectiveShortResult = state.shortResult || shortResult;
-        const effectiveStartLineNumber =
-          state.startLineNumber !== undefined
-            ? state.startLineNumber
-            : startLineNumber;
-
-        const displayTitle =
-          effectiveName && effectiveCompactParams
-            ? `${effectiveName}: ${effectiveCompactParams}`
-            : effectiveName || "Tool Call";
-
-        let parsedParameters: Record<string, unknown> | undefined = undefined;
-        if (parameters) {
-          try {
-            const parsed = JSON.parse(parameters);
-            parsedParameters = Array.isArray(parsed)
-              ? { args: parsed }
-              : parsed;
-          } catch {
-            // Ignore parse errors during streaming
-          }
-        }
-
-        const content =
-          effectiveName && (parsedParameters || effectiveShortResult)
-            ? this.getToolContent(
-                effectiveName,
-                parsedParameters,
-                effectiveShortResult,
-              )
-            : undefined;
-        const locations =
-          effectiveName && parsedParameters
-            ? this.getToolLocations(
-                effectiveName,
-                parsedParameters,
-                effectiveStartLineNumber,
-              )
-            : undefined;
-        const kind = effectiveName
-          ? this.getToolKind(effectiveName)
-          : undefined;
-
-        if (stage === "start") {
+      callbacks: {
+        onAssistantContentUpdated: (chunk: string) => {
           this.connection.sessionUpdate({
-            sessionId: sessionId as AcpSessionId,
+            sessionId: sessionRef.id as AcpSessionId,
             update: {
-              sessionUpdate: "tool_call",
+              sessionUpdate: "agent_message_chunk",
+              content: {
+                type: "text",
+                text: chunk,
+              },
+            },
+          });
+        },
+        onAssistantReasoningUpdated: (chunk: string) => {
+          this.connection.sessionUpdate({
+            sessionId: sessionRef.id as AcpSessionId,
+            update: {
+              sessionUpdate: "agent_thought_chunk",
+              content: {
+                type: "text",
+                text: chunk,
+              },
+            },
+          });
+        },
+        onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
+          const {
+            id,
+            name,
+            stage,
+            success,
+            error,
+            result,
+            parameters,
+            compactParams,
+            shortResult,
+            startLineNumber,
+          } = params;
+
+          let state = toolStates.get(id);
+          if (!state) {
+            state = {};
+            toolStates.set(id, state);
+          }
+          if (name) state.name = name;
+          if (compactParams) state.compactParams = compactParams;
+          if (shortResult) state.shortResult = shortResult;
+          if (startLineNumber !== undefined)
+            state.startLineNumber = startLineNumber;
+
+          const effectiveName = state.name || name;
+          const effectiveCompactParams = state.compactParams || compactParams;
+          const effectiveShortResult = state.shortResult || shortResult;
+          const effectiveStartLineNumber =
+            state.startLineNumber !== undefined
+              ? state.startLineNumber
+              : startLineNumber;
+
+          const displayTitle =
+            effectiveName && effectiveCompactParams
+              ? `${effectiveName}: ${effectiveCompactParams}`
+              : effectiveName || "Tool Call";
+
+          let parsedParameters: Record<string, unknown> | undefined = undefined;
+          if (parameters) {
+            try {
+              const parsed = JSON.parse(parameters);
+              parsedParameters = Array.isArray(parsed)
+                ? { args: parsed }
+                : parsed;
+            } catch {
+              // Ignore parse errors during streaming
+            }
+          }
+
+          const content =
+            effectiveName && (parsedParameters || effectiveShortResult)
+              ? this.getToolContent(
+                  effectiveName,
+                  parsedParameters,
+                  effectiveShortResult,
+                )
+              : undefined;
+          const locations =
+            effectiveName && parsedParameters
+              ? this.getToolLocations(
+                  effectiveName,
+                  parsedParameters,
+                  effectiveStartLineNumber,
+                )
+              : undefined;
+          const kind = effectiveName
+            ? this.getToolKind(effectiveName)
+            : undefined;
+
+          if (stage === "start") {
+            this.connection.sessionUpdate({
+              sessionId: sessionRef.id as AcpSessionId,
+              update: {
+                sessionUpdate: "tool_call",
+                toolCallId: id,
+                title: displayTitle,
+                status: "pending",
+                content,
+                locations,
+                kind,
+                rawInput: parsedParameters,
+              },
+            });
+            return;
+          }
+
+          if (stage === "streaming") {
+            // We don't support streaming tool arguments in ACP yet
+            return;
+          }
+
+          const status: ToolCallStatus =
+            stage === "end"
+              ? success
+                ? "completed"
+                : "failed"
+              : stage === "running"
+                ? "in_progress"
+                : "pending";
+
+          this.connection.sessionUpdate({
+            sessionId: sessionRef.id as AcpSessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
               toolCallId: id,
+              status,
               title: displayTitle,
-              status: "pending",
+              rawOutput: result || error,
               content,
               locations,
               kind,
               rawInput: parsedParameters,
             },
           });
-          return;
-        }
 
-        if (stage === "streaming") {
-          // We don't support streaming tool arguments in ACP yet
-          return;
-        }
-
-        const status: ToolCallStatus =
-          stage === "end"
-            ? success
-              ? "completed"
-              : "failed"
-            : stage === "running"
-              ? "in_progress"
-              : "pending";
-
-        this.connection.sessionUpdate({
-          sessionId: sessionId as AcpSessionId,
-          update: {
-            sessionUpdate: "tool_call_update",
-            toolCallId: id,
-            status,
-            title: displayTitle,
-            rawOutput: result || error,
-            content,
-            locations,
-            kind,
-            rawInput: parsedParameters,
-          },
-        });
-
-        if (stage === "end") {
-          toolStates.delete(id);
-        }
-      },
-      onTasksChange: (tasks) => {
-        this.taskCache.set(sessionId, tasks);
-        this.connection.sessionUpdate({
-          sessionId: sessionId as AcpSessionId,
-          update: {
-            sessionUpdate: "plan",
-            entries: tasks
-              .filter((t) => t.status !== "deleted")
-              .map((task) => ({
-                content: task.subject,
-                status:
-                  task.status === "completed"
-                    ? "completed"
-                    : task.status === "in_progress"
-                      ? "in_progress"
-                      : "pending",
-                priority: "medium" as const,
-              })),
-          },
-        });
-      },
-      onPermissionModeChange: (mode) => {
-        this.connection.sessionUpdate({
-          sessionId: sessionId as AcpSessionId,
-          update: {
-            sessionUpdate: "current_mode_update",
-            currentModeId: mode,
-          },
-        });
-        const agent = getAgent();
-        if (agent) {
+          if (stage === "end") {
+            toolStates.delete(id);
+          }
+        },
+        onTasksChange: (tasks) => {
+          this.taskCache.set(sessionRef.id, tasks);
           this.connection.sessionUpdate({
-            sessionId: sessionId as AcpSessionId,
+            sessionId: sessionRef.id as AcpSessionId,
             update: {
-              sessionUpdate: "config_option_update",
-              configOptions: this.getSessionConfigOptions(agent),
+              sessionUpdate: "plan",
+              entries: tasks
+                .filter((t) => t.status !== "deleted")
+                .map((task) => ({
+                  content: task.subject,
+                  status:
+                    task.status === "completed"
+                      ? "completed"
+                      : task.status === "in_progress"
+                        ? "in_progress"
+                        : "pending",
+                  priority: "medium" as const,
+                })),
             },
           });
-        }
-      },
-      onModelChange: () => {
-        const agent = getAgent();
-        if (agent) {
+        },
+        onPermissionModeChange: (mode) => {
           this.connection.sessionUpdate({
-            sessionId: sessionId as AcpSessionId,
+            sessionId: sessionRef.id as AcpSessionId,
             update: {
-              sessionUpdate: "config_option_update",
-              configOptions: this.getSessionConfigOptions(agent),
+              sessionUpdate: "current_mode_update",
+              currentModeId: mode,
             },
           });
-        }
-      },
-      onUserMessageAdded: (params) => {
-        this.connection.sessionUpdate({
-          sessionId: sessionId as AcpSessionId,
-          update: {
-            sessionUpdate: "user_message_chunk",
-            content: { type: "text", text: params.content },
-          },
-        });
-      },
-      onMcpServersChange: (servers: McpServerStatus[]) => {
-        for (const server of servers) {
+          const agent = getAgent();
+          if (agent) {
+            this.connection.sessionUpdate({
+              sessionId: sessionRef.id as AcpSessionId,
+              update: {
+                sessionUpdate: "config_option_update",
+                configOptions: this.getSessionConfigOptions(agent),
+              },
+            });
+          }
+        },
+        onModelChange: () => {
+          const agent = getAgent();
+          if (agent) {
+            this.connection.sessionUpdate({
+              sessionId: sessionRef.id as AcpSessionId,
+              update: {
+                sessionUpdate: "config_option_update",
+                configOptions: this.getSessionConfigOptions(agent),
+              },
+            });
+          }
+        },
+        onUserMessageAdded: (params) => {
           this.connection.sessionUpdate({
-            sessionId: sessionId as AcpSessionId,
+            sessionId: sessionRef.id as AcpSessionId,
+            update: {
+              sessionUpdate: "user_message_chunk",
+              content: { type: "text", text: params.content },
+            },
+          });
+        },
+        onMcpServersChange: (servers: McpServerStatus[]) => {
+          for (const server of servers) {
+            this.connection.sessionUpdate({
+              sessionId: sessionRef.id as AcpSessionId,
+              update: {
+                sessionUpdate: "ext_notification" as const,
+                method: "mcp_server_status",
+                params: {
+                  name: server.name,
+                  status: server.status,
+                  toolCount: server.toolCount,
+                  error: server.error,
+                },
+              },
+            });
+          }
+        },
+        onSessionIdChange: (newSessionId: string) => {
+          const oldSessionId = sessionRef.id;
+          if (oldSessionId === newSessionId) return;
+
+          // Update agents Map key
+          const agent = this.agents.get(oldSessionId);
+          if (agent) {
+            this.agents.delete(oldSessionId);
+            this.agents.set(newSessionId, agent);
+          }
+
+          // Update taskCache key
+          const tasks = this.taskCache.get(oldSessionId);
+          if (tasks) {
+            this.taskCache.delete(oldSessionId);
+            this.taskCache.set(newSessionId, tasks);
+          }
+
+          // Update ref so all subsequent callbacks use new ID
+          sessionRef.id = newSessionId;
+
+          // Notify ACP client
+          this.connection.sessionUpdate({
+            sessionId: oldSessionId as AcpSessionId,
             update: {
               sessionUpdate: "ext_notification" as const,
-              method: "mcp_server_status",
-              params: {
-                name: server.name,
-                status: server.status,
-                toolCount: server.toolCount,
-                error: server.error,
-              },
+              method: "session_id_change",
+              params: { oldSessionId, newSessionId },
             },
           });
-        }
+        },
       },
+      sessionRef,
     };
   }
 }
