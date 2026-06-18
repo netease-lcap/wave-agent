@@ -45,6 +45,9 @@ export const useInputManager = (
     logger,
     hasQueuedMessages: hasQueuedMessagesProp,
     onRecallQueuedMessage,
+    onClearMessages,
+    onCompact,
+    onGoalCommand,
   } = callbacks;
 
   // Handle debounced file search
@@ -212,6 +215,12 @@ export const useInputManager = (
                 dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
               } else if (command === "workflows") {
                 dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: true });
+              } else if (command === "clear") {
+                await onClearMessages?.();
+              } else if (command === "compact") {
+                await onCompact?.(effect.args);
+              } else if (command === "goal") {
+                await onGoalCommand?.(effect.args);
               }
             }
             break;
@@ -238,6 +247,9 @@ export const useInputManager = (
     logger,
     onHasSlashCommand,
     onRecallQueuedMessage,
+    onClearMessages,
+    onCompact,
+    onGoalCommand,
   ]);
 
   useEffect(() => {

@@ -44,12 +44,10 @@ describe("Agent - Slash Commands Readiness", () => {
 
     const commands = agent.getSlashCommands();
 
-    // Verify that commands are returned and not empty
-    // Built-in 'clear' command should always be present
+    // Verify that commands are returned as an array
+    // Built-in commands were moved to CLI; SDK starts with no commands
     expect(commands).toBeDefined();
     expect(Array.isArray(commands)).toBe(true);
-    expect(commands.length).toBeGreaterThan(0);
-    expect(commands.some((c) => c.name === "clear")).toBe(true);
 
     await agent.destroy();
   });

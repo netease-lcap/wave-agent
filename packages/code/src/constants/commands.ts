@@ -68,4 +68,22 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "View and manage workflow runs",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "clear",
+    name: "clear",
+    description: "Clear conversation history and reset session",
+    handler: () => {},
+  },
+  {
+    id: "compact",
+    name: "compact",
+    description: "Compact conversation history to reduce context usage",
+    handler: () => {},
+  },
+  {
+    id: "goal",
+    name: "goal",
+    description: "Set, check, or clear an autonomous goal for the session",
+    handler: () => {},
+  },
 ];

@@ -35,9 +35,9 @@ As an SDK consumer, I want to call `agent.clearMessages()` to reset the conversa
 
 ### Functional Requirements
 
-- **FR-001**: The SDK MUST register a `clear` built-in slash command in the `SlashCommandManager`.
+- **FR-001**: The CLI MUST register `clear` as a CLI-internal command in `AVAILABLE_COMMANDS`, with the clear logic implemented in `Agent.clearMessages()`.
 - **FR-002**: Executing `/clear` MUST abort any ongoing AI message processing.
 - **FR-003**: Executing `/clear` MUST clear the conversation history and generate a new session ID.
 - **FR-004**: Executing `/clear` MUST synchronize the task list with the new session ID.
-- **FR-005**: The `Agent` class MUST expose an async `clearMessages()` method that delegates to the `clear` slash command.
+- **FR-005**: The `Agent` class MUST expose an async `clearMessages()` method that contains the clear logic directly (abort AI, clear messages, sync tasks).
 - **FR-006**: The CLI MUST react to session ID changes by clearing the terminal screen and remounting the chat interface.

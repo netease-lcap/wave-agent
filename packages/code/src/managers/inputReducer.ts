@@ -40,7 +40,7 @@ export type PendingEffect =
   | { type: "PERMISSION_MODE_CHANGE"; mode: PermissionMode }
   | { type: "FETCH_HISTORY" }
   | { type: "PASTE_IMAGE" }
-  | { type: "EXECUTE_COMMAND"; command: string }
+  | { type: "EXECUTE_COMMAND"; command: string; args?: string }
   | { type: "RECALL_QUEUED_MESSAGE" };
 
 export interface InputManagerCallbacks {
@@ -77,6 +77,9 @@ export interface InputManagerCallbacks {
   onBackgroundCurrentTask?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
   onAskBtw?: (question: string) => Promise<string>;
+  onClearMessages?: () => Promise<void>;
+  onCompact?: (instructions?: string) => Promise<void>;
+  onGoalCommand?: (args?: string) => Promise<void>;
   sessionId?: string;
   workdir?: string;
   getFullMessageThread?: () => Promise<{
@@ -1033,6 +1036,11 @@ export function inputReducer(
               (cmd) => cmd.id === commandName,
             );
             if (isInternalCommand) {
+              const argsText =
+                spaceIndex === -1
+                  ? undefined
+                  : contentWithPlaceholders.substring(spaceIndex + 1).trim() ||
+                    undefined;
               return {
                 ...state,
                 inputText: "",
@@ -1042,6 +1050,7 @@ export function inputReducer(
                 pendingEffect: {
                   type: "EXECUTE_COMMAND",
                   command: commandName,
+                  args: argsText,
                 },
               };
             }

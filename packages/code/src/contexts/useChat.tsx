@@ -53,6 +53,9 @@ export interface ChatContextType {
     longTextMap?: Record<string, string>,
   ) => Promise<void>;
   askBtw: (question: string) => Promise<string>;
+  clearMessages: () => Promise<void>;
+  compact: (instructions?: string) => Promise<void>;
+  goalCommand: (args?: string) => Promise<void>;
   abortMessage: () => void;
   recallQueuedMessage: () => QueuedMessage | null;
   removeQueuedMessageById: (id: string) => boolean;
@@ -623,6 +626,27 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return await agentRef.current.askBtw(question);
   }, []);
 
+  const clearMessages = useCallback(async () => {
+    await agentRef.current?.clearMessages();
+  }, []);
+
+  const compact = useCallback(async (instructions?: string) => {
+    await agentRef.current?.compact(instructions);
+  }, []);
+
+  const goalCommand = useCallback(async (args?: string) => {
+    const trimmed = args?.trim() ?? "";
+    if (!trimmed) {
+      await agentRef.current?.showGoalStatus();
+    } else if (
+      ["clear", "stop", "off", "reset", "none", "cancel"].includes(trimmed)
+    ) {
+      await agentRef.current?.clearGoal();
+    } else {
+      await agentRef.current?.setGoal(trimmed);
+    }
+  }, []);
+
   // Unified interrupt method, interrupt both AI messages and command execution
   const abortMessage = useCallback(() => {
     agentRef.current?.abortMessage();
@@ -824,6 +848,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     sessionId,
     sendMessage,
     askBtw,
+    clearMessages,
+    compact,
+    goalCommand,
     abortMessage,
     recallQueuedMessage,
     removeQueuedMessageById,

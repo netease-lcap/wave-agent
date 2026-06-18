@@ -49,9 +49,9 @@ specs/014-message-compact/
 ```
 packages/agent-sdk/
 ├── src/
+│   ├── agent.ts                      # Agent.compact() — /compact CLI-internal command entry point
 │   ├── managers/
 │   │   ├── aiManager.ts              # compactConversation(), buildPostCompactContext(), circuit breaker
-│   │   ├── slashCommandManager.ts    # /compact built-in command
 │   │   └── messageManager.ts         # Compress messages, track file reads, API-round grouping
 │   ├── services/
 │   │   └── aiService.ts        # Compact API call, custom instructions, image stripping
