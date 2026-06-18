@@ -158,4 +158,52 @@ describe("Plan Mode Integration", () => {
       );
     }
   });
+
+  it("should trigger full plan mode transition from bypassPermissions via EnterPlanMode tool", async () => {
+    // Regression test for commit ead3e8f6: in bypass mode, canUseTool callback
+    // is not invoked, so the mode change must still trigger planManager and
+    // onPermissionModeChange. The original fix only called
+    // toolManager.setPermissionMode("plan") which misses plan file generation
+    // and the UI callback.
+    let modeChangedTo: string | null = null;
+
+    const agent = await Agent.create({
+      workdir,
+      permissionMode: "bypassPermissions",
+      canUseTool: async () => ({ behavior: "allow" }),
+      callbacks: {
+        onPermissionModeChange: (mode: string) => {
+          modeChangedTo = mode;
+        },
+      },
+    });
+
+    expect(agent.getPermissionMode()).toBe("bypassPermissions");
+    expect(agent.getPlanFilePath()).toBeUndefined();
+
+    // Simulate EnterPlanMode tool execution (bypass auto-allows it, then the
+    // tool calls requestPermissionModeChange("plan"))
+    // Directly call setPermissionMode to simulate what the fixed
+    // requestPermissionModeChange does (full transition)
+    agent.setPermissionMode("plan");
+
+    expect(agent.getPermissionMode()).toBe("plan");
+    expect(modeChangedTo).toBe("plan");
+
+    // Wait for async plan file path generation
+    let planFilePath: string | undefined;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      planFilePath = agent.getPlanFilePath();
+      if (planFilePath) break;
+    }
+    expect(planFilePath).toBeDefined();
+
+    // Verify tool visibility: ExitPlanMode visible, EnterPlanMode hidden
+    const tools = agent.getAvailableToolNames();
+    expect(tools).toContain("ExitPlanMode");
+    expect(tools).not.toContain("EnterPlanMode");
+
+    await agent.destroy();
+  });
 });

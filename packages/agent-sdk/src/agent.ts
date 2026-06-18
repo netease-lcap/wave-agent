@@ -1140,6 +1140,14 @@ export class Agent {
   }
 
   /**
+   * Get the names of tools currently visible to the AI model (filtered by
+   * permission mode, denied rules, etc.)
+   */
+  public getAvailableToolNames(): string[] {
+    return this.toolManager.getToolsConfig().map((t) => t.function.name);
+  }
+
+  /**
    * Set the permission mode
    * @param mode - The new permission mode
    */
