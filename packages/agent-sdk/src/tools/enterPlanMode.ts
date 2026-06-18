@@ -87,6 +87,12 @@ export const enterPlanModeTool: ToolPlugin = {
         };
       }
 
+      // Ensure permission mode is switched to plan (in bypass mode the
+      // canUseTool callback is not invoked, so the mode change doesn't happen)
+      if (context.toolManager) {
+        context.toolManager.setPermissionMode("plan");
+      }
+
       return {
         success: true,
         content:
