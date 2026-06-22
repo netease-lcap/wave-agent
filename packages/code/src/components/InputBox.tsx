@@ -62,7 +62,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   slashCommands = [],
   hasSlashCommand = () => false,
   latestTotalTokens = 0,
-  maxInputTokens = 128000,
+  maxInputTokens = 200000,
   isGoalActive,
   goalElapsed,
 }) => {

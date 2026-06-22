@@ -16,7 +16,7 @@ export const StatusLine: React.FC<StatusLineProps> = ({
   isGoalActive,
   goalElapsed,
   latestTotalTokens = 0,
-  maxInputTokens = 128000,
+  maxInputTokens = 200000,
 }) => {
   const percentage =
     latestTotalTokens > 0
