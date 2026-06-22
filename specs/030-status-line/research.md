@@ -20,7 +20,7 @@ The status line logic is currently inline in `InputBox.tsx` (lines 271-285). It 
 - `calculateComprehensiveTotalTokens()` — `packages/agent-sdk/src/utils/tokenCalculation.ts`
 - `extractLatestTotalTokens()` — `packages/agent-sdk/src/utils/tokenCalculation.ts`
 - `Agent.getMaxInputTokens()` — `packages/agent-sdk/src/agent.ts`
-- `DEFAULT_WAVE_MAX_INPUT_TOKENS = 128000` — `packages/agent-sdk/src/utils/constants.ts`
+- `DEFAULT_WAVE_MAX_INPUT_TOKENS = 200000` — `packages/agent-sdk/src/utils/constants.ts`
 
 ## Risks and Mitigations
 - **Risk**: UI regression.

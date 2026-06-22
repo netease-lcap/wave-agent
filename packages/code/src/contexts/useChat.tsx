@@ -176,7 +176,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
-  const [maxInputTokens, setMaxInputTokens] = useState(128000);
+  const [maxInputTokens, setMaxInputTokens] = useState(200000);
 
   const throttledSetMessages = useMemo(
     () =>
@@ -537,7 +537,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setSessionId("");
     setIsLoading(false);
     setLatestTotalTokens(0);
-    setMaxInputTokens(128000);
+    setMaxInputTokens(200000);
     setIsCommandRunning(false);
     setIsCompacting(false);
     if (currentSessionId) {

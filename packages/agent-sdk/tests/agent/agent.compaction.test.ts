@@ -483,7 +483,7 @@ describe("Agent Message Compaction Tests", () => {
           usage: {
             prompt_tokens: 50000,
             completion_tokens: 20000,
-            total_tokens: 130000, // Exceeds 128000 to trigger compaction
+            total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceeds default limit to trigger compaction
           },
         };
       } else {
