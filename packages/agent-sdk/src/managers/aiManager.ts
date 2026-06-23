@@ -4,7 +4,6 @@ import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { microcompactMessages } from "../utils/microcompact.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
-import * as fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type {
   GatewayConfig,
@@ -238,32 +237,29 @@ export class AIManager {
   }
 
   /**
-   * Build plan mode system-reminder messages to inject into the API message stream.
-   * These are transient messages not stored in the message history.
-   * This preserves prompt caching by keeping the system prompt constant.
+   * Add plan mode reminder as a persistent meta message to the message manager.
+   * Called before getMessages() so the stored message is included in the API call.
    */
-  private buildPlanModeMessages(
+  private maybeAddPlanModeMessage(
     currentMode: PermissionMode | undefined,
-  ): import("openai/resources.js").ChatCompletionMessageParam[] {
-    const messages: import("openai/resources.js").ChatCompletionMessageParam[] =
-      [];
-    if (!this.permissionManager) return messages;
+  ): void {
+    if (!this.permissionManager) return;
 
     // Handle exit notification (one-time after leaving plan mode)
     if (this.permissionManager.getNeedsPlanModeExitAttachment()) {
       const planFilePath = this.permissionManager.getPlanFilePath();
       const planExists = planFilePath ? existsSync(planFilePath) : false;
-      messages.push({
-        role: "user",
+      this.messageManager.addUserMessage({
         content: buildExitedPlanModeReminder(planFilePath, planExists),
+        isMeta: true,
       });
       this.permissionManager.setNeedsPlanModeExitAttachment(false);
     }
 
-    if (currentMode !== "plan") return messages;
+    if (currentMode !== "plan") return;
 
     const planFilePath = this.permissionManager.getPlanFilePath();
-    if (!planFilePath) return messages;
+    if (!planFilePath) return;
 
     const planExists = existsSync(planFilePath);
 
@@ -272,25 +268,23 @@ export class AIManager {
     if (planMgr?.isPlanEntryReminderPending()) {
       if (this.permissionManager.hasExitedPlanModeInSession() && planExists) {
         // Re-entry: use small reminder
-        messages.push({
-          role: "user",
+        this.messageManager.addUserMessage({
           content: buildPlanModeReEntryReminder(planFilePath),
+          isMeta: true,
         });
       } else {
         // First entry: use full reminder
-        messages.push({
-          role: "user",
+        this.messageManager.addUserMessage({
           content: buildPlanModeReminder(
             planFilePath,
             planExists,
             !!this.subagentType,
           ),
+          isMeta: true,
         });
       }
       planMgr.consumePlanEntryReminder();
     }
-
-    return messages;
   }
 
   public setIsLoading(isLoading: boolean): void {
@@ -470,6 +464,25 @@ export class AIManager {
         compactUsage,
       );
 
+      // Re-add plan mode reminder as persistent meta message after compaction
+      const postCompactMode = this.permissionManager?.getCurrentEffectiveMode(
+        this.getModelConfig().permissionMode,
+      );
+      if (postCompactMode === "plan") {
+        const planFilePath = this.permissionManager?.getPlanFilePath();
+        if (planFilePath) {
+          const planExists = existsSync(planFilePath);
+          this.messageManager.addUserMessage({
+            content: buildPlanModeReminder(
+              planFilePath,
+              planExists,
+              !!this.subagentType,
+            ),
+            isMeta: true,
+          });
+        }
+      }
+
       // 8. Track usage
       if (compactUsage && this.callbacks?.onUsageAdded) {
         this.callbacks.onUsageAdded(compactUsage);
@@ -567,26 +580,6 @@ export class AIManager {
       contextParts.push(`\n\n## ${file.path}\n\`\`\`\n${file.content}\n\`\`\``);
       if (contextParts.length >= POST_COMPACT_MAX_FILES_TO_RESTORE) break;
       if (usedTokens >= POST_COMPACT_TOKEN_BUDGET) break;
-    }
-
-    // 2. Plan mode context
-    const currentMode = this.permissionManager?.getCurrentEffectiveMode(
-      this.getModelConfig().permissionMode,
-    );
-    if (currentMode === "plan") {
-      const planFilePath = this.permissionManager?.getPlanFilePath();
-      if (planFilePath) {
-        let planExists = false;
-        try {
-          await fs.access(planFilePath);
-          planExists = true;
-        } catch {
-          // Plan file doesn't exist yet
-        }
-        contextParts.push(
-          `\n\n${buildPlanModeReminder(planFilePath, planExists, !!this.subagentType)}`,
-        );
-      }
     }
 
     // 4. Invoked skills context (with token budget, matching Claude Code)
@@ -784,6 +777,14 @@ export class AIManager {
       toolAbortController = this.toolAbortController!;
     }
 
+    // Get current permission mode
+    const currentMode = this.permissionManager?.getCurrentEffectiveMode(
+      this.getModelConfig().permissionMode,
+    );
+
+    // Add plan mode reminder as persistent meta message before getting messages
+    this.maybeAddPlanModeMessage(currentMode);
+
     // Get recent message history with microcompact applied
     const rawMessages = this.messageManager.getMessages();
     const microcompactedMessages = microcompactMessages(rawMessages, {
@@ -801,22 +802,11 @@ export class AIManager {
 
       logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
-      // Get current permission mode and plan file path
-      const currentMode = this.permissionManager?.getCurrentEffectiveMode(
-        this.getModelConfig().permissionMode,
-      );
       const toolsConfig = this.getFilteredToolsConfig();
       const toolNames = new Set(toolsConfig.map((t) => t.function.name));
       const filteredToolPlugins = this.toolManager
         .getTools()
         .filter((t) => toolNames.has(t.name));
-
-      // Inject plan mode system-reminder messages (not system prompt)
-      // This preserves prompt caching by keeping the system prompt constant
-      const planModeMessages = this.buildPlanModeMessages(currentMode);
-      if (planModeMessages.length > 0) {
-        recentMessages.push(...planModeMessages);
-      }
 
       let autoMemoryOptions: { directory: string; content: string } | undefined;
 
