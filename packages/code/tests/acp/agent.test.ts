@@ -738,6 +738,7 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-1",
       sendMessage: vi.fn().mockResolvedValue(undefined),
       saveSession: vi.fn().mockResolvedValue(undefined),
+      usages: [],
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
       getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
@@ -1500,6 +1501,7 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-1",
       sendMessage: vi.fn().mockResolvedValue(undefined),
       saveSession: vi.fn().mockResolvedValue(undefined),
+      usages: [],
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
       getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
@@ -1535,6 +1537,7 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-1",
       sendMessage: vi.fn().mockRejectedValue(new Error("failed")),
       saveSession: vi.fn().mockResolvedValue(undefined),
+      usages: [],
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
       getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
@@ -1565,6 +1568,7 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-1",
       sendMessage: vi.fn().mockRejectedValue(new Error("abort")),
       saveSession: vi.fn().mockResolvedValue(undefined),
+      usages: [],
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
       getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
@@ -2136,6 +2140,7 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-1",
       sendMessage: vi.fn().mockResolvedValue(undefined),
       saveSession: vi.fn().mockResolvedValue(undefined),
+      usages: [],
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
       getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
@@ -2168,6 +2173,7 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-1",
       sendMessage: vi.fn().mockResolvedValue(undefined),
       saveSession: vi.fn().mockResolvedValue(undefined),
+      usages: [],
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
       getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
@@ -2841,6 +2847,7 @@ describe("WaveAcpAgent", () => {
       sessionId: "session-a",
       sendMessage: vi.fn().mockResolvedValue(undefined),
       destroy: vi.fn(),
+      usages: [],
       getPermissionMode: vi.fn().mockReturnValue("default"),
       getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
       getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
@@ -2998,5 +3005,207 @@ describe("WaveAcpAgent", () => {
         }),
       }),
     );
+  });
+
+  it("should send usage_update sessionUpdate on onLatestTotalTokensChange", async () => {
+    let capturedCallbacks: AgentOptions["callbacks"];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      getMaxInputTokens: vi.fn().mockReturnValue(200000),
+    };
+    vi.mocked(WaveAgent.create).mockImplementation((options: AgentOptions) => {
+      capturedCallbacks = options.callbacks;
+      return Promise.resolve(mockWaveAgent as unknown as WaveAgent);
+    });
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    capturedCallbacks!.onLatestTotalTokensChange!(50000);
+
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: "usage_update",
+          size: 200000,
+          used: 50000,
+        }),
+      }),
+    );
+  });
+
+  it("should return per-turn usage in PromptResponse", async () => {
+    const usages: Array<Record<string, number>> = [];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      sendMessage: vi.fn().mockImplementation(async () => {
+        usages.push({
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+        });
+      }),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      get usages() {
+        return usages;
+      },
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    const response = await agent.prompt({
+      sessionId: "session-1",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+
+    expect(response.usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 50,
+      totalTokens: 150,
+    });
+    expect(response.usage).not.toHaveProperty("cachedReadTokens");
+    expect(response.usage).not.toHaveProperty("cachedWriteTokens");
+  });
+
+  it("should include cache tokens in usage when present", async () => {
+    const usages: Array<Record<string, number>> = [];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      sendMessage: vi.fn().mockImplementation(async () => {
+        usages.push({
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+          cache_read_input_tokens: 30,
+          cache_creation_input_tokens: 20,
+        });
+      }),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      get usages() {
+        return usages;
+      },
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    const response = await agent.prompt({
+      sessionId: "session-1",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+
+    expect(response.usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 50,
+      totalTokens: 150,
+      cachedReadTokens: 30,
+      cachedWriteTokens: 20,
+    });
+  });
+
+  it("should echo userMessageId from PromptRequest", async () => {
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      usages: [],
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    const response = await agent.prompt({
+      sessionId: "session-1",
+      prompt: [{ type: "text", text: "hello" }],
+      messageId: "msg-123",
+    });
+
+    expect(response.userMessageId).toBe("msg-123");
+  });
+
+  it("should omit usage from PromptResponse when no usages tracked", async () => {
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      usages: [],
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    const response = await agent.prompt({
+      sessionId: "session-1",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+
+    expect(response.usage).toBeUndefined();
+  });
+
+  it("should sum multiple usage entries for a single turn", async () => {
+    const usages: Array<Record<string, number>> = [];
+    const mockWaveAgent = {
+      sessionId: "session-1",
+      sendMessage: vi.fn().mockImplementation(async () => {
+        usages.push({
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+        });
+        usages.push({
+          prompt_tokens: 200,
+          completion_tokens: 100,
+          total_tokens: 300,
+        });
+      }),
+      getPermissionMode: vi.fn().mockReturnValue("default"),
+      getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),
+      getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
+      getSlashCommands: vi.fn().mockReturnValue([]),
+      get usages() {
+        return usages;
+      },
+    };
+    vi.mocked(WaveAgent.create).mockResolvedValue(
+      mockWaveAgent as unknown as WaveAgent,
+    );
+
+    await agent.newSession({ cwd: "/test", mcpServers: [] });
+
+    const response = await agent.prompt({
+      sessionId: "session-1",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+
+    expect(response.usage).toEqual({
+      inputTokens: 300,
+      outputTokens: 150,
+      totalTokens: 450,
+    });
   });
 });

@@ -21,6 +21,7 @@ import {
   type ReasoningBlock,
   type ToolBlock,
   type CompactBlock,
+  type Usage as SdkUsage,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import {
@@ -54,6 +55,7 @@ import {
   type EmbeddedResource,
   type ImageContent,
   type McpServer,
+  type Usage,
   AGENT_METHODS,
 } from "@agentclientprotocol/sdk";
 import type { McpServerConfig, McpServerStatus } from "wave-agent-sdk";
@@ -241,6 +243,8 @@ export class WaveAcpAgent implements AcpAgent {
           callbacks.onMcpServersChange?.(servers),
         onSessionIdChange: (newSessionId: string) =>
           callbacks.onSessionIdChange?.(newSessionId),
+        onLatestTotalTokensChange: (tokens: number) =>
+          callbacks.onLatestTotalTokensChange?.(tokens),
       },
     });
 
@@ -391,7 +395,7 @@ export class WaveAcpAgent implements AcpAgent {
   }
 
   async prompt(params: PromptRequest): Promise<PromptResponse> {
-    const { sessionId, prompt } = params;
+    const { sessionId, prompt, messageId } = params;
     logger.info(`Received prompt for session ${sessionId}`);
     logger.debug(`Prompt content for session ${sessionId}:`, prompt);
     const agent = this.agents.get(sessionId);
@@ -426,6 +430,8 @@ export class WaveAcpAgent implements AcpAgent {
 
     const textContent = textBlocks.join("\n");
 
+    const usagesBefore = agent.usages.length;
+
     try {
       await agent.sendMessage(
         textContent,
@@ -434,12 +440,16 @@ export class WaveAcpAgent implements AcpAgent {
       logger.info(`Message sent successfully for session ${sessionId}`);
       return {
         stopReason: "end_turn" as StopReason,
+        ...mapTurnUsage(agent.usages.slice(usagesBefore)),
+        ...(messageId ? { userMessageId: messageId } : {}),
       };
     } catch (error) {
       if (error instanceof Error && error.message.includes("abort")) {
         logger.info(`Message aborted for session ${sessionId}`);
         return {
           stopReason: "cancelled" as StopReason,
+          ...mapTurnUsage(agent.usages.slice(usagesBefore)),
+          ...(messageId ? { userMessageId: messageId } : {}),
         };
       }
       logger.error(`Error sending message for session ${sessionId}:`, error);
@@ -1370,6 +1380,18 @@ export class WaveAcpAgent implements AcpAgent {
             },
           });
         },
+        onLatestTotalTokensChange: (tokens: number) => {
+          const agent = getAgent();
+          const contextWindowSize = agent?.getMaxInputTokens() ?? 0;
+          this.connection.sessionUpdate({
+            sessionId: sessionRef.id as AcpSessionId,
+            update: {
+              sessionUpdate: "usage_update" as const,
+              size: contextWindowSize,
+              used: tokens,
+            },
+          });
+        },
       },
       sessionRef,
     };
@@ -1428,4 +1450,32 @@ function convertHttpHeaders(
     result[entry.name] = entry.value;
   }
   return result;
+}
+
+/**
+ * Map per-turn SDK usages to a single ACP Usage object.
+ * Returns undefined when there are no usage entries.
+ */
+function mapTurnUsage(newUsages: SdkUsage[]): { usage?: Usage } {
+  if (newUsages.length === 0) return {};
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
+  let cachedReadTokens = 0;
+  let cachedWriteTokens = 0;
+  for (const u of newUsages) {
+    inputTokens += u.prompt_tokens;
+    outputTokens += u.completion_tokens;
+    totalTokens += u.total_tokens;
+    cachedReadTokens += u.cache_read_input_tokens ?? 0;
+    cachedWriteTokens += u.cache_creation_input_tokens ?? 0;
+  }
+  const usage: Usage = {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+  };
+  if (cachedReadTokens > 0) usage.cachedReadTokens = cachedReadTokens;
+  if (cachedWriteTokens > 0) usage.cachedWriteTokens = cachedWriteTokens;
+  return { usage };
 }
