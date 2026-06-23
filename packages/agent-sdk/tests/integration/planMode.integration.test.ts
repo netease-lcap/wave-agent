@@ -78,25 +78,43 @@ describe("Plan Mode Integration", () => {
     const calls = vi.mocked(callAgent).mock.calls;
 
     // Plan mode content is now injected as user messages, not in systemPrompt
+    // convertMessagesForAPI converts user content to content parts arrays
+    const getText = (content: unknown): string => {
+      if (typeof content === "string") return content;
+      if (Array.isArray(content))
+        return content
+          .map((p: { type: string; text?: string }) =>
+            p.type === "text" ? (p.text ?? "") : "",
+          )
+          .join("");
+      return "";
+    };
     const callWithPlanInfo = calls.find((call) => {
       const options = call[0];
       const userMessages =
-        (options.messages as Array<{ role: string; content: string }>)?.filter(
+        (options.messages as Array<{ role: string; content: unknown }>)?.filter(
           (m) => m.role === "user",
         ) ?? [];
-      return userMessages.some((m) => m.content?.includes("Plan File Info"));
+      return userMessages.some((m) =>
+        getText(m.content).includes("Plan File Info"),
+      );
     });
 
     expect(callWithPlanInfo).toBeDefined();
     if (callWithPlanInfo) {
       const userMessages = (
-        callWithPlanInfo[0].messages as Array<{ role: string; content: string }>
+        callWithPlanInfo[0].messages as Array<{
+          role: string;
+          content: unknown;
+        }>
       ).filter((m) => m.role === "user");
       const planMessage = userMessages.find((m) =>
-        m.content?.includes("Plan File Info"),
+        getText(m.content).includes("Plan File Info"),
       );
       expect(planMessage).toBeDefined();
-      expect(planMessage!.content).toContain("No plan file exists yet");
+      expect(getText(planMessage!.content)).toContain(
+        "No plan file exists yet",
+      );
     }
   });
 

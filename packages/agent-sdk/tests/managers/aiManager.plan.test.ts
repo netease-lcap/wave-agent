@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach, type Mocked } from "vitest";
 import { Container } from "../../src/utils/container.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
-import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { callAgent } from "../../src/services/aiService.js";
+import { callAgent, compactMessages } from "../../src/services/aiService.js";
 import { DEFAULT_SYSTEM_PROMPT } from "../../src/prompts/index.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
 import type { PlanManager } from "../../src/managers/planManager.js";
+import type { Message } from "../../src/types/index.js";
 
 vi.mock("node:fs/promises");
 vi.mock("node:fs", () => ({
@@ -26,24 +26,66 @@ vi.mock("../../src/services/memory.js", () => ({
   getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
 }));
 
+/** Extract text from API message content (string or content parts array). */
+function extractText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((p: { type: string; text?: string }) =>
+        p.type === "text" ? (p.text ?? "") : "",
+      )
+      .join("");
+  }
+  return "";
+}
+
 describe("AIManager Plan Mode Prompt", () => {
   let aiManager: AIManager;
   let mockMessageManager: Mocked<MessageManager>;
   let mockToolManager: Mocked<ToolManager>;
   let mockPermissionManager: Mocked<PermissionManager>;
   let mockPlanManager: Mocked<PlanManager>;
+  let mockMessages: Message[];
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMessages = [];
+
     mockMessageManager = {
       getSessionId: vi.fn().mockReturnValue("test-session"),
-      getMessages: vi.fn().mockReturnValue([]),
+      getMessages: vi.fn(() => [...mockMessages]),
       saveSession: vi.fn().mockResolvedValue(undefined),
-      addAssistantMessage: vi.fn(),
+      addAssistantMessage: vi.fn(() => {
+        mockMessages.push({
+          id: `assistant-${mockMessages.length}`,
+          role: "assistant",
+          blocks: [{ type: "text", content: "hello" }],
+          timestamp: new Date().toISOString(),
+        } as Message);
+      }),
+      addUserMessage: vi.fn((params: { content: string; isMeta?: boolean }) => {
+        mockMessages.push({
+          id: `user-${mockMessages.length}`,
+          role: "user",
+          blocks: [{ type: "text", content: params.content }],
+          timestamp: new Date().toISOString(),
+          isMeta: params.isMeta,
+        } as Message);
+      }),
       updateCurrentMessageContent: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       getCombinedMemory: vi.fn().mockResolvedValue(""),
       addErrorBlock: vi.fn(),
+      touchFile: vi.fn(),
+      getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.jsonl"),
+      getRecentFileReads: vi.fn().mockReturnValue([]),
+      getInvokedSkillNames: vi.fn().mockReturnValue([]),
+      setMessages: vi.fn((msgs: Message[]) => {
+        mockMessages = [...msgs];
+      }),
+      finalizeStreamingBlocks: vi.fn(),
+      mergeAssistantAdditionalFields: vi.fn(),
+      compactMessagesAndUpdateSession: vi.fn(),
     } as unknown as Mocked<MessageManager>;
     mockToolManager = {
       getToolsConfig: vi.fn().mockReturnValue([]),
@@ -104,6 +146,14 @@ describe("AIManager Plan Mode Prompt", () => {
       content: "hello",
       finish_reason: "stop",
     });
+    vi.mocked(compactMessages).mockResolvedValue({
+      content: "compacted summary",
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 50,
+        total_tokens: 150,
+      },
+    });
   });
 
   it("should use default system prompt in default mode", async () => {
@@ -119,90 +169,130 @@ describe("AIManager Plan Mode Prompt", () => {
   it("should add plan reminder in plan mode when file does not exist", async () => {
     mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
     vi.mocked(existsSync).mockReturnValue(false);
-    vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
     await aiManager.sendAIMessage();
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
     const userMessages = (
-      callOptions.messages as Array<{ role: string; content: string }>
+      callOptions.messages as Array<{ role: string; content: unknown }>
     ).filter((m) => m.role === "user");
     const planMessage = userMessages.find((m) =>
-      m.content?.includes("Plan File Info"),
+      extractText(m.content).includes("Plan File Info"),
     );
     expect(planMessage).toBeDefined();
-    expect(planMessage!.content).toContain(
+    expect(extractText(planMessage!.content)).toContain(
       "Plan mode is active. The user indicated that they do not want you to execute yet",
     );
-    expect(planMessage!.content).toContain("No plan file exists yet");
-    expect(planMessage!.content).toContain("using the Write tool");
+    expect(extractText(planMessage!.content)).toContain(
+      "No plan file exists yet",
+    );
+    expect(extractText(planMessage!.content)).toContain("using the Write tool");
   });
 
   it("should add plan reminder in plan mode when file exists", async () => {
     mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
     vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(fs.access).mockResolvedValue(undefined);
 
     await aiManager.sendAIMessage();
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
     const userMessages = (
-      callOptions.messages as Array<{ role: string; content: string }>
+      callOptions.messages as Array<{ role: string; content: unknown }>
     ).filter((m) => m.role === "user");
     const planMessage = userMessages.find((m) =>
-      m.content?.includes("Plan File Info"),
+      extractText(m.content).includes("Plan File Info"),
     );
     expect(planMessage).toBeDefined();
-    expect(planMessage!.content).toContain(
+    expect(extractText(planMessage!.content)).toContain(
       "Plan mode is active. The user indicated that they do not want you to execute yet",
     );
-    expect(planMessage!.content).toContain("A plan file already exists");
-    expect(planMessage!.content).toContain("using the Edit tool");
+    expect(extractText(planMessage!.content)).toContain(
+      "A plan file already exists",
+    );
+    expect(extractText(planMessage!.content)).toContain("using the Edit tool");
   });
 
-  it("should not add plan reminder on second call (one-time)", async () => {
+  it("should persist plan reminder across calls (one-time injection)", async () => {
     mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
     vi.mocked(existsSync).mockReturnValue(false);
-    vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
     // First call: reminder is pending
     mockPlanManager.isPlanEntryReminderPending.mockReturnValue(true);
     await aiManager.sendAIMessage();
 
     // consumePlanEntryReminder was called, making pending = false
-    expect(mockPlanManager.consumePlanEntryReminder).toHaveBeenCalled();
+    expect(mockPlanManager.consumePlanEntryReminder).toHaveBeenCalledTimes(1);
+
+    // First call: plan message is present
+    const firstCallOptions = vi.mocked(callAgent).mock.calls[0][0];
+    const firstUserMessages = (
+      firstCallOptions.messages as Array<{ role: string; content: unknown }>
+    ).filter((m) => m.role === "user");
+    const firstPlanMessage = firstUserMessages.find((m) =>
+      extractText(m.content).includes("Plan mode is active"),
+    );
+    expect(firstPlanMessage).toBeDefined();
 
     // Second call: reminder consumed, no longer pending
     mockPlanManager.isPlanEntryReminderPending.mockReturnValue(false);
     await aiManager.sendAIMessage();
 
-    const callOptions = vi.mocked(callAgent).mock.calls[1][0];
-    const userMessages = (
-      callOptions.messages as Array<{ role: string; content: string }>
+    // consumePlanEntryReminder should NOT be called again
+    expect(mockPlanManager.consumePlanEntryReminder).toHaveBeenCalledTimes(1);
+
+    // Second call: plan message is STILL present (persistent in messageManager)
+    const secondCallOptions = vi.mocked(callAgent).mock.calls[1][0];
+    const secondUserMessages = (
+      secondCallOptions.messages as Array<{ role: string; content: unknown }>
     ).filter((m) => m.role === "user");
-    const planMessage = userMessages.find((m) =>
-      m.content?.includes("Plan mode is active"),
+    const secondPlanMessage = secondUserMessages.find((m) =>
+      extractText(m.content).includes("Plan mode is active"),
     );
-    expect(planMessage).toBeUndefined();
+    expect(secondPlanMessage).toBeDefined();
   });
 
   it("should add re-entry reminder when re-entering plan mode", async () => {
     mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
     mockPermissionManager.hasExitedPlanModeInSession.mockReturnValue(true);
     vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(fs.access).mockResolvedValue(undefined);
     mockPlanManager.isPlanEntryReminderPending.mockReturnValue(true);
 
     await aiManager.sendAIMessage();
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
     const userMessages = (
-      callOptions.messages as Array<{ role: string; content: string }>
+      callOptions.messages as Array<{ role: string; content: unknown }>
     ).filter((m) => m.role === "user");
     const planMessage = userMessages.find((m) =>
-      m.content?.includes("Re-entering Plan Mode"),
+      extractText(m.content).includes("Re-entering Plan Mode"),
     );
     expect(planMessage).toBeDefined();
-    expect(planMessage!.content).toContain("returning to plan mode");
+    expect(extractText(planMessage!.content)).toContain(
+      "returning to plan mode",
+    );
+  });
+
+  it("should re-add plan mode reminder after compaction", async () => {
+    mockPermissionManager.getCurrentEffectiveMode.mockReturnValue("plan");
+    vi.mocked(existsSync).mockReturnValue(true);
+
+    // Need messages to compact (compactConversation skips if empty)
+    mockMessages.push({
+      id: "existing",
+      role: "user",
+      blocks: [{ type: "text", content: "hello" }],
+      timestamp: new Date().toISOString(),
+    } as Message);
+
+    await aiManager.compactConversation();
+
+    // After compaction, a plan mode meta message should have been added
+    const addUserMessageCalls = vi.mocked(mockMessageManager.addUserMessage)
+      .mock.calls;
+    const planMetaCall = addUserMessageCalls.find((call) =>
+      call[0]?.content?.includes("Plan mode is active"),
+    );
+    expect(planMetaCall).toBeDefined();
+    expect(planMetaCall![0].isMeta).toBe(true);
   });
 });
