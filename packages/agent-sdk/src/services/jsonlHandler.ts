@@ -229,19 +229,7 @@ export class JsonlHandler {
     // Extract filename from path
     const filename = filePath.split("/").pop() || "";
 
-    // New timestamp-prefixed format
-    const newSubagentMatch = filename.match(
-      /^subagent-(\d{14}-[0-9a-f]{8})\.jsonl$/,
-    );
-    if (newSubagentMatch) {
-      return { sessionId: newSubagentMatch[1], sessionType: "subagent" };
-    }
-    const newMainMatch = filename.match(/^(\d{14}-[0-9a-f]{8})\.jsonl$/);
-    if (newMainMatch) {
-      return { sessionId: newMainMatch[1], sessionType: "main" };
-    }
-
-    // Old UUID format (backward compat)
+    // Check if it's a subagent session
     const subagentMatch = filename.match(
       /^subagent-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
     );
@@ -252,6 +240,7 @@ export class JsonlHandler {
       };
     }
 
+    // Check if it's a main session
     const mainMatch = filename.match(
       /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
     );
@@ -271,26 +260,18 @@ export class JsonlHandler {
    * @returns True if valid, false otherwise
    */
   isValidSessionFilename(filename: string): boolean {
-    // New timestamp-prefixed format patterns
-    const newFormatPattern = /^(\d{14}-[0-9a-f]{8})\.jsonl$/;
-    const newSubagentPattern = /^subagent-(\d{14}-[0-9a-f]{8})\.jsonl$/;
-    // Old UUID format patterns (backward compat)
+    // UUID validation patterns
     const uuidPattern =
       /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
     const subagentPattern =
       /^subagent-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
 
-    return (
-      newFormatPattern.test(filename) ||
-      newSubagentPattern.test(filename) ||
-      uuidPattern.test(filename) ||
-      subagentPattern.test(filename)
-    );
+    return uuidPattern.test(filename) || subagentPattern.test(filename);
   }
 
   /**
    * Generate simple filename for sessions
-   * @param sessionId - Session identifier (timestamp-prefixed or legacy UUID format)
+   * @param sessionId - UUID session identifier
    * @param sessionType - Type of session ("main" or "subagent")
    * @returns Generated filename
    */
@@ -298,11 +279,10 @@ export class JsonlHandler {
     sessionId: string,
     sessionType: "main" | "subagent",
   ): string {
-    // Validate sessionId is either new timestamp-prefixed format or legacy UUID
-    const newFormatPattern = /^\d{14}-[0-9a-f]{8}$/;
+    // Validate sessionId is a valid UUID
     const uuidPattern =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-    if (!newFormatPattern.test(sessionId) && !uuidPattern.test(sessionId)) {
+    if (!uuidPattern.test(sessionId)) {
       throw new Error(`Invalid session ID format: ${sessionId}`);
     }
 

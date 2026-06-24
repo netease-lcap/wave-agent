@@ -224,7 +224,7 @@ describe("Subagent Session Tests", () => {
     describe("generateSubagentFilename function (to be implemented)", () => {
       it("should generate subagent filename with correct prefix", () => {
         // This test validates expected functionality that should be implemented
-        const sessionId = "20260527143025-a1b2c3d4";
+        const sessionId = "12345678-1234-1234-1234-123456789abc";
 
         // Mock the expected generateSubagentFilename function call
         const expectedResult = `subagent-${sessionId}.jsonl`;
@@ -238,8 +238,8 @@ describe("Subagent Session Tests", () => {
       });
 
       it("should generate unique subagent filenames for different session IDs", () => {
-        const sessionId1 = "20260527143025-aaaaaaaa";
-        const sessionId2 = "20260527143026-bbbbbbbb";
+        const sessionId1 = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        const sessionId2 = "11111111-2222-3333-4444-555555555555";
 
         const result1 = mockJsonlHandler.generateSessionFilename(
           sessionId1,
@@ -256,19 +256,20 @@ describe("Subagent Session Tests", () => {
       });
 
       it("should validate session ID format for subagent filename generation", () => {
-        // Test with valid new format session ID
+        // Test with valid UUID
         expect(() => {
           mockJsonlHandler.generateSessionFilename(
-            "20260527143025-a1b2c3d4",
+            "12345678-1234-1234-1234-123456789abc",
             "subagent",
           );
         }).not.toThrow();
 
-        // Mock implementation should validate timestamp-prefixed format
+        // Mock implementation should validate UUID format
         mockJsonlHandler.generateSessionFilename.mockImplementation(
           (sessionId: string, sessionType: "main" | "subagent" = "main") => {
-            const newFormatPattern = /^\d{14}-[0-9a-f]{8}$/;
-            if (!newFormatPattern.test(sessionId)) {
+            const uuidPattern =
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+            if (!uuidPattern.test(sessionId)) {
               throw new Error(`Invalid session ID format: ${sessionId}`);
             }
             return sessionType === "main"
@@ -277,10 +278,10 @@ describe("Subagent Session Tests", () => {
           },
         );
 
-        // Test with invalid session IDs
+        // Test with invalid UUIDs
         const invalidIds = [
           "invalid-id",
-          "12345678-1234-1234-1234", // Too short for both formats
+          "12345678-1234-1234-1234", // Too short
           "12345678-1234-1234-1234-123456789abcd", // Too long
           "",
         ];
@@ -315,7 +316,7 @@ describe("Subagent Session Tests", () => {
       });
 
       it("should distinguish subagent sessions from main sessions by filename", async () => {
-        const sessionId = "20260527143025-a1b2c3d4";
+        const sessionId = "87654321-4321-4321-4321-abcdef123456";
 
         // Test filename generation distinguishes session types
         const mainFilename = mockJsonlHandler.generateSessionFilename(
@@ -429,21 +430,17 @@ describe("Subagent Session Tests", () => {
 
       it("should support session filtering by type using filename patterns", () => {
         const sessionFiles = [
-          "20260527143025-a1b2c3d4.jsonl", // main (new format)
-          "subagent-20260527143025-a1b2c3d4.jsonl", // subagent (new format)
-          "20260101000000-deadbeef.jsonl", // main (new format)
-          "subagent-20260101000000-deadbeef.jsonl", // subagent (new format)
-          "12345678-1234-1234-1234-123456789abc.jsonl", // main (legacy UUID format)
-          "subagent-87654321-4321-4321-4321-abcdef123456.jsonl", // subagent (legacy UUID format)
+          "12345678-1234-1234-1234-123456789abc.jsonl", // main
+          "subagent-87654321-4321-4321-4321-abcdef123456.jsonl", // subagent
+          "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl", // main
+          "subagent-ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb.jsonl", // subagent
           "invalid-file.txt", // invalid
         ];
 
         // Filter sessions by type using filename patterns (no file reading)
         const mainSessionFiles = sessionFiles.filter((filename) => {
-          // Mock isValidSessionFilename behavior - both new and legacy formats
+          // Mock isValidSessionFilename behavior
           const validPatterns = [
-            /^\d{14}-[0-9a-f]{8}\.jsonl$/,
-            /^subagent-\d{14}-[0-9a-f]{8}\.jsonl$/,
             /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
             /^subagent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
           ];
@@ -455,15 +452,13 @@ describe("Subagent Session Tests", () => {
         });
 
         const subagentSessionFiles = sessionFiles.filter((filename) => {
-          const validSubagentPatterns = [
-            /^subagent-\d{14}-[0-9a-f]{8}\.jsonl$/,
-            /^subagent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
-          ];
-          return validSubagentPatterns.some((p) => p.test(filename));
+          const validSubagentPattern =
+            /^subagent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/;
+          return validSubagentPattern.test(filename);
         });
 
-        expect(mainSessionFiles).toHaveLength(3);
-        expect(subagentSessionFiles).toHaveLength(3);
+        expect(mainSessionFiles).toHaveLength(2);
+        expect(subagentSessionFiles).toHaveLength(2);
 
         // Verify correct categorization
         mainSessionFiles.forEach((filename) => {
@@ -505,8 +500,6 @@ describe("Subagent Session Tests", () => {
         mockJsonlHandler.isValidSessionFilename.mockImplementation(
           (filename: string) => {
             const validPatterns = [
-              /^\d{14}-[0-9a-f]{8}\.jsonl$/,
-              /^subagent-\d{14}-[0-9a-f]{8}\.jsonl$/,
               /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
               /^subagent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
             ];
@@ -557,19 +550,15 @@ describe("Subagent Session Tests", () => {
 
         // Filter using filename patterns (simulating efficient filtering)
         const mainSessions = sessionFiles.filter((filename) => {
-          const mainPatterns = [
-            /^\d{14}-[0-9a-f]{8}\.jsonl$/,
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
-          ];
-          return mainPatterns.some((pattern) => pattern.test(filename));
+          const mainPattern =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/;
+          return mainPattern.test(filename);
         });
 
         const subagentSessions = sessionFiles.filter((filename) => {
-          const subagentPatterns = [
-            /^subagent-\d{14}-[0-9a-f]{8}\.jsonl$/,
-            /^subagent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
-          ];
-          return subagentPatterns.some((pattern) => pattern.test(filename));
+          const subagentPattern =
+            /^subagent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/;
+          return subagentPattern.test(filename);
         });
 
         // Verify filtering worked correctly
@@ -596,9 +585,9 @@ describe("Subagent Session Tests", () => {
 
         // Create test session files
         const sessionFiles = [
-          "20260527143025-a1b2c3d4.jsonl", // main (new format)
-          "subagent-20260527143025-a1b2c3d4.jsonl", // subagent (new format)
-          "20260101000000-deadbeef.jsonl", // main (new format)
+          "12345678-1234-1234-1234-123456789abc.jsonl", // main
+          "subagent-87654321-4321-4321-4321-abcdef123456.jsonl", // subagent
+          "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl", // main
         ];
 
         vi.mocked(fs.readdir).mockResolvedValue(
@@ -615,8 +604,6 @@ describe("Subagent Session Tests", () => {
         const validSessions = sessionFiles
           .filter((filename) => {
             const validPatterns = [
-              /^\d{14}-[0-9a-f]{8}\.jsonl$/,
-              /^subagent-\d{14}-[0-9a-f]{8}\.jsonl$/,
               /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
               /^subagent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
             ];

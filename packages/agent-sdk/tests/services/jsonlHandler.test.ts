@@ -555,7 +555,7 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
   describe("Session creation without metadata header", () => {
     it("should create session file without metadata header", async () => {
       // Create session using the NEW simplified API
-      const sessionId = "20260527143025-a1b2c3d4";
+      const sessionId = "12345678-1234-1234-1234-123456789abc";
       const sessionType = "main";
       const filePath = `/test/sessions/${handler.generateSessionFilename(sessionId, sessionType)}`;
 
@@ -572,7 +572,7 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
     });
 
     it("should create session file that is initially empty and ready for messages", async () => {
-      const sessionId = "20260527143025-a1b2c3d4";
+      const sessionId = "12345678-1234-1234-1234-123456789abc";
       const filePath = `/test/sessions/${handler.generateSessionFilename(sessionId, "main")}`;
 
       await handler.createSession(filePath);
@@ -589,7 +589,7 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
     });
 
     it("should create subagent session file without metadata header", async () => {
-      const sessionId = "20260527143025-a1b2c3d4";
+      const sessionId = "87654321-4321-4321-4321-abcdef123456";
       const filePath = `/test/sessions/${handler.generateSessionFilename(sessionId, "subagent")}`;
 
       await handler.createSession(filePath);
@@ -602,7 +602,7 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
 
   describe("Session file contains only messages after creation", () => {
     it("should contain only messages after creation and adding messages", async () => {
-      const sessionId = "20260527143025-a1b2c3d4";
+      const sessionId = "11111111-2222-3333-4444-555555555555";
       const filePath = `/test/sessions/${handler.generateSessionFilename(sessionId, "main")}`;
 
       // Create session
@@ -675,7 +675,7 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
 
   describe("Error handling in new session creation", () => {
     it("should handle directory creation errors gracefully", async () => {
-      const sessionId = "20260527143025-a1b2c3d4";
+      const sessionId = "12345678-1234-1234-1234-123456789abc";
       const filePath = `/test/sessions/${handler.generateSessionFilename(sessionId, "main")}`;
 
       // Mock mkdir to fail with permission error
@@ -687,7 +687,7 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
     });
 
     it("should handle file creation errors gracefully", async () => {
-      const sessionId = "20260527143025-a1b2c3d4";
+      const sessionId = "12345678-1234-1234-1234-123456789abc";
       const filePath = `/test/sessions/${handler.generateSessionFilename(sessionId, "main")}`;
 
       // Mock writeFile to fail
@@ -743,28 +743,6 @@ describe("JsonlHandler filename utilities", () => {
           sessionType: "main",
         });
       });
-
-      it("should parse new timestamp-prefixed main session filename", () => {
-        const result = handler.parseSessionFilename(
-          "/path/to/20260527143025-a1b2c3d4.jsonl",
-        );
-
-        expect(result).toEqual({
-          sessionId: "20260527143025-a1b2c3d4",
-          sessionType: "main",
-        });
-      });
-
-      it("should parse new timestamp-prefixed main session from just filename", () => {
-        const result = handler.parseSessionFilename(
-          "20260101000000-deadbeef.jsonl",
-        );
-
-        expect(result).toEqual({
-          sessionId: "20260101000000-deadbeef",
-          sessionType: "main",
-        });
-      });
     });
 
     describe("Subagent session filename parsing", () => {
@@ -797,28 +775,6 @@ describe("JsonlHandler filename utilities", () => {
 
         expect(result).toEqual({
           sessionId: "11111111-2222-3333-4444-555555555555",
-          sessionType: "subagent",
-        });
-      });
-
-      it("should parse new timestamp-prefixed subagent session filename", () => {
-        const result = handler.parseSessionFilename(
-          "/path/to/subagent-20260527143025-a1b2c3d4.jsonl",
-        );
-
-        expect(result).toEqual({
-          sessionId: "20260527143025-a1b2c3d4",
-          sessionType: "subagent",
-        });
-      });
-
-      it("should parse new timestamp-prefixed subagent session from just filename", () => {
-        const result = handler.parseSessionFilename(
-          "subagent-20260101000000-deadbeef.jsonl",
-        );
-
-        expect(result).toEqual({
-          sessionId: "20260101000000-deadbeef",
           sessionType: "subagent",
         });
       });
@@ -866,9 +822,6 @@ describe("JsonlHandler filename utilities", () => {
           "abcdef12-3456-789a-bcde-f123456789ab.jsonl",
           "11111111-2222-3333-4444-555555555555.jsonl",
           "ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb.jsonl",
-          // New timestamp-prefixed format
-          "20260527143025-a1b2c3d4.jsonl",
-          "20260101000000-deadbeef.jsonl",
         ];
 
         validMainFilenames.forEach((filename) => {
@@ -882,9 +835,6 @@ describe("JsonlHandler filename utilities", () => {
           "subagent-abcdef12-3456-789a-bcde-f123456789ab.jsonl",
           "subagent-11111111-2222-3333-4444-555555555555.jsonl",
           "subagent-ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb.jsonl",
-          // New timestamp-prefixed format
-          "subagent-20260527143025-a1b2c3d4.jsonl",
-          "subagent-20260101000000-deadbeef.jsonl",
         ];
 
         validSubagentFilenames.forEach((filename) => {
@@ -907,21 +857,18 @@ describe("JsonlHandler filename utilities", () => {
         });
       });
 
-      it("should reject filenames with invalid session ID formats", () => {
-        const invalidFilenames = [
+      it("should reject filenames with invalid UUID formats", () => {
+        const invalidUuidFilenames = [
           "invalid-uuid.jsonl",
-          "12345678-1234-1234-1234.jsonl", // Too short for UUID
-          "12345678-1234-1234-1234-123456789abcd.jsonl", // Too long for UUID
+          "12345678-1234-1234-1234.jsonl", // Too short
+          "12345678-1234-1234-1234-123456789abcd.jsonl", // Too long
           "12345678-1234-1234-1234-123456789abg.jsonl", // Invalid hex char
           "12345678123412341234123456789abc.jsonl", // Missing hyphens
           "subagent-invalid-uuid.jsonl",
           "subagent-12345678-1234-1234-1234.jsonl", // Too short
-          "20260527-a1b2c3d4.jsonl", // Not enough timestamp digits
-          "20260527143025-a1b2c3d4e5f6.jsonl", // Too many hex chars
-          "subagent-2026052-a1b2c3d4.jsonl", // Not enough timestamp digits
         ];
 
-        invalidFilenames.forEach((filename) => {
+        invalidUuidFilenames.forEach((filename) => {
           expect(handler.isValidSessionFilename(filename)).toBe(false);
         });
       });
@@ -960,9 +907,6 @@ describe("JsonlHandler filename utilities", () => {
           "12345678-1234-1234-1234-123456789abc",
           "abcdef12-3456-789a-bcde-f123456789ab",
           "11111111-2222-3333-4444-555555555555",
-          // New timestamp-prefixed format
-          "20260527143025-a1b2c3d4",
-          "20260101000000-deadbeef",
         ];
 
         sessionIds.forEach((sessionId) => {
@@ -993,7 +937,7 @@ describe("JsonlHandler filename utilities", () => {
 
   describe("generateSessionFilename() - TDD Tests for User Story 1", () => {
     describe("Main session filename generation", () => {
-      it("should generate correct main session filename format (UUID)", () => {
+      it("should generate correct main session filename format", () => {
         const sessionId = "12345678-1234-1234-1234-123456789abc";
         const result = handler.generateSessionFilename(sessionId, "main");
 
@@ -1002,14 +946,6 @@ describe("JsonlHandler filename utilities", () => {
         expect(result).toMatch(
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
         );
-      });
-
-      it("should generate correct main session filename format (new timestamp-prefixed)", () => {
-        const sessionId = "20260527143025-a1b2c3d4";
-        const result = handler.generateSessionFilename(sessionId, "main");
-
-        expect(result).toBe("20260527143025-a1b2c3d4.jsonl");
-        expect(result).toMatch(/^\d{14}-[0-9a-f]{8}\.jsonl$/);
       });
 
       it("should generate unique filenames for different session IDs", () => {
@@ -1025,12 +961,7 @@ describe("JsonlHandler filename utilities", () => {
       });
 
       it("should validate session ID format for main sessions", () => {
-        // Valid new timestamp-prefixed formats should work
-        expect(() => {
-          handler.generateSessionFilename("20260527143025-a1b2c3d4", "main");
-        }).not.toThrow();
-
-        // Valid legacy UUID formats should also work
+        // Valid UUID formats should work
         expect(() => {
           handler.generateSessionFilename(
             "12345678-1234-1234-1234-123456789abc",
@@ -1054,7 +985,7 @@ describe("JsonlHandler filename utilities", () => {
     });
 
     describe("Subagent session filename generation", () => {
-      it("should generate correct subagent session filename format (UUID)", () => {
+      it("should generate correct subagent session filename format", () => {
         const sessionId = "87654321-4321-4321-4321-abcdef123456";
         const result = handler.generateSessionFilename(sessionId, "subagent");
 
@@ -1065,14 +996,6 @@ describe("JsonlHandler filename utilities", () => {
         expect(result).toMatch(
           /^subagent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/,
         );
-      });
-
-      it("should generate correct subagent session filename format (new timestamp-prefixed)", () => {
-        const sessionId = "20260527143025-a1b2c3d4";
-        const result = handler.generateSessionFilename(sessionId, "subagent");
-
-        expect(result).toBe("subagent-20260527143025-a1b2c3d4.jsonl");
-        expect(result).toMatch(/^subagent-\d{14}-[0-9a-f]{8}\.jsonl$/);
       });
 
       it("should generate unique filenames for different subagent session IDs", () => {
@@ -1092,15 +1015,7 @@ describe("JsonlHandler filename utilities", () => {
       });
 
       it("should validate session ID format for subagent sessions", () => {
-        // Valid new timestamp-prefixed formats should work
-        expect(() => {
-          handler.generateSessionFilename(
-            "20260527143025-a1b2c3d4",
-            "subagent",
-          );
-        }).not.toThrow();
-
-        // Valid legacy UUID formats should also work
+        // Valid UUID formats should work
         expect(() => {
           handler.generateSessionFilename(
             "12345678-1234-1234-1234-123456789abc",
@@ -1117,7 +1032,7 @@ describe("JsonlHandler filename utilities", () => {
 
     describe("Session type differentiation", () => {
       it("should generate different filenames for main vs subagent with same session ID", () => {
-        const sessionId = "20260527143025-a1b2c3d4";
+        const sessionId = "12345678-1234-1234-1234-123456789abc";
 
         const mainFilename = handler.generateSessionFilename(sessionId, "main");
         const subagentFilename = handler.generateSessionFilename(
@@ -1125,13 +1040,15 @@ describe("JsonlHandler filename utilities", () => {
           "subagent",
         );
 
-        expect(mainFilename).toBe("20260527143025-a1b2c3d4.jsonl");
-        expect(subagentFilename).toBe("subagent-20260527143025-a1b2c3d4.jsonl");
+        expect(mainFilename).toBe("12345678-1234-1234-1234-123456789abc.jsonl");
+        expect(subagentFilename).toBe(
+          "subagent-12345678-1234-1234-1234-123456789abc.jsonl",
+        );
         expect(mainFilename).not.toBe(subagentFilename);
       });
 
       it("should enable session type identification from filename alone", () => {
-        const sessionId = "20260527143025-99999999";
+        const sessionId = "99999999-9999-9999-9999-999999999999";
 
         const mainFilename = handler.generateSessionFilename(sessionId, "main");
         const subagentFilename = handler.generateSessionFilename(
@@ -1154,15 +1071,7 @@ describe("JsonlHandler filename utilities", () => {
     });
 
     describe("Edge cases and validation", () => {
-      it("should handle mixed case in new format (lowercase hex)", () => {
-        // New format uses lowercase hex in the 8-char suffix
-        const sessionId = "20260527143025-a1b2c3d4";
-
-        const result = handler.generateSessionFilename(sessionId, "main");
-        expect(result).toBe("20260527143025-a1b2c3d4.jsonl");
-      });
-
-      it("should handle mixed case UUID properly (legacy format)", () => {
+      it("should handle mixed case UUID properly", () => {
         const mixedCaseId = "AbCdEf12-3456-789A-BcDe-F123456789AB";
         const lowercaseId = mixedCaseId.toLowerCase();
 
@@ -1171,16 +1080,13 @@ describe("JsonlHandler filename utilities", () => {
         expect(result).toBe("abcdef12-3456-789a-bcde-f123456789ab.jsonl");
       });
 
-      it("should reject non-session-ID strings", () => {
+      it("should reject non-UUID strings", () => {
         const invalidIds = [
-          "not-a-session-id",
-          "12345678-1234-1234-1234-123456789abg", // Invalid hex character (UUID)
-          "12345678-1234-1234-1234-123456789ab", // Too short (UUID)
-          "12345678-1234-1234-1234-123456789abcd", // Too long (UUID)
-          "12345678123412341234123456789abc", // Missing hyphens (UUID)
-          "20260527-a1b2c3d4", // Not enough timestamp digits
-          "20260527143025-a1b2c3d4e5f6", // Too many hex chars
-          "20260527143025-ABCDEF12", // Uppercase hex not allowed in new format
+          "not-a-uuid",
+          "12345678-1234-1234-1234-123456789abg", // Invalid hex character
+          "12345678-1234-1234-1234-123456789ab", // Too short
+          "12345678-1234-1234-1234-123456789abcd", // Too long
+          "12345678123412341234123456789abc", // Missing hyphens
         ];
 
         invalidIds.forEach((invalidId) => {
@@ -1195,29 +1101,35 @@ describe("JsonlHandler filename utilities", () => {
   describe("TDD Tests for User Story 2: Subagent Filename Generation - T019", () => {
     describe("Subagent filename generation tests", () => {
       it("should generate subagent filename with correct prefix format", () => {
-        const sessionId = "20260527143025-a1b2c3d4";
+        const sessionId = "12345678-1234-1234-1234-123456789abc";
         const result = handler.generateSessionFilename(sessionId, "subagent");
 
         // Should follow pattern: subagent-{sessionId}.jsonl
-        expect(result).toBe("subagent-20260527143025-a1b2c3d4.jsonl");
+        expect(result).toBe(
+          "subagent-12345678-1234-1234-1234-123456789abc.jsonl",
+        );
         expect(result.startsWith("subagent-")).toBe(true);
         expect(result.endsWith(".jsonl")).toBe(true);
       });
 
       it("should generate different subagent filenames for different session IDs", () => {
-        const sessionId1 = "20260527143025-aaaaaaaa";
-        const sessionId2 = "20260527143026-bbbbbbbb";
+        const sessionId1 = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        const sessionId2 = "11111111-2222-3333-4444-555555555555";
 
         const result1 = handler.generateSessionFilename(sessionId1, "subagent");
         const result2 = handler.generateSessionFilename(sessionId2, "subagent");
 
-        expect(result1).toBe("subagent-20260527143025-aaaaaaaa.jsonl");
-        expect(result2).toBe("subagent-20260527143026-bbbbbbbb.jsonl");
+        expect(result1).toBe(
+          "subagent-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl",
+        );
+        expect(result2).toBe(
+          "subagent-11111111-2222-3333-4444-555555555555.jsonl",
+        );
         expect(result1).not.toBe(result2);
       });
 
       it("should maintain consistency between main and subagent filename generation", () => {
-        const sessionId = "20260527143025-a1b2c3d4";
+        const sessionId = "87654321-4321-4321-4321-abcdef123456";
 
         const mainFilename = handler.generateSessionFilename(sessionId, "main");
         const subagentFilename = handler.generateSessionFilename(
@@ -1234,16 +1146,8 @@ describe("JsonlHandler filename utilities", () => {
         expect(handler.isValidSessionFilename(subagentFilename)).toBe(true);
       });
 
-      it("should validate session ID format for subagent session generation", () => {
-        // Valid new timestamp-prefixed format should work
-        expect(() => {
-          handler.generateSessionFilename(
-            "20260527143025-a1b2c3d4",
-            "subagent",
-          );
-        }).not.toThrow();
-
-        // Valid legacy UUID should also work
+      it("should validate UUID format for subagent session generation", () => {
+        // Valid UUID should work
         expect(() => {
           handler.generateSessionFilename(
             "12345678-1234-1234-1234-123456789abc",
@@ -1251,11 +1155,11 @@ describe("JsonlHandler filename utilities", () => {
           );
         }).not.toThrow();
 
-        // Invalid IDs should throw
+        // Invalid UUIDs should throw
         const invalidIds = [
           "invalid-subagent-id",
-          "12345678-1234-1234-1234", // Too short for UUID
-          "12345678-1234-1234-1234-123456789abcd", // Too long for UUID
+          "12345678-1234-1234-1234", // Too short
+          "12345678-1234-1234-1234-123456789abcd", // Too long
           "12345678123412341234123456789abc", // Missing hyphens
           "",
         ];
@@ -1272,23 +1176,25 @@ describe("JsonlHandler filename utilities", () => {
       it("should parse subagent filename correctly", () => {
         const testCases = [
           {
-            filePath: "/path/to/subagent-20260527143025-a1b2c3d4.jsonl",
+            filePath:
+              "/path/to/subagent-12345678-1234-1234-1234-123456789abc.jsonl",
             expected: {
-              sessionId: "20260527143025-a1b2c3d4",
+              sessionId: "12345678-1234-1234-1234-123456789abc",
               sessionType: "subagent" as const,
             },
           },
           {
-            filePath: "sessions/subagent-20260101000000-deadbeef.jsonl",
+            filePath:
+              "sessions/subagent-87654321-4321-4321-4321-abcdef123456.jsonl",
             expected: {
-              sessionId: "20260101000000-deadbeef",
+              sessionId: "87654321-4321-4321-4321-abcdef123456",
               sessionType: "subagent" as const,
             },
           },
           {
-            filePath: "subagent-20260527143025-ffffffff.jsonl",
+            filePath: "subagent-ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb.jsonl",
             expected: {
-              sessionId: "20260527143025-ffffffff",
+              sessionId: "ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb",
               sessionType: "subagent" as const,
             },
           },
@@ -1301,7 +1207,7 @@ describe("JsonlHandler filename utilities", () => {
       });
 
       it("should parse main vs subagent filename formats correctly", () => {
-        const sessionId = "20260527143025-a1b2c3d4";
+        const sessionId = "12345678-1234-1234-1234-123456789abc";
 
         const mainResult = handler.parseSessionFilename(`${sessionId}.jsonl`);
         const subagentResult = handler.parseSessionFilename(
@@ -1322,9 +1228,9 @@ describe("JsonlHandler filename utilities", () => {
       it("should handle parsing edge cases and invalid formats", () => {
         const invalidFilenames = [
           "agent-12345678-1234-1234-1234-123456789abc.jsonl", // Wrong prefix
-          "subagent-invalid-uuid.jsonl", // Invalid session ID
-          "subagent-12345678-1234-1234-1234.jsonl", // Too short for both formats
-          "subagent-.jsonl", // Empty session ID
+          "subagent-invalid-uuid.jsonl", // Invalid UUID
+          "subagent-12345678-1234-1234-1234.jsonl", // Too short UUID
+          "subagent-.jsonl", // Empty UUID
           "subagent-12345678-1234-1234-1234-123456789abc.txt", // Wrong extension
         ];
 
@@ -1343,9 +1249,6 @@ describe("JsonlHandler filename utilities", () => {
           "subagent-87654321-4321-4321-4321-abcdef123456.jsonl",
           "subagent-ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb.jsonl",
           "subagent-00000000-0000-0000-0000-000000000000.jsonl",
-          // New timestamp-prefixed format
-          "subagent-20260527143025-a1b2c3d4.jsonl",
-          "subagent-20260101000000-deadbeef.jsonl",
         ];
 
         validSubagentFilenames.forEach((filename) => {
@@ -1357,15 +1260,13 @@ describe("JsonlHandler filename utilities", () => {
         const invalidSubagentFilenames = [
           "agent-12345678-1234-1234-1234-123456789abc.jsonl", // Wrong prefix
           "sub-12345678-1234-1234-1234-123456789abc.jsonl", // Wrong prefix
-          "subagent-invalid-uuid.jsonl", // Invalid session ID
-          "subagent-12345678-1234-1234-1234.jsonl", // Too short for both formats
+          "subagent-invalid-uuid.jsonl", // Invalid UUID
+          "subagent-12345678-1234-1234-1234.jsonl", // UUID too short
           "subagent-12345678-1234-1234-1234-123456789abcd.jsonl", // UUID too long
           "subagent-12345678-1234-1234-1234-123456789abg.jsonl", // Invalid hex char
           "subagent-12345678123412341234123456789abc.jsonl", // Missing hyphens
           "subagent-12345678-1234-1234-1234-123456789abc.txt", // Wrong extension
           "subagent-12345678-1234-1234-1234-123456789abc", // Missing extension
-          "subagent-20260527-a1b2c3d4.jsonl", // Not enough timestamp digits
-          "subagent-20260527143025-a1b2c3d4e5f6.jsonl", // Too many hex chars
         ];
 
         invalidSubagentFilenames.forEach((filename) => {
@@ -1379,9 +1280,6 @@ describe("JsonlHandler filename utilities", () => {
           "87654321-4321-4321-4321-abcdef123456",
           "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
           "ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb",
-          // New timestamp-prefixed format
-          "20260527143025-a1b2c3d4",
-          "20260101000000-deadbeef",
         ];
 
         sessionIds.forEach((sessionId) => {
@@ -1406,24 +1304,15 @@ describe("JsonlHandler filename utilities", () => {
       it("should identify session type from filename pattern alone", () => {
         const testFilenames = [
           {
-            filename: "20260527143025-a1b2c3d4.jsonl",
-            expectedType: "main",
-          },
-          {
-            filename: "subagent-20260527143025-a1b2c3d4.jsonl",
-            expectedType: "subagent",
-          },
-          {
-            filename: "20260101000000-deadbeef.jsonl",
-            expectedType: "main",
-          },
-          {
-            filename: "subagent-20260101000000-deadbeef.jsonl",
-            expectedType: "subagent",
-          },
-          // Legacy UUID format (backward compat)
-          {
             filename: "12345678-1234-1234-1234-123456789abc.jsonl",
+            expectedType: "main",
+          },
+          {
+            filename: "subagent-12345678-1234-1234-1234-123456789abc.jsonl",
+            expectedType: "subagent",
+          },
+          {
+            filename: "87654321-4321-4321-4321-abcdef123456.jsonl",
             expectedType: "main",
           },
           {
@@ -1446,14 +1335,11 @@ describe("JsonlHandler filename utilities", () => {
 
       it("should enable efficient session filtering by filename patterns", () => {
         const mixedSessionFiles = [
-          "20260527143025-a1b2c3d4.jsonl", // main (new format)
-          "subagent-20260527143025-a1b2c3d4.jsonl", // subagent (new format)
-          "20260101000000-deadbeef.jsonl", // main (new format)
-          "subagent-20260101000000-deadbeef.jsonl", // subagent (new format)
-          "20260527143026-11111111.jsonl", // main (new format)
-          // Legacy UUID format (backward compat)
           "12345678-1234-1234-1234-123456789abc.jsonl", // main
           "subagent-87654321-4321-4321-4321-abcdef123456.jsonl", // subagent
+          "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl", // main
+          "subagent-ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb.jsonl", // subagent
+          "11111111-2222-3333-4444-555555555555.jsonl", // main
         ];
 
         // Filter main sessions using filename pattern (no file reading needed)
@@ -1470,8 +1356,8 @@ describe("JsonlHandler filename utilities", () => {
             filename.startsWith("subagent-"),
         );
 
-        expect(mainSessions).toHaveLength(4);
-        expect(subagentSessions).toHaveLength(3);
+        expect(mainSessions).toHaveLength(3);
+        expect(subagentSessions).toHaveLength(2);
 
         // Verify correct categorization
         mainSessions.forEach((filename) => {
@@ -1489,15 +1375,12 @@ describe("JsonlHandler filename utilities", () => {
 
       it("should support session discovery without content inspection", () => {
         const sessionFiles = [
-          "20260527143025-a1b2c3d4.jsonl",
-          "subagent-20260527143025-a1b2c3d4.jsonl",
-          "invalid-filename.jsonl",
-          "not-a-session.txt",
-          "20260101000000-deadbeef.jsonl",
-          "subagent-20260101000000-deadbeef.jsonl",
-          // Legacy UUID format
           "12345678-1234-1234-1234-123456789abc.jsonl",
           "subagent-87654321-4321-4321-4321-abcdef123456.jsonl",
+          "invalid-filename.jsonl",
+          "not-a-session.txt",
+          "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl",
+          "subagent-ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb.jsonl",
         ];
 
         const discoveredSessions = sessionFiles
@@ -1511,10 +1394,10 @@ describe("JsonlHandler filename utilities", () => {
           })
           .filter((session) => session !== null);
 
-        // Should discover 6 valid sessions
-        expect(discoveredSessions).toHaveLength(6);
+        // Should discover 4 valid sessions
+        expect(discoveredSessions).toHaveLength(4);
 
-        // Should have 3 main and 3 subagent sessions
+        // Should have 2 main and 2 subagent sessions
         const mainCount = discoveredSessions.filter(
           (s) => s!.sessionType === "main",
         ).length;
@@ -1522,8 +1405,8 @@ describe("JsonlHandler filename utilities", () => {
           (s) => s!.sessionType === "subagent",
         ).length;
 
-        expect(mainCount).toBe(3);
-        expect(subagentCount).toBe(3);
+        expect(mainCount).toBe(2);
+        expect(subagentCount).toBe(2);
       });
     });
   });
