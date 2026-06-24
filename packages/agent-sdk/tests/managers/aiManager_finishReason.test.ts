@@ -74,6 +74,7 @@ describe("AIManager finish reason", () => {
       execute: vi
         .fn()
         .mockResolvedValue({ success: true, content: "test result" }),
+      isConcurrencySafe: vi.fn().mockReturnValue(true),
     } as unknown as ToolManager;
 
     // Create mock Logger

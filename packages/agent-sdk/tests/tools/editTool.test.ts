@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { editTool } from "@/tools/editTool.js";
 import { TaskManager } from "@/services/taskManager.js";
-import { readFile, writeFile } from "fs/promises";
+import { readFile, writeFile, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 import { Container } from "@/utils/container.js";
 
@@ -533,5 +533,113 @@ describe("editTool", () => {
     );
 
     expect(result.success).toBe(true);
+  });
+
+  it("should fail with staleness error when file modified since last read", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+
+    // readFileState shows mtime=1000, but current file has mtime=2000
+    const readFileState = new Map<string, { mtime: number; hash: string }>();
+    readFileState.set("/test/file.js", { mtime: 1000, hash: "abc" });
+
+    vi.mocked(stat).mockResolvedValue({
+      mtime: { getTime: () => 2000 } as Date,
+    } as unknown as Awaited<ReturnType<typeof stat>>);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      { ...mockContext, readFileState },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("unexpectedly modified");
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("should pass staleness check when file mtime matches readFileState", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const readFileState = new Map<string, { mtime: number; hash: string }>();
+    readFileState.set("/test/file.js", { mtime: 1000, hash: "abc" });
+
+    // First stat: staleness check (mtime matches)
+    // Second stat: post-write state update
+    vi.mocked(stat)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 1000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 2000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      { ...mockContext, readFileState },
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("should update readFileState after successful edit", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const readFileState = new Map<string, { mtime: number; hash: string }>();
+    readFileState.set("/test/file.js", { mtime: 1000, hash: "abc" });
+
+    // First stat: staleness check (mtime matches readFileState)
+    // Second stat: post-write state update (new mtime)
+    vi.mocked(stat)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 1000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 2000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      { ...mockContext, readFileState },
+    );
+
+    expect(result.success).toBe(true);
+    const updated = readFileState.get("/test/file.js");
+    expect(updated).toBeDefined();
+    expect(updated?.mtime).toBe(2000);
+  });
+
+  it("should skip staleness check when readFileState is not provided", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    // No readFileState in context — staleness check is skipped entirely
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(stat).not.toHaveBeenCalled();
   });
 });

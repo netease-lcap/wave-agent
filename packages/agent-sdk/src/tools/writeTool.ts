@@ -1,4 +1,5 @@
-import { readFile, writeFile, mkdir } from "fs/promises";
+import { readFile, writeFile, mkdir, stat } from "fs/promises";
+import { createHash } from "crypto";
 import { dirname } from "path";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
@@ -10,6 +11,7 @@ import { READ_TOOL_NAME } from "../constants/tools.js";
  */
 export const writeTool: ToolPlugin = {
   name: "Write",
+  isConcurrencySafe: false,
   config: {
     type: "function",
     function: {
@@ -162,6 +164,16 @@ Usage:
           content: "",
           error: `Failed to write file: ${writeError instanceof Error ? writeError.message : String(writeError)}`,
         };
+      }
+
+      // Update readFileState so subsequent serialized edits pass staleness check
+      if (context.readFileState) {
+        const newStats = await stat(resolvedPath);
+        const hash = createHash("sha256").update(content).digest("hex");
+        context.readFileState.set(resolvedPath, {
+          mtime: newStats.mtime.getTime(),
+          hash,
+        });
       }
 
       const shortResult = isExistingFile ? "File overwritten" : "File created";

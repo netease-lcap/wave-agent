@@ -12,6 +12,7 @@ interface MockToolManager {
   setPermissionMode: Mock<ToolManager["setPermissionMode"]>;
   initializeBuiltInTools: Mock<ToolManager["initializeBuiltInTools"]>;
   getPermissionManager: Mock<ToolManager["getPermissionManager"]>;
+  isConcurrencySafe: Mock<ToolManager["isConcurrencySafe"]>;
   instance: ToolManager;
 }
 
@@ -45,6 +46,7 @@ export const createMockToolManager = (): MockToolManager => {
   const setPermissionMode = vi.fn();
   const initializeBuiltInTools = vi.fn();
   const getPermissionManager = vi.fn();
+  const isConcurrencySafe = vi.fn(() => true);
 
   return {
     // Individual mocks for control and assertions
@@ -56,6 +58,7 @@ export const createMockToolManager = (): MockToolManager => {
     setPermissionMode,
     initializeBuiltInTools,
     getPermissionManager,
+    isConcurrencySafe,
 
     // The object that behaves like a ToolManager instance
     instance: {
@@ -67,6 +70,7 @@ export const createMockToolManager = (): MockToolManager => {
       setPermissionMode,
       initializeBuiltInTools,
       getPermissionManager,
+      isConcurrencySafe,
     } as unknown as ToolManager,
   };
 };

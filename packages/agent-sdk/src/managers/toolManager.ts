@@ -409,6 +409,24 @@ class ToolManager {
   }
 
   /**
+   * Check whether a tool is safe to execute in parallel with other tools.
+   * Built-in tools default to safe (parallel); Edit and Write opt out.
+   * MCP tools are conservatively non-safe (can't inspect side effects).
+   */
+  public isConcurrencySafe(name: string): boolean {
+    // MCP tools are conservatively non-safe
+    if (this.mcpManager.isMcpTool(name)) {
+      return false;
+    }
+    const plugin = this.toolsRegistry.get(name);
+    if (plugin) {
+      return plugin.isConcurrencySafe ?? true;
+    }
+    // Unknown tools are conservatively non-safe
+    return false;
+  }
+
+  /**
    * Get the current permission mode
    */
   public getPermissionMode(): PermissionMode {

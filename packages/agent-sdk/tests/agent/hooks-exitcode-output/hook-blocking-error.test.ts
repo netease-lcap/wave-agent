@@ -24,6 +24,7 @@ vi.mock("@/managers/toolManager", () => ({
       list: vi.fn(() => []),
       getTools: vi.fn(() => []),
       getToolsConfig: vi.fn(() => []),
+      isConcurrencySafe: vi.fn().mockReturnValue(true),
       getPermissionMode: vi.fn(),
       setPermissionMode: vi.fn(),
       initializeBuiltInTools: vi.fn(),

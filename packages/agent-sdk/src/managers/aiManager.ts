@@ -74,6 +74,8 @@ export class AIManager {
   private originalWorkdir: string;
   private consecutiveCompactionFailures: number = 0;
   private readonly maxTurns?: number;
+  /** Tracks file mtime/hash at read time for staleness detection on Edit/Write */
+  private readFileState = new Map<string, { mtime: number; hash: string }>();
   /** Override tool_choice for this AI manager (e.g. for structured output) */
   public toolChoiceOverride?:
     | "auto"
@@ -991,218 +993,52 @@ export class AIManager {
       }
 
       if (toolCalls.length > 0) {
-        // Execute all tools in parallel using Promise.all
-        const toolExecutionPromises = toolCalls.map(
-          async (functionToolCall) => {
-            const toolId = functionToolCall.id || "";
+        // Partition tool calls into batches: consecutive concurrency-safe
+        // tools run in parallel, non-safe tools (Edit, Write, MCP) run one
+        // at a time to prevent read-modify-write races on the same file.
+        const batches: {
+          calls: ChatCompletionMessageFunctionToolCall[];
+          safe: boolean;
+        }[] = [];
+        for (const call of toolCalls) {
+          const toolName = call.function?.name || "";
+          const safe = this.toolManager.isConcurrencySafe(toolName);
+          const lastBatch = batches[batches.length - 1];
+          if (lastBatch && lastBatch.safe && safe) {
+            lastBatch.calls.push(call);
+          } else {
+            batches.push({ calls: [call], safe });
+          }
+        }
 
-            // Check if already interrupted, skip tool execution if so
-            if (
-              abortController.signal.aborted ||
-              toolAbortController.signal.aborted
-            ) {
-              return;
-            }
-
-            const toolName = functionToolCall.function?.name || "";
-            // Safely parse tool parameters, handle tools without parameters
-            let toolArgs: Record<string, unknown> = {};
-            let jsonRecovered = false;
-            const argsString = functionToolCall.function?.arguments?.trim();
-
-            if (!argsString || argsString === "") {
-              // Tool without parameters, use empty object
-              toolArgs = {};
-            } else {
-              let recoveredArgs = argsString;
-              try {
-                toolArgs = JSON.parse(argsString);
-              } catch {
-                // Attempt to recover truncated JSON (e.g., missing closing braces)
-                recoveredArgs = recoverTruncatedJson(argsString);
-                try {
-                  toolArgs = JSON.parse(recoveredArgs);
-                  jsonRecovered = true;
-                  logger.warn(
-                    `Recovered truncated JSON for tool "${toolName}"`,
-                  );
-                } catch (parseError) {
-                  let errorMessage = `Failed to parse tool arguments`;
-                  if (result.finish_reason === "length") {
-                    errorMessage +=
-                      " (output truncated, please reduce your output)";
-                  }
-                  logger?.error(errorMessage, parseError);
-                  this.messageManager.updateToolBlock({
-                    id: toolId,
-                    parameters: argsString,
-                    result: errorMessage,
-                    success: false,
-                    error: errorMessage,
-                    stage: "end",
-                    name: toolName,
-                    compactParams: "",
-                    timestamp: Date.now(),
-                  });
-                  return;
-                }
-              }
-            }
-
-            const compactParams = this.generateCompactParams(
-              toolName,
-              toolArgs,
+        // Execute batches sequentially; within a safe batch, tools run in parallel
+        for (const batch of batches) {
+          if (
+            abortController.signal.aborted ||
+            toolAbortController.signal.aborted
+          ) {
+            break;
+          }
+          if (batch.calls.length === 1) {
+            await this.executeToolCall(
+              batch.calls[0],
+              abortController,
+              toolAbortController,
+              result.finish_reason,
             );
-
-            // Emit start stage for non-streaming tool calls
-            if (!this.stream) {
-              this.messageManager.updateToolBlock({
-                id: toolId,
-                stage: "start",
-                name: toolName,
-                compactParams,
-                parameters: argsString,
-              });
-            }
-
-            // Emit running stage (tool execution about to start)
-            this.messageManager.updateToolBlock({
-              id: toolId,
-              stage: "running",
-              name: toolName,
-              compactParams,
-              parameters: argsString,
-              parametersChunk: "",
-            });
-
-            try {
-              // Execute PreToolUse hooks before tool execution
-              const shouldExecuteTool = await this.executePreToolUseHooks(
-                toolName,
-                toolArgs,
-                toolId,
-              );
-
-              // If PreToolUse hooks blocked execution, skip tool execution
-              if (!shouldExecuteTool) {
-                logger?.info(
-                  `Tool ${toolName} execution blocked by PreToolUse hooks`,
-                );
-                return; // Skip this tool and return from this map function
-              }
-
-              // Create tool execution context
-              const context: ToolContext = {
-                abortSignal: toolAbortController.signal,
-                backgroundTaskManager: this.backgroundTaskManager,
-                workdir: this.getWorkdir(),
-                originalWorkdir: this.originalWorkdir,
-                env: this.container.get<Record<string, string>>("MergedEnv"),
-                messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
-                sessionId: this.messageManager.getSessionId(),
-                toolCallId: toolId,
-                taskManager: this.taskManager,
-                onShortResultUpdate: (shortResult: string) => {
-                  this.messageManager.updateToolBlock({
-                    id: toolId,
-                    shortResult,
-                    stage: "running", // Keep it in running stage while updating shortResult
-                  });
-                },
-                onResultUpdate: (result: string) => {
-                  this.messageManager.updateToolBlock({
-                    id: toolId,
-                    result,
-                    stage: "running", // Keep it in running stage while updating result
-                  });
-                },
-                onCwdChange: async (newCwd: string) => {
-                  const oldCwd = this.getWorkdir();
-                  this.container.register("Workdir", newCwd);
-                  this._onCwdChange?.(newCwd);
-                  if (this.hookManager) {
-                    const sessionId = this.messageManager.getSessionId();
-                    const transcriptPath =
-                      this.messageManager.getTranscriptPath();
-                    const env = Object.fromEntries(
-                      Object.entries(process.env).filter(
-                        (e) => e[1] !== undefined,
-                      ),
-                    ) as Record<string, string>;
-                    await this.hookManager.executeCwdChangedHooks(
-                      oldCwd,
-                      newCwd,
-                      sessionId,
-                      transcriptPath,
-                      env,
-                    );
-                  }
-                },
-              };
-
-              // Execute tool
-              const toolResult = await this.toolManager.execute(
-                functionToolCall.function?.name || "",
-                toolArgs,
-                context,
-              );
-
-              // Build result content, adding truncation warning if JSON was recovered
-              let toolResultContent =
-                toolResult.content ||
-                (toolResult.error ? `Error: ${toolResult.error}` : "");
-              if (jsonRecovered) {
-                toolResultContent +=
-                  "\n\nTool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.";
-              }
-
-              // Update message state - tool execution completed
-              this.messageManager.updateToolBlock({
-                id: toolId,
-                parameters: argsString,
-                result: toolResultContent,
-                success: toolResult.success,
-                error: toolResult.error,
-                stage: "end",
-                name: toolName,
-                compactParams,
-                shortResult: toolResult.shortResult,
-                isManuallyBackgrounded: toolResult.isManuallyBackgrounded,
-                startLineNumber: toolResult.startLineNumber,
-                timestamp: Date.now(),
-              });
-
-              // Execute PostToolUse hooks after successful tool completion
-              await this.executePostToolUseHooks(
-                toolId,
-                toolName,
-                toolArgs,
-                toolResult,
-              );
-            } catch (toolError) {
-              const errorMessage =
-                toolError instanceof Error
-                  ? toolError.message
-                  : String(toolError);
-
-              this.messageManager.updateToolBlock({
-                id: toolId,
-                parameters: JSON.stringify(toolArgs, null, 2),
-                result: `Tool execution failed: ${errorMessage}`,
-                success: false,
-                error: errorMessage,
-                stage: "end",
-                name: toolName,
-                compactParams,
-                isManuallyBackgrounded: false,
-                timestamp: Date.now(),
-              });
-            }
-          },
-        );
-
-        // Wait for all tools to complete execution in parallel
-        await Promise.all(toolExecutionPromises);
+          } else {
+            await Promise.all(
+              batch.calls.map((call) =>
+                this.executeToolCall(
+                  call,
+                  abortController,
+                  toolAbortController,
+                  result.finish_reason,
+                ),
+              ),
+            );
+          }
+        }
       }
 
       // Handle token statistics and message compaction
@@ -1571,6 +1407,207 @@ export class AIManager {
         error,
       );
       return false;
+    }
+  }
+
+  /**
+   * Execute a single tool call: arg parsing, block emission, PreToolUse hooks,
+   * tool execution, PostToolUse hooks, and error handling.
+   */
+  private async executeToolCall(
+    functionToolCall: ChatCompletionMessageFunctionToolCall,
+    abortController: AbortController,
+    toolAbortController: AbortController,
+    finishReason?: string | null,
+  ): Promise<void> {
+    const toolId = functionToolCall.id || "";
+
+    // Check if already interrupted, skip tool execution if so
+    if (abortController.signal.aborted || toolAbortController.signal.aborted) {
+      return;
+    }
+
+    const toolName = functionToolCall.function?.name || "";
+    // Safely parse tool parameters, handle tools without parameters
+    let toolArgs: Record<string, unknown> = {};
+    let jsonRecovered = false;
+    const argsString = functionToolCall.function?.arguments?.trim();
+
+    if (!argsString || argsString === "") {
+      // Tool without parameters, use empty object
+      toolArgs = {};
+    } else {
+      let recoveredArgs = argsString;
+      try {
+        toolArgs = JSON.parse(argsString);
+      } catch {
+        // Attempt to recover truncated JSON (e.g., missing closing braces)
+        recoveredArgs = recoverTruncatedJson(argsString);
+        try {
+          toolArgs = JSON.parse(recoveredArgs);
+          jsonRecovered = true;
+          logger.warn(`Recovered truncated JSON for tool "${toolName}"`);
+        } catch (parseError) {
+          let errorMessage = `Failed to parse tool arguments`;
+          if (finishReason === "length") {
+            errorMessage += " (output truncated, please reduce your output)";
+          }
+          logger?.error(errorMessage, parseError);
+          this.messageManager.updateToolBlock({
+            id: toolId,
+            parameters: argsString,
+            result: errorMessage,
+            success: false,
+            error: errorMessage,
+            stage: "end",
+            name: toolName,
+            compactParams: "",
+            timestamp: Date.now(),
+          });
+          return;
+        }
+      }
+    }
+
+    const compactParams = this.generateCompactParams(toolName, toolArgs);
+
+    // Emit start stage for non-streaming tool calls
+    if (!this.stream) {
+      this.messageManager.updateToolBlock({
+        id: toolId,
+        stage: "start",
+        name: toolName,
+        compactParams,
+        parameters: argsString,
+      });
+    }
+
+    // Emit running stage (tool execution about to start)
+    this.messageManager.updateToolBlock({
+      id: toolId,
+      stage: "running",
+      name: toolName,
+      compactParams,
+      parameters: argsString,
+      parametersChunk: "",
+    });
+
+    try {
+      // Execute PreToolUse hooks before tool execution
+      const shouldExecuteTool = await this.executePreToolUseHooks(
+        toolName,
+        toolArgs,
+        toolId,
+      );
+
+      // If PreToolUse hooks blocked execution, skip tool execution
+      if (!shouldExecuteTool) {
+        logger?.info(`Tool ${toolName} execution blocked by PreToolUse hooks`);
+        return;
+      }
+
+      // Create tool execution context
+      const context: ToolContext = {
+        abortSignal: toolAbortController.signal,
+        backgroundTaskManager: this.backgroundTaskManager,
+        workdir: this.getWorkdir(),
+        originalWorkdir: this.originalWorkdir,
+        env: this.container.get<Record<string, string>>("MergedEnv"),
+        messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
+        sessionId: this.messageManager.getSessionId(),
+        toolCallId: toolId,
+        taskManager: this.taskManager,
+        readFileState: this.readFileState,
+        onShortResultUpdate: (shortResult: string) => {
+          this.messageManager.updateToolBlock({
+            id: toolId,
+            shortResult,
+            stage: "running",
+          });
+        },
+        onResultUpdate: (result: string) => {
+          this.messageManager.updateToolBlock({
+            id: toolId,
+            result,
+            stage: "running",
+          });
+        },
+        onCwdChange: async (newCwd: string) => {
+          const oldCwd = this.getWorkdir();
+          this.container.register("Workdir", newCwd);
+          this._onCwdChange?.(newCwd);
+          if (this.hookManager) {
+            const sessionId = this.messageManager.getSessionId();
+            const transcriptPath = this.messageManager.getTranscriptPath();
+            const env = Object.fromEntries(
+              Object.entries(process.env).filter((e) => e[1] !== undefined),
+            ) as Record<string, string>;
+            await this.hookManager.executeCwdChangedHooks(
+              oldCwd,
+              newCwd,
+              sessionId,
+              transcriptPath,
+              env,
+            );
+          }
+        },
+      };
+
+      // Execute tool
+      const toolResult = await this.toolManager.execute(
+        functionToolCall.function?.name || "",
+        toolArgs,
+        context,
+      );
+
+      // Build result content, adding truncation warning if JSON was recovered
+      let toolResultContent =
+        toolResult.content ||
+        (toolResult.error ? `Error: ${toolResult.error}` : "");
+      if (jsonRecovered) {
+        toolResultContent +=
+          "\n\nTool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.";
+      }
+
+      // Update message state - tool execution completed
+      this.messageManager.updateToolBlock({
+        id: toolId,
+        parameters: argsString,
+        result: toolResultContent,
+        success: toolResult.success,
+        error: toolResult.error,
+        stage: "end",
+        name: toolName,
+        compactParams,
+        shortResult: toolResult.shortResult,
+        isManuallyBackgrounded: toolResult.isManuallyBackgrounded,
+        startLineNumber: toolResult.startLineNumber,
+        timestamp: Date.now(),
+      });
+
+      // Execute PostToolUse hooks after successful tool completion
+      await this.executePostToolUseHooks(
+        toolId,
+        toolName,
+        toolArgs,
+        toolResult,
+      );
+    } catch (toolError) {
+      const errorMessage =
+        toolError instanceof Error ? toolError.message : String(toolError);
+
+      this.messageManager.updateToolBlock({
+        id: toolId,
+        parameters: JSON.stringify(toolArgs, null, 2),
+        result: `Tool execution failed: ${errorMessage}`,
+        success: false,
+        error: errorMessage,
+        stage: "end",
+        name: toolName,
+        compactParams,
+        isManuallyBackgrounded: false,
+        timestamp: Date.now(),
+      });
     }
   }
 
