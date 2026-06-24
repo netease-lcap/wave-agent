@@ -157,21 +157,33 @@ function countContentBlocks(
 ): number;
 
 /**
- * Transforms messages for explicit cache control with adaptive marker placement.
+ * Transforms messages for explicit cache control with stable 3-breakpoint strategy.
  *
  * Marker strategy:
- * - Short conversations (≤20 content blocks): system message + last user message
- * - Long conversations (>20 content blocks): system message + bridge marker at
- *   ~18 blocks from end (within the API's 20-block backward scan window)
+ * - System message: always marked
+ * - Tools list: marked separately via addCacheControlToLastTool
+ * - Block 20 bridge: when total prefix (system + tools + messages) > 20 blocks
+ *   AND system+tools < 20 blocks, a bridge marker is placed at the 20th content
+ *   block position. Placed ONCE, NEVER moves (module-level state).
+ * - No last user message marker (removed entirely)
  *
  * @param messages - Original OpenAI message array
  * @param modelName - Model name for cache detection
+ * @param tools - Optional tools array for accurate block counting
  * @returns Messages with cache control markers applied
  */
 function transformMessagesForExplicitCache(
   messages: ChatCompletionMessageParam[],
-  modelName: string
+  modelName: string,
+  tools?: ChatCompletionFunctionTool[]
 ): ChatCompletionMessageParam[];
+
+/**
+ * Resets the bridge marker state (module-level).
+ * Called when conversation drops to ≤20 blocks (e.g., after compaction)
+ * or when starting a new conversation.
+ */
+function resetExplicitCacheState(): void;
 
 ```
 

@@ -44,7 +44,6 @@ vi.mock("../../src/services/aiService.js", () => ({
   }),
   isClaudeModel: vi.fn().mockReturnValue(false),
   transformMessagesForExplicitCache: vi.fn((m) => m),
-  addCacheControlToLastTool: vi.fn((t) => t),
   extendUsageWithCacheMetrics: vi.fn((u) => u),
 }));
 

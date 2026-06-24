@@ -311,66 +311,8 @@ describe("AI Service - Claude Cache Control", () => {
       });
     });
 
-    describe("addCacheControlToLastTool", () => {
-      it("should add cache control to the last tool only", async () => {
-        const tools = [
-          {
-            type: "function" as const,
-            function: {
-              name: "tool1",
-              description: "First tool",
-              parameters: { type: "object", properties: {} },
-            },
-          },
-          {
-            type: "function" as const,
-            function: {
-              name: "tool2",
-              description: "Second tool",
-              parameters: { type: "object", properties: {} },
-            },
-          },
-        ];
-
-        const result = cacheUtils.addCacheControlToLastTool(tools);
-
-        expect(result).toHaveLength(2);
-        expect(result[0]).not.toHaveProperty("cache_control");
-        expect(result[1]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-        expect(result[1].function.name).toBe("tool2");
-      });
-
-      it("should handle empty tools array", async () => {
-        const result = cacheUtils.addCacheControlToLastTool([]);
-        expect(result).toHaveLength(0);
-      });
-
-      it("should handle single tool", async () => {
-        const tools = [
-          {
-            type: "function" as const,
-            function: {
-              name: "single_tool",
-              description: "Only tool",
-              parameters: { type: "object", properties: {} },
-            },
-          },
-        ];
-
-        const result = cacheUtils.addCacheControlToLastTool(tools);
-
-        expect(result).toHaveLength(1);
-        expect(result[0]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-        expect(result[0].function.name).toBe("single_tool");
-      });
-    });
-
     describe("transformMessagesForExplicitCache", () => {
-      it("should cache first system message and last user message", async () => {
+      it("should cache system and last message", async () => {
         const messages = [
           { role: "user" as const, content: "First user message" },
           { role: "system" as const, content: "System message in middle" },
@@ -393,11 +335,7 @@ describe("AI Service - Claude Cache Control", () => {
           type: "ephemeral",
         });
 
-        // Last system message (index 4) should NOT have cache control
-        expect(typeof result[4].content).toBe("string");
-        expect(result[4].content).toBe("Last system message");
-
-        // Last user message (index 3) should have cache control
+        // Last user message (index 3) should have cache control (last message with content)
         expect(Array.isArray(result[3].content)).toBe(true);
         const lastUserContent = result[3].content as Array<{
           cache_control?: { type: string };
@@ -406,12 +344,28 @@ describe("AI Service - Claude Cache Control", () => {
           type: "ephemeral",
         });
 
+        // Last system message (index 4) should NOT have cache control
+        expect(typeof result[4].content).toBe("string");
+        expect(result[4].content).toBe("Last system message");
+
         // First user message (index 0) should NOT have cache control
         expect(typeof result[0].content).toBe("string");
         expect(result[0].content).toBe("First user message");
+
+        // 2 markers total (system + last message)
+        let markerCount = 0;
+        for (const msg of result) {
+          if (Array.isArray(msg.content)) {
+            const content = msg.content as Array<{
+              cache_control?: { type: string };
+            }>;
+            if (content.some((c) => c.cache_control)) markerCount++;
+          }
+        }
+        expect(markerCount).toBe(2);
       });
 
-      it("should cache only the last user message in multi-turn conversation", async () => {
+      it("should cache system and last message in multi-turn conversation", async () => {
         const messages = [
           { role: "system" as const, content: "You are helpful" },
           { role: "user" as const, content: "Hello" },
@@ -429,20 +383,19 @@ describe("AI Service - Claude Cache Control", () => {
         // System message (index 0) should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
 
-        // First user message (index 1) should NOT have cache control
-        expect(typeof result[1].content).toBe("string");
-
-        // Second user message (index 3) should NOT have cache control
-        expect(typeof result[3].content).toBe("string");
-
         // Last user message (index 5) should have cache control
         expect(Array.isArray(result[5].content)).toBe(true);
-        const lastUserContent = result[5].content as Array<{
+        const lastContent = result[5].content as Array<{
           cache_control?: { type: string };
         }>;
-        expect(lastUserContent[0]).toHaveProperty("cache_control", {
+        expect(lastContent[0]).toHaveProperty("cache_control", {
           type: "ephemeral",
         });
+
+        // Other messages should NOT have cache control
+        for (let i = 1; i < result.length - 1; i++) {
+          expect(typeof result[i].content).toBe("string");
+        }
       });
 
       it("should handle conversation with no user messages", async () => {
@@ -459,11 +412,17 @@ describe("AI Service - Claude Cache Control", () => {
         // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
 
-        // Assistant message should NOT have cache control
-        expect(typeof result[1].content).toBe("string");
+        // Last assistant message should also have cache control
+        expect(Array.isArray(result[1].content)).toBe(true);
+        const assistantContent = result[1].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(assistantContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
       });
 
-      it("should not cache assistant messages with tool calls", async () => {
+      it("should cache assistant message with tool calls if it has content", async () => {
         const messages = [
           { role: "system" as const, content: "You are helpful" },
           { role: "user" as const, content: "Use a tool" },
@@ -488,11 +447,6 @@ describe("AI Service - Claude Cache Control", () => {
           "claude-3-sonnet",
         );
 
-        // Assistant message with tool_calls should NOT have cache control
-        // Cache control should only be applied to tool definitions, not messages with tool calls
-        expect(typeof result[2].content).toBe("string");
-        expect(result[2].content).toBe("I'll use the tool");
-
         // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
         const systemContent = result[0].content as Array<{
@@ -502,14 +456,18 @@ describe("AI Service - Claude Cache Control", () => {
           type: "ephemeral",
         });
 
-        // Last user message (index 1) should have cache control
-        expect(Array.isArray(result[1].content)).toBe(true);
-        const userContent = result[1].content as Array<{
+        // Assistant message has content "I'll use the tool" and is the last message with content
+        // so it SHOULD get a cache control marker
+        expect(Array.isArray(result[2].content)).toBe(true);
+        const assistantContent = result[2].content as Array<{
           cache_control?: { type: string };
         }>;
-        expect(userContent[0]).toHaveProperty("cache_control", {
+        expect(assistantContent[0]).toHaveProperty("cache_control", {
           type: "ephemeral",
         });
+
+        // User message (index 1) should NOT have cache control
+        expect(typeof result[1].content).toBe("string");
       });
 
       it("should not apply cache control for non-Claude models", async () => {
@@ -575,7 +533,7 @@ describe("AI Service - Claude Cache Control", () => {
         // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
 
-        // User message with mixed content should preserve structure and add cache control on last text part
+        // User message with mixed content should preserve structure WITHOUT cache control
         expect(Array.isArray(result[1].content)).toBe(true);
         const userContent = result[1].content as unknown as Array<
           Record<string, unknown>
@@ -583,28 +541,76 @@ describe("AI Service - Claude Cache Control", () => {
         expect(userContent[0]).toEqual({
           type: "text",
           text: "Describe this image",
-          cache_control: { type: "ephemeral" },
         });
         expect(userContent[1]).toEqual({
           type: "image_url",
           image_url: { url: "data:image/jpeg;base64,..." },
         });
 
-        // Assistant message should remain as string
-        expect(typeof result[2].content).toBe("string");
+        // Assistant message (last message with content) should have cache control
+        expect(Array.isArray(result[2].content)).toBe(true);
+        const assistantContent = result[2].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(assistantContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
       });
 
-      it("should use bridge marker for long conversations (>20 blocks)", async () => {
-        // 25 messages, each with string content = 25 content blocks (>20)
-        const messages = Array.from({ length: 25 }, (_, i) => ({
-          role:
-            i === 0
-              ? ("system" as const)
-              : i % 2 === 1
-                ? ("user" as const)
-                : ("assistant" as const),
-          content: `Message ${i + 1}`,
-        })) as ChatCompletionMessageParam[];
+      it("should mark last user message in a conversation", async () => {
+        const messages = [
+          { role: "system" as const, content: "You are helpful" },
+          { role: "user" as const, content: "Hello" },
+          { role: "assistant" as const, content: "Hi!" },
+          { role: "user" as const, content: "How are you?" },
+        ];
+
+        const result = cacheUtils.transformMessagesForExplicitCache(
+          messages,
+          "claude-3-sonnet",
+        );
+
+        // System message (index 0) should have cache control
+        expect(Array.isArray(result[0].content)).toBe(true);
+        const systemContent = result[0].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(systemContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
+
+        // Last user message (index 3) should have cache control
+        expect(Array.isArray(result[3].content)).toBe(true);
+        const lastUserContent = result[3].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(lastUserContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
+
+        // Other messages should NOT have cache control
+        expect(typeof result[1].content).toBe("string");
+        expect(typeof result[2].content).toBe("string");
+
+        // 2 markers total
+        let markerCount = 0;
+        for (const msg of result) {
+          if (Array.isArray(msg.content)) {
+            const content = msg.content as Array<{
+              cache_control?: { type: string };
+            }>;
+            if (content.some((c) => c.cache_control)) markerCount++;
+          }
+        }
+        expect(markerCount).toBe(2);
+      });
+
+      it("should mark last assistant message when it's the last message", async () => {
+        const messages = [
+          { role: "system" as const, content: "You are helpful" },
+          { role: "user" as const, content: "Hello" },
+          { role: "assistant" as const, content: "Hi there!" },
+        ];
 
         const result = cacheUtils.transformMessagesForExplicitCache(
           messages,
@@ -614,108 +620,132 @@ describe("AI Service - Claude Cache Control", () => {
         // System message (index 0) should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
 
-        // Last user message (index 24) should NOT have cache control (long conversation)
-        // In a 25-block conversation, target = 25 - 20 + 2 = 7
-        // Bridge marker should be at the message where cumulative blocks first reach 7
-        // Messages 0-6 = 7 blocks, so bridge is at index 6 (assistant)
-        expect(Array.isArray(result[6].content)).toBe(true);
-        const bridgeContent = result[6].content as Array<{
+        // Last assistant message (index 2) should have cache control
+        expect(Array.isArray(result[2].content)).toBe(true);
+        const assistantContent = result[2].content as Array<{
           cache_control?: { type: string };
         }>;
-        expect(bridgeContent[0]).toHaveProperty("cache_control", {
+        expect(assistantContent[0]).toHaveProperty("cache_control", {
           type: "ephemeral",
         });
 
-        // Last user message (index 23) should NOT have cache control
-        expect(typeof result[23].content).toBe("string");
-
-        // Only system and bridge should have cache_control (2 markers, not 3)
-        let markerCount = 0;
-        for (const msg of result) {
-          if (Array.isArray(msg.content)) {
-            const content = msg.content as Array<{
-              cache_control?: { type: string };
-            }>;
-            if (content.some((c) => c.cache_control)) markerCount++;
-          }
-        }
-        expect(markerCount).toBe(2);
+        // User message should NOT have cache control
+        expect(typeof result[1].content).toBe("string");
       });
 
-      it("should not place bridge marker on system message", async () => {
-        // 22 messages: 1 system + 21 user/assistant = 22 blocks
+      it("should skip messages with empty content when finding last message", async () => {
         const messages = [
-          { role: "system" as const, content: "System prompt" },
-          ...Array.from({ length: 21 }, (_, i) => ({
-            role: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
-            content: `Message ${i + 1}`,
-          })),
-        ] as ChatCompletionMessageParam[];
-
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
-
-        // System (index 0) has cache control
-        expect(Array.isArray(result[0].content)).toBe(true);
-
-        // Bridge marker: target = 22 - 20 + 2 = 4
-        // i=0 system (cumulative=1, skip), i=1 user (cumulative=2),
-        // i=2 assistant (cumulative=3), i=3 user (cumulative=4 ≥ target → bridge)
-        expect(Array.isArray(result[3].content)).toBe(true);
-        const bridgeContent = result[3].content as Array<{
-          cache_control?: { type: string };
-        }>;
-        expect(bridgeContent[0]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-
-        // Only 2 markers
-        let markerCount = 0;
-        for (const msg of result) {
-          if (Array.isArray(msg.content)) {
-            const content = msg.content as Array<{
-              cache_control?: { type: string };
-            }>;
-            if (content.some((c) => c.cache_control)) markerCount++;
-          }
-        }
-        expect(markerCount).toBe(2);
-      });
-
-      it("should fall back to last user when no bridge candidate found", async () => {
-        // System + many assistant messages with null content (0 blocks each)
-        // Total blocks = 1 (only system has content), but 30 messages
-        const messages = [
-          { role: "system" as const, content: "System prompt" },
-          ...Array.from({ length: 29 }, (_, i) => ({
+          { role: "system" as const, content: "You are helpful" },
+          { role: "user" as const, content: "Do something" },
+          {
             role: "assistant" as const,
             content: null as unknown as string,
             tool_calls: [
               {
-                id: `call_${i}`,
+                id: "call_1",
                 type: "function" as const,
                 function: { name: "tool", arguments: "{}" },
               },
             ],
-          })),
-        ] as ChatCompletionMessageParam[];
+          },
+          { role: "user" as const, content: "Thanks" },
+        ];
 
-        // totalBlocks = 1 (only system), so ≤ 20 → short conversation path
-        // No user messages, so only system gets a marker
         const result = cacheUtils.transformMessagesForExplicitCache(
           messages,
           "claude-3-sonnet",
         );
 
-        // System has cache control
+        // System message (index 0) should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
 
-        // Assistant messages should not have cache control (content stays null)
-        expect(result[1].content).toBeNull();
+        // Last message with actual content is user at index 3
+        expect(Array.isArray(result[3].content)).toBe(true);
+        const lastContent = result[3].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(lastContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
 
-        // Only 1 marker (system)
+        // Assistant with null content should NOT have cache control
+        expect(result[2].content).toBeNull();
+
+        // First user message should NOT have cache control
+        expect(typeof result[1].content).toBe("string");
+      });
+
+      it("should mark last message regardless of conversation length", async () => {
+        // Short conversation
+        const shortMessages = [
+          { role: "system" as const, content: "System" },
+          { role: "user" as const, content: "Hello" },
+          { role: "assistant" as const, content: "Hi" },
+        ] as ChatCompletionMessageParam[];
+
+        const shortResult = cacheUtils.transformMessagesForExplicitCache(
+          shortMessages,
+          "claude-3-sonnet",
+        );
+
+        // System + last message = 2 markers
+        let shortMarkerCount = 0;
+        for (const msg of shortResult) {
+          if (Array.isArray(msg.content)) {
+            const content = msg.content as Array<{
+              cache_control?: { type: string };
+            }>;
+            if (content.some((c) => c.cache_control)) shortMarkerCount++;
+          }
+        }
+        expect(shortMarkerCount).toBe(2);
+
+        // Long conversation (25 messages)
+        const longMessages = Array.from({ length: 25 }, (_, i) => ({
+          role:
+            i === 0
+              ? ("system" as const)
+              : i % 2 === 1
+                ? ("user" as const)
+                : ("assistant" as const),
+          content: `Message ${i + 1}`,
+        })) as ChatCompletionMessageParam[];
+
+        const longResult = cacheUtils.transformMessagesForExplicitCache(
+          longMessages,
+          "claude-3-sonnet",
+        );
+
+        // System + last message = 2 markers (no bridge)
+        let longMarkerCount = 0;
+        for (const msg of longResult) {
+          if (Array.isArray(msg.content)) {
+            const content = msg.content as Array<{
+              cache_control?: { type: string };
+            }>;
+            if (content.some((c) => c.cache_control)) longMarkerCount++;
+          }
+        }
+        expect(longMarkerCount).toBe(2);
+
+        // Last message (index 24) should have cache control
+        expect(Array.isArray(longResult[24].content)).toBe(true);
+      });
+
+      it("should not double-mark system message if it's also the last message", async () => {
+        const messages = [
+          { role: "system" as const, content: "You are helpful" },
+        ];
+
+        const result = cacheUtils.transformMessagesForExplicitCache(
+          messages,
+          "claude-3-sonnet",
+        );
+
+        // System message should have cache control
+        expect(Array.isArray(result[0].content)).toBe(true);
+
+        // Only 1 marker (system is the only message, no double-marking)
         let markerCount = 0;
         for (const msg of result) {
           if (Array.isArray(msg.content)) {
@@ -897,53 +927,6 @@ describe("AI Service - Claude Cache Control", () => {
     });
 
     describe("Tool Definition Caching for Claude Models", () => {
-      it("should cache the last tool definition for Claude models", async () => {
-        const testTools = [
-          {
-            type: "function" as const,
-            function: {
-              name: "tool1",
-              description: "First tool",
-              parameters: { type: "object", properties: {} },
-            },
-          },
-          {
-            type: "function" as const,
-            function: {
-              name: "tool2",
-              description: "Second tool",
-              parameters: { type: "object", properties: {} },
-            },
-          },
-        ];
-
-        const result = await callAgent({
-          gatewayConfig: TEST_GATEWAY_CONFIG,
-          modelConfig: CLAUDE_MODEL_CONFIG,
-          messages: [{ role: "user", content: "Test message" }],
-          workdir: "/test/workdir",
-          tools: testTools,
-        });
-
-        expect(result).toBeDefined();
-        expect(mockCreate).toHaveBeenCalledOnce();
-
-        // Verify last tool has cache control applied
-        const callArgs = mockCreate.mock.calls[0][0];
-        expect(callArgs.tools).toBeDefined();
-        expect(callArgs.tools).toHaveLength(2);
-
-        // First tool should NOT have cache control
-        expect(callArgs.tools[0]).not.toHaveProperty("cache_control");
-        expect(callArgs.tools[0].function.name).toBe("tool1");
-
-        // Last tool should have cache control
-        expect(callArgs.tools[1]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-        expect(callArgs.tools[1].function.name).toBe("tool2");
-      });
-
       it("should not cache tools for non-Claude models", async () => {
         const testTools = [
           {
@@ -973,39 +956,6 @@ describe("AI Service - Claude Cache Control", () => {
         expect(callArgs.tools).toHaveLength(1);
         expect(callArgs.tools[0]).not.toHaveProperty("cache_control");
         expect(callArgs.tools[0]).toEqual(testTools[0]);
-      });
-
-      it("should handle single tool caching", async () => {
-        const singleTool = [
-          {
-            type: "function" as const,
-            function: {
-              name: "single_tool",
-              description: "Only tool",
-              parameters: { type: "object", properties: {} },
-            },
-          },
-        ];
-
-        const result = await callAgent({
-          gatewayConfig: TEST_GATEWAY_CONFIG,
-          modelConfig: CLAUDE_MODEL_CONFIG,
-          messages: [{ role: "user", content: "Test message" }],
-          workdir: "/test/workdir",
-          tools: singleTool,
-        });
-
-        expect(result).toBeDefined();
-        expect(mockCreate).toHaveBeenCalledOnce();
-
-        // Verify single tool has cache control
-        const callArgs = mockCreate.mock.calls[0][0];
-        expect(callArgs.tools).toBeDefined();
-        expect(callArgs.tools).toHaveLength(1);
-        expect(callArgs.tools[0]).toHaveProperty("cache_control", {
-          type: "ephemeral",
-        });
-        expect(callArgs.tools[0].function.name).toBe("single_tool");
       });
     });
 
@@ -1046,7 +996,7 @@ describe("AI Service - Claude Cache Control", () => {
         // System message should have cache control
         expect(Array.isArray(callArgs.messages[0].content)).toBe(true);
 
-        // Mixed content user message should preserve structure with cache control on last text part
+        // Mixed content user message should preserve structure WITHOUT cache control
         expect(Array.isArray(callArgs.messages[1].content)).toBe(true);
         const userContent = callArgs.messages[1].content as Array<
           Record<string, unknown>
@@ -1065,10 +1015,18 @@ describe("AI Service - Claude Cache Control", () => {
         expect(userContent[2]).toEqual({
           type: "text",
           text: "What do you see?",
-          cache_control: { type: "ephemeral" },
         });
 
-        expect(typeof callArgs.messages[2].content).toBe("string");
+        // Assistant message (last message with content) should have cache control
+        expect(Array.isArray(callArgs.messages[2].content)).toBe(true);
+        const assistantContent = callArgs.messages[2].content as Array<{
+          type: string;
+          text: string;
+          cache_control?: { type: string };
+        }>;
+        expect(assistantContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
       });
 
       it("should handle empty conversation gracefully", async () => {
@@ -1113,14 +1071,7 @@ describe("AI Service - Claude Cache Control", () => {
 
         const callArgs = mockCreate.mock.calls[0][0];
 
-        // Assistant message with tool_calls should NOT have cache control
-        // Cache control should only be applied to tool definitions, not messages with tool calls
-        const lastMessage = callArgs.messages[callArgs.messages.length - 1];
-        expect(lastMessage.tool_calls).toBeDefined();
-        expect(typeof lastMessage.content).toBe("string");
-        expect(lastMessage.content).toBe("I'll search for that");
-
-        // Only system message should have cache control (it's the last system message)
+        // System message should have cache control
         const systemMessage = callArgs.messages[0];
         expect(systemMessage.role).toBe("system");
         expect(Array.isArray(systemMessage.content)).toBe(true);
@@ -1128,6 +1079,22 @@ describe("AI Service - Claude Cache Control", () => {
           cache_control?: { type: string };
         }>;
         expect(systemContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
+
+        // Assistant message has content "I'll search for that" and is the last message
+        // with content, so it SHOULD get a cache control marker
+        const lastMessage = callArgs.messages[callArgs.messages.length - 1];
+        expect(lastMessage.tool_calls).toBeDefined();
+        expect(Array.isArray(lastMessage.content)).toBe(true);
+        const lastContent = lastMessage.content as Array<{
+          type: string;
+          text: string;
+          cache_control?: { type: string };
+        }>;
+        expect(lastContent[0]).toHaveProperty("type", "text");
+        expect(lastContent[0]).toHaveProperty("text", "I'll search for that");
+        expect(lastContent[0]).toHaveProperty("cache_control", {
           type: "ephemeral",
         });
       });

@@ -23,8 +23,8 @@ interface CacheControl {
 - Optional field - presence indicates content should be cached
 
 **Relationships**:
-- Attached to `ChatCompletionContentPartText` objects
-- Attached to `ChatCompletionFunctionTool` objects (last tool only)
+- Attached to `ChatCompletionContentPartText` objects in the system message (always) and the last message with content (moves each turn)
+- Not attached to tool definitions — tools are implicitly cached as part of the prefix covered by the last-message marker
 - Not attached to other content types (images, tool results)
 
 ### Enhanced Usage Metrics
@@ -106,9 +106,9 @@ interface ModelCacheConfig {
   - `"claude|qwen3\\.6-plus"` - matches "claude" or exact "qwen3.6-plus"
 
 **Relationships**:
-- Determines cache_control marker injection for the request (messages and tools)
+- Determines cache_control marker injection for the request (messages only — tools are implicitly cached as part of the prefix)
 - Does NOT gate cache token extraction from usage — that applies to all models
-- Affects message transformation and tool processing
+- Affects message transformation
 
 **Legacy Support**:
 - `isClaudeModel()` is deprecated alias for `supportsPromptCaching()`
@@ -116,22 +116,14 @@ interface ModelCacheConfig {
 
 ### Structured Message Content
 
-**Purpose**: Array-based message content supporting selective cache control**Structure**:
+**Purpose**: Array-based message content supporting selective cache control
+
+**Structure**:
 ```typescript
 // Extended OpenAI types for Claude cache support
 interface ClaudeChatCompletionContentPartText extends ChatCompletionContentPartText {
   type: "text";
   text: string;
-  cache_control?: CacheControl;
-}
-
-interface ClaudeChatCompletionFunctionTool extends ChatCompletionFunctionTool {
-  type: "function";
-  function: {
-    name: string;
-    description?: string;
-    parameters: object;
-  };
   cache_control?: CacheControl;
 }
 
@@ -154,7 +146,7 @@ type ClaudeMessageContent = string | Array<
 
 ### Content Block Counting
 
-**Purpose**: Precise counting of content blocks to determine cache marker strategy
+**Purpose**: Understanding conversation size for diagnostics and observability
 
 **Counting Rules**:
 - String content → 1 block
@@ -162,8 +154,9 @@ type ClaudeMessageContent = string | Array<
 - Null/undefined content (e.g. assistant messages with only tool_calls) → 0 blocks
 
 **Relationships**:
-- Total block count determines strategy: ≤20 blocks uses last user message marker; >20 blocks uses bridge marker
-- Bridge marker target position: `totalBlocks - 20 + 2` (safety margin of 2)
+- Block counting is used for understanding conversation size, not for cache strategy decisions
+- The 2-marker strategy (system + last message) applies regardless of conversation length
+- The API's 20-block backward scan window is a constraint that the strategy satisfies naturally: the last-message marker moves ~2 blocks per turn, well within the 20-block window
 - Counted by iterating all messages and summing per-message block counts
 
 ## Entity State Transitions
@@ -197,11 +190,11 @@ All models' usage responses are checked for cache tokens (Claude top-level + pro
 
 1. **Input**: Original OpenAI message parameters
 2. **Detection**: Model name analysis for cache support
-3. **Block Counting**: Count total content blocks (string=1, array=N, null=0)
-4. **Strategy Selection**: ≤20 blocks → system + last user; >20 blocks → system + bridge marker at ~18 blocks from end
-5. **Transformation**: String content → structured arrays + cache_control on selected messages
-6. **Preservation**: Existing structured content maintained; non-selected messages unchanged
-7. **Output**: Enhanced message parameters with adaptive cache markers
+3. **System Marker**: Add cache_control to the first system message's text content part
+4. **Last Message Marker**: Find the last message with content (walking backward from the end), add cache_control to its last text content part
+5. **Transformation**: String content → structured arrays + cache_control on the two marked messages
+6. **Preservation**: Existing structured content maintained; non-marked messages unchanged
+7. **Output**: Enhanced message parameters with 2 cache markers (stateless, no module-level state)
 
 ### Usage Tracking Extension
 

@@ -13,7 +13,6 @@ import type { GatewayConfig, ModelConfig } from "../types/index.js";
 import { ConfigurationError, CONFIG_ERRORS } from "../types/index.js";
 import {
   transformMessagesForExplicitCache,
-  addCacheControlToLastTool,
   supportsPromptCaching,
   extendUsageWithCacheMetrics,
   type ClaudeUsage,
@@ -286,11 +285,6 @@ export async function callAgent(
         openaiMessages,
         currentModel,
       );
-
-      // Apply cache control to tools separately
-      if (tools && tools.length > 0) {
-        processedTools = addCacheControlToLastTool(tools);
-      }
     }
 
     // Get model configuration - use injected modelConfig with optional override
