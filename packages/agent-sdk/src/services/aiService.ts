@@ -845,6 +845,7 @@ export async function compactMessages(
     fastModel: _fastModel,
     maxTokens: _maxTokens,
     permissionMode: _permissionMode,
+    fastModelConfig: _fastModelConfig,
     ...extraParams
   } = modelConfig;
   void _model;
@@ -852,10 +853,16 @@ export async function compactMessages(
   void _maxTokens;
   void _permissionMode;
 
+  // When a fast model override is provided, use the fast model's hyperparams
+  // (if configured); otherwise fall back to the agent model's extraParams.
+  const activeExtraParams = options.model
+    ? _fastModelConfig || {}
+    : extraParams;
+
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
     max_tokens: 8192,
-    ...extraParams,
+    ...activeExtraParams,
   });
 
   try {
@@ -961,6 +968,7 @@ export async function processWebContent(
     fastModel: _fastModel,
     maxTokens: _maxTokens,
     permissionMode: _permissionMode,
+    fastModelConfig: _fastModelConfig,
     ...extraParams
   } = modelConfig;
   void _model;
@@ -968,10 +976,16 @@ export async function processWebContent(
   void _maxTokens;
   void _permissionMode;
 
+  // When a fast model override is provided, use the fast model's hyperparams
+  // (if configured); otherwise fall back to the agent model's extraParams.
+  const activeExtraParams = options.model
+    ? _fastModelConfig || {}
+    : extraParams;
+
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
     max_tokens: 4096,
-    ...extraParams,
+    ...activeExtraParams,
   });
 
   try {
@@ -1177,17 +1191,20 @@ export async function evaluateGoal(
     fastModel: _fastModel,
     maxTokens: _maxTokens,
     permissionMode: _permissionMode,
-    ...extraParams
+    fastModelConfig: _fastModelConfig,
   } = modelConfig;
   void _model;
   void _fastModel;
   void _maxTokens;
   void _permissionMode;
 
+  // evaluateGoal always uses the fast model; use its hyperparams if configured.
+  const activeExtraParams = _fastModelConfig || {};
+
   const openaiModelConfig = getModelConfig(model, {
     temperature: 0,
     max_tokens: 200,
-    ...extraParams,
+    ...activeExtraParams,
   });
 
   // Strip images from messages to reduce token usage (same as compact)

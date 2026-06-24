@@ -299,5 +299,181 @@ describe("AI Service - CompactMessages", () => {
       expect(callArgs.temperature).toBe(0.7);
       expect(callArgs.reasoning_effort).toBe("high");
     });
+
+    it("should use fastModelConfig hyperparams when model option is provided", async () => {
+      const messages = [
+        {
+          role: "user" as const,
+          content: "Test message",
+        },
+      ];
+
+      await compactMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7, // agent model hyperparam
+          fastModelConfig: { temperature: 0.2, top_p: 0.9 }, // fast model hyperparams
+        },
+        messages,
+        model: "fast-model",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.model).toBe("fast-model");
+      expect(callArgs.temperature).toBe(0.2);
+      expect(callArgs.top_p).toBe(0.9);
+    });
+
+    it("should fall back to agent model extraParams when model option is not provided", async () => {
+      const messages = [
+        {
+          role: "user" as const,
+          content: "Test message",
+        },
+      ];
+
+      await compactMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7,
+          fastModelConfig: { temperature: 0.2 },
+        },
+        messages,
+        // no model option — uses agent model
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.model).toBe(TEST_MODEL_CONFIG.model);
+      expect(callArgs.temperature).toBe(0.7);
+    });
+
+    it("should use no extra hyperparams when model option is provided but fastModelConfig is undefined", async () => {
+      const messages = [
+        {
+          role: "user" as const,
+          content: "Test message",
+        },
+      ];
+
+      await compactMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7, // agent model hyperparam — should NOT be used
+        },
+        messages,
+        model: "fast-model",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.model).toBe("fast-model");
+      expect(callArgs.temperature).toBe(0.1); // function default, not agent model's 0.7
+    });
+  });
+
+  describe("processWebContent — fastModelConfig", () => {
+    let processWebContent: (
+      options: import("@/services/aiService.js").ProcessWebContentOptions,
+    ) => Promise<import("@/services/aiService.js").ProcessWebContentResult>;
+
+    beforeEach(async () => {
+      const aiService = await import("@/services/aiService.js");
+      processWebContent = aiService.processWebContent;
+    });
+
+    it("should use fastModelConfig hyperparams when model option is provided", async () => {
+      await processWebContent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7,
+          fastModelConfig: { temperature: 0.2, top_p: 0.9 },
+        },
+        content: "web content",
+        prompt: "summarize",
+        model: "fast-model",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.model).toBe("fast-model");
+      expect(callArgs.temperature).toBe(0.2);
+      expect(callArgs.top_p).toBe(0.9);
+    });
+
+    it("should fall back to agent model extraParams when model option is not provided", async () => {
+      await processWebContent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7,
+          fastModelConfig: { temperature: 0.2 },
+        },
+        content: "web content",
+        prompt: "summarize",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.model).toBe(TEST_MODEL_CONFIG.model);
+      expect(callArgs.temperature).toBe(0.7);
+    });
+  });
+
+  describe("evaluateGoal — fastModelConfig", () => {
+    let evaluateGoal: (
+      options: import("@/services/aiService.js").EvaluateGoalOptions,
+    ) => Promise<import("@/services/aiService.js").EvaluateGoalResult>;
+
+    beforeEach(async () => {
+      const aiService = await import("@/services/aiService.js");
+      evaluateGoal = aiService.evaluateGoal;
+    });
+
+    it("should use fastModelConfig hyperparams", async () => {
+      await evaluateGoal({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7,
+          fastModelConfig: { temperature: 0, top_p: 0.95 },
+        },
+        model: "fast-model",
+        goalCondition: "task is done",
+        messages: [
+          {
+            role: "user" as const,
+            content: "test",
+          },
+        ],
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.model).toBe("fast-model");
+      expect(callArgs.temperature).toBe(0);
+      expect(callArgs.top_p).toBe(0.95);
+    });
+
+    it("should use no extra hyperparams when fastModelConfig is undefined", async () => {
+      await evaluateGoal({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          temperature: 0.7, // agent model hyperparam — should NOT be used
+        },
+        model: "fast-model",
+        goalCondition: "task is done",
+        messages: [
+          {
+            role: "user" as const,
+            content: "test",
+          },
+        ],
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.model).toBe("fast-model");
+      expect(callArgs.temperature).toBe(0); // function default, not agent model's 0.7
+    });
   });
 });
