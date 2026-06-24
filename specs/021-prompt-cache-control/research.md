@@ -75,35 +75,41 @@
 
 **Key Implementation Details**:
 - **Content Type Support**: Only `type: "text"` parts receive cache_control markers
-- **Placement Rules**: System message (always), bridge marker for long conversations (within 20-block scan window), last tool definition
+- **Placement Rules**: System message (always marked as stable prefix), last message with content (moves each turn but stays within scan window)
 - **Type Extension**: Extend OpenAI interfaces with optional cache_control field
 - **Mixed Content**: Preserve existing structure, add cache_control only to text parts
 
 **Alternatives considered**:
 - Universal cache markers: Rejected due to API limitations and cost efficiency
 - First/middle message caching: Rejected due to lower cache hit probability
-- All tools caching: Rejected for cost optimization (last tool most frequently reused)
+- Separate tool definition marker: Rejected — tools are implicitly cached as part of the prefix covered by the last-message marker
 
 ## 20-Block Scan Window Constraint (Qwen/Alibaba)
 
-**Decision**: Use adaptive marker placement with a bridge marker for long conversations
+**Decision**: Use 2-marker strategy — system message + last message with content — matching Claude Code's approach
 
 **Rationale**:
 - The Qwen/Alibaba context cache uses a back-to-front prefix matching strategy
 - The system only scans the nearest 20 content blocks backward from each `cache_control` marker
 - If the cached prefix (e.g. system message) is more than 20 blocks away from the marker, the cache cannot be hit
-- In long agentic conversations (20+ tool rounds = 40+ content blocks), placing a marker only on the last user message is too far from the system message — the marker is wasted
-- A bridge marker placed at ~18 blocks from the end stays within the 20-block scan window, creating a rolling cache: each new request's bridge is only a few blocks from the previous one
+- The key insight: the last-message marker moves ~2 blocks per turn (one user message + one assistant response), which is well within the 20-block scan window. Therefore, the previous cache position is always still reachable from the new marker position, resulting in a cache hit every turn
+- This approach is simpler than a bridge strategy because it requires no module-level state, no block counting, and no special cases for conversation length
 
 **Strategy**:
-- **Short conversations (≤20 blocks)**: System message + last user message (both within scan window)
-- **Long conversations (>20 blocks)**: System message + bridge marker at (totalBlocks - 18). Last user message marker is removed (ineffective)
-- Content blocks are counted precisely: string content = 1 block, array content = element count, null content (assistant with tool_calls only) = 0 blocks
-- Safety margin of 2 blocks accounts for multi-block messages at the boundary
+- **Two markers**: (1) System message (always marked as the stable prefix), (2) Last message with content (user or assistant, no role distinction)
+- **Why it works**: Each turn adds ~2 content blocks (user message + assistant response). The marker moves forward by ~2 blocks. Since 2 << 20 (the scan window), the previous cache is always within reach. Even in the worst case of a turn with many tool calls, the marker moves by the number of blocks in that turn, which is typically < 20
+- **Stateless**: No module-level state needed. The strategy is recomputed from scratch each request — just find the system message and the last message with content
+- **No tools parameter**: Tools are implicitly cached as part of the prefix covered by the last-message marker. The `transformMessagesForExplicitCache` function takes only messages and model name
+- **No bridge needed**: The bridge approach (placing a marker at block 20 and never moving it) was rejected because a moving bridge = cache miss every time, and a fixed bridge adds complexity for marginal benefit when the last-message marker already covers the prefix
+- **After compaction**: Same strategy applies with no state to reset. The compaction produces a new conversation, and the 2 markers are placed on the new system message and last message
+- Content blocks are counted precisely for diagnostics: string content = 1 block, array content = element count, null content (assistant with tool_calls only) = 0 blocks
 
 **Alternatives considered**:
+- Bridge marker at block 20 (placed once, never moves): Rejected — while this works, it requires module-level state (`cachedBridgeIndex`), a `resetExplicitCacheState()` function, block counting, tools parameter, and special cases. The last-message marker achieves the same cache coverage with zero state
+- Rolling bridge that moves every request (at totalBlocks - 18): Rejected — moving the bridge invalidates the cache on every request, defeating the purpose of caching the stable prefix
+- Separate tool definition marker (`addCacheControlToLastTool`): Rejected — tools are implicitly cached as part of the prefix; a separate marker wastes a marker slot and adds a `ClaudeChatCompletionFunctionTool` type
 - Multiple evenly-spaced markers: Rejected — wastes marker slots (max 4 per request) and adds complexity
-- Always use last user message: Rejected — fails silently in long conversations, wasting a marker slot
+- System-only marking for short conversations: Rejected — the last-message marker works for all conversation lengths, so there is no need for a short/long conversation distinction
 - Implicit caching only: Rejected — implicit cache hit rate is uncertain and non-deterministic; explicit caching provides 10% hit cost vs 20% for implicit
 
 ## Extended Usage Tracking Schema

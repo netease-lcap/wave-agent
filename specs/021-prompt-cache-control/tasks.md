@@ -12,7 +12,7 @@
 | Phase 1 | Setup | 3 tasks | 1 hour |
 | Phase 2 | Foundational | 4 tasks | 1.5 hours |
 | Phase 3 | US1 - System Message Cache | 5 tasks | 2 hours |
-| Phase 4 | US2 - Tool Definition Cache | 3 tasks | 1 hour |
+| Phase 4 | US2 - Last Message Cache Marker | 3 tasks (REMOVED) | — |
 | Phase 5 | Polish & Integration | 4 tasks | 1.25 hours |
 | **Total** | **2 User Stories** | **19 tasks** | **6.75 hours** |
 
@@ -23,13 +23,13 @@
 graph TD
     Setup[Phase 1: Setup] --> Foundational[Phase 2: Foundational]
     Foundational --> US1[Phase 3: US1 - System Message Cache]
-    US1 --> US2[Phase 4: US2 - Tool Definition Cache]
+    US1 --> US2[Phase 4: US2 - Last Message Cache Marker]
     US2 --> Polish[Phase 5: Polish & Integration]
 ```
 
 ### Parallel Execution Opportunities
 - **US1 Tasks**: T008, T009, T010 can be developed in parallel after T007
-- **US2 Tasks**: T013, T014 can be developed in parallel after T012
+- **US2 Tasks**: REMOVED — tool definition caching and bridge logic removed in favor of stateless 2-marker strategy
 - **Testing**: All test files can be developed in parallel with their corresponding implementation
 
 ## Implementation Strategy
@@ -81,17 +81,17 @@ graph TD
 
 ---
 
-## Phase 4: User Story 2 - Tool Definition Cache Optimization (1 hour)
+## Phase 4: User Story 2 - Last Message Cache Marker (REMOVED)
 
-**Goal**: Implement caching for tool definitions to optimize repeated tool usage scenarios.
+**Goal**: ~~Implement caching for tool definitions to optimize repeated tool usage scenarios.~~ REMOVED — replaced by stateless 2-marker strategy (system + last message with content). Tool definitions are implicitly cached as part of the prefix covered by the last-message marker. Bridge logic, module-level state, and `addCacheControlToLastTool()` were all removed.
 
-**Independent Test Criteria**: Can make agent calls with tools enabled using Claude models and verify the last tool in the tools array has cache_control markers.
+**Independent Test Criteria**: ~~Can make agent calls with tools enabled using Claude models and verify the last tool in the tools array has cache_control markers.~~ The last-message marker is tested by verifying that the last message with content (user or assistant) receives a cache_control marker.
 
 ### Tasks
 
-- [X] T013 [P] [US2] Implement tool definition transformation utility addCacheControlToLastTool() in packages/agent-sdk/src/utils/cacheControlUtils.ts
-- [X] T014 [US2] Integrate tool definition caching into aiService tool processing in packages/agent-sdk/src/services/aiService.ts
-- [X] T015 [US2] Write tests for tool definition caching logic in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
+- [X] T013 [P] [US2] ~~Implement tool definition transformation utility addCacheControlToLastTool()~~ REMOVED — no separate tool marker needed
+- [X] T014 [US2] ~~Integrate tool definition caching into aiService tool processing~~ REMOVED — `transformMessagesForExplicitCache` no longer takes a `tools?` parameter
+- [X] T015 [US2] ~~Write tests for tool definition caching logic~~ REMOVED — replaced by last-message-marker tests
 
 ---
 
@@ -178,7 +178,7 @@ if (supportsPromptCaching(model || modelConfig.model)) {
 - **Model Detection**: 100% coverage for supportsPromptCaching() with various model name formats
 - **Content Transformation**: 100% coverage including edge cases (empty content, mixed content types)
 - **Content Block Counting**: 100% coverage for countContentBlocks() with string, array, and null content
-- **Bridge Marker Strategy**: Tests for long conversations (>20 blocks) verifying bridge marker placement within 20-block scan window
+- **Last Message Marker**: Tests verifying the last message with content (user or assistant) receives a cache_control marker. Tests for walking backward past assistant messages with only tool_calls to find the last message with content. Tests for marker advancing correctly across turns. Tests verifying stateless behavior (no module-level state, no `resetExplicitCacheState()`)
 - **Integration**: End-to-end tests with mocked OpenAI responses including cache metrics
 - **Backward Compatibility**: Tests ensuring non-cache-enabled models are unaffected
 

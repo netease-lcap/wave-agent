@@ -10,7 +10,6 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionContentPart,
   ChatCompletionContentPartText,
-  ChatCompletionFunctionTool,
   CompletionUsage,
 } from "openai/resources";
 import { logger } from "./globalLogger.js";
@@ -33,16 +32,6 @@ export interface ClaudeChatCompletionContentPartText
   extends ChatCompletionContentPartText {
   type: "text";
   text: string;
-  cache_control?: CacheControl;
-}
-
-/**
- * Extended tool definition with cache control support
- */
-export interface ClaudeChatCompletionFunctionTool
-  extends ChatCompletionFunctionTool {
-  type: "function";
-  function: ChatCompletionFunctionTool["function"];
   cache_control?: CacheControl;
 }
 
@@ -229,55 +218,6 @@ export function addCacheControlToContent(
 }
 
 /**
- * Adds cache control to the last tool in tools array
- * @param tools - Array of tool definitions
- * @returns Tools array with cache control on last tool
- */
-export function addCacheControlToLastTool(
-  tools: ChatCompletionFunctionTool[],
-): ClaudeChatCompletionFunctionTool[] {
-  // Handle null, undefined, or empty arrays
-  if (!tools || !Array.isArray(tools) || tools.length === 0) {
-    return [];
-  }
-
-  // Validate tools structure
-  const validTools = tools.filter((tool) => {
-    if (!tool || typeof tool !== "object") {
-      logger.warn("Invalid tool structure detected, skipping:", tool);
-      return false;
-    }
-    if (tool.type !== "function" || !tool.function) {
-      logger.warn(
-        "Tool is not a function type or missing function property:",
-        tool,
-      );
-      return false;
-    }
-    return true;
-  });
-
-  if (validTools.length === 0) {
-    logger.warn("No valid tools found for cache control");
-    return [];
-  }
-
-  // Create a copy of the valid tools array
-  const result = validTools.map((tool) => ({
-    ...tool,
-  })) as ClaudeChatCompletionFunctionTool[];
-
-  // Add cache control to the last tool only
-  const lastIndex = result.length - 1;
-  result[lastIndex] = {
-    ...result[lastIndex],
-    cache_control: { type: "ephemeral" },
-  };
-
-  return result;
-}
-
-/**
  * Counts the total number of content blocks across all messages.
  * Each element in a message's content array counts as one block.
  * String content counts as one block. Null/undefined content counts as zero
@@ -301,27 +241,17 @@ export function countContentBlocks(
   return count;
 }
 
-// Maximum content blocks the API searches backward from a cache_control marker.
-// If the cached prefix is further than this, the cache cannot be hit.
-const CACHE_BLOCK_SCAN_WINDOW = 20;
-
-// Safety margin (in blocks) to account for multi-block messages at the boundary.
-const CACHE_BLOCK_SAFETY_MARGIN = 2;
-
 /**
  * Transforms messages for explicit cache control.
  *
- * Marker strategy:
- * - Short conversations (≤20 content blocks): system message + last user message.
- *   The last user message is within the 20-block scan window of the system message,
- *   so both markers are effective.
+ * Cache breakpoints (following Claude Code's "last message marker" strategy):
+ * 1. System message — always marked (stable prefix)
+ * 2. Last message — the last user/assistant message with content is marked.
+ *    The API scans backward from this marker within 20 blocks. Since each
+ *    turn adds ~2 blocks (< 20), the previous request's marker position
+ *    always falls within the scan window, ensuring cache hits.
  *
- * - Long conversations (>20 content blocks): system message + bridge marker.
- *   The last user message is too far from the system message (>20 blocks) to hit
- *   the cache, so it's skipped. Instead, a bridge marker is placed at
- *   (totalBlocks - 18) to stay within the 20-block scan window. This creates a
- *   rolling cache: each new request's bridge marker is only a few blocks away
- *   from the previous one, ensuring a cache hit.
+ * Tools are marked separately via addCacheControlToLastTool (called by aiService).
  *
  * @param messages - Original OpenAI message array
  * @param modelName - Model name for cache detection
@@ -351,9 +281,6 @@ export function transformMessagesForExplicitCache(
   // Find first system message index
   const firstSystemIndex = messages.findIndex((m) => m.role === "system");
 
-  // Count total content blocks to determine strategy
-  const totalBlocks = countContentBlocks(messages);
-
   // Determine which message indices should receive cache_control markers
   const cacheIndices = new Set<number>();
 
@@ -362,50 +289,24 @@ export function transformMessagesForExplicitCache(
     cacheIndices.add(firstSystemIndex);
   }
 
-  if (totalBlocks <= CACHE_BLOCK_SCAN_WINDOW) {
-    // Short conversation: last user message is within the scan window
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "user") {
-        cacheIndices.add(i);
-        break;
-      }
-    }
-  } else {
-    // Long conversation: place bridge marker within the scan window of the end.
-    // Target: the message whose cumulative block count first reaches
-    // (totalBlocks - scanWindow + safetyMargin), i.e. ~18 blocks from the end.
-    const targetBlocks =
-      totalBlocks - CACHE_BLOCK_SCAN_WINDOW + CACHE_BLOCK_SAFETY_MARGIN;
-    let cumulativeBlocks = 0;
+  // Marker 2: Last message with content (user or assistant).
+  // This marker moves each turn (~2 blocks), but since the move is < 20 blocks,
+  // the previous marker position is always within the API's 20-block scan window.
+  // This ensures the entire conversation prefix is cached.
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!msg || typeof msg !== "object") continue;
+    if (i === firstSystemIndex) continue;
+    if (msg.role !== "user" && msg.role !== "assistant") continue;
 
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
-      if (!msg || typeof msg !== "object") continue;
+    const content = msg.content;
+    const hasContent =
+      (typeof content === "string" && content.length > 0) ||
+      (Array.isArray(content) && content.length > 0);
 
-      const content = msg.content;
-      let blockCount = 0;
-      if (typeof content === "string") blockCount = 1;
-      else if (Array.isArray(content)) blockCount = content.length;
-
-      cumulativeBlocks += blockCount;
-
-      // Skip system message (already marked) and messages with no content
-      if (i === firstSystemIndex || blockCount === 0) continue;
-
-      if (cumulativeBlocks >= targetBlocks) {
-        cacheIndices.add(i);
-        break;
-      }
-    }
-
-    // Fallback: if no suitable bridge message found, use last user message
-    if (cacheIndices.size === (firstSystemIndex !== -1 ? 1 : 0)) {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "user") {
-          cacheIndices.add(i);
-          break;
-        }
-      }
+    if (hasContent) {
+      cacheIndices.add(i);
+      break;
     }
   }
 
@@ -414,7 +315,7 @@ export function transformMessagesForExplicitCache(
     // Validate message structure
     if (!message || typeof message !== "object" || !message.role) {
       logger.warn("Invalid message structure at index", index, ":", message);
-      return message; // Return as-is to avoid breaking the flow
+      return message;
     }
 
     if (!cacheIndices.has(index)) {

@@ -205,11 +205,12 @@ export type ContentBlockCounter = (
 
 /**
  * Message transformation function type
- * Applies adaptive cache control: system + last user (short) or system + bridge (long)
+ * Applies stable 3-breakpoint cache control: system + tools + block 20 bridge (long conversations)
  */
 export type MessageTransformer = (
   messages: ChatCompletionMessageParam[],
-  modelName: string
+  modelName: string,
+  tools?: ChatCompletionFunctionTool[]
 ) => ChatCompletionMessageParam[];
 
 /**

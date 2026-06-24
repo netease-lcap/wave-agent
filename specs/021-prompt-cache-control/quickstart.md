@@ -6,7 +6,7 @@
 
 ## Overview
 
-This feature adds automatic prompt cache control to cache-enabled models in the OpenAI provider, reducing token costs by 30-60% for repeated content. The implementation applies cache markers to system messages, adaptively to the last user message (short conversations) or a bridge marker (long conversations), and tool definitions when using cache-enabled models.
+This feature adds automatic prompt cache control to cache-enabled models in the OpenAI provider, reducing token costs by 30-60% for repeated content. The implementation uses a 2-marker strategy matching Claude Code: system message (always marked as the stable prefix) and last message with content (marked each turn, moves ~2 blocks forward but stays within the API's 20-block scan window for cache hits).
 
 ## Implementation Steps
 
@@ -35,13 +35,6 @@ export function addCacheControlToContent(
   shouldCache: boolean
 ): ClaudeChatCompletionContentPartText[] {
   // Transform string content to structured arrays with cache_control
-}
-
-// 3. Tool transformation utility
-export function addCacheControlToLastTool(
-  tools: ChatCompletionFunctionTool[]
-): ClaudeChatCompletionFunctionTool[] {
-  // Add cache_control to last tool only
 }
 ```
 
@@ -80,13 +73,8 @@ export interface CacheControl {
 if (supportsPromptCaching(model || modelConfig.model)) {
   openaiMessages = transformMessagesForExplicitCache(
     openaiMessages,
-    model || modelConfig.model,
-    tools
+    model || modelConfig.model
   );
-
-  if (tools && tools.length > 0) {
-    tools = addCacheControlToLastTool(tools);
-  }
 }
 ```
 
@@ -108,7 +96,7 @@ if (totalUsage && response.usage) {
 
 ```typescript
 /**
- * Counts total content blocks across all messages.
+ * Counts total content blocks across all messages (for diagnostics).
  * String content = 1 block, array content = element count, null = 0.
  */
 export function countContentBlocks(
@@ -123,42 +111,48 @@ export function countContentBlocks(
   return count;
 }
 
+// Stateless 2-marker strategy — no module-level state needed
+
 export function transformMessagesForExplicitCache(
   messages: ChatCompletionMessageParam[],
   modelName: string
 ): ChatCompletionMessageParam[] {
   if (!supportsPromptCaching(modelName)) return messages;
 
-  const firstSystemIndex = messages.findIndex(m => m.role === "system");
-  const totalBlocks = countContentBlocks(messages);
+  const result = [...messages];
 
-  // Strategy: system marker always + adaptive second marker
-  // Short (≤20 blocks): last user message (within scan window)
-  // Long (>20 blocks): bridge at ~18 blocks from end (within 20-block scan window)
-  const cacheIndices = new Set<number>();
-  if (firstSystemIndex !== -1) cacheIndices.add(firstSystemIndex);
+  // Marker 1: System message (always marked as stable prefix)
+  const firstSystemIndex = result.findIndex(m => m.role === "system");
+  if (firstSystemIndex !== -1) {
+    result[firstSystemIndex] = addCacheMarkerToMessage(result[firstSystemIndex]);
+  }
 
-  if (totalBlocks <= 20) {
-    // Last user message within scan window
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "user") { cacheIndices.add(i); break; }
-    }
-  } else {
-    // Bridge marker: target = totalBlocks - 20 + 2 = totalBlocks - 18
-    const targetBlocks = totalBlocks - 18;
-    let cumulative = 0;
-    for (let i = 0; i < messages.length; i++) {
-      const content = messages[i].content;
-      let blocks = 0;
-      if (typeof content === "string") blocks = 1;
-      else if (Array.isArray(content)) blocks = content.length;
-      cumulative += blocks;
-      if (i === firstSystemIndex || blocks === 0) continue;
-      if (cumulative >= targetBlocks) { cacheIndices.add(i); break; }
+  // Marker 2: Last message with content (walks backward to find it)
+  // This marker moves ~2 blocks per turn but stays within the 20-block
+  // scan window, so the previous cache always hits.
+  for (let i = result.length - 1; i >= 0; i--) {
+    if (hasContent(result[i])) {
+      result[i] = addCacheMarkerToMessage(result[i]);
+      break;
     }
   }
 
-  // Apply cache_control to selected indices...
+  return result;
+}
+
+function hasContent(message: ChatCompletionMessageParam): boolean {
+  const content = message.content;
+  if (typeof content === "string") return content.length > 0;
+  if (Array.isArray(content)) return content.length > 0;
+  return false;
+}
+
+function addCacheMarkerToMessage(
+  message: ChatCompletionMessageParam
+): ChatCompletionMessageParam {
+  // Transform string content to structured array with cache_control
+  // on the last text content part
+  // ...
 }
 ```
 
@@ -172,8 +166,8 @@ describe('Claude Cache Control', () => {
     // Test system message transformation
   });
   
-  test('should cache last tool definition', async () => {
-    // Test tool caching logic
+  test('should add cache control to last message with content', async () => {
+    // Test last-message marker logic
   });
   
   test('should not add cache control for non-Claude models', async () => {
@@ -190,11 +184,11 @@ describe('Claude Cache Control', () => {
 
 ### Cache Control Application Rules
 
-1. **System Messages**: Always cached for cache-enabled models
-2. **Adaptive Breakpoint**: For short conversations (≤20 content blocks), the last user message is cached. For long conversations (>20 blocks), a bridge marker is placed at ~18 blocks from the end to stay within the API's 20-block backward scan window
-3. **Tool Definitions**: Only the last tool in the tools array
-4. **Content Types**: Only text content parts, never images
-5. **Content Block Counting**: String content = 1 block, array content = element count, null content = 0 blocks
+1. **System Message**: Always marked for cache-enabled models (stable prefix)
+2. **Last Message with Content**: The last message (user or assistant, no role distinction) that has content receives a cache_control marker. This marker moves ~2 blocks per turn but stays within the API's 20-block backward scan window
+3. **Content Types**: Only text content parts receive cache_control markers, never images
+4. **Stateless**: No module-level state, no bridge tracking, no tools parameter. The 2 markers are recomputed from scratch each request
+5. **Content Block Counting**: String content = 1 block, array content = element count, null content = 0 blocks (used for diagnostics, not strategy decisions)
 
 ### Message Transformation Pattern
 
@@ -255,16 +249,16 @@ describe('Claude Cache Control', () => {
 - Basic content transformation
 
 **P2 - Selection Logic**:
-- Last tool definition caching
+- Last message with content marker (user or assistant, no role distinction)
 - Mixed content preservation
-- Bridge marker placement for long conversations (>20 blocks)
-- Content block counting accuracy
+- Last-message marker advances correctly across turns
+- Content block counting accuracy (for diagnostics)
 
 **P3 - Edge Cases**:
 - Empty conversations
 - Image + text content
 - Streaming vs non-streaming
-- Large tool arrays
+- Assistant message with only tool_calls (no content) — marker walks backward to find content
 
 ### Mock Strategy
 
@@ -290,15 +284,15 @@ vi.mocked(openai.chat.completions.create).mockResolvedValue({
 - **Cost Savings**: 30-60% token reduction after 2-3 requests
 
 ### Cache Hit Rates
-- **System Messages**: 70% (highly reusable)
-- **Tool Definitions**: 60% (moderately stable)
+- **System Messages**: 70% (highly reusable, always marked)
+- **Conversation Prefix**: 60% (covered by last-message marker within scan window)
 
 ## Rollback Strategy
 
 If issues arise:
 1. **Feature Flag**: Add `DISABLE_CLAUDE_CACHE=true` environment variable
 2. **Model Bypass**: Set `WAVE_PROMPT_CACHE_REGEX=""` to disable caching for all models
-3. **Selective Rollback**: Disable individual components (system/user/tools)
+3. **Selective Rollback**: Disable individual components (system marker, last-message marker)
 
 ## Post-Implementation Verification
 

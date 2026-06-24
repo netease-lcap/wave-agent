@@ -7,7 +7,7 @@
 
 ## Summary
 
-Implement cache_control functionality for cache-enabled models in the OpenAI provider to optimize token usage and reduce costs. The feature adds ephemeral cache markers using an adaptive strategy: system message (always cached), last tool definition, and an adaptive breakpoint — last user message for short conversations (≤20 content blocks) or a bridge marker at ~18 blocks from the end for long conversations (>20 blocks) to stay within the API's 20-block backward scan window. Cache control is applied only at the block level (content blocks and tool definitions), never at the message level. This includes extending usage tracking to capture cache-related metrics from both Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens) and OpenAI-standard prompt_tokens_details (cached_tokens, cache_creation_input_tokens), with Claude top-level fields taking priority. This ensures cache token tracking works across Claude, Gemini, DeepSeek, and other models that return cache data.
+Implement cache_control functionality for cache-enabled models in the OpenAI provider to optimize token usage and reduce costs. The feature adds ephemeral cache markers using a 2-marker strategy matching Claude Code: (1) system message (always marked as the stable prefix), and (2) the last message with content (user or assistant, no role distinction). The last-message marker moves forward ~2 blocks per turn, but since the API scans backward from each marker within a 20-block window and normal conversations add fewer than 20 blocks per turn, the previous cache position always falls within the scan window, resulting in a cache hit. The strategy is purely stateless — no module-level state, no bridge tracking, no tools parameter. Tools are implicitly cached as part of the prefix covered by the last-message marker. This includes extending usage tracking to capture cache-related metrics from both Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens) and OpenAI-standard prompt_tokens_details (cached_tokens, cache_creation_input_tokens), with Claude top-level fields taking priority. This ensures cache token tracking works across Claude, Gemini, DeepSeek, and other models that return cache data.
 
 ## Technical Context
 
@@ -124,6 +124,8 @@ packages/agent-sdk/
 
 | Breaking Change | Why Needed | Simpler Alternative Rejected Because |
 |----------------|------------|-------------------------------------|
-| Remove `cacheUserMessageCount` from config | Strategy is now hardcoded (system message + last tool only) | Maintaining unused properties creates technical debt |
+| Remove `addCacheControlToLastTool()` and `ClaudeChatCompletionFunctionTool` type | Tool definitions are implicitly cached as part of the prefix covered by the last-message marker; no separate tool marker needed | Maintaining a separate tool marker adds complexity without benefit |
+| Remove `resetExplicitCacheState()`, `lastBridgeBlockPosition`, `cachedBridgeIndex` module-level state | The 2-marker strategy is purely stateless; no bridge tracking needed | Module-level state adds complexity and requires reset logic on compaction |
+| Remove `CACHE_BLOCK_SCAN_WINDOW` constant and `tools?` parameter from `transformMessagesForExplicitCache` | Block counting is no longer used for strategy decisions; the same 2-marker strategy applies regardless of conversation length | Counting blocks and branching on thresholds adds complexity without benefit |
 | Delete `findRecentUserMessageIndices` | Function implements old strategy being replaced | Maintaining unused code creates technical debt |
 
