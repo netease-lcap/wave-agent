@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
+import { randomUUID } from "crypto";
 
 // Mock fs/promises (used by session.ts)
 vi.mock("fs", () => ({
@@ -53,7 +54,6 @@ vi.mock("@/utils/pathEncoder.js", () => ({
 }));
 
 import {
-  generateSessionId,
   listSessionsFromJsonl,
   getLatestSessionFromJsonl,
   loadSessionFromJsonl,
@@ -244,8 +244,8 @@ describe("Session Error Handling and Edge Cases", () => {
     });
 
     it("should handle getLatestSessionFromJsonl with directory separation based on last active time", async () => {
-      const olderMainSessionId = generateSessionId();
-      const newerMainSessionId = generateSessionId();
+      const olderMainSessionId = randomUUID();
+      const newerMainSessionId = randomUUID();
 
       // Create different timestamps - older session has more recent activity
       // Note: timestamps are used to simulate file creation order in this test
@@ -308,7 +308,7 @@ describe("Session Error Handling and Edge Cases", () => {
     });
 
     it("should support loading subagent sessions", async () => {
-      const subagentSessionId = generateSessionId();
+      const subagentSessionId = randomUUID();
 
       const messages = [
         {
