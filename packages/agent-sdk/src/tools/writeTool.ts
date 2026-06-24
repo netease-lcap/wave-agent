@@ -173,6 +173,8 @@ Usage:
         context.readFileState.set(resolvedPath, {
           mtime: newStats.mtime.getTime(),
           hash,
+          offset: undefined,
+          limit: undefined,
         });
       }
 

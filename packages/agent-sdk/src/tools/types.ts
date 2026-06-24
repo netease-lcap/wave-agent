@@ -110,7 +110,15 @@ export interface ToolContext {
     maxTokens: number;
   };
   /** State of files read in the current session for deduplication */
-  readFileState?: Map<string, { mtime: number; hash: string }>;
+  readFileState?: Map<
+    string,
+    {
+      mtime: number;
+      hash: string;
+      offset?: number; // undefined = full read or Edit/Write entry (never dedup)
+      limit?: number;
+    }
+  >;
   /** Hook manager instance for executing hooks */
   hookManager?: import("../managers/hookManager.js").HookManager;
   /** Callback to notify when the current working directory changes */

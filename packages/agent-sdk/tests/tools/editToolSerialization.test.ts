@@ -27,7 +27,10 @@ describe("editTool serialization (real fs)", () => {
     // Simulate a prior Read: populate readFileState with current mtime + hash
     const stats = await stat(tempFile);
     const content = await readFile(tempFile, "utf-8");
-    const readFileState = new Map<string, { mtime: number; hash: string }>();
+    const readFileState = new Map<
+      string,
+      { mtime: number; hash: string; offset?: number; limit?: number }
+    >();
     readFileState.set(tempFile, {
       mtime: stats.mtime.getTime(),
       hash: createHash("sha256").update(content).digest("hex"),

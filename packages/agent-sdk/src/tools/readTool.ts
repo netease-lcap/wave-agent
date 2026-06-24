@@ -244,18 +244,26 @@ Usage:
 
       const stats = await stat(actualFilePath);
 
-      // Deduplication
+      // Deduplication: only dedup if the exact same range was read before
       if (context.readFileState) {
         const state = context.readFileState.get(actualFilePath);
-        if (state && state.mtime === stats.mtime.getTime()) {
-          return {
-            success: true,
-            content: `File ${filePath} has not changed since last read.`,
-            shortResult: "File unchanged",
-            metadata: {
-              type: "file_unchanged",
-            },
-          };
+        // Only dedup entries from a prior Read with explicit offset (not Edit/Write entries)
+        if (
+          state &&
+          state.mtime === stats.mtime.getTime() &&
+          state.offset !== undefined
+        ) {
+          const rangeMatch = state.offset === offset && state.limit === limit;
+          if (rangeMatch) {
+            return {
+              success: true,
+              content: `File ${filePath} has not changed since last read. The content from the earlier Read tool_result in this conversation is still current — refer to that instead of re-reading.`,
+              shortResult: "File unchanged",
+              metadata: {
+                type: "file_unchanged",
+              },
+            };
+          }
         }
       }
 
@@ -287,6 +295,8 @@ Usage:
         context.readFileState.set(actualFilePath, {
           mtime: stats.mtime.getTime(),
           hash,
+          offset, // undefined for full reads
+          limit, // undefined for full reads
         });
       }
 
