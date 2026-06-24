@@ -110,6 +110,7 @@ describe("AIManager", () => {
       execute: vi
         .fn()
         .mockResolvedValue({ success: true, content: "test result" }),
+      isConcurrencySafe: vi.fn().mockReturnValue(true),
     } as unknown as ToolManager;
 
     // Create mock Logger
@@ -1140,6 +1141,93 @@ describe("AIManager", () => {
 
       await testAIManager.sendAIMessage();
       expect(mockNotificationQueue.dequeueAll).toHaveBeenCalled();
+    });
+  });
+
+  describe("Tool Call Partitioning and Serialization", () => {
+    it("should run concurrency-safe tools in parallel and non-safe tools serially", async () => {
+      const aiServiceMod = await import("../../src/services/aiService.js");
+
+      let callCount = 0;
+      vi.spyOn(aiServiceMod, "callAgent").mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) {
+          // Return 4 tool calls: 2 safe (Read, Grep) then 2 non-safe (Edit, Edit)
+          return {
+            content: "Running tools",
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 20,
+              total_tokens: 30,
+            },
+            tool_calls: [
+              {
+                type: "function" as const,
+                id: "call-read",
+                function: { name: "Read", arguments: "{}" },
+              },
+              {
+                type: "function" as const,
+                id: "call-grep",
+                function: { name: "Grep", arguments: "{}" },
+              },
+              {
+                type: "function" as const,
+                id: "call-edit-1",
+                function: { name: "Edit", arguments: "{}" },
+              },
+              {
+                type: "function" as const,
+                id: "call-edit-2",
+                function: { name: "Edit", arguments: "{}" },
+              },
+            ],
+          };
+        }
+        return {
+          content: "Done",
+          usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+          tool_calls: [],
+        };
+      });
+
+      // isConcurrencySafe: Read/Grep = true, Edit = false
+      vi.mocked(mockToolManager.isConcurrencySafe).mockImplementation(
+        (name: string) => name !== "Edit",
+      );
+
+      // Track execution intervals
+      const intervals: { name: string; start: number; end: number }[] = [];
+      vi.mocked(mockToolManager.execute).mockImplementation(
+        async (name: string) => {
+          const start = Date.now();
+          await new Promise((r) => setTimeout(r, 50));
+          const end = Date.now();
+          intervals.push({ name, start, end });
+          return { success: true, content: `${name} done` };
+        },
+      );
+
+      await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+      // 4 tool executions should have occurred
+      expect(intervals).toHaveLength(4);
+
+      // Safe tools (Read, Grep) should overlap (parallel)
+      const readInterval = intervals.find((i) => i.name === "Read")!;
+      const grepInterval = intervals.find((i) => i.name === "Grep")!;
+      expect(readInterval).toBeDefined();
+      expect(grepInterval).toBeDefined();
+      // They overlap if grep starts before read ends
+      expect(grepInterval.start).toBeLessThan(readInterval.end);
+
+      // Non-safe tools (Edit, Edit) should NOT overlap (serial)
+      const editIntervals = intervals.filter((i) => i.name === "Edit");
+      expect(editIntervals).toHaveLength(2);
+      // Second edit starts after first edit ends
+      expect(editIntervals[1].start).toBeGreaterThanOrEqual(
+        editIntervals[0].end,
+      );
     });
   });
 });

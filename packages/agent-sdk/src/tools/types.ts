@@ -31,6 +31,12 @@ export interface ToolPlugin {
     workdir?: string;
     isSubagent?: boolean;
   }) => string;
+  /**
+   * Whether this tool is safe to run in parallel with other tools.
+   * Default (undefined) = true (parallel). Set to false for tools that
+   * perform read-modify-write on shared resources (e.g. Edit, Write).
+   */
+  isConcurrencySafe?: boolean;
 }
 
 export interface ToolResult {

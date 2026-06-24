@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "fs/promises";
+import { readFile, writeFile, stat } from "fs/promises";
+import { createHash } from "crypto";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
@@ -21,6 +22,7 @@ function formatCompactParams(
  */
 export const editTool: ToolPlugin = {
   name: EDIT_TOOL_NAME,
+  isConcurrencySafe: false,
   formatCompactParams,
   prompt: () =>
     `Performs exact string replacements in files.
@@ -137,6 +139,22 @@ Usage:
         };
       }
 
+      // Staleness check: file must not have been modified since last Read
+      if (context.readFileState) {
+        const state = context.readFileState.get(resolvedPath);
+        if (state) {
+          const currentStats = await stat(resolvedPath);
+          if (currentStats.mtime.getTime() !== state.mtime) {
+            return {
+              success: false,
+              content: "",
+              error:
+                "File has been unexpectedly modified since last read. Read it again before editing it.",
+            };
+          }
+        }
+      }
+
       // Normalize line endings for matching
       const normalizedContent = originalContent.replace(/\r\n/g, "\n");
       const normalizedOldString = oldString.replace(/\r\n/g, "\n");
@@ -238,6 +256,16 @@ Usage:
           content: "",
           error: `Failed to write file: ${writeError instanceof Error ? writeError.message : String(writeError)}`,
         };
+      }
+
+      // Update readFileState so subsequent serialized edits see fresh state
+      if (context.readFileState) {
+        const newStats = await stat(resolvedPath);
+        const hash = createHash("sha256").update(newContent).digest("hex");
+        context.readFileState.set(resolvedPath, {
+          mtime: newStats.mtime.getTime(),
+          hash,
+        });
       }
 
       const shortResult = replaceAll
