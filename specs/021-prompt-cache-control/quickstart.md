@@ -6,7 +6,7 @@
 
 ## Overview
 
-This feature adds automatic prompt cache control to Claude models in the OpenAI provider, reducing token costs by 30-60% for repeated content. The implementation applies cache markers to system messages, recent user messages, and tool definitions when using Claude models.
+This feature adds automatic prompt cache control to cache-enabled models in the OpenAI provider, reducing token costs by 30-60% for repeated content. The implementation applies cache markers to system messages, adaptively to the last user message (short conversations) or a bridge marker (long conversations), and tool definitions when using cache-enabled models.
 
 ## Implementation Steps
 
@@ -78,7 +78,7 @@ export interface CacheControl {
 ```typescript
 // Marker injection: gated by supportsPromptCaching
 if (supportsPromptCaching(model || modelConfig.model)) {
-  openaiMessages = transformMessagesForClaudeCache(
+  openaiMessages = transformMessagesForExplicitCache(
     openaiMessages,
     model || modelConfig.model,
     tools
@@ -107,25 +107,58 @@ if (totalUsage && response.usage) {
 **File**: `packages/agent-sdk/src/utils/cacheControlUtils.ts`
 
 ```typescript
-export function transformMessagesForClaudeCache(
+/**
+ * Counts total content blocks across all messages.
+ * String content = 1 block, array content = element count, null = 0.
+ */
+export function countContentBlocks(
+  messages: ChatCompletionMessageParam[]
+): number {
+  let count = 0;
+  for (const message of messages) {
+    const content = message.content;
+    if (typeof content === "string") count += 1;
+    else if (Array.isArray(content)) count += content.length;
+  }
+  return count;
+}
+
+export function transformMessagesForExplicitCache(
   messages: ChatCompletionMessageParam[],
   modelName: string
 ): ChatCompletionMessageParam[] {
-  if (!supportsPromptCaching(modelName)) {
-    return messages;
+  if (!supportsPromptCaching(modelName)) return messages;
+
+  const firstSystemIndex = messages.findIndex(m => m.role === "system");
+  const totalBlocks = countContentBlocks(messages);
+
+  // Strategy: system marker always + adaptive second marker
+  // Short (≤20 blocks): last user message (within scan window)
+  // Long (>20 blocks): bridge at ~18 blocks from end (within 20-block scan window)
+  const cacheIndices = new Set<number>();
+  if (firstSystemIndex !== -1) cacheIndices.add(firstSystemIndex);
+
+  if (totalBlocks <= 20) {
+    // Last user message within scan window
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") { cacheIndices.add(i); break; }
+    }
+  } else {
+    // Bridge marker: target = totalBlocks - 20 + 2 = totalBlocks - 18
+    const targetBlocks = totalBlocks - 18;
+    let cumulative = 0;
+    for (let i = 0; i < messages.length; i++) {
+      const content = messages[i].content;
+      let blocks = 0;
+      if (typeof content === "string") blocks = 1;
+      else if (Array.isArray(content)) blocks = content.length;
+      cumulative += blocks;
+      if (i === firstSystemIndex || blocks === 0) continue;
+      if (cumulative >= targetBlocks) { cacheIndices.add(i); break; }
+    }
   }
 
-  return messages.map((message, index) => {
-    // System message: always cache
-    if (message.role === 'system') {
-      return {
-        ...message,
-        content: addCacheControlToContent(message.content, true)
-      };
-    }
-
-    return message;
-  });
+  // Apply cache_control to selected indices...
 }
 ```
 
@@ -157,9 +190,11 @@ describe('Claude Cache Control', () => {
 
 ### Cache Control Application Rules
 
-1. **System Messages**: Always cached for Claude models
-2. **Tool Definitions**: Only the last tool in the tools array
-3. **Content Types**: Only text content parts, never images
+1. **System Messages**: Always cached for cache-enabled models
+2. **Adaptive Breakpoint**: For short conversations (≤20 content blocks), the last user message is cached. For long conversations (>20 blocks), a bridge marker is placed at ~18 blocks from the end to stay within the API's 20-block backward scan window
+3. **Tool Definitions**: Only the last tool in the tools array
+4. **Content Types**: Only text content parts, never images
+5. **Content Block Counting**: String content = 1 block, array content = element count, null content = 0 blocks
 
 ### Message Transformation Pattern
 
@@ -222,6 +257,8 @@ describe('Claude Cache Control', () => {
 **P2 - Selection Logic**:
 - Last tool definition caching
 - Mixed content preservation
+- Bridge marker placement for long conversations (>20 blocks)
+- Content block counting accuracy
 
 **P3 - Edge Cases**:
 - Empty conversations

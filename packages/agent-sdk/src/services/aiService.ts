@@ -12,7 +12,7 @@ import { addOnceAbortListener } from "../utils/abortUtils.js";
 import type { GatewayConfig, ModelConfig } from "../types/index.js";
 import { ConfigurationError, CONFIG_ERRORS } from "../types/index.js";
 import {
-  transformMessagesForClaudeCache,
+  transformMessagesForExplicitCache,
   addCacheControlToLastTool,
   supportsPromptCaching,
   extendUsageWithCacheMetrics,
@@ -282,7 +282,7 @@ export async function callAgent(
     processedTools = tools;
 
     if (supportsPromptCaching(currentModel)) {
-      openaiMessages = transformMessagesForClaudeCache(
+      openaiMessages = transformMessagesForExplicitCache(
         openaiMessages,
         currentModel,
       );

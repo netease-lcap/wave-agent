@@ -163,9 +163,9 @@ export function addCacheControlToContent(
 
 #### T009: System Message Integration
 ```typescript
-// Integration point in aiService.ts after line 183
-if (isClaudeModel(model || modelConfig.model)) {
-  openaiMessages = transformMessagesForClaudeCache(
+// Integration point in aiService.ts after openaiMessages construction
+if (supportsPromptCaching(model || modelConfig.model)) {
+  openaiMessages = transformMessagesForExplicitCache(
     openaiMessages,
     model || modelConfig.model
   );
@@ -175,10 +175,12 @@ if (isClaudeModel(model || modelConfig.model)) {
 ### Testing Requirements
 
 #### Test Coverage Expectations
-- **Model Detection**: 100% coverage for isClaudeModel() with various model name formats
+- **Model Detection**: 100% coverage for supportsPromptCaching() with various model name formats
 - **Content Transformation**: 100% coverage including edge cases (empty content, mixed content types)
+- **Content Block Counting**: 100% coverage for countContentBlocks() with string, array, and null content
+- **Bridge Marker Strategy**: Tests for long conversations (>20 blocks) verifying bridge marker placement within 20-block scan window
 - **Integration**: End-to-end tests with mocked OpenAI responses including cache metrics
-- **Backward Compatibility**: Tests ensuring non-Claude models are unaffected
+- **Backward Compatibility**: Tests ensuring non-cache-enabled models are unaffected
 
 #### Mock Strategies
 ```typescript

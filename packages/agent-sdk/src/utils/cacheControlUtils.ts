@@ -278,19 +278,63 @@ export function addCacheControlToLastTool(
 }
 
 /**
- * Transforms messages for Claude cache control with hardcoded strategy
+ * Counts the total number of content blocks across all messages.
+ * Each element in a message's content array counts as one block.
+ * String content counts as one block. Null/undefined content counts as zero
+ * (e.g. assistant messages with only tool_calls).
+ * @param messages - Array of chat messages
+ * @returns Total content block count
+ */
+export function countContentBlocks(
+  messages: ChatCompletionMessageParam[],
+): number {
+  let count = 0;
+  for (const message of messages) {
+    if (!message || typeof message !== "object") continue;
+    const content = message.content;
+    if (typeof content === "string") {
+      count += 1;
+    } else if (Array.isArray(content)) {
+      count += content.length;
+    }
+  }
+  return count;
+}
+
+// Maximum content blocks the API searches backward from a cache_control marker.
+// If the cached prefix is further than this, the cache cannot be hit.
+const CACHE_BLOCK_SCAN_WINDOW = 20;
+
+// Safety margin (in blocks) to account for multi-block messages at the boundary.
+const CACHE_BLOCK_SAFETY_MARGIN = 2;
+
+/**
+ * Transforms messages for explicit cache control.
+ *
+ * Marker strategy:
+ * - Short conversations (≤20 content blocks): system message + last user message.
+ *   The last user message is within the 20-block scan window of the system message,
+ *   so both markers are effective.
+ *
+ * - Long conversations (>20 content blocks): system message + bridge marker.
+ *   The last user message is too far from the system message (>20 blocks) to hit
+ *   the cache, so it's skipped. Instead, a bridge marker is placed at
+ *   (totalBlocks - 18) to stay within the 20-block scan window. This creates a
+ *   rolling cache: each new request's bridge marker is only a few blocks away
+ *   from the previous one, ensuring a cache hit.
+ *
  * @param messages - Original OpenAI message array
  * @param modelName - Model name for cache detection
  * @returns Messages with cache control markers applied
  */
-export function transformMessagesForClaudeCache(
+export function transformMessagesForExplicitCache(
   messages: ChatCompletionMessageParam[],
   modelName: string,
 ): ChatCompletionMessageParam[] {
   // Validate inputs
   if (!messages || !Array.isArray(messages)) {
     logger.warn(
-      "Invalid messages array provided to transformMessagesForClaudeCache",
+      "Invalid messages array provided to transformMessagesForExplicitCache",
     );
     return [];
   }
@@ -307,15 +351,65 @@ export function transformMessagesForClaudeCache(
   // Find first system message index
   const firstSystemIndex = messages.findIndex((m) => m.role === "system");
 
-  // Find last user message index
-  let lastUserIndex = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "user") {
-      lastUserIndex = i;
-      break;
+  // Count total content blocks to determine strategy
+  const totalBlocks = countContentBlocks(messages);
+
+  // Determine which message indices should receive cache_control markers
+  const cacheIndices = new Set<number>();
+
+  // Marker 1: First system message (always — stable prefix)
+  if (firstSystemIndex !== -1) {
+    cacheIndices.add(firstSystemIndex);
+  }
+
+  if (totalBlocks <= CACHE_BLOCK_SCAN_WINDOW) {
+    // Short conversation: last user message is within the scan window
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        cacheIndices.add(i);
+        break;
+      }
+    }
+  } else {
+    // Long conversation: place bridge marker within the scan window of the end.
+    // Target: the message whose cumulative block count first reaches
+    // (totalBlocks - scanWindow + safetyMargin), i.e. ~18 blocks from the end.
+    const targetBlocks =
+      totalBlocks - CACHE_BLOCK_SCAN_WINDOW + CACHE_BLOCK_SAFETY_MARGIN;
+    let cumulativeBlocks = 0;
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (!msg || typeof msg !== "object") continue;
+
+      const content = msg.content;
+      let blockCount = 0;
+      if (typeof content === "string") blockCount = 1;
+      else if (Array.isArray(content)) blockCount = content.length;
+
+      cumulativeBlocks += blockCount;
+
+      // Skip system message (already marked) and messages with no content
+      if (i === firstSystemIndex || blockCount === 0) continue;
+
+      if (cumulativeBlocks >= targetBlocks) {
+        cacheIndices.add(i);
+        break;
+      }
+    }
+
+    // Fallback: if no suitable bridge message found, use last user message
+    if (cacheIndices.size === (firstSystemIndex !== -1 ? 1 : 0)) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === "user") {
+          cacheIndices.add(i);
+          break;
+        }
+      }
     }
   }
 
+  // Apply cache_control markers to selected messages
   const result = messages.map((message, index) => {
     // Validate message structure
     if (!message || typeof message !== "object" || !message.role) {
@@ -323,44 +417,31 @@ export function transformMessagesForClaudeCache(
       return message; // Return as-is to avoid breaking the flow
     }
 
-    // First system message: always cached (hardcoded)
-    if (message.role === "system" && index === firstSystemIndex) {
-      const content =
-        (message.content as string | ChatCompletionContentPart[]) || "";
-      // If content is already an array, check if it already has cache control
-      if (Array.isArray(content)) {
-        const hasCacheControl = content.some(
-          (part) =>
-            part.type === "text" &&
-            (part as ClaudeChatCompletionContentPartText).cache_control,
-        );
-        if (hasCacheControl) {
-          return message;
-        }
+    if (!cacheIndices.has(index)) {
+      return message;
+    }
+
+    const content =
+      (message.content as string | ChatCompletionContentPart[]) || "";
+
+    // Idempotency: skip if content already has cache_control (system message)
+    if (message.role === "system" && Array.isArray(content)) {
+      const hasCacheControl = content.some(
+        (part) =>
+          part.type === "text" &&
+          (part as ClaudeChatCompletionContentPartText).cache_control,
+      );
+      if (hasCacheControl) {
+        return message;
       }
-
-      const transformedContent = addCacheControlToContent(content, true);
-
-      return {
-        ...message,
-        content: transformedContent,
-      } as ChatCompletionMessageParam;
     }
 
-    // Last user message: cache recent conversation history
-    if (message.role === "user" && index === lastUserIndex) {
-      const content =
-        (message.content as string | ChatCompletionContentPart[]) || "";
-      const transformedContent = addCacheControlToContent(content, true);
+    const transformedContent = addCacheControlToContent(content, true);
 
-      return {
-        ...message,
-        content: transformedContent,
-      } as ChatCompletionMessageParam;
-    }
-
-    // Return message unchanged
-    return message;
+    return {
+      ...message,
+      content: transformedContent,
+    } as ChatCompletionMessageParam;
   });
 
   return result;

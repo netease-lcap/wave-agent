@@ -147,12 +147,28 @@ function addCacheControlToLastTool(
 ): ClaudeChatCompletionFunctionTool[];
 
 /**
- * Transforms messages for Claude cache control
+ * Counts the total number of content blocks across all messages.
+ * String content = 1 block, array content = element count, null/undefined = 0.
+ * @param messages - Array of chat messages
+ * @returns Total content block count
+ */
+function countContentBlocks(
+  messages: ChatCompletionMessageParam[]
+): number;
+
+/**
+ * Transforms messages for explicit cache control with adaptive marker placement.
+ *
+ * Marker strategy:
+ * - Short conversations (≤20 content blocks): system message + last user message
+ * - Long conversations (>20 content blocks): system message + bridge marker at
+ *   ~18 blocks from end (within the API's 20-block backward scan window)
+ *
  * @param messages - Original OpenAI message array
  * @param modelName - Model name for cache detection
  * @returns Messages with cache control markers applied
  */
-function transformMessagesForClaudeCache(
+function transformMessagesForExplicitCache(
   messages: ChatCompletionMessageParam[],
   modelName: string
 ): ChatCompletionMessageParam[];
