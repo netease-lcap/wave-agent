@@ -532,6 +532,27 @@ export class ConfigurationService {
       permissionMode: permissionMode ?? this.options.permissionMode,
     };
 
+    // Resolve fast model hyperparams from models[fastModel], stripping
+    // structural fields so only hyperparameters remain. Set on baseConfig
+    // before the modelSpecificConfig spread so it isn't overwritten.
+    const fastModelConfigSource =
+      resolvedFastModel &&
+      this.currentConfiguration?.models?.[resolvedFastModel];
+    if (fastModelConfigSource) {
+      const {
+        model: _fm,
+        fastModel: _ffm,
+        maxTokens: _fmt,
+        permissionMode: _fpm,
+        ...fastHyperparams
+      } = fastModelConfigSource;
+      void _fm;
+      void _ffm;
+      void _fmt;
+      void _fpm;
+      baseConfig.fastModelConfig = fastHyperparams;
+    }
+
     // Merge model-specific settings from configuration
     const modelSpecificConfig =
       resolvedAgentModel &&

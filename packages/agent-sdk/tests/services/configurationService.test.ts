@@ -477,6 +477,135 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("resolveModelConfig — fastModelConfig", () => {
+    it("should set fastModelConfig from models[fastModel] hyperparams", async () => {
+      const config = {
+        models: {
+          "gpt-4o": { temperature: 0.7 },
+          "gpt-4o-mini": { temperature: 0.2, top_p: 0.9 },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const resolved = configService.resolveModelConfig(
+          "gpt-4o",
+          "gpt-4o-mini",
+        );
+
+        expect(resolved.fastModelConfig).toEqual({
+          temperature: 0.2,
+          top_p: 0.9,
+        });
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+
+    it("should strip structural fields from fastModelConfig", async () => {
+      const config = {
+        models: {
+          "gpt-4o-mini": {
+            model: "should-be-stripped",
+            fastModel: "should-be-stripped",
+            maxTokens: 999,
+            permissionMode: "default",
+            temperature: 0.3,
+          },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const resolved = configService.resolveModelConfig(
+          undefined,
+          "gpt-4o-mini",
+        );
+
+        expect(resolved.fastModelConfig).toEqual({ temperature: 0.3 });
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+
+    it("should leave fastModelConfig undefined when fast model not in models", async () => {
+      const config = {
+        models: {
+          "gpt-4o": { temperature: 0.7 },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const resolved = configService.resolveModelConfig(
+          "gpt-4o",
+          "unknown-fast-model",
+        );
+
+        expect(resolved.fastModelConfig).toBeUndefined();
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+
+    it("should leave fastModelConfig undefined when no fast model configured", async () => {
+      const config = {
+        models: {
+          "gpt-4o": { temperature: 0.7 },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const resolved = configService.resolveModelConfig("gpt-4o");
+
+        expect(resolved.fastModelConfig).toBeUndefined();
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+  });
+
   describe("resolveMaxInputTokens", () => {
     const originalEnv = process.env.WAVE_MAX_INPUT_TOKENS;
 
