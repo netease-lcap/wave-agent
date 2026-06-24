@@ -217,10 +217,10 @@ describe("Plan Mode Integration", () => {
     }
     expect(planFilePath).toBeDefined();
 
-    // Verify tool visibility: ExitPlanMode visible, EnterPlanMode hidden
+    // Both plan mode tools always in tool list (runtime guard handles mode validation)
     const tools = agent.getAvailableToolNames();
     expect(tools).toContain("ExitPlanMode");
-    expect(tools).not.toContain("EnterPlanMode");
+    expect(tools).toContain("EnterPlanMode");
 
     await agent.destroy();
   });

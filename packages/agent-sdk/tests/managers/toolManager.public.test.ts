@@ -119,7 +119,7 @@ describe("ToolManager.initializeBuiltInTools", () => {
 });
 
 describe("ToolManager bypassPermissions mode", () => {
-  it("should exclude ExitPlanMode but include EnterPlanMode and AskUserQuestion in bypassPermissions mode", async () => {
+  it("should include both EnterPlanMode and ExitPlanMode in bypassPermissions mode", async () => {
     const mockMcpManager = {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
@@ -151,7 +151,7 @@ describe("ToolManager bypassPermissions mode", () => {
     const toolsConfig = toolManager.getToolsConfig();
     const names = toolsConfig.map((t) => t.function.name);
 
-    expect(names).not.toContain("ExitPlanMode");
+    expect(names).toContain("ExitPlanMode");
     expect(names).toContain("EnterPlanMode");
     expect(names).toContain("AskUserQuestion");
     expect(names).toContain("Bash");
@@ -191,10 +191,10 @@ describe("ToolManager bypassPermissions mode", () => {
     const names = toolsConfig.map((t) => t.function.name);
 
     expect(names).toContain("AskUserQuestion");
-    expect(names).not.toContain("ExitPlanMode"); // ExitPlanMode only in plan mode
+    expect(names).toContain("ExitPlanMode"); // always in tool list
   });
 
-  it("should include ExitPlanMode and AskUserQuestion in plan mode", async () => {
+  it("should include both EnterPlanMode and ExitPlanMode in plan mode", async () => {
     const mockMcpManager = {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
@@ -227,6 +227,7 @@ describe("ToolManager bypassPermissions mode", () => {
     const names = toolsConfig.map((t) => t.function.name);
 
     expect(names).toContain("ExitPlanMode");
+    expect(names).toContain("EnterPlanMode");
     expect(names).toContain("AskUserQuestion");
   });
 

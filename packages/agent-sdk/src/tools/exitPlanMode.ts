@@ -52,6 +52,16 @@ Ensure your plan is complete and unambiguous:
     context: ToolContext,
   ): Promise<ToolResult> => {
     try {
+      // Runtime guard: tool is always visible but only works in plan mode
+      if (context.permissionMode !== "plan") {
+        return {
+          success: false,
+          content:
+            "Not in plan mode. ExitPlanMode can only be used when actively in plan mode.",
+          error: "Not in plan mode",
+        };
+      }
+
       if (!context.permissionManager) {
         return {
           success: false,

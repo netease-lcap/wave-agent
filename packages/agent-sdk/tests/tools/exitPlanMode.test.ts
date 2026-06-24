@@ -60,11 +60,22 @@ describe("exitPlanModeTool", () => {
       {},
       {
         workdir: "/test",
+        permissionMode: "plan",
         taskManager: new TaskManager(container, "test-session"),
       },
     );
     expect(result.success).toBe(false);
     expect(result.error).toBe("Permission manager is not available");
+  });
+
+  it("should fail if not in plan mode", async () => {
+    const nonPlanContext = {
+      ...mockContext,
+      permissionMode: "default" as const,
+    };
+    const result = await exitPlanModeTool.execute({}, nonPlanContext);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Not in plan mode");
   });
 
   it("should fail if plan file path is not set", async () => {

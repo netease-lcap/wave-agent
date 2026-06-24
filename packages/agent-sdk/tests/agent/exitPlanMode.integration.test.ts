@@ -42,13 +42,13 @@ describe("ExitPlanMode Integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("should only show ExitPlanMode tool in plan mode", async () => {
+  it("should include both EnterPlanMode and ExitPlanMode in all permission modes", async () => {
     const agent = await Agent.create({
       workdir: "/test/workdir",
       permissionMode: "default",
     });
 
-    // Check tools config
+    // Both tools always in tool list (runtime guard handles mode validation)
     const tools = (
       agent as unknown as AgentInternal
     ).toolManager.getToolsConfig();
@@ -57,9 +57,15 @@ describe("ExitPlanMode Integration", () => {
         (t: { function: { name: string } }) =>
           t.function.name === "ExitPlanMode",
       ),
-    ).toBeUndefined();
+    ).toBeDefined();
+    expect(
+      tools.find(
+        (t: { function: { name: string } }) =>
+          t.function.name === "EnterPlanMode",
+      ),
+    ).toBeDefined();
 
-    // Switch to plan mode
+    // Switch to plan mode — tools unchanged
     agent.setPermissionMode("plan");
     const toolsInPlan = (
       agent as unknown as AgentInternal
@@ -70,8 +76,14 @@ describe("ExitPlanMode Integration", () => {
           t.function.name === "ExitPlanMode",
       ),
     ).toBeDefined();
+    expect(
+      toolsInPlan.find(
+        (t: { function: { name: string } }) =>
+          t.function.name === "EnterPlanMode",
+      ),
+    ).toBeDefined();
 
-    // Switch back to default
+    // Switch back to default — tools unchanged
     agent.setPermissionMode("default");
     const toolsBack = (
       agent as unknown as AgentInternal
@@ -81,7 +93,7 @@ describe("ExitPlanMode Integration", () => {
         (t: { function: { name: string } }) =>
           t.function.name === "ExitPlanMode",
       ),
-    ).toBeUndefined();
+    ).toBeDefined();
   });
 
   it("should generate plan file path when entering plan mode", async () => {

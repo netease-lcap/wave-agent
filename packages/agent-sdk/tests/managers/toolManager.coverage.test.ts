@@ -70,7 +70,7 @@ describe("ToolManager - Additional Coverage", () => {
     expect(result.error).toBe("Tool 'NonExistent' not found");
   });
 
-  it("should filter tools in getToolsConfig based on permission mode", () => {
+  it("should include plan mode tools regardless of permission mode", () => {
     const exitTool = {
       name: "ExitPlanMode",
       config: {
@@ -102,7 +102,7 @@ describe("ToolManager - Additional Coverage", () => {
     let config = toolManager.getToolsConfig();
     expect(
       config.find((c) => c.function.name === "ExitPlanMode"),
-    ).toBeUndefined();
+    ).toBeDefined();
     expect(
       config.find((c) => c.function.name === "AskUserQuestion"),
     ).toBeDefined();
@@ -120,7 +120,7 @@ describe("ToolManager - Additional Coverage", () => {
     config = toolManager.getToolsConfig();
     expect(
       config.find((c) => c.function.name === "ExitPlanMode"),
-    ).toBeUndefined();
+    ).toBeDefined();
     expect(
       config.find((c) => c.function.name === "AskUserQuestion"),
     ).toBeDefined();
