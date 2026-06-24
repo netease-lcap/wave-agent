@@ -21,20 +21,20 @@ When developers use Claude models through the OpenAI provider, the system messag
 
 ---
 
-### User Story 2 - Last User Message Cache Optimization (Priority: P1)
+### User Story 2 - Adaptive Cache Breakpoint Optimization (Priority: P1)
 
-When users engage in multi-turn conversations with Claude models, the last user message should be automatically cached to capture recent conversation history. This provides a cache breakpoint that includes the system prompt, tools, and conversation history up to the most recent user input, maximizing cache hits on every turn.
+When users engage in multi-turn conversations with cache-enabled models, the system must place cache breakpoints adaptively based on conversation length. For short conversations (≤20 content blocks), the last user message receives a cache marker. For long conversations (>20 content blocks), a bridge marker is placed at approximately 18 blocks from the end to stay within the API's 20-block backward scan window, ensuring the cache can still be hit.
 
-**Why this priority**: Claude's cache is prefix-based — it caches everything from the start of the conversation up to each breakpoint. By placing a cache marker on the last user message, every consecutive turn reuses the entire prefix (system + tools + history), making this the most effective strategy for reducing token costs in interactive sessions.
+**Why this priority**: Cache-enabled APIs (e.g. Qwen/Alibaba) use a back-to-front prefix matching strategy that only scans the nearest 20 content blocks from each `cache_control` marker. In long agentic conversations (>20 tool rounds), placing the marker only on the last user message would be too far from the system message to hit the cache. An adaptive bridge marker strategy ensures cache hits regardless of conversation length.
 
-**Independent Test**: Can be fully tested by making agent calls with multiple user messages and verifying that only the last user message has cache_control markers, while earlier user messages remain unchanged.
+**Independent Test**: Can be fully tested by making agent calls with varying conversation lengths and verifying that short conversations cache the last user message, while long conversations place a bridge marker within the 20-block scan window.
 
 **Acceptance Scenarios**:
 
-1. **Given** a conversation has multiple user messages, **When** the system processes the next interaction with a Claude model, **Then** only the last user message has cache_control with type "ephemeral"
-2. **Given** a conversation has a single user message, **When** the system processes the interaction, **Then** that user message has cache_control markers
-3. **Given** a conversation has no user messages (only system or assistant), **When** the system processes the interaction, **Then** no user message cache markers are added
-4. **Given** a non-Claude model is configured, **When** an agent call is made, **Then** no cache_control markers are added to user messages
+1. **Given** a conversation has ≤20 total content blocks, **When** the system processes the next interaction with a cache-enabled model, **Then** the last user message has cache_control with type "ephemeral" (within the 20-block scan window of the system message)
+2. **Given** a conversation has >20 total content blocks, **When** the system processes the interaction, **Then** a bridge marker is placed on a message at approximately 18 blocks from the end (within the 20-block scan window), and the last user message does NOT receive a marker
+3. **Given** a conversation has no user messages (only system or assistant), **When** the system processes the interaction, **Then** only the system message receives cache markers
+4. **Given** a non-cache-enabled model is configured, **When** an agent call is made, **Then** no cache_control markers are added to any messages
 
 ---
 
@@ -98,6 +98,7 @@ As a user who switches between permission modes (e.g., default → plan → acce
 - **Edge Case 3**: Streaming and non-streaming requests MUST apply identical cache_control transformation logic
 - **Edge Case 4**: Token tracking MUST handle missing cache token fields gracefully (treat undefined as 0)
 - **Edge Case 5**: CWD changes via `cd` in Bash MUST NOT change the system prompt's `Primary working directory` field (it uses immutable `originalWorkdir`), preserving the cached system prompt prefix
+- **Edge Case 6**: In long conversations (>20 content blocks), the system MUST NOT place a cache marker on the last user message, as it would be outside the API's 20-block backward scan window and waste a marker slot. Instead, a bridge marker MUST be placed within the scan window.
 
 ## Requirements *(mandatory)*
 
@@ -105,7 +106,7 @@ As a user who switches between permission modes (e.g., default → plan → acce
 
 - **FR-001**: System MUST detect cache-supporting models for cache_control marker injection using the `WAVE_PROMPT_CACHE_REGEX` environment variable (default: "claude"), which allows configurable regex patterns for model matching. This gate controls ONLY the injection of `cache_control: {type: "ephemeral"}` markers into messages and tool definitions — it does NOT gate cache token extraction from usage responses, which applies to all models.
 - **FR-002**: System MUST add cache_control markers with type "ephemeral" to the first system message when using Claude models. This ensures core instructions are always cached even if reminders are added later. The system prompt MUST remain constant across plan mode transitions — plan mode instructions are injected as `<system-reminder>` user messages rather than system prompt changes to preserve the cached system prompt prefix. The `<env>` section's `Primary working directory` field MUST use the immutable `originalWorkdir` (set once at session start) rather than the dynamic `workdir` (which tracks `cd` changes), so that CWD changes do not invalidate the cached system prompt.
-- **FR-003**: System MUST add cache_control markers with type "ephemeral" to the last user message when using Claude models. This captures recent conversation history as a cache breakpoint, maximizing cache hits on every turn since Claude's cache is prefix-based (caching everything from the start up to each breakpoint). Only the last user message receives cache markers; earlier user messages remain unchanged.
+- **FR-003**: System MUST place cache_control markers adaptively based on total content block count. For short conversations (≤20 content blocks): the last user message receives a cache marker (within the API's 20-block backward scan window of the system message). For long conversations (>20 content blocks): a bridge marker is placed at approximately 18 blocks from the end (totalBlocks - 20 + 2 safety margin) to stay within the 20-block scan window, and the last user message does NOT receive a marker. Content blocks are counted precisely: string content = 1 block, array content = element count, null/undefined content = 0 blocks. The bridge marker creates a rolling cache — each new request's bridge is only a few blocks from the previous one, ensuring cache continuity across long conversations.
 - **FR-004**: System MUST NOT add cache_control markers when using non-Claude models (as determined by `WAVE_PROMPT_CACHE_REGEX`). However, cache token extraction from usage (FR-005) applies to all models regardless of this gate.
 - **FR-005**: System MUST extend usage tracking to include cache-related metrics for ALL models (not gated by `supportsPromptCaching`). Cache tokens are extracted from two sources with priority ordering: (1) Claude top-level fields (cache_read_input_tokens, cache_creation_input_tokens, cache_creation object) take priority, (2) OpenAI-standard prompt_tokens_details fields (cached_tokens → cache_read_input_tokens, cache_creation_input_tokens → cache_creation_input_tokens) serve as fallback for non-Claude models that return cache data via prompt_tokens_details
 - **FR-006**: System MUST apply cache_control markers identically for both streaming and non-streaming requests during message preparation phase

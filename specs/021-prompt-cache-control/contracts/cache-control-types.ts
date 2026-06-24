@@ -196,12 +196,20 @@ export type ToolTransformer = (
 ) => ClaudeChatCompletionFunctionTool[];
 
 /**
+ * Counts total content blocks across all messages.
+ * String content = 1 block, array content = element count, null = 0.
+ */
+export type ContentBlockCounter = (
+  messages: ChatCompletionMessageParam[]
+) => number;
+
+/**
  * Message transformation function type
+ * Applies adaptive cache control: system + last user (short) or system + bridge (long)
  */
 export type MessageTransformer = (
   messages: ChatCompletionMessageParam[],
-  modelName: string,
-  config: CacheControlConfig
+  modelName: string
 ) => ChatCompletionMessageParam[];
 
 /**

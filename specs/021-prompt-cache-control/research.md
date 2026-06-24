@@ -75,7 +75,7 @@
 
 **Key Implementation Details**:
 - **Content Type Support**: Only `type: "text"` parts receive cache_control markers
-- **Placement Rules**: System messages (always), last tool definition
+- **Placement Rules**: System message (always), bridge marker for long conversations (within 20-block scan window), last tool definition
 - **Type Extension**: Extend OpenAI interfaces with optional cache_control field
 - **Mixed Content**: Preserve existing structure, add cache_control only to text parts
 
@@ -83,6 +83,28 @@
 - Universal cache markers: Rejected due to API limitations and cost efficiency
 - First/middle message caching: Rejected due to lower cache hit probability
 - All tools caching: Rejected for cost optimization (last tool most frequently reused)
+
+## 20-Block Scan Window Constraint (Qwen/Alibaba)
+
+**Decision**: Use adaptive marker placement with a bridge marker for long conversations
+
+**Rationale**:
+- The Qwen/Alibaba context cache uses a back-to-front prefix matching strategy
+- The system only scans the nearest 20 content blocks backward from each `cache_control` marker
+- If the cached prefix (e.g. system message) is more than 20 blocks away from the marker, the cache cannot be hit
+- In long agentic conversations (20+ tool rounds = 40+ content blocks), placing a marker only on the last user message is too far from the system message — the marker is wasted
+- A bridge marker placed at ~18 blocks from the end stays within the 20-block scan window, creating a rolling cache: each new request's bridge is only a few blocks from the previous one
+
+**Strategy**:
+- **Short conversations (≤20 blocks)**: System message + last user message (both within scan window)
+- **Long conversations (>20 blocks)**: System message + bridge marker at (totalBlocks - 18). Last user message marker is removed (ineffective)
+- Content blocks are counted precisely: string content = 1 block, array content = element count, null content (assistant with tool_calls only) = 0 blocks
+- Safety margin of 2 blocks accounts for multi-block messages at the boundary
+
+**Alternatives considered**:
+- Multiple evenly-spaced markers: Rejected — wastes marker slots (max 4 per request) and adds complexity
+- Always use last user message: Rejected — fails silently in long conversations, wasting a marker slot
+- Implicit caching only: Rejected — implicit cache hit rate is uncertain and non-deterministic; explicit caching provides 10% hit cost vs 20% for implicit
 
 ## Extended Usage Tracking Schema
 

@@ -369,7 +369,7 @@ describe("AI Service - Claude Cache Control", () => {
       });
     });
 
-    describe("transformMessagesForClaudeCache", () => {
+    describe("transformMessagesForExplicitCache", () => {
       it("should cache first system message and last user message", async () => {
         const messages = [
           { role: "user" as const, content: "First user message" },
@@ -379,7 +379,7 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "system" as const, content: "Last system message" },
         ];
 
-        const result = cacheUtils.transformMessagesForClaudeCache(
+        const result = cacheUtils.transformMessagesForExplicitCache(
           messages,
           "claude-3-sonnet",
         );
@@ -421,7 +421,7 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "user" as const, content: "What can you do?" },
         ];
 
-        const result = cacheUtils.transformMessagesForClaudeCache(
+        const result = cacheUtils.transformMessagesForExplicitCache(
           messages,
           "claude-3-sonnet",
         );
@@ -451,7 +451,7 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "assistant" as const, content: "Hello!" },
         ];
 
-        const result = cacheUtils.transformMessagesForClaudeCache(
+        const result = cacheUtils.transformMessagesForExplicitCache(
           messages,
           "claude-3-sonnet",
         );
@@ -483,7 +483,7 @@ describe("AI Service - Claude Cache Control", () => {
           },
         ];
 
-        const result = cacheUtils.transformMessagesForClaudeCache(
+        const result = cacheUtils.transformMessagesForExplicitCache(
           messages,
           "claude-3-sonnet",
         );
@@ -518,7 +518,7 @@ describe("AI Service - Claude Cache Control", () => {
           content: `Message ${i + 1}`,
         })) as ChatCompletionMessageParam[];
 
-        const result = cacheUtils.transformMessagesForClaudeCache(
+        const result = cacheUtils.transformMessagesForExplicitCache(
           messages,
           "gpt-4o",
         );
@@ -533,18 +533,18 @@ describe("AI Service - Claude Cache Control", () => {
       it("should handle edge cases gracefully", async () => {
         // Empty conversation
         expect(
-          cacheUtils.transformMessagesForClaudeCache([], "claude-3-sonnet"),
+          cacheUtils.transformMessagesForExplicitCache([], "claude-3-sonnet"),
         ).toEqual([]);
 
         // Invalid messages array
         expect(
-          cacheUtils.transformMessagesForClaudeCache(
+          cacheUtils.transformMessagesForExplicitCache(
             null as unknown as ChatCompletionMessageParam[],
             "claude-3-sonnet",
           ),
         ).toEqual([]);
         expect(
-          cacheUtils.transformMessagesForClaudeCache(
+          cacheUtils.transformMessagesForExplicitCache(
             undefined as unknown as ChatCompletionMessageParam[],
             "claude-3-sonnet",
           ),
@@ -567,7 +567,7 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "assistant" as const, content: "I can see the image" },
         ];
 
-        const result = cacheUtils.transformMessagesForClaudeCache(
+        const result = cacheUtils.transformMessagesForExplicitCache(
           messages,
           "claude-3-sonnet",
         );
@@ -592,6 +592,212 @@ describe("AI Service - Claude Cache Control", () => {
 
         // Assistant message should remain as string
         expect(typeof result[2].content).toBe("string");
+      });
+
+      it("should use bridge marker for long conversations (>20 blocks)", async () => {
+        // 25 messages, each with string content = 25 content blocks (>20)
+        const messages = Array.from({ length: 25 }, (_, i) => ({
+          role:
+            i === 0
+              ? ("system" as const)
+              : i % 2 === 1
+                ? ("user" as const)
+                : ("assistant" as const),
+          content: `Message ${i + 1}`,
+        })) as ChatCompletionMessageParam[];
+
+        const result = cacheUtils.transformMessagesForExplicitCache(
+          messages,
+          "claude-3-sonnet",
+        );
+
+        // System message (index 0) should have cache control
+        expect(Array.isArray(result[0].content)).toBe(true);
+
+        // Last user message (index 24) should NOT have cache control (long conversation)
+        // In a 25-block conversation, target = 25 - 20 + 2 = 7
+        // Bridge marker should be at the message where cumulative blocks first reach 7
+        // Messages 0-6 = 7 blocks, so bridge is at index 6 (assistant)
+        expect(Array.isArray(result[6].content)).toBe(true);
+        const bridgeContent = result[6].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(bridgeContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
+
+        // Last user message (index 23) should NOT have cache control
+        expect(typeof result[23].content).toBe("string");
+
+        // Only system and bridge should have cache_control (2 markers, not 3)
+        let markerCount = 0;
+        for (const msg of result) {
+          if (Array.isArray(msg.content)) {
+            const content = msg.content as Array<{
+              cache_control?: { type: string };
+            }>;
+            if (content.some((c) => c.cache_control)) markerCount++;
+          }
+        }
+        expect(markerCount).toBe(2);
+      });
+
+      it("should not place bridge marker on system message", async () => {
+        // 22 messages: 1 system + 21 user/assistant = 22 blocks
+        const messages = [
+          { role: "system" as const, content: "System prompt" },
+          ...Array.from({ length: 21 }, (_, i) => ({
+            role: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
+            content: `Message ${i + 1}`,
+          })),
+        ] as ChatCompletionMessageParam[];
+
+        const result = cacheUtils.transformMessagesForExplicitCache(
+          messages,
+          "claude-3-sonnet",
+        );
+
+        // System (index 0) has cache control
+        expect(Array.isArray(result[0].content)).toBe(true);
+
+        // Bridge marker: target = 22 - 20 + 2 = 4
+        // i=0 system (cumulative=1, skip), i=1 user (cumulative=2),
+        // i=2 assistant (cumulative=3), i=3 user (cumulative=4 ≥ target → bridge)
+        expect(Array.isArray(result[3].content)).toBe(true);
+        const bridgeContent = result[3].content as Array<{
+          cache_control?: { type: string };
+        }>;
+        expect(bridgeContent[0]).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
+
+        // Only 2 markers
+        let markerCount = 0;
+        for (const msg of result) {
+          if (Array.isArray(msg.content)) {
+            const content = msg.content as Array<{
+              cache_control?: { type: string };
+            }>;
+            if (content.some((c) => c.cache_control)) markerCount++;
+          }
+        }
+        expect(markerCount).toBe(2);
+      });
+
+      it("should fall back to last user when no bridge candidate found", async () => {
+        // System + many assistant messages with null content (0 blocks each)
+        // Total blocks = 1 (only system has content), but 30 messages
+        const messages = [
+          { role: "system" as const, content: "System prompt" },
+          ...Array.from({ length: 29 }, (_, i) => ({
+            role: "assistant" as const,
+            content: null as unknown as string,
+            tool_calls: [
+              {
+                id: `call_${i}`,
+                type: "function" as const,
+                function: { name: "tool", arguments: "{}" },
+              },
+            ],
+          })),
+        ] as ChatCompletionMessageParam[];
+
+        // totalBlocks = 1 (only system), so ≤ 20 → short conversation path
+        // No user messages, so only system gets a marker
+        const result = cacheUtils.transformMessagesForExplicitCache(
+          messages,
+          "claude-3-sonnet",
+        );
+
+        // System has cache control
+        expect(Array.isArray(result[0].content)).toBe(true);
+
+        // Assistant messages should not have cache control (content stays null)
+        expect(result[1].content).toBeNull();
+
+        // Only 1 marker (system)
+        let markerCount = 0;
+        for (const msg of result) {
+          if (Array.isArray(msg.content)) {
+            const content = msg.content as Array<{
+              cache_control?: { type: string };
+            }>;
+            if (content.some((c) => c.cache_control)) markerCount++;
+          }
+        }
+        expect(markerCount).toBe(1);
+      });
+    });
+
+    describe("countContentBlocks", () => {
+      it("should count string content as 1 block", async () => {
+        const messages = [
+          { role: "system" as const, content: "Hello" },
+          { role: "user" as const, content: "World" },
+        ] as ChatCompletionMessageParam[];
+
+        expect(cacheUtils.countContentBlocks(messages)).toBe(2);
+      });
+
+      it("should count array content elements as individual blocks", async () => {
+        const messages = [
+          {
+            role: "user" as const,
+            content: [
+              { type: "text" as const, text: "part 1" },
+              { type: "text" as const, text: "part 2" },
+              { type: "image_url" as const, image_url: { url: "..." } },
+            ],
+          },
+        ] as ChatCompletionMessageParam[];
+
+        expect(cacheUtils.countContentBlocks(messages)).toBe(3);
+      });
+
+      it("should count null/undefined content as 0 blocks", async () => {
+        const messages = [
+          { role: "system" as const, content: "System" },
+          {
+            role: "assistant" as const,
+            content: null,
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function" as const,
+                function: { name: "tool", arguments: "{}" },
+              },
+            ],
+          },
+          { role: "user" as const, content: "Hello" },
+        ] as ChatCompletionMessageParam[];
+
+        expect(cacheUtils.countContentBlocks(messages)).toBe(2);
+      });
+
+      it("should handle empty messages array", async () => {
+        expect(cacheUtils.countContentBlocks([])).toBe(0);
+      });
+
+      it("should handle mixed content types across messages", async () => {
+        const messages = [
+          { role: "system" as const, content: "System" }, // 1
+          {
+            role: "user" as const,
+            content: [
+              { type: "text" as const, text: "a" },
+              { type: "text" as const, text: "b" },
+            ],
+          }, // 2
+          { role: "assistant" as const, content: "reply" }, // 1
+          {
+            role: "assistant" as const,
+            content: null,
+            tool_calls: [],
+          }, // 0
+          { role: "user" as const, content: "hello" }, // 1
+        ] as ChatCompletionMessageParam[];
+
+        expect(cacheUtils.countContentBlocks(messages)).toBe(5);
       });
     });
   });

@@ -116,9 +116,7 @@ interface ModelCacheConfig {
 
 ### Structured Message Content
 
-**Purpose**: Array-based message content supporting selective cache control
-
-**Structure**:
+**Purpose**: Array-based message content supporting selective cache control**Structure**:
 ```typescript
 // Extended OpenAI types for Claude cache support
 interface ClaudeChatCompletionContentPartText extends ChatCompletionContentPartText {
@@ -154,6 +152,20 @@ type ClaudeMessageContent = string | Array<
 - Maintains compatibility with existing message processing
 - Enables selective caching based on content type
 
+### Content Block Counting
+
+**Purpose**: Precise counting of content blocks to determine cache marker strategy
+
+**Counting Rules**:
+- String content → 1 block
+- Array content (structured parts) → number of elements
+- Null/undefined content (e.g. assistant messages with only tool_calls) → 0 blocks
+
+**Relationships**:
+- Total block count determines strategy: ≤20 blocks uses last user message marker; >20 blocks uses bridge marker
+- Bridge marker target position: `totalBlocks - 20 + 2` (safety margin of 2)
+- Counted by iterating all messages and summing per-message block counts
+
 ## Entity State Transitions
 
 ### Message Content Transformation
@@ -184,11 +196,12 @@ All models' usage responses are checked for cache tokens (Claude top-level + pro
 ### Cache Control Application
 
 1. **Input**: Original OpenAI message parameters
-2. **Detection**: Model name analysis for Claude identification  
-3. **Selection**: System message + last tool
-4. **Transformation**: String content -> structured arrays + cache_control
-5. **Preservation**: Existing structured content maintained
-6. **Output**: Enhanced message parameters with selective cache markers
+2. **Detection**: Model name analysis for cache support
+3. **Block Counting**: Count total content blocks (string=1, array=N, null=0)
+4. **Strategy Selection**: ≤20 blocks → system + last user; >20 blocks → system + bridge marker at ~18 blocks from end
+5. **Transformation**: String content → structured arrays + cache_control on selected messages
+6. **Preservation**: Existing structured content maintained; non-selected messages unchanged
+7. **Output**: Enhanced message parameters with adaptive cache markers
 
 ### Usage Tracking Extension
 
