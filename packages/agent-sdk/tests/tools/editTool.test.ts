@@ -540,7 +540,10 @@ describe("editTool", () => {
     vi.mocked(readFile).mockResolvedValue(mockContent);
 
     // readFileState shows mtime=1000, but current file has mtime=2000
-    const readFileState = new Map<string, { mtime: number; hash: string }>();
+    const readFileState = new Map<
+      string,
+      { mtime: number; hash: string; offset?: number; limit?: number }
+    >();
     readFileState.set("/test/file.js", { mtime: 1000, hash: "abc" });
 
     vi.mocked(stat).mockResolvedValue({
@@ -566,7 +569,10 @@ describe("editTool", () => {
     vi.mocked(readFile).mockResolvedValue(mockContent);
     vi.mocked(writeFile).mockResolvedValue(undefined);
 
-    const readFileState = new Map<string, { mtime: number; hash: string }>();
+    const readFileState = new Map<
+      string,
+      { mtime: number; hash: string; offset?: number; limit?: number }
+    >();
     readFileState.set("/test/file.js", { mtime: 1000, hash: "abc" });
 
     // First stat: staleness check (mtime matches)
@@ -596,7 +602,10 @@ describe("editTool", () => {
     vi.mocked(readFile).mockResolvedValue(mockContent);
     vi.mocked(writeFile).mockResolvedValue(undefined);
 
-    const readFileState = new Map<string, { mtime: number; hash: string }>();
+    const readFileState = new Map<
+      string,
+      { mtime: number; hash: string; offset?: number; limit?: number }
+    >();
     readFileState.set("/test/file.js", { mtime: 1000, hash: "abc" });
 
     // First stat: staleness check (mtime matches readFileState)

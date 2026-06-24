@@ -708,27 +708,79 @@ describe("readTool", () => {
       expect(result.error).toContain("Failed to read file: String error");
     });
 
-    it("should support deduplication using readFileState", async () => {
-      const readFileState = new Map<string, { mtime: number; hash: string }>();
-      const filePath = "/test/workdir/small.txt";
+    it("should dedup when the same partial range is read twice", async () => {
+      const readFileState = new Map<
+        string,
+        { mtime: number; hash: string; offset?: number; limit?: number }
+      >();
+      const filePath = "/test/workdir/medium.txt";
 
-      // First read
+      // First read with explicit offset/limit
       const result1 = await readTool.execute(
-        { file_path: filePath },
+        { file_path: filePath, offset: 10, limit: 5 },
         { ...testContext, readFileState },
       );
       expect(result1.success).toBe(true);
       expect(result1.metadata?.type).toBe("text");
       expect(readFileState.has(filePath)).toBe(true);
 
-      // Second read (unchanged)
+      // Second read of the same range (unchanged) — should dedup
       const result2 = await readTool.execute(
-        { file_path: filePath },
+        { file_path: filePath, offset: 10, limit: 5 },
         { ...testContext, readFileState },
       );
       expect(result2.success).toBe(true);
       expect(result2.metadata?.type).toBe("file_unchanged");
       expect(result2.content).toContain("has not changed");
+    });
+
+    it("should NOT dedup a full read (offset=undefined) on second read", async () => {
+      const readFileState = new Map<
+        string,
+        { mtime: number; hash: string; offset?: number; limit?: number }
+      >();
+      const filePath = "/test/workdir/small.txt";
+
+      // First full read
+      const result1 = await readTool.execute(
+        { file_path: filePath },
+        { ...testContext, readFileState },
+      );
+      expect(result1.success).toBe(true);
+      expect(result1.metadata?.type).toBe("text");
+
+      // Second full read — should return content, not "unchanged"
+      const result2 = await readTool.execute(
+        { file_path: filePath },
+        { ...testContext, readFileState },
+      );
+      expect(result2.success).toBe(true);
+      expect(result2.metadata?.type).toBe("text");
+      expect(result2.content).toContain("Line 1");
+    });
+
+    it("should NOT dedup a partial read after a full read (different range)", async () => {
+      const readFileState = new Map<
+        string,
+        { mtime: number; hash: string; offset?: number; limit?: number }
+      >();
+      const filePath = "/test/workdir/medium.txt";
+
+      // First: full read (offset=undefined)
+      const result1 = await readTool.execute(
+        { file_path: filePath },
+        { ...testContext, readFileState },
+      );
+      expect(result1.success).toBe(true);
+
+      // Second: partial read — should return content, not "unchanged"
+      const result2 = await readTool.execute(
+        { file_path: filePath, offset: 10, limit: 5 },
+        { ...testContext, readFileState },
+      );
+      expect(result2.success).toBe(true);
+      expect(result2.metadata?.type).toBe("text");
+      expect(result2.content).toContain("Line 10");
     });
 
     it("should enforce resource limits", async () => {

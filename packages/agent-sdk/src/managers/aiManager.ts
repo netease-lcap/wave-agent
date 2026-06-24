@@ -75,7 +75,10 @@ export class AIManager {
   private consecutiveCompactionFailures: number = 0;
   private readonly maxTurns?: number;
   /** Tracks file mtime/hash at read time for staleness detection on Edit/Write */
-  private readFileState = new Map<string, { mtime: number; hash: string }>();
+  private readFileState = new Map<
+    string,
+    { mtime: number; hash: string; offset?: number; limit?: number }
+  >();
   /** Override tool_choice for this AI manager (e.g. for structured output) */
   public toolChoiceOverride?:
     | "auto"
