@@ -356,23 +356,11 @@ class ToolManager {
   }): ChatCompletionFunctionTool[] {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
-    const effectivePermissionMode = this.getPermissionMode();
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
         // If tool is explicitly denied by name in permission rules, filter it out
         if (permissionManager?.isToolDenied(tool.name)) {
           return false;
-        }
-        if (effectivePermissionMode === "bypassPermissions") {
-          if (tool.name === "ExitPlanMode") {
-            return false;
-          }
-        }
-        if (tool.name === "ExitPlanMode") {
-          return effectivePermissionMode === "plan";
-        }
-        if (tool.name === "EnterPlanMode") {
-          return effectivePermissionMode !== "plan";
         }
         return true;
       })

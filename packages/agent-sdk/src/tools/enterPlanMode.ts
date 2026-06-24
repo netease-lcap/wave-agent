@@ -49,6 +49,15 @@ export const enterPlanModeTool: ToolPlugin = {
     context: ToolContext,
   ): Promise<ToolResult> => {
     try {
+      // Runtime guard: tool is always visible but only works outside plan mode
+      if (context.permissionMode === "plan") {
+        return {
+          success: false,
+          content: "Already in plan mode. Use ExitPlanMode to exit.",
+          error: "Already in plan mode",
+        };
+      }
+
       if (!context.permissionManager) {
         return {
           success: false,
