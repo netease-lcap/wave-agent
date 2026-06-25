@@ -4,6 +4,11 @@ import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { microcompactMessages } from "../utils/microcompact.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
+import {
+  getTaskReminderTurnCounts,
+  maybeInjectTaskReminder,
+  TASK_REMINDER_CONFIG,
+} from "../utils/taskReminder.js";
 import { existsSync } from "node:fs";
 import type {
   GatewayConfig,
@@ -17,6 +22,7 @@ import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
+import type { ChatCompletionMessageParam } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
@@ -290,6 +296,29 @@ export class AIManager {
       }
       planMgr.consumePlanEntryReminder();
     }
+  }
+
+  private async maybeInjectTaskReminderIntoMessages(
+    messages: ChatCompletionMessageParam[],
+    toolNames: Set<string>,
+  ): Promise<void> {
+    // Guard: no task tools available
+    if (!toolNames.has("TaskUpdate")) return;
+
+    const internalMessages = this.messageManager.getMessages();
+    const turnCounts = getTaskReminderTurnCounts(internalMessages);
+
+    if (
+      turnCounts.turnsSinceLastTaskManagement <
+        TASK_REMINDER_CONFIG.TURNS_SINCE_WRITE ||
+      turnCounts.turnsSinceLastReminder <
+        TASK_REMINDER_CONFIG.TURNS_BETWEEN_REMINDERS
+    ) {
+      return;
+    }
+
+    const tasks = await this.taskManager.listTasks();
+    maybeInjectTaskReminder(messages, turnCounts, tasks);
   }
 
   public setIsLoading(isLoading: boolean): void {
@@ -851,6 +880,12 @@ export class AIManager {
         maxTokens: maxTokens, // Pass max tokens override
         toolChoice: this.toolChoiceOverride, // Pass tool_choice override
       };
+
+      // Inject task reminder if needed (not persisted, regenerated each turn)
+      await this.maybeInjectTaskReminderIntoMessages(
+        callAgentOptions.messages,
+        toolNames,
+      );
 
       // Add streaming callbacks only if streaming is enabled
       if (this.stream) {
