@@ -18,6 +18,14 @@ vi.mock("wave-agent-sdk", () => ({
   authService: mockAuthService,
 }));
 
+vi.mock("child_process", () => ({
+  execFile: vi.fn(
+    (_cmd: string, _args: string[], cb: (err: Error | null) => void) => {
+      cb(null);
+    },
+  ),
+}));
+
 describe("LoginCommand", () => {
   beforeEach(() => {
     vi.clearAllMocks();

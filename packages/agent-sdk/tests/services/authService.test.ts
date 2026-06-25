@@ -64,14 +64,6 @@ vi.mock("http", () => ({
 }));
 
 vi.mock("fs");
-vi.mock("child_process", () => ({
-  execFile: vi.fn(
-    (_cmd: string, _args: string[], cb: (err: Error | null) => void) => {
-      cb(null);
-    },
-  ),
-}));
-
 const mockedExists = vi.mocked(existsSync);
 const mockedReadFile = vi.mocked(readFileSync);
 const mockedWriteFile = vi.mocked(writeFileSync);
@@ -492,7 +484,7 @@ describe("AuthService", () => {
       vi.unstubAllGlobals();
     });
 
-    it("opens browser, receives callback code, exchanges for JWT, and saves it", async () => {
+    it("receives callback code via onAuthUrl, exchanges for JWT, and saves it", async () => {
       process.env.WAVE_SERVER_URL = "https://ai.example.com";
       mockedExists.mockReturnValue(false);
       // exchange code for JWT

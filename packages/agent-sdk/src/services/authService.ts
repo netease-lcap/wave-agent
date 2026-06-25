@@ -19,15 +19,11 @@ import * as os from "os";
 import { randomBytes } from "crypto";
 import { createServer, Server } from "http";
 import { URL } from "url";
-import { execFile } from "child_process";
-import { promisify } from "util";
 import type { AuthConfig, AuthUser, TokenResponse } from "../types/auth.js";
 import { logger } from "../utils/globalLogger.js";
 
 /** Persistent anonymous ID for telemetry fallback when SSO is not authenticated. */
 let _anonymousId: string | undefined;
-
-const execFileAsync = promisify(execFile);
 
 export class AuthService {
   private static instance: AuthService;
@@ -274,15 +270,8 @@ export class AuthService {
         const callbackUrl = `http://127.0.0.1:${port}`;
         const authUrl = `${serverUrl}/login?callback_url=${encodeURIComponent(callbackUrl)}`;
 
-        // Notify caller of the auth URL
+        // Notify caller of the auth URL; caller is responsible for opening browser
         options?.onAuthUrl?.(authUrl);
-
-        // Try to open browser; if it fails, keep server alive for manual visit
-        try {
-          await this.openBrowser(authUrl);
-        } catch {
-          // Browser not available — server stays alive
-        }
       });
 
       // If manual code reading is provided, race between server callback and user input
@@ -313,25 +302,6 @@ export class AuthService {
         5 * 60 * 1000,
       );
     });
-  }
-
-  private async openBrowser(url: string): Promise<void> {
-    const platform = process.platform;
-    let command: string;
-    let args: string[];
-
-    if (platform === "darwin") {
-      command = "open";
-      args = [url];
-    } else if (platform === "win32") {
-      command = "cmd";
-      args = ["/c", "start", "", url];
-    } else {
-      command = "xdg-open";
-      args = [url];
-    }
-
-    await execFileAsync(command, args);
   }
 
   isSSOAuthenticated(): boolean {

@@ -1,6 +1,25 @@
 import React, { useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { authService } from "wave-agent-sdk";
+
+const execFileAsync = promisify(execFile);
+
+function openBrowser(url: string): void {
+  const platform = process.platform;
+  try {
+    if (platform === "darwin") {
+      execFileAsync("open", [url]);
+    } else if (platform === "win32") {
+      execFileAsync("cmd", ["/c", "start", "", url]);
+    } else {
+      execFileAsync("xdg-open", [url]);
+    }
+  } catch {
+    // Browser not available — URL is still displayed in the UI
+  }
+}
 
 export interface LoginCommandProps {
   onCancel: () => void;
@@ -91,6 +110,7 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
       await authService.login({
         onAuthUrl: (url: string) => {
           setAuthUrl(url);
+          openBrowser(url);
           setMessage("Paste the authorization code from your browser URL bar:");
         },
         readToken,
