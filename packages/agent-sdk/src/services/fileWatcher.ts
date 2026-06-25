@@ -22,6 +22,8 @@ export interface FileWatcherConfig {
   maxRetries: number; // Default: 3
   fallbackPolling: boolean; // Default: false
   ignoreTempFiles: boolean; // Default: true
+  depth: number; // default: 5
+  ignored: string[]; // default: ['**/node_modules/**', '**/.git/**', '**/*.swp', '**/*~']
 }
 
 export interface FileWatcherStatus {
@@ -59,6 +61,8 @@ export class FileWatcherService extends EventEmitter {
       maxRetries: 3,
       fallbackPolling: false,
       ignoreTempFiles: true,
+      depth: 5,
+      ignored: ["**/node_modules/**", "**/.git/**", "**/*.swp", "**/*~"],
       ...config,
     };
   }
@@ -185,6 +189,8 @@ export class FileWatcherService extends EventEmitter {
         this.globalWatcher = chokidar.watch([], {
           persistent: true,
           ignoreInitial: true,
+          depth: entry.config.depth,
+          ignored: entry.config.ignored,
           awaitWriteFinish: {
             stabilityThreshold: entry.config.stabilityThreshold,
             pollInterval: entry.config.pollInterval,
@@ -262,7 +268,15 @@ export class FileWatcherService extends EventEmitter {
 
     this.globalWatcher.on("error", (err: unknown) => {
       const error = err instanceof Error ? err : new Error(String(err));
-      this.logger?.error(`FileWatcher: File watcher error: ${error.message}`);
+      const isEMFILE = (error as NodeJS.ErrnoException).code === "EMFILE";
+      if (isEMFILE) {
+        this.logger?.warn(
+          "FileWatcher: Too many open files (EMFILE). " +
+            "Consider increasing the limit: `ulimit -n 10240` (macOS) or `ulimit -n 65536` (Linux).",
+        );
+      } else {
+        this.logger?.error(`FileWatcher: File watcher error: ${error.message}`);
+      }
       this.emit("watcherError", error);
     });
   }
