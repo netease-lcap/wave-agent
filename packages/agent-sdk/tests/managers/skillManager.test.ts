@@ -32,6 +32,7 @@ import {
   parseSkillFile,
   formatSkillError,
 } from "../../src/utils/skillParser.js";
+import { executeBashCommands } from "../../src/utils/markdownParser.js";
 
 vi.mock("fs/promises");
 vi.mock("../../src/services/fileWatcher.js");
@@ -41,6 +42,14 @@ vi.mock("../../src/utils/skillParser.js", async () => {
     ...actual,
     parseSkillFile: vi.fn(),
     formatSkillError: vi.fn(),
+  };
+});
+
+vi.mock("../../src/utils/markdownParser.js", async () => {
+  const actual = await vi.importActual("../../src/utils/markdownParser.js");
+  return {
+    ...actual,
+    executeBashCommands: vi.fn().mockResolvedValue(["mock-output"]),
   };
 });
 
@@ -748,6 +757,36 @@ describe("SkillManager", () => {
       await skillManager.executeSkill({ skill_name: "test-skill" });
 
       expect(logger.debug).toHaveBeenCalledWith("Invoking skill: test-skill");
+    });
+
+    it("should use container Workdir (not stale constructor workdir) for bash execution", async () => {
+      const mockSkill: Skill = {
+        name: "bash-skill",
+        description: "A skill with bash commands",
+        type: "personal",
+        skillPath: "/path/to/skill",
+        content:
+          "---\nname: bash-skill\ndescription: A skill with bash commands\n---\n\nResult: !`echo hello`",
+        frontmatter: {
+          name: "bash-skill",
+          description: "A skill with bash commands",
+        },
+        isValid: true,
+        errors: [],
+      };
+
+      vi.mocked(skillManager.loadSkill).mockResolvedValue(mockSkill);
+
+      // Simulate EnterWorktree: update the container's Workdir after construction
+      container.register("Workdir", "/new/worktree/path");
+
+      await skillManager.executeSkill({ skill_name: "bash-skill" });
+
+      // executeBashCommands should receive the updated workdir, not the original "/test/workdir"
+      expect(executeBashCommands).toHaveBeenCalledWith(
+        ["echo hello"],
+        "/new/worktree/path",
+      );
     });
   });
 
