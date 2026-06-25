@@ -503,7 +503,9 @@ export class SkillManager extends EventEmitter {
   private async executeBashInSkillContent(content: string): Promise<string> {
     const { commands } = parseBashCommands(content);
     if (commands.length > 0) {
-      const results = await executeBashCommands(commands, this.workdir);
+      const currentWorkdir =
+        this.container.get<string>("Workdir") ?? this.workdir;
+      const results = await executeBashCommands(commands, currentWorkdir);
       return replaceBashCommandsWithOutput(content, results);
     }
     return content;
