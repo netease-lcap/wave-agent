@@ -267,6 +267,89 @@ describe("FileWatcherService", () => {
     ).rejects.toThrow("Persistent failure");
   });
 
+  it("should pass depth and ignored to chokidar config", async () => {
+    const mockWatcher = {
+      add: vi.fn(),
+      on: vi.fn().mockReturnThis(),
+      close: vi.fn(),
+    };
+    vi.mocked(chokidar.watch).mockImplementation(
+      () => mockWatcher as unknown as chokidar.FSWatcher,
+    );
+
+    await service.watchFile("/test/file.txt", () => {});
+
+    expect(chokidar.watch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        depth: 5,
+        ignored: ["**/node_modules/**", "**/.git/**", "**/*.swp", "**/*~"],
+      }),
+    );
+  });
+
+  it("should pass custom depth and ignored to chokidar config", async () => {
+    const mockWatcher = {
+      add: vi.fn(),
+      on: vi.fn().mockReturnThis(),
+      close: vi.fn(),
+    };
+    vi.mocked(chokidar.watch).mockImplementation(
+      () => mockWatcher as unknown as chokidar.FSWatcher,
+    );
+
+    const customService = new FileWatcherService(mockLogger, {
+      depth: 10,
+      ignored: ["**/dist/**"],
+    });
+
+    await customService.watchFile("/test/file.txt", () => {});
+
+    expect(chokidar.watch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        depth: 10,
+        ignored: ["**/dist/**"],
+      }),
+    );
+
+    await customService.cleanup();
+  });
+
+  it("should warn with ulimit hint on EMFILE error", async () => {
+    const mockWatcher = {
+      add: vi.fn(),
+      on: vi.fn().mockReturnThis(),
+      close: vi.fn(),
+    };
+    vi.mocked(chokidar.watch).mockImplementation(
+      () => mockWatcher as unknown as chokidar.FSWatcher,
+    );
+
+    const errorListener = vi.fn();
+    service.on("watcherError", errorListener);
+
+    await service.watchFile("/test/file.txt", () => {});
+
+    const errorHandler = mockWatcher.on.mock.calls.find(
+      (c) => c[0] === "error",
+    )![1] as (err: Error) => void;
+
+    const emfileError = Object.assign(new Error("too many open files"), {
+      code: "EMFILE",
+    });
+    errorHandler(emfileError);
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("EMFILE"),
+    );
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("ulimit"),
+    );
+    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(errorListener).toHaveBeenCalledWith(emfileError);
+  });
+
   it("should handle unwatch errors", async () => {
     const filePath = "/test/file.txt";
 
