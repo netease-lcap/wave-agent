@@ -68,7 +68,7 @@ export class BackgroundTaskManager {
       stdio: "pipe",
       detached: true,
       cwd: this.workdir,
-      env: this.container.get<Record<string, string>>("MergedEnv") || {
+      env: {
         ...process.env,
       },
     });

@@ -83,56 +83,6 @@ const agent = await Agent.create({
 });
 ```
 
-## Per-Agent Environment Variables
-
-```typescript
-// Pass custom env vars to an agent instance
-const agent = await Agent.create({
-  workdir: './project',
-  env: {
-    MY_API_KEY: 'instance-specific-key',
-    DATABASE_URL: 'postgres://localhost:5432/mydb',
-    DEBUG_MODE: 'true',
-  }
-});
-
-// These env vars are available in:
-// - Bash tool: echo $MY_API_KEY → "instance-specific-key"
-// - MCP servers: received as part of their environment
-// - Hook processes: available in hook execution context
-```
-
-### Override process.env per agent
-
-```typescript
-// Agent env overrides process.env for child processes
-const agent = await Agent.create({
-  workdir: './project',
-  env: {
-    PATH: '/custom/path/bin',  // Overrides process.env.PATH in child processes
-    HOME: '/tmp/agent-home',   // Overrides process.env.HOME in child processes
-  }
-});
-
-// process.env itself is NOT modified - only child process env is affected
-```
-
-### Multiple agents with isolated environments
-
-```typescript
-// Each agent instance can have its own environment
-const agent1 = await Agent.create({
-  workdir: './project-a',
-  env: { API_KEY: 'key-for-service-a' }
-});
-
-const agent2 = await Agent.create({
-  workdir: './project-b',
-  env: { API_KEY: 'key-for-service-b' }
-});
-// Both agents run independently with their own API keys
-```
-
 ## Error Handling
 
 ```typescript

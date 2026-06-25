@@ -240,7 +240,9 @@ The working directory persists between commands. Try to maintain your current wo
         stdio: "pipe",
         detached: true,
         cwd: context.workdir,
-        env: context.env || { ...process.env },
+        env: {
+          ...process.env,
+        },
       });
 
       let outputBuffer = "";

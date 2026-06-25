@@ -432,11 +432,9 @@ export class McpManager {
             `MCP server ${name} with type "stdio" requires a 'command'`,
           );
         }
-        const agentEnv =
-          this.container.get<Record<string, string>>("MergedEnv") ||
-          (process.env as Record<string, string>);
+
         const env: Record<string, string> = {
-          ...agentEnv,
+          ...(process.env as Record<string, string>),
           ...(server.config.env || {}),
         };
 

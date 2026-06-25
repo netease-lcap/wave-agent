@@ -97,8 +97,6 @@ export interface AgentOptions {
    * File-based hooks (from config.json/.waverc.json) merge on top of these.
    */
   hooks?: PartialHookConfiguration;
-  /** Per-agent environment variables, merged on top of process.env for bash, MCP, and hooks */
-  env?: Record<string, string>;
   [key: string]: unknown;
 }
 
