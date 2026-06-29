@@ -8,17 +8,14 @@ const execFileAsync = promisify(execFile);
 
 function openBrowser(url: string): void {
   const platform = process.platform;
-  try {
-    if (platform === "darwin") {
-      execFileAsync("open", [url]);
-    } else if (platform === "win32") {
-      execFileAsync("cmd", ["/c", "start", "", url]);
-    } else {
-      execFileAsync("xdg-open", [url]);
-    }
-  } catch {
-    // Browser not available — URL is still displayed in the UI
+  if (platform === "darwin") {
+    execFileAsync("open", [url]).catch(() => {});
+  } else if (platform === "win32") {
+    execFileAsync("cmd", ["/c", "start", "", url]).catch(() => {});
+  } else {
+    execFileAsync("xdg-open", [url]).catch(() => {});
   }
+  // Failures are ignored — URL is still displayed in the UI for manual copy
 }
 
 export interface LoginCommandProps {
