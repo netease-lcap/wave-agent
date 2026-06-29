@@ -161,9 +161,9 @@ export function setupAgentContainer(
   container.register("McpManager", mcpManager);
 
   // Wire up auth change callback to refresh/clear remote settings
-  authService.onAuthChange((event) => {
+  authService.onAuthChange(async (event) => {
     if (event === "login") {
-      remoteSettingsService.refresh();
+      await remoteSettingsService.refresh();
     } else if (event === "logout") {
       remoteSettingsService.clear();
     }
@@ -299,6 +299,12 @@ export function setupAgentContainer(
     },
   });
   container.register("LiveConfigManager", liveConfigManager);
+
+  // Wire up remote settings hot-update: when polling detects changed settings,
+  // reload configuration so admin changes propagate to the running agent.
+  remoteSettingsService.onSettingsUpdate(async () => {
+    await liveConfigManager.reload();
+  });
 
   const subagentManager = new SubagentManager(container, {
     workdir,

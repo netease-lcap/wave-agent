@@ -10,7 +10,7 @@ class AuthService {
   getAuthPath(): string;                     // Returns ~/.wave/auth.json
   loadAuth(): AuthConfig;                    // Reads and parses auth.json
   saveAuth(config: AuthConfig): void;        // Writes auth.json with 0o600 permissions
-  clearAuth(): void;                         // Removes SSO_TOKEN, SSO_REFRESH_TOKEN, SSO_TOKEN_EXPIRES_AT, deletes file if empty
+  clearAuth(): Promise<void>;              // Removes SSO_TOKEN, SSO_REFRESH_TOKEN, SSO_TOKEN_EXPIRES_AT, deletes file if empty. Awaits onAuthChange callbacks.
 
   // Token access
   getSSOToken(): string | undefined;         // Returns SSO_TOKEN or undefined
@@ -26,7 +26,7 @@ class AuthService {
   setServerUrl(url: string): void;           // Sets the server URL
 
   // Auth change callbacks
-  onAuthChange(callback: () => void): () => void;  // Subscribe to auth state changes, returns unsubscribe fn
+  onAuthChange(callback: (event: "login" | "logout") => void | Promise<void>): () => void;  // Subscribe to auth state changes, returns unsubscribe fn. Callbacks are awaited.
 
   // User info
   getAuthUser(): AuthUser | undefined;       // Returns authenticated user info
