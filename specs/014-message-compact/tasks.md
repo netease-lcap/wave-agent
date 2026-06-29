@@ -69,24 +69,7 @@
 
 ---
 
-## Phase 5: Time-Based Microcompact (US2)
-
-**Goal**: Clear old tool result content before API calls when inactivity exceeds threshold.
-
-### Tests for Microcompact (REQUIRED) ⚠️
-
-- [X] T030 Write unit tests for `microcompactMessages()` in `packages/agent-sdk/tests/utils/microcompact.test.ts`
-
-### Implementation for Microcompact
-
-- [X] T031 Create `microcompactMessages()` utility in `packages/agent-sdk/src/utils/microcompact.ts`
-- [X] T032 Add `timestamp` field to `ToolBlock` interface in `packages/agent-sdk/src/types/messaging.ts`
-- [X] T033 Set `timestamp` on tool result finalization in `packages/agent-sdk/src/managers/aiManager.ts`
-- [X] T034 Apply `microcompactMessages()` before API calls in `AIManager.sendMessage()`
-
----
-
-## Phase 6: Compression Circuit Breaker (US3)
+## Phase 6: Compression Circuit Breaker (US2)
 
 **Goal**: Skip compression after consecutive failures to avoid wasting API calls.
 
@@ -102,7 +85,7 @@
 
 ---
 
-## Phase 7: Post-Compact Context Restoration (US4)
+## Phase 7: Post-Compact Context Restoration (US3)
 
 **Goal**: Re-inject important context after compression.
 
@@ -135,33 +118,33 @@
 
 ---
 
-## Phase 10: User Story 6 - Manual `/compact` Command (Priority: P2)
+## Phase 10: User Story 5 - Manual `/compact` Command (Priority: P2)
 
 **Goal**: Enable manual compaction via `/compact` slash command with optional custom instructions
 
 **Independent Test**: Type `/compact` or `/compact custom instructions`, verify compaction occurs
 
-### Implementation for User Story 6
+### Implementation for User Story 5
 
-- [X] T070 [US6] Extract `compactConversation()` public method in `packages/agent-sdk/src/managers/aiManager.ts`
-- [X] T071 [US6] Extract `buildPostCompactContext()` private helper from `handleTokenUsageAndCompaction()` in `packages/agent-sdk/src/managers/aiManager.ts`
-- [X] T072 [US6] Refactor `handleTokenUsageAndCompaction()` to delegate to `compactConversation()` in `packages/agent-sdk/src/managers/aiManager.ts`
-- [X] T073 [US6] Add `customInstructions` to `CompactMessagesOptions` in `packages/agent-sdk/src/services/aiService.ts`
-- [X] T074 [US6] Add `/compact` as CLI-internal command via `Agent.compact()` in `packages/agent-sdk/src/agent.ts`, registered in `AVAILABLE_COMMANDS` in CLI
+- [X] T070 [US5] Extract `compactConversation()` public method in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T071 [US5] Extract `buildPostCompactContext()` private helper from `handleTokenUsageAndCompaction()` in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T072 [US5] Refactor `handleTokenUsageAndCompaction()` to delegate to `compactConversation()` in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T073 [US5] Add `customInstructions` to `CompactMessagesOptions` in `packages/agent-sdk/src/services/aiService.ts`
+- [X] T074 [US5] Add `/compact` as CLI-internal command via `Agent.compact()` in `packages/agent-sdk/src/agent.ts`, registered in `AVAILABLE_COMMANDS` in CLI
 
 ---
 
-## Phase 11: User Story 7 - PreCompact and PostCompact Hook Events (Priority: P2)
+## Phase 11: User Story 6 - PreCompact and PostCompact Hook Events (Priority: P2)
 
 **Goal**: Enable hooks before and after conversation compaction
 
 **Independent Test**: Configure PreCompact/PostCompact hooks, trigger compaction, verify execution order
 
-### Implementation for User Story 7
+### Implementation for User Story 6
 
-- [X] T080 [US7] Add `PreCompact` and `PostCompact` to `HookEvent` type in `packages/agent-sdk/src/types/hooks.ts`
-- [X] T081 [US7] Add `compactInstructions`, `compactSummary` to `ExtendedHookExecutionContext` and `HookJsonInput` in `packages/agent-sdk/src/types/hooks.ts`
-- [X] T082 [US7] Update `HookManager` for PreCompact/PostCompact events (configApplies, validateEventConfig, handleBlockingError, getConfigurationStats) in `packages/agent-sdk/src/managers/hookManager.ts`
-- [X] T083 [US7] Add `executePreCompactHooks()` and `executePostCompactHooks()` convenience methods in `packages/agent-sdk/src/managers/hookManager.ts`
-- [X] T084 [US7] Wire PreCompact and PostCompact hooks into `compactConversation()` in `packages/agent-sdk/src/managers/aiManager.ts`
-- [X] T085 [US7] Add tests for `compactConversation` in `packages/agent-sdk/tests/managers/aiManager.compactConversation.test.ts`
+- [X] T080 [US6] Add `PreCompact` and `PostCompact` to `HookEvent` type in `packages/agent-sdk/src/types/hooks.ts`
+- [X] T081 [US6] Add `compactInstructions`, `compactSummary` to `ExtendedHookExecutionContext` and `HookJsonInput` in `packages/agent-sdk/src/types/hooks.ts`
+- [X] T082 [US6] Update `HookManager` for PreCompact/PostCompact events (configApplies, validateEventConfig, handleBlockingError, getConfigurationStats) in `packages/agent-sdk/src/managers/hookManager.ts`
+- [X] T083 [US6] Add `executePreCompactHooks()` and `executePostCompactHooks()` convenience methods in `packages/agent-sdk/src/managers/hookManager.ts`
+- [X] T084 [US6] Wire PreCompact and PostCompact hooks into `compactConversation()` in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T085 [US6] Add tests for `compactConversation` in `packages/agent-sdk/tests/managers/aiManager.compactConversation.test.ts`
