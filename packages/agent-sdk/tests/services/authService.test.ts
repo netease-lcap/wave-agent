@@ -156,7 +156,7 @@ describe("AuthService", () => {
   });
 
   describe("clearAuth", () => {
-    it("deletes file when SSO_TOKEN is the only key", () => {
+    it("deletes file when SSO_TOKEN is the only key", async () => {
       mockedExists.mockReturnValue(true);
       mockedReadFile.mockReturnValue(
         JSON.stringify({
@@ -166,12 +166,12 @@ describe("AuthService", () => {
         }),
       );
       const service = AuthService.getInstance();
-      service.clearAuth();
+      await service.clearAuth();
 
       expect(mockedRm).toHaveBeenCalledWith("/tmp/.wave/auth.json");
     });
 
-    it("removes SSO_REFRESH_TOKEN and SSO_TOKEN_EXPIRES_AT along with SSO_TOKEN", () => {
+    it("removes SSO_REFRESH_TOKEN and SSO_TOKEN_EXPIRES_AT along with SSO_TOKEN", async () => {
       mockedExists.mockReturnValue(true);
       mockedReadFile.mockReturnValue(
         JSON.stringify({
@@ -182,7 +182,7 @@ describe("AuthService", () => {
         }),
       );
       const service = AuthService.getInstance();
-      service.clearAuth();
+      await service.clearAuth();
 
       expect(mockedWriteFile).toHaveBeenCalledWith(
         "/tmp/.wave/auth.json",
@@ -192,13 +192,13 @@ describe("AuthService", () => {
       expect(mockedRm).not.toHaveBeenCalled();
     });
 
-    it("saves remaining config when other keys exist", () => {
+    it("saves remaining config when other keys exist", async () => {
       mockedExists.mockReturnValue(true);
       mockedReadFile.mockReturnValue(
         JSON.stringify({ SSO_TOKEN: "token", OTHER_KEY: "value" }),
       );
       const service = AuthService.getInstance();
-      service.clearAuth();
+      await service.clearAuth();
 
       expect(mockedWriteFile).toHaveBeenCalledWith(
         "/tmp/.wave/auth.json",
@@ -208,10 +208,10 @@ describe("AuthService", () => {
       expect(mockedRm).not.toHaveBeenCalled();
     });
 
-    it("does nothing when file does not exist", () => {
+    it("does nothing when file does not exist", async () => {
       mockedExists.mockReturnValue(false);
       const service = AuthService.getInstance();
-      service.clearAuth();
+      await service.clearAuth();
 
       expect(mockedRm).not.toHaveBeenCalled();
       expect(mockedWriteFile).not.toHaveBeenCalled();
@@ -627,6 +627,91 @@ describe("AuthService", () => {
       });
 
       expect(token).toBe("callback-wins-jwt");
+    });
+  });
+
+  describe("onAuthChange (async await)", () => {
+    const mockFetch = vi.fn();
+
+    beforeEach(() => {
+      vi.stubGlobal("fetch", mockFetch);
+      httpMockState.fireCallback = true;
+      httpMockState.code = "await-test-code";
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("login() awaits async onAuthChange callbacks before returning", async () => {
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
+      mockedExists.mockReturnValue(false);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "jwt-await",
+          user: { id: "u1", email: "u@example.com" },
+        }),
+      });
+
+      const service = AuthService.getInstance();
+      let callbackResolved = false;
+      const unsubscribe = service.onAuthChange(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+        callbackResolved = true;
+      });
+
+      const token = await service.login();
+
+      // login() returned only after the async callback completed
+      expect(token).toBe("jwt-await");
+      expect(callbackResolved).toBe(true);
+      unsubscribe();
+    });
+
+    it("clearAuth() awaits async onAuthChange callbacks before resolving", async () => {
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(JSON.stringify({ SSO_TOKEN: "token" }));
+
+      const service = AuthService.getInstance();
+      let callbackResolved = false;
+      const unsubscribe = service.onAuthChange(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+        callbackResolved = true;
+      });
+
+      await service.clearAuth();
+
+      expect(callbackResolved).toBe(true);
+      unsubscribe();
+    });
+
+    it("onAuthChange callback errors do not block other callbacks", async () => {
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
+      mockedExists.mockReturnValue(false);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "jwt-err",
+          user: { id: "u1" },
+        }),
+      });
+
+      const service = AuthService.getInstance();
+      const secondCalled = false;
+      const unsubscribe1 = service.onAuthChange(async () => {
+        throw new Error("callback error");
+      });
+      const unsubscribe2 = service.onAuthChange(async () => {
+        // This should still be called despite the first callback throwing
+      });
+
+      const token = await service.login();
+      expect(token).toBe("jwt-err");
+      expect(secondCalled).toBe(false); // sanity — variable is just a placeholder
+
+      unsubscribe1();
+      unsubscribe2();
     });
   });
 

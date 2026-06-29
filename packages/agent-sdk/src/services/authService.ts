@@ -28,8 +28,9 @@ let _anonymousId: string | undefined;
 export class AuthService {
   private static instance: AuthService;
   private _serverUrl: string | undefined;
-  private onAuthChangeCallbacks: Array<(event: "login" | "logout") => void> =
-    [];
+  private onAuthChangeCallbacks: Array<
+    (event: "login" | "logout") => void | Promise<void>
+  > = [];
   private _refreshPromise: Promise<boolean> | null = null;
   private _authFileMtime: number = 0;
   private static readonly REFRESH_BUFFER_MS = 5 * 60 * 1000;
@@ -53,7 +54,9 @@ export class AuthService {
    * Register a callback for auth state changes.
    * Returns an unsubscribe function.
    */
-  onAuthChange(callback: (event: "login" | "logout") => void): () => void {
+  onAuthChange(
+    callback: (event: "login" | "logout") => void | Promise<void>,
+  ): () => void {
     this.onAuthChangeCallbacks.push(callback);
     return () => {
       this.onAuthChangeCallbacks = this.onAuthChangeCallbacks.filter(
@@ -62,10 +65,10 @@ export class AuthService {
     };
   }
 
-  private notifyAuthChange(event: "login" | "logout"): void {
+  private async notifyAuthChange(event: "login" | "logout"): Promise<void> {
     for (const cb of this.onAuthChangeCallbacks) {
       try {
-        cb(event);
+        await cb(event);
       } catch {
         // Don't let callback errors break auth flow
       }
@@ -112,7 +115,7 @@ export class AuthService {
     }
   }
 
-  clearAuth(): void {
+  async clearAuth(): Promise<void> {
     const config = this.loadAuth();
     delete config.SSO_TOKEN;
     delete config.SSO_REFRESH_TOKEN;
@@ -125,7 +128,7 @@ export class AuthService {
     } else {
       this.saveAuth(config);
     }
-    this.notifyAuthChange("logout");
+    await this.notifyAuthChange("logout");
   }
 
   getSSOToken(): string | undefined {
@@ -177,7 +180,7 @@ export class AuthService {
       user,
     });
 
-    this.notifyAuthChange("login");
+    await this.notifyAuthChange("login");
 
     return token;
   }
@@ -385,7 +388,7 @@ export class AuthService {
         logger.info(
           `[Auth] Refresh token rejected (${response.status}), clearing auth`,
         );
-        this.clearAuth();
+        await this.clearAuth();
         return false;
       }
 
@@ -412,7 +415,7 @@ export class AuthService {
       logger.info(
         `[Auth] Token refreshed successfully, new token expires at ${newExpiresAt ? new Date(newExpiresAt).toISOString() : "never"}`,
       );
-      this.notifyAuthChange("login");
+      await this.notifyAuthChange("login");
       return true;
     } catch (err) {
       // Network error — don't clear auth (might be transient)

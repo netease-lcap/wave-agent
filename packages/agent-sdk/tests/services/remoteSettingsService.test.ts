@@ -44,6 +44,7 @@ import {
   shutdown,
   refresh,
   initialize,
+  onSettingsUpdate,
   remoteSettingsService,
 } from "../../src/services/remoteSettingsService.js";
 
@@ -496,6 +497,213 @@ describe("remoteSettingsService", () => {
 
       // Calling shutdown again should be safe (no timer to clear)
       shutdown();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // onSettingsUpdate (hot-update callback)
+  // ---------------------------------------------------------------------------
+  describe("onSettingsUpdate()", () => {
+    it("fires callback when checksum changes on 200 response", async () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+
+      const callback = vi.fn();
+      const unsubscribe = onSettingsUpdate(callback);
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          status: 200,
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              uuid: "u1",
+              checksum: "new-checksum",
+              settings: { language: "en" },
+            }),
+        }),
+      );
+
+      await refresh();
+      expect(callback).toHaveBeenCalledTimes(1);
+      unsubscribe();
+    });
+
+    it("does not fire callback on 304 (unchanged)", async () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+
+      // First fetch to populate cache
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValueOnce({
+          status: 200,
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              uuid: "u1",
+              checksum: "etag1",
+              settings: { language: "en" },
+            }),
+        }),
+      );
+      await refresh();
+
+      const callback = vi.fn();
+      const unsubscribe = onSettingsUpdate(callback);
+
+      // Second fetch returns 304 (unchanged)
+      vi.mocked(fetch).mockResolvedValue({
+        status: 304,
+      } as Response);
+      await refresh();
+
+      expect(callback).not.toHaveBeenCalled();
+      unsubscribe();
+    });
+
+    it("does not fire callback when checksum is same as before", async () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+
+      // First fetch with checksum "same"
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValueOnce({
+          status: 200,
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              uuid: "u1",
+              checksum: "same",
+              settings: { language: "en" },
+            }),
+        }),
+      );
+      await refresh();
+
+      const callback = vi.fn();
+      const unsubscribe = onSettingsUpdate(callback);
+
+      // Second fetch with same checksum — note refresh() clears cache first,
+      // so oldChecksum is undefined. We test via initialize() path instead.
+      vi.mocked(fetch).mockResolvedValue({
+        status: 200,
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            uuid: "u1",
+            checksum: "same",
+            settings: { language: "en" },
+          }),
+      } as Response);
+      initialize();
+      await new Promise((r) => setTimeout(r, 50));
+
+      // initialize() doesn't clear cache, so oldChecksum = "same", new = "same" → no callback
+      expect(callback).not.toHaveBeenCalled();
+      unsubscribe();
+    });
+
+    it("fires callback when settings cleared via 404 response", async () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+
+      // First fetch to populate cache with a checksum
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValueOnce({
+          status: 200,
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              uuid: "u1",
+              checksum: "will-be-cleared",
+              settings: { language: "en" },
+            }),
+        }),
+      );
+      await refresh();
+      expect(getRemoteSettingsSync()).not.toBeNull();
+
+      const callback = vi.fn();
+      const unsubscribe = onSettingsUpdate(callback);
+
+      // Second fetch returns 404 — settings removed on server
+      vi.mocked(fetch).mockResolvedValue({
+        status: 404,
+        ok: false,
+      } as Response);
+      initialize();
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(callback).toHaveBeenCalledTimes(1);
+      unsubscribe();
+    });
+
+    it("unsubscribe stops callback from firing", async () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+
+      const callback = vi.fn();
+      const unsubscribe = onSettingsUpdate(callback);
+      unsubscribe();
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          status: 200,
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              uuid: "u1",
+              checksum: "after-unsub",
+              settings: { language: "en" },
+            }),
+        }),
+      );
+      await refresh();
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("callback errors do not break the fetch flow", async () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+
+      const errorCallback = vi.fn().mockRejectedValue(new Error("boom"));
+      const unsubscribe = onSettingsUpdate(errorCallback);
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          status: 200,
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              uuid: "u1",
+              checksum: "err-test",
+              settings: { language: "en" },
+            }),
+        }),
+      );
+
+      // Should not throw despite callback error
+      const result = await refresh();
+      expect(result.success).toBe(true);
+      expect(errorCallback).toHaveBeenCalled();
+      unsubscribe();
+    });
+
+    it("is exposed on the remoteSettingsService singleton", () => {
+      expect(remoteSettingsService.onSettingsUpdate).toBeTypeOf("function");
     });
   });
 

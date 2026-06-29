@@ -88,7 +88,7 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
 
     const isAuthenticated = authService.isSSOAuthenticated();
     if (isAuthenticated) {
-      authService.clearAuth();
+      await authService.clearAuth();
       setMessage("Logged out successfully");
       return;
     }

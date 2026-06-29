@@ -18,6 +18,32 @@ const FETCH_TIMEOUT_MS = 10_000;
 
 let _cachedSettings: RemoteSettingsCache | null = null;
 let _pollingTimer: ReturnType<typeof setInterval> | null = null;
+let _onSettingsUpdateCallbacks: Array<() => void | Promise<void>> = [];
+
+/**
+ * Register a callback invoked when remote settings change (checksum differs).
+ * Returns an unsubscribe function.
+ */
+export function onSettingsUpdate(
+  callback: () => void | Promise<void>,
+): () => void {
+  _onSettingsUpdateCallbacks.push(callback);
+  return () => {
+    _onSettingsUpdateCallbacks = _onSettingsUpdateCallbacks.filter(
+      (cb) => cb !== callback,
+    );
+  };
+}
+
+async function notifySettingsUpdate(): Promise<void> {
+  for (const cb of _onSettingsUpdateCallbacks) {
+    try {
+      await cb();
+    } catch {
+      // Don't let callback errors break the fetch flow
+    }
+  }
+}
 
 function loadCacheFromDisk(): void {
   try {
@@ -77,6 +103,8 @@ async function fetchRemoteSettings(): Promise<RemoteSettingsFetchResult> {
     return { success: false, error: "Missing SSO token or server URL" };
   }
 
+  const oldChecksum = _cachedSettings?.checksum;
+
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
@@ -107,6 +135,9 @@ async function fetchRemoteSettings(): Promise<RemoteSettingsFetchResult> {
       logger.debug("remoteSettings: 404 not configured — clearing stale cache");
       _cachedSettings = null;
       removeCacheFromDisk();
+      if (oldChecksum) {
+        await notifySettingsUpdate();
+      }
       return { success: true, notConfigured: true, settings: null };
     }
 
@@ -134,6 +165,9 @@ async function fetchRemoteSettings(): Promise<RemoteSettingsFetchResult> {
     logger.debug("remoteSettings: fetched new settings", {
       checksum: data.checksum,
     });
+    if (data.checksum !== oldChecksum) {
+      await notifySettingsUpdate();
+    }
     return {
       success: true,
       settings: data.settings,
@@ -312,4 +346,5 @@ export const remoteSettingsService = {
   clear,
   shutdown,
   mergeRemoteSettings,
+  onSettingsUpdate,
 } as const;
