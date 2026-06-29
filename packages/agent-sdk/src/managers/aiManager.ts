@@ -1,7 +1,6 @@
 import { type CallAgentOptions } from "../services/aiService.js";
 import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
-import { microcompactMessages } from "../utils/microcompact.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import {
@@ -819,13 +818,9 @@ export class AIManager {
     // Add plan mode reminder as persistent meta message before getting messages
     this.maybeAddPlanModeMessage(currentMode);
 
-    // Get recent message history with microcompact applied
+    // Get recent message history
     const rawMessages = this.messageManager.getMessages();
-    const microcompactedMessages = microcompactMessages(rawMessages, {
-      timeThresholdMS: 30 * 60 * 1000, // 30 minutes
-      recentResultsToKeep: 3,
-    });
-    const recentMessages = convertMessagesForAPI(microcompactedMessages);
+    const recentMessages = convertMessagesForAPI(rawMessages);
 
     try {
       // Get combined memory content

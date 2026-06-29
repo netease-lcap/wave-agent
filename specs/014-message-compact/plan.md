@@ -61,7 +61,6 @@ packages/agent-sdk/
 │   │   └── index.ts            # COMPRESS_MESSAGES_SYSTEM_PROMPT
 │   └── utils/
 │       ├── groupMessagesByApiRound.ts  # API-round grouping
-│       ├── microcompact.ts             # Time-based tool result clearing
 │       └── messageOperations.ts        # Compression logic
 └── tests/
     ├── agent/
@@ -73,8 +72,7 @@ packages/agent-sdk/
     │   ├── messageManager.coverage.test.ts
     │   └── aiManager.compactConversation.test.ts  # compactConversation tests
     └── utils/
-        ├── groupMessagesByApiRound.test.ts
-        └── microcompact.test.ts
+        └── groupMessagesByApiRound.test.ts
 ```
 
 ## Complexity Tracking
