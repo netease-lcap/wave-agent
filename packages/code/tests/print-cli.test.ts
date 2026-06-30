@@ -92,11 +92,6 @@ test("onAssistantMessageAdded outputs newline", async () => {
     sessionFilePath: "/mock/session.json",
   };
 
-  interface AgentCallbacks {
-    onAssistantMessageAdded?: () => void;
-    onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
-  }
-
   let capturedCallbacks: AgentCallbacks | undefined;
   vi.mocked(Agent.create).mockImplementation(async (options) => {
     capturedCallbacks = options.callbacks;
@@ -110,7 +105,7 @@ test("onAssistantMessageAdded outputs newline", async () => {
   await startPrintCli({ message: "test message" });
 
   // Test the onAssistantMessageAdded callback
-  capturedCallbacks?.onAssistantMessageAdded?.();
+  capturedCallbacks?.onAssistantMessageAdded?.("msg-test-id");
 
   // Verify that process.stdout.write was called with newline
   expect(stdoutSpy).toHaveBeenCalledWith("\n");
@@ -409,6 +404,7 @@ test("reasoning callbacks output correctly", async () => {
 
   // 1. Trigger onAssistantReasoningUpdated and verify the output
   capturedCallbacks?.onAssistantReasoningUpdated?.(
+    "msg-test-id",
     "Thinking...",
     "Thinking...",
   );
@@ -418,6 +414,7 @@ test("reasoning callbacks output correctly", async () => {
   // Verify header is not printed again
   stdoutSpy.mockClear();
   capturedCallbacks?.onAssistantReasoningUpdated?.(
+    "msg-test-id",
     " more thinking",
     "Thinking... more thinking",
   );
@@ -426,13 +423,21 @@ test("reasoning callbacks output correctly", async () => {
 
   // 2. Trigger onAssistantContentUpdated after reasoning and verify the "📝 Response:" header
   stdoutSpy.mockClear();
-  capturedCallbacks?.onAssistantContentUpdated?.("Hello!", "Hello!");
+  capturedCallbacks?.onAssistantContentUpdated?.(
+    "msg-test-id",
+    "Hello!",
+    "Hello!",
+  );
   expect(stdoutSpy).toHaveBeenCalledWith("\n\n📝 Response:\n");
   expect(stdoutSpy).toHaveBeenCalledWith("Hello!");
 
   // Verify header is not printed again
   stdoutSpy.mockClear();
-  capturedCallbacks?.onAssistantContentUpdated?.(" world", "Hello! world");
+  capturedCallbacks?.onAssistantContentUpdated?.(
+    "msg-test-id",
+    " world",
+    "Hello! world",
+  );
   expect(stdoutSpy).not.toHaveBeenCalledWith("\n\n📝 Response:\n");
   expect(stdoutSpy).toHaveBeenCalledWith(" world");
 

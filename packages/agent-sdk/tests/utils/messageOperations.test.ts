@@ -903,14 +903,16 @@ describe("updateToolBlockInMessage with messageId", () => {
       },
     ];
 
-    const result = updateToolBlockInMessage({
-      messages: initialMessages,
-      id: toolBlockId,
-      messageId: messageId,
-      stage: "end",
-      result: "success",
-    });
+    const { messages: result, messageId: foundMessageId } =
+      updateToolBlockInMessage({
+        messages: initialMessages,
+        id: toolBlockId,
+        messageId: messageId,
+        stage: "end",
+        result: "success",
+      });
 
+    expect(foundMessageId).toBe(messageId);
     expect(result[0].blocks[1]).toMatchObject({
       id: toolBlockId,
       stage: "end",
@@ -939,7 +941,7 @@ describe("updateToolBlockInMessage with messageId", () => {
       },
     ];
 
-    const result = updateToolBlockInMessage({
+    const { messages: result } = updateToolBlockInMessage({
       messages: initialMessages,
       id: toolBlockId,
       stage: "end",
@@ -973,7 +975,7 @@ describe("updateToolBlockInMessage with messageId", () => {
       },
     ];
 
-    const result = updateToolBlockInMessage({
+    const { messages: result } = updateToolBlockInMessage({
       messages: initialMessages,
       id: toolBlockId,
       parameters: '{"key": "val"}',

@@ -234,6 +234,7 @@ describe("SubagentManager - Callback Integration", () => {
       // Verify that the subagent callback was called with the subagent ID
       expect(callbacks.onSubagentAssistantMessageAdded).toHaveBeenCalledWith(
         instance.subagentId,
+        expect.any(String),
       );
 
       // Note: onAssistantMessageAdded is not expected to be called in this context
@@ -274,6 +275,7 @@ describe("SubagentManager - Callback Integration", () => {
 
       expect(callbacks.onSubagentAssistantMessageAdded).toHaveBeenCalledWith(
         instance.subagentId,
+        expect.any(String),
       );
     });
   });
@@ -307,9 +309,10 @@ describe("SubagentManager - Callback Integration", () => {
       const newContent = "Starting to stream content...";
       instance.messageManager.updateCurrentMessageContent(newContent);
 
-      // Verify that the subagent callback was called with the subagent ID, chunk, and accumulated content
+      // Verify that the subagent callback was called with the subagent ID, messageId, chunk, and accumulated content
       expect(callbacks.onSubagentAssistantContentUpdated).toHaveBeenCalledWith(
         instance.subagentId,
+        expect.any(String), // messageId
         expect.any(String), // chunk
         newContent, // accumulated content
       );
@@ -358,9 +361,9 @@ describe("SubagentManager - Callback Integration", () => {
       expect(mockedCallback.mock.calls).toBeDefined();
       const calls = mockedCallback.mock.calls!;
       expect(calls[0]![0]).toBe(instance.subagentId); // subagentId
-      expect(calls[0]![2]).toBe("Hello world"); // accumulated content
+      expect(calls[0]![3]).toBe("Hello world"); // accumulated content
       expect(calls[1]![0]).toBe(instance.subagentId); // subagentId
-      expect(calls[1]![2]).toBe("Hello world!"); // accumulated content
+      expect(calls[1]![3]).toBe("Hello world!"); // accumulated content
     });
   });
 
@@ -412,7 +415,10 @@ describe("SubagentManager - Callback Integration", () => {
       // Verify that the subagent callback was called with the subagent ID and params
       expect(callbacks.onSubagentToolBlockUpdated).toHaveBeenCalledWith(
         instance.subagentId,
-        toolUpdateParams,
+        expect.objectContaining({
+          ...toolUpdateParams,
+          messageId: expect.any(String),
+        }),
       );
 
       // Verify that the regular callback was also called
@@ -477,8 +483,20 @@ describe("SubagentManager - Callback Integration", () => {
       const mockedCallback = vi.mocked(callbacks.onSubagentToolBlockUpdated)!;
       expect(mockedCallback.mock.calls).toBeDefined();
       const calls = mockedCallback.mock.calls!;
-      expect(calls[0]).toEqual([instance.subagentId, runningParams]);
-      expect(calls[1]).toEqual([instance.subagentId, completedParams]);
+      expect(calls[0]).toEqual([
+        instance.subagentId,
+        expect.objectContaining({
+          ...runningParams,
+          messageId: expect.any(String),
+        }),
+      ]);
+      expect(calls[1]).toEqual([
+        instance.subagentId,
+        expect.objectContaining({
+          ...completedParams,
+          messageId: expect.any(String),
+        }),
+      ]);
     });
   });
 

@@ -12,6 +12,7 @@ import {
   addNotificationMessageToMessages,
   UserMessageParams,
   type AgentToolBlockUpdateParams,
+  type ToolBlockUpdateCallbackParams,
   type AddNotificationMessageParams,
   generateMessageId,
 } from "../utils/messageOperations.js";
@@ -40,12 +41,20 @@ export interface MessageManagerCallbacks {
   // Incremental callback
   onUserMessageAdded?: (params: UserMessageParams) => void;
   // MODIFIED: Remove arguments for separation of concerns
-  onAssistantMessageAdded?: () => void;
+  onAssistantMessageAdded?: (messageId: string) => void;
   // NEW: Streaming content callback - FR-001: receives chunk and accumulated content
-  onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
+  onAssistantContentUpdated?: (
+    messageId: string,
+    chunk: string,
+    accumulated: string,
+  ) => void;
   // NEW: Streaming reasoning callback
-  onAssistantReasoningUpdated?: (chunk: string, accumulated: string) => void;
-  onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
+  onAssistantReasoningUpdated?: (
+    messageId: string,
+    chunk: string,
+    accumulated: string,
+  ) => void;
+  onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
   onErrorBlockAdded?: (error: string) => void;
   onCompactBlockAdded?: (content: string) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
@@ -419,7 +428,8 @@ export class MessageManager {
       additionalFieldsRecord,
     );
     this.setMessages(newMessages);
-    this.callbacks.onAssistantMessageAdded?.();
+    const messageId = this.messages[this.messages.length - 1]?.id;
+    this.callbacks.onAssistantMessageAdded?.(messageId);
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
   }
@@ -460,12 +470,21 @@ export class MessageManager {
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {
     // Finalize any streaming text/reasoning blocks before adding/updating a tool block
     this.finalizeCurrentStreamingBlocks();
-    const newMessages = updateToolBlockInMessage({
-      messages: this.messages,
-      ...params,
-    });
+    const { messages: newMessages, messageId: resolvedMessageId } =
+      updateToolBlockInMessage({
+        messages: this.messages,
+        ...params,
+      });
     this.setMessages(newMessages);
-    this.callbacks.onToolBlockUpdated?.(params);
+    const callbackParams: ToolBlockUpdateCallbackParams = {
+      ...params,
+      messageId:
+        params.messageId ||
+        resolvedMessageId ||
+        this.messages[this.messages.length - 1]?.id ||
+        "",
+    };
+    this.callbacks.onToolBlockUpdated?.(callbackParams);
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
   }
@@ -482,7 +501,11 @@ export class MessageManager {
     const { messages: newMessages, toolBlockId } =
       addToolBlockToMessageInMessages(this.messages, messageId, params);
     this.setMessages(newMessages);
-    this.callbacks.onToolBlockUpdated?.({ ...params, id: toolBlockId });
+    this.callbacks.onToolBlockUpdated?.({
+      ...params,
+      id: toolBlockId,
+      messageId,
+    });
     return toolBlockId;
   }
 
@@ -722,7 +745,11 @@ export class MessageManager {
     }
 
     // FR-001: Trigger callbacks with chunk and accumulated content
-    this.callbacks.onAssistantContentUpdated?.(chunk, newAccumulatedContent);
+    this.callbacks.onAssistantContentUpdated?.(
+      lastMessage.id,
+      chunk,
+      newAccumulatedContent,
+    );
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
 
@@ -793,6 +820,7 @@ export class MessageManager {
 
     // Trigger callbacks with chunk and accumulated reasoning content
     this.callbacks.onAssistantReasoningUpdated?.(
+      lastMessage.id,
       chunk,
       newAccumulatedReasoning,
     );

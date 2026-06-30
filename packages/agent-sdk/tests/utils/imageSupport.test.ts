@@ -33,7 +33,7 @@ describe("Image Support in Tool Results", () => {
       },
     ];
 
-    const updatedMessages = updateToolBlockInMessage({
+    const { messages: updatedMessages } = updateToolBlockInMessage({
       messages,
       id: "tool-123",
       parameters: '{"action": "screenshot"}',

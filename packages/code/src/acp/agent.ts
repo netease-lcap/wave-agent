@@ -224,10 +224,10 @@ export class WaveAcpAgent implements AcpAgent {
         );
       },
       callbacks: {
-        onAssistantContentUpdated: (chunk: string) =>
-          callbacks.onAssistantContentUpdated?.(chunk, ""),
-        onAssistantReasoningUpdated: (chunk: string) =>
-          callbacks.onAssistantReasoningUpdated?.(chunk, ""),
+        onAssistantContentUpdated: (messageId: string, chunk: string) =>
+          callbacks.onAssistantContentUpdated?.(messageId, chunk, ""),
+        onAssistantReasoningUpdated: (messageId: string, chunk: string) =>
+          callbacks.onAssistantReasoningUpdated?.(messageId, chunk, ""),
         onToolBlockUpdated: (params: unknown) => {
           const cb = callbacks.onToolBlockUpdated as
             | ((params: unknown) => void)
@@ -1127,7 +1127,7 @@ export class WaveAcpAgent implements AcpAgent {
     >();
     return {
       callbacks: {
-        onAssistantContentUpdated: (chunk: string) => {
+        onAssistantContentUpdated: (_messageId: string, chunk: string) => {
           this.connection.sessionUpdate({
             sessionId: sessionRef.id as AcpSessionId,
             update: {
@@ -1139,7 +1139,7 @@ export class WaveAcpAgent implements AcpAgent {
             },
           });
         },
-        onAssistantReasoningUpdated: (chunk: string) => {
+        onAssistantReasoningUpdated: (_messageId: string, chunk: string) => {
           this.connection.sessionUpdate({
             sessionId: sessionRef.id as AcpSessionId,
             update: {
