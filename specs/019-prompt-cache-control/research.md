@@ -1,0 +1,201 @@
+# Research: Prompt Cache Control
+
+**Date**: 2025-12-02  
+**Feature**: 019-prompt-cache-control  
+**Purpose**: Resolve technical clarifications for implementing Claude cache_control functionality
+
+## Performance Goals Research
+
+**Decision**: Acceptable latency increase of 25-50ms for cache_control transformation
+
+**Rationale**: 
+- Current message processing baseline: 50-100ms in aiService.ts
+- Cache transformation adds structured content array creation and selective marker application
+- ROI justifies overhead: 30-60% token cost savings after 2-3 requests with cache hits
+- Expected cache hit rates: 40-70% for system messages and recent user context
+
+**Alternatives considered**: 
+- Async transformation: Rejected due to complexity and minimal benefit for small overhead
+- Pre-transformation caching: Rejected due to memory usage and cache invalidation complexity
+
+## Claude API Constraints Research
+
+**Decision**: Support ephemeral cache with 5-minute to 1-hour duration, text-only content
+
+**Rationale**:
+- Claude API supports only "ephemeral" cache type with automatic duration management
+- Text content parts only - images and tool results cannot be cached
+- Case-insensitive model detection using `model.includes("claude")` pattern
+- Cache metrics extend existing usage tracking with well-defined field structure
+
+**Alternatives considered**:
+- Custom cache duration: Not supported by Claude API
+- Universal cache_control marker injection: Rejected due to cost and limited benefit for non-Claude models (only Claude API supports `cache_control: {type: "ephemeral"}` markers)
+- Universal cache token extraction: Accepted — `prompt_tokens_details` is an OpenAI-standard field; extracting cache metrics from all models' usage is zero-cost and provides visibility
+- Image content caching: Not supported by Claude API
+
+## Implementation Architecture Research
+
+**Decision**: Inject cache_control logic after message construction, before API call
+
+**Rationale**:
+- Clean separation: Transform messages after openaiMessages construction (line 183-207 in aiService.ts)
+- Preserve existing flow: Minimal changes to callAgent function structure  
+- Type safety: Extend OpenAI types with Claude-specific cache_control fields
+- Utility pattern: New `utils/cacheControlUtils.ts` follows existing codebase organization
+
+**Alternatives considered**:
+- Early injection in convertMessagesForAPI: Rejected due to tight coupling with message conversion logic
+- Post-API wrapper: Rejected due to complexity and performance overhead
+- Inline transformation: Rejected for maintainability and separation of concerns
+
+## Claude Cache Control API Specification
+
+**Decision**: Structured content arrays with selective cache_control markers
+
+**Rationale**:
+```typescript
+// Transform string content to structured arrays
+{
+  role: "system",
+  content: "text" // Before
+}
+// Becomes:
+{
+  role: "system", 
+  content: [
+    {
+      type: "text",
+      text: "text",
+      cache_control: { type: "ephemeral" }
+    }
+  ]
+}
+```
+
+**Key Implementation Details**:
+- **Content Type Support**: Only `type: "text"` parts receive cache_control markers
+- **Placement Rules**: System message (always marked as stable prefix), last message with content (moves each turn but stays within scan window)
+- **Type Extension**: Extend OpenAI interfaces with optional cache_control field
+- **Mixed Content**: Preserve existing structure, add cache_control only to text parts
+
+**Alternatives considered**:
+- Universal cache markers: Rejected due to API limitations and cost efficiency
+- First/middle message caching: Rejected due to lower cache hit probability
+- Separate tool definition marker: Rejected — tools are implicitly cached as part of the prefix covered by the last-message marker
+
+## 20-Block Scan Window Constraint (Qwen/Alibaba)
+
+**Decision**: Use 2-marker strategy — system message + last message with content — matching Claude Code's approach
+
+**Rationale**:
+- The Qwen/Alibaba context cache uses a back-to-front prefix matching strategy
+- The system only scans the nearest 20 content blocks backward from each `cache_control` marker
+- If the cached prefix (e.g. system message) is more than 20 blocks away from the marker, the cache cannot be hit
+- The key insight: the last-message marker moves ~2 blocks per turn (one user message + one assistant response), which is well within the 20-block scan window. Therefore, the previous cache position is always still reachable from the new marker position, resulting in a cache hit every turn
+- This approach is simpler than a bridge strategy because it requires no module-level state, no block counting, and no special cases for conversation length
+
+**Strategy**:
+- **Two markers**: (1) System message (always marked as the stable prefix), (2) Last message with content (user or assistant, no role distinction)
+- **Why it works**: Each turn adds ~2 content blocks (user message + assistant response). The marker moves forward by ~2 blocks. Since 2 << 20 (the scan window), the previous cache is always within reach. Even in the worst case of a turn with many tool calls, the marker moves by the number of blocks in that turn, which is typically < 20
+- **Stateless**: No module-level state needed. The strategy is recomputed from scratch each request — just find the system message and the last message with content
+- **No tools parameter**: Tools are implicitly cached as part of the prefix covered by the last-message marker. The `transformMessagesForExplicitCache` function takes only messages and model name
+- **No bridge needed**: The bridge approach (placing a marker at block 20 and never moving it) was rejected because a moving bridge = cache miss every time, and a fixed bridge adds complexity for marginal benefit when the last-message marker already covers the prefix
+- **After compaction**: Same strategy applies with no state to reset. The compaction produces a new conversation, and the 2 markers are placed on the new system message and last message
+- Content blocks are counted precisely for diagnostics: string content = 1 block, array content = element count, null content (assistant with tool_calls only) = 0 blocks
+
+**Alternatives considered**:
+- Bridge marker at block 20 (placed once, never moves): Rejected — while this works, it requires module-level state (`cachedBridgeIndex`), a `resetExplicitCacheState()` function, block counting, tools parameter, and special cases. The last-message marker achieves the same cache coverage with zero state
+- Rolling bridge that moves every request (at totalBlocks - 18): Rejected — moving the bridge invalidates the cache on every request, defeating the purpose of caching the stable prefix
+- Separate tool definition marker (`addCacheControlToLastTool`): Rejected — tools are implicitly cached as part of the prefix; a separate marker wastes a marker slot and adds a `ClaudeChatCompletionFunctionTool` type
+- Multiple evenly-spaced markers: Rejected — wastes marker slots (max 4 per request) and adds complexity
+- System-only marking for short conversations: Rejected — the last-message marker works for all conversation lengths, so there is no need for a short/long conversation distinction
+- Implicit caching only: Rejected — implicit cache hit rate is uncertain and non-deterministic; explicit caching provides 10% hit cost vs 20% for implicit
+
+## Extended Usage Tracking Schema
+
+**Decision**: Extend existing usage tracking with cache-specific metrics from both Claude top-level fields and OpenAI-standard `prompt_tokens_details`
+
+**Rationale**:
+```typescript
+interface ExtendedPromptTokensDetails extends CompletionUsage.PromptTokensDetails {
+  cache_creation_input_tokens?: number;  // Used by some non-Claude models
+}
+
+interface ClaudeUsage extends CompletionUsage {
+  // Standard fields unchanged
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+
+  // Cache fields (from Claude top-level OR OpenAI prompt_tokens_details)
+  cache_read_input_tokens?: number;        // Claude: top-level / OpenAI: prompt_tokens_details.cached_tokens
+  cache_creation_input_tokens?: number;    // Claude: top-level / OpenAI: prompt_tokens_details.cache_creation_input_tokens
+  cache_creation?: {
+    ephemeral_5m_input_tokens: number;     // Short-term cache (Claude-specific)
+    ephemeral_1h_input_tokens: number;     // Extended cache (Claude-specific)
+  };
+
+  prompt_tokens_details?: ExtendedPromptTokensDetails;  // Override to include cache_creation_input_tokens
+}
+```
+
+**Field Relationships**:
+- `cache_creation_input_tokens = ephemeral_5m_input_tokens + ephemeral_1h_input_tokens` (Claude-specific)
+- Claude top-level fields take priority over `prompt_tokens_details` when both are present
+- `prompt_tokens_details.cached_tokens` maps to `cache_read_input_tokens` as fallback
+- `prompt_tokens_details.cache_creation_input_tokens` maps to `cache_creation_input_tokens` as fallback
+- Backward compatibility maintained for existing usage tracking consumers
+
+**Alternatives considered**:
+- Separate cache usage object: Rejected for API consistency and complexity
+- Simplified cache metrics: Rejected due to insufficient cost tracking granularity
+- Breaking usage interface changes: Rejected for backward compatibility requirements
+- Only support Claude top-level fields: Rejected because non-Claude models (Gemini, DeepSeek) return cache data via `prompt_tokens_details`
+
+## System Prompt Stability: CWD Changes
+
+**Decision**: Use `originalWorkdir` (immutable) instead of `workdir` (dynamic, tracks `cd`) for the `Primary working directory` field in the system prompt's `<env>` section.
+
+**Rationale**:
+- The system prompt is rebuilt every AI turn with `this.getWorkdir()` (current CWD from DI container)
+- When an agent runs `cd subdir` in Bash, `workdir` updates, causing the `<env>` section to change
+- This invalidates the entire cached system prompt prefix, negating cache benefits
+- Claude Code accidentally avoids this by caching/freezing the env section at first computation
+- Using `originalWorkdir` (set once at session start, never updated) keeps the `<env>` section stable
+- The model still learns about CWD changes from the Bash tool's `"Shell working directory changed to X"` output
+- The `buildPostCompactContext` `[Working Directory]` section was removed since it's redundant (system prompt already shows `Primary working directory`) and could vary across compactions
+
+**Implementation**:
+- `buildSystemPrompt` options: added `originalWorkdir?: string` field
+- `<env>` section: `Working directory: ${options.workdir}` → `Primary working directory: ${options.originalWorkdir ?? options.workdir}`
+- `enhanceSystemPromptWithEnvDetails`: added `originalWorkdir` parameter, same change
+- `aiManager.ts` call site: pass `originalWorkdir: this.getOriginalWorkdir()`
+- `buildPostCompactContext`: removed `[Working Directory]` section (Claude Code doesn't include it)
+
+**Alternatives considered**:
+- Show both `Primary working directory` and `Current shell directory`: Rejected because adding a varying field to the `<env>` section would still break prompt cache
+- Reset CWD after every bash command (like Claude Code's opt-in `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR`): Rejected as too disruptive to agent workflow; the model may legitimately need to run commands in a subdirectory
+- Freeze/cached the env section like Claude Code: Rejected because Wave rebuilds the system prompt every turn (intentionally, for freshness of other fields like date); the better fix is to make the env section content stable
+
+## Type Safety Strategy
+
+**Decision**: Create Claude-specific type extensions without breaking existing contracts
+
+**Rationale**:
+- Extend OpenAI types with optional cache_control fields
+- Maintain strict TypeScript compilation without `any` types
+- Preserve existing message processing type safety
+- Use composition over inheritance for type evolution (Constitution principle IX)
+
+**Implementation Pattern**:
+```typescript
+interface ClaudeChatCompletionContentPartText extends ChatCompletionContentPartText {
+  cache_control?: { type: "ephemeral" };
+}
+```
+
+**Alternatives considered**:
+- Type assertions: Rejected due to reduced type safety
+- New interfaces: Rejected to follow type evolution principle
+- Runtime type guards only: Rejected due to lack of compile-time safety

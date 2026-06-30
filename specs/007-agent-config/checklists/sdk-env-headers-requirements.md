@@ -2,7 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-01-09
-**Feature**: [specs/041-sdk-env-headers/spec.md](spec.md)
+**Feature**: [specs/007-agent-config/spec.md](../spec.md)
 
 ## Content Quality
 

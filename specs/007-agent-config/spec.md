@@ -126,7 +126,7 @@ A developer is actively working and needs to modify their settings.json configur
 
 ---
 
-### User Story 10 - Per-Subagent-Type Headers (Priority: P2)
+### User Story 9 - Per-Subagent-Type Headers (Priority: P2)
 
 SDK users need to configure different HTTP headers per subagent type so that `customFetch` can distinguish main agent calls from subagent calls, enabling request-level routing, rate-limiting, and observability.
 

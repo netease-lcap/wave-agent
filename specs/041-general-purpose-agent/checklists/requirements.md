@@ -1,8 +1,8 @@
-# Specification Quality Checklist: Configurable Max Output Tokens for Agent
+# Specification Quality Checklist: General-Purpose Agent
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-01-08
-**Feature**: [specs/007-agent-config/spec.md](../spec.md)
+**Created**: 2026-02-03
+**Feature**: [specs/041-general-purpose-agent/spec.md](../spec.md)
 
 ## Content Quality
 
@@ -28,4 +28,7 @@
 
 ## Notes
 
-- All items pass. The specification clearly defines the behavior and precedence of the `maxTokens` configuration without diving into code implementation details.
+- Refined spec after reviewing the existing `Explore` subagent implementation.
+- Clarified the distinction between `Explore` (read-only, fast) and `general-purpose` (full tool access, implementation-focused).
+- Added requirement FR-007 for integration into `getBuiltinSubagents`.
+- All items pass. The specification is ready for planning.
