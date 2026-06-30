@@ -25,7 +25,9 @@
 1. **Gather context** — runs `git diff` against `main` (falls back to `HEAD~1`).
 2. **Launch review agents** — parallel subagents scan different dimensions (bugs, AGENTS.md compliance, git history, code reuse, efficiency) depending on effort level.
 3. **Score findings** — each finding gets an independent 0–100 confidence score from a separate agent.
-4. **Filter & report** — findings below the effort's threshold are dropped; the rest are reported with file + line range.
+4. **Filter & deliver** — findings below the effort's threshold are dropped. If no issues remain, says "no issues" and stops. Otherwise:
+   - **Post as comment** (preferred): if `gh`/`glab` is installed and a PR/MR exists, the review is posted as a PR/MR comment.
+   - **Output directly** (fallback): if no CLI, no PR/MR, or posting fails, findings are output to the terminal.
 
 ## Effort Levels
 
@@ -54,7 +56,16 @@ Found 2 issues:
    `src/bar.ts:10-15`
 ```
 
-If no issues pass the threshold, the skill says so and stops.
+If no issues pass the threshold, the skill says so and stops — nothing is posted or output.
+
+## Delivery: Comment vs Terminal
+
+Findings are delivered via one of two paths:
+
+- **Post as comment** (preferred): if `gh` is installed and a GitHub PR exists → `gh pr comment`; if `glab` is installed and a GitLab MR exists → `glab mr note`. Findings are NOT output to the terminal.
+- **Output directly** (fallback): if no CLI is installed, no PR/MR exists, the platform is unrecognized, or posting fails → findings are output to the terminal.
+
+Platform detection is based on the remote URL (`git remote get-url origin`).
 
 ## Notes
 

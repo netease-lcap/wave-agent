@@ -37,17 +37,22 @@
 - [x] T012 [US3] Implement Phase 4: launch parallel scoring agent per finding
 - [x] T013 [US3] Embed the fixed 0/25/50/75/100 rubric verbatim in the scoring agent prompt
 
-## Phase 5: Filter and Report
+## Phase 5: Filter and Deliver
 
 - [x] T014 [US3] Implement filtering by confidence threshold
-- [x] T015 [US1] Implement "no issues" early-stop report
+- [x] T015 [US1] Implement "no issues" early-stop (no comment, no terminal output)
 - [x] T016 [US1] Implement the numbered report format with `<file>:<line range>` citations
+- [x] T017 [US5] Add `Bash(git remote:*)`, `Bash(command -v:*)`, `Bash(gh pr comment:*)`, `Bash(gh pr view:*)`, `Bash(glab mr note:*)`, `Bash(glab mr view:*)` to `allowed-tools` in frontmatter
+- [x] T018 [US5] Implement platform detection via `git remote get-url origin`
+- [x] T019 [US5] Implement CLI detection via `command -v gh` / `command -v glab`
+- [x] T020 [US5] Implement comment-first delivery: post via `gh pr comment --body` / `glab mr note --message` when CLI + PR/MR exists, do NOT output to terminal
+- [x] T021 [US5] Implement terminal fallback: output directly when no CLI, no PR/MR, unrecognized platform, or posting fails
 
 ## Phase 6: Polish
 
-- [x] T017 [US1] Add False Positive Filtering guidance section
-- [x] T018 [US1] Add Notes section (no build/typecheck, cite file+lines, make todo list first)
-- [x] T019 [P] Add `$ARGUMENTS` input section at end of SKILL.md
+- [x] T022 [US1] Add False Positive Filtering guidance section
+- [x] T023 [US1] Add Notes section (no build/typecheck, cite file+lines, make todo list first)
+- [x] T024 [P] Add `$ARGUMENTS` input section at end of SKILL.md
 
 ## Dependencies & Execution Order
 
@@ -55,5 +60,8 @@
 - T004, T005 (effort level: sequential parse then map)
 - T006–T011 (review agents: parallel, independent prompts)
 - T012, T013 (scoring: sequential)
-- T014, T015, T016 (report: sequential)
-- T017, T018, T019 (polish: parallel)
+- T014 → T015 (filter then early-stop)
+- T017 → T018, T019 (frontmatter update before detection logic)
+- T020, T021 (delivery: comment-first then fallback — mutually exclusive paths)
+- T016 (report format: shared by both delivery paths)
+- T022, T023, T024 (polish: parallel)
