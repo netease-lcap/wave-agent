@@ -1,0 +1,672 @@
+/* Messages */
+.message {
+    word-wrap: break-word;
+    max-width: 100%;
+}
+
+.message.assistant {
+    display: flex;
+    gap: 10px;
+    flex-direction: column;
+}
+
+.message.user {
+    color: var(--vscode-foreground);
+    margin-bottom: 8px;
+    overflow-wrap: break-word; /* 长词自动换行 */
+}
+
+.user-text-block {
+    background-color: var(--vscode-chat-requestBubbleBackground);
+    border-radius: 8px;
+    padding: 8px 12px;
+    transition: background-color 0.2s ease;
+}
+
+.message.user:hover .user-text-block {
+    background-color: var(--vscode-chat-requestBubbleHoverBackground);
+}
+
+.message.user {
+    position: relative;
+}
+
+.message.user.queued {
+    background-color: transparent;
+    padding: 0;
+    margin-bottom: 0;
+    border-radius: 0;
+}
+
+.message.user.queued:hover {
+    background-color: transparent;
+}
+
+.message.user.queued .user-text-block {
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.message.user.queued .message-content.user-content {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.message.user.queued .context-tag {
+    padding: 1px 4px;
+    font-size: 10px;
+    margin: 0 2px;
+}
+
+.message-actions {
+    position: absolute;
+    top: -12px;
+    right: 8px;
+    display: none;
+    gap: 4px;
+    z-index: 10;
+}
+
+.message.user:hover .message-actions {
+    display: flex;
+}
+
+.message-action-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 2px 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.message-action-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.message.assistant .error {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.message.assistant .error pre {
+    margin: 0;
+    font-family: inherit;
+    font-style: inherit;
+    background: none;
+    border: none;
+    color: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.message.streaming::after {
+    content: "▋";
+    animation: blink 1s ease-in-out infinite;
+}
+
+/* Content Container for Mixed HTML/Mermaid Content */
+.message-content-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.message-content-container .message-content {
+    margin: 0;
+}
+
+.message-content-container .mermaid-renderer {
+    margin: 12px 0;
+}
+
+/* Mermaid React Container Styling */
+.mermaid-react-container {
+    margin: 16px 0;
+    display: block;
+    width: 100%;
+}
+
+.mermaid-placeholder {
+    display: block;
+    height: 0;
+    overflow: hidden;
+}
+
+.message-content {
+    font-family: var(--vscode-editor-font-family);
+    line-height: 1.4;
+}
+
+/* User message content styling - make pre look like normal text */
+.message-content.user-content {
+    font-family: inherit; /* Use same font as parent */
+    font-size: inherit;   /* Use same size as parent */
+    margin: 0;            /* Remove default margins */
+    padding: 0;           /* Remove default padding */
+    background: none;     /* Remove background */
+    border: none;         /* Remove border */
+    white-space: pre-wrap; /* Preserve whitespace and line breaks */
+    overflow-wrap: anywhere;
+    display: inline-block;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Non-markdown content (fallback) */
+.message-content:not(.markdown-content) {
+    white-space: pre-wrap;
+}
+
+/* Tools */
+.tool-block {
+    color: var(--vscode-button-background);
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.tool-status-dot {
+    font-size: 10px;
+}
+
+.tool-error {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    margin-top: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.tool-error pre {
+    margin: 0;
+    font-family: inherit;
+    font-style: inherit;
+    background: none;
+    border: none;
+    color: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Reasoning blocks */
+.reasoning-block {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border-left: 4px solid var(--vscode-textBlockQuote-border);
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+    border-radius: 0 4px 4px 0;
+}
+
+.reasoning-content {
+    font-style: italic;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.reasoning-content .markdown-content code,
+.reasoning-content .markdown-content pre,
+.reasoning-content .markdown-content h1,
+.reasoning-content .markdown-content h2,
+.reasoning-content .markdown-content h3,
+.reasoning-content .markdown-content h4,
+.reasoning-content .markdown-content h5,
+.reasoning-content .markdown-content h6,
+.reasoning-content .markdown-content table {
+    font-style: normal;
+}
+
+.reasoning-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    font-weight: 600;
+    font-style: normal;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.image-block {
+    margin: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.image-item-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--vscode-badge-background);
+    border: 1px solid var(--vscode-badge-foreground, transparent);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 12px;
+    max-width: 300px;
+}
+
+.image-item-message .image-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background-color: var(--vscode-button-secondaryBackground);
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.image-item-message .image-type {
+    color: var(--vscode-button-secondaryForeground);
+    font-size: 9px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.image-item-message .image-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.image-item-message .image-name {
+    color: var(--vscode-badge-foreground);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.compact-params {
+    color: var(--vscode-descriptionForeground);
+    font-weight: normal;
+    font-size: 11px;
+}
+
+/* Tool Styles */
+
+.tool-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bash-command-input {
+    display: flex;
+    align-items: flex-start;
+    padding: 4px 8px;
+    background-color: var(--vscode-textCodeBlock-background);
+    font-size: 12px;
+    line-height: 1.2;
+    border-radius: 4px;
+    border: 1px solid var(--vscode-textBlockQuote-border);
+    max-height: 160px;
+    overflow-y: auto;
+    font-family: var(--vscode-editor-font-family);
+}
+
+.bash-prompt {
+    color: var(--vscode-terminal-ansiGreen, #00ff00);
+    font-weight: bold;
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+
+.bash-command {
+    color: var(--vscode-textPreformat-foreground);
+    font-family: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+    flex: 1;
+    font-weight: normal;
+}
+
+/* Unified bash block for input + output */
+.bash-command-unified {
+    border: 1px solid var(--vscode-textBlockQuote-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.bash-command-unified .bash-command-input {
+    margin-top: 0;
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid var(--vscode-textBlockQuote-border);
+}
+
+.bash-command-unified .bash-command-output {
+    margin-top: 0;
+    border: none;
+    border-radius: 0;
+}
+
+.bash-command-output {
+    padding: 4px 8px;
+    background-color: var(--vscode-terminal-background, var(--vscode-editor-background));
+    color: var(--vscode-terminal-foreground, var(--vscode-editor-foreground));
+    border: 1px solid var(--vscode-textBlockQuote-border);
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 160px;
+    overflow-y: auto;
+    font-weight: normal;
+    font-family: var(--vscode-editor-font-family);
+}
+
+.lsp-output {
+    padding: 4px 8px;
+    background-color: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-textPreformat-foreground);
+    border: 1px solid var(--vscode-textBlockQuote-border);
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 100px;
+    overflow-y: auto;
+    font-weight: normal;
+    font-family: var(--vscode-editor-font-family);
+}
+
+.tool-result-block {
+    padding: 0;
+    background-color: transparent;
+    border: none;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.result-item {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+}
+
+.result-answer {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+}
+
+.result-raw {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    max-height: 100px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.ask-user-result-item {
+    margin-top: 8px;
+}
+
+.ask-user-result-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.ask-user-result-q {
+    color: var(--vscode-descriptionForeground);
+    font-weight: 600;
+    flex-shrink: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.ask-user-result-a {
+    color: var(--vscode-descriptionForeground);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    min-width: 0;
+    flex: 1;
+}
+
+.tool-result-inline {
+    color: var(--vscode-descriptionForeground);
+    font-weight: normal;
+    font-size: 11px;
+    margin-left: 4px;
+}
+
+/* Markdown Styling for Message Content */
+.markdown-content {
+    white-space: normal; /* Override pre-wrap for markdown content */
+}
+
+/* Markdown Headers */
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    color: var(--vscode-editor-foreground);
+    margin: 16px 0 8px 0;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.markdown-content h1 { font-size: 1.8em; }
+.markdown-content h2 { font-size: 1.5em; }
+.markdown-content h3 { font-size: 1.3em; }
+.markdown-content h4 { font-size: 1.1em; }
+.markdown-content h5 { font-size: 1em; }
+.markdown-content h6 { font-size: 0.9em; }
+
+/* Markdown Text Formatting */
+.markdown-content strong,
+.markdown-content b {
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+}
+
+.markdown-content em,
+.markdown-content i {
+    font-style: italic;
+}
+
+.markdown-content del {
+    text-decoration: line-through;
+}
+
+/* Markdown Code */
+.markdown-content code {
+    background-color: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-textPreformat-foreground);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 0.9em;
+    border: 1px solid var(--vscode-textBlockQuote-border);
+}
+
+.markdown-content pre {
+    background-color: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-textPreformat-foreground);
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid var(--vscode-textBlockQuote-border);
+    overflow-x: auto;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 0.9em;
+    margin: 8px 0;
+    line-height: 1.4;
+}
+
+.markdown-content pre code {
+    background: none;
+    padding: 0;
+    border: none;
+    font-size: inherit;
+}
+
+/* Markdown Lists */
+.markdown-content ul,
+.markdown-content ol {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.markdown-content ul {
+    list-style-type: disc;
+}
+
+.markdown-content ol {
+    list-style-type: decimal;
+}
+
+.markdown-content li {
+    margin: 4px 0;
+    line-height: 1.4;
+}
+
+.markdown-content .task-list-item {
+    list-style-type: none;
+}
+
+.markdown-content .task-list-item.checked {
+    color: var(--vscode-descriptionForeground);
+    text-decoration: line-through;
+}
+
+.markdown-content .task-list-item input[type="checkbox"] {
+    margin: 0 8px 0 -20px;
+    vertical-align: middle;
+}
+
+.markdown-content ul ul,
+.markdown-content ol ol,
+.markdown-content ul ol,
+.markdown-content ol ul {
+    margin: 2px 0;
+}
+
+.markdown-content ul ul {
+    list-style-type: circle;
+}
+
+.markdown-content ul ul ul {
+    list-style-type: square;
+}
+
+/* Markdown Links */
+.markdown-content a {
+    color: var(--vscode-textLink-foreground);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+.markdown-content a:hover {
+    color: var(--vscode-textLink-activeForeground);
+    border-bottom-color: var(--vscode-textLink-activeForeground);
+}
+
+/* Markdown Blockquotes */
+.markdown-content blockquote {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border-left: 4px solid var(--vscode-textBlockQuote-border);
+    background-color: var(--vscode-textBlockQuote-background);
+    color: var(--vscode-editor-foreground);
+    font-style: italic;
+}
+
+.markdown-content blockquote p {
+    margin: 4px 0;
+}
+
+/* Markdown Paragraphs */
+.markdown-content p {
+    margin: 8px 0;
+    line-height: 1.5;
+}
+
+/* Markdown Tables */
+.markdown-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 0.9em;
+    border: 1px solid var(--vscode-panel-border);
+}
+
+.markdown-content th,
+.markdown-content td {
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-panel-border);
+}
+
+.markdown-content th[align="left"],
+.markdown-content td[align="left"] {
+    text-align: left;
+}
+
+.markdown-content th[align="center"],
+.markdown-content td[align="center"] {
+    text-align: center;
+}
+
+.markdown-content th[align="right"],
+.markdown-content td[align="right"] {
+    text-align: right;
+}
+
+.markdown-content th {
+    background-color: var(--vscode-editor-lineHighlightBackground);
+    font-weight: 600;
+}
+
+.markdown-content tr:nth-child(even) {
+    background-color: var(--vscode-editor-lineHighlightBackground);
+    opacity: 0.8;
+}
+
+.markdown-content p:first-child {
+    margin-top: 0;
+}
+
+.markdown-content p:last-child {
+    margin-bottom: 0;
+}
+
+/* Ensure markdown content doesn't break message layout */
+.markdown-content > *:first-child {
+    margin-top: 0;
+}
+
+.markdown-content > *:last-child {
+    margin-bottom: 0;
+}
+
+

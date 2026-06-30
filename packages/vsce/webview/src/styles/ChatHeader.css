@@ -1,0 +1,73 @@
+/* Header */
+.chat-header {
+    padding: 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-panel-background);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-left {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.header-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.header-button {
+    background-color: transparent;
+    color: var(--vscode-foreground);
+    border: none;
+    padding: 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.header-button.active {
+    background-color: var(--vscode-toolbar-activeBackground);
+    color: var(--vscode-button-background);
+}
+
+.header-button:hover {
+    background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.button-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    font-size: 9px;
+    min-width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 2px;
+    font-weight: bold;
+}
+
+.header-button .codicon {
+    font-size: 16px;
+}
+
+.header-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.header-button:disabled:hover {
+    background-color: transparent;
+}

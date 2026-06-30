@@ -16,3 +16,13 @@ nohup.out
 .wave/settings.local.json
 .wave/worktrees/
 vendor/
+
+# VS Code Extension
+*.vsix
+packages/vsce/webview/dist/
+packages/vsce/releases/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/.vitepress/.temp/
+docs/.vitepress/data/
+docs/public/screenshots/

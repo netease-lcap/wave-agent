@@ -1,0 +1,137 @@
+{
+  "name": "wave-vsce",
+  "private": true,
+  "displayName": "Wave 代码智聊",
+  "description": "Wave code for VS Code",
+  "version": "0.4.17",
+  "publisher": "wave-code",
+  "icon": "LOGO.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/netease-lcap/wave-vsce.git"
+  },
+  "type": "module",
+  "engines": {
+    "vscode": "^1.107.0",
+    "node": ">=22.0.0"
+  },
+  "files": [
+    "dist/",
+    "webview/dist/",
+    "LOGO.png",
+    "logo.svg",
+    "vendor/",
+    "builtin/",
+    "LICENSE"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.cjs",
+  "contributes": {
+    "views": {
+      "waveChatView": [
+        {
+          "id": "waveChat",
+          "name": "代码智聊",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "waveChatView",
+          "title": "Wave",
+          "icon": "logo.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "wave-code.openChatSidebar",
+        "title": "在侧边栏打开代码智聊",
+        "category": "Wave"
+      },
+      {
+        "command": "wave-code.openChatTab",
+        "title": "在新标签页打开代码智聊",
+        "category": "Wave"
+      },
+      {
+        "command": "wave-code.openChatWindow",
+        "title": "在新窗口打开代码智聊",
+        "category": "Wave"
+      },
+      {
+        "command": "wave-code.focusView",
+        "title": "聚焦到聊天输入框",
+        "category": "Wave"
+      },
+      {
+        "command": "wave-code.addToWave",
+        "title": "添加到 Wave",
+        "category": "Wave"
+      },
+      {
+        "command": "wave-code.checkForUpdates",
+        "title": "检查更新",
+        "category": "Wave"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "wave-code.addToWave",
+          "when": "editorHasSelection",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "pnpm run compile",
+    "lint": "eslint --cache",
+    "clean": "node -e \"import('fs').then(fs => ['dist', 'webview/dist'].forEach(d => {try{fs.rmSync(d, {recursive:true, force:true})}catch(e){}}))\"",
+    "prepackage": "pnpm run clean",
+    "compile": "pnpm run compile:backend && pnpm run compile:frontend",
+    "watch": "npm-run-all -p watch:backend watch:frontend",
+    "compile:backend": "node esbuild.config.mjs backend",
+    "compile:frontend": "node esbuild.config.mjs frontend",
+    "watch:backend": "node esbuild.config.mjs backend --watch",
+    "watch:frontend": "node esbuild.config.mjs frontend --watch",
+    "esbuild:prod": "node esbuild.config.mjs --production",
+    "package": "node scripts/package.mjs",
+    "type-check": "tsc --noEmit && tsc -p webview --noEmit && tsc -p e2e --noEmit",
+    "pretest": "pnpm run type-check && pnpm run compile",
+    "test": "vitest run && playwright test --project=chromium",
+    "pretest:demo": "pnpm run type-check && pnpm run compile",
+    "test:demo": "playwright test --project=demo",
+    "preinstall:vsix": "pnpm run package",
+    "install:vsix": "code --install-extension releases/*.vsix",
+    "push:tag": "git push origin $(git describe --tags --abbrev=0)"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/diff": "^7.0.2",
+    "@types/node": "^25.0.1",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.9.1",
+    "esbuild": "^0.28.0",
+    "npm-run-all": "^4.1.5",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "@vscode/codicons": "^0.0.43",
+    "diff": "^8.0.2",
+    "dompurify": "^3.3.0",
+    "marked": "^9.1.6",
+    "mermaid": "^11.12.2",
+    "wave-agent-sdk": "workspace:*"
+  }
+}

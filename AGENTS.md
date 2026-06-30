@@ -8,12 +8,15 @@ This is a pnpm monorepo focused on AI-powered development tools.
 
 - **`packages/agent-sdk`**: Core Node.js SDK. Handles AI model integration, tool systems, and memory management.
 - **`packages/code`**: CLI frontend built with React Ink. Provides the interactive terminal interface.
+- **`packages/vsce`**: VS Code extension with React webview chat UI. Uses esbuild for bundling (not tsc).
 - **`specs/`**: Contains numbered feature specifications (e.g., `specs/008-slash-commands/`). These are the source of truth for feature design and implementation tasks.
+- **`docs/`**: VitePress documentation site (primarily for the VS Code extension product spec).
 - **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
 
 ### Key Dependencies
 - `packages/code` depends on `packages/agent-sdk`.
-- **Important**: After modifying `agent-sdk`, you MUST rebuild it (`pnpm -F wave-agent-sdk build`) before the changes are available to `packages/code`.
+- `packages/vsce` depends on `packages/agent-sdk`.
+- **Important**: After modifying `agent-sdk`, you MUST rebuild it (`pnpm -F wave-agent-sdk build`) before the changes are available to other packages.
 
 ## 🛠 Development Commands
 
@@ -50,4 +53,21 @@ Always use `pnpm` as the package manager.
 ## 🐛 Debugging
 
 - **Prefer temporary console.log/console.trace**: When diagnosing bugs, especially race conditions or complex flows, add temporary `console.log` or `console.trace` statements to trace execution rather than overthinking through static analysis. Run the code/tests, observe the actual output, then remove the logs once the issue is identified.
+
+## 🧩 VS Code Extension (`packages/vsce`)
+
+### Build
+- **Compile**: `pnpm -F wave-vsce run compile` (esbuild: backend CJS + frontend IIFE)
+- **Watch**: `pnpm -F wave-vsce run watch`
+- **Package .vsix**: `pnpm -F wave-vsce run package`
+
+### Architecture
+- **Backend** (Extension Host): `src/extension.ts` → `ChatProvider` → `ChatSession` (wraps `wave-agent-sdk` Agent) → `MessageHandler` → services
+- **Frontend** (Webview): React 18 app in `webview/src/`, uses `useReducer` for state, communicates via `vscode.postMessage`
+- **Key constraint**: `acquireVsCodeApi()` can only be called once per webview lifecycle — call in root component and pass as prop
+
+### Testing
+- **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vsce test`
+- **E2E tests**: Playwright in `e2e/` (requires Chromium)
+- **Demo/screenshot tests**: `pnpm -F wave-vsce run test:demo`
 

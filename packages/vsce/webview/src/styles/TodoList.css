@@ -1,0 +1,57 @@
+/* Todo List Component Styles */
+.todo-list {
+    margin-top: 4px;
+    border: 1px solid var(--vscode-textBlockQuote-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.todo-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--vscode-textBlockQuote-border);
+    font-size: 12px;
+    line-height: 1.2;
+    background-color: var(--vscode-textCodeBlock-background);
+}
+
+.todo-item:last-child {
+    border-bottom: none;
+}
+
+.todo-status-icon {
+    margin-right: 8px;
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.todo-content {
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Todo status specific styles */
+.todo-completed .todo-status-icon {
+    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+}
+
+.todo-completed .todo-content {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.todo-in_progress .todo-status-icon {
+    color: var(--vscode-button-background);
+}
+
+.todo-in_progress .todo-content {
+    font-weight: 500;
+}
+
+.todo-pending .todo-status-icon {
+    color: var(--vscode-descriptionForeground);
+}

@@ -1,0 +1,113 @@
+.history-search-popup {
+  background-color: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 600px;
+  min-width: 200px;
+  box-sizing: border-box;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateY(-100%); /* Position above the input */
+  margin-top: -8px;
+  left: 0 !important; /* Ensure it aligns with the input container */
+}
+
+.history-search-header {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--vscode-editor-background);
+}
+
+.history-search-header .codicon-history {
+  margin-right: 8px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.history-search-input {
+  flex: 1;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 2px;
+  padding: 4px 8px;
+  font-size: 12px;
+  outline: none;
+}
+
+.history-search-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.history-search-results {
+  flex: 1;
+  overflow-y: auto;
+  background-color: var(--vscode-dropdown-background);
+}
+
+.history-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-search-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--vscode-dropdown-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-search-item:last-child {
+  border-bottom: none;
+}
+
+.history-search-item.selected {
+  background-color: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.history-item-prompt {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-item-time {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.history-search-item.selected .history-item-time {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.history-search-loading,
+.history-search-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.codicon-modifier-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

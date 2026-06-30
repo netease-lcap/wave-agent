@@ -1,0 +1,29 @@
+node_modules/
+out/
+dist/
+test-results/
+playwright-report/
+nohup.out
+
+# Build outputs
+webview/dist/
+
+# VS Code extension packages
+*.vsix
+*.zip
+
+# Binaries
+vendor/
+builtin/
+
+designs/
+
+.env
+screenshots/
+docs/public/screenshots/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/.vitepress/.temp/
+docs/.vitepress/data/
+releases/
+.wave/worktrees/

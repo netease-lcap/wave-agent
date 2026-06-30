@@ -1,0 +1,27 @@
+/* Session Selector */
+.session-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.session-dropdown {
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    padding: 4px 8px;
+    border-radius: 2px;
+    font-size: 13px;
+    min-width: 120px;
+    max-width: 200px;
+}
+
+.session-dropdown:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.session-dropdown:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}

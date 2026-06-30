@@ -1,0 +1,68 @@
+/* 指令弹窗 */
+.slash-commands-popup {
+    background-color: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    min-width: 300px;
+    max-width: 400px;
+    max-height: 300px;
+    overflow: hidden;
+    transform: translateY(-100%);
+    margin-top: -8px;
+}
+
+.slash-commands-header {
+    background-color: var(--vscode-panel-background);
+    color: var(--vscode-panel-title-foreground);
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.slash-commands-loading,
+.slash-commands-empty {
+    padding: 12px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    font-style: italic;
+}
+
+.slash-commands-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.slash-command-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    transition: background-color 0.1s ease;
+}
+
+.slash-command-item:last-child {
+    border-bottom: none;
+}
+
+.slash-command-item:hover,
+.slash-command-item.selected {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.slash-command-name {
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+    font-size: 13px;
+    margin-bottom: 2px;
+}
+
+.slash-command-description {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    line-height: 1.3;
+}
