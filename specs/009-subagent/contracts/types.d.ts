@@ -3,7 +3,7 @@
  * 
  * **Package**: agent-sdk
  * **Target File**: src/managers/subagentManager.ts
- * **Feature**: 015-subagent-message-callbacks
+ * **Feature**: 009-subagent
  */
 
 // ============================================================================

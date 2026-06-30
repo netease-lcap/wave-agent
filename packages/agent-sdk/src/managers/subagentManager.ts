@@ -26,7 +26,7 @@ import type { PermissionMode } from "../types/permissions.js";
 import { ConfigurationService } from "../services/configurationService.js";
 
 export interface SubagentManagerCallbacks {
-  // Granular subagent message callbacks (015-subagent-message-callbacks)
+  // Granular subagent message callbacks (009-subagent)
   /** Triggered when subagent adds user message */
   onSubagentUserMessageAdded?: (
     subagentId: string,

@@ -1,8 +1,8 @@
-# Specification Quality Checklist: Configurable Max Output Tokens for Agent
+# Specification Quality Checklist: Support AskUserQuestion Tool
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-01-08
-**Feature**: [specs/007-agent-config/spec.md](../spec.md)
+**Created**: 2026-01-19
+**Feature**: [specs/037-ask-user-tool/spec.md](../spec.md)
 
 ## Content Quality
 
@@ -28,4 +28,6 @@
 
 ## Notes
 
-- All items pass. The specification clearly defines the behavior and precedence of the `maxTokens` configuration without diving into code implementation details.
+- The specification is based on the `AskUserQuestion` tool.
+- All requirements are derived from the tool's purpose and schema.
+- No clarifications are needed as the tool's behavior is well-defined in the reference material.
