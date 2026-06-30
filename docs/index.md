@@ -7,7 +7,7 @@ title: Wave Agent
 
 AI 辅助编程工具链，提供 SDK、CLI 终端界面与 VS Code 扩展三种使用方式。
 
-[VS Code 扩展](/vsce) · [SDK](/sdk) · [CLI](/cli)
+[VS Code 扩展](/vsce) · [CLI](/cli) · [SDK](/sdk)
 
 ## 项目结构
 
