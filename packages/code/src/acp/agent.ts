@@ -224,10 +224,10 @@ export class WaveAcpAgent implements AcpAgent {
         );
       },
       callbacks: {
-        onAssistantContentUpdated: (messageId: string, chunk: string) =>
-          callbacks.onAssistantContentUpdated?.(messageId, chunk, ""),
-        onAssistantReasoningUpdated: (messageId: string, chunk: string) =>
-          callbacks.onAssistantReasoningUpdated?.(messageId, chunk, ""),
+        onAssistantContentUpdated: (params) =>
+          callbacks.onAssistantContentUpdated?.(params),
+        onAssistantReasoningUpdated: (params) =>
+          callbacks.onAssistantReasoningUpdated?.(params),
         onToolBlockUpdated: (params: unknown) => {
           const cb = callbacks.onToolBlockUpdated as
             | ((params: unknown) => void)
@@ -1127,26 +1127,32 @@ export class WaveAcpAgent implements AcpAgent {
     >();
     return {
       callbacks: {
-        onAssistantContentUpdated: (_messageId: string, chunk: string) => {
+        onAssistantContentUpdated: (params: {
+          chunk: string;
+          stage: "streaming" | "end";
+        }) => {
           this.connection.sessionUpdate({
             sessionId: sessionRef.id as AcpSessionId,
             update: {
               sessionUpdate: "agent_message_chunk",
               content: {
                 type: "text",
-                text: chunk,
+                text: params.chunk,
               },
             },
           });
         },
-        onAssistantReasoningUpdated: (_messageId: string, chunk: string) => {
+        onAssistantReasoningUpdated: (params: {
+          chunk: string;
+          stage: "streaming" | "end";
+        }) => {
           this.connection.sessionUpdate({
             sessionId: sessionRef.id as AcpSessionId,
             update: {
               sessionUpdate: "agent_thought_chunk",
               content: {
                 type: "text",
-                text: chunk,
+                text: params.chunk,
               },
             },
           });

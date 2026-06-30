@@ -48,8 +48,8 @@ async function main() {
           console.log(`❌ Tool Blocked: ${params.error}`);
         }
       },
-      onAssistantContentUpdated: (chunk) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params) => {
+        process.stdout.write(params.chunk);
       },
     },
   });

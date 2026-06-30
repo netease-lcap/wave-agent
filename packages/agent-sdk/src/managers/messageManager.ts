@@ -43,17 +43,19 @@ export interface MessageManagerCallbacks {
   // MODIFIED: Remove arguments for separation of concerns
   onAssistantMessageAdded?: (messageId: string) => void;
   // NEW: Streaming content callback - FR-001: receives chunk and accumulated content
-  onAssistantContentUpdated?: (
-    messageId: string,
-    chunk: string,
-    accumulated: string,
-  ) => void;
+  onAssistantContentUpdated?: (params: {
+    messageId: string;
+    chunk: string;
+    accumulated: string;
+    stage: "streaming" | "end";
+  }) => void;
   // NEW: Streaming reasoning callback
-  onAssistantReasoningUpdated?: (
-    messageId: string,
-    chunk: string,
-    accumulated: string,
-  ) => void;
+  onAssistantReasoningUpdated?: (params: {
+    messageId: string;
+    chunk: string;
+    accumulated: string;
+    stage: "streaming" | "end";
+  }) => void;
   onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
   onErrorBlockAdded?: (error: string) => void;
   onCompactBlockAdded?: (content: string) => void;
@@ -469,7 +471,7 @@ export class MessageManager {
 
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {
     // Finalize any streaming text/reasoning blocks before adding/updating a tool block
-    this.finalizeCurrentStreamingBlocks();
+    this.finalizeStreamingBlocks();
     const { messages: newMessages, messageId: resolvedMessageId } =
       updateToolBlockInMessage({
         messages: this.messages,
@@ -497,7 +499,7 @@ export class MessageManager {
     params: Omit<AgentToolBlockUpdateParams, "id">,
   ): string {
     // Finalize any streaming text/reasoning blocks before adding a tool block
-    this.finalizeCurrentStreamingBlocks();
+    this.finalizeStreamingBlocks();
     const { messages: newMessages, toolBlockId } =
       addToolBlockToMessageInMessages(this.messages, messageId, params);
     this.setMessages(newMessages);
@@ -682,6 +684,49 @@ export class MessageManager {
   }
 
   /**
+   * Finalize a streaming block of the given type by setting its stage to "end".
+   * Fires the corresponding incremental callback with chunk="" to signal finalization.
+   * Does NOT call onMessagesChange — the caller is responsible for that.
+   * Returns true if a block was finalized.
+   */
+  private finalizeStreamingBlock(
+    lastMessage: Message,
+    type: "text" | "reasoning",
+  ): boolean {
+    const index = lastMessage.blocks.findIndex(
+      (block) =>
+        block.type === type &&
+        (block as { stage?: string }).stage === "streaming",
+    );
+    if (index < 0) return false;
+
+    const block = lastMessage.blocks[index] as {
+      type: "text" | "reasoning";
+      content: string;
+      stage?: string;
+    };
+    lastMessage.blocks[index] = {
+      type: block.type,
+      content: block.content,
+      stage: "end" as const,
+    };
+
+    // Fire incremental callback to signal finalization
+    const callbackParams = {
+      messageId: lastMessage.id,
+      chunk: "",
+      accumulated: block.content,
+      stage: "end" as const,
+    };
+    if (type === "text") {
+      this.callbacks.onAssistantContentUpdated?.(callbackParams);
+    } else {
+      this.callbacks.onAssistantReasoningUpdated?.(callbackParams);
+    }
+    return true;
+  }
+
+  /**
    * Update the current assistant message content during streaming
    * This method updates the last assistant message's content without creating a new message
    * FR-001: Tracks and provides both chunk (new content) and accumulated (total content)
@@ -693,23 +738,7 @@ export class MessageManager {
     if (lastMessage.role !== "assistant") return;
 
     // Finalize any streaming reasoning blocks before text content arrives
-    const reasoningIndex = lastMessage.blocks.findIndex(
-      (block) =>
-        block.type === "reasoning" &&
-        (block as { stage?: string }).stage === "streaming",
-    );
-    if (reasoningIndex >= 0) {
-      const reasoningBlock = lastMessage.blocks[reasoningIndex] as {
-        type: "reasoning";
-        content: string;
-        stage?: string;
-      };
-      lastMessage.blocks[reasoningIndex] = {
-        type: "reasoning" as const,
-        content: reasoningBlock.content,
-        stage: "end" as const,
-      };
-    }
+    this.finalizeStreamingBlock(lastMessage, "reasoning");
 
     // Get the current content to calculate the chunk
     const textBlockIndex = lastMessage.blocks.findIndex(
@@ -745,11 +774,12 @@ export class MessageManager {
     }
 
     // FR-001: Trigger callbacks with chunk and accumulated content
-    this.callbacks.onAssistantContentUpdated?.(
-      lastMessage.id,
+    this.callbacks.onAssistantContentUpdated?.({
+      messageId: lastMessage.id,
       chunk,
-      newAccumulatedContent,
-    );
+      accumulated: newAccumulatedContent,
+      stage: "streaming",
+    });
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
 
@@ -767,23 +797,7 @@ export class MessageManager {
     if (lastMessage.role !== "assistant") return;
 
     // Finalize any streaming text blocks before reasoning content arrives
-    const textIndex = lastMessage.blocks.findIndex(
-      (block) =>
-        block.type === "text" &&
-        (block as { stage?: string }).stage === "streaming",
-    );
-    if (textIndex >= 0) {
-      const textBlock = lastMessage.blocks[textIndex] as {
-        type: "text";
-        content: string;
-        stage?: string;
-      };
-      lastMessage.blocks[textIndex] = {
-        type: "text" as const,
-        content: textBlock.content,
-        stage: "end" as const,
-      };
-    }
+    this.finalizeStreamingBlock(lastMessage, "text");
 
     // Get the current reasoning content to calculate the chunk
     const reasoningBlockIndex = lastMessage.blocks.findIndex(
@@ -819,46 +833,33 @@ export class MessageManager {
     }
 
     // Trigger callbacks with chunk and accumulated reasoning content
-    this.callbacks.onAssistantReasoningUpdated?.(
-      lastMessage.id,
+    this.callbacks.onAssistantReasoningUpdated?.({
+      messageId: lastMessage.id,
       chunk,
-      newAccumulatedReasoning,
-    );
+      accumulated: newAccumulatedReasoning,
+      stage: "streaming",
+    });
 
     this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
   }
 
   /**
-   * Public wrapper for finalizeCurrentStreamingBlocks.
-   * Finalizes text/reasoning blocks after streaming completes (e.g. final response with no tools).
+   * Finalize streaming text/reasoning blocks by setting their stage to "end".
+   * Called when a new block (e.g. tool) is appended during streaming, or when streaming completes.
+   * Fires incremental callbacks for each finalized block.
    */
   public finalizeStreamingBlocks(): void {
-    this.finalizeCurrentStreamingBlocks();
-  }
-
-  /**
-   * Finalize streaming text/reasoning blocks by setting their stage to "end".
-   * Called when a new block (e.g. tool) is appended during streaming.
-   */
-  private finalizeCurrentStreamingBlocks(): void {
     if (this.messages.length === 0) return;
     const lastMessage = this.messages[this.messages.length - 1];
     if (lastMessage.role !== "assistant") return;
 
-    const newBlocks = lastMessage.blocks.map((block) => {
-      if (
-        (block.type === "text" || block.type === "reasoning") &&
-        block.stage === "streaming"
-      ) {
-        return { ...block, stage: "end" as const };
-      }
-      return block;
-    });
+    const textFinalized = this.finalizeStreamingBlock(lastMessage, "text");
+    const reasoningFinalized = this.finalizeStreamingBlock(
+      lastMessage,
+      "reasoning",
+    );
 
-    // Only update if something changed
-    const changed = newBlocks.some((b, i) => b !== lastMessage.blocks[i]);
-    if (changed) {
-      lastMessage.blocks = newBlocks;
+    if (textFinalized || reasoningFinalized) {
       this.callbacks.onMessagesChange?.([...this.messages]);
     }
   }

@@ -5,8 +5,8 @@ import { Agent } from "../src/agent.js";
 // Create Agent instance
 const agent = await Agent.create({
   callbacks: {
-    onAssistantContentUpdated: (chunk: string) => {
-      process.stdout.write(chunk);
+    onAssistantContentUpdated: (params: { chunk: string }) => {
+      process.stdout.write(params.chunk);
     },
   },
 });

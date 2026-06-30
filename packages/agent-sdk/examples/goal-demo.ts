@@ -22,8 +22,8 @@ async function main() {
     model: process.env.WAVE_FAST_MODEL,
     permissionMode: "bypassPermissions",
     callbacks: {
-      onAssistantContentUpdated: (chunk) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params) => {
+        process.stdout.write(params.chunk);
       },
       onGoalStateChange: (active, condition, elapsed) => {
         if (active) {

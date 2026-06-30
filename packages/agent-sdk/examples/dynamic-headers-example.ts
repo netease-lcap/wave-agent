@@ -48,8 +48,8 @@ async function main() {
       systemPrompt: "You are a helpful assistant.",
       fetch: customFetch,
       callbacks: {
-        onAssistantContentUpdated: (chunk: string) => {
-          process.stdout.write(chunk);
+        onAssistantContentUpdated: (params: { chunk: string }) => {
+          process.stdout.write(params.chunk);
         },
       },
     });
@@ -62,8 +62,8 @@ async function main() {
       systemPrompt: "You are a special-agent.",
       fetch: customFetch,
       callbacks: {
-        onAssistantContentUpdated: (chunk: string) => {
-          process.stdout.write(chunk);
+        onAssistantContentUpdated: (params: { chunk: string }) => {
+          process.stdout.write(params.chunk);
         },
       },
     });

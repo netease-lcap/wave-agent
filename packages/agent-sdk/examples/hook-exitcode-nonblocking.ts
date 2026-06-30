@@ -226,8 +226,8 @@ async function demonstrateNonBlockingErrors(): Promise<void> {
       model: process.env.WAVE_FAST_MODEL,
       logger: console,
       callbacks: {
-        onAssistantContentUpdated: (chunk: string) => {
-          process.stdout.write(chunk);
+        onAssistantContentUpdated: (params: { chunk: string }) => {
+          process.stdout.write(params.chunk);
         },
       },
     });

@@ -165,9 +165,9 @@ async function testWithAgent() {
         }
       },
 
-      onAssistantContentUpdated: (chunk) => {
+      onAssistantContentUpdated: (params) => {
         // Show a small sample of the response
-        if (chunk.length > 0) {
+        if (params.chunk.length > 0) {
           process.stdout.write(".");
         }
       },

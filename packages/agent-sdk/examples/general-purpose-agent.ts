@@ -10,10 +10,10 @@ async function main() {
         const name = instance?.configuration.name || subagentId;
         console.log(`[Subagent ${name}] Assistant started responding...`);
       },
-      onSubagentAssistantContentUpdated: (subagentId, chunk) => {
-        const instance = agent.getSubagentInstance(subagentId);
-        const name = instance?.configuration.name || subagentId;
-        process.stdout.write(`[Subagent ${name}] ${chunk}`);
+      onSubagentAssistantContentUpdated: (params) => {
+        const instance = agent.getSubagentInstance(params.subagentId);
+        const name = instance?.configuration.name || params.subagentId;
+        process.stdout.write(`[Subagent ${name}] ${params.chunk}`);
       },
       onSubagentToolBlockUpdated: (subagentId, params) => {
         const instance = agent.getSubagentInstance(subagentId);
@@ -26,8 +26,8 @@ async function main() {
           );
         }
       },
-      onAssistantContentUpdated: (chunk) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params) => {
+        process.stdout.write(params.chunk);
       },
     },
   });

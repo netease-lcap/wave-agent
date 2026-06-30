@@ -76,8 +76,8 @@ const calculatorTool = buildTool({
 const agent = await Agent.create({
   customTools: [weatherTool, calculatorTool],
   callbacks: {
-    onAssistantContentUpdated: (chunk: string) => {
-      process.stdout.write(chunk);
+    onAssistantContentUpdated: (params: { chunk: string }) => {
+      process.stdout.write(params.chunk);
     },
     onToolBlockUpdated: (params) => {
       if (params.stage === "start") {

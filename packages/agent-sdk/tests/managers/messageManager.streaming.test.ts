@@ -28,29 +28,32 @@ describe("MessageManager - Streaming Functionality", () => {
       // First update
       messageManager.updateCurrentMessageContent("Hello");
 
-      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
-        "Hello",
-        "Hello",
-      );
+        chunk: "Hello",
+        accumulated: "Hello",
+        stage: "streaming",
+      });
 
       // Second update (should calculate chunk correctly)
       messageManager.updateCurrentMessageContent("Hello, world!");
 
-      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
-        ", world!",
-        "Hello, world!",
-      );
+        chunk: ", world!",
+        accumulated: "Hello, world!",
+        stage: "streaming",
+      });
 
       // Third update (adding more content)
       messageManager.updateCurrentMessageContent("Hello, world! How are you?");
 
-      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
-        " How are you?",
-        "Hello, world! How are you?",
-      );
+        chunk: " How are you?",
+        accumulated: "Hello, world! How are you?",
+        stage: "streaming",
+      });
 
       // Verify total calls
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledTimes(3);
@@ -76,11 +79,12 @@ describe("MessageManager - Streaming Functionality", () => {
       // Update with empty content
       messageManager.updateCurrentMessageContent("");
 
-      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
-        "",
-        "",
-      );
+        chunk: "",
+        accumulated: "",
+        stage: "streaming",
+      });
     });
 
     it("should create new text block when none exists", () => {
@@ -102,11 +106,12 @@ describe("MessageManager - Streaming Functionality", () => {
       // Update content (should create new text block)
       messageManager.updateCurrentMessageContent("New content");
 
-      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith({
         messageId,
-        "New content",
-        "New content",
-      );
+        chunk: "New content",
+        accumulated: "New content",
+        stage: "streaming",
+      });
 
       // Verify the message has the content
       const messages = messageManager.getMessages();
@@ -156,6 +161,159 @@ describe("MessageManager - Streaming Functionality", () => {
       messageManager.updateCurrentMessageContent("Should not work");
 
       expect(mockOnAssistantContentUpdated).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("stage='end' callback on block finalization", () => {
+    it("updateCurrentMessageContent fires onAssistantReasoningUpdated with stage='end' when finalizing streaming reasoning", () => {
+      const mockContentUpdated = vi.fn();
+      const mockReasoningUpdated = vi.fn();
+
+      const callbacks: MessageManagerCallbacks = {
+        onAssistantContentUpdated: mockContentUpdated,
+        onAssistantReasoningUpdated: mockReasoningUpdated,
+      };
+
+      const messageManager = new MessageManager(container, {
+        callbacks,
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      const messageId = messageManager.getMessages().slice(-1)[0].id;
+
+      // First, create a streaming reasoning block
+      messageManager.updateCurrentMessageReasoning("Let me think...");
+
+      // Now update content — should finalize the reasoning block
+      messageManager.updateCurrentMessageContent("Hello");
+
+      // Reasoning should have been finalized with stage="end"
+      const reasoningCalls = mockReasoningUpdated.mock.calls;
+      const finalizeCall = reasoningCalls[reasoningCalls.length - 1];
+      expect(finalizeCall).toEqual([
+        {
+          messageId,
+          chunk: "",
+          accumulated: "Let me think...",
+          stage: "end",
+        },
+      ]);
+
+      // Content should fire with stage="streaming"
+      expect(mockContentUpdated).toHaveBeenCalledWith({
+        messageId,
+        chunk: "Hello",
+        accumulated: "Hello",
+        stage: "streaming",
+      });
+    });
+
+    it("updateCurrentMessageReasoning fires onAssistantContentUpdated with stage='end' when finalizing streaming text", () => {
+      const mockContentUpdated = vi.fn();
+      const mockReasoningUpdated = vi.fn();
+
+      const callbacks: MessageManagerCallbacks = {
+        onAssistantContentUpdated: mockContentUpdated,
+        onAssistantReasoningUpdated: mockReasoningUpdated,
+      };
+
+      const messageManager = new MessageManager(container, {
+        callbacks,
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      const messageId = messageManager.getMessages().slice(-1)[0].id;
+
+      // First, create a streaming text block
+      messageManager.updateCurrentMessageContent("Hello world");
+
+      // Now update reasoning — should finalize the text block
+      messageManager.updateCurrentMessageReasoning("Thinking...");
+
+      // Content should have been finalized with stage="end"
+      const contentCalls = mockContentUpdated.mock.calls;
+      const finalizeCall = contentCalls[contentCalls.length - 1];
+      expect(finalizeCall).toEqual([
+        {
+          messageId,
+          chunk: "",
+          accumulated: "Hello world",
+          stage: "end",
+        },
+      ]);
+
+      // Reasoning should fire with stage="streaming"
+      expect(mockReasoningUpdated).toHaveBeenCalledWith({
+        messageId,
+        chunk: "Thinking...",
+        accumulated: "Thinking...",
+        stage: "streaming",
+      });
+    });
+
+    it("finalizeStreamingBlocks fires callback with stage='end' for remaining streaming block", () => {
+      const mockContentUpdated = vi.fn();
+      const mockReasoningUpdated = vi.fn();
+
+      const callbacks: MessageManagerCallbacks = {
+        onAssistantContentUpdated: mockContentUpdated,
+        onAssistantReasoningUpdated: mockReasoningUpdated,
+      };
+
+      const messageManager = new MessageManager(container, {
+        callbacks,
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      const messageId = messageManager.getMessages().slice(-1)[0].id;
+
+      // Create streaming text block, then reasoning (which finalizes text)
+      messageManager.updateCurrentMessageContent("Some text");
+      messageManager.updateCurrentMessageReasoning("Some reasoning");
+
+      mockContentUpdated.mockClear();
+      mockReasoningUpdated.mockClear();
+
+      // Finalize remaining streaming blocks (only reasoning is still streaming)
+      messageManager.finalizeStreamingBlocks();
+
+      // Text was already finalized by updateCurrentMessageReasoning, so no callback
+      expect(mockContentUpdated).not.toHaveBeenCalled();
+      // Reasoning is finalized by finalizeStreamingBlocks
+      expect(mockReasoningUpdated).toHaveBeenCalledWith({
+        messageId,
+        chunk: "",
+        accumulated: "Some reasoning",
+        stage: "end",
+      });
+    });
+
+    it("normal streaming fires callbacks with stage='streaming'", () => {
+      const mockContentUpdated = vi.fn();
+
+      const callbacks: MessageManagerCallbacks = {
+        onAssistantContentUpdated: mockContentUpdated,
+      };
+
+      const messageManager = new MessageManager(container, {
+        callbacks,
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      const messageId = messageManager.getMessages().slice(-1)[0].id;
+
+      messageManager.updateCurrentMessageContent("Hello");
+
+      expect(mockContentUpdated).toHaveBeenCalledWith({
+        messageId,
+        chunk: "Hello",
+        accumulated: "Hello",
+        stage: "streaming",
+      });
     });
   });
 });

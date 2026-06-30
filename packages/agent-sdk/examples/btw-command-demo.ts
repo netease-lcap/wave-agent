@@ -11,8 +11,8 @@ async function main() {
     model: process.env.WAVE_FAST_MODEL,
     permissionMode: "bypassPermissions", // Allow memory access to keep history clean
     callbacks: {
-      onAssistantContentUpdated: (chunk) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params) => {
+        process.stdout.write(params.chunk);
       },
     },
   });

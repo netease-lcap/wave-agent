@@ -25,8 +25,8 @@ async function main() {
       onUserMessageAdded: (params) => {
         console.log(`👤 User: ${params.content}`);
       },
-      onAssistantContentUpdated: (chunk) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params) => {
+        process.stdout.write(params.chunk);
       },
       onAssistantMessageAdded: () => {
         console.log("\n🤖 Assistant:");

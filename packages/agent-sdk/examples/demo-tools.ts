@@ -16,8 +16,8 @@ const agent = await Agent.create({
     onAssistantMessageAdded: () => {
       console.log("\nAssistant message started");
     },
-    onAssistantContentUpdated: (chunk: string) => {
-      process.stdout.write(chunk);
+    onAssistantContentUpdated: (params: { chunk: string }) => {
+      process.stdout.write(params.chunk);
     },
     onToolBlockUpdated: (params) => {
       if (params.stage === "start") {

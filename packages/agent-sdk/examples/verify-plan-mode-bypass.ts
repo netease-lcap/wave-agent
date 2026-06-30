@@ -31,8 +31,8 @@ async function main() {
       return { behavior: "allow" };
     },
     callbacks: {
-      onAssistantContentUpdated: (chunk: string) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params: { chunk: string }) => {
+        process.stdout.write(params.chunk);
       },
       onPermissionModeChange: (mode: string) => {
         modeChangeCount++;

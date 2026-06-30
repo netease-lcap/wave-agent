@@ -9,8 +9,8 @@ async function main() {
   const agent = await Agent.create({
     model: process.env.WAVE_FAST_MODEL, // Use a fast model for testing
     callbacks: {
-      onAssistantContentUpdated: (chunk) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params) => {
+        process.stdout.write(params.chunk);
       },
       onToolBlockUpdated: (params) => {
         if (params.stage === "start") {
