@@ -22,6 +22,8 @@
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -37,6 +39,7 @@
     "prettier": "3.6.2",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.0",
+    "vitepress": "^1.6.4",
     "vitest": "^4.0.18"
   },
   "packageManager": "pnpm@11.5.2",

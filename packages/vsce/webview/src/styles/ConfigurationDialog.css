@@ -1,0 +1,823 @@
+/* Configuration Dialog */
+.configuration-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.configuration-dialog {
+    position: relative;
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 4px;
+    padding: 16px;
+    width: 90%;
+    max-width: 400px;
+    height: 500px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.configuration-dialog-header {
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.configuration-dialog-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+}
+
+/* Plugins Container */
+.plugins-container {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+}
+
+.plugin-tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+}
+
+.plugin-tab {
+    background: none;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.plugin-tab.active {
+    color: var(--vscode-button-background);
+    background-color: var(--vscode-button-secondaryBackground);
+    border-radius: 4px 4px 0 0;
+}
+
+.plugin-content {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.plugin-list, .marketplace-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.plugin-search {
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+
+.plugin-search input {
+    width: 100%;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    padding: 4px 8px;
+    border-radius: 3px;
+    box-sizing: border-box;
+}
+
+.plugin-search input:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    padding: 20px;
+    font-style: italic;
+}
+
+.add-marketplace {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.add-marketplace input {
+    flex: 1;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+.add-btn {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 4px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+/* Plugin and Marketplace Items */
+.plugin-item, .marketplace-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background-color: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+
+.plugin-item.clickable {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.plugin-item.clickable:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.plugin-chevron {
+    font-size: 20px;
+    color: var(--vscode-descriptionForeground);
+    margin-left: 8px;
+}
+
+.plugin-info, .marketplace-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+}
+
+.plugin-name, .marketplace-name {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.plugin-version {
+    font-weight: normal;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    margin-left: 4px;
+}
+
+.plugin-scope {
+    font-weight: normal;
+    font-size: 11px;
+    color: var(--vscode-badge-foreground);
+    background-color: var(--vscode-badge-background);
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+}
+
+.plugin-desc, .marketplace-url {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.plugin-market {
+    font-size: 11px;
+    font-style: italic;
+    color: var(--vscode-descriptionForeground);
+}
+
+.install-btn, .marketplace-actions button {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.install-btn:hover, .marketplace-actions button:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.marketplace-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.plugin-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.update-btn, .uninstall-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: background-color 0.15s ease;
+}
+
+.update-btn:hover, .uninstall-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.plugin-status-tag {
+    font-weight: normal;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+    background-color: var(--vscode-badge-background);
+    padding: 1px 4px;
+    border-radius: 2px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+/* Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 20px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+}
+
+input:checked + .slider {
+    background-color: var(--vscode-button-background);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--vscode-button-background);
+}
+
+input:checked + .slider:before {
+    transform: translateX(14px);
+}
+
+.slider.round {
+    border-radius: 20px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+/* Configuration Form */
+.configuration-form {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+}
+
+.configuration-fields-scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-right: 4px; /* Space for scrollbar */
+}
+
+.configuration-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.configuration-field label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--vscode-editor-foreground);
+}
+
+.required-star {
+    color: var(--vscode-errorForeground);
+    margin-left: 2px;
+}
+
+.configuration-field input,
+.configuration-field select {
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    padding: 6px 8px;
+    border-radius: 3px;
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    min-height: 20px;
+}
+
+.configuration-field input:focus,
+.configuration-field select:focus,
+.configuration-field textarea:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.configuration-field input:disabled,
+.configuration-field select:disabled,
+.configuration-field textarea:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.configuration-textarea {
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    padding: 6px 8px;
+    border-radius: 3px;
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    resize: vertical;
+    min-height: 60px;
+    line-height: 1.4;
+}
+
+.auth-method-radio-group {
+    display: flex;
+    gap: 16px;
+    margin-top: 4px;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--vscode-editor-foreground);
+}
+
+.radio-label input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+}
+
+
+/* Configuration Error */
+.configuration-error {
+    background-color: var(--vscode-inputValidation-errorBackground);
+    color: var(--vscode-inputValidation-errorForeground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    padding: 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+/* Configuration Actions */
+.configuration-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+}
+
+.configuration-cancel-btn,
+.configuration-save-btn {
+    border: none;
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    min-width: 50px;
+    height: 28px;
+}
+
+.configuration-cancel-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.configuration-cancel-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.configuration-save-btn {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.configuration-save-btn:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.configuration-cancel-btn:disabled,
+.configuration-save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Plugin Detail View */
+.plugin-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.back-button {
+    align-self: flex-start;
+    background-color: transparent;
+    color: var(--vscode-foreground);
+    border: none;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.back-button:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.plugin-detail-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.plugin-detail-header .plugin-name {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.plugin-detail-header .plugin-version {
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.plugin-description {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--vscode-foreground);
+}
+
+.plugin-marketplace {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.install-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.install-options h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+
+.install-option-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 12px;
+    background-color: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+}
+
+.install-option-btn:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.install-option-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+
+.install-option-desc {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    line-height: 1.4;
+}
+
+/* SSO Auth Section */
+.sso-auth-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 8px;
+    background-color: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+
+.sso-auth-section > label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--vscode-editor-foreground);
+}
+
+.sso-authenticated {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sso-user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sso-email {
+    font-size: 13px;
+    color: var(--vscode-editor-foreground);
+    font-weight: 500;
+}
+
+.sso-user-id {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.sso-logout-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    padding: 4px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.sso-logout-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.sso-not-authenticated {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sso-login-btn {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    align-self: flex-start;
+}
+
+.sso-login-btn:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.sso-login-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.sso-message {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.sso-message.success {
+    color: var(--vscode-testing-iconPassed);
+}
+
+.sso-message.error {
+    color: var(--vscode-errorForeground);
+}
+
+/* Login Dialog - Server URL row */
+.login-serverUrl-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.login-serverUrl-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+.login-save-serverUrl-btn {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 6px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.login-save-serverUrl-btn:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.login-save-serverUrl-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* MCP Server Management */
+.mcp-container {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+}
+
+.mcp-server-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.mcp-server-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 10px;
+    background-color: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+
+.mcp-server-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+
+.mcp-server-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mcp-status-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.mcp-status-connected {
+    color: var(--vscode-testing-iconPassed);
+}
+
+.mcp-status-connecting {
+    color: var(--vscode-charts-yellow);
+}
+
+.mcp-status-error {
+    color: var(--vscode-errorForeground);
+}
+
+.mcp-status-disconnected {
+    color: var(--vscode-descriptionForeground);
+}
+
+.mcp-server-name {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.mcp-tool-count {
+    font-size: 11px;
+    color: var(--vscode-testing-iconPassed);
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    padding: 1px 6px;
+    border-radius: 3px;
+}
+
+.mcp-server-command {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    word-break: break-all;
+}
+
+.mcp-server-error {
+    font-size: 11px;
+    color: var(--vscode-errorForeground);
+    word-break: break-all;
+}
+
+.mcp-server-last-connected {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.mcp-server-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.mcp-connect-btn, .mcp-disconnect-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: background-color 0.15s ease;
+    white-space: nowrap;
+}
+
+.mcp-connect-btn:hover, .mcp-disconnect-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.mcp-connect-btn:disabled, .mcp-disconnect-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.mcp-hint {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    margin-top: 4px;
+}
+
+.mcp-hint code {
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+}

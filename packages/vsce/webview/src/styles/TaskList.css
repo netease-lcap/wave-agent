@@ -1,0 +1,131 @@
+.task-list-container {
+  background-color: var(--vscode-panel-background);
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+
+.task-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background-color: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.task-list-header:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.task-list-title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vscode-foreground);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.task-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.task-items {
+  padding: 4px 0;
+}
+
+.task-item {
+  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.task-item:last-child {
+  border-bottom: none;
+}
+
+.task-item-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.task-status-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.task-status-icon.completed {
+  color: var(--vscode-testing-iconPassed);
+}
+
+.task-status-icon.in_progress {
+  color: var(--vscode-progressBar-background);
+  animation: spin 2s linear infinite;
+}
+
+.task-status-icon.pending {
+  color: var(--vscode-descriptionForeground);
+}
+
+.task-status-icon.deleted {
+  color: var(--vscode-errorForeground);
+  text-decoration: line-through;
+}
+
+.task-subject {
+  flex-grow: 1;
+  color: var(--vscode-foreground);
+  word-break: break-word;
+}
+
+.task-item.completed .task-subject {
+  color: var(--vscode-descriptionForeground);
+  text-decoration: line-through;
+}
+
+.task-active-form {
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
+  margin-left: 4px;
+}
+
+.task-details {
+  margin-left: 24px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.task-description {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.task-blocked-by {
+  color: var(--vscode-errorForeground);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

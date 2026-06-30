@@ -1,0 +1,112 @@
+.queued-message-list-container {
+  background-color: var(--vscode-panel-background);
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.queued-message-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background-color: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  cursor: pointer;
+  user-select: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.queued-message-list-tooltip {
+  display: block;
+  width: 100%;
+}
+
+.queued-message-list-header:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.queued-message-list-title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vscode-foreground);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.queued-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.queued-items {
+  padding: 0;
+}
+
+.queued-item {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.queued-item:last-child {
+  border-bottom: none;
+}
+
+.queued-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.queued-item-content {
+  flex-grow: 1;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  min-width: 0;
+}
+
+.queued-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.action-button {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.action-button:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.action-button.send-now:hover {
+  color: var(--vscode-button-background);
+}
+
+.action-button.delete-queued:hover {
+  color: var(--vscode-errorForeground);
+}
+
+.action-button i {
+  font-size: 14px;
+}

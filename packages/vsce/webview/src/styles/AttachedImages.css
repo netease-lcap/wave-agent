@@ -1,0 +1,92 @@
+/* Attached Images Styles */
+.attached-images {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    padding: 8px 0;
+}
+
+.image-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background-color: var(--vscode-badge-background);
+    border: 1px solid var(--vscode-badge-foreground, transparent);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 11px;
+    max-width: 200px;
+    position: relative;
+}
+
+.image-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background-color: var(--vscode-button-secondaryBackground);
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.image-type {
+    color: var(--vscode-button-secondaryForeground);
+    font-size: 8px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.image-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1;
+}
+
+.image-name {
+    color: var(--vscode-badge-foreground);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+.image-size {
+    color: var(--vscode-descriptionForeground);
+    font-size: 10px;
+}
+
+.remove-image-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    flex-shrink: 0;
+    margin-left: 2px;
+}
+
+.remove-image-btn:hover {
+    background-color: var(--vscode-inputValidation-errorBackground);
+    color: var(--vscode-inputValidation-errorForeground);
+}
+
+/* Paste hint */
+.paste-hint {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    margin-top: 4px;
+    opacity: 0.7;
+}
