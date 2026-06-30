@@ -109,19 +109,198 @@ export default {
           ],
         },
       ],
-      '/sdk': [
+      '/cli': [
         {
-          text: '快速开始',
+          text: '1. 安装与启动',
           collapsed: false,
           items: [
-            { text: '安装', link: '/sdk#安装' },
-            { text: '核心能力', link: '/sdk#核心能力' },
-            { text: '基本用法', link: '/sdk#基本用法' },
-            { text: '开发', link: '/sdk#开发' },
+            { text: '1.1 安装', link: '/cli#install' },
+            { text: '1.2 运行模式', link: '/cli#run-modes' },
           ],
         },
         {
-          text: '内置 Skills',
+          text: '2. 命令行选项',
+          collapsed: false,
+          items: [
+            { text: '2.1 会话控制', link: '/cli#session-options' },
+            { text: '2.2 模型与工具', link: '/cli#model-tool-options' },
+            { text: '2.3 权限与安全', link: '/cli#permission-options' },
+            { text: '2.4 工作目录', link: '/cli#worktree-options' },
+            { text: '2.5 其他', link: '/cli#misc-options' },
+          ],
+        },
+        {
+          text: '3. 子命令',
+          collapsed: false,
+          items: [
+            { text: '3.1 插件管理', link: '/cli#plugin-commands' },
+            { text: '3.2 更新', link: '/cli#update-command' },
+          ],
+        },
+        {
+          text: '4. 斜杠命令',
+          collapsed: false,
+          items: [
+            { text: '命令列表', link: '/cli#slash-commands' },
+          ],
+        },
+        {
+          text: '5. 键盘快捷键',
+          collapsed: false,
+          items: [
+            { text: '5.1 输入与导航', link: '/cli#input-navigation' },
+            { text: '5.2 视图控制', link: '/cli#view-control' },
+            { text: '5.3 权限与确认', link: '/cli#permission-control' },
+          ],
+        },
+        {
+          text: '6. 权限模式',
+          collapsed: false,
+          items: [
+            { text: '模式说明', link: '/cli#permission-modes' },
+          ],
+        },
+        {
+          text: '7. 特色功能',
+          collapsed: false,
+          items: [
+            { text: '7.1 Bang 命令', link: '/cli#bang-command' },
+            { text: '7.2 BTW 旁路提问', link: '/cli#btw' },
+            { text: '7.3 Git Worktree', link: '/cli#worktree' },
+            { text: '7.4 Goal 自主目标', link: '/cli#goal' },
+            { text: '7.5 Compact 压缩', link: '/cli#compact' },
+            { text: '7.6 Rewind 回滚', link: '/cli#rewind' },
+            { text: '7.7 图片粘贴', link: '/cli#image-paste' },
+            { text: '7.8 MCP 集成', link: '/cli#mcp' },
+            { text: '7.9 插件系统', link: '/cli#plugin' },
+            { text: '7.10 Workflow 工作流', link: '/cli#workflow' },
+            { text: '7.11 后台任务', link: '/cli#background-tasks' },
+            { text: '7.12 SSO 认证', link: '/cli#sso' },
+            { text: '7.13 会话管理', link: '/cli#session-management' },
+            { text: '7.14 Token 用量统计', link: '/cli#token-stats' },
+          ],
+        },
+        {
+          text: '8. 环境变量',
+          collapsed: true,
+          items: [
+            { text: '配置列表', link: '/cli#environment-variables' },
+          ],
+        },
+        {
+          text: '9. 开发',
+          collapsed: true,
+          items: [
+            { text: '构建与测试', link: '/cli#development' },
+          ],
+        },
+      ],
+      '/sdk': [
+        {
+          text: '1. 快速开始',
+          collapsed: false,
+          items: [
+            { text: '安装', link: '/sdk#install' },
+            { text: '核心能力', link: '/sdk#capabilities' },
+            { text: '基本用法', link: '/sdk#basic-usage' },
+            { text: '开发', link: '/sdk#development' },
+          ],
+        },
+        {
+          text: '2. Agent 生命周期',
+          collapsed: false,
+          items: [
+            { text: '创建 Agent', link: '/sdk#agent-create' },
+            { text: '配置选项', link: '/sdk#agent-options' },
+            { text: '销毁 Agent', link: '/sdk#agent-destroy' },
+          ],
+        },
+        {
+          text: '3. 消息处理',
+          collapsed: false,
+          items: [
+            { text: '发送消息', link: '/sdk#send-message' },
+            { text: '消息队列', link: '/sdk#message-queue' },
+            { text: '消息类型', link: '/sdk#message-types' },
+          ],
+        },
+        {
+          text: '4. 回调系统',
+          collapsed: false,
+          items: [
+            { text: 'AgentCallbacks 接口', link: '/sdk#agent-callbacks-interface' },
+            { text: '消息回调', link: '/sdk#callbacks-messaging' },
+            { text: '后台任务回调', link: '/sdk#callbacks-background' },
+            { text: 'MCP 回调', link: '/sdk#callbacks-mcp' },
+            { text: 'UI 状态回调', link: '/sdk#callbacks-ui' },
+          ],
+        },
+        {
+          text: '5. 工具系统',
+          collapsed: false,
+          items: [
+            { text: '内置工具', link: '/sdk#builtin-tools' },
+            { text: '自定义工具', link: '/sdk#custom-tools' },
+            { text: '权限管理', link: '/sdk#permissions' },
+            { text: '工具名常量', link: '/sdk#tool-name-constants' },
+          ],
+        },
+        {
+          text: '6. 会话管理',
+          collapsed: false,
+          items: [
+            { text: '创建会话', link: '/sdk#session-create' },
+            { text: '恢复会话', link: '/sdk#session-restore' },
+            { text: '会话 API', link: '/sdk#session-api' },
+            { text: '文件存储', link: '/sdk#session-storage' },
+          ],
+        },
+        {
+          text: '7. 插件系统',
+          collapsed: false,
+          items: [
+            { text: '插件配置', link: '/sdk#plugin-config' },
+            { text: '插件管理', link: '/sdk#plugin-management' },
+          ],
+        },
+        {
+          text: '8. MCP 集成',
+          collapsed: false,
+          items: [
+            { text: '配置方式', link: '/sdk#mcp-config' },
+            { text: '管理 API', link: '/sdk#mcp-api' },
+          ],
+        },
+        {
+          text: '9. 记忆系统',
+          collapsed: true,
+          items: [
+            { text: 'AGENTS.md', link: '/sdk#agents-md' },
+            { text: '自动记忆', link: '/sdk#auto-memory' },
+            { text: '记忆规则', link: '/sdk#memory-rules' },
+            { text: '消息压缩', link: '/sdk#compact' },
+          ],
+        },
+        {
+          text: '10. 后台任务与工作流',
+          collapsed: false,
+          items: [
+            { text: '后台任务', link: '/sdk#background-task-management' },
+            { text: '工作流', link: '/sdk#workflow-management' },
+          ],
+        },
+        {
+          text: '11. 其他功能',
+          collapsed: true,
+          items: [
+            { text: '目标管理', link: '/sdk#goal' },
+            { text: '斜杠命令', link: '/sdk#slash-commands' },
+            { text: 'SSO 认证', link: '/sdk#sso' },
+            { text: 'Git 工具', link: '/sdk#git-utils' },
+          ],
+        },
+        {
+          text: '12. 内置 Skills',
           collapsed: false,
           items: [
             { text: 'settings — 配置管理', link: '/sdk#skill-settings' },
@@ -130,7 +309,7 @@ export default {
           ],
         },
         {
-          text: '内置 Subagents',
+          text: '13. 内置 Subagents',
           collapsed: false,
           items: [
             { text: 'Bash — 命令执行', link: '/sdk#subagent-bash' },
@@ -140,18 +319,8 @@ export default {
           ],
         },
         {
-          text: '记忆系统',
+          text: '14. Settings Skill',
           collapsed: true,
-          items: [
-            { text: 'AGENTS.md 文件', link: '/sdk#agents-md' },
-            { text: '消息压缩', link: '/sdk#mechanism-context-management' },
-            { text: '自动记忆系统', link: '/sdk#mechanism-auto-memory' },
-            { text: '记忆规则', link: '/sdk#mechanism-memory-rules' },
-          ],
-        },
-        {
-          text: 'Settings Skill',
-          collapsed: false,
           items: [
             { text: 'settings.json 配置中心', link: '/sdk#settings-json' },
             { text: '钩子 (Hooks)', link: '/sdk#settings-hooks' },
@@ -163,55 +332,30 @@ export default {
             { text: '自定义 Skill', link: '/sdk#settings-skills' },
             { text: '子代理', link: '/sdk#settings-subagents' },
             { text: '插件配置', link: '/sdk#settings-plugins' },
-            { text: '其他设置', link: '/sdk#settings-other' },
           ],
         },
         {
-          text: '官方插件市场',
-          collapsed: false,
+          text: '15. 官方插件市场',
+          collapsed: true,
           items: [
             { text: 'document-skills', link: '/sdk#plugin-document-skills' },
             { text: 'typescript-lsp', link: '/sdk#plugin-typescript-lsp' },
             { text: 'chrome-devtools', link: '/sdk#plugin-chrome-devtools' },
             { text: 'code2spec', link: '/sdk#plugin-code2spec' },
-            { text: 'code2cwspec', link: '/sdk#plugin-code2cwspec' },
             { text: 'commit-skills', link: '/sdk#plugin-commit-skills' },
             { text: 'speckit', link: '/sdk#plugin-speckit' },
             { text: 'deep-wiki', link: '/sdk#plugin-deep-wiki' },
             { text: 'tavily-search', link: '/sdk#plugin-tavily-search' },
-            { text: 'lcap-extension-component', link: '/sdk#plugin-lcap-extension-component' },
-            { text: 'frontend-design', link: '/sdk#plugin-frontend-design' },
           ],
         },
         {
-          text: 'OpenTelemetry 遥测',
-          collapsed: false,
+          text: '16. OpenTelemetry 遥测',
+          collapsed: true,
           items: [
             { text: '导出器', link: '/sdk#otel-exporters' },
             { text: 'Span 体系', link: '/sdk#otel-spans' },
             { text: '事件日志', link: '/sdk#otel-events' },
             { text: 'PII 保护', link: '/sdk#otel-privacy' },
-            { text: '可靠性保障', link: '/sdk#otel-reliability' },
-          ],
-        },
-        {
-          text: '完整工具清单',
-          collapsed: true,
-          items: [
-            { text: 'Bash', link: '/sdk#tool-bash' },
-            { text: 'Read', link: '/sdk#tool-read' },
-            { text: 'Glob', link: '/sdk#tool-glob' },
-            { text: 'Grep', link: '/sdk#tool-grep' },
-            { text: 'Write', link: '/sdk#tool-write' },
-            { text: 'Edit', link: '/sdk#tool-edit' },
-            { text: 'LSP', link: '/sdk#tool-lsp' },
-            { text: 'AskUserQuestion', link: '/sdk#tool-askuser' },
-            { text: 'WebFetch', link: '/sdk#tool-webfetch' },
-            { text: 'ToolSearch', link: '/sdk#tool-toolsearch' },
-            { text: 'Worktree', link: '/sdk#tool-worktree' },
-            { text: 'Cron', link: '/sdk#tool-cron' },
-            { text: 'Task', link: '/sdk#tool-task' },
-            { text: 'TaskStop', link: '/sdk#tool-taskstop' },
           ],
         },
       ],
