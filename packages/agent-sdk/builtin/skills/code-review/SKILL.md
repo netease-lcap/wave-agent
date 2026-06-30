@@ -1,7 +1,7 @@
 ---
 name: code-review
 description: Review the current diff for correctness bugs and reuse/simplification/efficiency cleanups at the given effort level (low/medium: fewer, high-confidence findings; high/max: broader coverage, may include lower-confidence findings)
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git blame:*), Read, Glob, Grep, Agent
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git blame:*), Bash(git remote:*), Bash(command -v:*), Bash(gh pr comment:*), Bash(gh pr view:*), Bash(glab mr note:*), Bash(glab mr view:*), Read, Glob, Grep, Agent
 disable-model-invocation: true
 ---
 
@@ -73,11 +73,27 @@ Give the scoring agent this rubric verbatim:
 - **75**: Highly confident. The agent double checked the issue, and verified that it is very likely it is a real issue that will be hit in practice. The existing approach in the PR is insufficient. The issue is very important and will directly impact the code's functionality, or it is an issue that is directly mentioned in the relevant AGENTS.md.
 - **100**: Absolutely certain. The agent double checked the issue, and confirmed that it is definitely a real issue, that will happen frequently in practice. The evidence directly confirms this.
 
-## Phase 5: Filter and Report
+## Phase 5: Filter and Deliver
 
 1. Filter out any issues with a score below the effort level's threshold.
-2. If no issues remain, say so and stop.
-3. Otherwise, output the findings in this format:
+2. If no issues remain, say so and stop — do not post anything.
+3. Otherwise, detect the platform and CLI availability:
+
+```
+REMOTE URL:
+!`git remote get-url origin 2>/dev/null || echo "no-remote"`
+
+GH CLI:
+!`command -v gh 2>/dev/null || echo "not-installed"`
+
+GLAB CLI:
+!`command -v glab 2>/dev/null || echo "not-installed"`
+```
+
+4. **Post as comment** (preferred): If the remote URL contains `github` and `gh` is installed, check if a PR exists for the current branch (`gh pr view --json number`), then post the review as a comment: `gh pr comment --body "<review content>"`. If the remote URL contains `gitlab` and `glab` is installed, check if an MR exists for the current branch (`glab mr view`), then post the review as a note: `glab mr note --message "<review content>"`.
+5. **Output directly** (fallback): If no CLI is installed, no PR/MR exists, or the platform is unrecognized, output the findings directly instead.
+
+Whether posting or outputting, use this format:
 
 ---
 
@@ -94,6 +110,8 @@ Found N issues:
    `<file>:<line range>`
 
 ---
+
+Keep the comment brief and avoid emojis.
 
 ## False Positive Filtering
 

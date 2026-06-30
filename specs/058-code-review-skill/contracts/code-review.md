@@ -8,7 +8,7 @@ description: >
   Review the current diff for correctness bugs and reuse/simplification/efficiency
   cleanups at the given effort level (low/medium: fewer, high-confidence findings;
   high/max: broader coverage, may include lower-confidence findings)
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git blame:*), Read, Glob, Grep, Agent
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git blame:*), Bash(git remote:*), Bash(command -v:*), Bash(gh pr comment:*), Bash(gh pr view:*), Bash(glab mr note:*), Bash(glab mr view:*), Read, Glob, Grep, Agent
 disable-model-invocation: true
 ```
 
@@ -48,11 +48,18 @@ All agents launched concurrently in a single message via the Agent tool. Each re
 
 For each finding from Phase 3, launch a parallel Agent that independently scores 0–100 using the fixed rubric (see [data-model.md](../data-model.md)). The scoring agent receives: the PR diff, the issue description, and the list of AGENTS.md files.
 
-### Phase 5: Filter and Report
+### Phase 5: Filter and Deliver
 
 1. Drop findings with score < threshold.
-2. If none remain, say so and stop.
-3. Output findings in the fixed report format with `<file>:<line range>` citations.
+2. If none remain, say "no issues" and stop — do not post or output anything.
+3. Detect platform and CLI availability via skill bash substitution:
+   - `git remote get-url origin` — remote URL
+   - `command -v gh` — GitHub CLI availability
+   - `command -v glab` — GitLab CLI availability
+4. **Post as comment** (preferred): If GitHub + `gh` + PR exists → `gh pr comment --body "<review>"`. If GitLab + `glab` + MR exists → `glab mr note --message "<review>"`. Do NOT output to terminal.
+5. **Output directly** (fallback): If no CLI, no PR/MR, unrecognized platform, or posting failed → output findings to terminal.
+
+**Constraints**: Same format for both comment and direct output. Brief, no emojis.
 
 ## Report Format Contract
 

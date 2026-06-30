@@ -5,7 +5,7 @@
 
 ## Summary
 
-Add a builtin `/code-review` skill that reviews the current branch's diff for correctness bugs and quality issues. Uses `git diff` (no `gh` dependency) so it works with any git host. Configurable effort level (low/medium/high/max) controls agent count and confidence threshold. Launches parallel review agents across independent dimensions (bugs, AGENTS.md compliance, git history, code reuse, efficiency), then scores each finding with an independent agent before filtering and reporting. Report-only — does not auto-fix. Sets `disable-model-invocation: true` to prevent AI auto-triggering.
+Add a builtin `/code-review` skill that reviews the current branch's diff for correctness bugs and quality issues. Uses `git diff` (no `gh` dependency for diff gathering) so it works with any git host. Configurable effort level (low/medium/high/max) controls agent count and confidence threshold. Launches parallel review agents across independent dimensions (bugs, AGENTS.md compliance, git history, code reuse, efficiency), then scores each finding with an independent agent before filtering. Delivery is comment-first: posts the review as a PR/MR comment via `gh`/`glab` when available, falling back to direct terminal output when no CLI or PR/MR exists. Does not auto-fix. Sets `disable-model-invocation: true` to prevent AI auto-triggering.
 
 ## Technical Context
 

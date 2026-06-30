@@ -46,4 +46,23 @@
 - An **EffortLevel** maps to a set of **ReviewAgent**s and a confidence threshold.
 - Each **ReviewAgent** produces zero or more candidate **Finding**s (pre-scoring).
 - Each candidate **Finding** is scored by exactly one independent **ScoringAgent**.
-- Only **Finding**s with `confidence >= threshold` appear in the final report.
+- Only **Finding**s with `confidence >= threshold` are delivered.
+- Delivery is **comment-first**: if a **Platform** CLI is available and a **CommentTarget** (PR/MR) exists, findings are posted as a comment and NOT output to terminal. Otherwise, findings fall back to direct terminal output.
+- If no findings pass the threshold, nothing is posted or output.
+
+## Platform Detection
+
+| Remote URL Pattern | Platform | CLI | Comment Command |
+|--------------------|----------|-----|-----------------|
+| contains `github` | `github` | `gh` | `gh pr comment --body "<review>"` |
+| contains `gitlab` | `gitlab` | `glab` | `glab mr note --message "<review>"` |
+| other | `unknown` | N/A | skip (direct output only) |
+
+## CommentTarget
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `platform` | `'github' \| 'gitlab' \| 'unknown'` | Detected from remote URL |
+| `cliInstalled` | `boolean` | Whether the corresponding CLI is available |
+| `prOrMrExists` | `boolean` | Whether a PR/MR exists for the current branch |
+| `commentPosted` | `boolean` | Whether the review was successfully posted as a comment |
