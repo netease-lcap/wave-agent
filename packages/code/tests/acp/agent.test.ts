@@ -1355,11 +1355,12 @@ describe("WaveAcpAgent", () => {
 
     await agent.newSession({ cwd: "/test", mcpServers: [] });
 
-    capturedCallbacks!.onAssistantContentUpdated!(
-      "msg-test-id",
-      "chunk",
-      "chunk",
-    );
+    capturedCallbacks!.onAssistantContentUpdated!({
+      messageId: "msg-test-id",
+      chunk: "chunk",
+      accumulated: "chunk",
+      stage: "streaming",
+    });
     expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({
@@ -1369,11 +1370,12 @@ describe("WaveAcpAgent", () => {
       }),
     );
 
-    capturedCallbacks!.onAssistantReasoningUpdated!(
-      "msg-test-id",
-      "thought",
-      "thought",
-    );
+    capturedCallbacks!.onAssistantReasoningUpdated!({
+      messageId: "msg-test-id",
+      chunk: "thought",
+      accumulated: "thought",
+      stage: "streaming",
+    });
     expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({

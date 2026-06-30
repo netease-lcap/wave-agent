@@ -38,19 +38,21 @@ export interface SubagentManagerCallbacks {
     messageId: string,
   ) => void;
   /** Triggered during subagent content streaming updates */
-  onSubagentAssistantContentUpdated?: (
-    subagentId: string,
-    messageId: string,
-    chunk: string,
-    accumulated: string,
-  ) => void;
+  onSubagentAssistantContentUpdated?: (params: {
+    subagentId: string;
+    messageId: string;
+    chunk: string;
+    accumulated: string;
+    stage: "streaming" | "end";
+  }) => void;
   /** Triggered during subagent reasoning streaming updates */
-  onSubagentAssistantReasoningUpdated?: (
-    subagentId: string,
-    messageId: string,
-    chunk: string,
-    accumulated: string,
-  ) => void;
+  onSubagentAssistantReasoningUpdated?: (params: {
+    subagentId: string;
+    messageId: string;
+    chunk: string;
+    accumulated: string;
+    stage: "streaming" | "end";
+  }) => void;
   /** Triggered when subagent tool block is updated */
   onSubagentToolBlockUpdated?: (
     subagentId: string,
@@ -789,34 +791,32 @@ export class SubagentManager {
         }
       },
 
-      onAssistantContentUpdated: (
-        messageId: string,
-        chunk: string,
-        accumulated: string,
-      ) => {
+      onAssistantContentUpdated: (params: {
+        messageId: string;
+        chunk: string;
+        accumulated: string;
+        stage: "streaming" | "end";
+      }) => {
         // Forward assistant content updates to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantContentUpdated) {
-          this.callbacks.onSubagentAssistantContentUpdated(
+          this.callbacks.onSubagentAssistantContentUpdated({
+            ...params,
             subagentId,
-            messageId,
-            chunk,
-            accumulated,
-          );
+          });
         }
       },
-      onAssistantReasoningUpdated: (
-        messageId: string,
-        chunk: string,
-        accumulated: string,
-      ) => {
+      onAssistantReasoningUpdated: (params: {
+        messageId: string;
+        chunk: string;
+        accumulated: string;
+        stage: "streaming" | "end";
+      }) => {
         // Forward assistant reasoning updates to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantReasoningUpdated) {
-          this.callbacks.onSubagentAssistantReasoningUpdated(
+          this.callbacks.onSubagentAssistantReasoningUpdated({
+            ...params,
             subagentId,
-            messageId,
-            chunk,
-            accumulated,
-          );
+          });
         }
       },
 

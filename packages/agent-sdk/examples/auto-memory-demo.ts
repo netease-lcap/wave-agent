@@ -40,13 +40,13 @@ async function main() {
         },
       },
       callbacks: {
-        onAssistantContentUpdated: (chunk) => {
-          process.stdout.write(chunk);
+        onAssistantContentUpdated: (params) => {
+          process.stdout.write(params.chunk);
         },
-        onSubagentAssistantContentUpdated: (subagentId, chunk) => {
+        onSubagentAssistantContentUpdated: (params) => {
           // We can see the background agent working!
           process.stdout.write(
-            `\x1b[2m[Background Memory Agent] ${chunk}\x1b[0m`,
+            `\x1b[2m[Background Memory Agent] ${params.chunk}\x1b[0m`,
           );
         },
       },

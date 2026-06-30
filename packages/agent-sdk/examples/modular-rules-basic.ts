@@ -79,8 +79,8 @@ paths:
         error: (...args: unknown[]) => console.error("[ERROR]", ...args),
       },
       callbacks: {
-        onAssistantContentUpdated: (chunk: string) => {
-          process.stdout.write(chunk);
+        onAssistantContentUpdated: (params: { chunk: string }) => {
+          process.stdout.write(params.chunk);
         },
       },
     });

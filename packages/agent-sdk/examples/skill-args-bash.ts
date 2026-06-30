@@ -50,8 +50,8 @@ This skill was invoked with arguments and executed bash commands.
       model: process.env.WAVE_FAST_MODEL, // Using a fast model as suggested
       workdir: tempDir,
       callbacks: {
-        onAssistantContentUpdated: (chunk: string) => {
-          process.stdout.write(chunk);
+        onAssistantContentUpdated: (params: { chunk: string }) => {
+          process.stdout.write(params.chunk);
         },
         onToolBlockUpdated: (params) => {
           if (params.result) {

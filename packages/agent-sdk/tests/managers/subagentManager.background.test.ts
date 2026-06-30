@@ -218,18 +218,20 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const lastCall =
       MessageManagerMock.mock.calls[MessageManagerMock.mock.calls.length - 1];
     const passedCallbacks = lastCall[1].callbacks;
-    passedCallbacks.onAssistantReasoningUpdated?.(
-      "msg-test-id",
-      "chunk",
-      "accumulated",
-    );
+    passedCallbacks.onAssistantReasoningUpdated?.({
+      messageId: "msg-test-id",
+      chunk: "chunk",
+      accumulated: "accumulated",
+      stage: "streaming",
+    });
 
-    expect(onSubagentAssistantReasoningUpdated).toHaveBeenCalledWith(
-      instance.subagentId,
-      "msg-test-id",
-      "chunk",
-      "accumulated",
-    );
+    expect(onSubagentAssistantReasoningUpdated).toHaveBeenCalledWith({
+      subagentId: instance.subagentId,
+      messageId: "msg-test-id",
+      chunk: "chunk",
+      accumulated: "accumulated",
+      stage: "streaming",
+    });
   });
 
   it("should create a log file and log tool execution for background subagent", async () => {

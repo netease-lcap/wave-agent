@@ -20,8 +20,8 @@ async function main() {
     workdir: tempDir,
     model: process.env.WAVE_FAST_MODEL, // Use a supported model
     callbacks: {
-      onAssistantContentUpdated: (chunk) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params) => {
+        process.stdout.write(params.chunk);
       },
       onToolBlockUpdated: (params) => {
         if (params.stage === "start") {

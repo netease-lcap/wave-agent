@@ -20,7 +20,7 @@ async function demonstrateBackgrounding(): Promise<void> {
       permissionMode: "bypassPermissions", // Ensure tools can run without permission prompts
       callbacks: {
         onAssistantContentUpdated: () => {
-          // process.stdout.write(chunk);
+          // process.stdout.write(params.chunk);
         },
         onToolBlockUpdated: (params) => {
           const { name: toolName, stage, id: toolId } = params;

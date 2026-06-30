@@ -75,14 +75,14 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       isReasoning = false;
       isContent = false;
     },
-    onAssistantReasoningUpdated: (_messageId: string, chunk: string) => {
+    onAssistantReasoningUpdated: (params: { chunk: string }) => {
       if (!isReasoning) {
         process.stdout.write("\n💭 Reasoning:\n");
         isReasoning = true;
       }
-      process.stdout.write(chunk);
+      process.stdout.write(params.chunk);
     },
-    onAssistantContentUpdated: (_messageId: string, chunk: string) => {
+    onAssistantContentUpdated: (params: { chunk: string }) => {
       if (!isContent) {
         if (isReasoning) {
           process.stdout.write("\n\n📝 Response:\n");
@@ -91,7 +91,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         }
         isContent = true;
       }
-      process.stdout.write(chunk);
+      process.stdout.write(params.chunk);
     },
 
     // Tool block callback - display tool name when tool starts

@@ -64,8 +64,8 @@ async function setupTest() {
           }
         }
       },
-      onAssistantContentUpdated: (chunk: string) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params: { chunk: string }) => {
+        process.stdout.write(params.chunk);
       },
     },
     logger: {

@@ -309,13 +309,14 @@ describe("SubagentManager - Callback Integration", () => {
       const newContent = "Starting to stream content...";
       instance.messageManager.updateCurrentMessageContent(newContent);
 
-      // Verify that the subagent callback was called with the subagent ID, messageId, chunk, and accumulated content
-      expect(callbacks.onSubagentAssistantContentUpdated).toHaveBeenCalledWith(
-        instance.subagentId,
-        expect.any(String), // messageId
-        expect.any(String), // chunk
-        newContent, // accumulated content
-      );
+      // Verify that the subagent callback was called with the object parameter
+      expect(callbacks.onSubagentAssistantContentUpdated).toHaveBeenCalledWith({
+        subagentId: instance.subagentId,
+        messageId: expect.any(String),
+        chunk: expect.any(String),
+        accumulated: newContent,
+        stage: "streaming",
+      });
 
       // Verify that the regular callback was also called
       // Note: onAssistantContentUpdated is not expected to be called in this context
@@ -360,10 +361,10 @@ describe("SubagentManager - Callback Integration", () => {
       )!;
       expect(mockedCallback.mock.calls).toBeDefined();
       const calls = mockedCallback.mock.calls!;
-      expect(calls[0]![0]).toBe(instance.subagentId); // subagentId
-      expect(calls[0]![3]).toBe("Hello world"); // accumulated content
-      expect(calls[1]![0]).toBe(instance.subagentId); // subagentId
-      expect(calls[1]![3]).toBe("Hello world!"); // accumulated content
+      expect(calls[0]![0].subagentId).toBe(instance.subagentId);
+      expect(calls[0]![0].accumulated).toBe("Hello world");
+      expect(calls[1]![0].subagentId).toBe(instance.subagentId);
+      expect(calls[1]![0].accumulated).toBe("Hello world!");
     });
   });
 

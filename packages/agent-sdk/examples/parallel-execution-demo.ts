@@ -28,8 +28,8 @@ async function demonstrateParallelExecution(): Promise<void> {
       workdir,
       model: process.env.WAVE_FAST_MODEL,
       callbacks: {
-        onAssistantContentUpdated: (chunk: string) => {
-          process.stdout.write(chunk);
+        onAssistantContentUpdated: (params: { chunk: string }) => {
+          process.stdout.write(params.chunk);
         },
         onToolBlockUpdated: (params) => {
           const { id: toolId, name: toolName, stage } = params;

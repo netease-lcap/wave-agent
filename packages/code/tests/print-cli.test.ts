@@ -265,11 +265,13 @@ test("subagent content callbacks are not registered in print mode", async () => 
   expect(capturedCallbacks?.onSubagentUserMessageAdded).toBeUndefined();
 
   // Calling them as undefined should not produce output
-  capturedCallbacks?.onSubagentAssistantContentUpdated?.(
-    "test-subagent-123",
-    "Hello from subagent",
-    "Hello from subagent",
-  );
+  capturedCallbacks?.onSubagentAssistantContentUpdated?.({
+    subagentId: "test-subagent-123",
+    messageId: "msg-123",
+    chunk: "Hello from subagent",
+    accumulated: "Hello from subagent",
+    stage: "streaming",
+  });
   expect(stdoutSpy).not.toHaveBeenCalled();
 
   // Error callback still works
@@ -403,41 +405,45 @@ test("reasoning callbacks output correctly", async () => {
   await startPrintCli({ message: "test message" });
 
   // 1. Trigger onAssistantReasoningUpdated and verify the output
-  capturedCallbacks?.onAssistantReasoningUpdated?.(
-    "msg-test-id",
-    "Thinking...",
-    "Thinking...",
-  );
+  capturedCallbacks?.onAssistantReasoningUpdated?.({
+    messageId: "msg-test-id",
+    chunk: "Thinking...",
+    accumulated: "Thinking...",
+    stage: "streaming",
+  });
   expect(stdoutSpy).toHaveBeenCalledWith("\n💭 Reasoning:\n");
   expect(stdoutSpy).toHaveBeenCalledWith("Thinking...");
 
   // Verify header is not printed again
   stdoutSpy.mockClear();
-  capturedCallbacks?.onAssistantReasoningUpdated?.(
-    "msg-test-id",
-    " more thinking",
-    "Thinking... more thinking",
-  );
+  capturedCallbacks?.onAssistantReasoningUpdated?.({
+    messageId: "msg-test-id",
+    chunk: " more thinking",
+    accumulated: "Thinking... more thinking",
+    stage: "streaming",
+  });
   expect(stdoutSpy).not.toHaveBeenCalledWith("\n💭 Reasoning:\n");
   expect(stdoutSpy).toHaveBeenCalledWith(" more thinking");
 
   // 2. Trigger onAssistantContentUpdated after reasoning and verify the "📝 Response:" header
   stdoutSpy.mockClear();
-  capturedCallbacks?.onAssistantContentUpdated?.(
-    "msg-test-id",
-    "Hello!",
-    "Hello!",
-  );
+  capturedCallbacks?.onAssistantContentUpdated?.({
+    messageId: "msg-test-id",
+    chunk: "Hello!",
+    accumulated: "Hello!",
+    stage: "streaming",
+  });
   expect(stdoutSpy).toHaveBeenCalledWith("\n\n📝 Response:\n");
   expect(stdoutSpy).toHaveBeenCalledWith("Hello!");
 
   // Verify header is not printed again
   stdoutSpy.mockClear();
-  capturedCallbacks?.onAssistantContentUpdated?.(
-    "msg-test-id",
-    " world",
-    "Hello! world",
-  );
+  capturedCallbacks?.onAssistantContentUpdated?.({
+    messageId: "msg-test-id",
+    chunk: " world",
+    accumulated: "Hello! world",
+    stage: "streaming",
+  });
   expect(stdoutSpy).not.toHaveBeenCalledWith("\n\n📝 Response:\n");
   expect(stdoutSpy).toHaveBeenCalledWith(" world");
 

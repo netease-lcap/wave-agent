@@ -84,8 +84,8 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
       onAssistantMessageAdded: () => {
         console.log("Assistant message started");
       },
-      onAssistantContentUpdated: (chunk: string) => {
-        process.stdout.write(chunk);
+      onAssistantContentUpdated: (params: { chunk: string }) => {
+        process.stdout.write(params.chunk);
       },
       onToolBlockUpdated: (params) => {
         if (params.stage === "running") {
