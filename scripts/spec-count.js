@@ -7,9 +7,10 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const specsDir = path.join(__dirname, "..", "specs");
 
-const specDirs = fs
+// Scan specs/*.md files (excluding README.md)
+const specFiles = fs
   .readdirSync(specsDir, { withFileTypes: true })
-  .filter((d) => d.isDirectory())
+  .filter((d) => d.isFile() && d.name.endsWith(".md") && d.name !== "README.md")
   .map((d) => d.name)
   .sort();
 
@@ -17,7 +18,6 @@ function walkDir(dir, callback) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) walkDir(fullPath, callback);
-    else callback(fullPath);
   }
 }
 
@@ -25,19 +25,17 @@ let totalSpecs = 0;
 let totalUS = 0;
 let totalFR = 0;
 
-// Count US/FR per spec dir
-const counts = new Map(); // dir -> { usCount, frCount }
+// Count US/FR per spec file
+const counts = new Map(); // filename -> { usCount, frCount }
 
 let hasWarnings = false;
 
-for (const dir of specDirs) {
-  const specFile = path.join(specsDir, dir, "spec.md");
-  if (!fs.existsSync(specFile)) continue;
-
+for (const file of specFiles) {
+  const specFile = path.join(specsDir, file);
   totalSpecs++;
   const content = fs.readFileSync(specFile, "utf-8");
 
-  const usMatches = content.match(/^### User Story \d+/gm);
+  const usMatches = content.match(/^### 用户故事 \d+/gm);
   const usCount = usMatches ? usMatches.length : 0;
   totalUS += usCount;
 
@@ -45,29 +43,29 @@ for (const dir of specDirs) {
   const frCount = frMatches ? frMatches.length : 0;
   totalFR += frCount;
 
-  counts.set(dir, { usCount, frCount });
-  console.log(`${dir}  US: ${usCount}  FR: ${frCount}`);
+  counts.set(file, { usCount, frCount });
+  console.log(`${file}  用户故事: ${usCount}  功能需求: ${frCount}`);
 
   // Validate spec follows standard template
   const warnings = [];
-  if (!content.match(/^## User Scenarios & Testing/m))
-    warnings.push('missing "## User Scenarios & Testing" section');
-  if (usCount === 0) warnings.push("no User Stories found (expected `### User Story N`)");
-  if (frCount === 0) warnings.push("no Functional Requirements found (expected `- **FR-N**`)");
+  if (!content.match(/^## 用户场景与测试/m))
+    warnings.push('缺少 "## 用户场景与测试" 章节');
+  if (usCount === 0) warnings.push("未找到用户故事（期望 `### 用户故事 N`）");
+  if (frCount === 0) warnings.push("未找到功能需求（期望 `- **FR-N**`）");
   for (let i = 1; i <= usCount; i++) {
-    if (!content.includes(`### User Story ${i}`))
-      warnings.push(`User Story ${i} heading skipped (non-sequential numbering)`);
+    if (!content.includes(`### 用户故事 ${i}`))
+      warnings.push(`用户故事 ${i} 标题缺失（编号不连续）`);
   }
-  if (!content.match(/\*\*FR-001\*\*/)) warnings.push("FR numbering doesn't start from FR-001");
+  if (!content.match(/\*\*FR-001\*\*/)) warnings.push("FR 编号未从 FR-001 开始");
   if (warnings.length) {
     hasWarnings = true;
-    console.warn(`  ⚠ ${dir}: ${warnings.join("; ")}`);
+    console.warn(`  ⚠ ${file}: ${warnings.join("; ")}`);
   }
 }
 
 console.log("---");
-console.log(`Specs: ${totalSpecs}  User Stories: ${totalUS}  Functional Requirements: ${totalFR}`);
-if (hasWarnings) console.warn("⚠ Some specs have template warnings — see above.");
+console.log(`规格: ${totalSpecs}  用户故事: ${totalUS}  功能需求: ${totalFR}`);
+if (hasWarnings) console.warn("⚠ 部分规格有模板警告——见上方。");
 
 // Count test files and test cases
 const rootDir = path.join(__dirname, "..");
@@ -88,118 +86,101 @@ for (const pkg of pkgDirs) {
   });
 }
 
-console.log(`Test Files: ${totalTestFiles}  Test Cases: ${totalTestCases.toLocaleString()}`);
+console.log(`测试文件: ${totalTestFiles}  测试用例: ${totalTestCases.toLocaleString()}`);
 
 // Update specs/README.md
 const readmePath = path.join(specsDir, "README.md");
 let readme = fs.readFileSync(readmePath, "utf-8");
 
-// Update Stats table
+// Update Stats table (Chinese headers)
 readme = readme.replace(
-  /^(\| Specs \| )\d+(\s*\|)$/m,
+  /^(\| 规格文件 \| )\d+(\s*\|)$/m,
   `$1${totalSpecs}$2`,
 );
 readme = readme.replace(
-  /^(\| User Stories \| )\d+(?:,\d+)*(\s*\|)$/m,
+  /^(\| 用户故事 \| )\d+(?:,\d+)*(\s*\|)$/m,
   `$1${totalUS.toLocaleString()}$2`,
 );
 readme = readme.replace(
-  /^(\| Functional Requirements \| )\d+(?:,\d+)*(\s*\|)$/m,
+  /^(\| 功能需求 \| )\d+(?:,\d+)*(\s*\|)$/m,
   `$1${totalFR.toLocaleString()}$2`,
 );
 readme = readme.replace(
-  /^(\| Test Files \| )\d+(?:,\d+)*(\s*\|)$/m,
+  /^(\| 测试文件 \| )\d+(?:,\d+)*(\s*\|)$/m,
   `$1${totalTestFiles.toLocaleString()}$2`,
 );
 readme = readme.replace(
-  /^(\| Test Cases \| )\d+(?:,\d+)*(\s*\|)$/m,
+  /^(\| 测试用例 \| )\d+(?:,\d+)*(\s*\|)$/m,
   `$1${totalTestCases.toLocaleString()}$2`,
 );
 
-// Update Specs table: preserve existing Feature/Description/Links, add US/FR columns
-// Parse existing table rows, match by spec dir in links column
+// Update Specs table: preserve existing Feature/Description, update US/FR/Links
 const lines = readme.split("\n");
 const newLines = [];
 let inSpecsTable = false;
 let headerDone = false;
 
 for (const line of lines) {
-  if (line.startsWith("| Feature |")) {
+  if (line.startsWith("| 功能 |")) {
     inSpecsTable = true;
     headerDone = false;
-    // Replace header to add US and FR columns
-    newLines.push("| Feature | Description | US | FR | Links |");
+    newLines.push("| 功能 | 描述 | 用户故事 | 功能需求 | 链接 |");
     continue;
   }
   if (inSpecsTable && !headerDone && line.match(/^\|[-| ]+\|$/)) {
     headerDone = true;
-    newLines.push("|---------|-------------|----|----|-------|");
+    newLines.push("|------|------|----------|----------|------|");
     continue;
   }
   if (inSpecsTable && line.startsWith("|")) {
-    // Parse row: | Feature | Description | [US | FR |] Links |
-    // Split preserving structure — Feature and Description are first two cells, Links is last
     const cells = line.split("|").filter((_, i, arr) => i > 0 && i < arr.length - 1);
     if (cells.length >= 3) {
       const feature = cells[0].trim();
       const description = cells[1].trim();
       const linksCell = cells[cells.length - 1].trim();
-      // Extract dir from first [spec](XXX/spec.md) link
-      const dirMatch = linksCell.match(/\[spec\]\(([^/]+)\/spec\.md\)/);
-      if (dirMatch) {
-        const linkDir = dirMatch[1];
-        let c = counts.get(linkDir);
-        let actualDir = linkDir;
-        // Fallback: match by numeric prefix if dir name differs
+      // Match link format: [规格](NNN-name.md) or [spec](NNN-name.md)
+      let fileMatch = linksCell.match(/\[(?:规格|spec)\]\((\d{3}-[^)]+\.md)\)/);
+      if (fileMatch) {
+        const specFileName = fileMatch[1];
+        let c = counts.get(specFileName);
+        // Fallback: match by numeric prefix
         if (!c) {
-          const prefix = linkDir.match(/^\d+/)?.[0];
+          const prefix = specFileName.match(/^\d+/)?.[0];
           if (prefix) {
-            const match = [...counts.keys()].find((d) => d.startsWith(prefix));
-            if (match) {
-              c = counts.get(match);
-              actualDir = match;
-            }
+            const match = [...counts.keys()].find((f) => f.startsWith(prefix));
+            if (match) c = counts.get(match);
           }
         }
         if (c) {
-          // Fix stale links to point to actual dir name
-          const fixedLinks = linksCell.replace(new RegExp(`\\b${linkDir}\\b`, "g"), actualDir);
-          newLines.push(`| ${feature} | ${description} | ${c.usCount} | ${c.frCount} | ${fixedLinks} |`);
+          newLines.push(`| ${feature} | ${description} | ${c.usCount} | ${c.frCount} | [规格](${specFileName}) |`);
           continue;
         }
       }
     }
-    // Fallback: keep line as-is if we can't parse
     newLines.push(line);
     continue;
   }
   if (inSpecsTable && !line.startsWith("|")) {
     inSpecsTable = false;
-    // Append any spec dirs not already in the table
+    // Append any spec files not already in the table
     const existingPrefixes = new Set(
       newLines
         .filter((l) => l.startsWith("|"))
         .map((l) => {
-          const m = l.match(/\[spec\]\(([^/]+)\/spec\.md\)/);
+          const m = l.match(/\[(?:规格|spec)\]\((\d{3}-[^)]+\.md)\)/);
           return m ? m[1].match(/^\d+/)?.[0] : null;
         })
         .filter(Boolean),
     );
-    for (const dir of specDirs) {
-      const specFile = path.join(specsDir, dir, "spec.md");
-      if (!fs.existsSync(specFile)) continue;
-      const prefix = dir.match(/^\d+/)?.[0];
+    for (const file of specFiles) {
+      const prefix = file.match(/^\d+/)?.[0];
       if (prefix && existingPrefixes.has(prefix)) continue;
-      const c = counts.get(dir);
+      const c = counts.get(file);
       if (!c) continue;
-      const content = fs.readFileSync(specFile, "utf-8");
-      const titleMatch = content.match(/^# Feature Specification: (.+)/m);
-      const title = titleMatch ? titleMatch[1] : dir;
-      const hasPlan = fs.existsSync(path.join(specsDir, dir, "plan.md"));
-      const links = hasPlan
-        ? `[spec](${dir}/spec.md) · [plan](${dir}/plan.md)`
-        : `[spec](${dir}/spec.md)`;
-      newLines.push(`| ${title} |  | ${c.usCount} | ${c.frCount} | ${links} |`);
+      const content = fs.readFileSync(path.join(specsDir, file), "utf-8");
+      const titleMatch = content.match(/^# 功能规格说明：(.+)/m);
+      const title = titleMatch ? titleMatch[1] : file;
+      newLines.push(`| ${title} |  | ${c.usCount} | ${c.frCount} | [规格](${file}) |`);
     }
   }
   newLines.push(line);
@@ -208,4 +189,4 @@ for (const line of lines) {
 readme = newLines.join("\n");
 
 fs.writeFileSync(readmePath, readme);
-console.log("Updated specs/README.md");
+console.log("已更新 specs/README.md");

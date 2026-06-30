@@ -1,97 +1,85 @@
-# Feature Specifications
+# 功能规格说明
 
-This directory contains feature specifications that serve as the source of truth for feature design and implementation.
+本目录包含功能规格说明文件，作为功能设计和实现的唯一真实来源。
 
-### Standard File Layout
+每个规格是一个独立的 markdown 文件（`NNN-功能名称.md`），包含用户故事、验收标准和功能需求。
 
-| File | Purpose |
-|------|---------|
-| `spec.md` | Feature specification — user stories, acceptance criteria, edge cases |
-| `plan.md` | Implementation plan with technical approach |
-| `research.md` | Research notes and findings |
-| `data-model.md` | Data structures and storage format |
-| `quickstart.md` | Getting started guide for the feature |
-| `tasks.md` | Implementation task breakdown |
-| `contracts/` | API contracts and tool interface definitions |
-| `checklists/` | Safety and requirements checklists |
+## 为什么没有 Plan？
 
-## Workflow
+我们移除了 plan/research/data-model/tasks 工作流，因为**无法仅通过思考就设计出完美的技术方案**。再多的前期规划也无法预测所有边界情况、API 怪癖、类型系统交互和集成问题——这些只有在实现和测试过程中才会暴露。
 
-1. Write the spec (`spec.md`) with user scenarios and acceptance criteria
-2. Research the approach (`research.md`)
-3. Plan the implementation (`plan.md`)
-4. Define data models (`data-model.md`)
-5. Break down into tasks (`tasks.md`)
-6. Implement against the spec
+取而代之，我们依赖**大量测试**来驱动正确的实现。先写规格，再写测试，然后实现。测试就是计划。
 
-## Stats
+## 统计
 
-| Metric | Count |
-|--------|-------|
-| Specs | 57 |
-| User Stories | 244 |
-| Functional Requirements | 930 |
-| Test Files | 317 |
-| Test Cases | 4,143 |
+| 指标 | 数量 |
+|------|------|
+| 规格文件 | 59 |
+| 用户故事 | 252 |
+| 功能需求 | 971 |
+| 测试文件 | 317 |
+| 测试用例 | 4,143 |
 
-## Specs
+## 规格列表
 
-| Feature | Description | US | FR | Links |
-|---------|-------------|----|----|-------|
-| File System Tools | Read, Write, Edit, Glob, Grep tools for file operations | 3 | 19 | [spec](001-fs-tools/spec.md) · [plan](001-fs-tools/plan.md) |
-| Bash Tools | Bash, BashOutput, KillBash tools for shell command execution | 3 | 18 | [spec](002-bash-tools/spec.md) · [plan](002-bash-tools/plan.md) |
-| MCP | Model Context Protocol support for external tools and context sources | 4 | 23 | [spec](003-mcp/spec.md) · [plan](003-mcp/plan.md) |
-| Session Management | Performance-optimized, project-based session management system | 3 | 17 | [spec](004-session-management/spec.md) · [plan](004-session-management/plan.md) |
-| Hooks | Event hooks system for extending Wave behavior | 16 | 62 | [spec](005-hooks/spec.md) · [plan](005-hooks/plan.md) |
-| Agent Skills | Discoverable skill packages with SKILL.md files for model-invoked capabilities | 8 | 25 | [spec](006-agent-skills/spec.md) · [plan](006-agent-skills/plan.md) |
-| Agent Config | Constructor-based config instead of env vars, with max output tokens and custom headers | 9 | 32 | [spec](007-agent-config/spec.md) · [plan](007-agent-config/plan.md) |
-| Slash Commands | Custom slash command system for user-invoked commands | 6 | 22 | [spec](008-slash-commands/spec.md) · [plan](008-slash-commands/plan.md) |
-| Subagent | Subagent support for delegating tasks to pre-configured AI personalities | 5 | 24 | [spec](009-subagent/spec.md) · [plan](009-subagent/plan.md) |
-| Usage Tracking | SDK usage tracking callbacks (`onUsagesChange`) for AI calls and compression | 4 | 15 | [spec](010-usage-tracking-callback/spec.md) · [plan](010-usage-tracking-callback/plan.md) |
-| Streaming | Real-time content streaming for assistant messages and tool parameters | 5 | 22 | [spec](011-stream-content-updates/spec.md) · [plan](011-stream-content-updates/plan.md) |
-| AI Error Handling | Handle output token limit exceeded by prompting agent to break work into smaller pieces | 6 | 10 | [spec](012-ai-error-handling/spec.md) · [plan](012-ai-error-handling/plan.md) |
-| Message Compact | Conversation history and user input size management | 6 | 23 | [spec](013-message-compact/spec.md) · [plan](013-message-compact/plan.md) |
-| Image Pasting | Paste images from clipboard into chat input with placeholder and attachment | 3 | 10 | [spec](014-image-pasting/spec.md) · [plan](014-image-pasting/plan.md) |
-| File Selector | Quick file/directory selector UI component | 3 | 8 | [spec](015-file-selector/spec.md) · [plan](015-file-selector/plan.md) |
-| WebFetch Tool | Fetch URL content, convert HTML to markdown, process with AI model, with caching | 5 | 14 | [spec](016-web-fetch-tool/spec.md) · [plan](016-web-fetch-tool/plan.md) |
-| Memory Management | Persist information across conversations via memory files | 8 | 26 | [spec](017-memory-management/spec.md) · [plan](017-memory-management/plan.md) |
-| Markdown Rendering | Terminal Markdown rendering with Ink components for headings, lists, code blocks, tables | 3 | 8 | [spec](018-markdown-rendering-system/spec.md) · [plan](018-markdown-rendering-system/plan.md) |
-| Prompt Cache Control | `cache_control` markers for Claude models on system messages, user messages, and tools | 4 | 7 | [spec](019-prompt-cache-control/spec.md) · [plan](019-prompt-cache-control/plan.md) |
-| Prompt Engineering | Framework for prompt construction and management | 5 | 13 | [spec](020-prompt-engineering/spec.md) · [plan](020-prompt-engineering/plan.md) |
-| Long Text Placeholder | Replace long pasted text in input with `[LongText#ID]` placeholder, expand on submit | 1 | 5 | [spec](021-long-text-placeholder/spec.md) · [plan](021-long-text-placeholder/plan.md) |
-| Tool Permissions | Permission system with modes, wildcards, deny rules, trust, acceptEdits, dontAsk, Safe Zone | 18 | 55 | [spec](022-tool-permission-system/spec.md) · [plan](022-tool-permission-system/plan.md) |
-| Built-in Subagent | Built-in subagent support for Explore agent | 2 | 10 | [spec](023-builtin-subagent/spec.md) · [plan](023-builtin-subagent/plan.md) |
-| Clear Command | `/clear` command to reset conversation history and session | 2 | 6 | [spec](024-clear-command/spec.md) |
-| Message Rendering | Robust message/block rendering with Ink — static history + dynamic tool executions | 3 | 8 | [spec](025-message-rendering-system/spec.md) · [plan](025-message-rendering-system/plan.md) |
-| Bang Shell Command | `!` prefix to execute shell commands directly from chat input | 3 | 9 | [spec](026-bang-shell-command/spec.md) · [plan](026-bang-shell-command/plan.md) |
-| Help Command | `/help` interactive help showing key bindings, built-in commands, and plugin commands | 3 | 10 | [spec](027-help-command/spec.md) · [plan](027-help-command/plan.md) |
-| Status Line | Extracted StatusLine component for mode and shell command status display | 2 | 10 | [spec](028-status-line/spec.md) |
-| Update Command | `wave update` / `wave-code update` to update to latest version | 2 | 7 | [spec](029-update-command/spec.md) · [plan](029-update-command/plan.md) |
-| BTW Command | `/btw` for side questions bypassing the main message queue | 2 | 10 | [spec](030-btw-command/spec.md) |
-| Model Command | `/model` interactive UI to switch between configured AI models | 3 | 13 | [spec](031-model-command/spec.md) |
-| Confirm UI | Confirmation dialog UI components for tool permission approvals | 5 | 13 | [spec](032-confirm-ui/spec.md) · [plan](032-confirm-ui/plan.md) |
-| Print Mode | Clean response-only output in `-p` mode, suppressing all subagent internals | 3 | 7 | [spec](033-print-mode/spec.md) · [plan](033-print-mode/plan.md) |
-| LSP Integration | Language Server Protocol for code intelligence (definitions, references, hover) | 3 | 8 | [spec](034-lsp-integration/spec.md) · [plan](034-lsp-integration/plan.md) |
-| Plugin | Plugin system with marketplace, scopes, Skills, LSP, MCP, Hooks, Agents | 6 | 28 | [spec](035-plugin/spec.md) · [plan](035-plugin/plan.md) |
-| Plan Mode | Shift+Tab plan mode for read-only analysis with incremental plan file editing | 8 | 25 | [spec](036-plan-mode/spec.md) · [plan](036-plan-mode/plan.md) |
-| AskUserQuestion Tool | AskUserQuestion tool for structured user interaction with options | 3 | 11 | [spec](037-ask-user-tool/spec.md) · [plan](037-ask-user-tool/plan.md) |
-| Init Command | `/init` slash command using init-prompt.md for project initialization | 2 | 7 | [spec](038-init-slash-command/spec.md) · [plan](038-init-slash-command/plan.md) |
-| Rewind Command | `/rewind` to revert conversation to a previous user message, reverting file changes | 3 | 10 | [spec](039-rewind-command/spec.md) · [plan](039-rewind-command/plan.md) |
-| History Search | Ctrl+R history search for reusing previous prompts from `~/.wave/history.jsonl` | 2 | 10 | [spec](040-history-search-prompt/spec.md) · [plan](040-history-search-prompt/plan.md) |
-| General Purpose Agent | Built-in subagent for complex research, code search, and multi-step tasks | 2 | 7 | [spec](041-general-purpose-agent/spec.md) · [plan](041-general-purpose-agent/plan.md) |
-| Task Background Execution | `run_in_background`, `TaskOutput`/`TaskStop` tools, `/tasks` command replacing `/bashes` | 6 | 24 | [spec](042-task-background-execution/spec.md) · [plan](042-task-background-execution/plan.md) |
-| Task Management Tools | TaskCreate/TaskGet/TaskUpdate/TaskList with `~/.wave/tasks/` storage and task list UI | 5 | 22 | [spec](043-task-management-tools/spec.md) · [plan](043-task-management-tools/plan.md) |
-| Plan Subagent | Built-in Plan subagent for designing implementation plans before coding | 4 | 16 | [spec](044-plan-subagent/spec.md) · [plan](044-plan-subagent/plan.md) |
-| Bash Subagent | Built-in Bash subagent for executing shell commands | 1 | 7 | [spec](045-bash-subagent/spec.md) · [plan](045-bash-subagent/plan.md) |
-| Tools Selection | CLI `--tools` flag to restrict agent to a specific tool set | 4 | 8 | [spec](046-tools-selection/spec.md) · [plan](046-tools-selection/plan.md) |
-| CLI Worktree | `-w/--worktree` for isolated git worktrees at `.wave/worktrees/` with safe exit | 7 | 40 | [spec](047-worktree/spec.md) · [plan](047-worktree/plan.md) |
-| Status Command | `/status` showing version, session ID, cwd, model, and runtime info | 1 | 9 | [spec](048-status-command/spec.md) · [plan](048-status-command/plan.md) |
-| ACP Bridge | Agent Communication Protocol bridge for connecting external clients | 5 | 17 | [spec](049-acp-bridge/spec.md) · [plan](049-acp-bridge/plan.md) |
-| Builtin Settings Skill | Guide users on `settings.json`, hooks config, and Wave settings management | 3 | 8 | [spec](050-builtin-settings-skill/spec.md) · [plan](050-builtin-settings-skill/plan.md) |
-| Loop Command | `/loop` for scheduling recurring prompts via cron (e.g., `/loop 5m check the build`). Includes durable persistence and multi-session scheduler lock. | 2 | 10 | [spec](051-loop-slash-command/spec.md) · [plan](051-loop-slash-command/plan.md) |
-| OpenTelemetry Integration | OpenTelemetry instrumentation for metrics, traces, and logs with multiple exporters (jsonl, OTLP) | 3 | 16 | [spec](052-opentelemetry/spec.md) · [plan](052-opentelemetry/plan.md) |
-| SSO Authentication | /login for browser-based SSO, token storage, auto API proxy routing | 3 | 27 | [spec](053-sso-auth/spec.md) · [plan](053-sso-auth/plan.md) |
-| Custom Tools via buildTool() | buildTool() factory for SDK users to define custom tools | 3 | 11 | [spec](054-custom-tools/spec.md) · [plan](054-custom-tools/plan.md) |
-| Server-Managed Config | Download and apply managed settings from Wave AI with checksum caching and merge priority | 3 | 11 | [spec](055-server-managed-config/spec.md) · [plan](055-server-managed-config/plan.md) |
-| /goal Command | Autonomous multi-turn goal pursuit with fast-model evaluation and circuit breakers | 3 | 17 | [spec](056-goal-command/spec.md) · [plan](056-goal-command/plan.md) |
-| Workflow — Deterministic Multi-Subagent Orchestration | Deterministic multi-subagent orchestration with pipeline, parallel, and phase control flow | 4 | 20 | [spec](057-workflow/spec.md) · [plan](057-workflow/plan.md) |
+| 功能 | 描述 | 用户故事 | 功能需求 | 链接 |
+|------|------|----------|----------|------|
+| 文件系统工具 | Read, Write, Edit, Glob, Grep 文件操作工具 | 3 | 19 | [规格](001-fs-tools.md) |
+| Bash 工具 | Bash, BashOutput, KillBash shell 命令执行工具 | 3 | 18 | [规格](002-bash-tools.md) |
+| MCP | Model Context Protocol 外部工具和上下文源支持 | 4 | 23 | [规格](003-mcp.md) |
+| 会话管理 | 高性能、基于项目的会话管理系统 | 3 | 17 | [规格](004-session-management.md) |
+| 钩子系统 | 扩展 Wave 行为的事件钩子系统 | 16 | 62 | [规格](005-hooks.md) |
+| Agent 技能 | 可发现的技能包，通过 SKILL.md 文件提供模型可调用的能力 | 8 | 25 | [规格](006-agent-skills.md) |
+| Agent 配置 | 基于构造函数的配置替代环境变量，支持 max output tokens 和自定义 headers | 9 | 32 | [规格](007-agent-config.md) |
+| 斜杠命令 | 用户可调用的自定义斜杠命令系统 | 6 | 22 | [规格](008-slash-commands.md) |
+| 子代理 | 将任务委派给预配置 AI 人格的子代理支持 | 5 | 24 | [规格](009-subagent.md) |
+| 用量追踪 | SDK 用量追踪回调（`onUsagesChange`），用于 AI 调用和压缩 | 4 | 15 | [规格](010-usage-tracking-callback.md) |
+| 流式输出 | 助手消息和工具参数的实时内容流式传输 | 5 | 22 | [规格](011-stream-content-updates.md) |
+| AI 错误处理 | 处理输出 token 限制超限，提示 agent 将工作拆分为更小的块 | 6 | 10 | [规格](012-ai-error-handling.md) |
+| 消息压缩 | 对话历史和用户输入大小管理 | 6 | 23 | [规格](013-message-compact.md) |
+| 图片粘贴 | 从剪贴板粘贴图片到聊天输入，支持占位符和附件 | 3 | 10 | [规格](014-image-pasting.md) |
+| 文件选择器 | 快速文件/目录选择器 UI 组件 | 3 | 8 | [规格](015-file-selector.md) |
+| WebFetch 工具 | 获取 URL 内容，HTML 转 markdown，AI 模型处理，支持缓存 | 5 | 14 | [规格](016-web-fetch-tool.md) |
+| 记忆管理 | 通过记忆文件在对话间持久化信息 | 8 | 26 | [规格](017-memory-management.md) |
+| Markdown 渲染 | 终端 Markdown 渲染，Ink 组件支持标题、列表、代码块、表格 | 3 | 8 | [规格](018-markdown-rendering-system.md) |
+| Prompt 缓存控制 | Claude 模型的 `cache_control` 标记，用于系统消息、用户消息和工具 | 4 | 7 | [规格](019-prompt-cache-control.md) |
+| Prompt 工程 | Prompt 构建和管理框架 | 5 | 13 | [规格](020-prompt-engineering.md) |
+| 长文本占位符 | 用 `[LongText#ID]` 占位符替换粘贴的长文本，提交时展开 | 1 | 5 | [规格](021-long-text-placeholder.md) |
+| 工具权限系统 | 权限系统，支持模式、通配符、拒绝规则、信任、acceptEdits、dontAsk、安全区 | 18 | 55 | [规格](022-tool-permission-system.md) |
+| 内置子代理 | Explore agent 内置子代理支持 | 2 | 10 | [规格](023-builtin-subagent.md) |
+| Clear 命令 | `/clear` 命令重置对话历史和会话 | 2 | 6 | [规格](024-clear-command.md) |
+| 消息渲染 | 基于 Ink 的消息/块渲染——静态历史 + 动态工具执行 | 3 | 8 | [规格](025-message-rendering-system.md) |
+| Bang Shell 命令 | `!` 前缀直接从聊天输入执行 shell 命令 | 3 | 9 | [规格](026-bang-shell-command.md) |
+| Help 命令 | `/help` 交互式帮助，显示快捷键、内置命令和插件命令 | 3 | 10 | [规格](027-help-command.md) |
+| 状态栏 | 提取的 StatusLine 组件，用于模式和 shell 命令状态显示 | 2 | 10 | [规格](028-status-line.md) |
+| Update 命令 | `wave update` / `wave-code update` 更新到最新版本 | 2 | 7 | [规格](029-update-command.md) |
+| BTW 命令 | `/btw` 旁路问题，绕过主消息队列 | 2 | 10 | [规格](030-btw-command.md) |
+| Model 命令 | `/model` 交互式 UI 切换已配置的 AI 模型 | 3 | 13 | [规格](031-model-command.md) |
+| 确认 UI | 工具权限审批的确认对话框 UI 组件 | 5 | 13 | [规格](032-confirm-ui.md) |
+| Print 模式 | `-p` 模式下的纯净响应输出，抑制所有子代理内部信息 | 3 | 7 | [规格](033-print-mode.md) |
+| LSP 集成 | Language Server Protocol 代码智能（定义跳转、引用查找、悬停信息） | 3 | 8 | [规格](034-lsp-integration.md) |
+| 插件系统 | 插件系统，支持 marketplace、作用域、技能、LSP、MCP、钩子、代理 | 6 | 28 | [规格](035-plugin.md) |
+| Plan 模式 | Shift+Tab plan 模式，只读分析并增量编辑 plan 文件 | 8 | 25 | [规格](036-plan-mode.md) |
+| AskUserQuestion 工具 | 结构化用户交互工具，支持选项 | 3 | 11 | [规格](037-ask-user-tool.md) |
+| Init 命令 | `/init` 斜杠命令，使用 init-prompt.md 进行项目初始化 | 2 | 7 | [规格](038-init-slash-command.md) |
+| Rewind 命令 | `/rewind` 回退对话到上一条用户消息，同时回退文件变更 | 3 | 10 | [规格](039-rewind-command.md) |
+| 历史搜索 | Ctrl+R 历史搜索，复用 `~/.wave/history.jsonl` 中的历史提示 | 2 | 10 | [规格](040-history-search-prompt.md) |
+| 通用代理 | 内置子代理，用于复杂研究、代码搜索和多步骤任务 | 2 | 7 | [规格](041-general-purpose-agent.md) |
+| 任务后台执行 | `run_in_background`、`TaskOutput`/`TaskStop` 工具，`/tasks` 命令替代 `/bashes` | 6 | 24 | [规格](042-task-background-execution.md) |
+| 任务管理工具 | TaskCreate/TaskGet/TaskUpdate/TaskList，`~/.wave/tasks/` 存储和任务列表 UI | 5 | 22 | [规格](043-task-management-tools.md) |
+| Plan 子代理 | 内置 Plan 子代理，在编码前设计实现方案 | 4 | 16 | [规格](044-plan-subagent.md) |
+| Bash 子代理 | 内置 Bash 子代理，执行 shell 命令 | 1 | 7 | [规格](045-bash-subagent.md) |
+| 工具选择 | CLI `--tools` 标志限制 agent 使用特定工具集 | 4 | 8 | [规格](046-tools-selection.md) |
+| CLI Worktree | `-w/--worktree` 隔离的 git worktree，位于 `.wave/worktrees/`，支持安全退出 | 7 | 40 | [规格](047-worktree.md) |
+| Status 命令 | `/status` 显示版本、会话 ID、cwd、模型和运行时信息 | 1 | 9 | [规格](048-status-command.md) |
+| ACP Bridge | Agent Communication Protocol 桥接，用于连接外部客户端 | 5 | 17 | [规格](049-acp-bridge.md) |
+| 内置 Settings 技能 | 引导用户配置 `settings.json`、钩子和 Wave 设置管理 | 3 | 8 | [规格](050-builtin-settings-skill.md) |
+| Loop 命令 | `/loop` 通过 cron 调度循环提示（如 `/loop 5m check the build`），支持持久化和多会话调度锁 | 2 | 10 | [规格](051-loop-slash-command.md) |
+| OpenTelemetry 集成 | OpenTelemetry 指标、追踪和日志插桩，支持多种导出器（jsonl、OTLP） | 3 | 16 | [规格](052-opentelemetry.md) |
+| SSO 认证 | /login 浏览器 SSO 登录、token 存储、自动 API 代理路由 | 3 | 27 | [规格](053-sso-auth.md) |
+| 自定义工具 buildTool() | buildTool() 工厂方法，供 SDK 用户定义自定义工具 | 3 | 11 | [规格](054-custom-tools.md) |
+| 服务端托管配置 | 从 Wave AI 下载并应用托管设置，支持校验和缓存和合并优先级 | 3 | 11 | [规格](055-server-managed-config.md) |
+| /goal 命令 | 自主多轮目标追求，快速模型评估和熔断机制 | 3 | 17 | [规格](056-goal-command.md) |
+| Workflow 编排 | 确定性多子代理编排，支持 pipeline、parallel 和 phase 控制流 | 4 | 20 | [规格](057-workflow.md) |
+| Code Review 技能 | 审查当前 `git diff` 的正确性 bug，附带文件/行号引用 | 5 | 27 | [规格](058-code-review-skill.md) |
+| Simplify 技能 | 审查已变更代码的质量问题（重复、低效）并通过 `/simplify` 自动修复 | 3 | 14 | [规格](059-simplify-skill.md) |
