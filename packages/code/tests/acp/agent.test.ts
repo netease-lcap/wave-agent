@@ -585,6 +585,7 @@ describe("WaveAcpAgent", () => {
 
     // Write tool
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "Write",
       stage: "start",
@@ -620,6 +621,7 @@ describe("WaveAcpAgent", () => {
 
     // Edit tool
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "2",
       name: "Edit",
       stage: "end",
@@ -1353,7 +1355,11 @@ describe("WaveAcpAgent", () => {
 
     await agent.newSession({ cwd: "/test", mcpServers: [] });
 
-    capturedCallbacks!.onAssistantContentUpdated!("chunk", "chunk");
+    capturedCallbacks!.onAssistantContentUpdated!(
+      "msg-test-id",
+      "chunk",
+      "chunk",
+    );
     expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({
@@ -1363,7 +1369,11 @@ describe("WaveAcpAgent", () => {
       }),
     );
 
-    capturedCallbacks!.onAssistantReasoningUpdated!("thought", "thought");
+    capturedCallbacks!.onAssistantReasoningUpdated!(
+      "msg-test-id",
+      "thought",
+      "thought",
+    );
     expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({
@@ -1374,6 +1384,7 @@ describe("WaveAcpAgent", () => {
     );
 
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "tool",
       stage: "start",
@@ -1388,6 +1399,7 @@ describe("WaveAcpAgent", () => {
     );
 
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "tool",
       stage: "end",
@@ -1698,6 +1710,7 @@ describe("WaveAcpAgent", () => {
 
     // Streaming stage
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "tool",
       stage: "streaming",
@@ -1706,6 +1719,7 @@ describe("WaveAcpAgent", () => {
 
     // Running stage
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "tool",
       stage: "running",
@@ -1721,6 +1735,7 @@ describe("WaveAcpAgent", () => {
 
     // Failed stage
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "tool",
       stage: "end",
@@ -1777,6 +1792,7 @@ describe("WaveAcpAgent", () => {
 
     // Test with compactParams
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "Read",
       stage: "start",
@@ -1795,6 +1811,7 @@ describe("WaveAcpAgent", () => {
 
     // Test update with compactParams
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "Read",
       stage: "end",
@@ -1814,6 +1831,7 @@ describe("WaveAcpAgent", () => {
 
     // Test fallback when compactParams is missing
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "2",
       name: "Read",
       stage: "start",
@@ -1848,6 +1866,7 @@ describe("WaveAcpAgent", () => {
 
     // 1. Start with name only
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "Read",
       stage: "start",
@@ -1864,6 +1883,7 @@ describe("WaveAcpAgent", () => {
 
     // 2. Update with compactParams in running stage
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       stage: "running",
       compactParams: "file.txt",
@@ -1880,6 +1900,7 @@ describe("WaveAcpAgent", () => {
 
     // 3. Update in end stage with missing name and compactParams
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       stage: "end",
       success: true,
@@ -1957,6 +1978,7 @@ describe("WaveAcpAgent", () => {
     await agent.newSession({ cwd: "/test", mcpServers: [] });
 
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "Grep",
       stage: "end",
@@ -2000,6 +2022,7 @@ describe("WaveAcpAgent", () => {
     await agent.newSession({ cwd: "/test", mcpServers: [] });
 
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "Bash",
       stage: "start",
@@ -2036,6 +2059,7 @@ describe("WaveAcpAgent", () => {
     await agent.newSession({ cwd: "/test", mcpServers: [] });
 
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "Bash",
       stage: "end",
@@ -2080,6 +2104,7 @@ describe("WaveAcpAgent", () => {
 
     // LSP tool
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "LSP",
       stage: "start",
@@ -2107,6 +2132,7 @@ describe("WaveAcpAgent", () => {
 
     // Edit tool with startLineNumber
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "2",
       name: "Edit",
       stage: "end",
@@ -2221,6 +2247,7 @@ describe("WaveAcpAgent", () => {
     await agent.newSession({ cwd: "/test", mcpServers: [] });
 
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "UnknownTool",
       stage: "start",
@@ -2467,6 +2494,7 @@ describe("WaveAcpAgent", () => {
     await agent.newSession({ cwd: "/test", mcpServers: [] });
 
     capturedCallbacks!.onToolBlockUpdated!({
+      messageId: "msg-test-id",
       id: "1",
       name: "mcp__UnknownTool",
       stage: "start",

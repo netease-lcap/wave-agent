@@ -17,7 +17,7 @@ import { NotificationQueue } from "./notificationQueue.js";
 import { logger } from "../utils/globalLogger.js";
 import {
   UserMessageParams,
-  type AgentToolBlockUpdateParams,
+  type ToolBlockUpdateCallbackParams,
 } from "../utils/messageOperations.js";
 
 import { Container } from "../utils/container.js";
@@ -33,23 +33,28 @@ export interface SubagentManagerCallbacks {
     params: UserMessageParams,
   ) => void;
   /** Triggered when subagent creates assistant message */
-  onSubagentAssistantMessageAdded?: (subagentId: string) => void;
+  onSubagentAssistantMessageAdded?: (
+    subagentId: string,
+    messageId: string,
+  ) => void;
   /** Triggered during subagent content streaming updates */
   onSubagentAssistantContentUpdated?: (
     subagentId: string,
+    messageId: string,
     chunk: string,
     accumulated: string,
   ) => void;
   /** Triggered during subagent reasoning streaming updates */
   onSubagentAssistantReasoningUpdated?: (
     subagentId: string,
+    messageId: string,
     chunk: string,
     accumulated: string,
   ) => void;
   /** Triggered when subagent tool block is updated */
   onSubagentToolBlockUpdated?: (
     subagentId: string,
-    params: AgentToolBlockUpdateParams,
+    params: ToolBlockUpdateCallbackParams,
   ) => void;
   /** Triggered when subagent messages change */
   onSubagentMessagesChange?: (subagentId: string, messages: Message[]) => void;
@@ -777,35 +782,45 @@ export class SubagentManager {
         }
       },
 
-      onAssistantMessageAdded: () => {
+      onAssistantMessageAdded: (messageId: string) => {
         // Forward assistant message events to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantMessageAdded) {
-          this.callbacks.onSubagentAssistantMessageAdded(subagentId);
+          this.callbacks.onSubagentAssistantMessageAdded(subagentId, messageId);
         }
       },
 
-      onAssistantContentUpdated: (chunk: string, accumulated: string) => {
+      onAssistantContentUpdated: (
+        messageId: string,
+        chunk: string,
+        accumulated: string,
+      ) => {
         // Forward assistant content updates to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantContentUpdated) {
           this.callbacks.onSubagentAssistantContentUpdated(
             subagentId,
+            messageId,
             chunk,
             accumulated,
           );
         }
       },
-      onAssistantReasoningUpdated: (chunk: string, accumulated: string) => {
+      onAssistantReasoningUpdated: (
+        messageId: string,
+        chunk: string,
+        accumulated: string,
+      ) => {
         // Forward assistant reasoning updates to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantReasoningUpdated) {
           this.callbacks.onSubagentAssistantReasoningUpdated(
             subagentId,
+            messageId,
             chunk,
             accumulated,
           );
         }
       },
 
-      onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
+      onToolBlockUpdated: (params: ToolBlockUpdateCallbackParams) => {
         const instance = this.instances.get(subagentId);
         if (instance) {
           // Log tool execution to file only when finalized

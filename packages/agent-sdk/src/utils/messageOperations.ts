@@ -58,6 +58,14 @@ export type AgentToolBlockUpdateParams = Omit<
   "messages"
 >;
 
+// Callback payload type — SDK always fills messageId (required)
+export type ToolBlockUpdateCallbackParams = Omit<
+  AgentToolBlockUpdateParams,
+  "messageId"
+> & {
+  messageId: string;
+};
+
 export interface AddErrorBlockParams {
   messages: Message[];
   error: string;
@@ -289,7 +297,7 @@ export const updateToolBlockInMessage = ({
   compactParams,
   parametersChunk,
   isManuallyBackgrounded,
-}: UpdateToolBlockParams): Message[] => {
+}: UpdateToolBlockParams): { messages: Message[]; messageId?: string } => {
   const newMessages = [...messages];
 
   // If messageId is provided, target that specific message
@@ -321,7 +329,7 @@ export const updateToolBlockInMessage = ({
         }
       }
     }
-    return newMessages;
+    return { messages: newMessages, messageId };
   }
 
   // Find the last assistant or user message
@@ -350,7 +358,8 @@ export const updateToolBlockInMessage = ({
           if (isManuallyBackgrounded !== undefined)
             toolBlock.isManuallyBackgrounded = isManuallyBackgrounded;
         }
-        break; // Found and updated, stop searching
+        const foundMessageId = newMessages[i].id;
+        return { messages: newMessages, messageId: foundMessageId };
       } else if (newMessages[i].role === "assistant") {
         // If existing block not found in assistant message, create new one
         // This handles cases where we're streaming tool parameters before execution
@@ -370,11 +379,12 @@ export const updateToolBlockInMessage = ({
           parametersChunk: parametersChunk,
           isManuallyBackgrounded: isManuallyBackgrounded,
         });
-        break; // Created and added, stop searching
+        const foundMessageId = newMessages[i].id;
+        return { messages: newMessages, messageId: foundMessageId };
       }
     }
   }
-  return newMessages;
+  return { messages: newMessages };
 };
 
 // Add Error Block to the last assistant message

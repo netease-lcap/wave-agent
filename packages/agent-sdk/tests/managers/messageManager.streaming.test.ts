@@ -23,11 +23,13 @@ describe("MessageManager - Streaming Functionality", () => {
 
       // Add an assistant message first
       messageManager.addAssistantMessage();
+      const messageId = messageManager.getMessages().slice(-1)[0].id;
 
       // First update
       messageManager.updateCurrentMessageContent("Hello");
 
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+        messageId,
         "Hello",
         "Hello",
       );
@@ -36,6 +38,7 @@ describe("MessageManager - Streaming Functionality", () => {
       messageManager.updateCurrentMessageContent("Hello, world!");
 
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+        messageId,
         ", world!",
         "Hello, world!",
       );
@@ -44,6 +47,7 @@ describe("MessageManager - Streaming Functionality", () => {
       messageManager.updateCurrentMessageContent("Hello, world! How are you?");
 
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+        messageId,
         " How are you?",
         "Hello, world! How are you?",
       );
@@ -67,11 +71,16 @@ describe("MessageManager - Streaming Functionality", () => {
 
       // Add an assistant message first
       messageManager.addAssistantMessage();
+      const messageId = messageManager.getMessages().slice(-1)[0].id;
 
       // Update with empty content
       messageManager.updateCurrentMessageContent("");
 
-      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith("", "");
+      expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+        messageId,
+        "",
+        "",
+      );
     });
 
     it("should create new text block when none exists", () => {
@@ -88,11 +97,13 @@ describe("MessageManager - Streaming Functionality", () => {
 
       // Add an assistant message first
       messageManager.addAssistantMessage();
+      const messageId = messageManager.getMessages().slice(-1)[0].id;
 
       // Update content (should create new text block)
       messageManager.updateCurrentMessageContent("New content");
 
       expect(mockOnAssistantContentUpdated).toHaveBeenCalledWith(
+        messageId,
         "New content",
         "New content",
       );

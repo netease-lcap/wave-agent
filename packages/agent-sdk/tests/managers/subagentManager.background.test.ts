@@ -218,10 +218,15 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const lastCall =
       MessageManagerMock.mock.calls[MessageManagerMock.mock.calls.length - 1];
     const passedCallbacks = lastCall[1].callbacks;
-    passedCallbacks.onAssistantReasoningUpdated?.("chunk", "accumulated");
+    passedCallbacks.onAssistantReasoningUpdated?.(
+      "msg-test-id",
+      "chunk",
+      "accumulated",
+    );
 
     expect(onSubagentAssistantReasoningUpdated).toHaveBeenCalledWith(
       instance.subagentId,
+      "msg-test-id",
       "chunk",
       "accumulated",
     );
@@ -253,6 +258,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     // Trigger tool block update (stage "end" to trigger logging)
     passedCallbacks.onToolBlockUpdated?.({
       id: "tool_123",
+      messageId: "msg-test-id",
       stage: "end",
       name: "Read",
       parameters: JSON.stringify({ file_path: "test.txt" }),

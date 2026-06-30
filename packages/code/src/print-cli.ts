@@ -75,14 +75,14 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       isReasoning = false;
       isContent = false;
     },
-    onAssistantReasoningUpdated: (chunk: string) => {
+    onAssistantReasoningUpdated: (_messageId: string, chunk: string) => {
       if (!isReasoning) {
         process.stdout.write("\n💭 Reasoning:\n");
         isReasoning = true;
       }
       process.stdout.write(chunk);
     },
-    onAssistantContentUpdated: (chunk: string) => {
+    onAssistantContentUpdated: (_messageId: string, chunk: string) => {
       if (!isContent) {
         if (isReasoning) {
           process.stdout.write("\n\n📝 Response:\n");
