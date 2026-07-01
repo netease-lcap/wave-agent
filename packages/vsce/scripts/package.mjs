@@ -71,7 +71,7 @@ async function main() {
     const version = pkg.version;
     const vsixName = `${pkg.name}-${version}.vsix`;
     const vsixPath = path.join(releasesDir, vsixName);
-    execSync(`npx vsce package --out ${vsixPath} ${vsceArgs}`, { stdio: 'inherit' });
+    execSync(`npx @vscode/vsce package --out ${vsixPath} ${vsceArgs}`, { stdio: 'inherit' });
     
     console.log(`\nCreated releases/${vsixName}`);
     console.log('\nAll targets processed successfully!');
