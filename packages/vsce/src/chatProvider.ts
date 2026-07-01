@@ -193,6 +193,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             },
             onToolBlockUpdate: (params) => {
                 this.webviewManager.postMessage({ command: 'updateToolBlock', params }, viewType, windowId);
+            },
+            // Bang message callbacks - send full message list update
+            onBangMessageAdded: () => {
+                const session = this.getChatSession(viewType, windowId);
+                this.webviewManager.postMessage({ command: 'updateMessages', messages: session.messages }, viewType, windowId);
+            },
+            onBangMessageUpdated: () => {
+                const session = this.getChatSession(viewType, windowId);
+                this.webviewManager.postMessage({ command: 'updateMessages', messages: session.messages }, viewType, windowId);
             }
         });
     }
