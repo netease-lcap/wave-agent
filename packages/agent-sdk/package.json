@@ -34,7 +34,7 @@
     "type-check": "tsc --noEmit --incremental",
     "watch": "tsc -p tsconfig.build.json --watch & tsc-alias -p tsconfig.build.json --watch",
     "test": "vitest run --reporter=dot",
-    "test:coverage": "NODE_OPTIONS='--max-old-space-size=8192' vitest run --coverage --reporter=dot",
+    "test:coverage": "vitest run --coverage --reporter=dot",
     "lint": "eslint --cache",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run build"
