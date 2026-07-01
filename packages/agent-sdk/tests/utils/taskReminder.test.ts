@@ -143,6 +143,22 @@ describe("getTaskReminderTurnCounts", () => {
     // TaskUpdate is in the earliest message; 3 assistant turns after it
     expect(result.turnsSinceLastTaskManagement).toBe(3);
   });
+
+  it("TaskList and TaskGet do NOT reset the management counter", () => {
+    const messages: Message[] = [
+      makeAssistantMessage({
+        blocks: [{ type: "text", content: "ok" }, makeToolBlock("TaskList")],
+      }),
+      makeAssistantMessage({
+        blocks: [{ type: "text", content: "ok" }, makeToolBlock("TaskGet")],
+      }),
+      makeAssistantMessage(),
+    ];
+
+    const result = getTaskReminderTurnCounts(messages);
+    // TaskList and TaskGet are read-only; counter should count all 3 turns
+    expect(result.turnsSinceLastTaskManagement).toBe(3);
+  });
 });
 
 describe("buildTaskReminderText", () => {
@@ -155,6 +171,9 @@ describe("buildTaskReminderText", () => {
 
     const text = buildTaskReminderText(tasks);
     expect(text).toContain("<!-- task-reminder -->");
+    expect(text).toContain("task tools haven't been used recently");
+    expect(text).toContain("never mention this reminder to the user");
+    expect(text).toContain("Here are the existing tasks:");
     expect(text).toContain("#1 [pending] Fix auth bug");
     expect(text).toContain("#2 [in_progress] Add tests");
     expect(text).toContain("#3 [completed] Update docs");
@@ -163,8 +182,18 @@ describe("buildTaskReminderText", () => {
 
   it("handles empty task list", () => {
     const text = buildTaskReminderText([]);
-    expect(text).toContain("task list is currently empty");
     expect(text).toContain("<!-- task-reminder -->");
+    expect(text).toContain("task tools haven't been used recently");
+    expect(text).not.toContain("Here are the existing tasks:");
+    expect(text).not.toContain("currently empty");
+  });
+
+  it("empty task list reminder does not include task listing", () => {
+    const text = buildTaskReminderText([]);
+    expect(text).not.toContain("Here are the existing tasks");
+    expect(text).not.toContain("currently empty");
+    expect(text).toContain("<!-- task-reminder -->");
+    expect(text).toContain("task tools haven't been used recently");
   });
 });
 

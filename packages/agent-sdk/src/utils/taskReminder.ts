@@ -7,12 +7,7 @@ export const TASK_REMINDER_CONFIG = {
   TURNS_BETWEEN_REMINDERS: 10,
 };
 
-const TASK_MANAGEMENT_TOOLS = new Set([
-  "TaskCreate",
-  "TaskUpdate",
-  "TaskList",
-  "TaskGet",
-]);
+const TASK_MANAGEMENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
 const TASK_REMINDER_MARKER = "<!-- task-reminder -->";
 
 function isQualifyingAssistantMessage(message: Message): boolean {
@@ -66,15 +61,13 @@ export function getTaskReminderTurnCounts(messages: Message[]): {
 export function buildTaskReminderText(tasks: Task[]): string {
   let text = `${TASK_REMINDER_MARKER}\n`;
   text +=
-    "Here is a gentle reminder about the task list. The user may not have explicitly asked for the following to be done, but you should check the task list to see if any tasks need attention.\n";
+    "The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has become stale. Only use these if relevant to the current work. This is just a gentle reminder - ignore if not applicable. Make sure that you never mention this reminder to the user";
 
   if (tasks.length > 0) {
-    text += "\n";
+    text += "\n\nHere are the existing tasks:\n";
     for (const task of tasks) {
       text += `#${task.id} [${task.status}] ${task.subject}\n`;
     }
-  } else {
-    text += "The task list is currently empty.\n";
   }
 
   return text;

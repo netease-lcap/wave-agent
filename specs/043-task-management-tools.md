@@ -78,12 +78,33 @@
 
 ---
 
+### 用户故事 6 - 任务提醒注入（优先级：P3）
+
+作为系统，我必须定期提醒 agent 使用任务跟踪工具，以确保 agent 不会遗忘对任务进度的管理。
+
+**为什么是这个优先级**：任务提醒是辅助性功能，提升 agent 自主管理任务的意识，但不影响核心任务 CRUD 操作。
+
+**独立测试**：可以通过模拟连续 10 个 assistant turn 不使用 TaskCreate/TaskUpdate，然后验证下一次 API 调用中注入了提醒消息来进行测试。
+
+**验收场景**：
+
+1. **假设**会话处于活动状态且 TaskCreate/TaskUpdate 工具可用，**当**连续 10 个 assistant turn 未调用 TaskCreate 或 TaskUpdate，且距上次提醒也已过去至少 10 个 assistant turn 时，**则**系统在下一次 API 调用中注入一条 user 消息形式的任务提醒。
+2. **假设**提醒已注入，**当** agent 收到提醒时，**则**提醒内容指示 agent 不得向用户提及该提醒的存在。
+3. **假设**当前存在活动任务，**当**提醒触发时，**则**提醒消息末尾附加当前任务列表，格式为 `#id [status] subject`。
+4. **假设**当前任务列表为空，**当**提醒触发时，**则**提醒消息仍然注入，作为通用提醒，不包含任务列表。
+5. **假设** agent 调用了 TaskCreate 或 TaskUpdate，**当**工具执行完成后，**则** `turnsSinceLastTaskManagement` 计数器重置为 0。
+6. **假设** agent 调用了 TaskList 或 TaskGet（只读工具），**当**工具执行完成后，**则** `turnsSinceLastTaskManagement` 计数器**不**被重置。
+
+---
+
 ### 边界情况
 
 - **任务 ID 不存在时会发生什么？** TaskGet 和 TaskUpdate 应返回清晰的错误消息，指示任务未找到。
 - **系统如何处理无效的状态转换？** 系统应验证提供的状态是允许值之一。
 - **如果存储目录不可写会怎样？** 工具应优雅地处理文件系统错误。
 - **任务很多时会发生什么？** TaskList 组件使用终端自适应显示限制、优先级排序、折叠摘要和自动隐藏已完成任务来处理长任务列表。
+- **如果 TaskCreate/TaskUpdate 工具不可用会怎样？** 系统必须完全跳过任务提醒注入，不发送任何提醒消息。
+- **如果任务列表为空会怎样？** 提醒仍然触发，作为通用提醒鼓励 agent 使用任务跟踪，但不附加任务列表。
 
 ## 需求 *（必填）*
 
@@ -111,6 +132,15 @@
 - **FR-020**：TaskList 组件必须在所有活动任务完成后 5 秒自动隐藏，并在新非完成任务添加时重新出现。
 - **FR-021**：任务主题文本必须使用 `wrap="truncate-end"` 来优雅地处理长主题。
 - **FR-022**：组件必须通过 taskId → 完成时间戳的 ref map 跟踪最近完成的任务（30秒内），过期条目被修剪以触发重新渲染。
+- **FR-023**：系统必须在每个 assistant turn 后追踪自上次 TaskCreate 或 TaskUpdate 调用以来的 turn 数（`turnsSinceLastTaskManagement`）。
+- **FR-024**：系统必须在每个 assistant turn 后追踪自上次提醒注入以来的 turn 数（`turnsSinceLastReminder`）。
+- **FR-025**：当 `turnsSinceLastTaskManagement >= 10` **且** `turnsSinceLastReminder >= 10` 同时满足时，系统必须在 API 调用中注入一条 user 消息形式的任务提醒。
+- **FR-026**：只有 `TaskCreate` 和 `TaskUpdate` 工具调用必须重置 `turnsSinceLastTaskManagement` 计数器；只读工具（`TaskList`、`TaskGet`）不得重置该计数器。
+- **FR-027**：当任务列表非空时，提醒消息末尾必须附加当前任务列表，格式为 `#id [status] subject`（每个任务一行）。
+- **FR-028**：当任务列表为空时，提醒消息必须仍然注入，作为通用提醒鼓励 agent 使用任务跟踪功能，但不附加任务列表。
+- **FR-029**：提醒消息的文本必须明确指示 agent 不得向用户提及该提醒的存在。
+- **FR-030**：任务提醒不得持久化到会话历史中——它仅在每次 API 调用时动态生成并注入，不会保留在后续的消息上下文中。
+- **FR-031**：如果 TaskCreate 和 TaskUpdate 工具不在当前 agent 的可用工具集中，系统必须完全跳过任务提醒逻辑，不注入任何提醒消息。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 
