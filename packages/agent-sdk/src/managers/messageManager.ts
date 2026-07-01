@@ -224,19 +224,6 @@ export class MessageManager {
   }
 
   /**
-   * Get combined memory content (project memory + user memory + modular rules)
-   * Kept for backward compatibility — composes from getStableMemory + getActiveRulesContent
-   */
-  public async getCombinedMemory(): Promise<string> {
-    let combined = await this.getStableMemory();
-    const rulesContent = this.getActiveRulesContent();
-    if (rulesContent) {
-      combined += "\n\n" + rulesContent;
-    }
-    return combined;
-  }
-
-  /**
    * Compute the transcript path using cached encoded workdir
    * Called during construction and when sessionId changes
    */

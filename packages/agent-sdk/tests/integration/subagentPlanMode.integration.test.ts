@@ -91,7 +91,6 @@ describe("Subagent Plan Mode Integration", () => {
       saveSession: vi.fn().mockResolvedValue(undefined),
       getMessages: vi.fn().mockImplementation(() => [...mockMessages]),
       getSessionId: vi.fn().mockReturnValue("test-session"),
-      getCombinedMemory: vi.fn().mockResolvedValue(""),
       getStableMemory: vi.fn().mockResolvedValue(""),
       getActiveRulesContent: vi.fn().mockReturnValue(""),
       addUserMessage: vi.fn().mockImplementation((msg) => {

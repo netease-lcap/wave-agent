@@ -315,11 +315,6 @@ export class Agent {
     return memoryService?.cachedUserMemory ?? "";
   }
 
-  /** Get combined memory content (project + user + modular rules) */
-  public async getCombinedMemory(): Promise<string> {
-    return this.messageManager.getCombinedMemory();
-  }
-
   /** Get AI loading status */
   public get isLoading(): boolean {
     return this.aiManager.isLoading;

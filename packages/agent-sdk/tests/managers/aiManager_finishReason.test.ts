@@ -57,7 +57,6 @@ describe("AIManager finish reason", () => {
       mergeAssistantAdditionalFields: vi.fn(),
       setMessages: vi.fn(),
       getLatestTotalTokens: vi.fn().mockReturnValue(0),
-      getCombinedMemory: vi.fn().mockResolvedValue(""),
       getStableMemory: vi.fn().mockResolvedValue(""),
       getActiveRulesContent: vi.fn().mockReturnValue(""),
       addErrorBlock: vi.fn(),
