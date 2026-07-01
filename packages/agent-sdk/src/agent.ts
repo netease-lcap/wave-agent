@@ -315,11 +315,6 @@ export class Agent {
     return memoryService?.cachedUserMemory ?? "";
   }
 
-  /** Get combined memory content (project + user + modular rules) */
-  public async getCombinedMemory(): Promise<string> {
-    return this.messageManager.getCombinedMemory();
-  }
-
   /** Get AI loading status */
   public get isLoading(): boolean {
     return this.aiManager.isLoading;
@@ -714,6 +709,7 @@ export class Agent {
         "MemoryService",
       );
     memoryService?.clearCache();
+    this.messageManager.clearMemoryCache();
     await this.taskManager.syncWithSession();
 
     // Run SessionStart hooks (restore context for new session)

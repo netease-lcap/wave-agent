@@ -103,6 +103,8 @@ export class MessageManager {
   private filesInContext: Set<string> = new Set(); // Track files mentioned in the conversation
   private recentFileReads: Map<string, { content: string; timestamp: number }> =
     new Map(); // Track file read contents
+  private _cachedStableMemory: string | null = null;
+  private _lastInjectedRulesKey: string = "";
   private invokedSkills: Map<string, { skillName: string; timestamp: number }> =
     new Map(); // Track invoked skill names
   private sessionType: "main" | "subagent";
@@ -187,23 +189,38 @@ export class MessageManager {
   }
 
   /**
-   * Get combined memory content (project memory + user memory + modular rules)
+   * Get stable memory content (project memory + user memory, cached across turns)
    */
-  public async getCombinedMemory(): Promise<string> {
-    let combined = await this.memoryService.getCombinedMemoryContent(
-      this.workdir,
-    );
+  public async getStableMemory(): Promise<string> {
+    if (this._cachedStableMemory !== null) return this._cachedStableMemory;
+    this._cachedStableMemory =
+      await this.memoryService.getCombinedMemoryContent(this.workdir);
+    return this._cachedStableMemory;
+  }
 
-    if (this.memoryRuleManager) {
-      const filesInContext = this.getFilesInContext();
-      const activeRules = this.memoryRuleManager.getActiveRules(filesInContext);
-      if (activeRules.length > 0) {
-        combined += "\n\n";
-        combined += activeRules.map((r) => r.content).join("\n\n");
-      }
-    }
+  /**
+   * Get active rules content with dedup — returns empty string if rules haven't changed
+   */
+  public getActiveRulesContent(): string {
+    if (!this.memoryRuleManager) return "";
+    const filesInContext = this.getFilesInContext();
+    const activeRules = this.memoryRuleManager.getActiveRules(filesInContext);
+    const key = activeRules
+      .map((r) => r.id)
+      .sort()
+      .join(",");
+    if (key === this._lastInjectedRulesKey) return "";
+    this._lastInjectedRulesKey = key;
+    if (activeRules.length === 0) return "";
+    return activeRules.map((r) => r.content).join("\n\n");
+  }
 
-    return combined;
+  /**
+   * Clear memory caches (called after compaction or /clear)
+   */
+  public clearMemoryCache(): void {
+    this._cachedStableMemory = null;
+    this._lastInjectedRulesKey = "";
   }
 
   /**

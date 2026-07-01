@@ -106,6 +106,7 @@ describe("AIManager - compactConversation", () => {
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.json"),
       saveSession: vi.fn().mockResolvedValue(undefined),
       compactMessagesAndUpdateSession: vi.fn(),
+      clearMemoryCache: vi.fn(),
       addErrorBlock: vi.fn(),
       addUserMessage: vi.fn(),
       getRecentFileReads: vi.fn().mockReturnValue([]),
@@ -150,6 +151,7 @@ describe("AIManager - compactConversation", () => {
       getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
       ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
       getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      clearCache: vi.fn(),
     });
     container.register("TaskManager", { syncWithSession: vi.fn() });
     container.register("MergedEnv", { PATH: "/usr/bin" });

@@ -124,32 +124,6 @@ describe("MessageManager Coverage Improvements", () => {
     // Should not throw
   });
 
-  it("should handle getCombinedMemory with memoryRuleManager", async () => {
-    const mockMemoryRuleManager = {
-      getActiveRules: vi
-        .fn()
-        .mockReturnValue([{ id: "rule1", content: "rule content" }]),
-    };
-
-    const testContainer = new Container();
-    testContainer.register(
-      "MemoryRuleManager",
-      mockMemoryRuleManager as unknown as Record<string, unknown>,
-    );
-    testContainer.register("MemoryService", {
-      getCombinedMemoryContent: vi.fn().mockResolvedValue("base memory"),
-    } as unknown as Record<string, unknown>);
-
-    const mm = new MessageManager(testContainer, {
-      callbacks: {},
-      workdir,
-    });
-
-    const content = await mm.getCombinedMemory();
-    expect(content).toContain("base memory");
-    expect(content).toContain("rule content");
-  });
-
   it("should handle mergeAssistantAdditionalFields", () => {
     messageManager.addAssistantMessage("hello");
     messageManager.mergeAssistantAdditionalFields({
