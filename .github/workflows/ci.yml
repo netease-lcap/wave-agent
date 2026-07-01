@@ -3,40 +3,52 @@ name: CI
 on:
   pull_request:
     branches: [ main, develop ]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'specs/**'
-      - 'scripts/**'
-      - 'LICENSE'
   workflow_dispatch:
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         node-version: [22]
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Detect code changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!**/*.txt'
+              - '!specs/**'
+              - '!docs/**'
+              - '!scripts/**'
+              - '!LICENSE'
+
       - name: Setup pnpm
+        if: steps.filter.outputs.code == 'true'
         uses: pnpm/action-setup@v5
 
       - name: Setup Node.js
+        if: steps.filter.outputs.code == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: steps.filter.outputs.code == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build
+        if: steps.filter.outputs.code == 'true'
         run: pnpm build
-      
+
       - name: CI
+        if: steps.filter.outputs.code == 'true'
         run: pnpm run ci
