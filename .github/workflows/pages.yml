@@ -48,6 +48,9 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm -F wave-vsce exec playwright install chromium
 
+      - name: Build agent-sdk
+        run: pnpm -F wave-agent-sdk build
+
       - name: Generate screenshots
         run: pnpm -F wave-vsce run test:demo
 
