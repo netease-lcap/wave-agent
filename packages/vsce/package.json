@@ -102,7 +102,7 @@
     "watch:frontend": "node esbuild.config.mjs frontend --watch",
     "esbuild:prod": "node esbuild.config.mjs --production",
     "package": "node scripts/package.mjs",
-    "type-check": "tsc --noEmit && tsc -p webview --noEmit",
+    "type-check": "tsc --noEmit && tsc -p webview --noEmit && tsc -p tests --noEmit",
     "pretest": "pnpm run type-check",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

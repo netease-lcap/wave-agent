@@ -35,7 +35,7 @@ global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 /**
  * Create a mock VS Code API object
  */
-export function createMockVscode(): VsCodeApi {
+export function createMockVscode() {
     return {
         postMessage: vi.fn(),
         getState: vi.fn().mockReturnValue(null),
@@ -47,7 +47,7 @@ export function createMockVscode(): VsCodeApi {
  * Render the ChatApp with a mock VS Code API
  */
 export function renderChatApp(vscode?: VsCodeApi) {
-    const mockVscode = vscode || createMockVscode();
+    const mockVscode = (vscode || createMockVscode()) as ReturnType<typeof createMockVscode>;
     const result = render(<ChatApp vscode={mockVscode} />);
     const user = userEvent.setup();
     return { ...result, vscode: mockVscode, user };

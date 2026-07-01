@@ -36,7 +36,7 @@ describe('Tool Display Visual Test', () => {
         );
         // Remove compactParams to test fallback
         if (bashToolMessage.blocks && bashToolMessage.blocks.length > 1) {
-            const toolBlock = bashToolMessage.blocks[1] as Record<string, unknown>;
+            const toolBlock = bashToolMessage.blocks[1] as unknown as Record<string, unknown>;
             delete toolBlock.compactParams;
         }
         messages.push(bashToolMessage);
@@ -124,7 +124,7 @@ describe('Tool Display Visual Test', () => {
         // Override the tool block to set stage="streaming" and remove compactParams
         const toolMsg = messages[1];
         if (toolMsg.blocks && toolMsg.blocks.length > 1) {
-            const toolBlock = toolMsg.blocks[1] as Record<string, unknown>;
+            const toolBlock = toolMsg.blocks[1] as unknown as Record<string, unknown>;
             toolBlock.stage = 'streaming';
             delete toolBlock.compactParams;
         }
