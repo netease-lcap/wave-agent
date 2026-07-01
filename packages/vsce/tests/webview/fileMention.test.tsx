@@ -1,11 +1,11 @@
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, waitFor, act, sendCommand, fireInput } from './test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /**
  * Helper: type text into the contenteditable message input and set up
  * a selection at the end so that selection-change detection works.
  */
-function typeInInput(text: string) {
+async function typeInInput(text: string) {
   const input = screen.getByTestId('message-input');
   input.focus();
   input.textContent = text;
@@ -20,7 +20,7 @@ function typeInInput(text: string) {
     selection.addRange(range);
   }
 
-  fireEvent.input(input);
+  await fireInput(input);
 }
 
 /**
@@ -47,9 +47,7 @@ describe('File Mention Feature (@)', () => {
     const { vscode } = renderChatApp();
 
     // Type @ symbol to trigger file suggestions
-    act(() => {
-      typeInInput('@');
-    });
+    await typeInInput('@');
 
     // Wait for the debounced requestFileSuggestions request
     const reqId = await waitForFileSuggestionRequest(vscode);
@@ -109,9 +107,7 @@ describe('File Mention Feature (@)', () => {
     const { vscode } = renderChatApp();
 
     // Type @src to filter
-    act(() => {
-      typeInInput('@src');
-    });
+    await typeInInput('@src');
 
     // Wait for the debounced requestFileSuggestions request
     const reqId = await waitForFileSuggestionRequest(vscode);

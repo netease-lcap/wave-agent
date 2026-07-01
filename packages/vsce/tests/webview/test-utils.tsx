@@ -75,14 +75,32 @@ export function sendCommand(command: string, data?: Record<string, unknown>) {
  * not implement the innerText getter/setter. We define it on the element, set textContent, then
  * fire the input event so the React handler picks up the value.
  */
-export function setInputText(element: HTMLElement, text: string) {
+export async function setInputText(element: HTMLElement, text: string) {
     Object.defineProperty(element, 'innerText', {
         value: text,
         configurable: true,
         writable: true,
     });
     element.textContent = text;
-    fireEvent.input(element, { data: text, inputType: 'insertText' });
+    await act(async () => {
+        fireEvent.input(element, { data: text, inputType: 'insertText' });
+    });
+}
+
+/**
+ * Fire an input event wrapped in act() to prevent React state update warnings.
+ * If fake timers are enabled, also advances them to flush debounced state updates.
+ */
+export async function fireInput(element: HTMLElement, options?: { data?: string; inputType?: string }) {
+    await act(async () => {
+        fireEvent.input(element, options);
+        // Try to advance timers if fake timers are enabled (flushes 100ms debounce in handleSelectionChange)
+        try {
+            await vi.advanceTimersByTimeAsync(150);
+        } catch {
+            // Fake timers not enabled, skip
+        }
+    });
 }
 
 // Re-export commonly used testing utilities

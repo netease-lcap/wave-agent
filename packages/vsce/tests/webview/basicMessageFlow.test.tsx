@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, sendCommand } from './test-utils';
+import { renderChatApp, screen, waitFor, fireEvent, sendCommand, fireInput } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
 
 /**
  * Helper: set contenteditable text and fire input event
  */
-function typeMessage(text: string) {
+async function typeMessage(text: string) {
     const input = screen.getByTestId('message-input');
     input.textContent = text;
-    fireEvent.input(input, { inputType: 'insertText' });
+    await fireInput(input, { inputType: 'insertText' });
 }
 
 /**
@@ -35,7 +35,7 @@ describe('Basic Message Flow', () => {
         vscode.postMessage.mockClear();
 
         // Type and send a message
-        typeMessage('Hello, can you help me?');
+        await typeMessage('Hello, can you help me?');
         fireEvent.click(screen.getByTestId('send-btn'));
 
         // Verify message was sent to extension
@@ -101,7 +101,7 @@ describe('Basic Message Flow', () => {
         const { vscode } = renderChatApp();
 
         // Send initial message
-        typeMessage('First message');
+        await typeMessage('First message');
         fireEvent.click(screen.getByTestId('send-btn'));
 
         // Simulate response
@@ -123,7 +123,7 @@ describe('Basic Message Flow', () => {
 
         // Send another message
         vscode.postMessage.mockClear();
-        typeMessage('Second message');
+        await typeMessage('Second message');
         fireEvent.click(screen.getByTestId('send-btn'));
 
         // Verify second message was sent

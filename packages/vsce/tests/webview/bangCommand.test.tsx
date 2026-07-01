@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, act } from './test-utils';
+import { renderChatApp, screen, waitFor, fireEvent, act, fireInput } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
 
 /**
  * Helper: set contenteditable text and fire input event
  */
-function typeInInput(text: string) {
+async function typeInInput(text: string) {
     const input = screen.getByTestId('message-input');
     input.textContent = text;
-    fireEvent.input(input, { inputType: 'insertText' });
+    await fireInput(input, { inputType: 'insertText' });
 }
 
 describe('Bang Command', () => {
@@ -17,7 +17,7 @@ describe('Bang Command', () => {
         (vscode.postMessage as ReturnType<typeof vi.fn>).mockClear();
 
         // Type and send a bang command
-        typeInInput('!ls -la');
+        await typeInInput('!ls -la');
         await act(async () => {
             fireEvent.click(screen.getByTestId('send-btn'));
         });

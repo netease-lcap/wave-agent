@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput } from './test-utils';
 
-function typeAndSend(text: string) {
+async function typeAndSend(text: string) {
     const input = screen.getByTestId('message-input');
     input.textContent = text;
-    fireEvent.input(input);
+    await fireInput(input);
     fireEvent.keyDown(input, { key: 'Enter' });
 }
 
@@ -28,7 +28,7 @@ describe('Model, Status, and Login Commands', () => {
             });
 
             await act(async () => {
-                typeAndSend('/model');
+                await typeAndSend('/model');
             });
 
             expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();
@@ -40,7 +40,7 @@ describe('Model, Status, and Login Commands', () => {
 
             vscode.postMessage.mockClear();
             await act(async () => {
-                typeAndSend('/model');
+                await typeAndSend('/model');
             });
 
             expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'getConfiguration' });
@@ -53,7 +53,7 @@ describe('Model, Status, and Login Commands', () => {
             renderChatApp();
 
             await act(async () => {
-                typeAndSend('/status');
+                await typeAndSend('/status');
             });
 
             // Wait for dialog to appear
@@ -81,7 +81,7 @@ describe('Model, Status, and Login Commands', () => {
             renderChatApp();
 
             await act(async () => {
-                typeAndSend('/status');
+                await typeAndSend('/status');
             });
 
             await waitFor(() => {
@@ -104,7 +104,7 @@ describe('Model, Status, and Login Commands', () => {
             renderChatApp();
 
             await act(async () => {
-                typeAndSend('/login');
+                await typeAndSend('/login');
             });
 
             await waitFor(() => {
@@ -117,7 +117,7 @@ describe('Model, Status, and Login Commands', () => {
             const { vscode } = renderChatApp();
 
             await act(async () => {
-                typeAndSend('/login');
+                await typeAndSend('/login');
             });
 
             await waitFor(() => {
@@ -163,7 +163,7 @@ describe('Model, Status, and Login Commands', () => {
             });
 
             await act(async () => {
-                typeAndSend('/config');
+                await typeAndSend('/config');
             });
 
             await waitFor(() => {
@@ -187,7 +187,7 @@ describe('Model, Status, and Login Commands', () => {
             });
 
             await act(async () => {
-                typeAndSend('/config');
+                await typeAndSend('/config');
             });
 
             await waitFor(() => {

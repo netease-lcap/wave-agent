@@ -140,7 +140,7 @@ describe('Error Message Display', () => {
         vscode.postMessage.mockClear();
 
         const input = screen.getByTestId('message-input');
-        setInputText(input, 'Can you try again?');
+        await setInputText(input, 'Can you try again?');
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('send-btn'));

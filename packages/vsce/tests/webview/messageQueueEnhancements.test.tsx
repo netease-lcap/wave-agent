@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { renderChatApp, screen, fireEvent, sendCommand } from './test-utils';
+import { renderChatApp, screen, fireEvent, sendCommand, fireInput } from './test-utils';
 
 /**
  * Helper: set contenteditable text and fire input event
  */
-function typeMessage(text: string) {
+async function typeMessage(text: string) {
     const input = screen.getByTestId('message-input');
     input.textContent = text;
-    fireEvent.input(input, { inputType: 'insertText' });
+    await fireInput(input, { inputType: 'insertText' });
 }
 
 /**
@@ -110,7 +110,7 @@ describe('Message Queue Features', () => {
         expect(queuePanel).toHaveTextContent('Queued 1');
     });
 
-    it('new message should prioritize over queue when not streaming', () => {
+    it('new message should prioritize over queue when not streaming', async () => {
         const { vscode } = renderChatApp();
 
         // 1. Have a queue but NOT streaming
@@ -118,7 +118,7 @@ describe('Message Queue Features', () => {
 
         // 2. Send a new message
         vscode.postMessage.mockClear();
-        typeMessage('New Message');
+        await typeMessage('New Message');
         clickSend();
 
         // 3. Verify 'New Message' is sent (backend handles priority)

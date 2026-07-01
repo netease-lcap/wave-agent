@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderChatApp, screen, fireEvent, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, fireEvent, act, sendCommand, fireInput } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
 
 describe('Clear Chat Functionality', () => {
@@ -54,7 +54,7 @@ describe('Clear Chat Functionality', () => {
         );
     });
 
-    it('should reset input state after clearing', () => {
+    it('should reset input state after clearing', async () => {
         renderChatApp();
 
         act(() => {
@@ -70,8 +70,8 @@ describe('Clear Chat Functionality', () => {
         const input = screen.getByTestId('message-input');
         act(() => {
             input.textContent = 'This text should be preserved';
-            fireEvent.input(input, { data: input.textContent, inputType: 'insertText' });
         });
+        await fireInput(input, { data: input.textContent, inputType: 'insertText' });
 
         // Clear chat
         act(() => {
@@ -176,7 +176,7 @@ describe('Clear Chat Functionality', () => {
         expect(screen.getByTestId('messages-container')).not.toHaveTextContent('Something went wrong');
     });
 
-    it('should allow new conversation after clearing', () => {
+    it('should allow new conversation after clearing', async () => {
         const { vscode } = renderChatApp();
 
         // Have a conversation
@@ -205,8 +205,8 @@ describe('Clear Chat Functionality', () => {
         const input = screen.getByTestId('message-input');
         act(() => {
             input.textContent = 'New conversation after clear';
-            fireEvent.input(input, { data: input.textContent, inputType: 'insertText' });
         });
+        await fireInput(input, { data: input.textContent, inputType: 'insertText' });
 
         const sendBtn = screen.getByTestId('send-btn');
         act(() => {

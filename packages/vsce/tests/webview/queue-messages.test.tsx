@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { renderChatApp, screen, fireEvent, sendCommand } from './test-utils';
+import { renderChatApp, screen, fireEvent, sendCommand, fireInput } from './test-utils';
 
 /**
  * Helper: set contenteditable text and fire input event
  */
-function typeMessage(text: string) {
+async function typeMessage(text: string) {
     const input = screen.getByTestId('message-input');
     input.textContent = text;
-    fireEvent.input(input, { inputType: 'insertText' });
+    await fireInput(input, { inputType: 'insertText' });
 }
 
 describe('Message Queuing', () => {
@@ -15,7 +15,7 @@ describe('Message Queuing', () => {
         vi.clearAllMocks();
     });
 
-    it('should queue messages when streaming and process them after streaming ends', () => {
+    it('should queue messages when streaming and process them after streaming ends', async () => {
         const { vscode } = renderChatApp();
 
         const input = screen.getByTestId('message-input');
@@ -31,7 +31,7 @@ describe('Message Queuing', () => {
         expect(icon?.className).toMatch(/codicon-list-ordered/);
 
         // 3. Type and send a message while streaming
-        typeMessage('Queued message 1');
+        await typeMessage('Queued message 1');
         fireEvent.click(sendBtn);
 
         // 4. Verify sendMessage was called (it should be called even when streaming,

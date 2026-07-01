@@ -1,4 +1,4 @@
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput } from './test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /**
@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
  * a selection inside a text node at the end so that selection-change
  * detection works.
  */
-function typeInInput(text: string) {
+async function typeInInput(text: string) {
   const input = screen.getByTestId('message-input');
   input.focus();
   const existing = input.textContent || '';
@@ -27,7 +27,7 @@ function typeInInput(text: string) {
   sel?.removeAllRanges();
   sel?.addRange(range);
 
-  fireEvent.input(input, { inputType: 'insertText' });
+  await fireInput(input, { inputType: 'insertText' });
 }
 
 /**
@@ -63,9 +63,7 @@ describe('File Mention Tag Insertion', () => {
     const { vscode } = renderChatApp();
 
     // Type @ to trigger suggestions
-    act(() => {
-      typeInInput('@');
-    });
+    await typeInInput('@');
 
     const reqId1 = await waitForFileSuggestionRequest(vscode);
 
@@ -87,9 +85,7 @@ describe('File Mention Tag Insertion', () => {
     });
 
     // Type filter text (append to existing '@')
-    act(() => {
-      typeInInput('Mess');
-    });
+    await typeInInput('Mess');
 
     const reqId2 = await waitForFileSuggestionRequest(vscode);
     sendSuggestionsResponse(reqId2, [fileSuggestion], 'Mess');
@@ -125,16 +121,12 @@ describe('File Mention Tag Insertion', () => {
   it('should insert an image tag and send preview message on click', async () => {
     const { vscode } = renderChatApp();
 
-    act(() => {
-      typeInInput('@');
-    });
+    await typeInInput('@');
 
     await waitForFileSuggestionRequest(vscode);
 
     // Type img to filter
-    act(() => {
-      typeInInput('@img');
-    });
+    await typeInInput('@img');
 
     const reqId2 = await waitForFileSuggestionRequest(vscode);
 

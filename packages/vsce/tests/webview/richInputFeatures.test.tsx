@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderChatApp, screen, fireEvent, act } from './test-utils';
+import { renderChatApp, screen, fireEvent, act, fireInput } from './test-utils';
 
 /**
  * Helper: append text to contenteditable input without destroying existing child nodes.
  * Sets selection inside the new text node so handlers that check nodeType work.
  */
-function typeInInput(text: string) {
+async function typeInInput(text: string) {
     const input = screen.getByTestId('message-input');
     const textNode = document.createTextNode(text);
     input.appendChild(textNode);
@@ -18,7 +18,7 @@ function typeInInput(text: string) {
     sel?.removeAllRanges();
     sel?.addRange(range);
 
-    fireEvent.input(input, { inputType: 'insertText' });
+    await fireInput(input, { inputType: 'insertText' });
 }
 
 describe('Rich Input Features', () => {
@@ -39,13 +39,15 @@ describe('Rich Input Features', () => {
         input.focus();
 
         // 1. Type some text
-        typeInInput('Check these files: ');
+        await typeInInput('Check these files: ');
 
         // 2. Insert first file tag
-        typeInInput('@file1');
+        await typeInInput('@file1');
 
-        // Advance fake time past the debounce
-        await vi.advanceTimersByTimeAsync(500);
+        // Advance fake time past the debounce (wrapped in act to flush state updates)
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(500);
+        });
 
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ command: 'requestFileSuggestions' })
@@ -81,13 +83,15 @@ describe('Rich Input Features', () => {
         });
 
         // 3. Type more text
-        typeInInput('and also ');
+        await typeInInput('and also ');
 
         // 4. Insert second file tag
         (vscode.postMessage as ReturnType<typeof vi.fn>).mockClear();
-        typeInInput('@file2');
+        await typeInInput('@file2');
 
-        await vi.advanceTimersByTimeAsync(500);
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(500);
+        });
 
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ command: 'requestFileSuggestions' })
@@ -168,7 +172,7 @@ describe('Rich Input Features', () => {
         // 3. Type and send
         const input = screen.getByTestId('message-input');
         input.focus();
-        typeInInput('Check this: ');
+        await typeInInput('Check this: ');
 
         (vscode.postMessage as ReturnType<typeof vi.fn>).mockClear();
         await act(async () => {
