@@ -34,6 +34,7 @@ function isAutobackgroundingAllowed(command: string): boolean {
  */
 export const bashTool: ToolPlugin = {
   name: BASH_TOOL_NAME,
+  isConcurrencySafe: false,
   config: {
     type: "function",
     function: {
