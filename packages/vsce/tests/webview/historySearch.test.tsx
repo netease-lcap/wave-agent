@@ -84,8 +84,10 @@ describe('History Search Feature', () => {
             fireEvent.change(searchInput, { target: { value: 'test' } });
         });
 
-        // Advance fake time past the 300ms debounce
-        await vi.advanceTimersByTimeAsync(400);
+        // Advance fake time past the 300ms debounce (wrapped in act to flush state updates)
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(400);
+        });
 
         // 3. Verify searchHistory command was sent to extension
         expect(vscode.postMessage).toHaveBeenCalledWith(

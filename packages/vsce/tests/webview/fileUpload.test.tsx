@@ -1,11 +1,11 @@
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, waitFor, act, sendCommand, fireInput } from './test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /**
  * Helper: type text into the contenteditable message input and set up
  * a selection inside a text node at the end.
  */
-function typeInInput(text: string) {
+async function typeInInput(text: string) {
   const input = screen.getByTestId('message-input');
   input.focus();
   const existing = input.textContent || '';
@@ -26,7 +26,7 @@ function typeInInput(text: string) {
   sel?.removeAllRanges();
   sel?.addRange(range);
 
-  fireEvent.input(input, { inputType: 'insertText' });
+  await fireInput(input, { inputType: 'insertText' });
 }
 
 /**
@@ -52,9 +52,7 @@ describe('File Upload Feature', () => {
   it('should show upload option when typing @ without filter text', async () => {
     const { vscode } = renderChatApp();
 
-    act(() => {
-      typeInInput('@');
-    });
+    await typeInInput('@');
 
     const reqId1 = await waitForFileSuggestionRequest(vscode);
 
@@ -99,9 +97,7 @@ describe('File Upload Feature', () => {
   it('should hide upload option when typing @ with filter text', async () => {
     const { vscode } = renderChatApp();
 
-    act(() => {
-      typeInInput('@test');
-    });
+    await typeInInput('@test');
 
     const reqId = await waitForFileSuggestionRequest(vscode);
 
@@ -143,9 +139,7 @@ describe('File Upload Feature', () => {
   it('should handle upload option selection', async () => {
     const { vscode } = renderChatApp();
 
-    act(() => {
-      typeInInput('@');
-    });
+    await typeInInput('@');
 
     const reqId = await waitForFileSuggestionRequest(vscode);
 
@@ -173,9 +167,7 @@ describe('File Upload Feature', () => {
   it('should insert file paths into input after successful upload', async () => {
     const { vscode } = renderChatApp();
 
-    act(() => {
-      typeInInput('@');
-    });
+    await typeInInput('@');
 
     await waitForFileSuggestionRequest(vscode);
 
@@ -205,9 +197,7 @@ describe('File Upload Feature', () => {
   it('should handle single file upload path insertion', async () => {
     const { vscode } = renderChatApp();
 
-    act(() => {
-      typeInInput('@');
-    });
+    await typeInInput('@');
 
     await waitForFileSuggestionRequest(vscode);
 
@@ -235,9 +225,7 @@ describe('File Upload Feature', () => {
   it('should insert file path correctly in basic scenario', async () => {
     const { vscode } = renderChatApp();
 
-    act(() => {
-      typeInInput('@');
-    });
+    await typeInInput('@');
 
     await waitForFileSuggestionRequest(vscode);
 
@@ -265,9 +253,7 @@ describe('File Upload Feature', () => {
   it('should not add extra @ symbol when inserting file paths', async () => {
     const { vscode } = renderChatApp();
 
-    act(() => {
-      typeInInput('@test');
-    });
+    await typeInInput('@test');
 
     await waitForFileSuggestionRequest(vscode);
 

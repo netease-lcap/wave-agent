@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput } from './test-utils';
 
-function typeAndSend(text: string) {
+async function typeAndSend(text: string) {
     const input = screen.getByTestId('message-input');
     input.textContent = text;
-    fireEvent.input(input);
+    await fireInput(input);
     fireEvent.keyDown(input, { key: 'Enter' });
 }
 
@@ -29,7 +29,7 @@ describe('Model Dialog', () => {
         });
 
         await act(async () => {
-            typeAndSend('/model');
+            await typeAndSend('/model');
         });
 
         // Dialog should be visible
@@ -67,7 +67,7 @@ describe('Model Dialog', () => {
         });
 
         await act(async () => {
-            typeAndSend('/model');
+            await typeAndSend('/model');
         });
 
         const modelSelect = document.querySelector('#model-select') as HTMLSelectElement;
@@ -104,7 +104,7 @@ describe('Model Dialog', () => {
         });
 
         await act(async () => {
-            typeAndSend('/model');
+            await typeAndSend('/model');
         });
 
         // Change model selection
@@ -149,7 +149,7 @@ describe('Model Dialog', () => {
         });
 
         await act(async () => {
-            typeAndSend('/model');
+            await typeAndSend('/model');
         });
 
         expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();

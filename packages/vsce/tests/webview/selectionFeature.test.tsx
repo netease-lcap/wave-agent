@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, act } from './test-utils';
+import { renderChatApp, screen, waitFor, fireEvent, act, fireInput } from './test-utils';
 import type { Message, TextBlock } from 'wave-agent-sdk';
 
 /**
  * Helper: append text to contenteditable input without destroying existing child nodes.
  * Sets selection inside the new text node so handlers that check nodeType work.
  */
-function typeInInput(text: string) {
+async function typeInInput(text: string) {
     const input = screen.getByTestId('message-input');
     const textNode = document.createTextNode(text);
     input.appendChild(textNode);
@@ -19,7 +19,7 @@ function typeInInput(text: string) {
     sel?.removeAllRanges();
     sel?.addRange(range);
 
-    fireEvent.input(input, { inputType: 'insertText' });
+    await fireInput(input, { inputType: 'insertText' });
 }
 
 describe('Selection Feature (Inline Tags)', () => {
@@ -57,7 +57,7 @@ describe('Selection Feature (Inline Tags)', () => {
         expect(oldSelectionTag).not.toBeInTheDocument();
 
         // 3. Type some text and send
-        typeInInput('Check this code: ');
+        await typeInInput('Check this code: ');
 
         (vscode.postMessage as ReturnType<typeof vi.fn>).mockClear();
         await act(async () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './test-utils';
 
-function typeInInput(text: string) {
+async function typeInInput(text: string) {
     const input = screen.getByTestId('message-input');
     const existing = input.textContent || '';
     const fullText = existing + text;
@@ -21,7 +21,11 @@ function typeInInput(text: string) {
     sel?.removeAllRanges();
     sel?.addRange(range);
 
-    fireEvent.input(input, { data: text, inputType: 'insertText' });
+    await act(async () => {
+        fireEvent.input(input, { data: text, inputType: 'insertText' });
+        // Advance timers to flush debounced state updates (handleSelectionChange has 100ms debounce)
+        await vi.advanceTimersByTimeAsync(150);
+    });
 }
 
 describe('Slash Commands Edge Cases', () => {
@@ -64,7 +68,9 @@ describe('Slash Commands Edge Cases', () => {
         sel?.removeAllRanges();
         sel?.addRange(range);
 
-        fireEvent.input(el, { data: '/speckit ', inputType: 'insertText' });
+        await act(async () => {
+            fireEvent.input(el, { data: '/speckit ', inputType: 'insertText' });
+        });
 
         // Verify the raw contenteditable has a regular space (no nbsp)
         const rawContent = input.textContent || '';
@@ -96,10 +102,12 @@ describe('Slash Commands Edge Cases', () => {
         input.focus();
 
         // 1. Type "word/" (no space before /, so should NOT trigger popup)
-        typeInInput('word/');
+        await typeInInput('word/');
 
-        // Advance fake time past debounce
-        await vi.advanceTimersByTimeAsync(300);
+        // Advance fake time past debounce (wrapped in act to flush state updates)
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(300);
+        });
 
         // 2. Verify popup is NOT visible
         expect(screen.queryByTestId('slash-commands-popup')).not.toBeInTheDocument();
@@ -111,10 +119,12 @@ describe('Slash Commands Edge Cases', () => {
         expect(hadRequest).toBe(false);
 
         // 3. Type a space and then '/'
-        typeInInput(' /');
+        await typeInInput(' /');
 
-        // Advance fake time past debounce
-        await vi.advanceTimersByTimeAsync(300);
+        // Advance fake time past debounce (wrapped in act to flush state updates)
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(300);
+        });
 
         // 4. Simulate response
         sendCommand('slashCommandsResponse', {
@@ -135,7 +145,7 @@ describe('Slash Commands Edge Cases', () => {
         const input = screen.getByTestId('message-input');
         input.focus();
 
-        typeInInput('/');
+        await typeInInput('/');
 
         await waitFor(() => {
             expect(vscode.postMessage).toHaveBeenCalledWith(
@@ -186,7 +196,7 @@ describe('Slash Commands Edge Cases', () => {
         const input = screen.getByTestId('message-input');
         input.focus();
 
-        typeInInput('/');
+        await typeInInput('/');
 
         await waitFor(() => {
             expect(vscode.postMessage).toHaveBeenCalledWith(
@@ -223,7 +233,7 @@ describe('Slash Commands Edge Cases', () => {
         input.focus();
 
         // First command
-        typeInInput('/');
+        await typeInInput('/');
 
         await waitFor(() => {
             expect(vscode.postMessage).toHaveBeenCalledWith(
@@ -262,7 +272,9 @@ describe('Slash Commands Edge Cases', () => {
         sel?.removeAllRanges();
         sel?.addRange(range);
 
-        fireEvent.input(input, { data: '/', inputType: 'insertText' });
+        await act(async () => {
+            fireEvent.input(input, { data: '/', inputType: 'insertText' });
+        });
 
         await waitFor(() => {
             expect(vscode.postMessage).toHaveBeenCalledWith(

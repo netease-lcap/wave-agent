@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
 
 describe('Webview Ready Streaming State Restoration', () => {
@@ -10,7 +10,7 @@ describe('Webview Ready Streaming State Restoration', () => {
         // Send initial message to establish conversation
         const input = screen.getByTestId('message-input');
         input.textContent = 'Hello';
-        fireEvent.input(input, { data: 'Hello', inputType: 'insertText' });
+        await fireInput(input, { data: 'Hello', inputType: 'insertText' });
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('send-btn'));
@@ -122,7 +122,7 @@ describe('Webview Ready Streaming State Restoration', () => {
         // Start conversation and streaming
         const input = screen.getByTestId('message-input');
         input.textContent = 'Long running task';
-        fireEvent.input(input, { data: 'Long running task', inputType: 'insertText' });
+        await fireInput(input, { data: 'Long running task', inputType: 'insertText' });
 
         await act(async () => {
             fireEvent.click(screen.getByTestId('send-btn'));

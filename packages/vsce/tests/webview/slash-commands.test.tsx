@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand, fireInput } from './test-utils';
 
 /**
  * Helper: set contenteditable text, set up selection inside a text node at end,
@@ -10,7 +10,7 @@ import { renderChatApp, screen, waitFor, fireEvent, act, sendCommand } from './t
  * itself (nodeType=1), they skip. So we must ensure selection is inside a
  * Text node.
  */
-function typeInInput(text: string) {
+async function typeInInput(text: string) {
     const input = screen.getByTestId('message-input');
     const existing = input.textContent || '';
     const fullText = existing + text;
@@ -30,7 +30,7 @@ function typeInInput(text: string) {
     sel?.removeAllRanges();
     sel?.addRange(range);
 
-    fireEvent.input(input, { data: text, inputType: 'insertText' });
+    await fireInput(input, { data: text, inputType: 'insertText' });
 }
 
 describe('Slash Commands', () => {
@@ -45,7 +45,7 @@ describe('Slash Commands', () => {
         input.focus();
 
         // Type '/' to trigger slash commands
-        typeInInput('/');
+        await typeInInput('/');
 
         // Verify requestSlashCommands was sent (debounced 150ms)
         await waitFor(() => {
@@ -91,8 +91,8 @@ describe('Slash Commands', () => {
         input.focus();
 
         // Type "hello " then "/"
-        typeInInput('hello ');
-        typeInInput('/');
+        await typeInInput('hello ');
+        await typeInInput('/');
 
         // Wait for requestSlashCommands
         await waitFor(() => {
@@ -131,7 +131,7 @@ describe('Slash Commands', () => {
         const input = screen.getByTestId('message-input');
         input.focus();
 
-        typeInInput('/');
+        await typeInInput('/');
 
         await waitFor(() => {
             expect(vscode.postMessage).toHaveBeenCalledWith(
@@ -172,7 +172,7 @@ describe('Slash Commands', () => {
         const input = screen.getByTestId('message-input');
         input.focus();
 
-        typeInInput('/');
+        await typeInInput('/');
 
         await waitFor(() => {
             expect(vscode.postMessage).toHaveBeenCalledWith(
@@ -215,7 +215,7 @@ describe('Slash Commands', () => {
         input.focus();
 
         // Type '/h'
-        typeInInput('/h');
+        await typeInInput('/h');
 
         await waitFor(() => {
             expect(vscode.postMessage).toHaveBeenCalledWith(

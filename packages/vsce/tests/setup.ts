@@ -1,4 +1,12 @@
 import '@testing-library/jest-dom/vitest';
+import { vi } from 'vitest';
+
+// Suppress console output during tests to reduce noise
+vi.spyOn(console, 'log').mockImplementation(() => {});
+vi.spyOn(console, 'warn').mockImplementation(() => {});
+vi.spyOn(console, 'error').mockImplementation(() => {});
+vi.spyOn(console, 'info').mockImplementation(() => {});
+vi.spyOn(console, 'debug').mockImplementation(() => {});
 
 // jsdom does not implement scrollIntoView; mock it so components that call it on mount don't throw
 if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
