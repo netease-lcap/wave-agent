@@ -69,7 +69,7 @@ async function main() {
     console.log(`\n=== Packaging extension ===`);
     const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf-8'));
     const version = pkg.version;
-    const vsixName = `wave-vscode-chat-${version}.vsix`;
+    const vsixName = `${pkg.name}-${version}.vsix`;
     const vsixPath = path.join(releasesDir, vsixName);
     execSync(`npx vsce package --out ${vsixPath} ${vsceArgs}`, { stdio: 'inherit' });
     
