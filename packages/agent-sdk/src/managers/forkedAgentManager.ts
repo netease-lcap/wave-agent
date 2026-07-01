@@ -138,7 +138,7 @@ export class ForkedAgentManager {
             `[${new Date().toISOString()}] Final response:\n${result}\n`,
           );
           entry.logStream.write(
-            `[${new Date().toISOString()}] Agent completed successfully\n`,
+            `[${new Date().toISOString()}] Agent completed\n`,
           );
           entry.logStream.end();
         }

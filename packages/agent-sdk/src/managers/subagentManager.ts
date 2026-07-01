@@ -631,7 +631,7 @@ export class SubagentManager {
           );
         }
         instance.logStream?.write(
-          `[${new Date().toISOString()}] Agent completed successfully\n`,
+          `[${new Date().toISOString()}] Agent completed\n`,
         );
         instance.logStream?.end();
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
@@ -874,6 +874,15 @@ export class SubagentManager {
         // Forward latest total tokens to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentLatestTotalTokensChange) {
           this.callbacks.onSubagentLatestTotalTokensChange(subagentId, tokens);
+        }
+      },
+
+      onErrorBlockAdded: (error: string) => {
+        const instance = this.instances.get(subagentId);
+        if (instance?.logStream) {
+          instance.logStream.write(
+            `[${new Date().toISOString()}] Error: ${error}\n`,
+          );
         }
       },
     };
