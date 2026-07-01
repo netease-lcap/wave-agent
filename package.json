@@ -18,7 +18,7 @@
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
     "print-bin": "echo $(pwd)/packages/code/bin/wave-code.js",
-    "ci": "pnpm type-check && pnpm lint && pnpm test:coverage",
+    "ci": "pnpm -r --parallel type-check && pnpm -r --parallel lint && pnpm -r --parallel test:coverage",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major",
