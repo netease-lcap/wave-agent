@@ -3,7 +3,7 @@
   "private": true,
   "displayName": "Wave 代码智聊",
   "description": "Wave code for VS Code",
-  "version": "0.4.17",
+  "version": "0.4.18",
   "publisher": "wave-code",
   "icon": "LOGO.png",
   "repository": {
