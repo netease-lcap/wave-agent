@@ -106,10 +106,6 @@ readme = readme.replace(
   `$1${totalFR.toLocaleString()}$2`,
 );
 readme = readme.replace(
-  /^(\| 测试文件 \| )\d+(?:,\d+)*(\s*\|)$/m,
-  `$1${totalTestFiles.toLocaleString()}$2`,
-);
-readme = readme.replace(
   /^(\| 测试用例 \| )\d+(?:,\d+)*(\s*\|)$/m,
   `$1${totalTestCases.toLocaleString()}$2`,
 );
