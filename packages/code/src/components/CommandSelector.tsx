@@ -1,4 +1,4 @@
-import React, { useReducer, useEffect } from "react";
+import React, { useReducer, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import type { SlashCommand } from "wave-agent-sdk";
 import { AVAILABLE_COMMANDS } from "../constants/commands.js";
@@ -35,15 +35,15 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
     dispatch({ type: "RESET_INDEX" });
   }, [searchQuery]);
 
-  // Merge agent commands and local commands
-  const allCommands = [...AVAILABLE_COMMANDS, ...commands];
-
-  // Filter command list
-  const filteredCommands = allCommands.filter(
-    (command) =>
-      !searchQuery ||
-      command.id.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  // Merge agent commands and local commands, memoized to stabilize useEffect dependencies
+  const filteredCommands = useMemo(() => {
+    const allCommands = [...AVAILABLE_COMMANDS, ...commands];
+    return allCommands.filter(
+      (command) =>
+        !searchQuery ||
+        command.id.toLowerCase().includes(searchQuery.toLowerCase()),
+    );
+  }, [searchQuery, commands]);
 
   // Handle decisions from reducer
   useEffect(() => {
