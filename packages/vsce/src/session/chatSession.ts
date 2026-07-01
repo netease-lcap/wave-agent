@@ -19,6 +19,9 @@ export interface ChatSessionCallbacks {
     onStreamingContentUpdate?: (params: { messageId: string; accumulated: string; stage: 'streaming' | 'end' }) => void;
     onStreamingReasoningUpdate?: (params: { messageId: string; accumulated: string; stage: 'streaming' | 'end' }) => void;
     onToolBlockUpdate?: (params: ToolBlockUpdateCallbackParams) => void;
+    // Bang message callbacks
+    onBangMessageAdded?: () => void;
+    onBangMessageUpdated?: () => void;
 }
 
 export class ChatSession {
@@ -129,6 +132,15 @@ export class ChatSession {
                 },
                 onMcpServersChange: (servers: McpServerStatus[]) => {
                     this.callbacks.onMcpServersChange?.(servers);
+                },
+                onAddBangMessage: () => {
+                    this.callbacks.onBangMessageAdded?.();
+                },
+                onUpdateBangMessage: () => {
+                    this.callbacks.onBangMessageUpdated?.();
+                },
+                onCompleteBangMessage: () => {
+                    this.callbacks.onBangMessageUpdated?.();
                 }
             };
 

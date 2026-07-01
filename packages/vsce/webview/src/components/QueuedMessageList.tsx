@@ -50,7 +50,7 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
                       role: 'user',
                       timestamp: new Date().toISOString(),
                       blocks: [
-                        { type: 'text', content: qm.content || qm.text || '' },
+                        { type: 'text', content: (qm.type === 'bang' ? '!' : '') + (qm.content || qm.text || '') },
                         ...(qm.images || []).map(img => ({
                           type: 'image' as const,
                           imageUrls: [img.path || (img as Record<string, string>).data || '']

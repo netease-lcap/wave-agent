@@ -199,4 +199,29 @@ describe('Message Queuing', () => {
         const selectionTag = Array.from(contextTags).find(el => el.textContent?.includes('utils.ts#10-20'));
         expect(selectionTag).toBeDefined();
     });
+
+    it('should display bang commands with ! prefix in the queue', () => {
+        renderChatApp();
+
+        // 1. Start streaming to enable queuing
+        sendCommand('startStreaming');
+
+        // 2. Simulate queue update with a bang command and a normal message
+        sendCommand('updateQueue', {
+            queue: [
+                { type: 'bang', content: 'ls -la' },
+                { type: 'message', content: 'normal message' }
+            ]
+        });
+
+        // 3. Verify the queue panel is visible
+        const queuePanel = screen.getByTestId('queued-message-list');
+        expect(queuePanel).toBeInTheDocument();
+
+        // 4. Bang command should display with ! prefix
+        expect(queuePanel).toHaveTextContent('!ls -la');
+        // 5. Normal message should not have ! prefix
+        expect(queuePanel).toHaveTextContent('normal message');
+        expect(queuePanel).not.toHaveTextContent('!normal message');
+    });
 });
