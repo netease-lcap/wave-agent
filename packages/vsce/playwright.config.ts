@@ -38,14 +38,6 @@ export default defineConfig({
   /* Configure projects for major browsers */
   projects: [
     {
-      name: 'chromium',
-      use: { 
-        ...devices['Desktop Chrome'],
-        viewport: { width: 400, height: 800 }
-      },
-      testMatch: ['**/*.test.ts', '**/*.demo.ts'],
-    },
-    {
       name: 'demo',
       use: {
         ...devices['Desktop Chrome'],
