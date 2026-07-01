@@ -23,6 +23,7 @@ jobs:
         with:
           filters: |
             code:
+              - '**'
               - '!**/*.md'
               - '!**/*.txt'
               - '!specs/**'
