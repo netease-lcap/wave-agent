@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderChatApp, screen, waitFor, fireEvent, act } from './test-utils';
-import type { Message } from 'wave-agent-sdk';
+import type { Message, TextBlock } from 'wave-agent-sdk';
 
 /**
  * Helper: append text to contenteditable input without destroying existing child nodes.
@@ -86,7 +86,7 @@ describe('Selection Feature (Inline Tags)', () => {
                     {
                         type: 'text',
                         content: 'Check this code: [Selection: /path/to/src/file.ts|file.ts#10-20]'
-                    } as unknown
+                    } as TextBlock
                 ]
             }
         ];
@@ -147,7 +147,7 @@ describe('Selection Feature (Inline Tags)', () => {
                     {
                         type: 'text',
                         content: 'Old format: [Selection: file.ts#10-20]'
-                    } as unknown
+                    } as TextBlock
                 ]
             }
         ];

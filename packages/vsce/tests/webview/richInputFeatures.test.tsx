@@ -136,7 +136,7 @@ describe('Rich Input Features', () => {
         const sentMessages = (vscode.postMessage as ReturnType<typeof vi.fn>).mock.calls.map(c => c[0]);
         const sendMsg = sentMessages.find((m: { command: string }) => m.command === 'sendMessage') as Record<string, unknown>;
         expect(sendMsg).toBeDefined();
-        const sentMarkdown = (sendMsg.text || '').replace(/\u00A0/g, ' ').trim();
+        const sentMarkdown = ((sendMsg.text as string) || '').replace(/\u00A0/g, ' ').trim();
         expect(sentMarkdown).toBe('Check these files: [@file:file1.ts] and also [@file:file2.ts]');
     });
 

@@ -70,6 +70,13 @@ export default [
     },
   },
   {
+    files: ["**/*.d.ts"],
+    rules: {
+      // .d.ts files legitimately need triple-slash references for type augmentation
+      "@typescript-eslint/triple-slash-reference": "off",
+    },
+  },
+  {
     files: ["tests/**/*.{ts,tsx}"],
     languageOptions: {
       globals: {
