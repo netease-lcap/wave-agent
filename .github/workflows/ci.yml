@@ -39,7 +39,29 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'pnpm'
+
+      - name: Get pnpm store directory
+        if: steps.filter.outputs.code == 'true'
+        id: pnpm-cache
+        run: echo "store_path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm dependencies
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.store_path }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+
+      - name: Cache ripgrep binaries
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: packages/agent-sdk/vendor/ripgrep
+          key: ripgrep-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            ripgrep-${{ runner.os }}-
 
       - name: Install dependencies
         if: steps.filter.outputs.code == 'true'

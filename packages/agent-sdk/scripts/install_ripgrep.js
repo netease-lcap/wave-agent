@@ -9,6 +9,18 @@ const __dirname = path.dirname(__filename);
 const MANIFEST_PATH = path.resolve(__dirname, "../bin/rg");
 const VENDOR_DIR = path.resolve(__dirname, "../vendor/ripgrep");
 
+function getCurrentPlatform() {
+  const platform = process.platform;
+  const arch = process.arch;
+  if (platform === "darwin")
+    return `macos-${arch === "arm64" ? "aarch64" : "x86_64"}`;
+  if (platform === "linux")
+    return `linux-${arch === "arm64" ? "aarch64" : "x86_64"}`;
+  if (platform === "win32")
+    return `windows-${arch === "arm64" ? "aarch64" : "x86_64"}`;
+  return null;
+}
+
 async function main() {
   if (!fs.existsSync(MANIFEST_PATH)) {
     console.error(`Manifest not found: ${MANIFEST_PATH}`);
@@ -18,7 +30,15 @@ async function main() {
   const manifestContent = fs.readFileSync(MANIFEST_PATH, "utf-8");
   const jsonContent = manifestContent.replace(/^#!.*\n/, "");
   const manifest = JSON.parse(jsonContent);
-  const platforms = manifest.platforms;
+  const allPlatforms = manifest.platforms;
+
+  // In CI, only download for the current platform
+  const isCI = process.env.CI === "true";
+  const currentPlatform = isCI ? getCurrentPlatform() : null;
+  const platforms =
+    currentPlatform && currentPlatform in allPlatforms
+      ? { [currentPlatform]: allPlatforms[currentPlatform] }
+      : allPlatforms;
 
   if (!fs.existsSync(VENDOR_DIR)) {
     fs.mkdirSync(VENDOR_DIR, { recursive: true });
