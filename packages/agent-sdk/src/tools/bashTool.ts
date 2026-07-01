@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { logger } from "../utils/globalLogger.js";
+import { resolveShellPath } from "../utils/shellResolver.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { processToolResult } from "../utils/toolResultStorage.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
@@ -152,6 +153,17 @@ The working directory persists between commands. Try to maintain your current wo
       };
     }
 
+    // Resolve shell path: on Windows, use Git Bash; on other platforms, use default
+    const shellPath = resolveShellPath();
+    if (process.platform === "win32" && !shellPath) {
+      return {
+        success: false,
+        content: "",
+        error:
+          "Git Bash not found. Please install Git for Windows or set GIT_BASH_PATH environment variable.",
+      };
+    }
+
     // Validate timeout
     if (
       timeout !== undefined &&
@@ -237,7 +249,7 @@ The working directory persists between commands. Try to maintain your current wo
       const wrappedCommand = `${command} && pwd -P >| ${tempCwdFile}`;
 
       const child: ChildProcess = spawn(wrappedCommand, {
-        shell: true,
+        shell: shellPath || true,
         stdio: "pipe",
         detached: true,
         cwd: context.workdir,
