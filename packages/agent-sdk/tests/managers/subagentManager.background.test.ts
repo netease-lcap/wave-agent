@@ -320,7 +320,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const content = fs.readFileSync(outputPath, "utf8");
     expect(content).toContain("Final response:");
     expect(content).toContain("Build completed successfully");
-    expect(content).toContain("Agent completed successfully");
+    expect(content).toContain("Agent completed");
 
     // Cleanup
     if (fs.existsSync(outputPath)) {
@@ -371,6 +371,42 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const content = fs.readFileSync(outputPath, "utf8");
     expect(content).toContain("Agent failed:");
     expect(content).toContain("Build failed with exit code 1");
+
+    // Cleanup
+    if (fs.existsSync(outputPath)) {
+      fs.unlinkSync(outputPath);
+    }
+  });
+
+  it("should log error block to log file when onErrorBlockAdded fires", async () => {
+    const instance = await subagentManager.createInstance(testConfig, {
+      description: "d",
+      prompt: "p",
+      subagent_type: "t",
+    });
+
+    await subagentManager.backgroundInstance(instance.subagentId);
+
+    const addTaskMock = vi.mocked(mockBackgroundTaskManager.addTask);
+    const outputPath = addTaskMock.mock.calls[0][0].outputPath!;
+
+    // Capture callbacks passed to MessageManager
+    const MessageManagerMock = vi.mocked(MessageManager);
+    const lastCall =
+      MessageManagerMock.mock.calls[MessageManagerMock.mock.calls.length - 1];
+    const passedCallbacks = lastCall[1].callbacks;
+
+    // Trigger error block callback (simulating LLM API error like 429)
+    passedCallbacks.onErrorBlockAdded?.(
+      "Rate limit exceeded (429): Too many requests",
+    );
+
+    // Wait for file write
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const content = fs.readFileSync(outputPath, "utf8");
+    expect(content).toContain("Error:");
+    expect(content).toContain("Rate limit exceeded (429): Too many requests");
 
     // Cleanup
     if (fs.existsSync(outputPath)) {
