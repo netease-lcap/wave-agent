@@ -79,7 +79,7 @@
 - **目录创建**：如果 `~/.wave/plans` 不存在，系统应该自动创建。
 - **名称冲突**：随机英文名称生成器应该最小化冲突的可能性，但如果文件已存在，应该处理（如生成新名称）。
 - **会话持久化**：如果会话重启或消息被压缩，系统必须重用现有的计划文件路径。这通过使用 `rootSessionId`（链中第一个会话的 ID）作为确定性名称生成的种子来实现。
-- **`ExitPlanMode` 在计划模式外被调用怎么办？** 当 agent 不在计划模式时，工具不得包含在工具集中。如果以某种方式调用，应该返回错误。
+- **`ExitPlanMode` 在计划模式外被调用怎么办？** `ExitPlanMode` 工具始终在工具列表中可见。当 agent 不在计划模式时，工具通过运行时守卫返回错误信息。
 - **系统如何处理多次调用 `ExitPlanMode`？** 如果已在退出中或第一次调用待处理，后续调用应该被优雅地处理（如忽略或返回为待处理）。
 
 ### 用户故事 5 - 计划模式重新进入引导（优先级：P1）
@@ -142,12 +142,29 @@
 2. **假设**计划进入提醒已注入，**当**同一计划模式会话中发送后续消息时，**则**不注入计划模式提醒。
 3. **假设**用户退出计划模式并重新进入，**当**下一条消息发送时，**则**注入重新进入提醒（关于读取现有计划文件的小提醒）。
 
+### 用户故事 9 - 通过 EnterPlanMode 工具进入计划模式（优先级：P1）
+
+作为 AI agent，我希望在判断任务较为复杂时主动请求进入计划模式，以便在修改多文件、开发新功能或修复复杂 bug 之前先制定计划。
+
+**为什么是这个优先级**：允许 agent 自主判断何时需要规划，提升复杂任务的处理质量，同时通过用户确认保持人类监督。
+
+**独立测试**：在对话中让 agent 判断任务复杂性，验证其调用 `EnterPlanMode` 工具后触发用户确认，批准后进入计划模式。
+
+**验收场景**：
+
+1. **假设** agent 判断当前任务较为复杂（多文件更改、新功能、复杂 bug 修复），**当** agent 调用 `EnterPlanMode` 工具时，**则**系统通过 `canUseTool` 机制向用户显示确认请求，用户批准后系统进入计划模式。
+2. **假设** agent 调用 `EnterPlanMode`，**当**用户拒绝确认请求时，**则**agent 收到 "User declined to enter plan mode. Proceed in current mode." 的返回信息，继续在当前模式中执行。
+3. **假设** agent 已在计划模式中，**当** agent 调用 `EnterPlanMode` 时，**则**工具返回错误信息 "Already in plan mode"，不重复进入。
+4. **假设** agent 调用 `EnterPlanMode` 触发用户确认，**当**确认对话框显示时，**则**不得显示"始终允许"选项（`hidePersistentOption = true`）。
+
+---
+
 ## 需求 *（必填）*
 
 ### 功能需求
 
 - **FR-001**：系统必须支持 "plan" 权限状态。
-- **FR-002**：用户必须能够使用 Shift+Tab 键盘快捷键按以下顺序切换权限模式：default -> acceptEdits -> plan -> default。
+- **FR-002**：用户必须能够使用 Shift+Tab 键盘快捷键按以下顺序切换权限模式：default -> acceptEdits -> bypassPermissions -> plan -> default。
 - **FR-002.1**：`bypassPermissions` 必须仅在会话以 `--dangerously-skip-permissions` 或 `--permission-mode bypassPermissions` 启动时才包含在循环中。
 - **FR-003**：在计划模式时，系统必须将 LLM 限制为对所有文件的只读操作，指定计划文件除外。
 - **FR-004**：在计划模式时，系统必须允许 LLM 执行命令。
@@ -181,18 +198,23 @@
 - **FR-011.1**：系统必须在确认过程中向用户显示计划文件的内容。
 - **FR-012**：用户选择 "Default" 或 "Accept Edits" 后，系统必须将 agent 从 "plan mode" 转换到相应的目标模式。
 - **FR-013**：用户选择 "Feedback" 后，agent 必须保持在 "plan mode" 中并接收用户输入作为工具的输出。
-- **FR-014**：`ExitPlanMode` 必须仅在 agent 处于 "plan mode" 时包含在可用工具列表中。
-- **FR-015**：如果 agent 不在 "plan mode" 中，`ExitPlanMode` 工具不得暴露给 LLM。
-- **FR-016**：当 `permissionMode` 设置为 `bypassPermissions` 时，`ExitPlanMode` 不得可用。
-- **FR-017**：当通过 ACP 桥接使用时，`ExitPlanMode` 可以提供简化的审批流程（如 "Approve Plan" 和 "Reject Plan"）并在批准后自动转换到 `default` 模式。
-- **FR-018**：系统必须跟踪 `hasExitedPlanMode` 状态。当 agent 退出计划模式（通过 ExitPlanMode 或模式转换）时，此标志必须设置为 true。
-- **FR-019**：当进入计划模式且 `hasExitedPlanMode` 为 true 且计划文件已存在时，系统必须注入重新进入 `<system-reminder>` 消息，指示模型：(a) 读取现有计划文件，(b) 评估用户请求是新任务还是继续，(c) 在调用 ExitPlanMode 之前始终编辑计划文件。标志必须在注入后清除（一次性）。
-- **FR-020**：当计划模式活动时，系统必须在每次进入时恰好注入一次计划模式提醒——在进入计划模式后的第一次 AI 调用时。`PlanManager` 跟踪 `planEntryReminderPending` 标志，在进入计划模式时设置为 `true`，在提醒注入后消费（设置为 `false`）。后续轮次不注入重复或节流提醒。
-- **FR-021**：退出计划模式时，系统必须在下一个轮次注入一次性"已退出计划模式" `<system-reminder>` 消息，通知模型现在可以进行编辑和执行操作。如果计划文件存在，消息必须包含计划文件路径以供参考。
-- **FR-022**：所有计划模式 `<system-reminder>` 消息必须使用 `isMeta: true` 且不得在 UI 中渲染。
-- **FR-023**：压缩后，如果计划模式活动，初始提醒中的计划模式指令保留在压缩摘要中。不需要重新注入，因为提醒是每次进入一次性的。
-- **FR-024**：`hasExitedPlanMode` 标志必须在 `PermissionManager` 中跟踪，并在同一会话内的模式转换中持久化。
-- **FR-025**："需要计划模式退出附件"标志（`needsPlanModeExitAttachment`）必须在离开计划模式时设置，并在退出 `<system-reminder>` 注入后清除（一次性）。
+- **FR-014**：`ExitPlanMode` 工具必须始终在工具列表中可见，无论当前权限模式如何。当 agent 不在计划模式时，工具通过运行时守卫返回错误信息。
+- **FR-015**：当 `permissionMode` 设置为 `bypassPermissions` 时，`ExitPlanMode` 不得可用。
+- **FR-016**：当通过 ACP 桥接使用时，`ExitPlanMode` 可以提供简化的审批流程（如 "Approve Plan" 和 "Reject Plan"）并在批准后自动转换到 `default` 模式。
+- **FR-017**：系统必须跟踪 `hasExitedPlanMode` 状态。当 agent 退出计划模式（通过 ExitPlanMode 或模式转换）时，此标志必须设置为 true。
+- **FR-018**：当进入计划模式且 `hasExitedPlanMode` 为 true 且计划文件已存在时，系统必须注入重新进入 `<system-reminder>` 消息，指示模型：(a) 读取现有计划文件，(b) 评估用户请求是新任务还是继续，(c) 在调用 ExitPlanMode 之前始终编辑计划文件。标志必须在注入后清除（一次性）。
+- **FR-019**：当计划模式活动时，系统必须在每次进入时恰好注入一次计划模式提醒——在进入计划模式后的第一次 AI 调用时。`PlanManager` 跟踪 `planEntryReminderPending` 标志，在进入计划模式时设置为 `true`，在提醒注入后消费（设置为 `false`）。后续轮次不注入重复或节流提醒。
+- **FR-020**：退出计划模式时，系统必须在下一个轮次注入一次性"已退出计划模式" `<system-reminder>` 消息，通知模型现在可以进行编辑和执行操作。如果计划文件存在，消息必须包含计划文件路径以供参考。
+- **FR-021**：所有计划模式 `<system-reminder>` 消息必须使用 `isMeta: true` 且不得在 UI 中渲染。
+- **FR-022**：压缩后，如果计划模式活动，初始提醒中的计划模式指令保留在压缩摘要中。不需要重新注入，因为提醒是每次进入一次性的。
+- **FR-023**：`hasExitedPlanMode` 标志必须在 `PermissionManager` 中跟踪，并在同一会话内的模式转换中持久化。
+- **FR-024**："需要计划模式退出附件"标志（`needsPlanModeExitAttachment`）必须在离开计划模式时设置，并在退出 `<system-reminder>` 注入后清除（一次性）。
+- **FR-025**：系统必须提供名为 `EnterPlanMode` 的工具，允许 agent 主动请求进入计划模式。
+- **FR-026**：`EnterPlanMode` 工具必须通过 `canUseTool` 机制触发用户确认请求。确认请求不得显示"始终允许"选项（`hidePersistentOption = true`）。
+- **FR-027**：用户批准 `EnterPlanMode` 后，系统必须通过 `requestPermissionModeChange("plan")` 执行完整的模式转换，包括：(a) 更新权限模式容器注册，(b) 调用 `planManager.handlePlanModeTransition()` 管理计划文件生命周期，(c) 触发 UI 回调通知界面更新。
+- **FR-028**：`EnterPlanMode` 工具必须始终在工具列表中可见（不在 plan mode 时通过运行时守卫拒绝执行），而非根据模式动态添加/移除。
+- **FR-029**：当 agent 已在计划模式中调用 `EnterPlanMode` 时，工具必须返回错误而非重复进入。
+- **FR-030**：权限模式转换必须通过 `requestPermissionModeChange()` 方法执行（而非直接调用 `setPermissionMode()`），以确保计划模式生命周期管理（计划文件创建/清理、提醒注入标志）和 UI 通知的完整性。
 
 ### 关键实体
 
@@ -200,3 +222,4 @@
 - **计划文件**：位于 `~/.wave/plans/` 中的 Markdown 文件，LLM 在计划模式期间用于记录其计划。
 - **计划模式状态**：agent 生命周期中生成或提议一系列操作的状态。
 - **ExitPlanMode 工具**：用于从计划模式状态转换出来的特定工具。
+- **EnterPlanMode 工具**：允许 agent 主动请求进入计划模式的特定工具。
