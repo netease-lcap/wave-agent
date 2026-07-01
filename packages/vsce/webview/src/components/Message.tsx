@@ -594,5 +594,6 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
   // Custom comparison for React.memo
   return prev.message === next.message &&
     prev.isStreaming === next.isStreaming &&
-    prev.isQueued === next.isQueued;
+    prev.isQueued === next.isQueued &&
+    prev.onRewindToMessage === next.onRewindToMessage;
 });

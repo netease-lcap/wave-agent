@@ -10,7 +10,6 @@ coverage/
 Thumbs.db
 *.tmp
 *.swp
-.vscode/
 .idea/
 nohup.out
 .wave/settings.local.json
