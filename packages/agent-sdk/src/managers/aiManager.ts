@@ -497,6 +497,14 @@ export class AIManager {
         compactUsage,
       );
 
+      // Clear memory caches after compaction (filesInContext is rebuilt)
+      this.messageManager.clearMemoryCache();
+      const memoryServiceForCompact =
+        this.container.get<import("../services/memory.js").MemoryService>(
+          "MemoryService",
+        );
+      memoryServiceForCompact?.clearCache();
+
       // Re-add plan mode reminder as persistent meta message after compaction
       const postCompactMode = this.permissionManager?.getCurrentEffectiveMode(
         this.getModelConfig().permissionMode,
@@ -823,8 +831,8 @@ export class AIManager {
     const recentMessages = convertMessagesForAPI(rawMessages);
 
     try {
-      // Get combined memory content
-      const combinedMemory = await this.messageManager.getCombinedMemory();
+      // Get stable memory content (cached across turns for prompt cache stability)
+      const stableMemory = await this.messageManager.getStableMemory();
 
       // Track if assistant message has been created
       let assistantMessageCreated = false;
@@ -865,7 +873,7 @@ export class AIManager {
           {
             workdir: this.getWorkdir(),
             originalWorkdir: this.getOriginalWorkdir(),
-            memory: combinedMemory,
+            memory: stableMemory,
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
             autoMemory: autoMemoryOptions,
@@ -875,6 +883,16 @@ export class AIManager {
         maxTokens: maxTokens, // Pass max tokens override
         toolChoice: this.toolChoiceOverride, // Pass tool_choice override
       };
+
+      // Inject active memory rules as system-reminder (ephemeral, not persisted)
+      // Matches Claude Code's nested_memory pattern — appended at end of messages
+      const rulesContent = this.messageManager.getActiveRulesContent();
+      if (rulesContent) {
+        callAgentOptions.messages.push({
+          role: "user",
+          content: `<system-reminder>\n${rulesContent}\n</system-reminder>`,
+        });
+      }
 
       // Inject task reminder if needed (not persisted, regenerated each turn)
       await this.maybeInjectTaskReminderIntoMessages(

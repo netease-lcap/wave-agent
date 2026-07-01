@@ -714,6 +714,7 @@ export class Agent {
         "MemoryService",
       );
     memoryService?.clearCache();
+    this.messageManager.clearMemoryCache();
     await this.taskManager.syncWithSession();
 
     // Run SessionStart hooks (restore context for new session)

@@ -62,10 +62,13 @@ describe("AIManager - latestTotalTokens calculation", () => {
       setMessages: vi.fn(),
       getLatestTotalTokens: vi.fn().mockReturnValue(0),
       getCombinedMemory: vi.fn().mockResolvedValue(""),
+      getStableMemory: vi.fn().mockResolvedValue(""),
+      getActiveRulesContent: vi.fn().mockReturnValue(""),
       addErrorBlock: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
       compactMessagesAndUpdateSession: vi.fn(),
+      clearMemoryCache: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
       finalizeStreamingBlocks: vi.fn(),
     } as unknown as MessageManager;

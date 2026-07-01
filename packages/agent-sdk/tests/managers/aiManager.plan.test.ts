@@ -75,6 +75,8 @@ describe("AIManager Plan Mode Prompt", () => {
       updateCurrentMessageContent: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       getCombinedMemory: vi.fn().mockResolvedValue(""),
+      getStableMemory: vi.fn().mockResolvedValue(""),
+      getActiveRulesContent: vi.fn().mockReturnValue(""),
       addErrorBlock: vi.fn(),
       touchFile: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.jsonl"),
@@ -86,6 +88,7 @@ describe("AIManager Plan Mode Prompt", () => {
       finalizeStreamingBlocks: vi.fn(),
       mergeAssistantAdditionalFields: vi.fn(),
       compactMessagesAndUpdateSession: vi.fn(),
+      clearMemoryCache: vi.fn(),
     } as unknown as Mocked<MessageManager>;
     mockToolManager = {
       getToolsConfig: vi.fn().mockReturnValue([]),
@@ -123,6 +126,7 @@ describe("AIManager Plan Mode Prompt", () => {
       getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
       ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
       getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      clearCache: vi.fn(),
     });
     container.register("PermissionManager", mockPermissionManager);
     container.register("PlanManager", mockPlanManager);
