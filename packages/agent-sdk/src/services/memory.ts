@@ -11,7 +11,6 @@ export class MemoryService {
   private _cachedProjectMemory: string = "";
   private _cachedUserMemory: string = "";
   private _cachedCombinedMemory: string | null = null;
-  private _cachedAutoMemoryContent: string | null = null;
 
   constructor(private container: Container) {}
 
@@ -27,7 +26,6 @@ export class MemoryService {
     this._cachedProjectMemory = "";
     this._cachedUserMemory = "";
     this._cachedCombinedMemory = null;
-    this._cachedAutoMemoryContent = null;
   }
 
   /**
@@ -78,21 +76,15 @@ export class MemoryService {
    * Get the first 200 lines of MEMORY.md.
    */
   async getAutoMemoryContent(workdir: string): Promise<string> {
-    if (this._cachedAutoMemoryContent !== null) {
-      return this._cachedAutoMemoryContent;
-    }
-
     const memoryDir = this.getAutoMemoryDirectory(workdir);
     const memoryFile = path.join(memoryDir, "MEMORY.md");
 
     try {
       const content = await fs.readFile(memoryFile, "utf-8");
       const lines = content.split("\n").slice(0, 200);
-      this._cachedAutoMemoryContent = lines.join("\n");
-      return this._cachedAutoMemoryContent;
+      return lines.join("\n");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        this._cachedAutoMemoryContent = "";
         return "";
       }
       logger.error("Failed to read auto-memory content:", error);
