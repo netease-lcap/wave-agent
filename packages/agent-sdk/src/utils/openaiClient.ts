@@ -7,6 +7,28 @@ import {
 import { GatewayConfig } from "../types/config.js";
 import { logger } from "./globalLogger.js";
 
+const MAX_RETRIES = 10;
+const BASE_DELAY_MS = 500;
+const MAX_DELAY_MS = 32000;
+
+function getRetryDelay(
+  attempt: number,
+  retryAfterHeader: string | null,
+): number {
+  if (retryAfterHeader) {
+    const seconds = parseInt(retryAfterHeader, 10);
+    if (!isNaN(seconds)) {
+      return seconds * 1000;
+    }
+  }
+  const baseDelay = Math.min(
+    BASE_DELAY_MS * Math.pow(2, attempt - 1),
+    MAX_DELAY_MS,
+  );
+  const jitter = Math.random() * 0.25 * baseDelay;
+  return baseDelay + jitter;
+}
+
 type CreateParams =
   | ChatCompletionCreateParamsNonStreaming
   | ChatCompletionCreateParamsStreaming;
@@ -88,12 +110,11 @@ export class OpenAIClient {
 
     const fetchFn = (customFetch as typeof fetch) || fetch;
     let lastError: (Error & { status?: number; body?: unknown }) | undefined;
-    const maxRetries = 5;
-    const initialDelay = 2000;
+    let lastRetryAfter: string | null = null;
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) {
-        const delay = initialDelay * Math.pow(2, attempt - 1);
+        const delay = getRetryDelay(attempt, lastRetryAfter);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
@@ -110,12 +131,13 @@ export class OpenAIClient {
         if (e instanceof Error && e.name === "AbortError") {
           throw e;
         }
-        if (attempt < maxRetries) {
+        if (attempt < MAX_RETRIES) {
           logger.warn("OpenAI API network error, retrying...", {
             attempt: attempt + 1,
             error: e,
           });
           lastError = e as Error;
+          lastRetryAfter = null;
           continue;
         }
         throw e;
@@ -179,10 +201,12 @@ export class OpenAIClient {
       const retryableStatus =
         response.status === 429 ||
         (response.status >= 500 && response.status !== 501);
-      if (retryableStatus && attempt < maxRetries) {
+      if (retryableStatus && attempt < MAX_RETRIES) {
+        lastRetryAfter = response.headers.get("retry-after");
         logger.warn("OpenAI API error, retrying...", {
           attempt: attempt + 1,
           status: response.status,
+          retryAfter: lastRetryAfter,
         });
         lastError = error;
         continue;
