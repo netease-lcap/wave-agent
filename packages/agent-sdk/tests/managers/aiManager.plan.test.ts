@@ -39,6 +39,14 @@ function extractText(content: unknown): string {
   return "";
 }
 
+/** Flatten systemPrompt (string or SystemPromptBlock[]) into a single string. */
+function flattenSystemPrompt(sp: unknown): string {
+  if (typeof sp === "string") return sp;
+  if (Array.isArray(sp))
+    return sp.map((b: { text: string }) => b.text).join("\n\n");
+  return "";
+}
+
 describe("AIManager Plan Mode Prompt", () => {
   let aiManager: AIManager;
   let mockMessageManager: Mocked<MessageManager>;
@@ -161,11 +169,9 @@ describe("AIManager Plan Mode Prompt", () => {
   it("should use default system prompt in default mode", async () => {
     await aiManager.sendAIMessage();
 
-    expect(callAgent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        systemPrompt: expect.stringContaining(DEFAULT_SYSTEM_PROMPT),
-      }),
-    );
+    const callArgs = vi.mocked(callAgent).mock.calls[0][0];
+    const spText = flattenSystemPrompt(callArgs.systemPrompt);
+    expect(spText).toContain(DEFAULT_SYSTEM_PROMPT);
   });
 
   it("should add plan reminder in plan mode when file does not exist", async () => {
