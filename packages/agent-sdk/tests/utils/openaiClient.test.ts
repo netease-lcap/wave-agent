@@ -4,10 +4,12 @@ import { OpenAIClient } from "../../src/utils/openaiClient.js";
 describe("OpenAIClient", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("should correctly handle SSE data lines with and without a space after the colon", async () => {
@@ -180,7 +182,7 @@ describe("OpenAIClient", () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
-    it("should use exponential backoff", async () => {
+    it("should use exponential backoff with jitter", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 429,
@@ -205,30 +207,48 @@ describe("OpenAIClient", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(mockFetch).toHaveBeenCalledTimes(1);
 
-      // First retry after 2000ms
-      await vi.advanceTimersByTimeAsync(2000);
+      // First retry after 500ms (500 * 2^0 + 0% jitter)
+      await vi.advanceTimersByTimeAsync(500);
       expect(mockFetch).toHaveBeenCalledTimes(2);
 
-      // Second retry after 4000ms
-      await vi.advanceTimersByTimeAsync(4000);
+      // Second retry after 1000ms (500 * 2^1)
+      await vi.advanceTimersByTimeAsync(1000);
       expect(mockFetch).toHaveBeenCalledTimes(3);
 
-      // Third retry after 8000ms
-      await vi.advanceTimersByTimeAsync(8000);
+      // Third retry after 2000ms (500 * 2^2)
+      await vi.advanceTimersByTimeAsync(2000);
       expect(mockFetch).toHaveBeenCalledTimes(4);
 
-      // Fourth retry after 16000ms
-      await vi.advanceTimersByTimeAsync(16000);
+      // Fourth retry after 4000ms (500 * 2^3)
+      await vi.advanceTimersByTimeAsync(4000);
       expect(mockFetch).toHaveBeenCalledTimes(5);
 
-      // Fifth retry after 32000ms
-      await vi.advanceTimersByTimeAsync(32000);
+      // Fifth retry after 8000ms (500 * 2^4)
+      await vi.advanceTimersByTimeAsync(8000);
       expect(mockFetch).toHaveBeenCalledTimes(6);
+
+      // Sixth retry after 16000ms (500 * 2^5)
+      await vi.advanceTimersByTimeAsync(16000);
+      expect(mockFetch).toHaveBeenCalledTimes(7);
+
+      // Seventh retry after 32000ms (500 * 2^6, capped at 32000)
+      await vi.advanceTimersByTimeAsync(32000);
+      expect(mockFetch).toHaveBeenCalledTimes(8);
+
+      // Remaining retries all capped at 32000ms
+      await vi.advanceTimersByTimeAsync(32000);
+      expect(mockFetch).toHaveBeenCalledTimes(9);
+
+      await vi.advanceTimersByTimeAsync(32000);
+      expect(mockFetch).toHaveBeenCalledTimes(10);
+
+      await vi.advanceTimersByTimeAsync(32000);
+      expect(mockFetch).toHaveBeenCalledTimes(11);
 
       await expect(promise).rejects.toThrow("Rate limit reached");
     });
 
-    it("should eventually fail after max retries (5 retries)", async () => {
+    it("should eventually fail after max retries (10 retries)", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 429,
@@ -252,7 +272,56 @@ describe("OpenAIClient", () => {
       await vi.runAllTimersAsync();
 
       await expect(promise).rejects.toThrow("Rate limit reached");
-      expect(mockFetch).toHaveBeenCalledTimes(6); // 1 initial + 5 retries
+      expect(mockFetch).toHaveBeenCalledTimes(11); // 1 initial + 10 retries
+    });
+
+    it("should honor Retry-After header instead of exponential backoff", async () => {
+      const headersWithRetryAfter = new Headers();
+      headersWithRetryAfter.set("retry-after", "30");
+
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: headersWithRetryAfter,
+          text: async () =>
+            JSON.stringify({ error: { message: "Rate limit reached" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "success" } }],
+          }),
+          headers: new Headers(),
+        });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      const promise = client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      // Advance by the exponential backoff amount (500ms) — should NOT retry yet
+      await vi.advanceTimersByTimeAsync(500);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      // Advance to just before Retry-After value (30s) — still no retry
+      await vi.advanceTimersByTimeAsync(29000);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      // Advance past 30s — retry happens now
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      const result = await promise;
+      expect(result.choices[0].message.content).toBe("success");
     });
 
     it("should not retry on other error status codes (e.g., 400)", async () => {
