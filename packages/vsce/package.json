@@ -105,7 +105,7 @@
     "type-check": "tsc --noEmit && tsc -p webview --noEmit && tsc -p tests --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "pretest:demo": "pnpm run type-check && pnpm run compile",
+    "pretest:demo": "pnpm run type-check && tsc -p e2e --noEmit && pnpm run compile",
     "test:demo": "playwright test --project=demo",
     "preinstall:vsix": "pnpm run package",
     "install:vsix": "code --install-extension releases/*.vsix",
