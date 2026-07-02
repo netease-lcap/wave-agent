@@ -268,6 +268,122 @@ describe("Agent Tool Background Execution", () => {
     expect(result.error).toContain('No agent found matching "Invalid"');
   });
 
+  it("should surface error message in content when subagent fails", async () => {
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      usedTools: [],
+      messageManager: {
+        getMessages: vi.fn(() => []),
+        getLatestTotalTokens: vi.fn(() => 0),
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
+      mockInstance as unknown as SubagentInstance,
+    );
+    vi.mocked(mockSubagentManager.executeAgent).mockRejectedValue(
+      new Error("429 Too Many Requests"),
+    );
+
+    const result = await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      mockToolContext,
+    );
+
+    expect(result.success).toBe(false);
+    // content must contain the error message, not be empty
+    expect(result.content).toContain("Agent delegation failed");
+    expect(result.content).toContain("429 Too Many Requests");
+    expect(result.error).toContain("429 Too Many Requests");
+  });
+
+  it("should return error block when last assistant message has no text", async () => {
+    // Simulates what aiManager.sendAIMessage() does on error: it calls
+    // addErrorBlock() which appends an error block to the last assistant message
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      usedTools: [],
+      messageManager: {
+        getMessages: vi.fn(() => [
+          { role: "user", blocks: [{ type: "text", content: "do work" }] },
+          {
+            role: "assistant",
+            blocks: [{ type: "error", content: "429 Too Many Requests" }],
+          },
+        ]),
+        getLatestTotalTokens: vi.fn(() => 0),
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
+      mockInstance as unknown as SubagentInstance,
+    );
+    vi.mocked(mockSubagentManager.executeAgent).mockRejectedValue(
+      new Error("429 Too Many Requests"),
+    );
+
+    const result = await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      mockToolContext,
+    );
+
+    expect(result.success).toBe(false);
+    // no text block → fallback to error block
+    expect(result.content).toContain("429 Too Many Requests");
+  });
+
+  it("should include both text and error block from last assistant message", async () => {
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      usedTools: [],
+      messageManager: {
+        getMessages: vi.fn(() => [
+          { role: "user", blocks: [{ type: "text", content: "do work" }] },
+          {
+            role: "assistant",
+            blocks: [
+              { type: "text", content: "I found 3 files." },
+              { type: "error", content: "429 Too Many Requests" },
+            ],
+          },
+        ]),
+        getLatestTotalTokens: vi.fn(() => 0),
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
+      mockInstance as unknown as SubagentInstance,
+    );
+    vi.mocked(mockSubagentManager.executeAgent).mockRejectedValue(
+      new Error("429 Too Many Requests"),
+    );
+
+    const result = await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      mockToolContext,
+    );
+
+    expect(result.success).toBe(false);
+    // both text and error blocks are included
+    expect(result.content).toContain("I found 3 files.");
+    expect(result.content).toContain("429 Too Many Requests");
+  });
+
   it("should format compact params", () => {
     const params = {
       subagent_type: "Explore",

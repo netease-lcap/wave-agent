@@ -266,10 +266,32 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
             });
           } catch (error) {
             if (!isBackgrounded) {
+              // Extract content from the subagent's last assistant message.
+              // aiManager.sendAIMessage() catch block already added an error
+              // block via addErrorBlock(), so the error info is in the message
+              // history — just return it directly.
+              let content = "";
+              try {
+                const messages = instance.messageManager.getMessages();
+                const lastAssistant = messages
+                  .filter((m) => m.role === "assistant")
+                  .pop();
+                if (lastAssistant) {
+                  content = lastAssistant.blocks
+                    .filter((b) => b.type === "text" || b.type === "error")
+                    .map((b) => (b as { content: string }).content)
+                    .join("\n")
+                    .trim();
+                }
+              } catch {
+                // Ignore errors when extracting messages
+              }
+
+              const errorMsg = `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`;
               resolve({
                 success: false,
-                content: "",
-                error: `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`,
+                content: content || errorMsg,
+                error: errorMsg,
                 shortResult: "Delegation error",
               });
             }
