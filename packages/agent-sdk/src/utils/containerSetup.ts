@@ -117,6 +117,7 @@ export function setupAgentContainer(
             logger.error("Failed to sync task list with session:", error);
           });
         }
+        memoryService.clearCache();
         callbacks.onSessionIdChange?.(sessionId);
       },
     },
