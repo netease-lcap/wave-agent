@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock os.homedir BEFORE importing anything else
 vi.mock("node:os", async (importOriginal) => {
@@ -25,6 +25,7 @@ describe("Plan Mode Integration", () => {
   const workdir = "/test/workdir";
   const homedir = "/home/user";
   const planDir = path.join(homedir, ".wave", "plans");
+  let activeAgent: Agent | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -36,8 +37,16 @@ describe("Plan Mode Integration", () => {
     process.env.WAVE_BASE_URL = "https://test.api";
   });
 
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
+  });
+
   it("should transition to plan mode and generate a plan file path", async () => {
     const agent = await Agent.create({ workdir });
+    activeAgent = agent;
 
     expect(agent.getPermissionMode()).toBe("default");
 
@@ -54,6 +63,7 @@ describe("Plan Mode Integration", () => {
 
   it("should include plan reminder in messages when in plan mode", async () => {
     const agent = await Agent.create({ workdir });
+    activeAgent = agent;
 
     // Transition to plan mode and wait for path generation
     agent.setPermissionMode("plan");
@@ -120,6 +130,7 @@ describe("Plan Mode Integration", () => {
 
   it("should allow writing to the plan file but block other writes", async () => {
     const agent = await Agent.create({ workdir });
+    activeAgent = agent;
 
     // Transition to plan mode and wait for path generation
     agent.setPermissionMode("plan");
@@ -195,6 +206,7 @@ describe("Plan Mode Integration", () => {
         },
       },
     });
+    activeAgent = agent;
 
     expect(agent.getPermissionMode()).toBe("bypassPermissions");
     expect(agent.getPlanFilePath()).toBeUndefined();
@@ -223,5 +235,6 @@ describe("Plan Mode Integration", () => {
     expect(tools).toContain("EnterPlanMode");
 
     await agent.destroy();
+    activeAgent = undefined;
   });
 });

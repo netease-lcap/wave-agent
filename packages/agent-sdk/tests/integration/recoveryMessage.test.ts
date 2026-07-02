@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../../src/agent.js";
 import * as aiService from "../../src/services/aiService.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
@@ -33,14 +33,24 @@ vi.mock("fs", async (importOriginal) => {
 });
 
 describe("Recovery Message Integration", () => {
+  let activeAgent: Agent | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
   });
 
   it("should automatically trigger recovery when finish_reason is 'length'", async () => {
     const agent = await Agent.create({
       apiKey: "test-key",
     });
+    activeAgent = agent;
 
     const messageManager = (
       agent as unknown as { messageManager: MessageManager }

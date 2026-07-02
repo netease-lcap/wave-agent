@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../../src/agent.js";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import * as fs from "fs/promises";
@@ -11,6 +11,7 @@ vi.mock("../../src/services/session.js");
 
 describe("Agent Foreground Task Management", () => {
   const workdir = "/test/workdir";
+  let activeAgent: Agent | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -18,8 +19,16 @@ describe("Agent Foreground Task Management", () => {
     vi.mocked(SkillManager.prototype.getAvailableSkills).mockReturnValue([]);
   });
 
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
+  });
+
   it("should register and unregister foreground tasks via Agent", async () => {
     const agent = await Agent.create({ workdir });
+    activeAgent = agent;
     const backgroundHandler = vi.fn().mockResolvedValue(undefined);
 
     agent.registerForegroundTask({
@@ -39,6 +48,7 @@ describe("Agent Foreground Task Management", () => {
       workdir,
       callbacks: { onBackgroundCurrentTask },
     });
+    activeAgent = agent;
 
     agent.registerForegroundTask({
       id: "test-task",

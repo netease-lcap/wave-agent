@@ -3,7 +3,15 @@
  * Tests that the callback is properly invoked when subagent messages are updated
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/types/index.js";
 import type { SubagentConfiguration } from "@/utils/subagentParser.js";
@@ -38,6 +46,7 @@ vi.mock("@/utils/subagentParser", () => ({
 }));
 
 describe("Agent - onSubagentMessagesChange Callback Tests", () => {
+  let activeAgent: Agent | undefined;
   let agent: Agent;
   let mockOnSubagentMessagesChange: Mock<
     NonNullable<AgentCallbacks["onSubagentMessagesChange"]>
@@ -55,6 +64,16 @@ describe("Agent - onSubagentMessagesChange Callback Tests", () => {
         onSubagentMessagesChange: mockOnSubagentMessagesChange,
       },
     });
+  });
+
+  afterEach(async () => {
+    if (agent) {
+      await agent.destroy();
+    }
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
   });
 
   describe("Direct SubagentManager Integration Tests", () => {
@@ -253,6 +272,7 @@ describe("Agent - onSubagentMessagesChange Callback Tests", () => {
           // No onSubagentMessagesChange callback
         },
       });
+      activeAgent = agentWithoutCallback;
 
       const subagentManager = (
         agentWithoutCallback as unknown as {
@@ -288,6 +308,7 @@ describe("Agent - onSubagentMessagesChange Callback Tests", () => {
           onSubagentMessagesChange: errorCallback,
         },
       });
+      activeAgent = agentWithErrorCallback;
 
       const subagentManager = (
         agentWithErrorCallback as unknown as {

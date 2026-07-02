@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../src/agent.js";
 import { PluginLoader } from "../src/services/pluginLoader.js";
 import { AIManager } from "../src/managers/aiManager.js";
@@ -18,6 +18,7 @@ import { SkillManager } from "../src/managers/skillManager.js";
 
 describe("Agent Plugin Integration", () => {
   const workdir = "/test/workdir";
+  let activeAgent: Agent | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -55,6 +56,13 @@ describe("Agent Plugin Integration", () => {
     vi.spyOn(PluginLoader, "loadCommands").mockImplementation(() => []);
   });
 
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
+  });
+
   it("should load plugins from AgentOptions and register commands", async () => {
     const mockManifest = {
       name: "test-plugin",
@@ -85,6 +93,7 @@ describe("Agent Plugin Integration", () => {
         },
       ],
     });
+    activeAgent = agent;
 
     const commands = agent.getSlashCommands();
     // Plugin commands are namespaced as pluginName:commandId
@@ -124,6 +133,7 @@ describe("Agent Plugin Integration", () => {
         },
       ],
     });
+    activeAgent = agent;
 
     // Mock AIManager.sendAIMessage
     const aiManager = vi.mocked(AIManager).mock.instances[0];
@@ -175,6 +185,7 @@ describe("Agent Plugin Integration", () => {
         },
       ],
     });
+    activeAgent = agent;
 
     const aiManager = vi.mocked(AIManager).mock.instances[0];
     vi.spyOn(aiManager, "sendAIMessage").mockResolvedValue(undefined);

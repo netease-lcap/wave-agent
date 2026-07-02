@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../../src/agent.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 
@@ -22,14 +22,24 @@ vi.mock("fs", async (importOriginal) => {
 });
 
 describe("Agent Tool Selection Integration", () => {
+  let activeAgent: Agent | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
   });
 
   it("should initialize agent with all tools by default", async () => {
     const agent = await Agent.create({
       apiKey: "test-key",
     });
+    activeAgent = agent;
 
     // Access private toolManager for verification
     const toolManager = (agent as unknown as { toolManager: ToolManager })
@@ -48,6 +58,7 @@ describe("Agent Tool Selection Integration", () => {
       apiKey: "test-key",
       tools: ["Read", "Edit"],
     });
+    activeAgent = agent;
 
     const toolManager = (agent as unknown as { toolManager: ToolManager })
       .toolManager;
@@ -65,6 +76,7 @@ describe("Agent Tool Selection Integration", () => {
       apiKey: "test-key",
       tools: [],
     });
+    activeAgent = agent;
 
     const toolManager = (agent as unknown as { toolManager: ToolManager })
       .toolManager;

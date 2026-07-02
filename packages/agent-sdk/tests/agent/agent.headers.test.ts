@@ -4,6 +4,7 @@ import { ConfigurationService } from "@/services/configurationService.js";
 
 describe("Agent Custom Headers", () => {
   const originalEnv = process.env;
+  let activeAgent: Agent | undefined;
 
   beforeEach(() => {
     // Reset environment variables
@@ -15,7 +16,11 @@ describe("Agent Custom Headers", () => {
     process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
     process.env = originalEnv;
     vi.restoreAllMocks();
   });
@@ -24,6 +29,7 @@ describe("Agent Custom Headers", () => {
     process.env.WAVE_CUSTOM_HEADERS = "X-Test-Header: value123";
 
     const agent = await Agent.create({});
+    activeAgent = agent;
     const gatewayConfig = agent.getGatewayConfig();
 
     expect(gatewayConfig.defaultHeaders).toBeDefined();
@@ -34,6 +40,7 @@ describe("Agent Custom Headers", () => {
     process.env.WAVE_CUSTOM_HEADERS = "X-Header-1: val1\nX-Header-2: val2";
 
     const agent = await Agent.create({});
+    activeAgent = agent;
     const gatewayConfig = agent.getGatewayConfig();
 
     expect(gatewayConfig.defaultHeaders).toEqual({
@@ -51,6 +58,7 @@ describe("Agent Custom Headers", () => {
         "X-Another": "another",
       },
     });
+    activeAgent = agent;
     const gatewayConfig = agent.getGatewayConfig();
 
     expect(gatewayConfig.defaultHeaders).toEqual({
@@ -69,6 +77,7 @@ describe("Agent Custom Headers", () => {
         "X-Conflict": "const-conflict",
       },
     });
+    activeAgent = agent;
     const gatewayConfig = agent.getGatewayConfig();
 
     expect(gatewayConfig.defaultHeaders).toEqual({
@@ -98,6 +107,7 @@ describe("Agent Custom Headers", () => {
     });
 
     const agent = await Agent.create({});
+    activeAgent = agent;
     const gatewayConfig = agent.getGatewayConfig();
 
     expect(gatewayConfig.defaultHeaders?.["X-Settings"]).toBe("settings-val");
@@ -124,6 +134,7 @@ describe("Agent Custom Headers", () => {
     });
 
     const agent = await Agent.create({});
+    activeAgent = agent;
     const gatewayConfig = agent.getGatewayConfig();
 
     expect(gatewayConfig.defaultHeaders?.["X-Header"]).toBe("settings-val");

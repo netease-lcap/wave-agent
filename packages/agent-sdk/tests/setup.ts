@@ -1,5 +1,16 @@
-import { vi } from "vitest";
+import { vi, afterEach } from "vitest";
 import * as os from "os";
+
+// Safety net: hint V8 to reclaim memory between tests. Leaked Agent resources
+// (timers, watchers) from tests that forgot to call destroy() accumulate under
+// coverage instrumentation. Forcing GC when available (--expose-gc) helps keep
+// peak memory bounded within a single fork worker.
+afterEach(() => {
+  const gc = (globalThis as { gc?: () => void }).gc;
+  if (gc) {
+    gc();
+  }
+});
 
 // Mock os.homedir globally to prevent tests from reading user settings
 // Mock both "os" and "node:os" specifiers since Vitest treats them as different modules

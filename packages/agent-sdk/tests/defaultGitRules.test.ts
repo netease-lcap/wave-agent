@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../src/agent.js";
 import * as fs from "fs/promises";
 
@@ -7,6 +7,7 @@ vi.mock("./services/session.js");
 
 describe("Default Allowed Git Rules", () => {
   const workdir = "/test/workdir";
+  let activeAgent: Agent | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -15,11 +16,19 @@ describe("Default Allowed Git Rules", () => {
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
   });
 
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
+  });
+
   it("should allow read-only git commands by default", async () => {
     const agent = await Agent.create({
       workdir,
       permissionMode: "default",
     });
+    activeAgent = agent;
 
     const gitCommands = [
       "git status",
@@ -52,6 +61,7 @@ describe("Default Allowed Git Rules", () => {
       workdir,
       permissionMode: "default",
     });
+    activeAgent = agent;
 
     const destructiveGitCommands = [
       "git reset --hard",
@@ -77,6 +87,7 @@ describe("Default Allowed Git Rules", () => {
       workdir,
       permissionMode: "default",
     });
+    activeAgent = agent;
 
     const safeCommands = [
       "echo hello",

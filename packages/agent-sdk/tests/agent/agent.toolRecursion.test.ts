@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
@@ -46,6 +46,12 @@ describe("Agent Tool Recursion Tests", () => {
     aiServiceCallCount = 0;
 
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (agent) {
+      await agent.destroy();
+    }
   });
 
   it("should trigger recursive AI call after tool execution and verify message structure", async () => {

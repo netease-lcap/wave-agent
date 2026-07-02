@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../../src/agent.js";
 import { ConfigurationService } from "../../src/services/configurationService.js";
 import fs from "node:fs/promises";
@@ -69,6 +69,7 @@ vi.mock("node:fs/promises", () => {
 
 describe("Agent Plan Mode Default", () => {
   const workdir = "/test/workdir";
+  let activeAgent: Agent | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,8 +77,16 @@ describe("Agent Plan Mode Default", () => {
     mockMemoryServiceInstance.readMemoryFile.mockResolvedValue("");
   });
 
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
+  });
+
   it("should generate plan file path when default mode is plan in configuration", async () => {
     const agent = await Agent.create({ workdir });
+    activeAgent = agent;
 
     // Wait for async plan file path generation
     // We need to wait because the callback is async and not awaited in initialize
@@ -129,6 +138,7 @@ describe("Agent Plan Mode Default", () => {
     });
 
     const agent = await Agent.create({ workdir });
+    activeAgent = agent;
 
     expect(agent.getPermissionMode()).toBe("default");
     expect(agent.getPlanFilePath()).toBeUndefined();

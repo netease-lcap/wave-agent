@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { TaskManager } from "../src/services/taskManager.js";
 import { Agent } from "../src/agent.js";
 import { MessageManager } from "../src/managers/messageManager.js";
@@ -45,6 +45,15 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 }));
 
 describe("Rewind Task List Sync", () => {
+  let activeAgent: Agent | undefined;
+
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
+  });
+
   describe("TaskManager.refreshTasks", () => {
     it("should emit tasksChange event", async () => {
       const container = new Container();
@@ -75,6 +84,7 @@ describe("Rewind Task List Sync", () => {
           onTasksChange: onTasksChangeSpy,
         },
       });
+      activeAgent = agent;
 
       // Mock listTasks to return some tasks
       const mockTasks = [{ id: "1", subject: "test", status: "pending" }];

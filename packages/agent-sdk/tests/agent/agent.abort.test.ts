@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
@@ -38,6 +38,7 @@ vi.mock("@/managers/toolManager", () => ({
 
 describe("Agent - Abort Handling", () => {
   let agent: Agent;
+  let activeTestAgent: Agent | undefined;
 
   beforeEach(async () => {
     // Create mock callbacks
@@ -126,6 +127,16 @@ describe("Agent - Abort Handling", () => {
     });
 
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (activeTestAgent) {
+      await activeTestAgent.destroy();
+      activeTestAgent = undefined;
+    }
+    if (agent) {
+      await agent.destroy();
+    }
   });
 
   it(
@@ -398,6 +409,7 @@ describe("Agent - Abort Handling", () => {
     });
 
     // Register mock ToolManager
+    activeTestAgent = testAgent;
     const container = (testAgent as unknown as { container: Container })
       .container;
     container.register("ToolManager", mockToolManagerInstance);
@@ -473,6 +485,7 @@ describe("Agent - Abort Handling", () => {
         callbacks: mockCallbacks,
       });
 
+      activeTestAgent = testAgent;
       const container = (testAgent as unknown as { container: Container })
         .container;
       container.register("ToolManager", mockToolManagerInstance);
@@ -551,6 +564,7 @@ describe("Agent - Abort Handling", () => {
         callbacks: mockCallbacks,
       });
 
+      activeTestAgent = testAgent;
       const container = (testAgent as unknown as { container: Container })
         .container;
       container.register("ToolManager", mockToolManagerInstance);
@@ -619,6 +633,7 @@ describe("Agent - Abort Handling", () => {
         },
       });
 
+      activeTestAgent = testAgent;
       const container = (testAgent as unknown as { container: Container })
         .container;
       container.register("ToolManager", mockToolManagerInstance);
@@ -682,6 +697,7 @@ describe("Agent - Abort Handling", () => {
         callbacks: mockCallbacks,
       });
 
+      activeTestAgent = testAgent;
       const container = (testAgent as unknown as { container: Container })
         .container;
       container.register("ToolManager", mockToolManagerInstance);
@@ -750,6 +766,7 @@ describe("Agent - Abort Handling", () => {
         },
       });
 
+      activeTestAgent = testAgent;
       const container = (testAgent as unknown as { container: Container })
         .container;
       container.register("ToolManager", mockToolManagerInstance);
@@ -799,6 +816,7 @@ describe("Agent - Abort Handling", () => {
         callbacks: mockCallbacks,
       });
 
+      activeTestAgent = testAgent;
       const container = (testAgent as unknown as { container: Container })
         .container;
       container.register("ToolManager", mockToolManagerInstance);
@@ -868,6 +886,7 @@ describe("Agent - Abort Handling", () => {
         callbacks: mockCallbacks,
       });
 
+      activeTestAgent = testAgent;
       const container = (testAgent as unknown as { container: Container })
         .container;
       container.register("ToolManager", mockToolManagerInstance);
@@ -930,6 +949,7 @@ describe("Agent - Abort Handling", () => {
         },
       });
 
+      activeTestAgent = testAgent;
       const container = (testAgent as unknown as { container: Container })
         .container;
       container.register("ToolManager", mockToolManagerInstance);

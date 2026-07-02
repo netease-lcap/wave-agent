@@ -37,6 +37,7 @@ vi.mock("@/services/aiService", () => ({
 
 describe("ExitPlanMode Clear Context", () => {
   const originalEnv = process.env;
+  let activeAgent: Agent | undefined;
   let mockStdout: typeof process.stdout.write;
   let mockStderr: typeof process.stderr.write;
   let originalStdoutWrite: typeof process.stdout.write;
@@ -56,7 +57,11 @@ describe("ExitPlanMode Clear Context", () => {
     process.stderr.write = mockStderr;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
     process.env = originalEnv;
     process.stdout.write = originalStdoutWrite;
     process.stderr.write = originalStderrWrite;
@@ -78,6 +83,7 @@ describe("ExitPlanMode Clear Context", () => {
       permissionMode: "plan",
       canUseTool: mockCallback as PermissionCallback,
     });
+    activeAgent = agent;
 
     // Add some initial messages
     agent.sendMessage("Initial message");
@@ -126,6 +132,7 @@ describe("ExitPlanMode Clear Context", () => {
       permissionMode: "plan",
       canUseTool: mockCallback as PermissionCallback,
     });
+    activeAgent = agent;
 
     // Add some initial messages
     await agent.sendMessage("Initial message");
@@ -164,6 +171,7 @@ describe("ExitPlanMode Clear Context", () => {
       permissionMode: "plan",
       canUseTool: mockCallback as PermissionCallback,
     });
+    activeAgent = agent;
 
     // Add some initial messages
     await agent.sendMessage("Initial message");
@@ -202,6 +210,7 @@ describe("ExitPlanMode Clear Context", () => {
       permissionMode: "plan",
       canUseTool: mockCallback as PermissionCallback,
     });
+    activeAgent = agent;
 
     // Wait for plan file path generation
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -234,6 +243,7 @@ describe("ExitPlanMode Clear Context", () => {
       permissionMode: "default",
       canUseTool: mockCallback as PermissionCallback,
     });
+    activeAgent = agent;
 
     // Add some initial messages
     await agent.sendMessage("Initial message");
