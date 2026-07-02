@@ -32,6 +32,6 @@ test.describe('Language Configuration Demo', () => {
 
         // Take screenshot of the dialog with language field in view
         const dialog = webviewPage.locator('.configuration-dialog');
-        await dialog.screenshot({ path: 'docs/public/screenshots/language-config-ui.png' });
+        await dialog.screenshot({ path: '../../docs/public/screenshots/language-config-ui.png' });
     });
 });

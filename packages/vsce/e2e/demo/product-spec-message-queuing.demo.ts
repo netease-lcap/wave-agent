@@ -36,7 +36,7 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         await sendBtn.focus();
         
         // Take screenshot of the input area with "Add to Queue" button
-        await webviewPage.locator('.input-container').screenshot({ path: 'docs/public/screenshots/spec-queue-button.png' });
+        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-queue-button.png' });
 
         // 2. Show queued message in the list with tags
         await injector.simulateExtensionMessage('updateQueue', {
@@ -58,6 +58,6 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         await expect(queuePanel).toContainText('图片 1');
         
         // Take screenshot of the message list showing the queued message with tags
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-queued-message.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-queued-message.png' });
     });
 });

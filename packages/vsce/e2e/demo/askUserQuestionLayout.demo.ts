@@ -31,6 +31,6 @@ test.describe('AskUserQuestion Layout Demo', () => {
     await webviewPage.waitForSelector('.ask-user-result-item');
 
     // Take screenshot
-    await webviewPage.screenshot({ path: 'docs/public/screenshots/ask-user-question-vertical.png' });
+    await webviewPage.screenshot({ path: '../../docs/public/screenshots/ask-user-question-vertical.png' });
   });
 });

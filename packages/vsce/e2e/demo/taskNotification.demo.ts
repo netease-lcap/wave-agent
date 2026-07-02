@@ -62,6 +62,6 @@ test.describe('Task Notification Demo', () => {
     await webviewPage.waitForSelector('.task-notification-block');
 
     // Take screenshot
-    await webviewPage.screenshot({ path: 'docs/public/screenshots/task-notification.png' });
+    await webviewPage.screenshot({ path: '../../docs/public/screenshots/task-notification.png' });
   });
 });
