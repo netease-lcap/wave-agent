@@ -150,6 +150,14 @@ describe("Agent Memory Functionality", () => {
       // Access memory multiple times - should return cached values
       expect(agent.projectMemory).toBe(projectMemoryContent);
       expect(agent.userMemory).toBe(userMemoryContent);
+      expect(await agent.getCombinedMemory()).toBe(
+        projectMemoryContent + "\n\n" + userMemoryContent,
+      );
+
+      // getCombinedMemory calls: 1 (lazy caching)
+      expect(
+        mockMemoryServiceInstance.getCombinedMemoryContent,
+      ).toHaveBeenCalledTimes(1);
 
       await agent.destroy();
     });
@@ -192,6 +200,62 @@ describe("Agent Memory Functionality", () => {
       await agent.destroy();
     });
 
+    it("should provide combinedMemory getter that merges both contents", async () => {
+      const projectMemoryContent = "# Memory\n\nProject context";
+      const userMemoryContent = "# User Memory\n\nUser preferences";
+
+      mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue(
+        `${projectMemoryContent}\n\n${userMemoryContent}`,
+      );
+
+      const agent = await Agent.create({
+        workdir: mockTempDir,
+        callbacks: mockCallbacks,
+      });
+
+      // Should merge project memory and user memory with proper separator
+      const expectedCombined = `${projectMemoryContent}\n\n${userMemoryContent}`;
+      expect(await agent.getCombinedMemory()).toBe(expectedCombined);
+
+      await agent.destroy();
+    });
+
+    it("should return combined memory with only project content when user memory is empty", async () => {
+      const projectMemoryContent = "# Memory\n\nProject context only";
+
+      mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue(
+        projectMemoryContent,
+      );
+
+      const agent = await Agent.create({
+        workdir: mockTempDir,
+        callbacks: mockCallbacks,
+      });
+
+      // Should return only project memory without extra separators
+      expect(await agent.getCombinedMemory()).toBe(projectMemoryContent);
+
+      await agent.destroy();
+    });
+
+    it("should return combined memory with only user content when project memory is empty", async () => {
+      const userMemoryContent = "# User Memory\n\nUser context only";
+
+      mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue(
+        userMemoryContent,
+      );
+
+      const agent = await Agent.create({
+        workdir: mockTempDir,
+        callbacks: mockCallbacks,
+      });
+
+      // Should return only user memory without extra separators
+      expect(await agent.getCombinedMemory()).toBe(userMemoryContent);
+
+      await agent.destroy();
+    });
+
     it("should return empty strings when no content loaded", async () => {
       // MemoryService handles errors internally; cached properties return empty strings
       mockMemoryServiceInstance._cachedProjectMemory = "";
@@ -206,6 +270,7 @@ describe("Agent Memory Functionality", () => {
       // All memory getters should return empty strings
       expect(agent.projectMemory).toBe("");
       expect(agent.userMemory).toBe("");
+      expect(await agent.getCombinedMemory()).toBe("");
 
       await agent.destroy();
     });
@@ -229,6 +294,9 @@ describe("Agent Memory Functionality", () => {
       // Project memory should be empty string, user memory should load normally
       expect(agent.projectMemory).toBe("");
       expect(agent.userMemory).toBe("# User Memory\n\nUser content");
+      expect(await agent.getCombinedMemory()).toBe(
+        "# User Memory\n\nUser content",
+      );
 
       await agent.destroy();
     });
@@ -250,6 +318,9 @@ describe("Agent Memory Functionality", () => {
       // User memory should be empty string, project memory should load normally
       expect(agent.projectMemory).toBe("# Memory\n\nProject content");
       expect(agent.userMemory).toBe("");
+      expect(await agent.getCombinedMemory()).toBe(
+        "# Memory\n\nProject content",
+      );
 
       await agent.destroy();
     });
@@ -268,6 +339,7 @@ describe("Agent Memory Functionality", () => {
       // Both memories should fallback to empty strings on read errors
       expect(agent.projectMemory).toBe("");
       expect(agent.userMemory).toBe("");
+      expect(await agent.getCombinedMemory()).toBe("");
 
       await agent.destroy();
     });
@@ -306,6 +378,7 @@ describe("Agent Memory Functionality", () => {
         expect(agent).toBeDefined();
         expect(typeof agent.projectMemory).toBe("string");
         expect(typeof agent.userMemory).toBe("string");
+        expect(typeof (await agent.getCombinedMemory())).toBe("string");
 
         // Agent should be fully functional despite memory loading failures
         expect(agent.workingDirectory).toBe(`${mockTempDir}-${i}`);
