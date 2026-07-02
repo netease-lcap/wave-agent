@@ -71,6 +71,6 @@ test.describe('Plugin Status Badge Logic', () => {
         await expect(notInstalledItem.locator('.plugin-scope')).not.toBeVisible();
 
         // Take screenshot for verification
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/plugin-status-badge-verification.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugin-status-badge-verification.png' });
     });
 });

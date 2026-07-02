@@ -68,7 +68,7 @@ test.describe('Plugin Management Dialog Demo', () => {
         });
 
         // Take screenshot of "Explore" tab
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/plugins-explore-tab.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugins-explore-tab.png' });
 
         // 3. Switch to "已安装插件" tab
         await webviewPage.getByText('已安装插件', { exact: true }).click();
@@ -92,7 +92,7 @@ test.describe('Plugin Management Dialog Demo', () => {
         });
 
         await expect(webviewPage.locator('.plugin-name').filter({ hasText: 'Installed Plugin' })).toBeVisible();
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/plugins-installed-tab.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugins-installed-tab.png' });
 
         // 4. Switch to "插件市场" tab
         await webviewPage.getByText('插件市场', { exact: true }).click();
@@ -108,6 +108,6 @@ test.describe('Plugin Management Dialog Demo', () => {
         });
 
         await expect(webviewPage.getByText('wave-plugins-official', { exact: true })).toBeVisible();
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/plugins-marketplaces-tab.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugins-marketplaces-tab.png' });
     });
 });

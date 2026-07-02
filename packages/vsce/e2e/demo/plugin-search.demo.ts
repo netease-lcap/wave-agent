@@ -59,7 +59,7 @@ test.describe('Plugin Search UI Demo', () => {
         await expect(searchInput).toHaveAttribute('placeholder', '搜索插件...');
 
         // Screenshot of search input with all plugins
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/plugin-search-input.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugin-search-input.png' });
 
         // 4. Type "commit" to filter
         await searchInput.fill('commit');
@@ -70,13 +70,13 @@ test.describe('Plugin Search UI Demo', () => {
         await expect(webviewPage.locator('.plugin-name', { hasText: 'typescript-lsp' })).not.toBeVisible();
         await expect(webviewPage.locator('.plugin-name', { hasText: 'chrome-headless' })).not.toBeVisible();
 
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/plugin-search-filtered.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugin-search-filtered.png' });
 
         // 5. Type a non-matching query
         await searchInput.fill('zzz-nonexistent');
         await expect(webviewPage.getByText('没有找到匹配的插件')).toBeVisible();
 
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/plugin-search-no-results.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugin-search-no-results.png' });
 
         // 6. Clear the search
         await searchInput.fill('');

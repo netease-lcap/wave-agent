@@ -20,7 +20,7 @@ test.describe('Configuration Popup Demo', () => {
         await expect(webviewPage.getByText('配置设置', { exact: true })).toBeVisible();
         
         // Take screenshot to manually verify UI
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/config-popup-updated-ui.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/config-popup-updated-ui.png' });
     });
 
     test('should NOT show configuration dialog when config is provided (simulated)', async ({ webviewPage }) => {
@@ -29,6 +29,6 @@ test.describe('Configuration Popup Demo', () => {
         await expect(webviewPage.getByTestId('chat-container')).toBeVisible();
         await expect(webviewPage.getByText('配置设置', { exact: true })).not.toBeVisible(); // The dialog title
         
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/config-not-needed.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/config-not-needed.png' });
     });
 });

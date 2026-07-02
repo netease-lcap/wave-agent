@@ -27,7 +27,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
 
         // 1. Welcome Message
         await ui.verifyMessageCount(1);
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-welcome.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-welcome.png' });
 
         // 1.3 Code Selection Tag
         await injector.simulateExtensionMessage('addSelectionToInput', {
@@ -41,7 +41,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
             }
         });
         await webviewPage.waitForSelector('.context-tag-container[data-is-selection="true"]');
-        await webviewPage.locator('.input-container').screenshot({ path: 'docs/public/screenshots/spec-selection-inline-tag.png' });
+        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-selection-inline-tag.png' });
         
         // Clear input for next steps
         await webviewPage.focus('[data-testid="message-input"]');
@@ -56,7 +56,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         await injector.updateMessages(basicChat);
         await injector.endStreaming();
         await ui.verifyMessageCount(3); // Welcome + user + assistant
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-basic-chat.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-basic-chat.png' });
 
         // 3. Slash Commands
         await injector.updateMessages([]);
@@ -78,7 +78,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         });
 
         await webviewPage.waitForSelector('.slash-command-item', { state: 'visible', timeout: 5000 });
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-slash-commands.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-slash-commands.png' });
         await webviewPage.keyboard.press('Escape');
 
         // 4. File Suggestions (@)
@@ -113,7 +113,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         });
 
         await webviewPage.waitForSelector('.suggestion-item', { state: 'visible', timeout: 5000 });
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-file-suggestions.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-file-suggestions.png' });
         await webviewPage.keyboard.press('Escape');
         await webviewPage.keyboard.press('Control+A');
         await webviewPage.keyboard.press('Backspace');
@@ -125,12 +125,12 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         await injector.updateMessages(mermaidChat);
         await injector.endStreaming();
         await webviewPage.waitForSelector('.mermaid-container svg');
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-mermaid.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-mermaid.png' });
 
         // 23. Mermaid Fullscreen
         await webviewPage.click('.mermaid-container'); // Click to open fullscreen
         await webviewPage.waitForSelector('.mermaid-fullscreen-modal');
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-mermaid-fullscreen.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-mermaid-fullscreen.png' });
         await webviewPage.keyboard.press('Escape');
     });
 });

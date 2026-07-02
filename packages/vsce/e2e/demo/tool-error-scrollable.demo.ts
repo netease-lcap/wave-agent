@@ -52,7 +52,7 @@ test.describe('Tool Error Scrollable Demo', () => {
         expect(overflowY).toBe('auto');
         
         // Take a screenshot of the long error with scrollbar
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/tool-error-scrollable.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/tool-error-scrollable.png' });
     });
 
     test('should show scrollable error block', async ({ webviewPage }) => {
@@ -99,6 +99,6 @@ test.describe('Tool Error Scrollable Demo', () => {
         expect(overflowY).toBe('auto');
         
         // Take a screenshot of the long error block with scrollbar
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/error-block-scrollable.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/error-block-scrollable.png' });
     });
 });

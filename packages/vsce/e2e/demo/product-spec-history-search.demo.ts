@@ -31,12 +31,12 @@ test.describe('Product Spec: History Search', () => {
 
         // 5. Take screenshot of the whole webview to show the popup in context
         await webviewPage.screenshot({
-            path: 'docs/public/screenshots/spec-history-search.png'
+            path: '../../docs/public/screenshots/spec-history-search.png'
         });
 
         // 6. Take a full screenshot showing the context
         await webviewPage.screenshot({
-            path: 'docs/public/screenshots/spec-history-search-context.png'
+            path: '../../docs/public/screenshots/spec-history-search-context.png'
         });
     });
 });

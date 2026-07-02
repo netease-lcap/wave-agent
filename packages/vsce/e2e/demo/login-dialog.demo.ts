@@ -41,7 +41,7 @@ test.describe('Login Dialog Demo', () => {
 
         // Take screenshot
         const dialog = webviewPage.locator('.configuration-dialog');
-        await dialog.screenshot({ path: 'docs/public/screenshots/spec-login-dialog.png' });
+        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-login-dialog.png' });
     });
 
     test('should show login dialog with authenticated state', async ({ webviewPage }) => {
@@ -75,7 +75,7 @@ test.describe('Login Dialog Demo', () => {
         await expect(webviewPage.getByText('登出', { exact: true })).toBeVisible();
 
         const dialog = webviewPage.locator('.configuration-dialog');
-        await dialog.screenshot({ path: 'docs/public/screenshots/spec-login-dialog-authenticated.png' });
+        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-login-dialog-authenticated.png' });
     });
 
     test('should show editable serverUrl input when no server URL configured', async ({ webviewPage }) => {
@@ -114,6 +114,6 @@ test.describe('Login Dialog Demo', () => {
         await expect(loginBtn).toBeDisabled();
 
         const dialog = webviewPage.locator('.configuration-dialog');
-        await dialog.screenshot({ path: 'docs/public/screenshots/spec-login-dialog-no-url.png' });
+        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-login-dialog-no-url.png' });
     });
 });

@@ -38,7 +38,7 @@ test.describe('Model Dialog Demo', () => {
 
         // Take screenshot
         const dialog = webviewPage.locator('.configuration-dialog');
-        await dialog.screenshot({ path: 'docs/public/screenshots/spec-model-dialog.png' });
+        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-model-dialog.png' });
     });
 
     test('should show model dialog with empty values and env placeholders', async ({ webviewPage }) => {
@@ -76,6 +76,6 @@ test.describe('Model Dialog Demo', () => {
         await expect(modelSelect).toBeVisible();
 
         const dialog = webviewPage.locator('.configuration-dialog');
-        await dialog.screenshot({ path: 'docs/public/screenshots/spec-model-dialog-empty.png' });
+        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-model-dialog-empty.png' });
     });
 });

@@ -54,18 +54,13 @@ jobs:
             playwright-chromium-${{ runner.os }}-
 
       - name: Install Playwright Chromium
-        run: pnpm -F wave-vsce exec playwright install chromium
+        run: pnpm -F wave-vsce exec playwright install --with-deps chromium
 
       - name: Build agent-sdk
         run: pnpm -F wave-agent-sdk build
 
       - name: Generate screenshots
         run: pnpm -F wave-vsce run test:demo
-
-      - name: Copy screenshots to docs
-        run: |
-          mkdir -p docs/public/screenshots
-          cp -r packages/vsce/docs/public/screenshots/* docs/public/screenshots/ 2>/dev/null || true
 
       - name: Build VitePress
         run: pnpm run docs:build

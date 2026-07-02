@@ -7,7 +7,7 @@ test.describe('Tooltip Demo', () => {
         await sendButton.scrollIntoViewIfNeeded();
         await sendButton.locator('..').hover();
         await sendButton.focus();
-        await webviewPage.locator('.input-container').screenshot({ path: 'docs/public/screenshots/tooltip-send.png' });
+        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/tooltip-send.png' });
 
     });
 });

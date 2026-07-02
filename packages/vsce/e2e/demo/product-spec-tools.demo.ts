@@ -55,7 +55,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         };
         await injector.updateMessages([diffMessage]);
         await webviewPage.waitForSelector('.tool-container');
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-diff-viewer.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-diff-viewer.png' });
 
         // 7. Task List
         await injector.simulateExtensionMessage('updateTasks', {
@@ -67,7 +67,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
             isTaskListCollapsed: false
         });
         await webviewPage.waitForSelector('.task-list-container');
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-task-list.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-task-list.png' });
 
         // 7.1 Task List Collapsed
         await injector.simulateExtensionMessage('updateTasks', {
@@ -83,7 +83,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
             const el = document.querySelector('.task-list-container');
             return el && el.classList.contains('collapsed');
         });
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-task-list-collapsed.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-task-list-collapsed.png' });
         
         // Restore expanded state for subsequent screenshots if needed
         await injector.simulateExtensionMessage('updateTasks', {
@@ -110,7 +110,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         await injector.updateMessages([subagentMessage]);
         
         await webviewPage.waitForSelector('.tool-container');
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-subagent.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-subagent.png' });
 
         // 9. Bash Tool - 使用 MockDataGenerator
         const bashMessage: Message = {
@@ -130,7 +130,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         };
         await injector.updateMessages([bashMessage]);
         await webviewPage.waitForSelector('.bash-command-unified');
-        await webviewPage.screenshot({ path: 'docs/public/screenshots/spec-bash.png' });
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-bash.png' });
 
         // 19. Exploration Tools
         const explorationMessages: Message[] = [
@@ -180,7 +180,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         ];
         await injector.updateMessages(explorationMessages as unknown as Message[]);
         await webviewPage.waitForSelector('.tool-container');
-        await webviewPage.locator('.messages-container').screenshot({ path: 'docs/public/screenshots/spec-exploration.png' });
+        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-exploration.png' });
 
         // 21. File Operation Tools
         const fileOpMessages: Message[] = [
@@ -212,7 +212,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         ];
         await injector.updateMessages(fileOpMessages);
         await webviewPage.waitForSelector('.tool-container');
-        await webviewPage.locator('.messages-container').screenshot({ path: 'docs/public/screenshots/spec-file-ops.png' });
+        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-file-ops.png' });
 
         // 24. LSP
         await injector.simulateExtensionMessage('setInitialState', {
@@ -257,7 +257,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
                 }
             ]
         });
-        await webviewPage.locator('.messages-container').screenshot({ path: 'docs/public/screenshots/spec-lsp.png' });
+        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-lsp.png' });
 
         // 25. Skill
         await injector.simulateExtensionMessage('setInitialState', {
@@ -279,7 +279,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
                 }
             ]
         });
-        await webviewPage.locator('.messages-container').screenshot({ path: 'docs/public/screenshots/spec-skill.png' });
+        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-skill.png' });
 
         // 26. MCP
         await injector.simulateExtensionMessage('setInitialState', {
@@ -292,6 +292,6 @@ test.describe('Product Specification Screenshots - Tools', () => {
                 )
             ]
         });
-        await webviewPage.locator('.messages-container').screenshot({ path: 'docs/public/screenshots/spec-mcp.png' });
+        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-mcp.png' });
     });
 });

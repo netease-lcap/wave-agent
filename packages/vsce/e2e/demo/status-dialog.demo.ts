@@ -60,7 +60,7 @@ test.describe('Status Dialog Demo', () => {
 
         // Take screenshot
         const dialog = webviewPage.locator('.configuration-dialog');
-        await dialog.screenshot({ path: 'docs/public/screenshots/spec-status-dialog.png' });
+        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-status-dialog.png' });
     });
 
     test('should show status dialog with unauthenticated state', async ({ webviewPage }) => {
@@ -95,6 +95,6 @@ test.describe('Status Dialog Demo', () => {
         await expect(webviewPage.getByText('未登录')).toBeVisible();
 
         const dialog = webviewPage.locator('.configuration-dialog');
-        await dialog.screenshot({ path: 'docs/public/screenshots/spec-status-dialog-noauth.png' });
+        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-status-dialog-noauth.png' });
     });
 });
