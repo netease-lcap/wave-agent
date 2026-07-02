@@ -222,12 +222,16 @@ export class OpenAIClient {
 
           const data = trimmedLine.slice(5).trim();
           if (data === "[DONE]") return;
+          if (!data) continue; // Skip empty data lines (keepalive heartbeats)
 
           try {
             const json = JSON.parse(data);
             yield json as ChatCompletionChunk;
           } catch (e) {
-            logger.error("Failed to parse stream chunk", { error: e, data });
+            logger.error("Failed to parse stream chunk", {
+              error: e instanceof Error ? e.message : String(e),
+              data,
+            });
           }
         }
       }
