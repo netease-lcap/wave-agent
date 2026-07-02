@@ -341,7 +341,7 @@ describe("MessageManager Coverage Improvements", () => {
         blocks: [
           {
             type: "tool" as const,
-            name: "read",
+            name: "Read",
             stage: "end" as const,
             parameters: JSON.stringify({ file_path: "src/index.ts" }),
             result: readResultContent,
@@ -365,7 +365,7 @@ describe("MessageManager Coverage Improvements", () => {
         blocks: [
           {
             type: "tool" as const,
-            name: "read",
+            name: "Read",
             stage: "running" as const,
             parameters: JSON.stringify({ file_path: "src/index.ts" }),
             result: "partial",
@@ -388,7 +388,7 @@ describe("MessageManager Coverage Improvements", () => {
         blocks: [
           {
             type: "tool" as const,
-            name: "read",
+            name: "Read",
             stage: "end" as const,
             parameters: JSON.stringify({ file_path: "old.ts" }),
             result: "old content",
@@ -407,7 +407,7 @@ describe("MessageManager Coverage Improvements", () => {
         blocks: [
           {
             type: "tool" as const,
-            name: "read",
+            name: "Read",
             stage: "end" as const,
             parameters: JSON.stringify({ file_path: "new.ts" }),
             result: "new content",
@@ -419,6 +419,51 @@ describe("MessageManager Coverage Improvements", () => {
     const fileReads = messageManager.getRecentFileReads(1);
     expect(fileReads).toHaveLength(1);
     expect(fileReads[0].path).toBe("new.ts");
+  });
+
+  it("hasFileBeenRead should return true after Read tool with capital R name (production behavior)", () => {
+    const msgs = [
+      {
+        id: "msg-1",
+        role: "assistant" as const,
+        blocks: [
+          {
+            type: "tool" as const,
+            name: "Read",
+            stage: "end" as const,
+            parameters: JSON.stringify({ file_path: "src/index.ts" }),
+            result: "file contents",
+          },
+        ],
+      },
+    ];
+
+    messageManager.setMessages(msgs as unknown as Message[]);
+    expect(messageManager.hasFileBeenRead("src/index.ts")).toBe(true);
+    expect(messageManager.hasFileBeenRead("src/other.ts")).toBe(false);
+  });
+
+  it("hasFileBeenRead should work with absolute paths", () => {
+    const msgs = [
+      {
+        id: "msg-1",
+        role: "assistant" as const,
+        blocks: [
+          {
+            type: "tool" as const,
+            name: "Read",
+            stage: "end" as const,
+            parameters: JSON.stringify({ file_path: "src/index.ts" }),
+            result: "file contents",
+          },
+        ],
+      },
+    ];
+
+    messageManager.setMessages(msgs as unknown as Message[]);
+    expect(messageManager.hasFileBeenRead("/test/workdir/src/index.ts")).toBe(
+      true,
+    );
   });
 
   describe("getMemoryForInjection", () => {
