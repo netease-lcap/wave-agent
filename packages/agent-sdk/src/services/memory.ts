@@ -8,24 +8,26 @@ import { getGitCommonDir } from "../utils/gitUtils.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
 
 export class MemoryService {
-  private _cachedProjectMemory: string = "";
-  private _cachedUserMemory: string = "";
+  private _cachedProjectMemory: string | null = null;
+  private _cachedUserMemory: string | null = null;
   private _cachedCombinedMemory: string | null = null;
+  private _cachedAutoMemoryContent: string | null = null;
 
   constructor(private container: Container) {}
 
   public get cachedProjectMemory(): string {
-    return this._cachedProjectMemory;
+    return this._cachedProjectMemory ?? "";
   }
 
   public get cachedUserMemory(): string {
-    return this._cachedUserMemory;
+    return this._cachedUserMemory ?? "";
   }
 
   public clearCache(): void {
-    this._cachedProjectMemory = "";
-    this._cachedUserMemory = "";
+    this._cachedProjectMemory = null;
+    this._cachedUserMemory = null;
     this._cachedCombinedMemory = null;
+    this._cachedAutoMemoryContent = null;
   }
 
   /**
@@ -76,15 +78,20 @@ export class MemoryService {
    * Get the first 200 lines of MEMORY.md.
    */
   async getAutoMemoryContent(workdir: string): Promise<string> {
+    if (this._cachedAutoMemoryContent !== null) {
+      return this._cachedAutoMemoryContent;
+    }
     const memoryDir = this.getAutoMemoryDirectory(workdir);
     const memoryFile = path.join(memoryDir, "MEMORY.md");
 
     try {
       const content = await fs.readFile(memoryFile, "utf-8");
       const lines = content.split("\n").slice(0, 200);
-      return lines.join("\n");
+      this._cachedAutoMemoryContent = lines.join("\n");
+      return this._cachedAutoMemoryContent;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        this._cachedAutoMemoryContent = "";
         return "";
       }
       logger.error("Failed to read auto-memory content:", error);
@@ -123,6 +130,9 @@ export class MemoryService {
   }
 
   async getUserMemoryContent(): Promise<string> {
+    if (this._cachedUserMemory !== null) {
+      return this._cachedUserMemory;
+    }
     try {
       await this.ensureUserMemoryFile();
       const content = await fs.readFile(USER_MEMORY_FILE, "utf-8");
@@ -145,13 +155,15 @@ export class MemoryService {
               contentLength: claudeContent.length,
             },
           );
-          return claudeContent;
+          this._cachedUserMemory = claudeContent;
+          return this._cachedUserMemory;
         } catch {
           // CLAUDE.md doesn't exist or can't be read, return the default template
         }
       }
 
-      return content;
+      this._cachedUserMemory = content;
+      return this._cachedUserMemory;
     } catch (error) {
       logger.error("Failed to read user memory:", error);
       return "";
@@ -159,6 +171,9 @@ export class MemoryService {
   }
 
   async readMemoryFile(workdir: string): Promise<string> {
+    if (this._cachedProjectMemory !== null) {
+      return this._cachedProjectMemory;
+    }
     const memoryFilePath = path.join(workdir, "AGENTS.md");
     try {
       const content = await fs.readFile(memoryFilePath, "utf-8");
@@ -166,7 +181,8 @@ export class MemoryService {
         memoryFilePath,
         contentLength: content.length,
       });
-      return content;
+      this._cachedProjectMemory = content;
+      return this._cachedProjectMemory;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         // Fallback to CLAUDE.md
@@ -177,12 +193,14 @@ export class MemoryService {
             memoryFilePath: claudeMemoryPath,
             contentLength: content.length,
           });
-          return content;
+          this._cachedProjectMemory = content;
+          return this._cachedProjectMemory;
         } catch (claudeError) {
           if ((claudeError as NodeJS.ErrnoException).code === "ENOENT") {
             logger.debug("Neither AGENTS.md nor CLAUDE.md found", {
               memoryFilePath,
             });
+            this._cachedProjectMemory = "";
             return "";
           }
           logger.error("Failed to read CLAUDE.md fallback", {
@@ -201,14 +219,14 @@ export class MemoryService {
     if (this._cachedCombinedMemory !== null) {
       return this._cachedCombinedMemory;
     }
-    this._cachedProjectMemory = await this.readMemoryFile(workdir);
-    this._cachedUserMemory = await this.getUserMemoryContent();
+    const projectMemory = await this.readMemoryFile(workdir);
+    const userMemory = await this.getUserMemoryContent();
 
     let combined = "";
-    if (this._cachedProjectMemory.trim()) combined += this._cachedProjectMemory;
-    if (this._cachedUserMemory.trim()) {
+    if (projectMemory.trim()) combined += projectMemory;
+    if (userMemory.trim()) {
       if (combined) combined += "\n\n";
-      combined += this._cachedUserMemory;
+      combined += userMemory;
     }
     this._cachedCombinedMemory = combined;
     return combined;

@@ -709,11 +709,6 @@ export class Agent {
 
     // Clear messages and generate new session
     this.messageManager.clearMessages();
-    const memoryService =
-      this.container.get<import("./services/memory.js").MemoryService>(
-        "MemoryService",
-      );
-    memoryService?.clearCache();
     await this.taskManager.syncWithSession();
 
     // Run SessionStart hooks (restore context for new session)

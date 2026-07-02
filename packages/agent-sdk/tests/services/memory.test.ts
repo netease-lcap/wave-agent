@@ -130,6 +130,35 @@ describe("MemoryService", () => {
       const result = await memoryService.getAutoMemoryContent(workdir);
       expect(result).toBe("");
     });
+
+    it("should cache content on first call and not read from disk on second call", async () => {
+      const workdir = "/mock/workdir";
+      vi.mocked(fsPromises.readFile).mockResolvedValue("cached memory content");
+
+      const result1 = await memoryService.getAutoMemoryContent(workdir);
+      expect(result1).toBe("cached memory content");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+
+      const result2 = await memoryService.getAutoMemoryContent(workdir);
+      expect(result2).toBe("cached memory content");
+      // readFile should NOT be called again — cached value returned
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+    });
+
+    it("should re-read from disk after clearCache() invalidates the cache", async () => {
+      const workdir = "/mock/workdir";
+      vi.mocked(fsPromises.readFile).mockResolvedValue("first content");
+
+      await memoryService.getAutoMemoryContent(workdir);
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+
+      memoryService.clearCache();
+
+      vi.mocked(fsPromises.readFile).mockResolvedValue("second content");
+      const result = await memoryService.getAutoMemoryContent(workdir);
+      expect(result).toBe("second content");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("getUserMemoryContent", () => {
@@ -171,6 +200,32 @@ describe("MemoryService", () => {
       const result = await memoryService.getUserMemoryContent();
 
       expect(result).toBe(claudeContent);
+    });
+
+    it("should cache content on first call and not read from disk on second call", async () => {
+      vi.mocked(fsPromises.readFile).mockResolvedValue("cached user memory");
+
+      const result1 = await memoryService.getUserMemoryContent();
+      expect(result1).toBe("cached user memory");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+
+      const result2 = await memoryService.getUserMemoryContent();
+      expect(result2).toBe("cached user memory");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+    });
+
+    it("should re-read from disk after clearCache() invalidates the cache", async () => {
+      vi.mocked(fsPromises.readFile).mockResolvedValue("first user content");
+
+      await memoryService.getUserMemoryContent();
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+
+      memoryService.clearCache();
+
+      vi.mocked(fsPromises.readFile).mockResolvedValue("second user content");
+      const result = await memoryService.getUserMemoryContent();
+      expect(result).toBe("second user content");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -263,6 +318,34 @@ describe("MemoryService", () => {
       expect(result).toBe("");
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
     });
+
+    it("should cache content on first call and not read from disk on second call", async () => {
+      vi.mocked(fsPromises.readFile).mockResolvedValue(
+        "# Cached Project Memory\n\nProject content",
+      );
+
+      const result1 = await memoryService.readMemoryFile("/mock/workdir");
+      expect(result1).toBe("# Cached Project Memory\n\nProject content");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+
+      const result2 = await memoryService.readMemoryFile("/mock/workdir");
+      expect(result2).toBe("# Cached Project Memory\n\nProject content");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+    });
+
+    it("should re-read from disk after clearCache() invalidates the cache", async () => {
+      vi.mocked(fsPromises.readFile).mockResolvedValue("first content");
+
+      await memoryService.readMemoryFile("/mock/workdir");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+
+      memoryService.clearCache();
+
+      vi.mocked(fsPromises.readFile).mockResolvedValue("second content");
+      const result = await memoryService.readMemoryFile("/mock/workdir");
+      expect(result).toBe("second content");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("getCombinedMemoryContent", () => {
@@ -277,6 +360,18 @@ describe("MemoryService", () => {
 
       expect(result).toContain("Project content");
       expect(result).toContain("User content");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
+    });
+
+    it("should cache combined content and not read from disk on second call", async () => {
+      vi.mocked(fsPromises.readFile)
+        .mockResolvedValueOnce("# Project Memory\n\nProject content")
+        .mockResolvedValueOnce("# User Memory\n\nUser content");
+
+      await memoryService.getCombinedMemoryContent("/mock/workdir");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
+
+      await memoryService.getCombinedMemoryContent("/mock/workdir");
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
     });
   });
