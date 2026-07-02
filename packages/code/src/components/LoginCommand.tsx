@@ -36,49 +36,46 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
   const tokenResolveRef = useRef<((token: string) => void) | null>(null);
   const tokenRejectRef = useRef<((err: Error) => void) | null>(null);
 
-  // Pre-loading input: Enter starts login, Esc cancels
-  useInput(
-    (_, key) => {
+  // Single useInput handler — branches on isLoading to avoid the
+  // isActive transition race that drops stdin between hook swaps.
+  useInput((input, key) => {
+    if (!isLoadingRef.current) {
+      // Pre-loading mode: Enter starts login, Esc cancels
       if (key.escape) {
-        onCancel();
-      }
-      if (key.return && !isLoadingRef.current) {
-        handleEnter();
-      }
-    },
-    { isActive: !isLoading },
-  );
-
-  // Token input: capture keystrokes while loading
-  useInput(
-    (input, key) => {
-      if (key.escape) {
-        tokenRejectRef.current?.(new Error("cancelled"));
         onCancel();
       }
       if (key.return) {
-        // Submit token
-        const trimmed = tokenInput.trim();
-        if (trimmed) {
-          tokenResolveRef.current?.(trimmed);
-        } else {
-          // Empty: just clear, keep waiting
-          setTokenInput("");
-        }
-        return;
+        handleEnter();
       }
-      // Backspace
-      if (key.backspace && tokenInput.length > 0) {
-        setTokenInput((prev) => prev.slice(0, -1));
-        return;
+      return;
+    }
+
+    // Token input mode: capture keystrokes while loading
+    if (key.escape) {
+      tokenRejectRef.current?.(new Error("cancelled"));
+      onCancel();
+    }
+    if (key.return) {
+      // Submit token
+      const trimmed = tokenInput.trim();
+      if (trimmed) {
+        tokenResolveRef.current?.(trimmed);
+      } else {
+        // Empty: just clear, keep waiting
+        setTokenInput("");
       }
-      // Regular character input (single or pasted multi-char)
-      if (input && !key.ctrl && !key.meta && !key.return && input.length > 0) {
-        setTokenInput((prev) => prev + input);
-      }
-    },
-    { isActive: isLoading },
-  );
+      return;
+    }
+    // Backspace
+    if (key.backspace && tokenInput.length > 0) {
+      setTokenInput((prev) => prev.slice(0, -1));
+      return;
+    }
+    // Regular character input (single or pasted multi-char)
+    if (input && !key.ctrl && !key.meta && !key.return && input.length > 0) {
+      setTokenInput((prev) => prev + input);
+    }
+  });
 
   const handleEnter = async () => {
     if (isLoadingRef.current) return;
