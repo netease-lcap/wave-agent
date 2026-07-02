@@ -4,6 +4,14 @@ import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 import { DEFAULT_SYSTEM_PROMPT } from "@/prompts/index.js";
 
+/** Flatten systemPrompt (string or SystemPromptBlock[]) into a single string. */
+function flattenSystemPrompt(sp: unknown): string {
+  if (typeof sp === "string") return sp;
+  if (Array.isArray(sp))
+    return sp.map((b: { text: string }) => b.text).join("\n\n");
+  return "";
+}
+
 // Mock the aiService module
 vi.mock("@/services/aiService");
 
@@ -77,11 +85,9 @@ describe("Agent - System Prompt", () => {
     await agent.sendMessage("Help me with TypeScript");
 
     // Verify that callAgent was called with the custom systemPrompt
-    expect(mockCallAgent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        systemPrompt: expect.stringContaining(customSystemPrompt),
-      }),
-    );
+    const callArgs = mockCallAgent.mock.calls[0][0];
+    const spText = flattenSystemPrompt(callArgs.systemPrompt);
+    expect(spText).toContain(customSystemPrompt);
   });
 
   it("should work without custom systemPrompt (default behavior)", async () => {
@@ -110,10 +116,8 @@ describe("Agent - System Prompt", () => {
     await agent.sendMessage("Help me with development");
 
     // Verify that callAgent was called with the default systemPrompt
-    expect(mockCallAgent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        systemPrompt: expect.stringContaining(DEFAULT_SYSTEM_PROMPT),
-      }),
-    );
+    const callArgs = mockCallAgent.mock.calls[0][0];
+    const spText = flattenSystemPrompt(callArgs.systemPrompt);
+    expect(spText).toContain(DEFAULT_SYSTEM_PROMPT);
   });
 });

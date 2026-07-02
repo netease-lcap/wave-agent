@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { CallAgentOptions } from "@/services/aiService.js";
 import type { GatewayConfig, ModelConfig } from "@/types/index.js";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import type { SystemPromptBlock } from "@/prompts/index.js";
 
 // Test configuration constants
 const TEST_GATEWAY_CONFIG: GatewayConfig = {
@@ -1551,6 +1552,126 @@ describe("AI Service - Claude Cache Control", () => {
 
         expect(result).toBeDefined();
       });
+    });
+  });
+
+  // ============================================================================
+  // SystemPromptBlock[] Input Tests
+  // ============================================================================
+
+  describe("SystemPromptBlock[] Input", () => {
+    let callAgent: (
+      options: CallAgentOptions,
+    ) => Promise<import("@/services/aiService.js").CallAgentResult>;
+
+    beforeEach(async () => {
+      const aiService = await import("@/services/aiService.js");
+      callAgent = aiService.callAgent;
+
+      const mockWithResponse = vi.fn().mockResolvedValue({
+        data: {
+          choices: [
+            {
+              message: { content: "Test response" },
+              finish_reason: "stop",
+            },
+          ],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+          },
+        },
+        response: {
+          headers: new Map([["x-request-id", "req-12345"]]),
+        },
+      });
+      mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+    });
+
+    it("should map cacheable blocks with cache_control for Claude models", async () => {
+      const blocks: SystemPromptBlock[] = [
+        { text: "Static prompt content", cacheable: true },
+        { text: "Dynamic prompt content", cacheable: false },
+      ];
+
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: CLAUDE_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test" }],
+        workdir: "/test",
+        systemPrompt: blocks,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const systemMessage = callArgs.messages[0];
+      expect(systemMessage.role).toBe("system");
+      expect(Array.isArray(systemMessage.content)).toBe(true);
+
+      const content = systemMessage.content as Array<{
+        type: string;
+        text: string;
+        cache_control?: { type: string };
+      }>;
+      expect(content).toHaveLength(2);
+      expect(content[0].text).toBe("Static prompt content");
+      expect(content[0].cache_control).toEqual({ type: "ephemeral" });
+      expect(content[1].text).toBe("Dynamic prompt content");
+      expect(content[1].cache_control).toBeUndefined();
+    });
+
+    it("should join blocks into string for non-Claude models", async () => {
+      const blocks: SystemPromptBlock[] = [
+        { text: "Static prompt content", cacheable: true },
+        { text: "Dynamic prompt content", cacheable: false },
+      ];
+
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: NON_CLAUDE_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test" }],
+        workdir: "/test",
+        systemPrompt: blocks,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const systemMessage = callArgs.messages[0];
+      expect(systemMessage.role).toBe("system");
+      expect(typeof systemMessage.content).toBe("string");
+      expect(systemMessage.content).toBe(
+        "Static prompt content\n\nDynamic prompt content",
+      );
+    });
+
+    it("should preserve existing cache_control and skip transformMessages re-processing", async () => {
+      const blocks: SystemPromptBlock[] = [
+        { text: "Static block", cacheable: true },
+        { text: "Dynamic block", cacheable: false },
+      ];
+
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: CLAUDE_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test" }],
+        workdir: "/test",
+        systemPrompt: blocks,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const systemMessage = callArgs.messages[0];
+      const content = systemMessage.content as Array<{
+        cache_control?: { type: string };
+      }>;
+
+      // The cacheable block should have exactly one cache_control marker
+      expect(content[0].cache_control).toEqual({ type: "ephemeral" });
+      // The non-cacheable block should NOT have cache_control
+      expect(content[1].cache_control).toBeUndefined();
+
+      // transformMessagesForExplicitCache should not add additional markers
+      // to the system message since it already has cache_control
+      const markerCount = content.filter((c) => c.cache_control).length;
+      expect(markerCount).toBe(1);
     });
   });
 });

@@ -64,6 +64,14 @@ vi.mock("../../src/utils/convertMessagesForAPI.js", () => ({
   convertMessagesForAPI: vi.fn().mockReturnValue([]),
 }));
 
+/** Flatten systemPrompt (string or SystemPromptBlock[]) into a single string. */
+function flattenSystemPrompt(sp: unknown): string {
+  if (typeof sp === "string") return sp;
+  if (Array.isArray(sp))
+    return sp.map((b: { text: string }) => b.text).join("\n\n");
+  return "";
+}
+
 describe("AIManager", () => {
   let aiManager: AIManager;
   let mockMessageManager: MessageManager;
@@ -234,26 +242,18 @@ describe("AIManager", () => {
 
       await aiManagerWithLanguage.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.stringContaining("# Language"),
-        }),
-      );
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.stringContaining("Always respond in Chinese"),
-        }),
-      );
+      const langCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
+      const langSpText = flattenSystemPrompt(langCallArgs.systemPrompt);
+      expect(langSpText).toContain("# Language");
+      expect(langSpText).toContain("Always respond in Chinese");
     });
 
     it("should NOT inject language prompt when language is undefined", async () => {
       await aiManager.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.not.stringContaining("# Language"),
-        }),
-      );
+      const noLangCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
+      const noLangSpText = flattenSystemPrompt(noLangCallArgs.systemPrompt);
+      expect(noLangSpText).not.toContain("# Language");
     });
 
     it("should inject dontAsk permission mode prompt when mode is dontAsk", async () => {
@@ -296,17 +296,11 @@ describe("AIManager", () => {
 
       await aiManagerWithDontAsk.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.stringContaining("# Permission Mode"),
-        }),
-      );
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.stringContaining(
-            "The user has selected the 'dontAsk' permission mode.",
-          ),
-        }),
+      const dontAskCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
+      const dontAskSpText = flattenSystemPrompt(dontAskCallArgs.systemPrompt);
+      expect(dontAskSpText).toContain("# Permission Mode");
+      expect(dontAskSpText).toContain(
+        "The user has selected the 'dontAsk' permission mode.",
       );
     });
 
@@ -353,12 +347,10 @@ describe("AIManager", () => {
 
       await aiManagerWithLanguage.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.stringContaining(
-            "Use Spanish for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.",
-          ),
-        }),
+      const techCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
+      const techSpText = flattenSystemPrompt(techCallArgs.systemPrompt);
+      expect(techSpText).toContain(
+        "Use Spanish for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.",
       );
     });
   });
@@ -768,11 +760,9 @@ describe("AIManager", () => {
 
       await aiManagerWithAutoMemory.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.stringContaining("Auto-memory content"),
-        }),
-      );
+      const memCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
+      const memSpText = flattenSystemPrompt(memCallArgs.systemPrompt);
+      expect(memSpText).toContain("Auto-memory content");
     });
 
     it("should NOT inject auto-memory content when disabled", async () => {
@@ -818,11 +808,12 @@ describe("AIManager", () => {
 
       await aiManagerDisabledAutoMemory.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.not.stringContaining("Auto-memory content"),
-        }),
+      const disabledMemCallArgs = vi.mocked(aiService.callAgent).mock
+        .calls[0][0];
+      const disabledMemSpText = flattenSystemPrompt(
+        disabledMemCallArgs.systemPrompt,
       );
+      expect(disabledMemSpText).not.toContain("Auto-memory content");
     });
   });
 
@@ -832,11 +823,9 @@ describe("AIManager", () => {
       vi.mocked(isGitRepository).mockReturnValue("Yes");
       await aiManager.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.stringContaining("Is directory a git repo: Yes"),
-        }),
-      );
+      const gitYesCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
+      const gitYesSpText = flattenSystemPrompt(gitYesCallArgs.systemPrompt);
+      expect(gitYesSpText).toContain("Is directory a git repo: Yes");
     });
 
     it("should include 'Is directory a git repo: No' in system prompt if .git does not exist", async () => {
@@ -844,11 +833,9 @@ describe("AIManager", () => {
       vi.mocked(isGitRepository).mockReturnValue("No");
       await aiManager.sendAIMessage();
 
-      expect(aiService.callAgent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          systemPrompt: expect.stringContaining("Is directory a git repo: No"),
-        }),
-      );
+      const gitNoCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
+      const gitNoSpText = flattenSystemPrompt(gitNoCallArgs.systemPrompt);
+      expect(gitNoSpText).toContain("Is directory a git repo: No");
     });
   });
 

@@ -96,12 +96,12 @@ export function buildPlanModePrompt(
     : `No plan file exists yet. You should create your plan at ${planFilePath} using the ${WRITE_TOOL_NAME} tool if you need to.`;
 
   if (isSubagent) {
-    return `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits, run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received (for example, to make edits). Instead, you should:
+    return `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits, run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received (for example, to make tasks). Instead, you should:
 
 ## Plan File Info:
 ${planFileInfo}
 You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
-Answer the user's query comprehensively, using the ${ASK_USER_QUESTION_TOOL_NAME} tool if you need to ask the user clarifying questions. If you do use the ${ASK_USER_QUESTION_TOOL_NAME}, make sure to ask all clarifying questions you need to fully understand the user's intent before proceeding.`;
+Answer the user's query comprehensively, using the ${ASK_USER_QUESTION_TOOL_NAME} tool if you need to ask the user clarifying questions. If you use the ${ASK_USER_QUESTION_TOOL_NAME}, make sure to ask all clarifying questions you need to fully understand the user's intent before proceeding.`;
   }
 
   return `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
@@ -154,14 +154,14 @@ In the agent prompt:
 ### Phase 3: Review
 Goal: Review the plan(s) from Phase 2 and ensure alignment with the user's intentions.
 1. Read the critical files identified by agents to deepen your understanding
-2. Ensure that the plans align with the user's original request
+2. Ensure the plans align with the user's original request
 3. Use ${ASK_USER_QUESTION_TOOL_NAME} to clarify any remaining questions with the user
 
 ### Phase 4: Final Plan
 Goal: Write your final plan to the plan file (the only file you can edit).
 - Begin with a **Context** section: explain why this change is being made — the problem or need it addresses, what prompted it, and the intended outcome
 - Include only your recommended approach, not all alternatives
-- Ensure that the plan file is concise enough to scan quickly, but detailed enough to execute effectively
+- Ensure the the plan file is concise enough to scan quickly, but detailed enough to execute effectively
 - Include the paths of critical files to be modified
 - Reference existing functions and utilities you found that should be reused, with their file paths
 - Include a verification section describing how to test the changes end-to-end (run the code, use MCP tools, run tests)
@@ -176,6 +176,16 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 }
 
 export const DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
+
+/**
+ * A block of the system prompt with cacheability metadata.
+ * Static blocks (cacheable: true) get cache_control markers for Claude models.
+ * Dynamic blocks (cacheable: false) change per-turn and must not invalidate the cache.
+ */
+export interface SystemPromptBlock {
+  text: string;
+  cacheable: boolean;
+}
 
 export const COMPACT_MESSAGES_SYSTEM_PROMPT = `You are continuing work on a software engineering task. Write a detailed continuation summary that will allow you (or another instance of yourself) to resume work efficiently in a future context window where the conversation history will be replaced with this summary.
 
@@ -245,24 +255,30 @@ export function buildSystemPrompt(
     };
     permissionMode?: PermissionMode;
   } = {},
-): string {
-  let prompt = basePrompt || DEFAULT_SYSTEM_PROMPT;
-  prompt += `\n\n${DOING_TASKS_PROMPT}`;
-  prompt += `\n\n${EXECUTING_ACTIONS_PROMPT}`;
+): SystemPromptBlock[] {
+  // --- Static block (cacheable) ---
+  let staticText = basePrompt || DEFAULT_SYSTEM_PROMPT;
+  staticText += `\n\n${DOING_TASKS_PROMPT}`;
+  staticText += `\n\n${EXECUTING_ACTIONS_PROMPT}`;
 
   if (tools.length > 0) {
-    prompt += `\n\n${TOOL_POLICY}`;
+    staticText += `\n\n${TOOL_POLICY}`;
   }
 
-  prompt += `\n\n${OUTPUT_EFFICIENCY_PROMPT}`;
-  prompt += `\n\n${TONE_AND_STYLE_PROMPT}`;
+  staticText += `\n\n${OUTPUT_EFFICIENCY_PROMPT}`;
+  staticText += `\n\n${TONE_AND_STYLE_PROMPT}`;
+
+  const blocks: SystemPromptBlock[] = [{ text: staticText, cacheable: true }];
+
+  // --- Dynamic block (not cacheable) ---
+  let dynamicText = "";
 
   if (options.permissionMode === "dontAsk") {
-    prompt += `\n\n# Permission Mode\nThe user has selected the 'dontAsk' permission mode. In this mode, any restricted tool call that does not match a pre-approved rule in 'permissions.allow' or 'temporaryRules' will be automatically denied without prompting the user. You will receive a 'Permission denied' error for such calls. This is intended to prevent interruptions for untrusted tools while allowing pre-approved ones to run seamlessly.`;
+    dynamicText += `\n\n# Permission Mode\nThe user has selected the 'dontAsk' permission mode. In this mode, any restricted tool call that does not match a pre-approved rule in 'permissions.allow' or 'temporaryRules' will be automatically denied without prompting the user. You will receive a 'Permission denied' error for such calls. This is intended to prevent interruptions for untrusted tools while allowing pre-approved ones to run seamlessly.`;
   }
 
   if (options.language) {
-    prompt += `\n\n# Language\nAlways respond in ${options.language}. Use ${options.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`;
+    dynamicText += `\n\n# Language\nAlways respond in ${options.language}. Use ${options.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`;
   }
 
   if (options.workdir) {
@@ -279,7 +295,7 @@ export function buildSystemPrompt(
 
     const worktreeSession = getCurrentWorktreeSession();
 
-    prompt += `
+    dynamicText += `
 
 Here is useful information about the environment you are running in:
 <env>
@@ -294,13 +310,17 @@ Today's date: ${today}
   }
 
   if (options.autoMemory) {
-    prompt += `\n\n${buildAutoMemoryPrompt(options.autoMemory.directory)}`;
+    dynamicText += `\n\n${buildAutoMemoryPrompt(options.autoMemory.directory)}`;
     if (options.autoMemory.content.trim()) {
-      prompt += `\n\n## MEMORY.md\n\n${options.autoMemory.content}`;
+      dynamicText += `\n\n## MEMORY.md\n\n${options.autoMemory.content}`;
     }
   }
 
-  return prompt;
+  if (dynamicText.trim()) {
+    blocks.push({ text: dynamicText, cacheable: false });
+  }
+
+  return blocks;
 }
 
 export function enhanceSystemPromptWithEnvDetails(
