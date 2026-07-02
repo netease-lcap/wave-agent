@@ -94,7 +94,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
       { workdir: tempDir, taskManager },
     );
     expect(mockCallback).not.toHaveBeenCalled();
-  }, 15000);
+  });
 
   it("should load persistent rules on startup", async () => {
     // 1. Create a settings.local.json file
