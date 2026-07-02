@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as os from "os";
+import type { ChildProcess } from "child_process";
 
 import { TaskManager } from "../../src/services/taskManager.js";
 import { Agent } from "@/agent.js";
@@ -7,6 +8,11 @@ import { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionCallback } from "../../src/types/permissions.js";
 import * as fs from "fs/promises";
 import * as path from "path";
+
+// Mock child_process to prevent real command execution (e.g. npm install triggers network I/O)
+vi.mock("child_process");
+import { spawn } from "child_process";
+const mockSpawn = vi.mocked(spawn);
 
 describe("Agent Auto-Accept Permissions Integration", () => {
   let tempDir: string;
@@ -21,6 +27,18 @@ describe("Agent Auto-Accept Permissions Integration", () => {
       WAVE_BASE_URL: "https://test.api",
     };
     vi.mocked(os.homedir).mockReturnValue(os.tmpdir());
+
+    // Return a mock process that exits successfully without executing anything
+    mockSpawn.mockReturnValue({
+      pid: 1234,
+      stdout: { on: vi.fn() },
+      stderr: { on: vi.fn() },
+      on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
+        if (event === "exit") setTimeout(() => callback(0), 0);
+      }),
+      kill: vi.fn(),
+      killed: false,
+    } as unknown as ChildProcess);
   });
 
   afterEach(async () => {
