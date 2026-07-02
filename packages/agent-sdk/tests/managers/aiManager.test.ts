@@ -256,7 +256,7 @@ describe("AIManager", () => {
       expect(noLangSpText).not.toContain("# Language");
     });
 
-    it("should inject dontAsk permission mode prompt when mode is dontAsk", async () => {
+    it("should NOT inject dontAsk permission mode into system prompt", async () => {
       const taskManager = {
         on: vi.fn(),
         listTasks: vi.fn().mockResolvedValue([]),
@@ -298,10 +298,8 @@ describe("AIManager", () => {
 
       const dontAskCallArgs = vi.mocked(aiService.callAgent).mock.calls[0][0];
       const dontAskSpText = flattenSystemPrompt(dontAskCallArgs.systemPrompt);
-      expect(dontAskSpText).toContain("# Permission Mode");
-      expect(dontAskSpText).toContain(
-        "The user has selected the 'dontAsk' permission mode.",
-      );
+      expect(dontAskSpText).not.toContain("# Permission Mode");
+      expect(dontAskSpText).not.toContain("dontAsk");
     });
 
     it("should preserve technical terms instruction in language prompt", async () => {

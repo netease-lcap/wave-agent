@@ -877,7 +877,6 @@ export class AIManager {
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
             autoMemory: autoMemoryOptions,
-            permissionMode: currentMode,
           },
         ), // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override

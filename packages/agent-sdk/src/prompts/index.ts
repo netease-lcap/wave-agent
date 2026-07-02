@@ -3,7 +3,6 @@ import { ToolPlugin } from "../tools/types.js";
 import { isGitRepository } from "../utils/gitUtils.js";
 import { getCurrentWorktreeSession } from "../utils/worktreeSession.js";
 import { buildAutoMemoryPrompt } from "./autoMemory.js";
-import { PermissionMode } from "../types/permissions.js";
 import {
   EXPLORE_SUBAGENT_TYPE,
   PLAN_SUBAGENT_TYPE,
@@ -253,7 +252,6 @@ export function buildSystemPrompt(
       directory: string;
       content: string;
     };
-    permissionMode?: PermissionMode;
   } = {},
 ): SystemPromptBlock[] {
   // --- Static block (cacheable) ---
@@ -272,10 +270,6 @@ export function buildSystemPrompt(
 
   // --- Dynamic block (not cacheable) ---
   let dynamicText = "";
-
-  if (options.permissionMode === "dontAsk") {
-    dynamicText += `\n\n# Permission Mode\nThe user has selected the 'dontAsk' permission mode. In this mode, any restricted tool call that does not match a pre-approved rule in 'permissions.allow' or 'temporaryRules' will be automatically denied without prompting the user. You will receive a 'Permission denied' error for such calls. This is intended to prevent interruptions for untrusted tools while allowing pre-approved ones to run seamlessly.`;
-  }
 
   if (options.language) {
     dynamicText += `\n\n# Language\nAlways respond in ${options.language}. Use ${options.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`;

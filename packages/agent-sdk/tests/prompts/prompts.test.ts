@@ -184,15 +184,6 @@ describe("prompts", () => {
       expect(result).not.toContain("## MEMORY.md");
     });
 
-    it("should include permission mode when dontAsk is selected", () => {
-      const result = flattenBlocks(
-        buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-          permissionMode: "dontAsk",
-        }),
-      );
-      expect(result).toContain("# Permission Mode");
-    });
-
     it("should include language when provided", () => {
       const result = flattenBlocks(
         buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
@@ -258,7 +249,6 @@ describe("prompts", () => {
     it("should return an array of SystemPromptBlock", () => {
       const blocks = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
         workdir: "/some/path",
-        permissionMode: "dontAsk",
       });
 
       expect(Array.isArray(blocks)).toBe(true);
@@ -283,7 +273,6 @@ describe("prompts", () => {
     it("should mark dynamic blocks as not cacheable", () => {
       const blocks = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
         workdir: "/some/path",
-        permissionMode: "dontAsk",
         autoMemory: { directory: "/mem", content: "some memory" },
       });
 
@@ -291,7 +280,6 @@ describe("prompts", () => {
       const dynamicBlock = blocks.find((b) => !b.cacheable);
       expect(dynamicBlock).toBeDefined();
       expect(dynamicBlock!.text).toContain("Primary working directory");
-      expect(dynamicBlock!.text).toContain("# Permission Mode");
       expect(dynamicBlock!.text).toContain("auto memory");
     });
 
