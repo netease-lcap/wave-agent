@@ -16,6 +16,7 @@ import {
   supportsPromptCaching,
   extendUsageWithCacheMetrics,
   type ClaudeUsage,
+  type ClaudeChatCompletionContentPartText,
 } from "../utils/cacheControlUtils.js";
 
 import * as os from "os";
@@ -26,6 +27,7 @@ import {
   COMPACT_MESSAGES_SYSTEM_PROMPT,
   WEB_CONTENT_SYSTEM_PROMPT,
   BTW_SYSTEM_PROMPT,
+  type SystemPromptBlock,
 } from "../prompts/index.js";
 import { GOAL_EVALUATION_SYSTEM_PROMPT } from "../constants/goalPrompts.js";
 
@@ -159,7 +161,7 @@ export interface CallAgentOptions {
   workdir: string; // Current working directory
   tools?: ChatCompletionFunctionTool[]; // Tool configuration
   model?: string; // Custom model
-  systemPrompt?: string; // Custom system prompt
+  systemPrompt?: string | SystemPromptBlock[]; // Custom system prompt (string or structured blocks)
   maxTokens?: number; // Maximum output tokens
   toolChoice?:
     | "auto"
@@ -262,21 +264,46 @@ export async function callAgent(
       fetch: gatewayConfig.fetch,
     });
 
-    // Build system prompt content
-    const systemContent = systemPrompt || "";
+    // Determine model early (needed for system prompt construction)
+    const currentModel = model || modelConfig.model;
+    const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
-    // Add system prompt
-    const systemMessage: ChatCompletionMessageParam = {
-      role: "system",
-      content: systemContent,
-    };
+    // Build system message content
+    let systemMessage: ChatCompletionMessageParam;
+    if (Array.isArray(systemPrompt)) {
+      if (supportsPromptCaching(currentModel)) {
+        // For Claude models, map blocks to content parts with cache_control on cacheable blocks
+        const contentParts: ClaudeChatCompletionContentPartText[] =
+          systemPrompt.map((block) => {
+            const part: ClaudeChatCompletionContentPartText = {
+              type: "text",
+              text: block.text,
+            };
+            if (block.cacheable) {
+              part.cache_control = { type: "ephemeral" };
+            }
+            return part;
+          });
+        systemMessage = {
+          role: "system",
+          content: contentParts,
+        } as ChatCompletionMessageParam;
+      } else {
+        // For non-Claude models, join blocks into a single string
+        systemMessage = {
+          role: "system",
+          content: systemPrompt.map((b) => b.text).join("\n\n"),
+        };
+      }
+    } else {
+      systemMessage = {
+        role: "system",
+        content: systemPrompt || "",
+      };
+    }
 
     // ChatCompletionMessageParam[] is already in OpenAI format, add system prompt to the beginning
     openaiMessages = [systemMessage, ...messages];
-
-    // Apply cache control for Claude models
-    const currentModel = model || modelConfig.model;
-    const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
     processedTools = tools;
 

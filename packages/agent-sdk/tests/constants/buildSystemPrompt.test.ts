@@ -3,9 +3,15 @@ import {
   buildSystemPrompt,
   DEFAULT_SYSTEM_PROMPT,
   TOOL_POLICY,
+  type SystemPromptBlock,
 } from "../../src/prompts/index.js";
 import { READ_TOOL_NAME, WRITE_TOOL_NAME } from "../../src/constants/tools.js";
 import { ToolPlugin } from "../../src/tools/types.js";
+
+/** Flatten SystemPromptBlock[] into a single string for string-based assertions */
+function flattenBlocks(blocks: SystemPromptBlock[]): string {
+  return blocks.map((b) => b.text).join("\n\n");
+}
 
 describe("buildSystemPrompt", () => {
   it("should include tool policy when tools are present", () => {
@@ -15,12 +21,14 @@ describe("buildSystemPrompt", () => {
         prompt: () => "Read for reading files",
       } as unknown as ToolPlugin,
     ];
-    const prompt = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, tools);
+    const prompt = flattenBlocks(
+      buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, tools),
+    );
     expect(prompt).toContain(TOOL_POLICY);
   });
 
   it("should exclude tool policy when no tools are present", () => {
-    const prompt = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, []);
+    const prompt = flattenBlocks(buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, []));
     expect(prompt).not.toContain(TOOL_POLICY);
   });
 
@@ -35,7 +43,9 @@ describe("buildSystemPrompt", () => {
         prompt: () => "Write for creating files",
       } as unknown as ToolPlugin,
     ];
-    const prompt = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, tools);
+    const prompt = flattenBlocks(
+      buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, tools),
+    );
     expect(prompt).not.toContain("Read for reading files");
     expect(prompt).not.toContain("Write for creating files");
   });
