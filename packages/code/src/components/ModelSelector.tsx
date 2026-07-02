@@ -1,6 +1,9 @@
 import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { selectorReducer } from "../reducers/selectorReducer.js";
+import {
+  selectorReducer,
+  type SelectorState,
+} from "../reducers/selectorReducer.js";
 
 export interface ModelSelectorProps {
   onCancel: () => void;
@@ -17,29 +20,29 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   configuredModels,
   onSelectModel,
 }) => {
-  const [state, dispatch] = useReducer(selectorReducer, {
+  const [state, dispatch] = useReducer(selectorReducer<string>, {
     selectedIndex:
       configuredModels.indexOf(currentModel) !== -1
         ? configuredModels.indexOf(currentModel)
         : 0,
     pendingDecision: null,
-  });
+    items: configuredModels,
+  } as SelectorState<string>);
 
-  const { selectedIndex, pendingDecision } = state;
+  const { selectedIndex, pendingDecision, items: models } = state;
 
   useInput((_input, key) => {
     dispatch({
       type: "HANDLE_KEY",
       key,
-      maxIndex: configuredModels.length - 1,
       hasInsert: false,
     });
   });
 
   useEffect(() => {
     if (pendingDecision === "select") {
-      if (configuredModels.length > 0) {
-        onSelectModel(configuredModels[selectedIndex]);
+      if (models.length > 0) {
+        onSelectModel(models[selectedIndex]);
       }
       onCancel();
       dispatch({ type: "CLEAR_DECISION" });
@@ -47,23 +50,17 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       onCancel();
       dispatch({ type: "CLEAR_DECISION" });
     }
-  }, [
-    pendingDecision,
-    selectedIndex,
-    configuredModels,
-    onSelectModel,
-    onCancel,
-  ]);
+  }, [pendingDecision, selectedIndex, models, onSelectModel, onCancel]);
 
   // Calculate visible window
   const startIndex = Math.max(
     0,
     Math.min(
       selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
-      Math.max(0, configuredModels.length - MAX_VISIBLE_ITEMS),
+      Math.max(0, models.length - MAX_VISIBLE_ITEMS),
     ),
   );
-  const visibleModels = configuredModels.slice(
+  const visibleModels = models.slice(
     startIndex,
     startIndex + MAX_VISIBLE_ITEMS,
   );

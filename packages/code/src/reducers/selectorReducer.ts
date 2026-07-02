@@ -1,31 +1,38 @@
 import { Key } from "ink";
 
-export interface SelectorState {
+export interface SelectorState<T = unknown> {
   selectedIndex: number;
   pendingDecision: "select" | "insert" | "cancel" | null;
+  items: T[];
 }
 
-export type SelectorAction =
+export type SelectorAction<T = unknown> =
   | { type: "MOVE_UP" }
-  | { type: "MOVE_DOWN"; maxIndex: number }
+  | { type: "MOVE_DOWN" }
   | { type: "RESET_INDEX" }
-  | { type: "HANDLE_KEY"; key: Key; maxIndex: number; hasInsert: boolean }
+  | { type: "SET_ITEMS"; items: T[] }
+  | { type: "HANDLE_KEY"; key: Key; hasInsert: boolean }
   | { type: "CLEAR_DECISION" };
 
-export function selectorReducer(
-  state: SelectorState,
-  action: SelectorAction,
-): SelectorState {
+export function selectorReducer<T = unknown>(
+  state: SelectorState<T>,
+  action: SelectorAction<T>,
+): SelectorState<T> {
   switch (action.type) {
     case "MOVE_UP":
       return { ...state, selectedIndex: Math.max(0, state.selectedIndex - 1) };
     case "MOVE_DOWN":
       return {
         ...state,
-        selectedIndex: Math.min(action.maxIndex, state.selectedIndex + 1),
+        selectedIndex: Math.min(
+          state.items.length - 1,
+          state.selectedIndex + 1,
+        ),
       };
     case "RESET_INDEX":
       return { ...state, selectedIndex: 0 };
+    case "SET_ITEMS":
+      return { ...state, items: action.items, selectedIndex: 0 };
     case "HANDLE_KEY":
       if (action.key.upArrow) {
         return {
@@ -36,7 +43,10 @@ export function selectorReducer(
       if (action.key.downArrow) {
         return {
           ...state,
-          selectedIndex: Math.min(action.maxIndex, state.selectedIndex + 1),
+          selectedIndex: Math.min(
+            state.items.length - 1,
+            state.selectedIndex + 1,
+          ),
         };
       }
       if (action.key.return) {

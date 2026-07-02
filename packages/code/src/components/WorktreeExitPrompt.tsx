@@ -1,6 +1,9 @@
 import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { selectorReducer } from "../reducers/selectorReducer.js";
+import {
+  selectorReducer,
+  type SelectorState,
+} from "../reducers/selectorReducer.js";
 
 interface WorktreeExitPromptProps {
   name: string;
@@ -21,10 +24,11 @@ export const WorktreeExitPrompt: React.FC<WorktreeExitPromptProps> = ({
   onRemove,
   onCancel,
 }) => {
-  const [state, dispatch] = useReducer(selectorReducer, {
+  const [state, dispatch] = useReducer(selectorReducer<string>, {
     selectedIndex: 0,
     pendingDecision: null,
-  });
+    items: ["keep", "remove"],
+  } as SelectorState<string>);
 
   const { selectedIndex, pendingDecision } = state;
 
@@ -32,7 +36,6 @@ export const WorktreeExitPrompt: React.FC<WorktreeExitPromptProps> = ({
     dispatch({
       type: "HANDLE_KEY",
       key,
-      maxIndex: 1,
       hasInsert: false,
     });
   });

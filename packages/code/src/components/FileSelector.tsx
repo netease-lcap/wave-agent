@@ -23,16 +23,17 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   onSelect,
   onCancel,
 }) => {
-  const [state, dispatch] = useReducer(selectorReducer, {
+  const [state, dispatch] = useReducer(selectorReducer<FileItem>, {
     selectedIndex: 0,
     pendingDecision: null,
-  } as SelectorState);
+    items: [],
+  } as SelectorState<FileItem>);
 
-  const { selectedIndex, pendingDecision } = state;
+  const { selectedIndex, pendingDecision, items: filesInState } = state;
 
-  // Reset selected index when files change
+  // Sync files from props into reducer state (SET_ITEMS also resets index)
   useEffect(() => {
-    dispatch({ type: "RESET_INDEX" });
+    dispatch({ type: "SET_ITEMS", items: files });
   }, [files]);
 
   // Handle decisions from reducer
@@ -40,21 +41,20 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
     if (!pendingDecision) return;
 
     if (pendingDecision === "select" || pendingDecision === "insert") {
-      if (files.length > 0 && selectedIndex < files.length) {
-        onSelect(files[selectedIndex].path);
+      if (filesInState.length > 0 && selectedIndex < filesInState.length) {
+        onSelect(filesInState[selectedIndex].path);
       }
     } else if (pendingDecision === "cancel") {
       onCancel();
     }
 
     dispatch({ type: "CLEAR_DECISION" });
-  }, [pendingDecision, selectedIndex, files, onSelect, onCancel]);
+  }, [pendingDecision, selectedIndex, filesInState, onSelect, onCancel]);
 
   useInput((input, key) => {
     dispatch({
       type: "HANDLE_KEY",
       key,
-      maxIndex: files.length - 1,
       hasInsert: true, // For FileSelector, Tab is also select
     });
   });
