@@ -64,12 +64,14 @@ function mockMsgManager(overrides = {}) {
     setMessages: vi.fn(),
     getLatestTotalTokens: vi.fn().mockReturnValue(0),
     getCombinedMemory: vi.fn().mockResolvedValue(""),
+    getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
+    processTriggeredRules: vi.fn().mockReturnValue([]),
     addErrorBlock: vi.fn(),
     setlatestTotalTokens: vi.fn(),
     saveSession: vi.fn().mockResolvedValue(undefined),
     compactMessagesAndUpdateSession: vi.fn(),
     getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
-    touchFile: vi.fn(),
+    triggerFileRead: vi.fn(),
     finalizeStreamingBlocks: vi.fn(),
     addFileHistoryBlock: vi.fn(),
     updateCurrentMessageReasoning: vi.fn(),
@@ -344,7 +346,7 @@ describe("AIManager - Coverage", () => {
       stream: false,
     });
     await aiManager.sendAIMessage();
-    expect(mm.touchFile).toHaveBeenCalledWith("src/index.ts");
+    expect(mm.triggerFileRead).toHaveBeenCalledWith("src/index.ts");
   });
 
   it("should handle assistant message with usage", async () => {

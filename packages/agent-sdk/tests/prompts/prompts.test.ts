@@ -183,13 +183,9 @@ describe("prompts", () => {
       expect(result).not.toContain("Plan mode is active.");
     });
 
-    it("should include memory context when provided", () => {
-      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-        memory: "Historical Context",
-      });
-      expect(result).toContain(
-        "## Memory Context\n\nThe following is important context and memory from previous interactions:\n\nHistorical Context",
-      );
+    it("should not include memory context in system prompt (moved to messages array)", () => {
+      const result = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {});
+      expect(result).not.toContain("## Memory Context");
     });
 
     it("should include worktree warning when worktree session is active", () => {

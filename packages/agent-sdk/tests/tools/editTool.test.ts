@@ -444,8 +444,8 @@ describe("editTool", () => {
 
   it("should reject edit when file has not been read first", async () => {
     const mockMessageManager = {
-      touchFile: vi.fn(),
-      hasFileInContext: vi.fn().mockReturnValue(false),
+      triggerFileRead: vi.fn(),
+      hasFileBeenRead: vi.fn().mockReturnValue(false),
     };
 
     const result = await editTool.execute(
@@ -472,8 +472,8 @@ describe("editTool", () => {
     vi.mocked(writeFile).mockResolvedValue(undefined);
 
     const mockMessageManager = {
-      touchFile: vi.fn(),
-      hasFileInContext: vi.fn().mockReturnValue(true),
+      triggerFileRead: vi.fn(),
+      hasFileBeenRead: vi.fn().mockReturnValue(true),
     };
 
     const result = await editTool.execute(

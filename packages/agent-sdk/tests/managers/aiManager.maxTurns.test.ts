@@ -131,12 +131,14 @@ describe("AIManager maxTurns", () => {
       setMessages: vi.fn(),
       getLatestTotalTokens: vi.fn().mockReturnValue(0),
       getCombinedMemory: vi.fn().mockResolvedValue(""),
+      getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
+      processTriggeredRules: vi.fn().mockReturnValue([]),
       addErrorBlock: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
       compactMessagesAndUpdateSession: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
-      touchFile: vi.fn(),
+      triggerFileRead: vi.fn(),
       finalizeStreamingBlocks: vi.fn(),
     } as unknown as MessageManager;
 

@@ -68,8 +68,8 @@ Usage:
       };
     }
 
-    // Touch file to track it in context
-    context.messageManager?.touchFile(filePath);
+    // Trigger conditional rule loading for this file
+    context.messageManager?.triggerFileRead(filePath);
 
     try {
       const resolvedPath = resolvePath(filePath, context.workdir);

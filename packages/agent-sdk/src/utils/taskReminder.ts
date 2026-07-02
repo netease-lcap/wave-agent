@@ -1,6 +1,5 @@
 import type { Message } from "../types/messaging.js";
 import type { Task } from "../types/tasks.js";
-import type { ChatCompletionMessageParam } from "openai/resources.js";
 
 export const TASK_REMINDER_CONFIG = {
   TURNS_SINCE_WRITE: 10,
@@ -74,28 +73,24 @@ export function buildTaskReminderText(tasks: Task[]): string {
 }
 
 export function maybeInjectTaskReminder(
-  messages: ChatCompletionMessageParam[],
   turnCounts: {
     turnsSinceLastTaskManagement: number;
     turnsSinceLastReminder: number;
   },
   tasks: Task[],
-): void {
+): string | null {
   if (
     turnCounts.turnsSinceLastTaskManagement <
     TASK_REMINDER_CONFIG.TURNS_SINCE_WRITE
   ) {
-    return;
+    return null;
   }
   if (
     turnCounts.turnsSinceLastReminder <
     TASK_REMINDER_CONFIG.TURNS_BETWEEN_REMINDERS
   ) {
-    return;
+    return null;
   }
 
-  messages.push({
-    role: "user",
-    content: buildTaskReminderText(tasks),
-  } as ChatCompletionMessageParam);
+  return buildTaskReminderText(tasks);
 }

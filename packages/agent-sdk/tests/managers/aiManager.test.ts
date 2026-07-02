@@ -92,12 +92,14 @@ describe("AIManager", () => {
       setMessages: vi.fn(),
       getLatestTotalTokens: vi.fn().mockReturnValue(0),
       getCombinedMemory: vi.fn().mockResolvedValue(""),
+      getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
+      processTriggeredRules: vi.fn().mockReturnValue([]),
       addErrorBlock: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
       compactMessagesAndUpdateSession: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
-      touchFile: vi.fn(),
+      triggerFileRead: vi.fn(),
       finalizeStreamingBlocks: vi.fn(),
     } as unknown as MessageManager;
 
@@ -851,7 +853,7 @@ describe("AIManager", () => {
   });
 
   describe("File Mention Scanning", () => {
-    it("should scan for file mentions in the last user message and call touchFile", async () => {
+    it("should scan for file mentions in the last user message and call triggerFileRead", async () => {
       const messages = [
         {
           id: "msg-1",
@@ -872,8 +874,12 @@ describe("AIManager", () => {
 
       await aiManager.sendAIMessage();
 
-      expect(mockMessageManager.touchFile).toHaveBeenCalledWith("src/main.ts");
-      expect(mockMessageManager.touchFile).toHaveBeenCalledWith("package.json");
+      expect(mockMessageManager.triggerFileRead).toHaveBeenCalledWith(
+        "src/main.ts",
+      );
+      expect(mockMessageManager.triggerFileRead).toHaveBeenCalledWith(
+        "package.json",
+      );
     });
 
     it("should only scan for file mentions at recursionDepth 0", async () => {
@@ -897,7 +903,7 @@ describe("AIManager", () => {
 
       await aiManager.sendAIMessage({ recursionDepth: 1 });
 
-      expect(mockMessageManager.touchFile).not.toHaveBeenCalled();
+      expect(mockMessageManager.triggerFileRead).not.toHaveBeenCalled();
     });
   });
 

@@ -162,7 +162,7 @@ describe("Agent Modular Memory Rules Integration", () => {
     await agent.destroy();
   });
 
-  it("should include active modular rules in combinedMemory based on files in context", async () => {
+  it("should include active modular rules via processTriggeredRules based on triggered file reads", async () => {
     const projectRulesDir = path.join(mockTempDir, ".wave", "rules");
     const projectRulePath = path.join(projectRulesDir, "test-rule.md");
     const projectRuleContent =
@@ -194,34 +194,24 @@ describe("Agent Modular Memory Rules Integration", () => {
       callbacks: mockCallbacks,
     });
 
-    // Initially not active
-    expect(await agent.getCombinedMemory()).not.toContain(
-      "Important rule content",
-    );
-
-    // Add a message that mentions the file
-    // We need to simulate a tool call that mentions the file
-    const messageWithToolCall = {
-      role: "assistant" as const,
-      blocks: [
-        {
-          type: "tool" as const,
-          id: "call_1",
-          name: "read_file",
-          parameters: JSON.stringify({ path: "src/important.ts" }),
-          state: "completed" as const,
-        },
-      ],
-    };
-
-    // Manually set messages to trigger filesInContext update
-    (
+    const mm = (
       agent as unknown as {
-        messageManager: { setMessages: (messages: unknown[]) => void };
+        messageManager: {
+          triggerFileRead: (filePath: string) => void;
+          processTriggeredRules: () => Array<{ content: string }>;
+        };
       }
-    ).messageManager.setMessages([messageWithToolCall]);
+    ).messageManager;
 
-    expect(await agent.getCombinedMemory()).toContain("Important rule content");
+    // Initially not active
+    const rulesBefore = mm.processTriggeredRules();
+    expect(rulesBefore).toHaveLength(0);
+
+    // Trigger a file read that matches the rule's paths
+    mm.triggerFileRead("src/important.ts");
+    const rulesAfter = mm.processTriggeredRules();
+    expect(rulesAfter).toHaveLength(1);
+    expect(rulesAfter[0].content).toContain("Important rule content");
 
     await agent.destroy();
   });

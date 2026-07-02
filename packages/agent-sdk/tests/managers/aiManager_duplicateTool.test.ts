@@ -41,6 +41,8 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
       setMessages: vi.fn(),
       getLatestTotalTokens: vi.fn().mockReturnValue(0),
       getCombinedMemory: vi.fn().mockResolvedValue(""),
+      getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
+      processTriggeredRules: vi.fn().mockReturnValue([]),
       saveSession: vi.fn().mockResolvedValue(undefined),
       setlatestTotalTokens: vi.fn(),
       addErrorBlock: vi.fn(),
