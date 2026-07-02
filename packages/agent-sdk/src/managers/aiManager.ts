@@ -1185,12 +1185,24 @@ export class AIManager {
             }
 
             // Recursively call AI service, increment recursion depth, and pass same configuration
-            await this.sendAIMessage({
-              recursionDepth: recursionDepth + 1,
-              model,
-              allowedRules,
-              maxTokens,
-            });
+            // Yield to the event loop before recursing so macrotasks
+            // (abort timers, signals) can be processed between turns.
+            await new Promise((resolve) => setImmediate(resolve));
+
+            // Re-check abort status after yielding — the signal may have
+            // fired during the setImmediate gap.
+            const isAbortedAfterYield =
+              abortController.signal.aborted ||
+              toolAbortController.signal.aborted;
+
+            if (!isAbortedAfterYield) {
+              await this.sendAIMessage({
+                recursionDepth: recursionDepth + 1,
+                model,
+                allowedRules,
+                maxTokens,
+              });
+            }
           }
         }
       }
