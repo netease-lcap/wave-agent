@@ -1,7 +1,7 @@
 name: CI
 
 on:
-  push:
+  pull_request:
     branches: [ main, develop ]
     paths-ignore:
       - '**/*.md'
@@ -10,8 +10,6 @@ on:
       - 'docs/**'
       - 'scripts/**'
       - 'LICENSE'
-  pull_request:
-    branches: [ main, develop ]
   workflow_dispatch:
 
 concurrency:
