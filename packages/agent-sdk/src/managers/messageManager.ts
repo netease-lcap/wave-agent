@@ -31,6 +31,7 @@ import type { MemoryRuleManager } from "./MemoryRuleManager.js";
 import type { MemoryRule } from "../types/memoryRule.js";
 import type { MemoryService } from "../services/memory.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
+import { READ_TOOL_NAME } from "../constants/tools.js";
 
 import { Container } from "../utils/container.js";
 
@@ -1034,7 +1035,7 @@ export class MessageManager {
     for (const block of message.blocks) {
       if (
         block.type === "tool" &&
-        block.name === "read" &&
+        block.name === READ_TOOL_NAME &&
         block.stage === "end" &&
         block.result &&
         block.parameters
