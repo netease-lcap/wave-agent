@@ -16,6 +16,7 @@ vi.mock("fs/promises");
 
 describe("ExitPlanMode Integration", () => {
   const originalEnv = process.env;
+  let activeAgent: Agent | undefined;
   let mockStdout: typeof process.stdout.write;
   let mockStderr: typeof process.stderr.write;
   let originalStdoutWrite: typeof process.stdout.write;
@@ -35,7 +36,11 @@ describe("ExitPlanMode Integration", () => {
     process.stderr.write = mockStderr;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
     process.env = originalEnv;
     process.stdout.write = originalStdoutWrite;
     process.stderr.write = originalStderrWrite;
@@ -47,6 +52,7 @@ describe("ExitPlanMode Integration", () => {
       workdir: "/test/workdir",
       permissionMode: "default",
     });
+    activeAgent = agent;
 
     // Both tools always in tool list (runtime guard handles mode validation)
     const tools = (
@@ -100,6 +106,7 @@ describe("ExitPlanMode Integration", () => {
     const agent = await Agent.create({
       workdir: "/test/workdir",
     });
+    activeAgent = agent;
 
     vi.mocked(readFile).mockResolvedValue("test");
 
@@ -129,6 +136,7 @@ describe("ExitPlanMode Integration", () => {
       permissionMode: "plan",
       canUseTool: mockCallback as PermissionCallback,
     });
+    activeAgent = agent;
 
     // Wait for plan file path generation
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -167,6 +175,7 @@ describe("ExitPlanMode Integration", () => {
       permissionMode: "plan",
       canUseTool: mockCallback as PermissionCallback,
     });
+    activeAgent = agent;
 
     // Wait for plan file path generation
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -199,6 +208,7 @@ describe("ExitPlanMode Integration", () => {
       permissionMode: "plan",
       canUseTool: mockCallback as PermissionCallback,
     });
+    activeAgent = agent;
 
     // Wait for plan file path generation
     await new Promise((resolve) => setTimeout(resolve, 100));

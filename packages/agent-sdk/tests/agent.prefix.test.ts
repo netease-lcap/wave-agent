@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../src/agent.js";
 import * as fs from "fs/promises";
 
@@ -7,6 +7,7 @@ vi.mock("./services/session.js");
 
 describe("Agent Prefix Matching Integration", () => {
   const workdir = "/test/workdir";
+  let activeAgent: Agent | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -15,11 +16,19 @@ describe("Agent Prefix Matching Integration", () => {
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
   });
 
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
+  });
+
   it("should automatically save and use prefix rules for smart commands", async () => {
     const agent = await Agent.create({
       workdir,
       permissionMode: "default",
     });
+    activeAgent = agent;
 
     // 1. Simulate trusting a command that has a smart prefix
     // In a real scenario, this comes from the Confirmation component decision
@@ -44,6 +53,7 @@ describe("Agent Prefix Matching Integration", () => {
       workdir,
       permissionMode: "default",
     });
+    activeAgent = agent;
 
     // 1. Simulate trusting a blacklisted command
     await agent.addPermissionRule("Bash(rm file.txt)");

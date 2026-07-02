@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../src/agent.js";
 import { MarketplaceService } from "../src/services/MarketplaceService.js";
 import { PluginLoader } from "../src/services/pluginLoader.js";
@@ -12,6 +12,7 @@ vi.mock("fs");
 
 describe("Agent Plugin Loading Integration", () => {
   const workdir = "/test/workdir";
+  let activeAgent: Agent | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -81,8 +82,16 @@ describe("Agent Plugin Loading Integration", () => {
     } as unknown as typeof fs.readFileSync);
   });
 
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
+  });
+
   it("should load plugins from both user and project configurations and skip unmentioned ones", async () => {
     const agent = await Agent.create({ workdir });
+    activeAgent = agent;
 
     const loadedPlugins = agent["pluginManager"].getPlugins();
     const pluginNames = loadedPlugins.map((p) => p.name);

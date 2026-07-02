@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "../src/agent.js";
 import * as fs from "fs/promises";
 
@@ -7,6 +7,7 @@ vi.mock("./services/session.js");
 
 describe("Agent Allowed Rules", () => {
   const workdir = "/test/workdir";
+  let activeAgent: Agent | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -15,11 +16,19 @@ describe("Agent Allowed Rules", () => {
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
   });
 
+  afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
+  });
+
   it("should return both user and default rules in getAllowedRules", async () => {
     const agent = await Agent.create({
       workdir,
       permissionMode: "default",
     });
+    activeAgent = agent;
 
     await agent.addPermissionRule("Bash(npm install lodash)");
 
@@ -33,6 +42,7 @@ describe("Agent Allowed Rules", () => {
       workdir,
       permissionMode: "default",
     });
+    activeAgent = agent;
 
     await agent.addPermissionRule("Bash(npm install lodash)");
 
@@ -46,6 +56,7 @@ describe("Agent Allowed Rules", () => {
       workdir,
       permissionMode: "default",
     });
+    activeAgent = agent;
 
     await agent.addPermissionRule("Bash(git status)");
 

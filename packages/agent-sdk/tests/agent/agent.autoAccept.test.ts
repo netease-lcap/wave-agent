@@ -11,6 +11,7 @@ import * as path from "path";
 describe("Agent Auto-Accept Permissions Integration", () => {
   let tempDir: string;
   const originalEnv = process.env;
+  let activeAgent: Agent | undefined;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "wave-agent-test-"));
@@ -23,6 +24,10 @@ describe("Agent Auto-Accept Permissions Integration", () => {
   });
 
   afterEach(async () => {
+    if (activeAgent) {
+      await activeAgent.destroy();
+      activeAgent = undefined;
+    }
     process.env = originalEnv;
     await fs.rm(tempDir, { recursive: true, force: true });
     vi.restoreAllMocks();
@@ -36,6 +41,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
       permissionMode: "default",
       canUseTool: mockCallback as unknown as PermissionCallback,
     });
+    activeAgent = agent;
 
     // 1. Test transition to acceptEdits
     mockCallback.mockResolvedValueOnce({
@@ -111,6 +117,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
       permissionMode: "default",
       canUseTool: mockCallback as unknown as PermissionCallback,
     });
+    activeAgent = agent;
 
     // 3. Verify rule is loaded and applied
     const toolManager = (agent as unknown as { toolManager: ToolManager })
@@ -133,6 +140,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
         onPermissionModeChange: mockModeCallback,
       },
     });
+    activeAgent = agent;
 
     agent.setPermissionMode("acceptEdits");
     expect(mockModeCallback).toHaveBeenCalledWith("acceptEdits");
@@ -167,6 +175,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
       permissionMode: "default",
       canUseTool: mockCallback as unknown as PermissionCallback,
     });
+    activeAgent = agent;
 
     // 4. Verify both rules are applied
     const toolManager = (agent as unknown as { toolManager: ToolManager })
@@ -198,6 +207,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
       permissionMode: "default",
       canUseTool: mockCallback as unknown as PermissionCallback,
     });
+    activeAgent = agent;
 
     const toolManager = (agent as unknown as { toolManager: ToolManager })
       .toolManager;
