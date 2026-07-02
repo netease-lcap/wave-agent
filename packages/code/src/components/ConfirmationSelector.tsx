@@ -108,7 +108,6 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
         type: "HANDLE_KEY",
         input,
         key,
-        currentQuestion,
         questions,
       });
     } else {

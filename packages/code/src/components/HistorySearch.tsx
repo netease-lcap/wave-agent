@@ -1,4 +1,4 @@
-import React, { useReducer, useEffect, useState } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { PromptHistoryManager, type PromptEntry } from "wave-agent-sdk";
 import {
@@ -18,20 +18,18 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   onCancel,
 }) => {
   const MAX_VISIBLE_ITEMS = 5;
-  const [state, dispatch] = useReducer(selectorReducer, {
+  const [state, dispatch] = useReducer(selectorReducer<PromptEntry>, {
     selectedIndex: 0,
     pendingDecision: null,
-  } as SelectorState);
-  const [entries, setEntries] = useState<PromptEntry[]>([]);
+    items: [],
+  } as SelectorState<PromptEntry>);
 
-  const { selectedIndex, pendingDecision } = state;
+  const { selectedIndex, pendingDecision, items: entries } = state;
 
   useEffect(() => {
     const fetchHistory = async () => {
       const results = await PromptHistoryManager.searchHistory(searchQuery);
-      const limitedResults = results.slice(0, 20);
-      setEntries(limitedResults);
-      dispatch({ type: "RESET_INDEX" });
+      dispatch({ type: "SET_ITEMS", items: results.slice(0, 20) });
     };
     fetchHistory();
   }, [searchQuery]);
@@ -52,12 +50,7 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   }, [pendingDecision, selectedIndex, entries, onSelect, onCancel]);
 
   useInput((input, key) => {
-    dispatch({
-      type: "HANDLE_KEY",
-      key,
-      maxIndex: entries.length - 1,
-      hasInsert: false,
-    });
+    dispatch({ type: "HANDLE_KEY", key, hasInsert: false });
   });
 
   if (entries.length === 0) {

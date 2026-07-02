@@ -23,20 +23,16 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   commands = [],
 }) => {
   const MAX_VISIBLE_ITEMS = 3;
-  const [state, dispatch] = useReducer(selectorReducer, {
+  const [state, dispatch] = useReducer(selectorReducer<SlashCommand>, {
     selectedIndex: 0,
     pendingDecision: null,
-  } as SelectorState);
+    items: [],
+  } as SelectorState<SlashCommand>);
 
-  const { selectedIndex, pendingDecision } = state;
-
-  // Reset selected index when search query changes
-  useEffect(() => {
-    dispatch({ type: "RESET_INDEX" });
-  }, [searchQuery]);
+  const { selectedIndex, pendingDecision, items: filteredCommands } = state;
 
   // Merge agent commands and local commands, memoized to stabilize useEffect dependencies
-  const filteredCommands = useMemo(() => {
+  const computedCommands = useMemo(() => {
     const allCommands = [...AVAILABLE_COMMANDS, ...commands];
     return allCommands.filter(
       (command) =>
@@ -44,6 +40,11 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
         command.id.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [searchQuery, commands]);
+
+  // Sync computed commands into reducer state (SET_ITEMS also resets index)
+  useEffect(() => {
+    dispatch({ type: "SET_ITEMS", items: computedCommands });
+  }, [computedCommands]);
 
   // Handle decisions from reducer
   useEffect(() => {
@@ -91,12 +92,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   );
 
   useInput((input, key) => {
-    dispatch({
-      type: "HANDLE_KEY",
-      key,
-      maxIndex: filteredCommands.length - 1,
-      hasInsert: !!onInsert,
-    });
+    dispatch({ type: "HANDLE_KEY", key, hasInsert: !!onInsert });
   });
 
   if (filteredCommands.length === 0) {

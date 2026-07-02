@@ -1,10 +1,15 @@
 import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import type { SessionMetadata } from "wave-agent-sdk";
-import { selectorReducer } from "../reducers/selectorReducer.js";
+import {
+  selectorReducer,
+  type SelectorState,
+} from "../reducers/selectorReducer.js";
+
+type SessionItem = SessionMetadata & { firstMessage?: string };
 
 export interface SessionSelectorProps {
-  sessions: (SessionMetadata & { firstMessage?: string })[];
+  sessions: SessionItem[];
   onSelect: (sessionId: string) => void;
   onCancel: () => void;
 }
@@ -14,33 +19,38 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
   onSelect,
   onCancel,
 }) => {
-  const [state, dispatch] = useReducer(selectorReducer, {
+  const [state, dispatch] = useReducer(selectorReducer<SessionItem>, {
     selectedIndex: 0,
     pendingDecision: null,
-  });
+    items: [],
+  } as SelectorState<SessionItem>);
 
-  const { selectedIndex, pendingDecision } = state;
+  const { selectedIndex, pendingDecision, items } = state;
+
+  // Sync sessions into reducer state
+  useEffect(() => {
+    dispatch({ type: "SET_ITEMS", items: sessions });
+  }, [sessions]);
 
   useInput((_input, key) => {
     dispatch({
       type: "HANDLE_KEY",
       key,
-      maxIndex: sessions.length - 1,
       hasInsert: false,
     });
   });
 
   useEffect(() => {
     if (pendingDecision === "select") {
-      if (sessions.length > 0 && selectedIndex < sessions.length) {
-        onSelect(sessions[selectedIndex].id);
+      if (items.length > 0 && selectedIndex < items.length) {
+        onSelect(items[selectedIndex].id);
       }
       dispatch({ type: "CLEAR_DECISION" });
     } else if (pendingDecision === "cancel") {
       onCancel();
       dispatch({ type: "CLEAR_DECISION" });
     }
-  }, [pendingDecision, selectedIndex, sessions, onSelect, onCancel]);
+  }, [pendingDecision, selectedIndex, items, onSelect, onCancel]);
 
   if (sessions.length === 0) {
     return (

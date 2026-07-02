@@ -10,6 +10,7 @@ describe("selectorReducer", () => {
   const initialState: SelectorState = {
     selectedIndex: 0,
     pendingDecision: null,
+    items: ["a", "b", "c"],
   };
 
   it("should handle HANDLE_KEY up/down", () => {
@@ -19,7 +20,6 @@ describe("selectorReducer", () => {
     let result = selectorReducer(initialState, {
       type: "HANDLE_KEY",
       key: downKey,
-      maxIndex: 2,
       hasInsert: false,
     });
     expect(result.selectedIndex).toBe(1);
@@ -27,7 +27,6 @@ describe("selectorReducer", () => {
     result = selectorReducer(result, {
       type: "HANDLE_KEY",
       key: upKey,
-      maxIndex: 2,
       hasInsert: false,
     });
     expect(result.selectedIndex).toBe(0);
@@ -38,7 +37,6 @@ describe("selectorReducer", () => {
     const result = selectorReducer(initialState, {
       type: "HANDLE_KEY",
       key: returnKey,
-      maxIndex: 0,
       hasInsert: false,
     });
     expect(result.pendingDecision).toBe("select");
@@ -49,7 +47,6 @@ describe("selectorReducer", () => {
     const result = selectorReducer(initialState, {
       type: "HANDLE_KEY",
       key: tabKey,
-      maxIndex: 0,
       hasInsert: true,
     });
     expect(result.pendingDecision).toBe("insert");
@@ -60,7 +57,6 @@ describe("selectorReducer", () => {
     const result = selectorReducer(initialState, {
       type: "HANDLE_KEY",
       key: tabKey,
-      maxIndex: 0,
       hasInsert: false,
     });
     expect(result.pendingDecision).toBe(null);
@@ -71,7 +67,6 @@ describe("selectorReducer", () => {
     const result = selectorReducer(initialState, {
       type: "HANDLE_KEY",
       key: escKey,
-      maxIndex: 0,
       hasInsert: false,
     });
     expect(result.pendingDecision).toBe("cancel");
@@ -80,7 +75,6 @@ describe("selectorReducer", () => {
   it("should handle MOVE_UP/MOVE_DOWN actions", () => {
     let result = selectorReducer(initialState, {
       type: "MOVE_DOWN",
-      maxIndex: 5,
     });
     expect(result.selectedIndex).toBe(1);
     result = selectorReducer(result, { type: "MOVE_UP" });
@@ -88,8 +82,17 @@ describe("selectorReducer", () => {
   });
 
   it("should handle RESET_INDEX", () => {
-    const state = { ...initialState, selectedIndex: 5 };
+    const state = { ...initialState, selectedIndex: 2 };
     const result = selectorReducer(state, { type: "RESET_INDEX" });
+    expect(result.selectedIndex).toBe(0);
+  });
+
+  it("should handle SET_ITEMS", () => {
+    const result = selectorReducer(initialState, {
+      type: "SET_ITEMS",
+      items: ["x", "y"],
+    });
+    expect(result.items).toEqual(["x", "y"]);
     expect(result.selectedIndex).toBe(0);
   });
 

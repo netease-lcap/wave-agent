@@ -1,36 +1,50 @@
 import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
+import type { InstalledPlugin } from "wave-agent-sdk";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
-import { selectorReducer } from "../reducers/selectorReducer.js";
+import {
+  selectorReducer,
+  type SelectorState,
+} from "../reducers/selectorReducer.js";
+
+type InstalledPluginWithEnabled = InstalledPlugin & { enabled: boolean };
 
 export const InstalledView: React.FC = () => {
   const { installedPlugins, actions } = usePluginManagerContext();
-  const [state, dispatch] = useReducer(selectorReducer, {
-    selectedIndex: 0,
-    pendingDecision: null,
-  });
+  const [state, dispatch] = useReducer(
+    selectorReducer<InstalledPluginWithEnabled>,
+    {
+      selectedIndex: 0,
+      pendingDecision: null,
+      items: [],
+    } as SelectorState<InstalledPluginWithEnabled>,
+  );
 
-  const { selectedIndex, pendingDecision } = state;
+  const { selectedIndex, pendingDecision, items } = state;
+
+  // Sync plugins into reducer state
+  useEffect(() => {
+    dispatch({ type: "SET_ITEMS", items: installedPlugins });
+  }, [installedPlugins]);
 
   useInput((_input, key) => {
     dispatch({
       type: "HANDLE_KEY",
       key,
-      maxIndex: installedPlugins.length - 1,
       hasInsert: false,
     });
   });
 
   useEffect(() => {
     if (pendingDecision === "select") {
-      const plugin = installedPlugins[selectedIndex];
+      const plugin = items[selectedIndex];
       if (plugin) {
         actions.setSelectedId(`${plugin.name}@${plugin.marketplace}`);
         actions.setView("PLUGIN_DETAIL");
       }
       dispatch({ type: "CLEAR_DECISION" });
     }
-  }, [pendingDecision, selectedIndex, installedPlugins, actions]);
+  }, [pendingDecision, selectedIndex, items, actions]);
 
   if (installedPlugins.length === 0) {
     return (

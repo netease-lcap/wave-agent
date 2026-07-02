@@ -1,18 +1,28 @@
 import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
+import type { KnownMarketplace } from "wave-agent-sdk";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
-import { selectorReducer } from "../reducers/selectorReducer.js";
+import {
+  selectorReducer,
+  type SelectorState,
+} from "../reducers/selectorReducer.js";
 
 import { MarketplaceList } from "./MarketplaceList.js";
 
 export const MarketplaceView: React.FC = () => {
   const { marketplaces, actions } = usePluginManagerContext();
-  const [state, dispatch] = useReducer(selectorReducer, {
+  const [state, dispatch] = useReducer(selectorReducer<KnownMarketplace>, {
     selectedIndex: 0,
     pendingDecision: null,
-  });
+    items: [],
+  } as SelectorState<KnownMarketplace>);
 
-  const { selectedIndex, pendingDecision } = state;
+  const { selectedIndex, pendingDecision, items } = state;
+
+  // Sync marketplaces into reducer state
+  useEffect(() => {
+    dispatch({ type: "SET_ITEMS", items: marketplaces });
+  }, [marketplaces]);
 
   useInput((input, key) => {
     if (input === "a") {
@@ -23,21 +33,20 @@ export const MarketplaceView: React.FC = () => {
     dispatch({
       type: "HANDLE_KEY",
       key,
-      maxIndex: marketplaces.length - 1,
       hasInsert: false,
     });
   });
 
   useEffect(() => {
     if (pendingDecision === "select") {
-      const mk = marketplaces[selectedIndex];
+      const mk = items[selectedIndex];
       if (mk) {
         actions.setSelectedId(mk.name);
         actions.setView("MARKETPLACE_DETAIL");
       }
       dispatch({ type: "CLEAR_DECISION" });
     }
-  }, [pendingDecision, selectedIndex, marketplaces, actions]);
+  }, [pendingDecision, selectedIndex, items, actions]);
 
   return (
     <Box flexDirection="column">

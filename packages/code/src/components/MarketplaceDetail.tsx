@@ -1,16 +1,27 @@
 import React, { useReducer, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
-import { selectorReducer } from "../reducers/selectorReducer.js";
+import {
+  selectorReducer,
+  type SelectorState,
+} from "../reducers/selectorReducer.js";
 
 export const MarketplaceDetail: React.FC = () => {
   const { state, marketplaces, actions } = usePluginManagerContext();
-  const [selectorState, dispatch] = useReducer(selectorReducer, {
-    selectedIndex: 0,
-    pendingDecision: null,
-  });
+  const [selectorState, dispatch] = useReducer(
+    selectorReducer<{ id: string; label: string }>,
+    {
+      selectedIndex: 0,
+      pendingDecision: null,
+      items: [],
+    } as SelectorState<{ id: string; label: string }>,
+  );
 
-  const { selectedIndex: selectedActionIndex, pendingDecision } = selectorState;
+  const {
+    selectedIndex: selectedActionIndex,
+    pendingDecision,
+    items: actionsList,
+  } = selectorState;
 
   const marketplace = marketplaces.find((m) => m.name === state.selectedId);
 
@@ -27,13 +38,17 @@ export const MarketplaceDetail: React.FC = () => {
     [marketplace?.autoUpdate],
   );
 
+  // Sync ACTIONS into reducer state
+  useEffect(() => {
+    dispatch({ type: "SET_ITEMS", items: [...ACTIONS] });
+  }, [ACTIONS]);
+
   useInput((_input, key) => {
     if (state.isLoading && !key.escape) return;
 
     dispatch({
       type: "HANDLE_KEY",
       key,
-      maxIndex: ACTIONS.length - 1,
       hasInsert: false,
     });
   });
@@ -42,12 +57,12 @@ export const MarketplaceDetail: React.FC = () => {
     if (!pendingDecision) return;
 
     if (pendingDecision === "select" && marketplace && !state.isLoading) {
-      const action = ACTIONS[selectedActionIndex].id;
+      const action = actionsList[selectedActionIndex]?.id;
       if (action === "toggle-auto-update") {
         actions.toggleAutoUpdate(marketplace.name, !marketplace.autoUpdate);
       } else if (action === "update") {
         actions.updateMarketplace(marketplace.name);
-      } else {
+      } else if (action === "remove") {
         actions.removeMarketplace(marketplace.name);
       }
     } else if (pendingDecision === "cancel") {
@@ -58,10 +73,10 @@ export const MarketplaceDetail: React.FC = () => {
   }, [
     pendingDecision,
     selectedActionIndex,
+    actionsList,
     marketplace,
     state.isLoading,
     actions,
-    ACTIONS,
   ]);
 
   if (!marketplace) {

@@ -52,11 +52,6 @@ export type QuestionAction =
       type: "HANDLE_KEY";
       input: string;
       key: Key;
-      currentQuestion: {
-        question: string;
-        options: Array<{ label: string }>;
-        multiSelect?: boolean;
-      };
       questions: Array<{
         question: string;
         options: Array<{ label: string }>;
@@ -265,7 +260,8 @@ export function questionReducer(
     case "CLEAR_DECISION":
       return { ...state, decision: null };
     case "HANDLE_KEY": {
-      const { input, key, currentQuestion, questions } = action;
+      const { input, key, questions } = action;
+      const currentQuestion = questions[state.currentQuestionIndex];
       if (!currentQuestion) return state;
 
       const options = [...currentQuestion.options, { label: "Other" }];
