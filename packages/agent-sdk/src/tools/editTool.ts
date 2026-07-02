@@ -109,13 +109,13 @@ Usage:
       };
     }
 
-    // Touch file to track it in context
-    context.messageManager?.touchFile(filePath);
+    // Trigger conditional rule loading for this file
+    context.messageManager?.triggerFileRead(filePath);
 
     // Enforce read-before-edit: the file must have been read first
     if (
       context.messageManager &&
-      !context.messageManager.hasFileInContext(filePath)
+      !context.messageManager.hasFileBeenRead(filePath)
     ) {
       return {
         success: false,

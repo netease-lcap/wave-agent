@@ -110,12 +110,17 @@ describe("Agent User Memory Integration", () => {
     // Send a message to trigger AI response with memory
     await agent.sendMessage("Test question");
 
-    // Verify that callAgent was called with combined memory
+    // Verify that callAgent was called with combined memory in messages array
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: expect.stringContaining(
-          "Project memory: important context\n\nUser memory: user preferences",
-        ),
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            content: expect.stringContaining(
+              "Project memory: important context\n\nUser memory: user preferences",
+            ),
+          }),
+        ]),
       }),
     );
   });
@@ -136,10 +141,15 @@ describe("Agent User Memory Integration", () => {
     // Send a message to trigger AI response with memory
     await agent.sendMessage("Test question");
 
-    // Verify that callAgent was called with project memory only
+    // Verify that callAgent was called with project memory in messages array
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: expect.stringContaining("Project memory only"),
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            content: expect.stringContaining("Project memory only"),
+          }),
+        ]),
       }),
     );
   });
@@ -160,10 +170,15 @@ describe("Agent User Memory Integration", () => {
     // Send a message to trigger AI response with memory
     await agent.sendMessage("Test question");
 
-    // Verify that callAgent was called with user memory only
+    // Verify that callAgent was called with user memory in messages array
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: expect.stringContaining("User memory only"),
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            content: expect.stringContaining("User memory only"),
+          }),
+        ]),
       }),
     );
   });

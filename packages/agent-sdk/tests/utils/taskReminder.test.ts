@@ -11,7 +11,6 @@ import type {
   ToolBlock,
 } from "../../src/types/messaging.js";
 import type { Task } from "../../src/types/tasks.js";
-import type { ChatCompletionMessageParam } from "openai/resources";
 
 function makeAssistantMessage(
   opts: { blocks?: MessageBlock[]; isMeta?: boolean } = {},
@@ -198,8 +197,7 @@ describe("buildTaskReminderText", () => {
 });
 
 describe("maybeInjectTaskReminder", () => {
-  it("pushes message when thresholds are met", () => {
-    const messages: ChatCompletionMessageParam[] = [];
+  it("returns reminder text when thresholds are met", () => {
     const turnCounts = {
       turnsSinceLastTaskManagement: TASK_REMINDER_CONFIG.TURNS_SINCE_WRITE,
       turnsSinceLastReminder: TASK_REMINDER_CONFIG.TURNS_BETWEEN_REMINDERS,
@@ -208,48 +206,40 @@ describe("maybeInjectTaskReminder", () => {
       makeTask({ id: "1", subject: "Do something", status: "pending" }),
     ];
 
-    maybeInjectTaskReminder(messages, turnCounts, tasks);
+    const result = maybeInjectTaskReminder(turnCounts, tasks);
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0].role).toBe("user");
-    const content =
-      typeof messages[0].content === "string"
-        ? messages[0].content
-        : String(messages[0].content);
-    expect(content).toContain("#1 [pending] Do something");
-    expect(content).toContain("<!-- task-reminder -->");
+    expect(result).not.toBeNull();
+    expect(result!).toContain("#1 [pending] Do something");
+    expect(result!).toContain("<!-- task-reminder -->");
   });
 
-  it("does nothing when turnsSinceLastTaskManagement is below threshold", () => {
-    const messages: ChatCompletionMessageParam[] = [];
+  it("returns null when turnsSinceLastTaskManagement is below threshold", () => {
     const turnCounts = {
       turnsSinceLastTaskManagement: TASK_REMINDER_CONFIG.TURNS_SINCE_WRITE - 1,
       turnsSinceLastReminder: TASK_REMINDER_CONFIG.TURNS_BETWEEN_REMINDERS,
     };
 
-    maybeInjectTaskReminder(messages, turnCounts, []);
-    expect(messages).toHaveLength(0);
+    const result = maybeInjectTaskReminder(turnCounts, []);
+    expect(result).toBeNull();
   });
 
-  it("does nothing when turnsSinceLastReminder is below threshold", () => {
-    const messages: ChatCompletionMessageParam[] = [];
+  it("returns null when turnsSinceLastReminder is below threshold", () => {
     const turnCounts = {
       turnsSinceLastTaskManagement: TASK_REMINDER_CONFIG.TURNS_SINCE_WRITE,
       turnsSinceLastReminder: TASK_REMINDER_CONFIG.TURNS_BETWEEN_REMINDERS - 1,
     };
 
-    maybeInjectTaskReminder(messages, turnCounts, []);
-    expect(messages).toHaveLength(0);
+    const result = maybeInjectTaskReminder(turnCounts, []);
+    expect(result).toBeNull();
   });
 
-  it("does nothing when both thresholds are below", () => {
-    const messages: ChatCompletionMessageParam[] = [];
+  it("returns null when both thresholds are below", () => {
     const turnCounts = {
       turnsSinceLastTaskManagement: 0,
       turnsSinceLastReminder: 0,
     };
 
-    maybeInjectTaskReminder(messages, turnCounts, []);
-    expect(messages).toHaveLength(0);
+    const result = maybeInjectTaskReminder(turnCounts, []);
+    expect(result).toBeNull();
   });
 });

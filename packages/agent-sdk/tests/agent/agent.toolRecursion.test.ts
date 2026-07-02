@@ -114,8 +114,10 @@ describe("Agent Tool Recursion Tests", () => {
 
     // Verify first AI call parameters (should contain user message and newly added assistant message)
     const firstCall = mockCallAgent.mock.calls[0][0];
-    expect(firstCall.messages).toHaveLength(1); // Only user message
-    expect(firstCall.messages[0].role).toBe("user");
+    // 1 prepend memory message + 1 user message
+    expect(firstCall.messages).toHaveLength(2);
+    expect(firstCall.messages[0].role).toBe("user"); // prepend memory
+    expect(firstCall.messages[1].role).toBe("user"); // actual user message
 
     // Verify second AI call parameters (should contain tool execution results)
     const secondCall = mockCallAgent.mock.calls[1][0];

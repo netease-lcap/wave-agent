@@ -126,9 +126,10 @@ describe("MessageManager Coverage Improvements", () => {
 
   it("should handle getCombinedMemory with memoryRuleManager", async () => {
     const mockMemoryRuleManager = {
-      getActiveRules: vi
-        .fn()
-        .mockReturnValue([{ id: "rule1", content: "rule content" }]),
+      getActiveRulesSplit: vi.fn().mockReturnValue({
+        unconditional: [{ id: "rule1", content: "rule content" }],
+        conditional: [],
+      }),
     };
 
     const testContainer = new Container();
@@ -263,32 +264,67 @@ describe("MessageManager Coverage Improvements", () => {
     ).toBe("msg1");
   });
 
-  it("should handle extractPathsFromParams", () => {
-    // This is private but called via updateFilesInContext which is called via setMessages
-    const messages = [
-      {
-        role: "assistant",
-        blocks: [
+  it("should process triggered file reads against conditional rules", () => {
+    const mockMemoryRuleManager = {
+      getActiveRulesSplit: vi.fn().mockReturnValue({
+        unconditional: [],
+        conditional: [
           {
-            type: "tool",
-            parameters: JSON.stringify({
-              filePath: "path1.ts",
-              target_file: "path2.ts",
-              files: ["path3.ts", 123],
-            }),
+            id: "cond",
+            content: "Conditional rule",
+            metadata: { paths: ["*.ts"] },
+            source: "project" as const,
+            filePath: "/test/cond.md",
           },
         ],
-      },
-    ];
-
-    messageManager.setMessages(
-      messages as unknown as Parameters<MessageManager["setMessages"]>[0],
+      }),
+    };
+    container.register(
+      "MemoryRuleManager",
+      mockMemoryRuleManager as unknown as Record<string, unknown>,
     );
-    const files = messageManager.getFilesInContext();
-    expect(files).toContain("path1.ts");
-    expect(files).toContain("path2.ts");
-    expect(files).toContain("path3.ts");
-    expect(files).not.toContain(123);
+
+    messageManager.triggerFileRead("src/index.ts");
+    const rules = messageManager.processTriggeredRules();
+    expect(rules).toHaveLength(1);
+    expect(rules[0].content).toBe("Conditional rule");
+    expect(mockMemoryRuleManager.getActiveRulesSplit).toHaveBeenCalledWith([
+      "src/index.ts",
+    ]);
+  });
+
+  it("should return empty rules from processTriggeredRules when no MemoryRuleManager", () => {
+    const freshContainer = new Container();
+    freshContainer.register("MemoryService", {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue("base memory"),
+    } as unknown as Record<string, unknown>);
+    const mm = new MessageManager(freshContainer, {
+      callbacks: {},
+      workdir,
+    });
+    mm.triggerFileRead("src/index.ts");
+    const rules = mm.processTriggeredRules();
+    expect(rules).toHaveLength(0);
+  });
+
+  it("should clear triggers after processTriggeredRules", () => {
+    const mockMemoryRuleManager = {
+      getActiveRulesSplit: vi.fn().mockReturnValue({
+        unconditional: [],
+        conditional: [],
+      }),
+    };
+    container.register(
+      "MemoryRuleManager",
+      mockMemoryRuleManager as unknown as Record<string, unknown>,
+    );
+
+    messageManager.triggerFileRead("src/index.ts");
+    messageManager.processTriggeredRules();
+    // Second call should have no triggers to process
+    const rules = messageManager.processTriggeredRules();
+    expect(rules).toHaveLength(0);
+    expect(mockMemoryRuleManager.getActiveRulesSplit).toHaveBeenCalledTimes(1);
   });
 
   it("should track file read contents from read tool blocks", () => {
@@ -383,5 +419,104 @@ describe("MessageManager Coverage Improvements", () => {
     const fileReads = messageManager.getRecentFileReads(1);
     expect(fileReads).toHaveLength(1);
     expect(fileReads[0].path).toBe("new.ts");
+  });
+
+  describe("getMemoryForInjection", () => {
+    it("should return prependContent from base memory when no MemoryRuleManager", async () => {
+      const result = await messageManager.getMemoryForInjection();
+      expect(result.prependContent).toBe("base memory");
+    });
+
+    it("should include unconditional rules in prependContent", async () => {
+      const mockMemoryRuleManager = {
+        getActiveRulesSplit: vi.fn().mockReturnValue({
+          unconditional: [
+            {
+              id: "uncond",
+              content: "Always active rule",
+              metadata: {},
+              source: "project" as const,
+              filePath: "/test/uncond.md",
+            },
+          ],
+          conditional: [
+            {
+              id: "cond",
+              content: "Conditional rule",
+              metadata: { paths: ["*.ts"] },
+              source: "project" as const,
+              filePath: "/test/cond.md",
+            },
+          ],
+        }),
+      };
+      container.register(
+        "MemoryRuleManager",
+        mockMemoryRuleManager as unknown as Record<string, unknown>,
+      );
+
+      const result = await messageManager.getMemoryForInjection();
+      expect(result.prependContent).toContain("base memory");
+      expect(result.prependContent).toContain("Always active rule");
+    });
+
+    it("should return only prependContent when no conditional rules match", async () => {
+      const mockMemoryRuleManager = {
+        getActiveRulesSplit: vi.fn().mockReturnValue({
+          unconditional: [],
+          conditional: [],
+        }),
+      };
+      container.register(
+        "MemoryRuleManager",
+        mockMemoryRuleManager as unknown as Record<string, unknown>,
+      );
+
+      const result = await messageManager.getMemoryForInjection();
+      expect(result.prependContent).toBe("base memory");
+    });
+
+    it("should return conditional rules via processTriggeredRules when filesInContext matches", () => {
+      const mockMemoryRuleManager = {
+        getActiveRulesSplit: vi.fn().mockReturnValue({
+          unconditional: [],
+          conditional: [
+            {
+              id: "cond",
+              content: "Conditional rule",
+              metadata: { paths: ["*.ts"] },
+              source: "project" as const,
+              filePath: "/test/cond.md",
+            },
+          ],
+        }),
+      };
+      container.register(
+        "MemoryRuleManager",
+        mockMemoryRuleManager as unknown as Record<string, unknown>,
+      );
+
+      messageManager.triggerFileRead("src/index.ts");
+      const rules = messageManager.processTriggeredRules();
+      expect(rules).toHaveLength(1);
+      expect(rules[0].content).toBe("Conditional rule");
+    });
+
+    it("should return empty rules from processTriggeredRules when no rules match filesInContext", () => {
+      const mockMemoryRuleManager = {
+        getActiveRulesSplit: vi.fn().mockReturnValue({
+          unconditional: [],
+          conditional: [],
+        }),
+      };
+      container.register(
+        "MemoryRuleManager",
+        mockMemoryRuleManager as unknown as Record<string, unknown>,
+      );
+
+      messageManager.triggerFileRead("src/index.ts");
+      const rules = messageManager.processTriggeredRules();
+      expect(rules).toHaveLength(0);
+    });
   });
 });

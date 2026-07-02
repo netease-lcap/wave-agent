@@ -21,7 +21,7 @@ import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
-import type { ChatCompletionMessageParam } from "openai/resources.js";
+
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
@@ -297,12 +297,11 @@ export class AIManager {
     }
   }
 
-  private async maybeInjectTaskReminderIntoMessages(
-    messages: ChatCompletionMessageParam[],
+  private async maybeGetTaskReminderText(
     toolNames: Set<string>,
-  ): Promise<void> {
+  ): Promise<string | null> {
     // Guard: no task tools available
-    if (!toolNames.has("TaskUpdate")) return;
+    if (!toolNames.has("TaskUpdate")) return null;
 
     const internalMessages = this.messageManager.getMessages();
     const turnCounts = getTaskReminderTurnCounts(internalMessages);
@@ -313,11 +312,11 @@ export class AIManager {
       turnCounts.turnsSinceLastReminder <
         TASK_REMINDER_CONFIG.TURNS_BETWEEN_REMINDERS
     ) {
-      return;
+      return null;
     }
 
     const tasks = await this.taskManager.listTasks();
-    maybeInjectTaskReminder(messages, turnCounts, tasks);
+    return maybeInjectTaskReminder(turnCounts, tasks);
   }
 
   public setIsLoading(isLoading: boolean): void {
@@ -770,7 +769,7 @@ export class AIManager {
       }
     }
 
-    // Scan for file mentions in the last user message
+    // Scan for file mentions in the last user message to trigger conditional rules
     if (recursionDepth === 0) {
       const messages = this.messageManager.getMessages();
       const lastMessage = messages[messages.length - 1];
@@ -782,7 +781,7 @@ export class AIManager {
             let match;
             while ((match = fileMentionRegex.exec(content)) !== null) {
               const filePath = match[1];
-              this.messageManager.touchFile(filePath);
+              this.messageManager.triggerFileRead(filePath);
             }
           }
         }
@@ -818,14 +817,20 @@ export class AIManager {
     // Add plan mode reminder as persistent meta message before getting messages
     this.maybeAddPlanModeMessage(currentMode);
 
+    // Process conditional rules triggered by file reads (persist as meta messages)
+    const triggeredRules = this.messageManager.processTriggeredRules();
+    for (const rule of triggeredRules) {
+      this.messageManager.addUserMessage({
+        content: `<!-- rule: ${rule.id} -->\n<system-reminder>\nThe following rules from .wave/rules apply to your work. Be sure to adhere to these instructions.\n\n${rule.content}\n</system-reminder>`,
+        isMeta: true,
+      });
+    }
+
     // Get recent message history
     const rawMessages = this.messageManager.getMessages();
     const recentMessages = convertMessagesForAPI(rawMessages);
 
     try {
-      // Get combined memory content
-      const combinedMemory = await this.messageManager.getCombinedMemory();
-
       // Track if assistant message has been created
       let assistantMessageCreated = false;
 
@@ -849,6 +854,10 @@ export class AIManager {
         autoMemoryOptions = { directory, content };
       }
 
+      // Get memory for message-array injection (not system prompt)
+      const { prependContent } =
+        await this.messageManager.getMemoryForInjection();
+
       // Call AI service with streaming callbacks if enabled
       const callAgentOptions: CallAgentOptions = {
         gatewayConfig: this.getGatewayConfig(),
@@ -865,7 +874,6 @@ export class AIManager {
           {
             workdir: this.getWorkdir(),
             originalWorkdir: this.getOriginalWorkdir(),
-            memory: combinedMemory,
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
             autoMemory: autoMemoryOptions,
@@ -876,11 +884,34 @@ export class AIManager {
         toolChoice: this.toolChoiceOverride, // Pass tool_choice override
       };
 
-      // Inject task reminder if needed (not persisted, regenerated each turn)
-      await this.maybeInjectTaskReminderIntoMessages(
-        callAgentOptions.messages,
-        toolNames,
-      );
+      // Prepend: AGENTS.md + user memory + unconditional rules as system-reminder
+      if (prependContent.trim()) {
+        callAgentOptions.messages.unshift({
+          role: "user",
+          content: `<system-reminder>\n${prependContent}\n</system-reminder>`,
+        });
+      }
+
+      // Append: task reminder as system-reminder at tail (conditional rules already persisted above)
+      const tailParts: string[] = [];
+
+      const taskReminderText = await this.maybeGetTaskReminderText(toolNames);
+      if (taskReminderText) {
+        // Persist to messageManager so turn counter can find the marker on future turns
+        this.messageManager.addUserMessage({
+          content: taskReminderText,
+          isMeta: true,
+        });
+        // Also inject into current turn's API call (persisted message won't be in recentMessages)
+        tailParts.push(taskReminderText);
+      }
+
+      if (tailParts.length > 0) {
+        callAgentOptions.messages.push({
+          role: "user",
+          content: `<system-reminder>\n${tailParts.join("\n\n")}\n</system-reminder>`,
+        });
+      }
 
       // Add streaming callbacks only if streaming is enabled
       if (this.stream) {

@@ -195,8 +195,8 @@ Usage:
       };
     }
 
-    // Touch file to track it in context
-    context.messageManager?.touchFile(filePath);
+    // Trigger conditional rule loading for this file
+    context.messageManager?.triggerFileRead(filePath);
 
     // Check for binary document formats
     if (isBinaryDocument(filePath)) {

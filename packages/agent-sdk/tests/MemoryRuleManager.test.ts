@@ -126,6 +126,65 @@ describe("MemoryRuleManager", () => {
     });
   });
 
+  describe("getActiveRulesSplit", () => {
+    it("should split rules into unconditional and conditional", async () => {
+      const projectRulesDir = path.join(workdir, ".wave", "rules");
+      vi.mocked(fs.readdir).mockImplementation(async (dir) => {
+        if (dir === projectRulesDir) {
+          return [
+            { isFile: () => true, name: "unconditional.md" },
+            { isFile: () => true, name: "conditional-ts.md" },
+            { isFile: () => true, name: "conditional-js.md" },
+          ] as unknown as Awaited<ReturnType<typeof fs.readdir>>;
+        }
+        return [] as unknown as Awaited<ReturnType<typeof fs.readdir>>;
+      });
+
+      vi.mocked(fs.readFile).mockImplementation(async (filePath) => {
+        if (
+          typeof filePath === "string" &&
+          filePath.includes("unconditional.md")
+        )
+          return "Always active rule";
+        if (
+          typeof filePath === "string" &&
+          filePath.includes("conditional-ts.md")
+        )
+          return '---\npaths:\n  - "*.ts"\n---\nTS rule';
+        if (
+          typeof filePath === "string" &&
+          filePath.includes("conditional-js.md")
+        )
+          return '---\npaths:\n  - "*.js"\n---\nJS rule';
+        return "";
+      });
+
+      await manager.discoverRules();
+
+      // No files in context: only unconditional rules
+      const empty = manager.getActiveRulesSplit([]);
+      expect(empty.unconditional).toHaveLength(1);
+      expect(empty.unconditional[0].content).toBe("Always active rule");
+      expect(empty.conditional).toHaveLength(0);
+
+      // TS file in context: unconditional + TS conditional
+      const tsSplit = manager.getActiveRulesSplit(["index.ts"]);
+      expect(tsSplit.unconditional).toHaveLength(1);
+      expect(tsSplit.conditional).toHaveLength(1);
+      expect(tsSplit.conditional[0].content).toBe("TS rule");
+
+      // Both TS and JS files: unconditional + both conditional
+      const bothSplit = manager.getActiveRulesSplit(["index.ts", "index.js"]);
+      expect(bothSplit.unconditional).toHaveLength(1);
+      expect(bothSplit.conditional).toHaveLength(2);
+
+      // Non-matching file: only unconditional
+      const noMatch = manager.getActiveRulesSplit(["README.md"]);
+      expect(noMatch.unconditional).toHaveLength(1);
+      expect(noMatch.conditional).toHaveLength(0);
+    });
+  });
+
   describe("Prioritization and Overriding", () => {
     it("should allow project rules to override user rules with the same ID", async () => {
       const projectRulesDir = path.join(workdir, ".wave", "rules");

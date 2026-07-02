@@ -167,6 +167,29 @@ export class MemoryRuleManager {
   }
 
   /**
+   * Returns rules split by type:
+   * - unconditional: rules with no `paths` metadata (always active)
+   * - conditional: rules with `paths` metadata that match filesInContext
+   */
+  getActiveRulesSplit(filesInContext: string[]): {
+    unconditional: MemoryRule[];
+    conditional: MemoryRule[];
+  } {
+    const unconditional: MemoryRule[] = [];
+    const conditional: MemoryRule[] = [];
+    for (const rule of Object.values(this.state.rules)) {
+      if (!rule.metadata.paths || rule.metadata.paths.length === 0) {
+        unconditional.push(rule);
+      } else if (
+        this.service.isRuleActive(rule, filesInContext, this.workdir)
+      ) {
+        conditional.push(rule);
+      }
+    }
+    return { unconditional, conditional };
+  }
+
+  /**
    * Reloads rules from disk.
    */
   async reload(): Promise<void> {

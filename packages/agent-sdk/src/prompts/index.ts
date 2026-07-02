@@ -237,7 +237,6 @@ export function buildSystemPrompt(
   options: {
     workdir?: string;
     originalWorkdir?: string;
-    memory?: string;
     language?: string;
     isSubagent?: boolean;
     autoMemory?: {
@@ -299,10 +298,6 @@ Today's date: ${today}
     if (options.autoMemory.content.trim()) {
       prompt += `\n\n## MEMORY.md\n\n${options.autoMemory.content}`;
     }
-  }
-
-  if (options.memory && options.memory.trim()) {
-    prompt += `\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${options.memory}`;
   }
 
   return prompt;

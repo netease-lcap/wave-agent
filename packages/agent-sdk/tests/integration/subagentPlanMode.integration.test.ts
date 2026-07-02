@@ -92,6 +92,8 @@ describe("Subagent Plan Mode Integration", () => {
       getMessages: vi.fn().mockImplementation(() => [...mockMessages]),
       getSessionId: vi.fn().mockReturnValue("test-session"),
       getCombinedMemory: vi.fn().mockResolvedValue(""),
+      getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
+      processTriggeredRules: vi.fn().mockReturnValue([]),
       addUserMessage: vi.fn().mockImplementation((msg) => {
         mockMessages.push({
           role: "user",
@@ -121,7 +123,7 @@ describe("Subagent Plan Mode Integration", () => {
       }),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.json"),
       mergeAssistantAdditionalFields: vi.fn(),
-      touchFile: vi.fn(),
+      triggerFileRead: vi.fn(),
       finalizeStreamingBlocks: vi.fn(),
       getLatestTotalTokens: vi.fn().mockReturnValue(0),
       compactMessagesAndUpdateSession: vi.fn(),

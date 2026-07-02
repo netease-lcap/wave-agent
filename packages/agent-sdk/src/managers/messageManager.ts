@@ -28,6 +28,7 @@ import {
 } from "../services/session.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { MemoryRuleManager } from "./MemoryRuleManager.js";
+import type { MemoryRule } from "../types/memoryRule.js";
 import type { MemoryService } from "../services/memory.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
 
@@ -100,7 +101,8 @@ export class MessageManager {
   private callbacks: MessageManagerCallbacks;
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
-  private filesInContext: Set<string> = new Set(); // Track files mentioned in the conversation
+  private pendingFileReadTriggers: Set<string> = new Set(); // File paths read via Read tool, awaiting rule matching
+  private loadedRuleIds: Set<string> = new Set(); // IDs of conditional rules already injected as meta messages
   private recentFileReads: Map<string, { content: string; timestamp: number }> =
     new Map(); // Track file read contents
   private invokedSkills: Map<string, { skillName: string; timestamp: number }> =
@@ -172,10 +174,27 @@ export class MessageManager {
   }
 
   /**
-   * Returns all files mentioned in the current conversation context.
+   * Process pending file read triggers: match against conditional rules,
+   * return rules not yet loaded (dedup via loadedRuleIds), mark them as loaded.
+   * Clears triggers after processing.
    */
-  public getFilesInContext(): string[] {
-    return Array.from(this.filesInContext);
+  public processTriggeredRules(): MemoryRule[] {
+    if (!this.memoryRuleManager || this.pendingFileReadTriggers.size === 0) {
+      this.pendingFileReadTriggers.clear();
+      return [];
+    }
+    const filePaths = Array.from(this.pendingFileReadTriggers);
+    this.pendingFileReadTriggers.clear();
+
+    const { conditional } =
+      this.memoryRuleManager.getActiveRulesSplit(filePaths);
+    const newRules = conditional.filter(
+      (rule) => !this.loadedRuleIds.has(rule.id),
+    );
+    for (const rule of newRules) {
+      this.loadedRuleIds.add(rule.id);
+    }
+    return newRules;
   }
 
   public getSessionDir(): string {
@@ -187,7 +206,8 @@ export class MessageManager {
   }
 
   /**
-   * Get combined memory content (project memory + user memory + modular rules)
+   * Get combined memory content (project memory + user memory + unconditional rules)
+   * Note: conditional rules are handled separately via processTriggeredRules().
    */
   public async getCombinedMemory(): Promise<string> {
     let combined = await this.memoryService.getCombinedMemoryContent(
@@ -195,15 +215,39 @@ export class MessageManager {
     );
 
     if (this.memoryRuleManager) {
-      const filesInContext = this.getFilesInContext();
-      const activeRules = this.memoryRuleManager.getActiveRules(filesInContext);
-      if (activeRules.length > 0) {
+      const { unconditional } = this.memoryRuleManager.getActiveRulesSplit([]);
+      if (unconditional.length > 0) {
         combined += "\n\n";
-        combined += activeRules.map((r) => r.content).join("\n\n");
+        combined += unconditional.map((r) => r.content).join("\n\n");
       }
     }
 
     return combined;
+  }
+
+  /**
+   * Get memory content for message-array injection:
+   * - prependContent: AGENTS.md + user memory + unconditional rules (for head injection)
+   * Conditional rules are handled separately via processTriggeredRules().
+   */
+  public async getMemoryForInjection(): Promise<{
+    prependContent: string;
+  }> {
+    const baseMemory = await this.memoryService.getCombinedMemoryContent(
+      this.workdir,
+    );
+
+    let prependContent = baseMemory;
+
+    if (this.memoryRuleManager) {
+      const { unconditional } = this.memoryRuleManager.getActiveRulesSplit([]);
+      if (unconditional.length > 0) {
+        prependContent += "\n\n";
+        prependContent += unconditional.map((r) => r.content).join("\n\n");
+      }
+    }
+
+    return { prependContent };
   }
 
   /**
@@ -243,62 +287,43 @@ export class MessageManager {
   }
 
   /**
-   * Adds a file path to the set of files in context, normalizing it if necessary.
+   * Record a file path read via the Read tool, to be matched against
+   * conditional memory rules before the next AI call.
    */
-  public touchFile(filePath: string): void {
+  public triggerFileRead(filePath: string): void {
     const normalizedPath = isAbsolute(filePath)
       ? relative(this.workdir, filePath)
       : filePath;
-    this.filesInContext.add(normalizedPath);
+    this.pendingFileReadTriggers.add(normalizedPath);
   }
 
   /**
-   * Checks if a file has been read or edited in this conversation.
+   * Check if a file has been read (for read-before-edit enforcement).
+   * Uses recentFileReads Map populated from Read tool execution.
    */
-  public hasFileInContext(filePath: string): boolean {
+  public hasFileBeenRead(filePath: string): boolean {
     const normalizedPath = isAbsolute(filePath)
       ? relative(this.workdir, filePath)
       : filePath;
-    return this.filesInContext.has(normalizedPath);
-  }
-
-  /**
-   * Extracts and adds file paths from a message's tool blocks.
-   */
-  private addPathsFromMessage(message: Message): void {
-    for (const block of message.blocks) {
-      if (block.type === "tool" && block.parameters) {
-        try {
-          const params = JSON.parse(block.parameters) as Record<
-            string,
-            unknown
-          >;
-          const paths = this.extractPathsFromParams(params);
-          for (const p of paths) {
-            this.touchFile(p);
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      }
-    }
+    return (
+      this.recentFileReads.has(normalizedPath) ||
+      this.recentFileReads.has(filePath)
+    );
   }
 
   public setMessages(messages: Message[]): void {
     const oldLength = this.messages.length;
     this.messages = [...messages];
 
-    // Incrementally add paths from new messages
+    // Incrementally extract metadata from new messages
     const newMessages = messages.slice(oldLength);
     for (const message of newMessages) {
-      this.addPathsFromMessage(message);
       this.extractFileReadsFromMessage(message);
       this.extractSkillInvocationsFromMessage(message);
     }
 
     // Also check if the last message was updated (common for tool blocks)
     if (messages.length > 0 && messages.length === oldLength) {
-      this.addPathsFromMessage(messages[messages.length - 1]);
       this.extractFileReadsFromMessage(messages[messages.length - 1]);
       this.extractSkillInvocationsFromMessage(messages[messages.length - 1]);
     }
@@ -376,6 +401,9 @@ export class MessageManager {
     this.parentSessionId = sessionData.parentSessionId;
     this.setMessages([...sessionData.messages]);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
+
+    // Rebuild loadedRuleIds from persisted meta messages (session restore)
+    this.rebuildLoadedRuleIds();
 
     // Set saved message count to the number of loaded messages since they're already saved
     // This must be done after setSessionId which resets it to 0
@@ -568,18 +596,9 @@ export class MessageManager {
     // Set new message list
     this.setMessages(newMessages);
 
-    // Reset and re-populate filesInContext
-    this.filesInContext.clear();
-    for (const message of this.messages) {
-      this.addPathsFromMessage(message);
-    }
-
-    // Scan compactedContent for file mentions
-    const fileMentionRegex = /(?:^|\s)@([\w.\-/]+)/g;
-    let match;
-    while ((match = fileMentionRegex.exec(compactedContent)) !== null) {
-      this.touchFile(match[1]);
-    }
+    // Clear and rebuild loaded rule IDs from remaining meta messages
+    this.clearLoadedRuleIds();
+    this.rebuildLoadedRuleIds();
 
     // Trigger compaction callback
     this.callbacks.onCompactBlockAdded?.(compactedContent);
@@ -1008,35 +1027,6 @@ export class MessageManager {
     }
   }
 
-  private extractPathsFromParams(params: Record<string, unknown>): string[] {
-    const paths: string[] = [];
-    if (typeof params !== "object" || params === null) return paths;
-
-    // Common parameter names for file paths
-    const pathKeys = [
-      "path",
-      "filePath",
-      "file_path",
-      "target_file",
-      "targetFile",
-    ];
-    for (const key of pathKeys) {
-      if (typeof params[key] === "string") {
-        paths.push(params[key]);
-      }
-    }
-
-    // Handle arrays of paths (e.g. in Glob or Grep results if we ever track those,
-    // but here we track inputs to tools)
-    if (Array.isArray(params.files)) {
-      for (const f of params.files) {
-        if (typeof f === "string") paths.push(f);
-      }
-    }
-
-    return paths;
-  }
-
   /**
    * Extract file read contents from tool result blocks in a message.
    */
@@ -1142,5 +1132,31 @@ export class MessageManager {
    */
   public clearInvokedSkills(): void {
     this.invokedSkills.clear();
+  }
+
+  /**
+   * Clear the loaded rule IDs set (e.g., after compaction resets context).
+   */
+  public clearLoadedRuleIds(): void {
+    this.loadedRuleIds.clear();
+  }
+
+  /**
+   * Rebuild loadedRuleIds from persisted messages (session restore / post-compaction).
+   * Scans for <!-- rule: {ruleId} --> markers in user meta message content.
+   */
+  public rebuildLoadedRuleIds(): void {
+    for (const message of this.messages) {
+      if (message.role !== "user" || !message.isMeta) continue;
+      for (const block of message.blocks) {
+        if (block.type === "text") {
+          const content = (block as { content: string }).content;
+          const match = content.match(/<!-- rule: (.+?) -->/);
+          if (match) {
+            this.loadedRuleIds.add(match[1]);
+          }
+        }
+      }
+    }
   }
 }
