@@ -742,512 +742,531 @@ export class AIManager {
     } = {},
   ): Promise<void> {
     const { recursionDepth = 0, model, allowedRules, maxTokens } = options;
+    let turnOffset = recursionDepth;
 
-    // OpenTelemetry: start interaction span for this turn (initial call only)
-    let turnSequence = 0;
-    if (recursionDepth === 0) {
-      const messages = this.messageManager.getMessages();
-      turnSequence = messages.filter((m) => m.role === "user").length;
-      const lastUserMessage = [...messages]
-        .reverse()
-        .find((m) => m.role === "user");
-      const userPromptText =
-        lastUserMessage?.blocks.find((b) => b.type === "text")?.content || "";
-      startInteractionSpan(userPromptText, turnSequence);
+    outer: while (true) {
+      let shouldRestart = false;
 
-      // Log user_prompt event
-      logOTelEvent("user_prompt", {
-        prompt_length: String(userPromptText.length),
-      }).catch(() => {}); // Non-blocking
-    }
+      // OpenTelemetry: start interaction span for this turn (initial call only)
+      let turnSequence = 0;
+      if (turnOffset === 0) {
+        const messages = this.messageManager.getMessages();
+        turnSequence = messages.filter((m) => m.role === "user").length;
+        const lastUserMessage = [...messages]
+          .reverse()
+          .find((m) => m.role === "user");
+        const userPromptText =
+          lastUserMessage?.blocks.find((b) => b.type === "text")?.content || "";
+        startInteractionSpan(userPromptText, turnSequence);
 
-    // Set loading state early for the initial call, before any async work
-    if (recursionDepth === 0) {
-      this.setIsLoading(true);
-      if (allowedRules && allowedRules.length > 0) {
-        this.permissionManager?.addTemporaryRules(allowedRules);
+        // Log user_prompt event
+        logOTelEvent("user_prompt", {
+          prompt_length: String(userPromptText.length),
+        }).catch(() => {}); // Non-blocking
       }
-    }
 
-    // Scan for file mentions in the last user message to trigger conditional rules
-    if (recursionDepth === 0) {
-      const messages = this.messageManager.getMessages();
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage && lastMessage.role === "user") {
-        for (const block of lastMessage.blocks) {
-          if (block.type === "text") {
-            const content = block.content;
-            const fileMentionRegex = /(?:^|\s)@([\w.\-/]+)/g;
-            let match;
-            while ((match = fileMentionRegex.exec(content)) !== null) {
-              const filePath = match[1];
-              this.messageManager.triggerFileRead(filePath);
+      // Set loading state early for the initial call, before any async work
+      if (turnOffset === 0) {
+        this.setIsLoading(true);
+        if (allowedRules && allowedRules.length > 0) {
+          this.permissionManager?.addTemporaryRules(allowedRules);
+        }
+      }
+
+      // Scan for file mentions in the last user message to trigger conditional rules
+      if (turnOffset === 0) {
+        const messages = this.messageManager.getMessages();
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.role === "user") {
+          for (const block of lastMessage.blocks) {
+            if (block.type === "text") {
+              const content = block.content;
+              const fileMentionRegex = /(?:^|\s)@([\w.\-/]+)/g;
+              let match;
+              while ((match = fileMentionRegex.exec(content)) !== null) {
+                const filePath = match[1];
+                this.messageManager.triggerFileRead(filePath);
+              }
             }
           }
         }
       }
-    }
 
-    // Save session in each recursion to ensure message persistence
-    await this.messageManager.saveSession();
+      // Only create new AbortControllers for the initial call (turnOffset === 0)
+      // For restarts, reuse existing controllers to maintain abort signal
+      let abortController: AbortController;
+      let toolAbortController: AbortController;
 
-    // Only create new AbortControllers for the initial call (recursionDepth === 0)
-    // For recursive calls, reuse existing controllers to maintain abort signal
-    let abortController: AbortController;
-    let toolAbortController: AbortController;
+      if (turnOffset === 0) {
+        // Create new AbortControllers for initial call
+        abortController = new AbortController();
+        this.abortController = abortController;
 
-    if (recursionDepth === 0) {
-      // Create new AbortControllers for initial call
-      abortController = new AbortController();
-      this.abortController = abortController;
-
-      toolAbortController = new AbortController();
-      this.toolAbortController = toolAbortController;
-    } else {
-      // Reuse existing controllers for recursive calls
-      abortController = this.abortController!;
-      toolAbortController = this.toolAbortController!;
-    }
-
-    // Get current permission mode
-    const currentMode = this.permissionManager?.getCurrentEffectiveMode(
-      this.getModelConfig().permissionMode,
-    );
-
-    // Add plan mode reminder as persistent meta message before getting messages
-    this.maybeAddPlanModeMessage(currentMode);
-
-    // Process conditional rules triggered by file reads (persist as meta messages)
-    const triggeredRules = this.messageManager.processTriggeredRules();
-    for (const rule of triggeredRules) {
-      this.messageManager.addUserMessage({
-        content: `<!-- rule: ${rule.id} -->\n<system-reminder>\nThe following rules from .wave/rules apply to your work. Be sure to adhere to these instructions.\n\n${rule.content}\n</system-reminder>`,
-        isMeta: true,
-      });
-    }
-
-    // Get recent message history
-    const rawMessages = this.messageManager.getMessages();
-    const recentMessages = convertMessagesForAPI(rawMessages);
-
-    try {
-      // Track if assistant message has been created
-      let assistantMessageCreated = false;
-
-      logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
-
-      const toolsConfig = this.getFilteredToolsConfig();
-      const toolNames = new Set(toolsConfig.map((t) => t.function.name));
-      const filteredToolPlugins = this.toolManager
-        .getTools()
-        .filter((t) => toolNames.has(t.name));
-
-      let autoMemoryOptions: { directory: string; content: string } | undefined;
-
-      if (this.getAutoMemoryEnabled()) {
-        const directory = this.memoryService.getAutoMemoryDirectory(
-          this.getWorkdir(),
-        );
-        const content = await this.memoryService.getAutoMemoryContent(
-          this.getWorkdir(),
-        );
-        autoMemoryOptions = { directory, content };
+        toolAbortController = new AbortController();
+        this.toolAbortController = toolAbortController;
+      } else {
+        // Reuse existing controllers
+        abortController = this.abortController!;
+        toolAbortController = this.toolAbortController!;
       }
 
-      // Get memory for message-array injection (not system prompt)
-      const { prependContent } =
-        await this.messageManager.getMemoryForInjection();
+      let turnDepth = turnOffset;
 
-      // Call AI service with streaming callbacks if enabled
-      const callAgentOptions: CallAgentOptions = {
-        gatewayConfig: this.getGatewayConfig(),
-        modelConfig: this.getModelConfig(),
-        messages: recentMessages,
-        sessionId: this.messageManager.getSessionId(),
-        abortSignal: abortController.signal,
-        workdir: this.getWorkdir(), // Pass working directory
-        tools: toolsConfig, // Pass filtered tool configuration
-        model: model, // Use passed model
-        systemPrompt: buildSystemPrompt(
-          this.systemPrompt,
-          filteredToolPlugins,
-          {
-            workdir: this.getWorkdir(),
-            originalWorkdir: this.getOriginalWorkdir(),
-            language: this.getLanguage(),
-            isSubagent: !!this.subagentType,
-            autoMemory: autoMemoryOptions,
-          },
-        ), // Pass custom system prompt
-        maxTokens: maxTokens, // Pass max tokens override
-        toolChoice: this.toolChoiceOverride, // Pass tool_choice override
-      };
+      inner: while (true) {
+        try {
+          // Save session in each iteration to ensure message persistence
+          await this.messageManager.saveSession();
 
-      // Prepend: AGENTS.md + user memory + unconditional rules as system-reminder
-      if (prependContent.trim()) {
-        callAgentOptions.messages.unshift({
-          role: "user",
-          content: `<system-reminder>\n${prependContent}\n</system-reminder>`,
-        });
-      }
-
-      // Task reminder: persist as meta message (conditional rules already persisted above)
-      const taskReminderText = await this.maybeGetTaskReminderText(toolNames);
-      if (taskReminderText) {
-        this.messageManager.addUserMessage({
-          content: taskReminderText,
-          isMeta: true,
-        });
-      }
-
-      // Add streaming callbacks only if streaming is enabled
-      if (this.stream) {
-        callAgentOptions.onContentUpdate = (content: string) => {
-          // Create assistant message on first chunk if not already created
-          if (!assistantMessageCreated) {
-            this.messageManager.addAssistantMessage();
-            assistantMessageCreated = true;
-          }
-          this.messageManager.updateCurrentMessageContent(content);
-        };
-        callAgentOptions.onToolUpdate = (toolCall) => {
-          // Create assistant message on first tool update if not already created
-          if (!assistantMessageCreated) {
-            this.messageManager.addAssistantMessage();
-            assistantMessageCreated = true;
-          }
-
-          // Use parametersChunk as compact param for better performance
-          // No need to extract params or generate compact params during streaming
-
-          // Update tool block with streaming parameters using parametersChunk as compact param
-          this.messageManager.updateToolBlock({
-            id: toolCall.id,
-            name: toolCall.name,
-            parameters: toolCall.parameters,
-            parametersChunk: toolCall.parametersChunk,
-            stage: toolCall.stage || "streaming", // Default to streaming if stage not provided
-          });
-        };
-        callAgentOptions.onReasoningUpdate = (reasoning: string) => {
-          // Create assistant message on first reasoning update if not already created
-          if (!assistantMessageCreated) {
-            this.messageManager.addAssistantMessage();
-            assistantMessageCreated = true;
-          }
-          this.messageManager.updateCurrentMessageReasoning(reasoning);
-        };
-      }
-
-      startLLMRequestSpan(model || this.getModelConfig().model || "");
-
-      const result = await aiService.callAgent(callAgentOptions);
-
-      // End LLM span with usage data
-      endLLMRequestSpan({
-        model: model || this.getModelConfig().model || "",
-        success: true,
-        hasToolCall: !!(result.tool_calls && result.tool_calls.length > 0),
-      });
-
-      const createdByStreaming = assistantMessageCreated;
-
-      // For non-streaming mode, create assistant message after callAgent returns
-      // Also create if streaming mode but no streaming callbacks were called (e.g., when content comes directly in result)
-      if (
-        !this.stream ||
-        (!assistantMessageCreated &&
-          (result.content || result.tool_calls || result.reasoning_content))
-      ) {
-        this.messageManager.addAssistantMessage();
-        assistantMessageCreated = true;
-      }
-
-      // Log finish reason and response headers if available
-      if (result.finish_reason) {
-        // Log warning headers when finish reason is length
-        if (result.finish_reason === "length") {
-          logger?.warn(
-            "AI response truncated due to length limit. Response headers:",
-            result.response_headers,
+          // Get current permission mode
+          const currentMode = this.permissionManager?.getCurrentEffectiveMode(
+            this.getModelConfig().permissionMode,
           );
-        }
-      }
 
-      if (
-        result.additionalFields &&
-        Object.keys(result.additionalFields).length > 0
-      ) {
-        this.messageManager.mergeAssistantAdditionalFields(
-          result.additionalFields,
-        );
-      }
+          // Add plan mode reminder as persistent meta message before getting messages
+          this.maybeAddPlanModeMessage(currentMode);
 
-      // Handle result reasoning content from non-streaming mode
-      if (result.reasoning_content && !createdByStreaming) {
-        this.messageManager.updateCurrentMessageReasoning(
-          result.reasoning_content,
-        );
-      }
-
-      // Handle result content from non-streaming mode
-      if (result.content && !createdByStreaming) {
-        this.messageManager.updateCurrentMessageContent(result.content);
-      }
-
-      // Handle usage tracking for agent operations
-      let usage: Usage | undefined;
-      if (result.usage) {
-        usage = {
-          prompt_tokens: result.usage.prompt_tokens,
-          completion_tokens: result.usage.completion_tokens,
-          total_tokens: result.usage.total_tokens,
-          model: model || this.getModelConfig().model,
-          operation_type: "agent",
-          // Preserve cache fields if present
-          ...(result.usage.cache_read_input_tokens !== undefined && {
-            cache_read_input_tokens: result.usage.cache_read_input_tokens,
-          }),
-          ...(result.usage.cache_creation_input_tokens !== undefined && {
-            cache_creation_input_tokens:
-              result.usage.cache_creation_input_tokens,
-          }),
-          ...(result.usage.cache_creation && {
-            cache_creation: result.usage.cache_creation,
-          }),
-        };
-      }
-
-      // Set usage on the assistant message if available
-      if (usage) {
-        const messages = this.messageManager.getMessages();
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.role === "assistant") {
-          lastMessage.usage = usage;
-          this.messageManager.setMessages(messages);
-        }
-
-        // Notify Agent to add to usage tracking
-        if (this.callbacks?.onUsageAdded) {
-          this.callbacks.onUsageAdded(usage);
-        }
-      }
-
-      // Collect tool calls for processing
-      const toolCalls: ChatCompletionMessageFunctionToolCall[] = [];
-      if (result.tool_calls) {
-        for (const toolCall of result.tool_calls) {
-          if (toolCall.type === "function") {
-            toolCalls.push(toolCall);
+          // Process conditional rules triggered by file reads (persist as meta messages)
+          const triggeredRules = this.messageManager.processTriggeredRules();
+          for (const rule of triggeredRules) {
+            this.messageManager.addUserMessage({
+              content: `<!-- rule: ${rule.id} -->\n<system-reminder>\nThe following rules from .wave/rules apply to your work. Be sure to adhere to these instructions.\n\n${rule.content}\n</system-reminder>`,
+              isMeta: true,
+            });
           }
-        }
-      }
 
-      if (toolCalls.length > 0) {
-        // Partition tool calls into batches: consecutive concurrency-safe
-        // tools run in parallel, non-safe tools (Edit, Write, MCP) run one
-        // at a time to prevent read-modify-write races on the same file.
-        const batches: {
-          calls: ChatCompletionMessageFunctionToolCall[];
-          safe: boolean;
-        }[] = [];
-        for (const call of toolCalls) {
-          const toolName = call.function?.name || "";
-          const safe = this.toolManager.isConcurrencySafe(toolName);
-          const lastBatch = batches[batches.length - 1];
-          if (lastBatch && lastBatch.safe && safe) {
-            lastBatch.calls.push(call);
-          } else {
-            batches.push({ calls: [call], safe });
-          }
-        }
+          // Get recent message history
+          const rawMessages = this.messageManager.getMessages();
+          const recentMessages = convertMessagesForAPI(rawMessages);
 
-        // Execute batches sequentially; within a safe batch, tools run in parallel
-        for (const batch of batches) {
-          if (
-            abortController.signal.aborted ||
-            toolAbortController.signal.aborted
-          ) {
-            break;
-          }
-          if (batch.calls.length === 1) {
-            await this.executeToolCall(
-              batch.calls[0],
-              abortController,
-              toolAbortController,
-              result.finish_reason,
+          // Track if assistant message has been created
+          let assistantMessageCreated = false;
+
+          logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
+
+          const toolsConfig = this.getFilteredToolsConfig();
+          const toolNames = new Set(toolsConfig.map((t) => t.function.name));
+          const filteredToolPlugins = this.toolManager
+            .getTools()
+            .filter((t) => toolNames.has(t.name));
+
+          let autoMemoryOptions:
+            | { directory: string; content: string }
+            | undefined;
+
+          if (this.getAutoMemoryEnabled()) {
+            const directory = this.memoryService.getAutoMemoryDirectory(
+              this.getWorkdir(),
             );
-          } else {
-            await Promise.all(
-              batch.calls.map((call) =>
-                this.executeToolCall(
-                  call,
+            const content = await this.memoryService.getAutoMemoryContent(
+              this.getWorkdir(),
+            );
+            autoMemoryOptions = { directory, content };
+          }
+
+          // Get memory for message-array injection (not system prompt)
+          const { prependContent } =
+            await this.messageManager.getMemoryForInjection();
+
+          // Call AI service with streaming callbacks if enabled
+          const callAgentOptions: CallAgentOptions = {
+            gatewayConfig: this.getGatewayConfig(),
+            modelConfig: this.getModelConfig(),
+            messages: recentMessages,
+            sessionId: this.messageManager.getSessionId(),
+            abortSignal: abortController.signal,
+            workdir: this.getWorkdir(), // Pass working directory
+            tools: toolsConfig, // Pass filtered tool configuration
+            model: model, // Use passed model
+            systemPrompt: buildSystemPrompt(
+              this.systemPrompt,
+              filteredToolPlugins,
+              {
+                workdir: this.getWorkdir(),
+                originalWorkdir: this.getOriginalWorkdir(),
+                language: this.getLanguage(),
+                isSubagent: !!this.subagentType,
+                autoMemory: autoMemoryOptions,
+              },
+            ), // Pass custom system prompt
+            maxTokens: maxTokens, // Pass max tokens override
+            toolChoice: this.toolChoiceOverride, // Pass tool_choice override
+          };
+
+          // Prepend: AGENTS.md + user memory + unconditional rules as system-reminder
+          if (prependContent.trim()) {
+            callAgentOptions.messages.unshift({
+              role: "user",
+              content: `<system-reminder>\n${prependContent}\n</system-reminder>`,
+            });
+          }
+
+          // Task reminder: persist as meta message (conditional rules already persisted above)
+          const taskReminderText =
+            await this.maybeGetTaskReminderText(toolNames);
+          if (taskReminderText) {
+            this.messageManager.addUserMessage({
+              content: taskReminderText,
+              isMeta: true,
+            });
+          }
+
+          // Add streaming callbacks only if streaming is enabled
+          if (this.stream) {
+            callAgentOptions.onContentUpdate = (content: string) => {
+              // Create assistant message on first chunk if not already created
+              if (!assistantMessageCreated) {
+                this.messageManager.addAssistantMessage();
+                assistantMessageCreated = true;
+              }
+              this.messageManager.updateCurrentMessageContent(content);
+            };
+            callAgentOptions.onToolUpdate = (toolCall) => {
+              // Create assistant message on first tool update if not already created
+              if (!assistantMessageCreated) {
+                this.messageManager.addAssistantMessage();
+                assistantMessageCreated = true;
+              }
+
+              // Use parametersChunk as compact param for better performance
+              // No need to extract params or generate compact params during streaming
+
+              // Update tool block with streaming parameters using parametersChunk as compact param
+              this.messageManager.updateToolBlock({
+                id: toolCall.id,
+                name: toolCall.name,
+                parameters: toolCall.parameters,
+                parametersChunk: toolCall.parametersChunk,
+                stage: toolCall.stage || "streaming", // Default to streaming if stage not provided
+              });
+            };
+            callAgentOptions.onReasoningUpdate = (reasoning: string) => {
+              // Create assistant message on first reasoning update if not already created
+              if (!assistantMessageCreated) {
+                this.messageManager.addAssistantMessage();
+                assistantMessageCreated = true;
+              }
+              this.messageManager.updateCurrentMessageReasoning(reasoning);
+            };
+          }
+
+          startLLMRequestSpan(model || this.getModelConfig().model || "");
+
+          const result = await aiService.callAgent(callAgentOptions);
+
+          // End LLM span with usage data
+          endLLMRequestSpan({
+            model: model || this.getModelConfig().model || "",
+            success: true,
+            hasToolCall: !!(result.tool_calls && result.tool_calls.length > 0),
+          });
+
+          const createdByStreaming = assistantMessageCreated;
+
+          // For non-streaming mode, create assistant message after callAgent returns
+          // Also create if streaming mode but no streaming callbacks were called (e.g., when content comes directly in result)
+          if (
+            !this.stream ||
+            (!assistantMessageCreated &&
+              (result.content || result.tool_calls || result.reasoning_content))
+          ) {
+            this.messageManager.addAssistantMessage();
+            assistantMessageCreated = true;
+          }
+
+          // Log finish reason and response headers if available
+          if (result.finish_reason) {
+            // Log warning headers when finish reason is length
+            if (result.finish_reason === "length") {
+              logger?.warn(
+                "AI response truncated due to length limit. Response headers:",
+                result.response_headers,
+              );
+            }
+          }
+
+          if (
+            result.additionalFields &&
+            Object.keys(result.additionalFields).length > 0
+          ) {
+            this.messageManager.mergeAssistantAdditionalFields(
+              result.additionalFields,
+            );
+          }
+
+          // Handle result reasoning content from non-streaming mode
+          if (result.reasoning_content && !createdByStreaming) {
+            this.messageManager.updateCurrentMessageReasoning(
+              result.reasoning_content,
+            );
+          }
+
+          // Handle result content from non-streaming mode
+          if (result.content && !createdByStreaming) {
+            this.messageManager.updateCurrentMessageContent(result.content);
+          }
+
+          // Handle usage tracking for agent operations
+          let usage: Usage | undefined;
+          if (result.usage) {
+            usage = {
+              prompt_tokens: result.usage.prompt_tokens,
+              completion_tokens: result.usage.completion_tokens,
+              total_tokens: result.usage.total_tokens,
+              model: model || this.getModelConfig().model,
+              operation_type: "agent",
+              // Preserve cache fields if present
+              ...(result.usage.cache_read_input_tokens !== undefined && {
+                cache_read_input_tokens: result.usage.cache_read_input_tokens,
+              }),
+              ...(result.usage.cache_creation_input_tokens !== undefined && {
+                cache_creation_input_tokens:
+                  result.usage.cache_creation_input_tokens,
+              }),
+              ...(result.usage.cache_creation && {
+                cache_creation: result.usage.cache_creation,
+              }),
+            };
+          }
+
+          // Set usage on the assistant message if available
+          if (usage) {
+            const messages = this.messageManager.getMessages();
+            const lastMessage = messages[messages.length - 1];
+            if (lastMessage && lastMessage.role === "assistant") {
+              lastMessage.usage = usage;
+              this.messageManager.setMessages(messages);
+            }
+
+            // Notify Agent to add to usage tracking
+            if (this.callbacks?.onUsageAdded) {
+              this.callbacks.onUsageAdded(usage);
+            }
+          }
+
+          // Collect tool calls for processing
+          const toolCalls: ChatCompletionMessageFunctionToolCall[] = [];
+          if (result.tool_calls) {
+            for (const toolCall of result.tool_calls) {
+              if (toolCall.type === "function") {
+                toolCalls.push(toolCall);
+              }
+            }
+          }
+
+          if (toolCalls.length > 0) {
+            // Partition tool calls into batches: consecutive concurrency-safe
+            // tools run in parallel, non-safe tools (Edit, Write, MCP) run one
+            // at a time to prevent read-modify-write races on the same file.
+            const batches: {
+              calls: ChatCompletionMessageFunctionToolCall[];
+              safe: boolean;
+            }[] = [];
+            for (const call of toolCalls) {
+              const toolName = call.function?.name || "";
+              const safe = this.toolManager.isConcurrencySafe(toolName);
+              const lastBatch = batches[batches.length - 1];
+              if (lastBatch && lastBatch.safe && safe) {
+                lastBatch.calls.push(call);
+              } else {
+                batches.push({ calls: [call], safe });
+              }
+            }
+
+            // Execute batches sequentially; within a safe batch, tools run in parallel
+            for (const batch of batches) {
+              if (
+                abortController.signal.aborted ||
+                toolAbortController.signal.aborted
+              ) {
+                break;
+              }
+              if (batch.calls.length === 1) {
+                await this.executeToolCall(
+                  batch.calls[0],
                   abortController,
                   toolAbortController,
                   result.finish_reason,
-                ),
-              ),
-            );
+                );
+              } else {
+                await Promise.all(
+                  batch.calls.map((call) =>
+                    this.executeToolCall(
+                      call,
+                      abortController,
+                      toolAbortController,
+                      result.finish_reason,
+                    ),
+                  ),
+                );
+              }
+            }
           }
-        }
-      }
 
-      // Handle token statistics and message compaction
-      await this.handleTokenUsageAndCompaction(result.usage, abortController);
-
-      // Finalize text/reasoning blocks for the final response (no tools)
-      this.messageManager.finalizeStreamingBlocks();
-
-      // Check if there are tool operations or response was truncated, if so automatically initiate next AI service call
-      if (toolCalls.length > 0 || result.finish_reason === "length") {
-        // Check maxTurns limit before recursing
-        if (this.maxTurns && recursionDepth + 1 >= this.maxTurns) {
-          logger?.debug(
-            `Max turns (${this.maxTurns}) reached, stopping recursion.`,
+          // Handle token statistics and message compaction
+          await this.handleTokenUsageAndCompaction(
+            result.usage,
+            abortController,
           );
-        } else {
-          // Record committed snapshots to message history
-          if (this.reversionManager) {
-            const snapshots =
-              this.reversionManager.getAndClearCommittedSnapshots();
-            if (snapshots.length > 0) {
-              this.messageManager.addFileHistoryBlock(snapshots);
-            }
-          }
 
-          // Check interruption status
-          const isCurrentlyAborted =
-            abortController.signal.aborted ||
-            toolAbortController.signal.aborted;
+          // Finalize text/reasoning blocks for the final response (no tools)
+          this.messageManager.finalizeStreamingBlocks();
 
-          // Check if all tools were manually backgrounded
-          const lastMessage =
-            this.messageManager.getMessages()[
-              this.messageManager.getMessages().length - 1
-            ];
-          const toolBlocks =
-            lastMessage?.blocks.filter(
-              (block): block is import("../types/messaging.js").ToolBlock =>
-                block.type === "tool",
-            ) || [];
-          const hasBackgrounded =
-            toolBlocks.length > 0 &&
-            toolBlocks.some((block) => block.isManuallyBackgrounded);
-
-          if (hasBackgrounded) {
-            logger?.info(
-              "Some tools were manually backgrounded, stopping recursion.",
-            );
-          } else if (!isCurrentlyAborted) {
-            // If response was truncated, add a hidden continuation message
-            if (result.finish_reason === "length") {
-              this.messageManager.addUserMessage({
-                content:
-                  "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.",
-                isMeta: true,
-              });
-            }
-
-            // Duplicate Tool Call Detection
-            if (toolCalls.length > 0) {
-              const messages = this.messageManager.getMessages();
-              // Find the most recent assistant message BEFORE the current one that has tool blocks
-              // The current assistant message is messages[messages.length - 1]
-              let previousAssistantWithTools: Message | undefined;
-              for (let i = messages.length - 2; i >= 0; i--) {
-                const msg = messages[i];
-                if (
-                  msg.role === "assistant" &&
-                  msg.blocks.some((b) => b.type === "tool")
-                ) {
-                  previousAssistantWithTools = msg;
-                  break;
+          // Check if there are tool operations or response was truncated, if so automatically initiate next AI service call
+          if (toolCalls.length > 0 || result.finish_reason === "length") {
+            // Check maxTurns limit before continuing
+            if (this.maxTurns && turnDepth + 1 >= this.maxTurns) {
+              logger?.debug(`Max turns (${this.maxTurns}) reached, stopping.`);
+            } else {
+              // Record committed snapshots to message history
+              if (this.reversionManager) {
+                const snapshots =
+                  this.reversionManager.getAndClearCommittedSnapshots();
+                if (snapshots.length > 0) {
+                  this.messageManager.addFileHistoryBlock(snapshots);
                 }
               }
 
-              if (previousAssistantWithTools) {
-                const previousToolBlocks =
-                  previousAssistantWithTools.blocks.filter(
-                    (b): b is import("../types/messaging.js").ToolBlock =>
-                      b.type === "tool",
-                  );
+              // Check interruption status
+              const isCurrentlyAborted =
+                abortController.signal.aborted ||
+                toolAbortController.signal.aborted;
 
-                for (const currentToolCall of toolCalls) {
-                  const currentName = currentToolCall.function?.name;
-                  const currentArgs = currentToolCall.function?.arguments;
+              // Check if all tools were manually backgrounded
+              const lastMessage =
+                this.messageManager.getMessages()[
+                  this.messageManager.getMessages().length - 1
+                ];
+              const toolBlocks =
+                lastMessage?.blocks.filter(
+                  (block): block is import("../types/messaging.js").ToolBlock =>
+                    block.type === "tool",
+                ) || [];
+              const hasBackgrounded =
+                toolBlocks.length > 0 &&
+                toolBlocks.some((block) => block.isManuallyBackgrounded);
 
-                  const isDuplicate = previousToolBlocks.some(
-                    (prevBlock) =>
-                      prevBlock.name === currentName &&
-                      prevBlock.parameters === currentArgs,
-                  );
+              if (hasBackgrounded) {
+                logger?.info(
+                  "Some tools were manually backgrounded, stopping.",
+                );
+              } else if (!isCurrentlyAborted) {
+                // If response was truncated, add a hidden continuation message
+                if (result.finish_reason === "length") {
+                  this.messageManager.addUserMessage({
+                    content:
+                      "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.",
+                    isMeta: true,
+                  });
+                }
 
-                  if (isDuplicate && currentName) {
-                    const toolId = currentToolCall.id;
-                    const lastMessage = messages[messages.length - 1];
-                    const toolBlock = lastMessage.blocks.find(
-                      (b): b is import("../types/messaging.js").ToolBlock =>
-                        b.type === "tool" && b.id === toolId,
-                    );
-                    if (toolBlock) {
-                      const warning = `\n\nNote: You just called this tool with the same arguments in the previous turn. Please ensure you are not in a loop and consider if you need to change your approach.`;
-                      this.messageManager.updateToolBlock({
-                        id: toolId,
-                        result: (toolBlock.result || "") + warning,
-                        stage: "end",
-                      });
+                // Duplicate Tool Call Detection
+                if (toolCalls.length > 0) {
+                  const messages = this.messageManager.getMessages();
+                  // Find the most recent assistant message BEFORE the current one that has tool blocks
+                  // The current assistant message is messages[messages.length - 1]
+                  let previousAssistantWithTools: Message | undefined;
+                  for (let i = messages.length - 2; i >= 0; i--) {
+                    const msg = messages[i];
+                    if (
+                      msg.role === "assistant" &&
+                      msg.blocks.some((b) => b.type === "tool")
+                    ) {
+                      previousAssistantWithTools = msg;
+                      break;
+                    }
+                  }
+
+                  if (previousAssistantWithTools) {
+                    const previousToolBlocks =
+                      previousAssistantWithTools.blocks.filter(
+                        (b): b is import("../types/messaging.js").ToolBlock =>
+                          b.type === "tool",
+                      );
+
+                    for (const currentToolCall of toolCalls) {
+                      const currentName = currentToolCall.function?.name;
+                      const currentArgs = currentToolCall.function?.arguments;
+
+                      const isDuplicate = previousToolBlocks.some(
+                        (prevBlock) =>
+                          prevBlock.name === currentName &&
+                          prevBlock.parameters === currentArgs,
+                      );
+
+                      if (isDuplicate && currentName) {
+                        const toolId = currentToolCall.id;
+                        const lastMessage = messages[messages.length - 1];
+                        const toolBlock = lastMessage.blocks.find(
+                          (b): b is import("../types/messaging.js").ToolBlock =>
+                            b.type === "tool" && b.id === toolId,
+                        );
+                        if (toolBlock) {
+                          const warning = `\n\nNote: You just called this tool with the same arguments in the previous turn. Please ensure you are not in a loop and consider if you need to change your approach.`;
+                          this.messageManager.updateToolBlock({
+                            id: toolId,
+                            result: (toolBlock.result || "") + warning,
+                            stage: "end",
+                          });
+                        }
+                      }
                     }
                   }
                 }
+
+                // Yield to the event loop so macrotasks (abort timers,
+                // signals) can be processed between turns. Without this,
+                // mocked async operations (microtasks) would starve the
+                // event loop and abort timers would never fire.
+                await new Promise((resolve) => setImmediate(resolve));
+
+                // Re-check abort status after yielding — the signal may
+                // have fired during the setImmediate gap.
+                if (
+                  abortController.signal.aborted ||
+                  toolAbortController.signal.aborted
+                ) {
+                  break inner;
+                }
+
+                turnDepth++;
+                continue inner;
               }
             }
-
-            // Recursively call AI service, increment recursion depth, and pass same configuration
-            // Yield to the event loop before recursing so macrotasks
-            // (abort timers, signals) can be processed between turns.
-            await new Promise((resolve) => setImmediate(resolve));
-
-            // Re-check abort status after yielding — the signal may have
-            // fired during the setImmediate gap.
-            const isAbortedAfterYield =
-              abortController.signal.aborted ||
-              toolAbortController.signal.aborted;
-
-            if (!isAbortedAfterYield) {
-              await this.sendAIMessage({
-                recursionDepth: recursionDepth + 1,
-                model,
-                allowedRules,
-                maxTokens,
-              });
-            }
           }
+
+          // No tool calls (or stop conditions) → inner loop done
+          break inner;
+        } catch (error) {
+          // End LLM span with error
+          endLLMRequestSpan({
+            model: model || this.getModelConfig().model || "",
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          // Log error event
+          logOTelEvent("error", {
+            error_type:
+              error instanceof Error ? error.constructor.name : "Unknown",
+            message: error instanceof Error ? error.message : String(error),
+          }).catch(() => {}); // Non-blocking
+
+          this.messageManager.addErrorBlock(
+            error instanceof Error ? error.message : "Unknown error occurred",
+          );
+
+          // Exit inner loop on error
+          break inner;
         }
       }
-    } catch (error) {
-      // End LLM span with error
-      endLLMRequestSpan({
-        model: model || this.getModelConfig().model || "",
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
 
-      // Log error event
-      logOTelEvent("error", {
-        error_type: error instanceof Error ? error.constructor.name : "Unknown",
-        message: error instanceof Error ? error.message : String(error),
-      }).catch(() => {}); // Non-blocking
-
-      this.messageManager.addErrorBlock(
-        error instanceof Error ? error.message : "Unknown error occurred",
-      );
-    } finally {
+      // Finally-equivalent (runs once per outer iteration):
       // Only execute cleanup and hooks for the initial call
-      if (recursionDepth === 0) {
+      if (turnOffset === 0) {
         // OpenTelemetry: end interaction span
         endInteractionSpan();
 
-        // Save session in each recursion to ensure message persistence
+        // Save session in each iteration to ensure message persistence
         await this.messageManager.saveSession();
         // Set loading to false first
         this.setIsLoading(false);
@@ -1270,13 +1289,9 @@ export class AIManager {
               });
             }
           }
-          // Recursively process the notifications
-          await this.sendAIMessage({
-            recursionDepth: 0,
-            model,
-            allowedRules,
-            maxTokens,
-          });
+          // Restart outer loop to process the notifications
+          shouldRestart = true;
+          turnOffset = 0;
         } else {
           // Clear temporary rules
           this.permissionManager?.clearTemporaryRules();
@@ -1347,12 +1362,9 @@ export class AIManager {
                   // Keep loading state active to prevent UI flicker
                   this.setIsLoading(true);
                   goalContinuing = true;
-                  await this.sendAIMessage({
-                    recursionDepth: 0,
-                    model,
-                    allowedRules,
-                    maxTokens,
-                  });
+                  // Restart outer loop to continue goal pursuit
+                  shouldRestart = true;
+                  turnOffset = 0;
                 }
               }
             }
@@ -1371,18 +1383,15 @@ export class AIManager {
                 );
 
                 // Restart the conversation to let AI fix the issues
-                // Use recursionDepth = 0 to set loading false again for continuation
-                await this.sendAIMessage({
-                  recursionDepth: 0,
-                  model,
-                  allowedRules,
-                  maxTokens,
-                });
+                shouldRestart = true;
+                turnOffset = 0;
               }
             }
           }
         }
       }
+
+      if (!shouldRestart) break outer;
     }
   }
 
