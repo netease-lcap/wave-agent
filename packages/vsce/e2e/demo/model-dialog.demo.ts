@@ -34,14 +34,13 @@ test.describe('Model Dialog Demo', () => {
 
         // Verify model select is pre-selected
         await expect(webviewPage.locator('#model-select')).toHaveValue('claude-sonnet-4-20250514');
-        await expect(webviewPage.locator('#fast-model-select')).toHaveValue('claude-haiku-4-20250514');
 
         // Take screenshot
         const dialog = webviewPage.locator('.configuration-dialog');
         await dialog.screenshot({ path: '../../docs/public/screenshots/spec-model-dialog.png' });
     });
 
-    test('should show model dialog with empty values and env placeholders', async ({ webviewPage }) => {
+    test('should show model dialog with empty values', async ({ webviewPage }) => {
         await webviewPage.evaluate(() => {
             window.simulateExtensionMessage({
                 command: 'showDialog',
@@ -54,14 +53,12 @@ test.describe('Model Dialog Demo', () => {
                 command: 'configurationResponse',
                 configurationData: {
                     model: '',
-                    fastModel: '',
-                    envModel: 'WAVE_MODEL',
-                    envFastModel: 'WAVE_FAST_MODEL'
+                    fastModel: ''
                 }
             });
         });
 
-        // Simulate configured models (even with env vars, models list comes from SDK)
+        // Simulate configured models
         await webviewPage.evaluate(() => {
             window.simulateExtensionMessage({
                 command: 'configuredModelsResponse',

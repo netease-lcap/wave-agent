@@ -19,12 +19,11 @@ describe('Model Dialog', () => {
         await act(async () => {
             sendCommand('configurationResponse', {
                 configurationData: {
-                    model: 'gpt-4',
-                    fastModel: 'gpt-4-mini'
+                    model: 'gpt-4'
                 }
             });
             sendCommand('configuredModelsResponse', {
-                models: ['gpt-4', 'gpt-3.5-turbo', 'claude-3-opus', 'gpt-4-mini'],
+                models: ['gpt-4', 'gpt-3.5-turbo', 'claude-3-opus'],
             });
         });
 
@@ -43,12 +42,8 @@ describe('Model Dialog', () => {
             expect(modelSelect.value).toBe('gpt-4');
         });
 
-        // Verify fast model select exists and has the current value
-        const fastModelSelect = document.querySelector('#fast-model-select') as HTMLSelectElement;
-        expect(fastModelSelect).toBeInTheDocument();
-        await waitFor(() => {
-            expect(fastModelSelect.value).toBe('gpt-4-mini');
-        });
+        // Fast model select should not exist
+        expect(document.querySelector('#fast-model-select')).not.toBeInTheDocument();
     });
 
     it('should populate select options from configured models response', async () => {
@@ -57,8 +52,7 @@ describe('Model Dialog', () => {
         await act(async () => {
             sendCommand('configurationResponse', {
                 configurationData: {
-                    model: 'gpt-4',
-                    fastModel: 'gpt-4-mini'
+                    model: 'gpt-4'
                 }
             });
             sendCommand('configuredModelsResponse', {
@@ -78,13 +72,6 @@ describe('Model Dialog', () => {
         expect(modelValues).toContain('gpt-4');
         expect(modelValues).toContain('gpt-3.5-turbo');
         expect(modelValues).toContain('claude-3-opus');
-
-        const fastModelSelect = document.querySelector('#fast-model-select') as HTMLSelectElement;
-        const fastOptions = Array.from(fastModelSelect.querySelectorAll('option'));
-        const fastValues = fastOptions.map(o => o.value);
-        expect(fastValues).toContain('gpt-4');
-        expect(fastValues).toContain('gpt-3.5-turbo');
-        expect(fastValues).toContain('claude-3-opus');
     });
 
     it('should send setModel message when save is clicked', async () => {
@@ -93,13 +80,11 @@ describe('Model Dialog', () => {
         await act(async () => {
             sendCommand('configurationResponse', {
                 configurationData: {
-                    model: 'gpt-4',
-                    fastModel: 'gpt-4-mini'
+                    model: 'gpt-4'
                 }
             });
             sendCommand('configuredModelsResponse', {
-                models: ['gpt-4', 'gpt-3.5-turbo'],
-                fastModels: ['gpt-4-mini', 'gpt-3.5-turbo']
+                models: ['gpt-4', 'gpt-3.5-turbo']
             });
         });
 
@@ -138,13 +123,11 @@ describe('Model Dialog', () => {
         await act(async () => {
             sendCommand('configurationResponse', {
                 configurationData: {
-                    model: 'gpt-4',
-                    fastModel: 'gpt-4-mini'
+                    model: 'gpt-4'
                 }
             });
             sendCommand('configuredModelsResponse', {
-                models: ['gpt-4'],
-                fastModels: ['gpt-4-mini']
+                models: ['gpt-4']
             });
         });
 

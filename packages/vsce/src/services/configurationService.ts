@@ -8,19 +8,6 @@ export interface ConfigurationData {
     model?: string;
     fastModel?: string;
     language?: string;
-    /** Environment variable values (read-only, for placeholder display) */
-    envServerUrl?: string;
-    envApiKey?: string;
-    envHeaders?: string;
-    envBaseUrl?: string;
-    envModel?: string;
-    envFastModel?: string;
-}
-
-/** Mask a secret value, keeping first 4 and last 4 characters visible */
-function maskSecret(value: string): string {
-    if (value.length <= 10) return '****';
-    return value.slice(0, 4) + '****' + value.slice(-4);
 }
 
 export class ConfigurationService {
@@ -34,13 +21,7 @@ export class ConfigurationService {
             baseURL: this.context.globalState.get<string>('baseURL') || '',
             model: this.context.globalState.get<string>('model') || '',
             fastModel: this.context.globalState.get<string>('fastModel') || '',
-            language: this.context.globalState.get<string>('language') || 'Chinese',
-            envServerUrl: process.env.WAVE_SERVER_URL || undefined,
-            envApiKey: process.env.WAVE_API_KEY ? maskSecret(process.env.WAVE_API_KEY) : undefined,
-            envHeaders: process.env.WAVE_CUSTOM_HEADERS || undefined,
-            envBaseUrl: process.env.WAVE_BASE_URL || undefined,
-            envModel: process.env.WAVE_MODEL || undefined,
-            envFastModel: process.env.WAVE_FAST_MODEL || undefined
+            language: this.context.globalState.get<string>('language') || 'Chinese'
         };
     }
 
