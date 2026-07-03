@@ -108,3 +108,17 @@
 | 服务端托管配置 | 从 Wave AI 下载并应用托管设置，支持校验和缓存和合并优先级 | 3 | 11 | [规格](055-server-managed-config.md) |
 | OpenTelemetry 集成 | OpenTelemetry 指标、追踪和日志插桩，支持多种导出器（jsonl、OTLP） | 3 | 16 | [规格](052-opentelemetry.md) |
 | 用量追踪 | SDK 用量追踪回调（`onUsagesChange`），用于 AI 调用和压缩 | 4 | 15 | [规格](010-usage-tracking-callback.md) |
+
+## 上下文消息结构总览
+
+发送给 AI 模型的 `messages` 数组按以下顺序组装：
+
+| 位置 | 角色 | 内容 | 缓存标记 | 持久化 | 用户可见 | 说明 |
+|------|------|------|----------|--------|----------|------|
+| [0] | system | 基础系统提示词 + 任务执行准则 + 行动准则 + 工具策略 + 输出效率 + 语气风格 | 有 | 不持久化 | 否 | 子代理替换基础系统提示词，其余相同 |
+| | | 语言指令 + `<env>` 环境信息 + 自动记忆 (MEMORY.md) | 无 | 不持久化 | 否 | |
+| [1] | user (meta) | `<system-reminder>`: 项目 AGENTS.md + 用户 AGENTS.md + 无条件规则 | 无 | 不持久化，每轮插入头部 | 否 | 唯一每轮注入 |
+| 历史 | user / assistant / tool | 文本块 / 图片块 / 工具块 / 后台任务通知块 / 推理块 | 最后一条有 | 持久化到 session JSONL | 是 | |
+| | user (isMeta) | 计划模式提醒 / 条件规则 / 任务提醒 / Goal 消息 / SessionStart Hook 上下文 / 后台任务通知 / Token 限制续写 | 同上 | 同上 | 否 | 触发时插入当时的结尾，各类型有独立触发条件 |
+
+**专用调用**（独立系统提示词，不经过主系统提示词组装）：压缩、网页内容提取、BTW 旁路问题、Goal 评估、Workflow 结构化输出。

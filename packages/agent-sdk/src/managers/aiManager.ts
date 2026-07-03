@@ -891,24 +891,12 @@ export class AIManager {
         });
       }
 
-      // Append: task reminder as system-reminder at tail (conditional rules already persisted above)
-      const tailParts: string[] = [];
-
+      // Task reminder: persist as meta message (conditional rules already persisted above)
       const taskReminderText = await this.maybeGetTaskReminderText(toolNames);
       if (taskReminderText) {
-        // Persist to messageManager so turn counter can find the marker on future turns
         this.messageManager.addUserMessage({
           content: taskReminderText,
           isMeta: true,
-        });
-        // Also inject into current turn's API call (persisted message won't be in recentMessages)
-        tailParts.push(taskReminderText);
-      }
-
-      if (tailParts.length > 0) {
-        callAgentOptions.messages.push({
-          role: "user",
-          content: `<system-reminder>\n${tailParts.join("\n\n")}\n</system-reminder>`,
         });
       }
 
