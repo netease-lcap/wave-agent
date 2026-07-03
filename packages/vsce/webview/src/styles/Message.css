@@ -172,6 +172,9 @@
     color: var(--vscode-button-background);
     font-weight: bold;
     font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .tool-status-dot {
