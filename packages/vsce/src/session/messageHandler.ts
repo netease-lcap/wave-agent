@@ -15,6 +15,7 @@ export interface MessageHandlerContext {
     initializeAgent: (viewType: 'sidebar' | 'tab' | 'window', windowId?: string, restoreSessionId?: string) => Promise<void>;
     listSessions: (viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) => Promise<void>;
     updateAllSessionsConfig: (config: unknown) => void;
+    updateAllSessionsModel: (model: string) => void;
 }
 
 export class MessageHandler {
@@ -738,12 +739,8 @@ export class MessageHandler {
 
     private async handleSetModel(configData: unknown, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         try {
-            const currentConfig = await this.configService.loadConfiguration();
-            const mergedConfig = { ...currentConfig, ...(configData as Record<string, unknown>) };
-            await this.configService.saveConfiguration(mergedConfig);
-            const config = await this.configService.loadConfiguration();
-
-            this.context.updateAllSessionsConfig(config);
+            const { model } = configData as { model: string };
+            this.context.updateAllSessionsModel(model);
 
             this.context.postMessage({ command: 'configurationUpdated' }, viewType, windowId);
             this.context.postMessage({ command: 'focusInput' }, viewType, windowId);
@@ -759,24 +756,19 @@ export class MessageHandler {
     private async handleGetConfiguredModels(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         try {
             const session = this.context.getChatSession(viewType || 'tab', windowId);
-            // Get models from the agent instance (like wave-agent does)
-            // The agent's getConfiguredModels() reads from SDK's ConfigurationService which has remote models
             const models = session.agent?.getConfiguredModels() || [];
-            // Also get the current model values from the agent (these include remote config)
-            const modelConfig = session.agent?.getModelConfig() || { model: '', fastModel: '' };
+            const modelConfig = session.agent?.getModelConfig() || { model: '' };
             this.context.postMessage({
                 command: 'configuredModelsResponse',
                 models,
-                currentModel: modelConfig.model || '',
-                currentFastModel: modelConfig.fastModel || ''
+                currentModel: modelConfig.model || ''
             }, viewType, windowId);
         } catch (error) {
             console.error(`Failed to get configured models for ${viewType}:`, error);
             this.context.postMessage({
                 command: 'configuredModelsResponse',
                 models: [],
-                currentModel: '',
-                currentFastModel: ''
+                currentModel: ''
             }, viewType, windowId);
         }
     }

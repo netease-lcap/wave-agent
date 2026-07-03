@@ -105,14 +105,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
             type: 'SET_CONFIGURED_MODELS',
             payload: message.models || []
           });
-          // Also update current model values from agent
-          if (message.currentModel !== undefined || message.currentFastModel !== undefined) {
+          if (message.currentModel !== undefined) {
             dispatch({
-              type: 'SET_CURRENT_MODELS',
-              payload: {
-                model: message.currentModel || '',
-                fastModel: message.currentFastModel || ''
-              }
+              type: 'SET_CURRENT_MODEL',
+              payload: message.currentModel || ''
             });
           }
           break;

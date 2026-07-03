@@ -257,7 +257,6 @@ export interface ChatState {
   configurationError?: string;
   configuredModels: string[];
   currentModel: string;
-  currentFastModel: string;
   // Permission mode state
   permissionMode?: PermissionMode;
   // Attached images state
@@ -312,13 +311,6 @@ export interface ConfigurationData {
   fastModel?: string;
   /** Preferred language for agent communication */
   language?: string;
-  /** Environment variable values (read-only, for placeholder display) */
-  envServerUrl?: string;
-  envApiKey?: string;
-  envHeaders?: string;
-  envBaseUrl?: string;
-  envModel?: string;
-  envFastModel?: string;
 }
 
 // Plugin related types
@@ -422,7 +414,7 @@ export type ChatAction =
   | { type: 'SET_CONFIGURATION_ERROR'; payload: string | undefined }
   | { type: 'SET_CONFIGURATION_DATA'; payload: ConfigurationData }
   | { type: 'SET_CONFIGURED_MODELS'; payload: string[] }
-  | { type: 'SET_CURRENT_MODELS'; payload: { model: string; fastModel: string } }
+  | { type: 'SET_CURRENT_MODEL'; payload: string }
   | { type: 'UPDATE_SELECTION'; payload: SelectionInfo | undefined }
   | { type: 'SET_PERMISSION_MODE'; payload: PermissionMode }
   | { type: 'SET_COMMAND_RUNNING'; payload: boolean }

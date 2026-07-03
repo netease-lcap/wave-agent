@@ -64,10 +64,10 @@ const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: 
     };
   }, [onClose]);
 
-  const serverUrl = configurationData?.serverUrl || configurationData?.envServerUrl;
-  const baseURL = configurationData?.baseURL || configurationData?.envBaseUrl;
-  const model = configurationData?.model || configurationData?.envModel;
-  const fastModel = configurationData?.fastModel || configurationData?.envFastModel;
+  const serverUrl = configurationData?.serverUrl;
+  const baseURL = configurationData?.baseURL;
+  const model = configurationData?.model;
+  const fastModel = configurationData?.fastModel;
 
   const StatusRow = ({ label, value }: { label: string; value?: string }) => (
     <div className="configuration-field">

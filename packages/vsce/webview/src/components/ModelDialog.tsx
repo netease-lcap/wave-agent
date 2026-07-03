@@ -1,7 +1,7 @@
 /**
  * ModelDialog - Model selection dialog
  *
- * Opened via the /model slash command. Shows dropdown selects for model and fast model,
+ * Opened via the /model slash command. Shows a dropdown select for model,
  * populated with configured models from the SDK.
  */
 
@@ -16,13 +16,11 @@ const ModelDialog: React.FC<ModelDialogProps & { vscode: VsCodeApi }> = ({
   onClose,
 }) => {
   const [model, setModel] = useState('');
-  const [fastModel, setFastModel] = useState('');
   const [saving, setSaving] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setModel(configurationData?.model || '');
-    setFastModel(configurationData?.fastModel || '');
   }, [configurationData]);
 
   // Click outside / Escape to close
@@ -48,7 +46,7 @@ const ModelDialog: React.FC<ModelDialogProps & { vscode: VsCodeApi }> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    onSave({ model, fastModel });
+    onSave({ model });
   };
 
   return (
@@ -61,34 +59,19 @@ const ModelDialog: React.FC<ModelDialogProps & { vscode: VsCodeApi }> = ({
         <form onSubmit={handleSubmit} className="configuration-form">
           <div className="configuration-fields-scroll-area">
             {configuredModels.length > 0 ? (
-              <>
-                <div className="configuration-field">
-                  <label htmlFor="model-select">Model:</label>
-                  <select
-                    id="model-select"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    autoFocus
-                  >
-                    {configuredModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="configuration-field">
-                  <label htmlFor="fast-model-select">Fast Model:</label>
-                  <select
-                    id="fast-model-select"
-                    value={fastModel}
-                    onChange={(e) => setFastModel(e.target.value)}
-                  >
-                    {configuredModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-              </>
+              <div className="configuration-field">
+                <label htmlFor="model-select">Model:</label>
+                <select
+                  id="model-select"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  autoFocus
+                >
+                  {configuredModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
             ) : (
               <div className="model-empty-hint">
                 没有可用的模型，请检查配置。

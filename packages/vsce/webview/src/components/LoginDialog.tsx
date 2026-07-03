@@ -105,7 +105,7 @@ const LoginDialog: React.FC<LoginDialogProps & { vscode: VsCodeApi }> = ({
     };
   }, [onClose]);
 
-  const serverUrl = serverUrlSaved ? serverUrlInput : (configurationData?.serverUrl || configurationData?.envServerUrl || '');
+  const serverUrl = serverUrlSaved ? serverUrlInput : (configurationData?.serverUrl || '');
 
   return (
     <div className="configuration-dialog-overlay">
@@ -124,7 +124,7 @@ const LoginDialog: React.FC<LoginDialogProps & { vscode: VsCodeApi }> = ({
                   type="url"
                   value={serverUrlInput}
                   onChange={(e) => { setServerUrlInput(e.target.value); setServerUrlSaved(false); }}
-                  placeholder={configurationData?.envServerUrl || 'WAVE_SERVER_URL'}
+                  placeholder="https://wave.example.com"
                 />
                 <button
                   type="button"

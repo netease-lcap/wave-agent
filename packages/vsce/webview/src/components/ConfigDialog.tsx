@@ -89,7 +89,7 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
                 type="url"
                 value={formData.baseURL || ''}
                 onChange={(e) => handleInputChange('baseURL', e.target.value)}
-                placeholder={configurationData?.envBaseUrl || 'https://api.example.com/v1 (或设置 WAVE_BASE_URL)'}
+                placeholder="https://api.example.com/v1"
                 disabled={isLoading}
               />
             </div>
@@ -101,7 +101,7 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
                 type="password"
                 value={formData.apiKey || ''}
                 onChange={(e) => handleInputChange('apiKey', e.target.value)}
-                placeholder={configurationData?.envApiKey || '输入 API Key (或设置 WAVE_API_KEY 环境变量)'}
+                placeholder="输入 API Key"
                 disabled={isLoading}
               />
             </div>
@@ -112,7 +112,7 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
                 id="headers"
                 value={formData.headers || ''}
                 onChange={(e) => handleInputChange('headers', e.target.value)}
-                placeholder={configurationData?.envHeaders || `Authorization: Bearer ...\n(或设置 WAVE_CUSTOM_HEADERS)`}
+                placeholder="Authorization: Bearer ..."
                 disabled={isLoading}
                 className="configuration-textarea"
                 rows={3}
@@ -126,7 +126,7 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
                 type="text"
                 value={formData.model || ''}
                 onChange={(e) => handleInputChange('model', e.target.value)}
-                placeholder={configurationData?.envModel || '请输入模型名称 (或设置 WAVE_MODEL)'}
+                placeholder="请输入模型名称"
                 disabled={isLoading}
               />
             </div>
@@ -138,7 +138,7 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
                 type="text"
                 value={formData.fastModel || ''}
                 onChange={(e) => handleInputChange('fastModel', e.target.value)}
-                placeholder={configurationData?.envFastModel || '请输入快速模型名称 (或设置 WAVE_FAST_MODEL)'}
+                placeholder="请输入快速模型名称"
                 disabled={isLoading}
               />
             </div>
