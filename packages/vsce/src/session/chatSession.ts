@@ -270,6 +270,8 @@ export class ChatSession {
             this.forceNextUpdateImmediate = true;
             this.inputContent = '';
             await this.agent.restoreSession(sessionId);
+            // Push restored messages to webview (SDK callback only stores this.messages)
+            this.throttledUpdateChatMessages(this.messages);
         }
         this.clearQueue();
     }
