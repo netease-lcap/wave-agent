@@ -112,11 +112,11 @@ Usage:
     // Trigger conditional rule loading for this file
     context.messageManager?.triggerFileRead(filePath);
 
-    // Enforce read-before-edit: the file must have been read first
-    if (
-      context.messageManager &&
-      !context.messageManager.hasFileBeenRead(filePath)
-    ) {
+    // Enforce read-before-edit: the file must have been read or written first.
+    // readFileState is populated by Read, Write, and Edit tools — single source
+    // of truth, aligned with Claude Code's readFileState approach.
+    const resolvedPath = resolvePath(filePath, context.workdir);
+    if (!context.readFileState?.has(resolvedPath)) {
       return {
         success: false,
         content: "",
@@ -125,8 +125,6 @@ Usage:
     }
 
     try {
-      const resolvedPath = resolvePath(filePath, context.workdir);
-
       // Read file content
       let originalContent: string;
       try {
