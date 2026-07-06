@@ -28,7 +28,7 @@ Wave uses several environment variables to control its core functionality.
 | `WAVE_MODEL` | The primary AI model to use for the agent. | `gemini-3-flash` |
 | `WAVE_FAST_MODEL` | The fast AI model to use for quick tasks. | `gemini-2.5-flash` |
 | `WAVE_MAX_INPUT_TOKENS` | Maximum number of input tokens allowed. | `200000` |
-| `WAVE_MAX_OUTPUT_TOKENS` | Maximum number of output tokens allowed. | `16384` |
+| `WAVE_MAX_OUTPUT_TOKENS` | Maximum number of output tokens allowed. | `32000` |
 | `WAVE_DISABLE_AUTO_MEMORY` | Set to `1` or `true` to disable the auto-memory feature. | `false` |
 | `WAVE_AUTO_MEMORY_FREQUENCY` | Auto memory update frequency. `1` = every turn, `2` = every 2 turns, etc. | `1` |
 | `WAVE_TASK_LIST_ID` | Explicitly set the task list ID for the session. | (Session ID) |
