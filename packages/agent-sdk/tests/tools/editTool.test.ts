@@ -22,11 +22,23 @@ describe("editTool", () => {
       abortSignal: new AbortController().signal,
       workdir: "/test/workdir",
       taskManager: new TaskManager(new Container(), "test-session"),
+      // Pre-populate readFileState so read-before-edit check passes.
+      // Individual tests can override with an empty Map or undefined.
+      readFileState: new Map([
+        ["/test/file.js", { mtime: 1000, hash: "abc" }],
+        ["/test/workdir/file.js", { mtime: 1000, hash: "abc" }],
+        ["/test/nonexistent.js", { mtime: 1000, hash: "abc" }],
+        ["/absolute/path/file.js", { mtime: 1000, hash: "abc" }],
+      ]),
     };
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default stat mock returns mtime matching pre-populated readFileState
+    vi.mocked(stat).mockResolvedValue({
+      mtime: { getTime: () => 1000 } as Date,
+    } as unknown as Awaited<ReturnType<typeof stat>>);
   });
 
   afterEach(() => {
@@ -443,11 +455,6 @@ describe("editTool", () => {
   });
 
   it("should reject edit when file has not been read first", async () => {
-    const mockMessageManager = {
-      triggerFileRead: vi.fn(),
-      hasFileBeenRead: vi.fn().mockReturnValue(false),
-    };
-
     const result = await editTool.execute(
       {
         file_path: "/test/workdir/file.js",
@@ -456,8 +463,7 @@ describe("editTool", () => {
       },
       {
         ...mockContext,
-        messageManager:
-          mockMessageManager as unknown as ToolContext["messageManager"],
+        readFileState: new Map(),
       },
     );
 
@@ -471,11 +477,6 @@ describe("editTool", () => {
     vi.mocked(readFile).mockResolvedValue(mockContent);
     vi.mocked(writeFile).mockResolvedValue(undefined);
 
-    const mockMessageManager = {
-      triggerFileRead: vi.fn(),
-      hasFileBeenRead: vi.fn().mockReturnValue(true),
-    };
-
     const result = await editTool.execute(
       {
         file_path: "/test/workdir/file.js",
@@ -484,8 +485,9 @@ describe("editTool", () => {
       },
       {
         ...mockContext,
-        messageManager:
-          mockMessageManager as unknown as ToolContext["messageManager"],
+        readFileState: new Map([
+          ["/test/workdir/file.js", { mtime: 1000, hash: "abc" }],
+        ]),
       },
     );
 
@@ -633,22 +635,24 @@ describe("editTool", () => {
     expect(updated?.mtime).toBe(2000);
   });
 
-  it("should skip staleness check when readFileState is not provided", async () => {
+  it("should reject edit when readFileState is not provided", async () => {
     const mockContent = "some content";
     vi.mocked(readFile).mockResolvedValue(mockContent);
     vi.mocked(writeFile).mockResolvedValue(undefined);
 
-    // No readFileState in context — staleness check is skipped entirely
+    // No readFileState in context — read-before-edit check rejects,
+    // staleness check never reached (stat not called)
     const result = await editTool.execute(
       {
         file_path: "/test/file.js",
         old_string: "some",
         new_string: "other",
       },
-      mockContext,
+      { ...mockContext, readFileState: undefined },
     );
 
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("must read the file");
     expect(stat).not.toHaveBeenCalled();
   });
 });
