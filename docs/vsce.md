@@ -6,21 +6,14 @@ Wave 代码智聊是一款集成在 VS Code 中的 AI 辅助编程扩展，旨�
 
 ## 1. 核心聊天体验 {#core-chat-experience}
 
-### 1.1 欢迎界面 {#welcome-interface}
-
-当用户首次打开 Wave 代码智聊时，会看到亲切的欢迎信息，引导用户开始对话。
-
-![欢迎界面](/screenshots/spec-welcome.png)
-_欢迎界面_
-
-### 1.2 基础对话 {#basic-chat}
+### 1.1 基础对话 {#basic-chat}
 
 支持 Markdown 格式的文本交互，能够生成带有语法高亮的代码块，方便用户直接阅读和复制。
 
 ![基础对话](/screenshots/spec-basic-chat.png)
 _基础对话_
 
-### 1.3 工具提示 (Tooltips) {#tooltips}
+### 1.2 工具提示 (Tooltips) {#tooltips}
 
 为了提供一致且可靠的用户体验，Wave 实现了自定义的工具提示组件。当用户将鼠标悬停在图标或特定元素上时，会显示功能说明文案。
 
