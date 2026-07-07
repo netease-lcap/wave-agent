@@ -484,29 +484,40 @@ export class McpManager {
           stderr: "pipe", // Pipe stderr to capture it
         });
 
-        // Handle stderr output for StdioClientTransport
+        // Buffer stderr silently (MCP servers use stderr for all logging;
+        // stdout is reserved for JSON-RPC). Only dump it on connection
+        // success (once) or failure — not line-by-line in real time.
+        // Aligns with Claude Code's approach to avoid noise from [INFO],
+        // [DEBUG], Warning: lines that are not actual errors.
         const stderr = (transport as StdioClientTransport).stderr;
+        let stderrOutput = "";
         if (stderr) {
-          let buffer = "";
           stderr.on("data", (chunk: Buffer) => {
-            buffer += chunk.toString();
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-            for (const line of lines) {
-              if (line.trim()) {
-                logger?.error(`[MCP Server ${name}] ${line}`);
-              }
-            }
-          });
-          stderr.on("end", () => {
-            if (buffer.trim()) {
-              logger?.error(`[MCP Server ${name}] ${buffer}`);
+            if (stderrOutput.length < 64 * 1024 * 1024) {
+              stderrOutput += chunk.toString();
             }
           });
         }
 
         client = createClient();
-        await client.connect(transport);
+        try {
+          await client.connect(transport);
+        } catch (error) {
+          if (stderrOutput.trim()) {
+            logger?.error(
+              `[MCP Server ${name}] Server stderr: ${stderrOutput.trim()}`,
+            );
+          }
+          throw error;
+        }
+
+        // Dump accumulated stderr once after successful connection
+        if (stderrOutput.trim()) {
+          logger?.debug(
+            `[MCP Server ${name}] Server stderr: ${stderrOutput.trim()}`,
+          );
+          stderrOutput = "";
+        }
 
         const toolsResponse = await client.listTools();
         tools =
