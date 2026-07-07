@@ -1132,6 +1132,86 @@ describe("AIManager", () => {
       await testAIManager.sendAIMessage();
       expect(mockNotificationQueue.dequeueAll).toHaveBeenCalled();
     });
+
+    it("should execute Stop hooks even when notifications are pending", async () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      // First call returns true (pending), second call returns false (after dequeue)
+      const mockNotificationQueue = {
+        hasPending: vi
+          .fn()
+          .mockReturnValueOnce(true)
+          .mockReturnValueOnce(false)
+          .mockReturnValueOnce(false),
+        dequeueAll: vi
+          .fn()
+          .mockReturnValue([
+            "<task-notification><task-id>test</task-id></task-notification>",
+          ]),
+      };
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+        resolveLanguage: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
+      } as unknown as Record<string, unknown>);
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+      });
+      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("AgentOptions", {
+        callbacks: {},
+      });
+
+      const testAIManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      // Spy on executeStopHooks to verify it is called
+      const stopHookSpy = vi
+        .spyOn(
+          testAIManager as unknown as {
+            executeStopHooks: () => Promise<boolean>;
+          },
+          "executeStopHooks",
+        )
+        .mockResolvedValue(false);
+
+      await testAIManager.sendAIMessage();
+
+      // Stop hooks should have been called despite pending notifications
+      expect(stopHookSpy).toHaveBeenCalled();
+      // Notifications should also have been dequeued
+      expect(mockNotificationQueue.dequeueAll).toHaveBeenCalled();
+    });
   });
 
   describe("Tool Call Partitioning and Serialization", () => {
