@@ -3,13 +3,6 @@ name: CI
 on:
   pull_request:
     branches: [ main, develop ]
-    paths-ignore:
-      - '**/*.md'
-      - '**/*.txt'
-      - 'specs/**'
-      - 'docs/**'
-      - 'scripts/**'
-      - 'LICENSE'
   workflow_dispatch:
 
 concurrency:
