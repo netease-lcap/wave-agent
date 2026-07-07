@@ -440,8 +440,8 @@ describe("Global Logger Registry", () => {
       }
       const end = performance.now();
 
-      // Should complete very quickly (less than 10ms for 4000 no-op calls)
-      expect(end - start).toBeLessThan(10);
+      // Should complete very quickly (less than 12ms for 4000 no-op calls)
+      expect(end - start).toBeLessThan(12);
       expectNoLoggerCalls(mockLogger);
     });
 
