@@ -1271,7 +1271,103 @@ export class AIManager {
         // Set loading to false first
         this.setIsLoading(false);
 
-        // Inject pending notifications from background tasks
+        // Clear temporary rules
+        this.permissionManager?.clearTemporaryRules();
+
+        // Clear abort controllers
+        this.abortController = null;
+        this.toolAbortController = null;
+
+        // Execute Stop/SubagentStop hooks only if the operation was not aborted
+        const isCurrentlyAborted =
+          abortController.signal.aborted || toolAbortController.signal.aborted;
+
+        if (!isCurrentlyAborted) {
+          // Record committed snapshots to message history for the final turn
+          if (this.reversionManager) {
+            const snapshots =
+              this.reversionManager.getAndClearCommittedSnapshots();
+            if (snapshots.length > 0) {
+              this.messageManager.addFileHistoryBlock(snapshots);
+            }
+          }
+
+          // Goal evaluation — supersedes Stop hooks when active
+          const goalManager = this.container.has("GoalManager")
+            ? this.container.get<import("./goalManager.js").GoalManager>(
+                "GoalManager",
+              )
+            : undefined;
+
+          let goalContinuing = false;
+
+          if (goalManager?.isGoalActive() && !this.subagentType) {
+            // 1. Increment turn count and check circuit breakers
+            goalManager.incrementTurnCount();
+            const circuitBreaker = goalManager.checkCircuitBreakers();
+
+            if (circuitBreaker) {
+              goalManager.clearGoal();
+              logger?.info(`[Goal] ${circuitBreaker}`);
+              this.messageManager.addUserMessage({
+                content: `<system-reminder>${circuitBreaker}</system-reminder>`,
+                isMeta: true,
+              });
+              // Fall through to normal Stop hooks on the final turn
+            } else {
+              // 2. Evaluate goal
+              const evaluation = await goalManager.evaluateGoal(
+                abortController.signal,
+              );
+
+              if (evaluation.isMet) {
+                goalManager.clearGoal();
+                logger?.info(`[Goal] Goal achieved: ${evaluation.reason}`);
+                this.messageManager.addUserMessage({
+                  content: `<system-reminder>Goal achieved: ${evaluation.reason}</system-reminder>`,
+                  isMeta: true,
+                });
+                // Fall through to normal Stop hooks on the final turn
+              } else {
+                const goal = goalManager.getGoal()!;
+                goal.lastReason = evaluation.reason;
+                logger?.info(`[Goal] Not yet met: ${evaluation.reason}`);
+                this.messageManager.addUserMessage({
+                  content: `<system-reminder>Goal not yet met: ${evaluation.reason}. Continue working toward: ${goal.condition}</system-reminder>`,
+                  isMeta: true,
+                });
+                // Keep loading state active to prevent UI flicker
+                this.setIsLoading(true);
+                goalContinuing = true;
+                // Restart outer loop to continue goal pursuit
+                shouldRestart = true;
+                turnOffset = 0;
+              }
+            }
+          }
+
+          // Skip Stop hooks when goal evaluator is continuing the conversation
+          if (goalContinuing) {
+            // Goal evaluator supersedes Stop hooks
+          } else {
+            const shouldContinue = await this.executeStopHooks();
+
+            // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),
+            // restart the AI conversation cycle
+            if (shouldContinue) {
+              logger?.info(
+                `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
+              );
+
+              // Restart the conversation to let AI fix the issues
+              shouldRestart = true;
+              turnOffset = 0;
+            }
+          }
+        }
+
+        // Inject pending notifications from background tasks (after Stop hooks,
+        // aligned with Claude Code which fires Stop hooks unconditionally)
         const notificationQueue = this.container.has("NotificationQueue")
           ? this.container.get<NotificationQueue>("NotificationQueue")
           : undefined;
@@ -1292,102 +1388,6 @@ export class AIManager {
           // Restart outer loop to process the notifications
           shouldRestart = true;
           turnOffset = 0;
-        } else {
-          // Clear temporary rules
-          this.permissionManager?.clearTemporaryRules();
-
-          // Clear abort controllers
-          this.abortController = null;
-          this.toolAbortController = null;
-
-          // Execute Stop/SubagentStop hooks only if the operation was not aborted
-          const isCurrentlyAborted =
-            abortController.signal.aborted ||
-            toolAbortController.signal.aborted;
-
-          if (!isCurrentlyAborted) {
-            // Record committed snapshots to message history for the final turn
-            if (this.reversionManager) {
-              const snapshots =
-                this.reversionManager.getAndClearCommittedSnapshots();
-              if (snapshots.length > 0) {
-                this.messageManager.addFileHistoryBlock(snapshots);
-              }
-            }
-
-            // Goal evaluation — supersedes Stop hooks when active
-            const goalManager = this.container.has("GoalManager")
-              ? this.container.get<import("./goalManager.js").GoalManager>(
-                  "GoalManager",
-                )
-              : undefined;
-
-            let goalContinuing = false;
-
-            if (goalManager?.isGoalActive() && !this.subagentType) {
-              // 1. Increment turn count and check circuit breakers
-              goalManager.incrementTurnCount();
-              const circuitBreaker = goalManager.checkCircuitBreakers();
-
-              if (circuitBreaker) {
-                goalManager.clearGoal();
-                logger?.info(`[Goal] ${circuitBreaker}`);
-                this.messageManager.addUserMessage({
-                  content: `<system-reminder>${circuitBreaker}</system-reminder>`,
-                  isMeta: true,
-                });
-                // Fall through to normal Stop hooks on the final turn
-              } else {
-                // 2. Evaluate goal
-                const evaluation = await goalManager.evaluateGoal(
-                  abortController.signal,
-                );
-
-                if (evaluation.isMet) {
-                  goalManager.clearGoal();
-                  logger?.info(`[Goal] Goal achieved: ${evaluation.reason}`);
-                  this.messageManager.addUserMessage({
-                    content: `<system-reminder>Goal achieved: ${evaluation.reason}</system-reminder>`,
-                    isMeta: true,
-                  });
-                  // Fall through to normal Stop hooks on the final turn
-                } else {
-                  const goal = goalManager.getGoal()!;
-                  goal.lastReason = evaluation.reason;
-                  logger?.info(`[Goal] Not yet met: ${evaluation.reason}`);
-                  this.messageManager.addUserMessage({
-                    content: `<system-reminder>Goal not yet met: ${evaluation.reason}. Continue working toward: ${goal.condition}</system-reminder>`,
-                    isMeta: true,
-                  });
-                  // Keep loading state active to prevent UI flicker
-                  this.setIsLoading(true);
-                  goalContinuing = true;
-                  // Restart outer loop to continue goal pursuit
-                  shouldRestart = true;
-                  turnOffset = 0;
-                }
-              }
-            }
-
-            // Skip Stop hooks when goal evaluator is continuing the conversation
-            if (goalContinuing) {
-              // Goal evaluator supersedes Stop hooks
-            } else {
-              const shouldContinue = await this.executeStopHooks();
-
-              // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),
-              // restart the AI conversation cycle
-              if (shouldContinue) {
-                logger?.info(
-                  `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
-                );
-
-                // Restart the conversation to let AI fix the issues
-                shouldRestart = true;
-                turnOffset = 0;
-              }
-            }
-          }
         }
       }
 
