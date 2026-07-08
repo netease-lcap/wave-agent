@@ -245,6 +245,8 @@ export class WaveAcpAgent implements AcpAgent {
           callbacks.onSessionIdChange?.(newSessionId),
         onLatestTotalTokensChange: (tokens: number) =>
           callbacks.onLatestTotalTokensChange?.(tokens),
+        onLoadingChange: (loading: boolean) =>
+          callbacks.onLoadingChange?.(loading),
       },
     });
 
@@ -1397,6 +1399,18 @@ export class WaveAcpAgent implements AcpAgent {
               used: tokens,
             },
           });
+        },
+        onLoadingChange: (loading: boolean) => {
+          if (!loading) {
+            this.connection.sessionUpdate({
+              sessionId: sessionRef.id as AcpSessionId,
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                content: { type: "text", text: "" },
+                _meta: { endOfTurn: true },
+              },
+            });
+          }
         },
       },
       sessionRef,
