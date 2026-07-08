@@ -58,10 +58,7 @@ describe("MarketplaceAddForm", () => {
       </PluginManagerContext.Provider>,
     );
 
-    stdin.write("h");
-    stdin.write("t");
-    stdin.write("t");
-    stdin.write("p");
+    stdin.write("http");
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("http");
@@ -75,8 +72,7 @@ describe("MarketplaceAddForm", () => {
       </PluginManagerContext.Provider>,
     );
 
-    stdin.write("a");
-    stdin.write("b");
+    stdin.write("ab");
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("ab");
     });
@@ -95,10 +91,7 @@ describe("MarketplaceAddForm", () => {
       </PluginManagerContext.Provider>,
     );
 
-    stdin.write("t");
-    stdin.write("e");
-    stdin.write("s");
-    stdin.write("t");
+    stdin.write("test");
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("test");
     });
@@ -117,10 +110,7 @@ describe("MarketplaceAddForm", () => {
       </PluginManagerContext.Provider>,
     );
 
-    stdin.write("t");
-    stdin.write("e");
-    stdin.write("s");
-    stdin.write("t");
+    stdin.write("test");
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("test");
     });
@@ -162,10 +152,7 @@ describe("MarketplaceAddForm", () => {
       </PluginManagerContext.Provider>,
     );
 
-    stdin.write("t");
-    stdin.write("e");
-    stdin.write("s");
-    stdin.write("t");
+    stdin.write("test");
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("test");
     });
