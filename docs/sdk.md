@@ -1343,13 +1343,13 @@ AI 驱动的 Wiki 生成器，支持 Mermaid 图表、源码引用、入职指�
 
 Tavily AI 驱动的搜索引擎 MCP 服务器，通过 `https://mcp.tavily.com/mcp/` 提供网络搜索能力。
 
-### lcap-extension-component {#plugin-lcap-extension-component}
-
-LCAP 低代码平台扩展组件开发指南。包含约 **17 个技能**，覆盖 ElementUI、ElementPlus、AntD、Mobile UI、Cloud UI 等平台组件。
-
 ### frontend-design {#plugin-frontend-design}
 
 创建独特的、生产级前端界面设计技能。注重美学品质，避免千篇一律的 AI 审美风格。
+
+### superpowers {#plugin-superpowers}
+
+AI 编程助手核心技能库，包含 TDD、调试、协作模式和成熟技巧等经过验证的实践方法。（来源：[obra/superpowers](https://github.com/obra/superpowers)）
 
 ## 16. OpenTelemetry 遥测 {#opentelemetry-telemetry}
 
