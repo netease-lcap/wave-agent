@@ -1,61 +1,47 @@
-import React, { useReducer } from "react";
+import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
-import { marketplaceAddFormReducer } from "../reducers/marketplaceAddFormReducer.js";
-
-const SCOPES = [
-  { value: "user" as const, label: "user" },
-  { value: "project" as const, label: "project" },
-  { value: "local" as const, label: "local" },
-];
+import {
+  marketplaceAddFormReducer,
+  SCOPES,
+  type MarketplaceAddFormState,
+} from "../reducers/marketplaceAddFormReducer.js";
 
 export const MarketplaceAddForm: React.FC = () => {
-  const { state, actions } = usePluginManagerContext();
-  const [{ source, scopeIndex, step }, dispatch] = useReducer(
-    marketplaceAddFormReducer,
-    { source: "", scopeIndex: 0, step: "source" },
-  );
+  const { state: ctxState, actions } = usePluginManagerContext();
+  const [state, dispatch] = useReducer(marketplaceAddFormReducer, {
+    source: "",
+    scopeIndex: 0,
+    step: "source",
+    pendingAction: null,
+  } as MarketplaceAddFormState);
+
+  // Handle side effects from reducer decisions
+  useEffect(() => {
+    if (!state.pendingAction) return;
+
+    if (state.pendingAction.type === "submit") {
+      actions.addMarketplace(
+        state.pendingAction.source,
+        state.pendingAction.scope,
+      );
+    } else if (state.pendingAction.type === "cancel") {
+      actions.setView("MARKETPLACES");
+    }
+
+    dispatch({ type: "CLEAR_PENDING_ACTION" });
+  }, [state.pendingAction, actions]);
 
   useInput((input, key) => {
-    if (key.escape) {
-      if (step === "scope") {
-        dispatch({ type: "BACK_TO_SOURCE" });
-      } else {
-        actions.setView("MARKETPLACES");
-      }
-    } else if (state.isLoading) {
-      return;
-    } else if (step === "source" && key.return) {
-      if (source.trim()) {
-        dispatch({ type: "SET_STEP", step: "scope" });
-      }
-    } else if (step === "source" && (key.backspace || key.delete)) {
-      dispatch({ type: "DELETE_CHAR" });
-    } else if (
-      step === "source" &&
-      input &&
-      !key.ctrl &&
-      !key.meta &&
-      !("alt" in key && key.alt)
-    ) {
-      dispatch({ type: "INSERT_CHAR", text: input });
-    } else if (step === "scope") {
-      if (key.upArrow) {
-        dispatch({
-          type: "SET_SCOPE_INDEX",
-          index: Math.max(0, scopeIndex - 1),
-        });
-      } else if (key.downArrow) {
-        dispatch({
-          type: "SET_SCOPE_INDEX",
-          index: Math.min(SCOPES.length - 1, scopeIndex + 1),
-        });
-      } else if (key.return) {
-        const scope = SCOPES[scopeIndex].value;
-        actions.addMarketplace(source.trim(), scope);
-      }
-    }
+    dispatch({
+      type: "HANDLE_KEY",
+      key,
+      input,
+      isLoading: ctxState.isLoading,
+    });
   });
+
+  const { source, scopeIndex, step } = state;
 
   if (step === "source") {
     return (
@@ -66,7 +52,7 @@ export const MarketplaceAddForm: React.FC = () => {
         <Box marginTop={1}>
           <Text>Source: </Text>
           <Text color="yellow">{source}</Text>
-          {!state.isLoading && <Text color="yellow">_</Text>}
+          {!ctxState.isLoading && <Text color="yellow">_</Text>}
         </Box>
         <Box marginTop={1}>
           <Text dimColor>Enter to continue, Esc to cancel</Text>
@@ -86,20 +72,20 @@ export const MarketplaceAddForm: React.FC = () => {
       </Box>
       <Box marginTop={1} flexDirection="column">
         {SCOPES.map((s, i) => (
-          <Text key={s.value} color={i === scopeIndex ? "yellow" : "dim"}>
+          <Text key={s} color={i === scopeIndex ? "yellow" : "dim"}>
             {i === scopeIndex ? "> " : "  "}
-            {s.label}
+            {s}
           </Text>
         ))}
       </Box>
-      {state.isLoading && (
+      {ctxState.isLoading && (
         <Box marginTop={1}>
           <Text color="yellow">Adding marketplace...</Text>
         </Box>
       )}
       <Box marginTop={1}>
         <Text dimColor>
-          {state.isLoading
+          {ctxState.isLoading
             ? "Please wait..."
             : "Enter to confirm, \u2191/\u2193 to navigate, Esc to go back"}
         </Text>
