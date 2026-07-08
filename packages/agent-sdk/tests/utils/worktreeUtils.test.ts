@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as worktreeUtils from "@/utils/worktreeUtils.js";
 import * as gitUtils from "@/utils/gitUtils.js";
 import * as fs from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 vi.mock("node:child_process");
 vi.mock("node:fs");
@@ -65,13 +65,14 @@ describe("worktreeUtils", () => {
 
   describe("getHeadCommit", () => {
     it("returns HEAD commit SHA", () => {
-      vi.mocked(execSync).mockReturnValue("abc123def\n");
+      vi.mocked(execFileSync).mockReturnValue("abc123def\n");
 
       const result = worktreeUtils.getHeadCommit("/test");
 
       expect(result).toBe("abc123def");
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git -C"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["-C"]),
         expect.objectContaining({ encoding: "utf8" }),
       );
     });
@@ -81,7 +82,7 @@ describe("worktreeUtils", () => {
     beforeEach(() => {
       vi.mocked(gitUtils.getGitMainRepoRoot).mockReturnValue("/test/repo");
       vi.mocked(gitUtils.getDefaultRemoteBranch).mockReturnValue("origin/main");
-      vi.mocked(execSync).mockReturnValue("abc123\n");
+      vi.mocked(execFileSync).mockReturnValue("abc123\n");
       vi.mocked(fs.existsSync).mockReturnValue(false);
     });
 
@@ -102,8 +103,9 @@ describe("worktreeUtils", () => {
       const result = worktreeUtils.createWorktree("existing", "/test");
 
       expect(result.isNew).toBe(false);
-      expect(execSync).not.toHaveBeenCalledWith(
-        expect.stringContaining("git worktree add -b"),
+      expect(execFileSync).not.toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["worktree", "add", "-b"]),
         expect.anything(),
       );
     });
@@ -118,7 +120,7 @@ describe("worktreeUtils", () => {
 
     it("handles branch already exists fallback", () => {
       let callCount = 0;
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execFileSync).mockImplementation(() => {
         callCount++;
         if (callCount === 1) {
           // getHeadCommit
@@ -143,7 +145,7 @@ describe("worktreeUtils", () => {
 
     it("should fetch default branch when not found locally, then create worktree", () => {
       let callCount = 0;
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execFileSync).mockImplementation(() => {
         callCount++;
         if (callCount === 1) {
           // getHeadCommit
@@ -169,15 +171,16 @@ describe("worktreeUtils", () => {
 
       expect(result.isNew).toBe(true);
       expect(result.originalHeadCommit).toBe("abc123");
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git fetch origin main"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["fetch", "origin", "main"]),
         expect.anything(),
       );
     });
 
     it("should fall back to HEAD when fetch also fails", () => {
       let callCount = 0;
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execFileSync).mockImplementation(() => {
         callCount++;
         if (callCount === 1) {
           // getHeadCommit
@@ -202,15 +205,22 @@ describe("worktreeUtils", () => {
       const result = worktreeUtils.createWorktree("feat", "/test");
 
       expect(result.isNew).toBe(true);
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringMatching(/git worktree add -b worktree-feat ".*" HEAD/),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining([
+          "worktree",
+          "add",
+          "-b",
+          "worktree-feat",
+          "HEAD",
+        ]),
         expect.anything(),
       );
     });
 
     it("should throw when both fetch and HEAD fallback fail", () => {
       let callCount = 0;
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execFileSync).mockImplementation(() => {
         callCount++;
         if (callCount === 1) {
           // getHeadCommit
@@ -240,7 +250,7 @@ describe("worktreeUtils", () => {
 
   describe("removeWorktree", () => {
     beforeEach(() => {
-      vi.mocked(execSync).mockReturnValue("");
+      vi.mocked(execFileSync).mockReturnValue("");
       vi.mocked(gitUtils.getDefaultRemoteBranch).mockReturnValue("origin/main");
     });
 
@@ -253,19 +263,21 @@ describe("worktreeUtils", () => {
         isNew: true,
       });
 
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git worktree remove --force"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["worktree", "remove", "--force"]),
         expect.anything(),
       );
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git branch -D worktree-feat"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "worktree-feat"]),
         expect.anything(),
       );
     });
 
     it("logs and rethrows on failure", () => {
       const error = new Error("git failed");
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execFileSync).mockImplementation(() => {
         throw error;
       });
 
@@ -283,7 +295,7 @@ describe("worktreeUtils", () => {
 
   describe("countWorktreeChanges", () => {
     it("returns changed files and commits", () => {
-      vi.mocked(execSync)
+      vi.mocked(execFileSync)
         .mockReturnValueOnce("M file1.txt\n?? file2.txt\n") // status
         .mockReturnValueOnce("3\n"); // rev-list
 
@@ -296,7 +308,7 @@ describe("worktreeUtils", () => {
     });
 
     it("returns null when originalHeadCommit is undefined", () => {
-      vi.mocked(execSync).mockReturnValueOnce("\n"); // empty status
+      vi.mocked(execFileSync).mockReturnValueOnce("\n"); // empty status
 
       const result = worktreeUtils.countWorktreeChanges(
         "/test/worktree",
@@ -307,7 +319,7 @@ describe("worktreeUtils", () => {
     });
 
     it("returns null when git commands fail", () => {
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execFileSync).mockImplementation(() => {
         throw new Error("git error");
       });
 
@@ -320,7 +332,7 @@ describe("worktreeUtils", () => {
     });
 
     it("returns 0 commits for clean worktree", () => {
-      vi.mocked(execSync)
+      vi.mocked(execFileSync)
         .mockReturnValueOnce("") // no changes
         .mockReturnValueOnce("0\n"); // no commits
 

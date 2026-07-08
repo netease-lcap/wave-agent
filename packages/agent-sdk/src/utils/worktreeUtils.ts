@@ -3,7 +3,7 @@
  * Used by EnterWorktree and ExitWorktree tools.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { getGitMainRepoRoot, getDefaultRemoteBranch } from "./gitUtils.js";
@@ -81,7 +81,7 @@ export function generateWorktreeName(): string {
  * Get the current HEAD commit SHA.
  */
 export function getHeadCommit(cwd: string): string {
-  return execSync(`git -C "${cwd}" rev-parse HEAD`, {
+  return execFileSync("git", ["-C", cwd, "rev-parse", "HEAD"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
   }).trim();
@@ -125,8 +125,9 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
 
   try {
     // Create worktree and branch
-    execSync(
-      `git worktree add -b ${branchName} "${worktreePath}" ${baseBranch}`,
+    execFileSync(
+      "git",
+      ["worktree", "add", "-b", branchName, worktreePath, baseBranch],
       {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],
@@ -151,7 +152,7 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
     if (stderr.includes("already exists")) {
       // Branch exists but worktree doesn't — attach to existing branch
       try {
-        execSync(`git worktree add "${worktreePath}" ${branchName}`, {
+        execFileSync("git", ["worktree", "add", worktreePath, branchName], {
           cwd: repoRoot,
           stdio: ["ignore", "pipe", "pipe"],
           env: {
@@ -181,7 +182,7 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
       // Base branch not fetched yet — try fetching then retrying
       const branchNameOnly = baseBranch.split("/").pop()!;
       try {
-        execSync(`git fetch origin ${branchNameOnly}`, {
+        execFileSync("git", ["fetch", "origin", branchNameOnly], {
           cwd: repoRoot,
           stdio: ["ignore", "pipe", "pipe"],
           env: {
@@ -190,8 +191,9 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
             GIT_ASKPASS: "",
           },
         });
-        execSync(
-          `git worktree add -b ${branchName} "${worktreePath}" ${baseBranch}`,
+        execFileSync(
+          "git",
+          ["worktree", "add", "-b", branchName, worktreePath, baseBranch],
           {
             cwd: repoRoot,
             stdio: ["ignore", "pipe", "pipe"],
@@ -213,15 +215,19 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
       } catch {
         // Fetch or retry failed — fall back to HEAD
         try {
-          execSync(`git worktree add -b ${branchName} "${worktreePath}" HEAD`, {
-            cwd: repoRoot,
-            stdio: ["ignore", "pipe", "pipe"],
-            env: {
-              ...process.env,
-              GIT_TERMINAL_PROMPT: "0",
-              GIT_ASKPASS: "",
+          execFileSync(
+            "git",
+            ["worktree", "add", "-b", branchName, worktreePath, "HEAD"],
+            {
+              cwd: repoRoot,
+              stdio: ["ignore", "pipe", "pipe"],
+              env: {
+                ...process.env,
+                GIT_TERMINAL_PROMPT: "0",
+                GIT_ASKPASS: "",
+              },
             },
-          });
+          );
           return {
             name,
             path: worktreePath,
@@ -253,24 +259,28 @@ export function removeWorktree(info: WorktreeInfo): void {
     // Get current branch in worktree before removing
     let currentBranch: string | undefined;
     try {
-      currentBranch = execSync(`git rev-parse --abbrev-ref HEAD`, {
-        cwd: info.path,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim();
+      currentBranch = execFileSync(
+        "git",
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        {
+          cwd: info.path,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      ).trim();
     } catch {
       // Ignore errors
     }
 
     // Remove worktree
-    execSync(`git worktree remove --force "${info.path}"`, {
+    execFileSync("git", ["worktree", "remove", "--force", info.path], {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
     // Delete worktree branch
     try {
-      execSync(`git branch -D ${info.branch}`, {
+      execFileSync("git", ["branch", "-D", info.branch], {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -293,7 +303,7 @@ export function removeWorktree(info: WorktreeInfo): void {
         currentBranch !== "master"
       ) {
         try {
-          execSync(`git branch -D ${currentBranch}`, {
+          execFileSync("git", ["branch", "-D", currentBranch], {
             cwd: repoRoot,
             stdio: ["ignore", "pipe", "pipe"],
           });
@@ -320,8 +330,9 @@ export function countWorktreeChanges(
   originalHeadCommit: string | undefined,
 ): { changedFiles: number; commits: number } | null {
   try {
-    const statusOutput = execSync(
-      `git -C "${worktreePath}" status --porcelain`,
+    const statusOutput = execFileSync(
+      "git",
+      ["-C", worktreePath, "status", "--porcelain"],
       {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
@@ -335,8 +346,15 @@ export function countWorktreeChanges(
       return null;
     }
 
-    const revListOutput = execSync(
-      `git -C "${worktreePath}" rev-list --count ${originalHeadCommit}..HEAD`,
+    const revListOutput = execFileSync(
+      "git",
+      [
+        "-C",
+        worktreePath,
+        "rev-list",
+        "--count",
+        `${originalHeadCommit}..HEAD`,
+      ],
       {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],

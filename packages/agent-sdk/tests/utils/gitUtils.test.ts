@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fsSync from "node:fs";
 import * as path from "node:path";
 import {
@@ -12,7 +12,7 @@ import {
 } from "../../src/utils/gitUtils.js";
 
 vi.mock("node:child_process", () => ({
-  execSync: vi.fn(),
+  execFileSync: vi.fn(),
 }));
 
 vi.mock("node:fs", () => ({
@@ -30,18 +30,19 @@ describe("gitUtils", () => {
 
   describe("getGitRepoRoot", () => {
     it("should return the git repo root", () => {
-      vi.mocked(execSync).mockReturnValue(
-        "/repo/root\n" as unknown as ReturnType<typeof execSync>,
+      vi.mocked(execFileSync).mockReturnValue(
+        "/repo/root\n" as unknown as ReturnType<typeof execFileSync>,
       );
       expect(getGitRepoRoot("/some/path")).toBe("/repo/root");
-      expect(execSync).toHaveBeenCalledWith(
-        "git rev-parse --show-toplevel",
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        ["rev-parse", "--show-toplevel"],
         expect.any(Object),
       );
     });
 
     it("should return cwd if git command fails", () => {
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execFileSync).mockImplementation(() => {
         throw new Error("Not a git repo");
       });
       expect(getGitRepoRoot("/some/path")).toBe("/some/path");
@@ -50,25 +51,27 @@ describe("gitUtils", () => {
 
   describe("getGitMainRepoRoot", () => {
     it("should return the main repo root from git worktree list", () => {
-      vi.mocked(execSync).mockReturnValue(
+      vi.mocked(execFileSync).mockReturnValue(
         "worktree /repo/main\nHEAD 123\nbranch refs/heads/main\n\nworktree /repo/worktree1\nHEAD 456\nbranch refs/heads/wt1\n" as unknown as ReturnType<
-          typeof execSync
+          typeof execFileSync
         >,
       );
       expect(getGitMainRepoRoot("/repo/worktree1")).toBe("/repo/main");
-      expect(execSync).toHaveBeenCalledWith(
-        "git worktree list --porcelain",
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        ["worktree", "list", "--porcelain"],
         expect.any(Object),
       );
     });
 
     it("should fallback to getGitRepoRoot if git worktree list fails", () => {
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git worktree list --porcelain") {
+      vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+        const a = args as string[];
+        if (a[0] === "worktree" && a[1] === "list") {
           throw new Error("Command failed");
         }
-        if (cmd === "git rev-parse --show-toplevel") {
-          return "/repo/root\n" as unknown as ReturnType<typeof execSync>;
+        if (a[0] === "rev-parse" && a[1] === "--show-toplevel") {
+          return "/repo/root\n" as unknown as ReturnType<typeof execFileSync>;
         }
         throw new Error("Command failed");
       });
@@ -76,12 +79,15 @@ describe("gitUtils", () => {
     });
 
     it("should fallback to getGitRepoRoot if output is unexpected", () => {
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git worktree list --porcelain") {
-          return "unexpected output" as unknown as ReturnType<typeof execSync>;
+      vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+        const a = args as string[];
+        if (a[0] === "worktree" && a[1] === "list") {
+          return "unexpected output" as unknown as ReturnType<
+            typeof execFileSync
+          >;
         }
-        if (cmd === "git rev-parse --show-toplevel") {
-          return "/repo/root\n" as unknown as ReturnType<typeof execSync>;
+        if (a[0] === "rev-parse" && a[1] === "--show-toplevel") {
+          return "/repo/root\n" as unknown as ReturnType<typeof execFileSync>;
         }
         throw new Error("Command failed");
       });
@@ -245,15 +251,15 @@ describe("gitUtils", () => {
 
   describe("hasUncommittedChanges", () => {
     it("should return true if there are changes", () => {
-      vi.mocked(execSync).mockReturnValue(
-        " M file.ts\n" as unknown as ReturnType<typeof execSync>,
+      vi.mocked(execFileSync).mockReturnValue(
+        " M file.ts\n" as unknown as ReturnType<typeof execFileSync>,
       );
       expect(hasUncommittedChanges("/repo/root")).toBe(true);
     });
 
     it("should return false if there are no changes", () => {
-      vi.mocked(execSync).mockReturnValue(
-        "" as unknown as ReturnType<typeof execSync>,
+      vi.mocked(execFileSync).mockReturnValue(
+        "" as unknown as ReturnType<typeof execFileSync>,
       );
       expect(hasUncommittedChanges("/repo/root")).toBe(false);
     });
@@ -261,15 +267,17 @@ describe("gitUtils", () => {
 
   describe("hasNewCommits", () => {
     it("should return true if there are new commits", () => {
-      vi.mocked(execSync).mockReturnValue(
-        "abc1234 Commit message\n" as unknown as ReturnType<typeof execSync>,
+      vi.mocked(execFileSync).mockReturnValue(
+        "abc1234 Commit message\n" as unknown as ReturnType<
+          typeof execFileSync
+        >,
       );
       expect(hasNewCommits("/repo/root", "origin/main")).toBe(true);
     });
 
     it("should return false if there are no new commits", () => {
-      vi.mocked(execSync).mockReturnValue(
-        "" as unknown as ReturnType<typeof execSync>,
+      vi.mocked(execFileSync).mockReturnValue(
+        "" as unknown as ReturnType<typeof execFileSync>,
       );
       expect(hasNewCommits("/repo/root", "origin/main")).toBe(false);
     });

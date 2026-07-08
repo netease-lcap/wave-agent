@@ -4,6 +4,7 @@ import * as path from "path";
 import * as os from "os";
 import { logger } from "../utils/globalLogger.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
+import { toPosixPath } from "../utils/path.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { processToolResult } from "../utils/toolResultStorage.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
@@ -246,7 +247,8 @@ The working directory persists between commands. Try to maintain your current wo
         os.tmpdir(),
         `wave_cwd_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.tmp`,
       );
-      const wrappedCommand = `${command} && pwd -P >| ${tempCwdFile}`;
+      const tempCwdFileForBash = toPosixPath(tempCwdFile);
+      const wrappedCommand = `${command} && pwd -P >| ${tempCwdFileForBash}`;
 
       const child: ChildProcess = spawn(wrappedCommand, {
         shell: shellPath || true,
@@ -263,6 +265,17 @@ The working directory persists between commands. Try to maintain your current wo
       let isAborted = false;
       let isBackgrounded = false;
       let isFinished = false;
+
+      // Best-effort cleanup of the temp CWD file — used by abort/error/exit paths
+      const cleanupTempFile = () => {
+        try {
+          if (fs.existsSync(tempCwdFile)) {
+            fs.unlinkSync(tempCwdFile);
+          }
+        } catch {
+          // ignore — best-effort cleanup
+        }
+      };
 
       const updateRealtimeResults = () => {
         if (isAborted || isBackgrounded || isFinished) return;
@@ -420,6 +433,8 @@ The working directory persists between commands. Try to maintain your current wo
             }
           }
 
+          cleanupTempFile();
+
           const processedOutput = processToolResult(
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
             BASH_MAX_OUTPUT_CHARS,
@@ -491,14 +506,7 @@ The working directory persists between commands. Try to maintain your current wo
             );
             newCwd = undefined;
           } finally {
-            // Ensure temp file is cleaned up even if reading fails
-            try {
-              if (fs.existsSync(tempCwdFile)) {
-                fs.unlinkSync(tempCwdFile);
-              }
-            } catch (fileError) {
-              logger.error("Failed to clean up temp CWD file:", fileError);
-            }
+            cleanupTempFile();
           }
 
           // If CWD changed, call the onCwdChange callback and add notification
@@ -560,6 +568,7 @@ The working directory persists between commands. Try to maintain your current wo
           if (timeoutHandle) {
             clearTimeout(timeoutHandle);
           }
+          cleanupTempFile();
           resolve({
             success: false,
             content: "",

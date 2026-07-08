@@ -54,3 +54,13 @@ export function getDisplayPath(filePath: string, workdir: string): string {
   }
   return filePath;
 }
+
+/**
+ * Convert backslashes to forward slashes for shell compatibility on Windows.
+ * On Windows, os.tmpdir() returns paths with backslashes (e.g., C:\Users\foo\Temp),
+ * which are treated as escape characters when interpolated into shell command strings.
+ * Returns the path as-is on non-Windows platforms.
+ */
+export function toPosixPath(p: string): string {
+  return process.platform === "win32" ? p.replace(/\\/g, "/") : p;
+}

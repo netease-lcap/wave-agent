@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as fsSync from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 /**
  * Check if a directory is a git repository
@@ -31,7 +31,7 @@ export function isGitRepository(dirPath: string): string {
  */
 export function getGitRepoRoot(cwd: string): string {
   try {
-    return execSync("git rev-parse --show-toplevel", {
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -48,7 +48,7 @@ export function getGitRepoRoot(cwd: string): string {
  */
 export function getGitCommonDir(cwd: string): string {
   try {
-    const commonDir = execSync("git rev-parse --git-common-dir", {
+    const commonDir = execFileSync("git", ["rev-parse", "--git-common-dir"], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -66,7 +66,7 @@ export function getGitCommonDir(cwd: string): string {
  */
 export function getGitMainRepoRoot(cwd: string): string {
   try {
-    const output = execSync("git worktree list --porcelain", {
+    const output = execFileSync("git", ["worktree", "list", "--porcelain"], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -229,7 +229,7 @@ export function getDefaultRemoteBranch(cwd: string): string {
  */
 export function hasUncommittedChanges(cwd: string): boolean {
   try {
-    const status = execSync("git status --porcelain", {
+    const status = execFileSync("git", ["status", "--porcelain"], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -249,7 +249,7 @@ export function hasUncommittedChanges(cwd: string): boolean {
 export function hasNewCommits(cwd: string, baseBranch?: string): boolean {
   try {
     const range = baseBranch ? `${baseBranch}..HEAD` : "@{u}..HEAD";
-    const log = execSync(`git log ${range} --oneline`, {
+    const log = execFileSync("git", ["log", range, "--oneline"], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
