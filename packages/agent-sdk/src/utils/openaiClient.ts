@@ -133,6 +133,7 @@ export class OpenAIClient {
         }
         if (attempt < MAX_RETRIES) {
           logger.warn("OpenAI API network error, retrying...", {
+            model: params.model,
             attempt: attempt + 1,
             error: e,
           });
@@ -185,6 +186,7 @@ export class OpenAIClient {
       if (retryableStatus && attempt < MAX_RETRIES) {
         lastRetryAfter = response.headers.get("retry-after");
         logger.warn("OpenAI API error, retrying...", {
+          model: params.model,
           attempt: attempt + 1,
           status: response.status,
           retryAfter: lastRetryAfter,
