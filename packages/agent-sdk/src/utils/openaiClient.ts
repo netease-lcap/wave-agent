@@ -166,37 +166,18 @@ export class OpenAIClient {
         }
       }
 
-      let errorBody: unknown;
+      let responseText = "";
       try {
-        const text = await response.text();
-        try {
-          errorBody = JSON.parse(text);
-        } catch (e) {
-          logger.error("Failed to parse error response body as JSON", {
-            error: e,
-            text,
-          });
-          errorBody = text;
-        }
+        responseText = await response.text();
       } catch (e) {
         logger.error("Failed to read error response text", { error: e });
-        errorBody = {};
       }
 
       const error = new Error(
-        typeof errorBody === "object" &&
-        errorBody !== null &&
-        "error" in errorBody &&
-        typeof (errorBody as { error: unknown }).error === "object" &&
-        (errorBody as { error: object }).error !== null &&
-        "message" in (errorBody as { error: { message: unknown } }).error
-          ? String((errorBody as { error: { message: string } }).error.message)
-          : typeof errorBody === "string"
-            ? errorBody
-            : response.statusText,
+        `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}: ${responseText}`,
       ) as Error & { status?: number; body?: unknown };
       error.status = response.status;
-      error.body = errorBody;
+      error.body = responseText;
 
       const retryableStatus =
         response.status === 429 ||
@@ -215,7 +196,7 @@ export class OpenAIClient {
       logger.error("OpenAI API Error:", {
         status: response.status,
         statusText: response.statusText,
-        errorBody,
+        body: responseText,
       });
       throw error;
     }
