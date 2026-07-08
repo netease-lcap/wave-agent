@@ -63,7 +63,7 @@
 - **FR-003**：`settings` skill 必须允许用户在特定作用域（用户、项目或本地）中更新设置。
 - **FR-004**：`settings` skill 必须提供关于如何配置 Wave 的指南，涵盖 `settings.json` 中所有支持的字段（`hooks`、`env`、`permissions`、`enabledPlugins`、`language`、`autoMemoryEnabled`、`autoMemoryFrequency`、`models`）以及其他配置文件（`.mcp.json` 用于 MCP 服务器包括 `type` 传输字段、`.wave/rules/` 用于内存规则、`.wave/skills/` 用于自定义 skill、`.wave/agents/` 用于子 agent）。
 - **FR-005**：系统必须包含 `settings` skill 的 `SKILL.md`。
-- **FR-006**：系统必须为复杂配置创建单独的 markdown 文件（例如 `HOOKS.md`、`ENV.md`、`MCP.md`、`MEMORY_RULES.md`、`SKILLS.md`、`SUBAGENTS.md`、`MODELS.md`）并从 `SKILL.md` 链接。
+- **FR-006**：系统必须为复杂配置创建单独的 markdown 文件（例如 `HOOKS.md`、`ENV.md`、`MCP.md`、`MEMORY.md`、`SKILLS.md`、`SUBAGENTS.md`、`MODELS.md`）并从 `SKILL.md` 链接。
 - **FR-008**：`settings` skill 必须提供关于如何创建和管理自定义 skill 和子 agent 的指导。
 - **FR-007**：`settings` skill 必须在保存更改之前验证配置。
 
