@@ -1,6 +1,6 @@
 ---
 name: settings
-description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory rules, skills, subagents, plugins, and plugin marketplaces. Use this when the user wants to view, update, or learn how to configure Wave.
+description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory, skills, subagents, plugins, and plugin marketplaces. Use this when the user wants to view, update, or learn how to configure Wave.
 ---
 
 # Wave Settings Skill
@@ -79,9 +79,9 @@ For detailed model configuration, see [MODELS.md](${WAVE_SKILL_DIR}/MODELS.md).
 Connect to external servers to provide additional tools and context.
 For detailed MCP configuration, see [MCP.md](${WAVE_SKILL_DIR}/MCP.md).
 
-### 6. Memory Rules
-Provide context-specific instructions and guidelines to the agent.
-For detailed memory rules configuration, see [MEMORY_RULES.md](${WAVE_SKILL_DIR}/MEMORY_RULES.md).
+### 6. Memory
+Provide context-specific instructions and knowledge to the agent through user memory, project memory, memory rules, and auto-memory.
+For detailed memory configuration, see [MEMORY.md](${WAVE_SKILL_DIR}/MEMORY.md).
 
 ### 7. Skills
 Extend Wave's functionality by creating custom skills.
