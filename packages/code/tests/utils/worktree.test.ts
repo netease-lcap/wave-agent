@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
 import { getDefaultRemoteBranch, getGitMainRepoRoot } from "wave-agent-sdk";
 
 vi.mock("node:child_process", () => ({
-  execSync: vi.fn(),
+  execFileSync: vi.fn(),
 }));
 
 vi.mock("node:fs", () => ({
@@ -36,8 +36,9 @@ describe("worktree utils", () => {
       expect(session.branch).toBe("worktree-my-feat");
       expect(session.repoRoot).toBe("/repo/root");
       expect(session.isNew).toBe(true);
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git worktree add -b worktree-my-feat"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["worktree", "add", "-b", "worktree-my-feat"]),
         expect.any(Object),
       );
     });
@@ -50,7 +51,7 @@ describe("worktree utils", () => {
 
       expect(session.name).toBe("my-feat");
       expect(session.isNew).toBe(false);
-      expect(execSync).not.toHaveBeenCalled();
+      expect(execFileSync).not.toHaveBeenCalled();
     });
 
     it("should handle branch already exists error by adding worktree without -b", () => {
@@ -63,21 +64,22 @@ describe("worktree utils", () => {
       (error as { stderr?: Buffer }).stderr = Buffer.from(
         "fatal: a branch named 'worktree-my-feat' already exists",
       );
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw error;
       });
 
       // Second call succeeds
-      vi.mocked(execSync).mockImplementationOnce(() => Buffer.from(""));
+      vi.mocked(execFileSync).mockImplementationOnce(() => Buffer.from(""));
 
       const session = createWorktree("my-feat", "/repo/root");
 
       expect(session.name).toBe("my-feat");
       expect(session.repoRoot).toBe("/repo/root");
       expect(session.isNew).toBe(true);
-      expect(execSync).toHaveBeenCalledTimes(2);
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringMatching(/git worktree add "[^"]+" worktree-my-feat/),
+      expect(execFileSync).toHaveBeenCalledTimes(2);
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["worktree", "add", "worktree-my-feat"]),
         expect.any(Object),
       );
     });
@@ -87,7 +89,7 @@ describe("worktree utils", () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const error = new Error("Some other error");
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw error;
       });
 
@@ -104,11 +106,11 @@ describe("worktree utils", () => {
       (error as { stderr?: Buffer }).stderr = Buffer.from(
         "fatal: a branch named 'worktree-my-feat' already exists",
       );
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw error;
       });
 
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw new Error("Inner error");
       });
 
@@ -127,21 +129,22 @@ describe("worktree utils", () => {
       (error as { stderr?: Buffer }).stderr = Buffer.from(
         "not a valid object name",
       );
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw error;
       });
 
       // git fetch origin main succeeds
-      vi.mocked(execSync).mockImplementationOnce(() => Buffer.from(""));
+      vi.mocked(execFileSync).mockImplementationOnce(() => Buffer.from(""));
 
       // Retry git worktree add -b succeeds
-      vi.mocked(execSync).mockImplementationOnce(() => Buffer.from(""));
+      vi.mocked(execFileSync).mockImplementationOnce(() => Buffer.from(""));
 
       const session = createWorktree("my-feat", "/repo/root");
 
       expect(session.isNew).toBe(true);
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git fetch origin main"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["fetch", "origin", "main"]),
         expect.any(Object),
       );
     });
@@ -156,23 +159,30 @@ describe("worktree utils", () => {
       (error as { stderr?: Buffer }).stderr = Buffer.from(
         "not a valid object name",
       );
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw error;
       });
 
       // git fetch origin main fails
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw new Error("fetch failed");
       });
 
       // git worktree add -b ... HEAD succeeds
-      vi.mocked(execSync).mockImplementationOnce(() => Buffer.from(""));
+      vi.mocked(execFileSync).mockImplementationOnce(() => Buffer.from(""));
 
       const session = createWorktree("my-feat", "/repo/root");
 
       expect(session.isNew).toBe(true);
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringMatching(/git worktree add -b worktree-my-feat ".*" HEAD/),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining([
+          "worktree",
+          "add",
+          "-b",
+          "worktree-my-feat",
+          "HEAD",
+        ]),
         expect.any(Object),
       );
     });
@@ -187,17 +197,17 @@ describe("worktree utils", () => {
       (error as { stderr?: Buffer }).stderr = Buffer.from(
         "not a valid object name",
       );
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw error;
       });
 
       // git fetch origin main fails
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw new Error("fetch failed");
       });
 
       // git worktree add -b ... HEAD also fails
-      vi.mocked(execSync).mockImplementationOnce(() => {
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
         throw new Error("HEAD fallback failed");
       });
 
@@ -219,16 +229,20 @@ describe("worktree utils", () => {
         isNew: false,
       };
 
-      vi.mocked(execSync).mockReturnValue(Buffer.from("worktree-my-feat\n"));
+      vi.mocked(execFileSync).mockReturnValue(
+        Buffer.from("worktree-my-feat\n"),
+      );
 
       removeWorktree(session);
 
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git worktree remove --force"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["worktree", "remove", "--force"]),
         expect.any(Object),
       );
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git branch -D worktree-my-feat"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "worktree-my-feat"]),
         expect.any(Object),
       );
     });
@@ -245,8 +259,13 @@ describe("worktree utils", () => {
       };
 
       vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git rev-parse --abbrev-ref HEAD") {
+      vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+        const a = args as string[];
+        if (
+          a[0] === "rev-parse" &&
+          a[1] === "--abbrev-ref" &&
+          a[2] === "HEAD"
+        ) {
           return "another-branch\n";
         }
         return "";
@@ -254,16 +273,19 @@ describe("worktree utils", () => {
 
       removeWorktree(session);
 
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git worktree remove --force"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["worktree", "remove", "--force"]),
         expect.any(Object),
       );
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git branch -D worktree-my-feat"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "worktree-my-feat"]),
         expect.any(Object),
       );
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git branch -D another-branch"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "another-branch"]),
         expect.any(Object),
       );
     });
@@ -280,8 +302,13 @@ describe("worktree utils", () => {
       };
 
       vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
-      vi.mocked(execSync).mockImplementation((cmd) => {
-        if (cmd === "git rev-parse --abbrev-ref HEAD") {
+      vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+        const a = args as string[];
+        if (
+          a[0] === "rev-parse" &&
+          a[1] === "--abbrev-ref" &&
+          a[2] === "HEAD"
+        ) {
           return "main\n";
         }
         return "";
@@ -289,16 +316,19 @@ describe("worktree utils", () => {
 
       removeWorktree(session);
 
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git worktree remove --force"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["worktree", "remove", "--force"]),
         expect.any(Object),
       );
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining("git branch -D worktree-my-feat"),
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "worktree-my-feat"]),
         expect.any(Object),
       );
-      expect(execSync).not.toHaveBeenCalledWith(
-        expect.stringContaining("git branch -D main"),
+      expect(execFileSync).not.toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["branch", "-D", "main"]),
         expect.any(Object),
       );
     });
@@ -307,7 +337,7 @@ describe("worktree utils", () => {
       const consoleSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execFileSync).mockImplementation(() => {
         throw new Error("Removal failed");
       });
 

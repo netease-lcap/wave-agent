@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { getDefaultRemoteBranch, getGitMainRepoRoot } from "wave-agent-sdk";
@@ -47,8 +47,9 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
 
   try {
     // Create worktree and branch
-    execSync(
-      `git worktree add -b ${branchName} "${worktreePath}" ${baseBranch}`,
+    execFileSync(
+      "git",
+      ["worktree", "add", "-b", branchName, worktreePath, baseBranch],
       {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],
@@ -69,7 +70,7 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
     if (stderr.includes("already exists")) {
       // If branch already exists, try to add worktree without -b
       try {
-        execSync(`git worktree add "${worktreePath}" ${branchName}`, {
+        execFileSync("git", ["worktree", "add", worktreePath, branchName], {
           cwd: repoRoot,
           stdio: ["ignore", "pipe", "pipe"],
         });
@@ -95,12 +96,13 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
       // Base branch not fetched yet — try fetching then retrying
       const branchNameOnly = baseBranch.split("/").pop()!;
       try {
-        execSync(`git fetch origin ${branchNameOnly}`, {
+        execFileSync("git", ["fetch", "origin", branchNameOnly], {
           cwd: repoRoot,
           stdio: ["ignore", "pipe", "pipe"],
         });
-        execSync(
-          `git worktree add -b ${branchName} "${worktreePath}" ${baseBranch}`,
+        execFileSync(
+          "git",
+          ["worktree", "add", "-b", branchName, worktreePath, baseBranch],
           {
             cwd: repoRoot,
             stdio: ["ignore", "pipe", "pipe"],
@@ -118,10 +120,14 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
       } catch {
         // Fetch or retry failed — fall back to HEAD
         try {
-          execSync(`git worktree add -b ${branchName} "${worktreePath}" HEAD`, {
-            cwd: repoRoot,
-            stdio: ["ignore", "pipe", "pipe"],
-          });
+          execFileSync(
+            "git",
+            ["worktree", "add", "-b", branchName, worktreePath, "HEAD"],
+            {
+              cwd: repoRoot,
+              stdio: ["ignore", "pipe", "pipe"],
+            },
+          );
           return {
             name,
             path: worktreePath,
@@ -155,24 +161,28 @@ export function removeWorktree(session: WorktreeSession): void {
     // Get current branch in worktree before removing it
     let currentBranch: string | undefined;
     try {
-      currentBranch = execSync(`git rev-parse --abbrev-ref HEAD`, {
-        cwd: session.path,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim();
+      currentBranch = execFileSync(
+        "git",
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        {
+          cwd: session.path,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      ).trim();
     } catch {
       // Ignore errors getting current branch
     }
 
     // Remove worktree
-    execSync(`git worktree remove --force "${session.path}"`, {
+    execFileSync("git", ["worktree", "remove", "--force", session.path], {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
     // Delete original branch
     try {
-      execSync(`git branch -D ${session.branch}`, {
+      execFileSync("git", ["branch", "-D", session.branch], {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -195,7 +205,7 @@ export function removeWorktree(session: WorktreeSession): void {
         currentBranch !== "master"
       ) {
         try {
-          execSync(`git branch -D ${currentBranch}`, {
+          execFileSync("git", ["branch", "-D", currentBranch], {
             cwd: repoRoot,
             stdio: ["ignore", "pipe", "pipe"],
           });

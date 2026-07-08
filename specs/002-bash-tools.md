@@ -67,7 +67,7 @@
 1. **假设** 运行在 Windows 系统上，**当** Git Bash 已安装时，**则** Bash 工具必须使用 Git Bash 而非 cmd.exe 执行命令。
 2. **假设** 运行在 Windows 系统上，**当** Git Bash 未安装时，**则** 系统必须返回清晰的错误消息，提示用户安装 Git for Windows。
 3. **假设** 运行在 Windows 系统上，**当** 执行包含 POSIX 语法的命令（如 `pwd -P >| file`）时，**则** 命令必须正常执行并返回正确结果。
-4. **假设** 运行在 Windows 系统上，**当** 命令执行后检测 CWD 时，**则** CWD 追踪机制必须正常工作（使用 POSIX 路径格式）。
+4. **假设** 运行在 Windows 系统上，**当** 命令执行后检测 CWD 时，**则** CWD 追踪机制必须正常工作——临时文件路径需转换为正斜杠格式以兼容 Git Bash，且临时文件在命令结束后必须被清理，不得残留在项目目录中。
 
 ---
 
@@ -80,7 +80,7 @@
 - **每次命令使用新 Shell**：每次前台命令都会生成新的 shell；`cd` 和环境变量更改不会在调用之间持久化。
 - **超时自动转后台**：当前台命令超时时，系统必须自动将其转为后台（移至 `BackgroundTaskManager`）而不是终止，除非命令以 `sleep` 开头（仍按原方式终止）。
 - **后台无超时**：当 `run_in_background` 明确为 `true` 时，任何超时（默认或显式）必须被取消——进程无限期运行直到完成或手动停止。
-- **Windows 路径转换**：在 Windows 上使用 Git Bash 时，`cwd` 参数可能需要从 Windows 路径（`C:\Users\...`）转换为 POSIX 路径（`/c/Users/...`）。
+- **Windows 路径转换**：在 Windows 上使用 Git Bash 时，临时 CWD 文件路径必须从 Windows 路径（`C:\Users\...`）转换为 POSIX 路径（`C:/Users/...`），否则 Bash 会将反斜杠视为转义字符导致路径损坏、临时文件泄漏到项目目录中。
 - **Git Bash 未安装**：Windows 上未检测到 Git Bash 时，必须返回错误而非静默降级到 cmd.exe。
 
 ## 需求 *(必填)*
@@ -109,6 +109,8 @@
 - **FR-021**：在 Windows 系统上，如果未检测到 Git Bash，系统必须返回错误消息，提示用户安装 Git for Windows 或设置 `GIT_BASH_PATH` 环境变量。
 - **FR-022**：在 Windows 系统上使用 Git Bash 时，`spawn` 调用必须将 shell 参数设置为检测到的 Git Bash 可执行文件路径，而非 `true`。
 - **FR-023**：在 Windows 系统上，CWD 追踪命令（`pwd -P >| tempfile`）必须使用 Git Bash 执行，确保输出为 POSIX 路径格式。
+- **FR-024**：在 Windows 系统上，传递给 Git Bash 的临时文件路径必须将反斜杠转换为正斜杠（`C:\Users\...` → `C:/Users/...`），因为 Bash 将反斜杠视为转义字符，会导致路径损坏并在项目目录中创建临时文件。
+- **FR-025**：CWD 追踪临时文件必须在所有退出路径上被清理，包括正常退出（exit）、中止（abort）、执行错误（error）和转为后台（background）。
 
 ### 关键实体
 
