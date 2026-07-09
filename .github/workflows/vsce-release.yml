@@ -40,6 +40,9 @@ jobs:
       - name: Build SDK
         run: pnpm -F wave-agent-sdk build
 
+      - name: Download all ripgrep platforms for packaging
+        run: CI=false node packages/agent-sdk/scripts/install_ripgrep.js
+
       - name: Package .vsix
         run: pnpm -F wave-vsce run package
 
