@@ -14,9 +14,9 @@ test.describe('Product Spec: History Search', () => {
 
         // 3. Simulate history response from extension
         const mockHistory = [
-            { prompt: '帮我重构一下这个组件，用函数式写法', timestamp: 1774325357000 },
-            { prompt: '创建一个新文件 src/utils/format.ts，导出时间格式化函数', timestamp: 1774325174000 },
-            { prompt: '/speckit:constitution 所有模板必须用中文编写', timestamp: 1774851151833 }
+            { prompt: '为 PaymentService 添加分布式事务支持，使用 Saga 模式', timestamp: 1752052800000 },
+            { prompt: '分析 src/services/payment 目录下的竞态条件，生成修复方案', timestamp: 1752051000000 },
+            { prompt: '/review 审查 PaymentController.ts 中的安全性问题', timestamp: 1751966400000 }
         ];
 
         await injector.simulateExtensionMessage('historyResponse', {

@@ -9,7 +9,7 @@ test.describe('AskUserQuestion Layout Demo', () => {
     const mockMessage: Message = {
       id: 'msg_ask_demo',
       role: 'assistant' as const,
-      timestamp: '2024-01-01T00:00:00.000Z',
+      timestamp: '2025-07-09T10:30:00.000Z',
       blocks: [
         {
           type: 'tool' as const,
@@ -17,8 +17,8 @@ test.describe('AskUserQuestion Layout Demo', () => {
           stage: 'end' as const,
           result: JSON.stringify({
             answers: {
-              "Which library should we use for date formatting?": "date-fns",
-              "Which features do you want to enable?": "Authentication, Database, Logging"
+              "支付服务应该采用哪种缓存策略？": "Redis Cluster",
+              "哪些模块需要优先重构？": "PaymentService, TransactionLogger, RefundHandler"
             }
           })
         }

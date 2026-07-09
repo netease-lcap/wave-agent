@@ -22,10 +22,10 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
             isStreaming: false,
             sessions: [],
             configurationData: {
-                apiKey: 'sk-xxxxxxxxxxxxxxxx',
-                baseURL: 'https://api.openai.com/v1',
-                model: 'gpt-4',
-                fastModel: 'gpt-3.5-turbo'
+                apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
             },
             permissionMode: 'default'
         });
@@ -34,7 +34,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         const askUserMessage: Message = {
             id: 'msg_demo_ask',
             role: 'assistant',
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [
                 {
                     type: 'tool',
@@ -43,11 +43,11 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
                     parameters: JSON.stringify({
                         questions: [
                             {
-                                header: '选择框架',
-                                question: '你想使用哪个前端框架？',
+                                header: '缓存方案',
+                                question: '支付服务应该采用哪种缓存策略？',
                                 options: [
-                                    { label: 'React', description: '流行的 UI 库' },
-                                    { label: 'Vue', description: '渐进式框架' }
+                                    { label: 'Redis Cluster', description: '分布式缓存，高可用，支持自动故障转移' },
+                                    { label: 'Redis Sentinel', description: '主从架构，自动故障转移，适合中等规模' }
                                 ]
                             }
                         ]
@@ -65,11 +65,11 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
             toolInput: {
                 questions: [
                     {
-                        header: '选择框架',
-                        question: '你想使用哪个前端框架？',
+                        header: '缓存方案',
+                        question: '支付服务应该采用哪种缓存策略？',
                         options: [
-                            { label: 'React', description: '流行的 UI 库' },
-                            { label: 'Vue', description: '渐进式框架' }
+                            { label: 'Redis Cluster', description: '分布式缓存，高可用，支持自动故障转移' },
+                            { label: 'Redis Sentinel', description: '主从架构，自动故障转移，适合中等规模' }
                         ]
                     }
                 ]
@@ -86,10 +86,10 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         // 11. Configuration Dialog (opened via /config or showConfiguration message)
         await injector.simulateExtensionMessage('showConfiguration', {
             configurationData: {
-                apiKey: 'sk-xxxxxxxxxxxxxxxx',
-                baseURL: 'https://api.openai.com/v1',
-                model: 'gpt-4',
-                fastModel: 'gpt-3.5-turbo'
+                apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
             }
         });
         await webviewPage.waitForSelector('.configuration-dialog');
@@ -137,22 +137,22 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
             confirmationId: 'plan-confirm-001',
             confirmationType: '计划执行确认',
             toolName: EXIT_PLAN_MODE_TOOL_NAME, // "ExitPlanMode"
-            planContent: `## 项目重构计划
+            planContent: `## PaymentService 高并发重构计划
 
-### 第一步：代码分析
-- 分析现有代码结构
-- 识别重构重点模块
-- 评估依赖关系
+### 第一阶段：乐观锁引入
+- 在 PaymentRepository 中添加 version 字段
+- 实现 withOptimisticLock 中间件
+- 处理乐观锁冲突重试逻辑
 
-### 第二步：重构实施
-- 重构核心组件
-- 优化数据流
-- 更新测试用例
+### 第二阶段：缓存层接入
+- 引入 Redis 作为热数据缓存
+- 实现缓存失效策略（TTL + 主动失效）
+- 添加缓存命中率监控
 
-### 第三步：验证测试
-- 运行完整测试套件
-- 性能基准测试
-- 用户验收测试`
+### 第三阶段：异步化改造
+- 将审计日志改为异步写入
+- 接入消息队列处理非核心流程
+- 性能基准测试与对比`
         });
         const planConfirmDialog = webviewPage.locator('.confirmation-dialog');
         await planConfirmDialog.waitFor({ state: 'visible' });
@@ -184,9 +184,9 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
             confirmationType: '代码修改确认',
             toolName: EDIT_TOOL_NAME, // "Edit"
             toolInput: {
-                file_path: '/src/components/ChatInterface.tsx',
-                old_string: 'const [messages, setMessages] = useState([]);',
-                new_string: 'const [messages, setMessages] = useState<Message[]>([]);'
+                file_path: '/src/services/payment/PaymentService.ts',
+                old_string: 'const result = await this.db.query("SELECT * FROM payments WHERE id = ?", tx.id);',
+                new_string: 'const result = await this.db.query("SELECT * FROM payments WHERE id = $1", [tx.id]);'
             }
         });
         const editConfirmDialog = webviewPage.locator('.confirmation-dialog');
@@ -201,12 +201,12 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await injector.simulateExtensionMessage('showConfirmation', {
             confirmationId: 'mcp-confirm-001',
             confirmationType: 'MCP 工具确认',
-            toolName: 'mcp__wave_requirements__create_requirement',
+            toolName: 'mcp__jira__create_issue',
             toolInput: {
-                title: '前端改动',
-                description: '在需求管理界面添加列表页',
+                title: 'PaymentService 乐观锁支持',
+                description: '为支付服务引入乐观锁机制，处理并发更新冲突',
                 priority: 'high',
-                tags: ['frontend', 'ui']
+                tags: ['payment', 'concurrency', 'refactor']
             }
         });
         const mcpConfirmDialog = webviewPage.locator('.confirmation-dialog');
@@ -223,8 +223,8 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
             confirmationType: 'Bash 命令执行确认', 
             toolName: BASH_TOOL_NAME, // "Bash"
             toolInput: {
-                command: 'npm install --save-dev @types/react',
-                description: '安装 React TypeScript 类型定义'
+                command: 'pnpm -F @nebula/payment-service test -- --coverage',
+                description: '运行支付服务测试套件并生成覆盖率报告'
             }
         });
         const bashConfirmDialog = webviewPage.locator('.confirmation-dialog');

@@ -15,7 +15,7 @@ test.describe('Login Dialog Demo', () => {
             window.simulateExtensionMessage({
                 command: 'configurationResponse',
                 configurationData: {
-                    serverUrl: 'https://wave-ai.example.com'
+                    serverUrl: 'https://wave.nebula-tech.com'
                 }
             });
         });
@@ -34,7 +34,7 @@ test.describe('Login Dialog Demo', () => {
 
         // Verify server URL input is pre-filled
         const serverUrlInput = webviewPage.locator('#login-serverUrl');
-        await expect(serverUrlInput).toHaveValue('https://wave-ai.example.com');
+        await expect(serverUrlInput).toHaveValue('https://wave.nebula-tech.com');
 
         // Verify login button is visible
         await expect(webviewPage.getByText('SSO 登录', { exact: true })).toBeVisible();
@@ -56,7 +56,7 @@ test.describe('Login Dialog Demo', () => {
             window.simulateExtensionMessage({
                 command: 'configurationResponse',
                 configurationData: {
-                    serverUrl: 'https://wave-ai.example.com'
+                    serverUrl: 'https://wave.nebula-tech.com'
                 }
             });
         });
@@ -66,12 +66,12 @@ test.describe('Login Dialog Demo', () => {
             window.simulateExtensionMessage({
                 command: 'authStatusResponse',
                 isAuthenticated: true,
-                user: { id: 'user-xyz789', email: 'alice@example.com' }
+                user: { id: 'usr_7f3k2d8x', email: 'sarah.chen@nebula-tech.com' }
             });
         });
 
         await expect(webviewPage.getByText('SSO 认证', { exact: true })).toBeVisible();
-        await expect(webviewPage.getByText('alice@example.com')).toBeVisible();
+        await expect(webviewPage.getByText('sarah.chen@nebula-tech.com')).toBeVisible();
         await expect(webviewPage.getByText('登出', { exact: true })).toBeVisible();
 
         const dialog = webviewPage.locator('.configuration-dialog');

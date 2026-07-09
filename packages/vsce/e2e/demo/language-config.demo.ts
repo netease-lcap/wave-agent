@@ -7,13 +7,13 @@ test.describe('Language Configuration Demo', () => {
             window.simulateExtensionMessage({
                 command: 'showConfiguration',
                 configurationData: {
-                    apiKey: 'test-key',
+                    apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
                     headers: '',
-                    baseURL: 'https://api.example.com',
-                    model: 'gemini-3-flash',
-                    fastModel: 'gemini-2.5-flash',
-                    backendLink: 'https://backend.example.com',
-                    language: 'English'
+                    baseURL: 'https://api.nebula-tech.com/v1',
+                    model: 'claude-sonnet-4-20250514',
+                    fastModel: 'claude-haiku-4-20250514',
+                    backendLink: 'https://wave.nebula-tech.com',
+                    language: 'Chinese'
                 }
             });
         });
@@ -28,7 +28,7 @@ test.describe('Language Configuration Demo', () => {
 
         // Verify the language field is visible and has the correct value
         await expect(languageField).toBeVisible();
-        await expect(webviewPage.locator('#language')).toHaveValue('English');
+        await expect(webviewPage.locator('#language')).toHaveValue('Chinese');
 
         // Take screenshot of the dialog with language field in view
         const dialog = webviewPage.locator('.configuration-dialog');

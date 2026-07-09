@@ -16,58 +16,58 @@ test.describe('Plugin Status Badge Logic', () => {
                 command: 'listPluginsResponse',
                 plugins: [
                     {
-                        id: 'installed-user@wave-plugins-official',
-                        name: 'Installed User Scope',
-                        description: 'This plugin should show [user] badge',
+                        id: 'git-workflow@wave-plugins-official',
+                        name: 'Git Workflow',
+                        description: '已安装到用户作用域，显示 [user] 标签',
                         marketplace: 'wave-plugins-official',
                         installed: true,
                         scope: 'user',
-                        version: '1.0.0'
+                        version: '2.3.1'
                     },
                     {
-                        id: 'installed-project@wave-plugins-official',
-                        name: 'Installed Project Scope',
-                        description: 'This plugin should show [project] badge',
+                        id: 'code-reviewer@wave-plugins-official',
+                        name: 'Code Reviewer',
+                        description: '已安装到项目作用域，显示 [project] 标签',
                         marketplace: 'wave-plugins-official',
                         installed: true,
                         scope: 'project',
-                        version: '1.0.0'
+                        version: '3.1.2'
                     },
                     {
-                        id: 'installed-no-scope@wave-plugins-official',
-                        name: 'Installed No Scope',
-                        description: 'This plugin should NOT show any badge',
-                        marketplace: 'wave-plugins-official',
+                        id: 'database-explorer@wave-community',
+                        name: 'Database Explorer',
+                        description: '已安装但无作用域信息，不显示标签',
+                        marketplace: 'wave-community',
                         installed: true,
                         scope: null,
-                        version: '1.0.0'
+                        version: '0.9.5'
                     },
                     {
-                        id: 'not-installed@wave-plugins-official',
-                        name: 'Not Installed',
-                        description: 'This plugin should NOT show any badge',
+                        id: 'kubernetes-helper@wave-plugins-official',
+                        name: 'Kubernetes Helper',
+                        description: '未安装的插件，不显示标签',
                         marketplace: 'wave-plugins-official',
                         installed: false,
-                        version: '1.0.0'
+                        version: '1.8.0'
                     }
                 ]
             }, '*');
         });
 
-        // 3. Verify "Installed User Scope" plugin has the [user] badge
-        const userItem = webviewPage.locator('.plugin-item').filter({ hasText: 'Installed User Scope' });
+        // 3. Verify "Git Workflow" plugin has the [user] badge
+        const userItem = webviewPage.locator('.plugin-item').filter({ hasText: 'Git Workflow' });
         await expect(userItem.locator('.plugin-scope')).toHaveText('[user]');
 
-        // 4. Verify "Installed Project Scope" plugin has the [project] badge
-        const projectItem = webviewPage.locator('.plugin-item').filter({ hasText: 'Installed Project Scope' });
+        // 4. Verify "Code Reviewer" plugin has the [project] badge
+        const projectItem = webviewPage.locator('.plugin-item').filter({ hasText: 'Code Reviewer' });
         await expect(projectItem.locator('.plugin-scope')).toHaveText('[project]');
 
-        // 5. Verify "Installed No Scope" plugin does NOT have the badge
-        const noScopeItem = webviewPage.locator('.plugin-item').filter({ hasText: 'Installed No Scope' });
+        // 5. Verify "Database Explorer" plugin does NOT have the badge
+        const noScopeItem = webviewPage.locator('.plugin-item').filter({ hasText: 'Database Explorer' });
         await expect(noScopeItem.locator('.plugin-scope')).not.toBeVisible();
 
-        // 6. Verify "Not Installed" plugin does NOT have the badge
-        const notInstalledItem = webviewPage.locator('.plugin-item').filter({ hasText: 'Not Installed' });
+        // 6. Verify "Kubernetes Helper" plugin does NOT have the badge
+        const notInstalledItem = webviewPage.locator('.plugin-item').filter({ hasText: 'Kubernetes Helper' });
         await expect(notInstalledItem.locator('.plugin-scope')).not.toBeVisible();
 
         // Take screenshot for verification

@@ -24,44 +24,44 @@ test.describe('Plugin Management Dialog Demo', () => {
                 command: 'listPluginsResponse',
                 plugins: [
                     {
-                        id: 'commit-commands@wave-plugins-official',
-                        name: 'commit-commands',
-                        description: 'Commands for git commit workflows including commit, push, and PR creation',
+                        id: 'git-workflow@wave-plugins-official',
+                        name: 'git-workflow',
+                        description: '集成 Git 工作流，支持智能提交信息生成、PR 审查和冲突解决',
                         marketplace: 'wave-plugins-official',
                         installed: false,
-                        version: '1.0.0'
+                        version: '2.3.1'
                     },
                     {
-                        id: 'document-skills@wave-plugins-official',
-                        name: 'document-skills',
-                        description: 'Collection of document processing suite including Excel, Word, PowerPoint, and PDF capabilities',
+                        id: 'kubernetes-helper@wave-plugins-official',
+                        name: 'kubernetes-helper',
+                        description: '简化 K8s 集群管理，提供 Pod 诊断、日志查询和资源监控',
                         marketplace: 'wave-plugins-official',
                         installed: false,
-                        version: '1.0.0'
+                        version: '1.8.0'
                     },
                     {
-                        id: 'typescript-lsp@wave-plugins-official',
-                        name: 'typescript-lsp',
-                        description: 'TypeScript/JavaScript language server for enhanced code intelligence',
-                        marketplace: 'wave-plugins-official',
+                        id: 'database-explorer@wave-community',
+                        name: 'database-explorer',
+                        description: '连接多种数据库（PostgreSQL、MySQL、MongoDB），支持智能查询和 schema 可视化',
+                        marketplace: 'wave-community',
                         installed: false,
-                        version: '1.0.0'
+                        version: '0.9.5'
                     },
                     {
-                        id: 'chrome-headless@wave-plugins-official',
-                        name: 'chrome-headless',
-                        description: 'Chrome DevTools Protocol MCP server for headless browser automation',
+                        id: 'code-reviewer@wave-plugins-official',
+                        name: 'code-reviewer',
+                        description: 'AI 驱动的代码审查工具，自动检测安全漏洞、性能问题和最佳实践违规',
                         marketplace: 'wave-plugins-official',
                         installed: false,
-                        version: '1.0.0'
+                        version: '3.1.2'
                     },
                     {
-                        id: 'sdd@wave-plugins-official',
-                        name: 'sdd',
-                        description: '规格驱动开发工作流，用于创建和管理技术规格文档',
-                        marketplace: 'wave-plugins-official',
+                        id: 'api-docs-generator@wave-community',
+                        name: 'api-docs-generator',
+                        description: '从代码自动生成 OpenAPI 文档，支持实时预览和交互式测试',
+                        marketplace: 'wave-community',
                         installed: false,
-                        version: '1.0.0'
+                        version: '1.4.0'
                     }
                 ]
             }, '*');
@@ -79,19 +79,19 @@ test.describe('Plugin Management Dialog Demo', () => {
                 command: 'listPluginsResponse',
                 plugins: [
                     {
-                        id: 'installed-plugin@wave-plugins-official',
-                        name: 'Installed Plugin',
-                        description: 'An already installed plugin',
+                        id: 'code-reviewer@wave-plugins-official',
+                        name: 'code-reviewer',
+                        description: 'AI 驱动的代码审查工具，自动检测安全漏洞、性能问题和最佳实践违规',
                         marketplace: 'wave-plugins-official',
                         installed: true,
                         scope: 'user',
-                        version: '1.0.0'
+                        version: '3.1.2'
                     }
                 ]
             }, '*');
         });
 
-        await expect(webviewPage.locator('.plugin-name').filter({ hasText: 'Installed Plugin' })).toBeVisible();
+        await expect(webviewPage.locator('.plugin-name').filter({ hasText: 'code-reviewer' })).toBeVisible();
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugins-installed-tab.png' });
 
         // 4. Switch to "插件市场" tab
@@ -102,7 +102,9 @@ test.describe('Plugin Management Dialog Demo', () => {
             window.postMessage({
                 command: 'listMarketplacesResponse',
                 marketplaces: [
-                    { name: 'wave-plugins-official', url: 'https://github.com/wave-team/wave-plugins-official' }
+                    { name: 'wave-plugins-official', url: 'https://github.com/wave-ai/wave-plugins-official' },
+                    { name: 'wave-community', url: 'https://github.com/wave-community/plugins' },
+                    { name: 'nebula-internal', url: 'https://git.nebula-tech.com/plugins' }
                 ]
             }, '*');
         });

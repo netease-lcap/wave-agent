@@ -21,10 +21,10 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
             isStreaming: false,
             sessions: [],
             configurationData: {
-                apiKey: 'sk-xxxxxxxxxxxxxxxx',
-                baseURL: 'https://api.openai.com/v1',
-                model: 'gpt-4',
-                fastModel: 'gpt-3.5-turbo'
+                apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
             },
             permissionMode: 'default'
         });
@@ -123,11 +123,11 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
             {
                 id: 'msg_demo_inline_tags',
                 role: 'user',
-                timestamp: '2024-01-01T00:00:00.000Z',
+                timestamp: '2025-07-09T10:30:00.000Z',
                 blocks: [
                     {
                         type: 'text',
-                        content: '这是一个文件夹 [@file:src] 这是文本 [@file:src/main.ts] 这是图片 [@file:pasted-image.png]'
+                        content: '[@file:src/services] 分析这个服务目录 [@file:src/services/payment/PaymentService.ts] 这是相关截图 [image1]'
                     }
                 ]
             }
@@ -140,26 +140,26 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
             {
                 id: 'session-1',
                 sessionType: 'main',
-                workdir: '/project',
+                workdir: '/home/dev/projects/nebula-platform',
                 createdAt: new Date(now - 1000 * 60 * 60), // 1小时前创建
                 lastActiveAt: new Date(now - 1000 * 60 * 30), // 30分钟前
-                latestTotalTokens: 1500
+                latestTotalTokens: 15420
             },
             {
                 id: 'session-2',
                 sessionType: 'main',
-                workdir: '/project',
+                workdir: '/home/dev/projects/nebula-platform',
                 createdAt: new Date(now - 1000 * 60 * 60 * 3), // 3小时前创建
                 lastActiveAt: new Date(now - 1000 * 60 * 60 * 2), // 2小时前
-                latestTotalTokens: 2200
+                latestTotalTokens: 32800
             },
             {
                 id: 'session-3',
                 sessionType: 'main',
-                workdir: '/project',
+                workdir: '/home/dev/projects/nebula-platform',
                 createdAt: new Date(now - 1000 * 60 * 60 * 48), // 2天前创建
                 lastActiveAt: new Date(now - 1000 * 60 * 60 * 24), // 1天前
-                latestTotalTokens: 800
+                latestTotalTokens: 8600
             }
         ];
         
@@ -196,11 +196,11 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
                 id: 'msg_demo_vision_user',
                 role: 'user',
                 blocks: [
-                    { type: 'text', content: '这张图片里有什么？ [image1]' },
+                    { type: 'text', content: '请分析这个 UI 设计稿，帮我生成对应的 React 组件 [image1]' },
                     { type: 'image', imageUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='] }
                 ]
             },
-            MockDataGenerator.createAssistantMessage('这张图片显示了一个简单的 UI 布局，包含一个侧边栏和一个主内容区域。侧边栏使用了深色主题...')
+            MockDataGenerator.createAssistantMessage('这是一个支付确认页面的设计稿。我可以识别出以下元素：\n\n1. **顶部导航栏** - 包含返回按钮和标题\n2. **金额展示区** - 大号字体显示支付金额\n3. **支付方式选择** - 支持银行卡和电子钱包\n4. **底部确认按钮** - 固定在底部\n\n我将基于这些元素生成对应的 React 组件...')
         ];
         await injector.updateMessages(visionMessages as unknown as Message[]);
         await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-vision.png' });
@@ -214,11 +214,11 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
                     blocks: [
                         {
                             type: 'reasoning',
-                            content: '我将按照以下步骤进行：\n\n1. **分析需求**：用户需要一个 React 教程\n2. **搜索资源**：查找相关文档和示例\n3. **生成内容**：整理并输出教程\n\n```typescript\n// 示例代码\nconst App = () => <div>Hello Wave</div>;\n```'
+                            content: '用户需要对 PaymentService 进行重构以提高并发性能。我的分析步骤：\n\n1. **代码审查**：当前实现使用悲观锁，在高并发场景下会导致大量线程阻塞\n2. **性能分析**：数据库连接池在峰值时耗尽，平均响应时间 2.3s\n3. **重构方案**：\n   - 引入乐观锁替代悲观锁\n   - 添加 Redis 缓存层减少数据库访问\n   - 实现异步日志写入\n\n```typescript\n// 乐观锁实现示例\nconst withOptimisticLock = async <T>(\n  fn: (version: number) => Promise<T>\n): Promise<T> => {\n  const version = await getCurrentVersion();\n  return fn(version);\n};\n```'
                         },
                         {
                             type: 'text',
-                            content: '好的，这是一个关于 React 的基础教程...'
+                            content: '基于以上分析，我建议分三个阶段进行重构。首先从乐观锁机制开始...'
                         }
                     ]
                 }

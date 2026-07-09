@@ -9,8 +9,8 @@ test.describe('Configuration Popup Demo', () => {
                 configurationData: {
                     apiKey: '',
                     baseURL: '',
-                    model: 'gemini-3-flash',
-                    fastModel: 'gemini-2.5-flash'
+                    model: 'claude-sonnet-4-20250514',
+                    fastModel: 'claude-haiku-4-20250514'
                 },
                 error: '请先在设置中配置鉴权信息 (API Key 或 Headers) 和 Base URL。也可以通过环境变量 WAVE_API_KEY/WAVE_CUSTOM_HEADERS 和 WAVE_BASE_URL 进行配置。'
             });

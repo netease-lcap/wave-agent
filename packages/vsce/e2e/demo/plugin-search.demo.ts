@@ -18,36 +18,36 @@ test.describe('Plugin Search UI Demo', () => {
                 command: 'listPluginsResponse',
                 plugins: [
                     {
-                        id: 'commit-commands@wave-plugins-official',
-                        name: 'commit-commands',
-                        description: 'Commands for git commit workflows',
+                        id: 'git-workflow@wave-plugins-official',
+                        name: 'git-workflow',
+                        description: '集成 Git 工作流，支持智能提交信息和 PR 审查',
                         marketplace: 'wave-plugins-official',
                         installed: false,
-                        version: '1.0.0'
+                        version: '2.3.1'
                     },
                     {
-                        id: 'document-skills@wave-plugins-official',
-                        name: 'document-skills',
-                        description: 'Document processing suite including Excel and Word',
+                        id: 'kubernetes-helper@wave-plugins-official',
+                        name: 'kubernetes-helper',
+                        description: 'K8s 集群管理和 Pod 诊断工具',
                         marketplace: 'wave-plugins-official',
                         installed: false,
-                        version: '1.0.0'
+                        version: '1.8.0'
                     },
                     {
-                        id: 'typescript-lsp@wave-plugins-official',
-                        name: 'typescript-lsp',
-                        description: 'TypeScript language server for code intelligence',
-                        marketplace: 'wave-plugins-official',
+                        id: 'database-explorer@wave-community',
+                        name: 'database-explorer',
+                        description: '多数据库连接和智能查询工具',
+                        marketplace: 'wave-community',
                         installed: false,
-                        version: '1.0.0'
+                        version: '0.9.5'
                     },
                     {
-                        id: 'chrome-headless@wave-plugins-official',
-                        name: 'chrome-headless',
-                        description: 'Chrome DevTools Protocol for browser automation',
-                        marketplace: 'wave-plugins-official',
+                        id: 'api-docs-generator@wave-community',
+                        name: 'api-docs-generator',
+                        description: '自动生成 OpenAPI 文档',
+                        marketplace: 'wave-community',
                         installed: false,
-                        version: '1.0.0'
+                        version: '1.4.0'
                     }
                 ]
             }, '*');
@@ -61,14 +61,14 @@ test.describe('Plugin Search UI Demo', () => {
         // Screenshot of search input with all plugins
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugin-search-input.png' });
 
-        // 4. Type "commit" to filter
-        await searchInput.fill('commit');
+        // 4. Type "git" to filter
+        await searchInput.fill('git');
 
-        // Verify only commit-commands is shown
-        await expect(webviewPage.locator('.plugin-name', { hasText: 'commit-commands' })).toBeVisible();
-        await expect(webviewPage.locator('.plugin-name', { hasText: 'document-skills' })).not.toBeVisible();
-        await expect(webviewPage.locator('.plugin-name', { hasText: 'typescript-lsp' })).not.toBeVisible();
-        await expect(webviewPage.locator('.plugin-name', { hasText: 'chrome-headless' })).not.toBeVisible();
+        // Verify only git-workflow is shown
+        await expect(webviewPage.locator('.plugin-name', { hasText: 'git-workflow' })).toBeVisible();
+        await expect(webviewPage.locator('.plugin-name', { hasText: 'kubernetes-helper' })).not.toBeVisible();
+        await expect(webviewPage.locator('.plugin-name', { hasText: 'database-explorer' })).not.toBeVisible();
+        await expect(webviewPage.locator('.plugin-name', { hasText: 'api-docs-generator' })).not.toBeVisible();
 
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugin-search-filtered.png' });
 
@@ -80,7 +80,7 @@ test.describe('Plugin Search UI Demo', () => {
 
         // 6. Clear the search
         await searchInput.fill('');
-        await expect(webviewPage.locator('.plugin-name', { hasText: 'commit-commands' })).toBeVisible();
-        await expect(webviewPage.locator('.plugin-name', { hasText: 'document-skills' })).toBeVisible();
+        await expect(webviewPage.locator('.plugin-name', { hasText: 'git-workflow' })).toBeVisible();
+        await expect(webviewPage.locator('.plugin-name', { hasText: 'kubernetes-helper' })).toBeVisible();
     });
 });

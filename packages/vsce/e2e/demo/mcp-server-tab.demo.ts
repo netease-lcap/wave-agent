@@ -19,70 +19,70 @@ test.describe('MCP Server Dialog Demo', () => {
                 command: 'mcpServersResponse',
                 servers: [
                     {
-                        name: 'sqlite',
+                        name: 'jira',
+                        config: {
+                            command: 'npx',
+                            args: ['-y', '@mcp/server-jira'],
+                            env: { JIRA_API_TOKEN: 'your-token-here', JIRA_BASE_URL: 'https://nebula-tech.atlassian.net' }
+                        },
+                        status: 'connected',
+                        toolCount: 8,
+                        capabilities: ['tools'],
+                        lastConnected: Date.now() - 60000
+                    },
+                    {
+                        name: 'postgres',
                         config: {
                             command: 'uvx',
-                            args: ['mcp-server-sqlite', '--db-path', '/path/to/db.db']
+                            args: ['mcp-server-postgres', '--connection-string', 'postgresql://localhost:5432/nebula']
                         },
                         status: 'connected',
                         toolCount: 5,
                         capabilities: ['tools'],
-                        lastConnected: Date.now() - 60000
+                        lastConnected: Date.now() - 120000
                     },
                     {
                         name: 'github',
                         config: {
                             command: 'npx',
                             args: ['-y', '@modelcontextprotocol/server-github'],
-                            env: {
-                                GITHUB_PERSONAL_ACCESS_TOKEN: 'your-token-here'
-                            }
+                            env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_xxxxxxxxxxxx' }
                         },
                         status: 'disconnected',
                         toolCount: 0,
                         capabilities: []
                     },
                     {
-                        name: 'remote-server',
+                        name: 'sentry',
                         config: {
-                            url: 'https://mcp-server.example.com/sse'
+                            url: 'https://mcp.sentry.io/sse'
                         },
                         status: 'error',
                         toolCount: 0,
-                        error: 'Connection refused',
+                        error: 'Authentication failed: invalid token',
                         capabilities: []
-                    },
-                    {
-                        name: 'fetch',
-                        config: {
-                            command: 'npx',
-                            args: ['-y', '@mcp/server-fetch']
-                        },
-                        status: 'connecting',
-                        toolCount: 0,
-                        capabilities: ['tools']
                     }
                 ]
             }, '*');
         });
 
         // Verify all four servers are visible
-        await expect(webviewPage.getByText('sqlite', { exact: true })).toBeVisible();
+        await expect(webviewPage.getByText('jira', { exact: true })).toBeVisible();
         await expect(webviewPage.getByText('github', { exact: true })).toBeVisible();
-        await expect(webviewPage.getByText('remote-server', { exact: true })).toBeVisible();
-        await expect(webviewPage.getByText('fetch', { exact: true })).toBeVisible();
+        await expect(webviewPage.getByText('sentry', { exact: true })).toBeVisible();
+        await expect(webviewPage.getByText('postgres', { exact: true })).toBeVisible();
 
         // Verify connected server shows tool count
         await expect(webviewPage.getByText('5 tools')).toBeVisible();
 
         // Verify error server shows error message
-        await expect(webviewPage.getByText('Connection refused')).toBeVisible();
+        await expect(webviewPage.getByText('Authentication failed: invalid token')).toBeVisible();
 
         // Verify connect button for disconnected server (two servers are not connected)
         await expect(webviewPage.getByRole('button', { name: '连接' }).first()).toBeVisible();
 
         // Verify disconnect button for connected server
-        await expect(webviewPage.getByRole('button', { name: '断开' })).toBeVisible();
+        await expect(webviewPage.getByRole('button', { name: '断开' }).first()).toBeVisible();
 
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-mcp-server-tab.png' });
     });
@@ -126,8 +126,8 @@ test.describe('MCP Server Dialog Demo', () => {
                 command: 'mcpServersResponse',
                 servers: [
                     {
-                        name: 'sqlite',
-                        config: { command: 'uvx', args: ['mcp-server-sqlite'] },
+                        name: 'jira',
+                        config: { command: 'npx', args: ['-y', '@mcp/server-jira'] },
                         status: 'disconnected',
                         toolCount: 0,
                         capabilities: []
@@ -145,8 +145,8 @@ test.describe('MCP Server Dialog Demo', () => {
                 command: 'mcpServersResponse',
                 servers: [
                     {
-                        name: 'sqlite',
-                        config: { command: 'uvx', args: ['mcp-server-sqlite'] },
+                        name: 'jira',
+                        config: { command: 'npx', args: ['-y', '@mcp/server-jira'] },
                         status: 'connected',
                         toolCount: 5,
                         capabilities: ['tools'],

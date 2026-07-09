@@ -13,10 +13,10 @@ test.describe('Tool Error Scrollable Demo', () => {
             isStreaming: false,
             sessions: [],
             configurationData: {
-                apiKey: 'sk-xxxxxxxxxxxxxxxx',
-                baseURL: 'https://api.openai.com/v1',
-                model: 'gpt-4',
-                fastModel: 'gpt-3.5-turbo'
+                apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
             },
             permissionMode: 'default'
         });
@@ -30,8 +30,8 @@ test.describe('Tool Error Scrollable Demo', () => {
                     type: 'tool',
                     name: BASH_TOOL_NAME,
                     stage: 'end',
-                    compactParams: 'ls -R /',
-                    parameters: JSON.stringify({ command: 'ls -R /' }),
+                    compactParams: 'pnpm -F @nebula/payment-service build',
+                    parameters: JSON.stringify({ command: 'pnpm -F @nebula/payment-service build' }),
                     error: longError,
                     success: false
                 }
@@ -65,10 +65,10 @@ test.describe('Tool Error Scrollable Demo', () => {
             isStreaming: false,
             sessions: [],
             configurationData: {
-                apiKey: 'sk-xxxxxxxxxxxxxxxx',
-                baseURL: 'https://api.openai.com/v1',
-                model: 'gpt-4',
-                fastModel: 'gpt-3.5-turbo'
+                apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
             },
             permissionMode: 'default'
         });
