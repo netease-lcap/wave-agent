@@ -223,6 +223,60 @@ export function getDefaultRemoteBranch(cwd: string): string {
 }
 
 /**
+ * Module-level set tracking git dirs already processed in this process,
+ * to avoid redundant I/O.
+ */
+const excludedGitDirs = new Set<string>();
+
+/**
+ * Ensure that Wave runtime files are excluded from git status by writing
+ * patterns to `.git/info/exclude` (per-repo, not global).
+ *
+ * Idempotent: if the marker `# wave-runtime` is already present in the
+ * exclude file, it skips writing. A module-level Set provides additional
+ * per-process dedup to avoid redundant file reads.
+ *
+ * @param cwd Working directory to start searching from
+ */
+export function ensureWaveRuntimeFilesExcluded(cwd: string): void {
+  try {
+    const gitDir = resolveGitDir(cwd);
+    if (!gitDir) return;
+
+    if (excludedGitDirs.has(gitDir)) return;
+
+    const excludePath = path.join(gitDir, "info", "exclude");
+    let content = "";
+    try {
+      content = fsSync.readFileSync(excludePath, "utf8");
+    } catch {
+      // File doesn't exist yet
+    }
+
+    const marker = "# wave-runtime";
+    if (content.includes(marker)) {
+      excludedGitDirs.add(gitDir);
+      return;
+    }
+
+    const block = [
+      marker,
+      "**/.wave/scheduled_tasks.lock",
+      "**/.wave/scheduled_tasks.json",
+      "**/.wave/worktrees/",
+      "**/.wave/settings.local.json",
+      "",
+    ].join("\n");
+
+    fsSync.mkdirSync(path.join(gitDir, "info"), { recursive: true });
+    fsSync.appendFileSync(excludePath, block);
+    excludedGitDirs.add(gitDir);
+  } catch {
+    // Best-effort: ignore all errors
+  }
+}
+
+/**
  * Check if there are uncommitted changes in the working directory
  * @param cwd Working directory
  * @returns True if there are uncommitted changes

@@ -47,6 +47,7 @@ import {
   mergeRemoteSettings,
 } from "./remoteSettingsService.js";
 import { createAuthAwareFetch } from "./authService.js";
+import { ensureWaveRuntimeFilesExcluded } from "../utils/gitUtils.js";
 
 /**
  * Default ConfigurationService implementation
@@ -791,6 +792,7 @@ export class ConfigurationService {
 
     // Ensure .wave directory exists
     const waveDir = path.join(workdir, ".wave");
+    ensureWaveRuntimeFilesExcluded(workdir);
     if (!existsSync(waveDir)) {
       await fs.mkdir(waveDir, { recursive: true });
     }

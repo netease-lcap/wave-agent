@@ -6,7 +6,11 @@
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { getGitMainRepoRoot, getDefaultRemoteBranch } from "./gitUtils.js";
+import {
+  getGitMainRepoRoot,
+  getDefaultRemoteBranch,
+  ensureWaveRuntimeFilesExcluded,
+} from "./gitUtils.js";
 import { logger } from "./globalLogger.js";
 
 export interface WorktreeInfo {
@@ -104,6 +108,9 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
   const worktreePath = path.join(repoRoot, ".wave", "worktrees", name);
   const branchName = `worktree-${name}`;
   const baseBranch = getDefaultRemoteBranch(cwd);
+
+  // Ensure Wave runtime files are git-excluded in this repo
+  ensureWaveRuntimeFilesExcluded(cwd);
 
   // Ensure parent directory exists
   const parentDir = path.dirname(worktreePath);
