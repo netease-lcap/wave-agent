@@ -14,6 +14,8 @@ Thumbs.db
 nohup.out
 .wave/settings.local.json
 .wave/worktrees/
+.wave/scheduled_tasks.json
+.wave/scheduled_tasks.lock
 vendor/
 
 # VS Code Extension

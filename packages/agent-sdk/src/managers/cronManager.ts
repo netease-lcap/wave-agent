@@ -15,6 +15,7 @@ import {
   releaseSchedulerLock,
   registerSchedulerLockCleanup,
 } from "../utils/cronTasksLock.js";
+import { ensureWaveRuntimeFilesExcluded } from "../utils/gitUtils.js";
 
 export class CronManager {
   private jobs = new Map<string, CronJob>();
@@ -100,6 +101,7 @@ export class CronManager {
   }
 
   private tryLock(workdir: string): void {
+    ensureWaveRuntimeFilesExcluded(workdir);
     tryAcquireSchedulerLock({ dir: workdir, sessionId: this.sessionId })
       .then((acquired) => {
         if (acquired) {

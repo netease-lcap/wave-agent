@@ -13,10 +13,8 @@ import { ConfigurationService } from "../../src/services/configurationService.js
 import { FileWatcherService } from "../../src/services/fileWatcher.js";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
 import * as configPaths from "../../src/utils/configPaths.js";
-import { ensureGlobalGitIgnore } from "../../src/utils/fileUtils.js";
 import type { WaveConfiguration } from "../../src/types/configuration.js";
 import type { ConfigurationLoadResult } from "../../src/types/configuration.js";
-import { existsSync } from "fs";
 import { logger } from "../../src/utils/globalLogger.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -32,7 +30,6 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 vi.mock("../../src/services/configurationService.js");
 vi.mock("../../src/services/fileWatcher.js");
 vi.mock("../../src/utils/configPaths.js");
-vi.mock("../../src/utils/fileUtils.js");
 vi.mock("fs", () => ({
   existsSync: vi.fn().mockReturnValue(false),
 }));
@@ -367,129 +364,6 @@ describe("LiveConfigManager - Configuration Management", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Configuration reload failed with exception"),
       );
-    });
-  });
-
-  describe("GitIgnore Integration", () => {
-    it("should add settings.local.json to global gitignore on initialization if it exists", async () => {
-      const localConfigPath = "/mock/project/.wave/settings.local.json";
-      vi.mocked(mockConfigurationService.getConfigurationPaths).mockReturnValue(
-        {
-          userPaths: [],
-          projectPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
-          builtinPaths: [],
-          allPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
-          existingPaths: [localConfigPath],
-        },
-      );
-      vi.mocked(existsSync).mockImplementation(
-        (path) => path === localConfigPath,
-      );
-
-      const mockResult: ConfigurationLoadResult = {
-        success: true,
-        configuration: {},
-        sourcePath: "/mock/project/.wave/settings.json",
-        warnings: [],
-      };
-      vi.mocked(
-        mockConfigurationService.loadMergedConfiguration,
-      ).mockResolvedValue(mockResult);
-
-      await liveConfigManager.initialize();
-
-      expect(ensureGlobalGitIgnore).toHaveBeenCalledWith(
-        "**/.wave/settings.local.json",
-      );
-    });
-
-    it("should add settings.local.json to global gitignore when it is created", async () => {
-      const localConfigPath = "/mock/project/.wave/settings.local.json";
-      vi.mocked(mockConfigurationService.getConfigurationPaths).mockReturnValue(
-        {
-          userPaths: [],
-          projectPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
-          builtinPaths: [],
-          allPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
-          existingPaths: [localConfigPath],
-        },
-      );
-
-      const mockResult: ConfigurationLoadResult = {
-        success: true,
-        configuration: {},
-        sourcePath: "/mock/project/.wave/settings.json",
-        warnings: [],
-      };
-      vi.mocked(
-        mockConfigurationService.loadMergedConfiguration,
-      ).mockResolvedValue(mockResult);
-
-      // Let's mock existsSync to return true so it starts watching
-      vi.mocked(existsSync).mockReturnValue(true);
-      await liveConfigManager.initialize();
-
-      const localConfigCall = vi
-        .mocked(mockFileWatcherService.watchFile)
-        .mock.calls.find((call) => call[0].endsWith("settings.local.json"));
-
-      expect(localConfigCall).toBeDefined();
-      const callback = localConfigCall![1];
-
-      // Simulate file creation
-      await callback({
-        type: "create",
-        path: "/mock/project/.wave/settings.local.json",
-        timestamp: Date.now(),
-      });
-
-      expect(ensureGlobalGitIgnore).toHaveBeenCalledWith(
-        "**/.wave/settings.local.json",
-      );
-    });
-
-    it("should not add settings.local.json to global gitignore when it is modified", async () => {
-      const localConfigPath = "/mock/project/.wave/settings.local.json";
-      vi.mocked(mockConfigurationService.getConfigurationPaths).mockReturnValue(
-        {
-          userPaths: [],
-          projectPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
-          builtinPaths: [],
-          allPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
-          existingPaths: [localConfigPath],
-        },
-      );
-
-      const mockResult: ConfigurationLoadResult = {
-        success: true,
-        configuration: {},
-        sourcePath: "/mock/project/.wave/settings.json",
-        warnings: [],
-      };
-      vi.mocked(
-        mockConfigurationService.loadMergedConfiguration,
-      ).mockResolvedValue(mockResult);
-
-      vi.mocked(existsSync).mockReturnValue(true);
-      await liveConfigManager.initialize();
-
-      const localConfigCall = vi
-        .mocked(mockFileWatcherService.watchFile)
-        .mock.calls.find((call) => call[0].endsWith("settings.local.json"));
-
-      const callback = localConfigCall![1];
-
-      // Reset mock to clear calls from initialization
-      vi.mocked(ensureGlobalGitIgnore).mockClear();
-
-      // Simulate file modification
-      await callback({
-        type: "change",
-        path: "/mock/project/.wave/settings.local.json",
-        timestamp: Date.now(),
-      });
-
-      expect(ensureGlobalGitIgnore).not.toHaveBeenCalled();
     });
   });
 

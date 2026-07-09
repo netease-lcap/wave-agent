@@ -9,6 +9,7 @@ import {
   resolveGitDir,
   hasUncommittedChanges,
   hasNewCommits,
+  ensureWaveRuntimeFilesExcluded,
 } from "../../src/utils/gitUtils.js";
 
 vi.mock("node:child_process", () => ({
@@ -21,6 +22,7 @@ vi.mock("node:fs", () => ({
   statSync: vi.fn(),
   readdirSync: vi.fn(),
   mkdirSync: vi.fn(),
+  appendFileSync: vi.fn(),
 }));
 
 describe("gitUtils", () => {
@@ -280,6 +282,70 @@ describe("gitUtils", () => {
         "" as unknown as ReturnType<typeof execFileSync>,
       );
       expect(hasNewCommits("/repo/root", "origin/main")).toBe(false);
+    });
+  });
+
+  describe("ensureWaveRuntimeFilesExcluded", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("should write marker + patterns to info/exclude when marker absent", () => {
+      const gitDir = "/repo/write-test/.git";
+      const excludePath = path.join(gitDir, "info", "exclude");
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) => p === path.join("/repo/write-test", ".git"),
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
+      // exclude file doesn't exist yet (readFileSync throws)
+      vi.mocked(fsSync.readFileSync).mockImplementation(() => {
+        throw new Error("ENOENT");
+      });
+
+      ensureWaveRuntimeFilesExcluded("/repo/write-test");
+
+      expect(fsSync.mkdirSync).toHaveBeenCalledWith(path.join(gitDir, "info"), {
+        recursive: true,
+      });
+      expect(fsSync.appendFileSync).toHaveBeenCalledWith(
+        excludePath,
+        expect.stringContaining("# wave-runtime"),
+      );
+      expect(fsSync.appendFileSync).toHaveBeenCalledWith(
+        excludePath,
+        expect.stringContaining("**/.wave/scheduled_tasks.lock"),
+      );
+      expect(fsSync.appendFileSync).toHaveBeenCalledWith(
+        excludePath,
+        expect.stringContaining("**/.wave/settings.local.json"),
+      );
+    });
+
+    it("should skip when marker already present (idempotent)", () => {
+      vi.mocked(fsSync.existsSync).mockImplementation(
+        (p) => p === path.join("/repo/idempotent-test", ".git"),
+      );
+      vi.mocked(fsSync.statSync).mockReturnValue({
+        isDirectory: () => true,
+      } as unknown as fsSync.Stats);
+      vi.mocked(fsSync.readFileSync).mockReturnValue(
+        "# wave-runtime\n**/.wave/settings.local.json\n",
+      );
+
+      ensureWaveRuntimeFilesExcluded("/repo/idempotent-test");
+
+      expect(fsSync.appendFileSync).not.toHaveBeenCalled();
+    });
+
+    it("should be a no-op when not a git repo (resolveGitDir returns null)", () => {
+      vi.mocked(fsSync.existsSync).mockReturnValue(false);
+
+      ensureWaveRuntimeFilesExcluded("/some/non-repo/path");
+
+      expect(fsSync.readFileSync).not.toHaveBeenCalled();
+      expect(fsSync.appendFileSync).not.toHaveBeenCalled();
     });
   });
 });

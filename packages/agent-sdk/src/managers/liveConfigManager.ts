@@ -17,7 +17,6 @@ import type { HookManager } from "./hookManager.js";
 import type { PermissionManager } from "./permissionManager.js";
 import { isValidHookEvent } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";
-import { ensureGlobalGitIgnore } from "../utils/fileUtils.js";
 import { Container } from "../utils/container.js";
 
 import type {
@@ -97,9 +96,6 @@ export class LiveConfigManager {
       if (projectPaths) {
         for (const projectPath of projectPaths) {
           if (existsSync(projectPath)) {
-            if (projectPath.endsWith("settings.local.json")) {
-              await ensureGlobalGitIgnore("**/.wave/settings.local.json");
-            }
             await this.fileWatcher.watchFile(projectPath, (event) =>
               this.handleFileChange(event, "project"),
             );
@@ -364,14 +360,6 @@ export class LiveConfigManager {
 
       // Handle file creation or modification
       if (event.type === "change" || event.type === "create") {
-        if (
-          source === "project" &&
-          event.path.endsWith("settings.local.json") &&
-          event.type === "create"
-        ) {
-          await ensureGlobalGitIgnore("**/.wave/settings.local.json");
-        }
-
         // Add small delay to ensure file write is complete
         await new Promise((resolve) => setTimeout(resolve, 50));
 
