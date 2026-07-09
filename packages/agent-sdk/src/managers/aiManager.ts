@@ -3,6 +3,7 @@ import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
+import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
   getTaskReminderTurnCounts,
   maybeInjectTaskReminder,
@@ -606,7 +607,7 @@ export class AIManager {
     );
     let usedTokens = 0;
     for (const file of recentFiles) {
-      const fileTokens = Math.ceil(file.content.length / 4);
+      const fileTokens = estimateTokens(file.content);
       if (usedTokens + fileTokens > POST_COMPACT_MAX_TOKENS_PER_FILE) continue;
       if (fileTokens > 0) usedTokens += fileTokens;
       contextParts.push(`\n\n## ${file.path}\n\`\`\`\n${file.content}\n\`\`\``);
@@ -639,7 +640,7 @@ export class AIManager {
               skillContent.slice(0, maxSkillChars) + "\n\n...[truncated]...";
           }
 
-          const skillTokens = Math.ceil(skillContent.length / 4);
+          const skillTokens = estimateTokens(skillContent);
           if (skillsUsedTokens + skillTokens > POST_COMPACT_SKILLS_TOKEN_BUDGET)
             break;
           skillsUsedTokens += skillTokens;

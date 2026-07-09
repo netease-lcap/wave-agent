@@ -5,6 +5,7 @@ import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { formatLineNumberPrefix } from "../utils/stringUtils.js";
+import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
   isBinaryDocument,
   getBinaryDocumentError,
@@ -267,14 +268,11 @@ Usage:
         }
       }
 
-      // Resource Limits
+      // Resource Limits — align with Claude Code: 256KB default, bypassed only
+      // when the caller provides an explicit line limit (not offset alone).
       const maxSizeBytes =
-        context.fileReadingLimits?.maxSizeBytes ?? 1024 * 1024; // Default 1MB
-      if (
-        stats.size > maxSizeBytes &&
-        typeof offset !== "number" &&
-        typeof limit !== "number"
-      ) {
+        context.fileReadingLimits?.maxSizeBytes ?? 0.25 * 1024 * 1024; // Default 256KB
+      if (stats.size > maxSizeBytes && typeof limit !== "number") {
         return {
           success: false,
           content: "",
@@ -357,11 +355,7 @@ Usage:
       // Token-level validation: estimate tokens and reject if over limit
       const maxTokens = context.fileReadingLimits?.maxTokens ?? 25000; // Default 25000 tokens
       const ext = extname(actualFilePath).toLowerCase().slice(1);
-      const bytesPerToken =
-        ext === "json" || ext === "jsonl" || ext === "jsonc" ? 2 : 4;
-      const estimatedTokens = Math.ceil(
-        formattedContent.length / bytesPerToken,
-      );
+      const estimatedTokens = estimateTokens(formattedContent, ext);
       if (estimatedTokens > maxTokens) {
         return {
           success: false,

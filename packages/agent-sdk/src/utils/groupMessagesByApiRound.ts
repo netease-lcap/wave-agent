@@ -1,4 +1,5 @@
 import type { Message } from "../types/index.js";
+import { estimateTokens as estimateStrTokens } from "./tokenEstimate.js";
 
 export interface ApiRound {
   messages: Message[];
@@ -95,26 +96,26 @@ export function getLastApiRounds(
 }
 
 /**
- * Roughly estimate token count from character count (~4 chars per token).
+ * Estimate token count from message blocks using CJK-aware estimation.
  */
 function estimateTokens(messages: Message[]): number {
-  let chars = 0;
+  let combined = "";
   for (const msg of messages) {
     for (const block of msg.blocks) {
       if ("content" in block && typeof block.content === "string") {
-        chars += block.content.length;
+        combined += block.content;
       }
       if (
         block.type === "tool" &&
         block.parameters &&
         typeof block.parameters === "string"
       ) {
-        chars += block.parameters.length;
+        combined += block.parameters;
       }
       if (block.type === "tool" && block.result) {
-        chars += block.result.length;
+        combined += block.result;
       }
     }
   }
-  return Math.ceil(chars / 4);
+  return estimateStrTokens(combined);
 }

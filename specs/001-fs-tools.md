@@ -59,7 +59,7 @@
 
 ### 边界情况
 
-- **大文件**：读取超出内存限制或令牌窗口的文件。通过 `offset` 和 `limit` 处理。如果估计令牌超过 `maxTokens`，工具返回错误并建议使用 offset/limit 或 grep/jq。
+- **大文件**：读取超出内存限制或令牌窗口的文件。文件大小超过 256KB 且未显式提供 `limit` 参数时，工具直接返回错误。通过 `offset` 和 `limit` 分页读取。如果估计令牌超过 `maxTokens`，工具返回错误并建议使用 offset/limit 或 grep/jq。
 - **二进制文档**：尝试读取 PDF、DOCX 或其他不支持的二进制格式。工具必须阻止此操作并返回错误。
 - **不匹配分析**：当未找到 `old_string` 时，`Edit` 工具必须提供详细的不匹配报告，包括尝试的字符串（截断为 200 个字符）以帮助模型自我纠正。
 - **编辑前读取**：`Edit` 工具必须拒绝编辑在当前对话中尚未读取的文件，防止盲目编辑。
@@ -72,9 +72,9 @@
 ### 功能需求
 
 - **FR-001**：系统必须提供 `Read` 工具，支持文本、图片（PNG、JPEG、GIF、WebP）和 Jupyter 笔记本。
-- **FR-002**：`Read` 工具必须支持通过 `offset` 和 `limit` 进行分页，强制执行令牌级验证（估计令牌不得超过 `maxTokens`，默认 25000，来自 `context.fileReadingLimits.maxTokens`；JSON/JSONL/JSONC 的 bytesPerToken 为 2，其他文件为 4），并提供结构化元数据。
+- **FR-002**：`Read` 工具必须支持通过 `offset` 和 `limit` 进行分页，强制执行令牌级验证（使用 CJK 感知的 `estimateTokens` 估算令牌数，不得超过 `maxTokens`，默认 25000，来自 `context.fileReadingLimits.maxTokens`；CJK 字符按 1 字符≈1 令牌计算，其他字符 JSON/JSONL/JSONC 按 2 字符/令牌、其余按 4 字符/令牌计算），并提供结构化元数据。
 - **FR-018**：`Read` 工具必须支持去重，通过检查文件修改时间并在未变化时返回最小响应。
-- **FR-019**：`Read` 工具必须强制执行资源限制（例如默认 1MB）用于完整文件读取。
+- **FR-019**：`Read` 工具必须强制执行资源限制（默认 256KB）用于文件读取。仅当调用方显式提供 `limit` 参数时跳过大小检查，仅提供 `offset` 不跳过。
 - **FR-015**：`Read` 工具必须通过扩展名不区分大小写地检测图片文件并将内容转换为 base64 编码。
 - **FR-016**：`Read` 工具必须使用 base64 数据和正确的 MIME 类型填充 `ToolResult.images` 数组。
 - **FR-017**：`Read` 工具必须对图片文件强制执行 20MB 的文件大小限制。
