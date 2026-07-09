@@ -12,23 +12,23 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         // Provide initial state
         await injector.simulateExtensionMessage('setInitialState', {
             messages: [
-                MockDataGenerator.createUserMessage('请帮我重构这个函数'),
-                MockDataGenerator.createAssistantMessage('好的，我正在分析代码并准备重构建议...')
+                MockDataGenerator.createUserMessage('帮我分析 PaymentService 的分布式事务实现，看看有没有竞态条件'),
+                MockDataGenerator.createAssistantMessage('好的，我正在扫描支付服务代码，分析事务边界和并发控制机制...')
             ],
             isStreaming: true,
             sessions: [],
             configurationData: {
-                apiKey: 'sk-xxxxxxxxxxxxxxxx',
-                baseURL: 'https://api.openai.com/v1',
-                model: 'gpt-4',
-                fastModel: 'gpt-3.5-turbo'
+                apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
             },
             permissionMode: 'default'
         });
 
         // 1. Show "Add to Queue" button in input
         await webviewPage.focus('[data-testid="message-input"]');
-        await webviewPage.keyboard.type('顺便帮我写个测试用例');
+        await webviewPage.keyboard.type('顺便帮我写一个乐观锁中间件的单元测试，参考 [file:src/services/payment/PaymentService.ts] 和 [image1]');
         
         // Wait for the button to update and focus it for screenshot
         const sendBtn = webviewPage.getByTestId('send-btn');
@@ -42,7 +42,7 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         await injector.simulateExtensionMessage('updateQueue', {
             queue: [
                 { 
-                    content: '顺便帮我写个测试用例，参考 [@file:src/utils.ts] 和 [image1]',
+                    content: '顺便帮我写一个乐观锁中间件的单元测试，参考 [file:src/services/payment/PaymentService.ts] 和 [image1]',
                     images: [{ path: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', mimeType: 'image/png' }]
                 }
             ]
@@ -54,7 +54,7 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         // Wait for the queued message to appear in the queue panel
         const queuePanel = webviewPage.getByTestId('queued-message-list');
         await expect(queuePanel).toBeVisible();
-        await expect(queuePanel).toContainText('utils.ts');
+        await expect(queuePanel).toContainText('PaymentService.ts');
         await expect(queuePanel).toContainText('图片 1');
         
         // Take screenshot of the message list showing the queued message with tags

@@ -25,7 +25,7 @@ test.describe('Model Dialog Demo', () => {
         await webviewPage.evaluate(() => {
             window.simulateExtensionMessage({
                 command: 'configuredModelsResponse',
-                models: ['claude-sonnet-4-20250514', 'claude-haiku-4-20250514', 'gpt-4', 'gpt-4-mini']
+                models: ['claude-sonnet-4-20250514', 'claude-haiku-4-20250514', 'claude-opus-4-20250514', 'gpt-4o', 'gpt-4o-mini']
             });
         });
 
@@ -62,7 +62,7 @@ test.describe('Model Dialog Demo', () => {
         await webviewPage.evaluate(() => {
             window.simulateExtensionMessage({
                 command: 'configuredModelsResponse',
-                models: ['gpt-4', 'gpt-4-mini']
+                models: ['claude-sonnet-4-20250514', 'claude-haiku-4-20250514']
             });
         });
 

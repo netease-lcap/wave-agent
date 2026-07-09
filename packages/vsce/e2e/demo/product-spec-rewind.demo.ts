@@ -10,9 +10,9 @@ test.describe('Product Spec: Rewind', () => {
 
         // Setup a conversation
         const messages = [
-            MockDataGenerator.createUserMessage('帮我重构一下这个函数'),
-            MockDataGenerator.createAssistantMessage('好的，我来看看这个函数...'),
-            MockDataGenerator.createUserMessage('再帮我写个测试用例')
+            MockDataGenerator.createUserMessage('帮我分析 PaymentService 的并发问题，看看有没有竞态条件'),
+            MockDataGenerator.createAssistantMessage('我已经分析了 PaymentService 的代码，发现 `processPayment` 方法中存在竞态条件。当前的悲观锁实现会导致高并发下性能下降，建议改用乐观锁...'),
+            MockDataGenerator.createUserMessage('好的，请为乐观锁实现编写单元测试，覆盖并发冲突场景')
         ];
         await injector.updateMessages(messages);
         await injector.endStreaming();

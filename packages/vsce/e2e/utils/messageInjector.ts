@@ -58,7 +58,7 @@ export class MessageInjector {
         const abortedMessage: Message = {
             id: `msg_abort_${Date.now()}`,
             role: 'assistant' as const,
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [
                 {
                     type: 'error' as const,

@@ -24,7 +24,7 @@ export class MockDataGenerator {
         return {
             id: id || `msg_${Math.random().toString(36).substring(2, 9)}`,
             role: "user",
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [textBlock]
         };
     }
@@ -41,7 +41,7 @@ export class MockDataGenerator {
         return {
             id: id || `msg_${Math.random().toString(36).substring(2, 9)}`,
             role: "assistant",
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [textBlock]
         };
     }
@@ -78,7 +78,7 @@ export class MockDataGenerator {
         return {
             id: `msg_${Math.random().toString(36).substring(2, 9)}`,
             role: "assistant",
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: blocks
         };
     }
@@ -95,7 +95,7 @@ export class MockDataGenerator {
         return {
             id: `msg_${Math.random().toString(36).substring(2, 9)}`,
             role: "assistant",
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [errorBlock]
         };
     }
@@ -112,7 +112,7 @@ export class MockDataGenerator {
         return {
             id: `msg_${Math.random().toString(36).substring(2, 9)}`,
             role: "assistant",
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [textBlock]
         };
     }
@@ -155,7 +155,7 @@ export class MockDataGenerator {
         return {
             id: `msg_${Math.random().toString(36).substring(2, 9)}`,
             role: "assistant",
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: blocks
         };
     }
@@ -216,7 +216,7 @@ export class MockDataGenerator {
         return {
             id: `msg_${Math.random().toString(36).substring(2, 9)}`,
             role: "assistant",
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: blocks
         };
     }
@@ -227,7 +227,7 @@ export class MockDataGenerator {
         return {
             id: `msg_${Math.random().toString(36).substring(2, 9)}`,
             role: "user",
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [{
                 type: "bang",
                 command,
@@ -274,21 +274,21 @@ export class MockDataGenerator {
         return {
             id: `msg_${Math.random().toString(36).substring(2, 9)}`,
             role: "assistant",
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks
         };
     }
 
     static createSampleConversation(): Message[] {
         return [
-            this.createUserMessage("Hello, can you help me with my project?"),
-            this.createAssistantMessage("Hello! I'd be happy to help you with your project. What would you like to know?"),
-            this.createUserMessage("Can you read the package.json file?"),
+            this.createUserMessage("帮我分析 PaymentService 的分布式事务实现，看看有没有竞态条件"),
+            this.createAssistantMessage("好的，我来分析 PaymentService 的分布式事务实现。让我先读取相关代码。"),
+            this.createUserMessage("请检查 src/services/payment/PaymentService.ts 中的事务逻辑"),
             this.createAssistantMessageWithTool(
-                "I'll read the package.json file for you.", 
+                "好的，我来读取 PaymentService.ts 的代码。",
                 READ_TOOL_NAME,
-                '{"file_path": "/project/package.json"}',
-                '{"name": "test-project", "version": "1.0.0"}'
+                '{"file_path": "src/services/payment/PaymentService.ts"}',
+                'class PaymentService {\n  private txManager: TransactionManager;\n\n  async processPayment(tx: PaymentTx): Promise<Result> {\n    const session = this.txManager.startSession();\n    try {\n      await session.withTransaction(async () => {\n        const account = await AccountModel.findById(tx.accountId).session(session);\n        account.balance -= tx.amount;\n        await account.save({ session });\n      });\n      return { success: true, txId: tx.id };\n    } finally {\n      await session.endSession();\n    }\n  }\n}'
             )
         ];
     }

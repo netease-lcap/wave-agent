@@ -25,10 +25,10 @@ test.describe('Product Specification Screenshots - Tools', () => {
             isStreaming: false,
             sessions: [],
             configurationData: {
-                apiKey: 'sk-xxxxxxxxxxxxxxxx',
-                baseURL: 'https://api.openai.com/v1',
-                model: 'gpt-4',
-                fastModel: 'gpt-3.5-turbo'
+                apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
             },
             permissionMode: 'default'
         });
@@ -37,17 +37,17 @@ test.describe('Product Specification Screenshots - Tools', () => {
         const diffMessage: Message = {
             id: 'msg_demo_diff',
             role: 'assistant',
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [
                 {
                     type: 'tool',
                     name: EDIT_TOOL_NAME,
                     stage: 'end',
-                    compactParams: 'src/main.ts',
+                    compactParams: 'src/services/payment/PaymentService.ts',
                     parameters: JSON.stringify({
-                        file_path: 'src/main.ts',
-                        old_string: 'console.log("Hello, World!");',
-                        new_string: 'console.log("Hello, Wave!");'
+                        file_path: 'src/services/payment/PaymentService.ts',
+                        old_string: 'const result = await this.db.query("SELECT * FROM payments WHERE id = ?", tx.id);',
+                        new_string: 'const result = await this.db.query("SELECT * FROM payments WHERE id = $1", [tx.id]);'
                     }),
                     result: 'Text replaced successfully'
                 }
@@ -60,9 +60,9 @@ test.describe('Product Specification Screenshots - Tools', () => {
         // 7. Task List
         await injector.simulateExtensionMessage('updateTasks', {
             tasks: [
-                { id: '1', subject: '搜索相关文件', description: '查找项目中与任务列表相关的组件和样式文件', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
-                { id: '2', subject: '实现任务列表组件', description: '编写 React 组件和 CSS 样式', status: 'in_progress', activeForm: '编写 CSS', blocks: ['3'], blockedBy: [], metadata: {} },
-                { id: '3', subject: '运行测试', description: '确保新功能正常工作且不影响现有功能', status: 'pending', blocks: [], blockedBy: ['2'], metadata: {} }
+                { id: '1', subject: '分析现有支付服务架构', description: '审查 PaymentService 的分布式事务实现，识别竞态条件和性能瓶颈', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
+                { id: '2', subject: '实现乐观锁机制', description: '为支付服务引入版本号控制，防止并发更新冲突', status: 'in_progress', activeForm: '编写乐观锁中间件', blocks: ['3'], blockedBy: [], metadata: {} },
+                { id: '3', subject: '编写集成测试', description: '覆盖并发支付场景，验证乐观锁和事务回滚的正确性', status: 'pending', blocks: [], blockedBy: ['2'], metadata: {} }
             ],
             isTaskListCollapsed: false
         });
@@ -72,9 +72,9 @@ test.describe('Product Specification Screenshots - Tools', () => {
         // 7.1 Task List Collapsed
         await injector.simulateExtensionMessage('updateTasks', {
             tasks: [
-                { id: '1', subject: '搜索相关文件', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
-                { id: '2', subject: '实现任务列表组件', status: 'in_progress', blocks: ['3'], blockedBy: [], metadata: {} },
-                { id: '3', subject: '运行测试', status: 'pending', blocks: [], blockedBy: ['2'], metadata: {} }
+                { id: '1', subject: '分析现有支付服务架构', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
+                { id: '2', subject: '实现乐观锁机制', status: 'in_progress', blocks: ['3'], blockedBy: [], metadata: {} },
+                { id: '3', subject: '编写集成测试', status: 'pending', blocks: [], blockedBy: ['2'], metadata: {} }
             ],
             isTaskListCollapsed: true
         });
@@ -95,15 +95,15 @@ test.describe('Product Specification Screenshots - Tools', () => {
         const subagentMessage: Message = {
             id: 'msg_demo_subagent',
             role: 'assistant',
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [
                 {
                     type: 'tool',
                     name: AGENT_TOOL_NAME,
                     stage: 'running',
-                    compactParams: 'Explore: 查找所有 API 定义',
-                    parameters: JSON.stringify({ subagent_type: 'Explore', description: '查找所有 API 定义', prompt: '...' }),
-                    shortResult: '...Read, Write (2 tools | 1,234 tokens)'
+                    compactParams: 'Explore: 查找所有支付相关 API 定义',
+                    parameters: JSON.stringify({ subagent_type: 'Explore', description: '查找所有支付相关 API 定义', prompt: '...' }),
+                    shortResult: '...Read, Grep (2 tools | 3,421 tokens)'
                 }
             ]
         };
@@ -116,15 +116,15 @@ test.describe('Product Specification Screenshots - Tools', () => {
         const bashMessage: Message = {
             id: 'msg_demo_bash',
             role: 'assistant',
-            timestamp: '2024-01-01T00:00:00.000Z',
+            timestamp: '2025-07-09T10:30:00.000Z',
             blocks: [
                 {
                     type: 'tool',
                     name: BASH_TOOL_NAME,
                     stage: 'end',
-                    compactParams: '运行测试',
-                    parameters: JSON.stringify({ command: 'npm test', description: '运行测试' }),
-                    result: 'PASS  tests/index.test.ts\n  ✓ should work (5ms)\n\nTest Suites: 1 passed, 1 total\nTests:       1 passed, 1 total\nSnapshots:   0 total\nTime:        1.2s'
+                    compactParams: 'pnpm test -- --coverage',
+                    parameters: JSON.stringify({ command: 'pnpm test -- --coverage', description: '运行测试套件并生成覆盖率报告' }),
+                    result: ' RUN  v3.1.0 /home/dev/projects/nebula-platform\n\n ✓ src/services/payment/PaymentService.test.ts (8 tests) 142ms\n ✓ src/utils/eventBus.test.ts (5 tests) 67ms\n ✓ src/middleware/optimisticLock.test.ts (3 tests) 89ms\n\n Test Files  3 passed (3)\n      Tests  16 passed (16)\n   Coverage  94.2% Statements\n              87.5% Branches\n              92.1% Functions\n Duration   2.4s'
                 }
             ]
         };
@@ -137,43 +137,43 @@ test.describe('Product Specification Screenshots - Tools', () => {
             {
                 id: 'msg_demo_exploration',
                 role: 'assistant',
-                timestamp: '2024-01-01T00:00:00.000Z',
+                timestamp: '2025-07-09T10:30:00.000Z',
                 blocks: [
                     {
                         type: 'tool',
                         name: AGENT_TOOL_NAME,
                         stage: 'end',
-                        compactParams: 'Explore: 查找所有 API 定义',
-                        parameters: JSON.stringify({ subagent_type: 'Explore', description: '查找所有 API 定义', prompt: '...' }),
-                        result: '子代理已完成探索',
-                        shortResult: '子代理已完成探索'
+                        compactParams: 'Explore: 查找所有支付相关 API 定义',
+                        parameters: JSON.stringify({ subagent_type: 'Explore', description: '查找所有支付相关 API 定义', prompt: '...' }),
+                        result: '子代理已扫描 42 个文件，识别出 12 个支付相关接口定义',
+                        shortResult: '子代理已扫描 42 个文件，识别出 12 个支付相关接口定义'
                     },
                     {
                         type: 'tool',
                         name: GLOB_TOOL_NAME,
                         stage: 'end',
-                        compactParams: 'src/**/*.ts in src',
-                        parameters: JSON.stringify({ pattern: 'src/**/*.ts', path: 'src' }),
-                        result: 'src/main.ts\nsrc/app.tsx\nsrc/utils.ts',
+                        compactParams: 'src/services/**/*.ts in src',
+                        parameters: JSON.stringify({ pattern: 'src/services/**/*.ts', path: 'src' }),
+                        result: 'src/services/payment/PaymentService.ts\nsrc/services/payment/TransactionLogger.ts\nsrc/services/payment/RefundHandler.ts',
                         shortResult: 'Found 3 files'
                     },
                     {
                         type: 'tool',
                         name: GREP_TOOL_NAME,
                         stage: 'end',
-                        compactParams: 'interface.*API ts in src',
-                        parameters: JSON.stringify({ pattern: 'interface.*API', type: 'ts', path: 'src' }),
-                        result: 'src/types.ts:10:export interface UserAPI {\nsrc/types.ts:20:export interface AuthAPI {',
-                        shortResult: 'Found 2 matching lines'
+                        compactParams: 'interface.*Payment ts in src',
+                        parameters: JSON.stringify({ pattern: 'interface.*Payment', type: 'ts', path: 'src' }),
+                        result: 'src/types/payment.ts:15:export interface PaymentRequest {\nsrc/types/payment.ts:32:export interface PaymentResult {\nsrc/services/payment/PaymentService.ts:28:export interface PaymentService {',
+                        shortResult: 'Found 3 matching lines'
                     },
                     {
                         type: 'tool',
                         name: READ_TOOL_NAME,
                         stage: 'end',
-                        compactParams: 'src/main.ts 1:2000',
-                        parameters: JSON.stringify({ file_path: 'src/main.ts' }),
-                        result: 'import express from "express";\n...',
-                        shortResult: 'Read 150 lines'
+                        compactParams: 'src/services/payment/PaymentService.ts 1:2000',
+                        parameters: JSON.stringify({ file_path: 'src/services/payment/PaymentService.ts' }),
+                        result: 'import { Injectable } from "@nestjs/common";\nimport { PaymentRepository } from "./PaymentRepository";\n\n@Injectable()\nexport class PaymentService {\n  constructor(private readonly repo: PaymentRepository) {}',
+                        shortResult: 'Read 156 lines'
                     }
                 ]
             }
@@ -187,23 +187,23 @@ test.describe('Product Specification Screenshots - Tools', () => {
             {
                 id: 'msg_demo_file_ops',
                 role: 'assistant',
-                timestamp: '2024-01-01T00:00:00.000Z',
+                timestamp: '2025-07-09T10:30:00.000Z',
                 blocks: [
                     {
                         type: 'tool',
                         name: WRITE_TOOL_NAME,
                         stage: 'end',
-                        compactParams: 'src/new-file.ts 1 lines, 29 chars',
-                        parameters: JSON.stringify({ file_path: 'src/new-file.ts', content: 'export const hello = "world";' }),
-                        result: 'File created (1 lines, 29 characters)',
+                        compactParams: 'src/middleware/optimisticLock.ts 1 lines, 89 chars',
+                        parameters: JSON.stringify({ file_path: 'src/middleware/optimisticLock.ts', content: 'export const withOptimisticLock = <T>(handler: (version: number) => Promise<T>) => { ... };' }),
+                        result: 'File created (1 lines, 89 characters)',
                         shortResult: 'File created'
                     },
                     {
                         type: 'tool',
                         name: EDIT_TOOL_NAME,
                         stage: 'end',
-                        compactParams: 'src/app.tsx',
-                        parameters: JSON.stringify({ file_path: 'src/app.tsx', old_string: 'A', new_string: 'B' }),
+                        compactParams: 'src/services/payment/PaymentService.ts',
+                        parameters: JSON.stringify({ file_path: 'src/services/payment/PaymentService.ts', old_string: 'async processPayment(tx) {', new_string: 'async processPayment(tx: PaymentTx): Promise<Result> {' }),
                         result: 'Text replaced successfully',
                         shortResult: 'Text replaced successfully'
                     }
@@ -225,33 +225,33 @@ test.describe('Product Specification Screenshots - Tools', () => {
                             type: 'tool',
                             name: 'LSP',
                             stage: 'end',
-                            compactParams: 'goToDefinition (src/main.ts:10:5)',
-                            parameters: JSON.stringify({ operation: 'goToDefinition', filePath: 'src/main.ts', line: 10, character: 5 }),
-                            result: 'Found definition at src/utils.ts:25:10'
+                            compactParams: 'goToDefinition (src/services/payment/PaymentService.ts:28:15)',
+                            parameters: JSON.stringify({ operation: 'goToDefinition', filePath: 'src/services/payment/PaymentService.ts', line: 28, character: 15 }),
+                            result: 'Found definition at src/repositories/PaymentRepository.ts:12:14'
                         },
                         {
                             type: 'tool',
                             name: 'LSP',
                             stage: 'end',
-                            compactParams: 'findReferences (src/utils.ts:25:10)',
-                            parameters: JSON.stringify({ operation: 'findReferences', filePath: 'src/utils.ts', line: 25, character: 10 }),
-                            result: 'Found 3 references:\n- src/main.ts:10:5\n- src/app.ts:42:12\n- tests/utils.test.ts:15:8'
+                            compactParams: 'findReferences (src/repositories/PaymentRepository.ts:12:14)',
+                            parameters: JSON.stringify({ operation: 'findReferences', filePath: 'src/repositories/PaymentRepository.ts', line: 12, character: 14 }),
+                            result: 'Found 8 references:\n- src/services/payment/PaymentService.ts:28:5\n- src/services/payment/RefundHandler.ts:45:12\n- src/services/payment/TransactionLogger.ts:67:8\n- src/controllers/PaymentController.ts:33:22\n- src/middleware/paymentGuard.ts:18:3\n- tests/payment/PaymentService.test.ts:92:14\n- tests/payment/integration.test.ts:28:9\n- e2e/payment.spec.ts:15:7'
                         },
                         {
                             type: 'tool',
                             name: 'LSP',
                             stage: 'end',
-                            compactParams: 'hover (src/main.ts:10:5)',
-                            parameters: JSON.stringify({ operation: 'hover', filePath: 'src/main.ts', line: 10, character: 5 }),
-                            result: 'interface User {\n  id: string;\n  name: string;\n}\n\nRepresents a user in the system.'
+                            compactParams: 'hover (src/services/payment/PaymentService.ts:28:15)',
+                            parameters: JSON.stringify({ operation: 'hover', filePath: 'src/services/payment/PaymentService.ts', line: 28, character: 15 }),
+                            result: 'class PaymentService\n\nHandles payment processing with distributed transaction support. Implements optimistic locking and automatic retry logic for concurrent operations.\n\n@Injectable()'
                         },
                         {
                             type: 'tool',
                             name: 'LSP',
                             stage: 'end',
-                            compactParams: 'incomingCalls (src/utils.ts:25:10)',
-                            parameters: JSON.stringify({ operation: 'incomingCalls', filePath: 'src/utils.ts', line: 25, character: 10 }),
-                            result: 'Callers of getUser:\n- AuthService.login (src/auth.ts:50)\n- AdminPanel.render (src/admin.tsx:120)'
+                            compactParams: 'incomingCalls (src/repositories/PaymentRepository.ts:12:14)',
+                            parameters: JSON.stringify({ operation: 'incomingCalls', filePath: 'src/repositories/PaymentRepository.ts', line: 12, character: 14 }),
+                            result: 'Callers of findById:\n- PaymentService.processPayment (src/services/payment/PaymentService.ts:45)\n- RefundHandler.processRefund (src/services/payment/RefundHandler.ts:78)\n- TransactionLogger.audit (src/services/payment/TransactionLogger.ts:112)\n- PaymentController.getStatus (src/controllers/PaymentController.ts:55)'
                         }
                     ]
                 }
@@ -270,10 +270,10 @@ test.describe('Product Specification Screenshots - Tools', () => {
                             type: 'tool',
                             name: 'Skill',
                             stage: 'end',
-                            compactParams: 'docx',
-                            parameters: JSON.stringify({ skill_name: 'docx' }),
-                            result: 'Document created successfully at ./report.docx',
-                            shortResult: 'Invoked skill: docx'
+                            compactParams: 'deep-research',
+                            parameters: JSON.stringify({ skill_name: 'deep-research' }),
+                            result: 'Research complete: analyzed 15 sources, generated comprehensive report at ./reports/payment-gateway-comparison.md',
+                            shortResult: 'Invoked skill: deep-research'
                         }
                     ]
                 }
@@ -285,10 +285,10 @@ test.describe('Product Specification Screenshots - Tools', () => {
         await injector.simulateExtensionMessage('setInitialState', {
             messages: [
                 MockDataGenerator.createAssistantMessageWithTool(
-                    '正在通过 MCP 查询外部数据...',
-                    'mcp_search_tool',
-                    JSON.stringify({ query: 'latest news' }),
-                    'Found 3 results from external source.'
+                    '正在通过 MCP 服务器查询 Jira 中的支付相关需求...',
+                    'mcp__jira__search_issues',
+                    JSON.stringify({ jql: 'project = PAY AND status = "In Progress"', maxResults: 5 }),
+                    'Found 5 issues: PAY-142 (Optimistic Lock), PAY-138 (Retry Logic), PAY-135 (Webhook), PAY-129 (Refund Flow), PAY-121 (Multi-currency)'
                 )
             ]
         });

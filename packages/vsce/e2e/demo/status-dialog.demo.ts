@@ -17,8 +17,8 @@ test.describe('Status Dialog Demo', () => {
                 configurationData: {
                     model: 'claude-sonnet-4-20250514',
                     fastModel: 'claude-haiku-4-20250514',
-                    baseURL: 'https://api.example.com/v1',
-                    serverUrl: 'https://wave.example.com'
+                    baseURL: 'https://api.nebula-tech.com/v1',
+                    serverUrl: 'https://wave.nebula-tech.com'
                 }
             });
         });
@@ -27,14 +27,14 @@ test.describe('Status Dialog Demo', () => {
         await webviewPage.evaluate(() => {
             window.simulateExtensionMessage({
                 command: 'statusResponse',
-                version: '0.4.15',
-                sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-                workdir: '/home/user/projects/my-app',
+                version: '1.2.0',
+                sessionId: 'sess_a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+                workdir: '/home/dev/projects/nebula-platform',
                 configurationData: {
                     model: 'claude-sonnet-4-20250514',
                     fastModel: 'claude-haiku-4-20250514',
-                    baseURL: 'https://api.example.com/v1',
-                    serverUrl: 'https://wave.example.com'
+                    baseURL: 'https://api.nebula-tech.com/v1',
+                    serverUrl: 'https://wave.nebula-tech.com'
                 }
             });
         });
@@ -44,7 +44,7 @@ test.describe('Status Dialog Demo', () => {
             window.simulateExtensionMessage({
                 command: 'authStatusResponse',
                 isAuthenticated: true,
-                user: { id: 'user-abc123', email: 'developer@example.com' }
+                user: { id: 'usr_7f3k2d8x', email: 'sarah.chen@nebula-tech.com' }
             });
         });
 
@@ -52,11 +52,11 @@ test.describe('Status Dialog Demo', () => {
         await expect(webviewPage.getByText('状态信息', { exact: true })).toBeVisible();
 
         // Verify key info fields are displayed
-        await expect(webviewPage.getByText('0.4.15')).toBeVisible();
-        await expect(webviewPage.getByText('a1b2c3d4-e5f6-7890-abcd-ef1234567890')).toBeVisible();
-        await expect(webviewPage.getByText('/home/user/projects/my-app')).toBeVisible();
+        await expect(webviewPage.getByText('1.2.0')).toBeVisible();
+        await expect(webviewPage.getByText('sess_a1b2c3d4-e5f6-7890-abcd-ef1234567890')).toBeVisible();
+        await expect(webviewPage.getByText('/home/dev/projects/nebula-platform')).toBeVisible();
         await expect(webviewPage.getByText('claude-sonnet-4-20250514').first()).toBeVisible();
-        await expect(webviewPage.getByText('developer@example.com')).toBeVisible();
+        await expect(webviewPage.getByText('sarah.chen@nebula-tech.com')).toBeVisible();
 
         // Take screenshot
         const dialog = webviewPage.locator('.configuration-dialog');
@@ -75,7 +75,7 @@ test.describe('Status Dialog Demo', () => {
         await webviewPage.evaluate(() => {
             window.simulateExtensionMessage({
                 command: 'statusResponse',
-                version: '0.4.15',
+                version: '1.2.0',
                 sessionId: '',
                 workdir: '',
                 configurationData: {}

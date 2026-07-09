@@ -10,47 +10,44 @@ test.describe('Task Notification Demo', () => {
       {
         id: 'msg_notify_completed',
         role: 'assistant' as const,
-        timestamp: '2024-01-01T00:00:00.000Z',
+        timestamp: '2025-07-09T10:30:00.000Z',
         blocks: [
-          {
-            type: 'text' as const,
-            content: 'Background task completed:'
-          },
+          { type: 'text' as const, content: '后台任务已完成：' },
           {
             type: 'task_notification' as const,
-            taskId: 'task-1',
+            taskId: 'task-build-001',
             taskType: 'shell',
             status: 'completed',
-            summary: 'npm test passed with 42 tests',
-            outputFile: '/tmp/test-output.log'
+            summary: 'Docker 镜像构建成功: nebula-payment:v1.2.0 (142MB)',
+            outputFile: '/tmp/docker-build-001.log'
           }
         ]
       },
       {
         id: 'msg_notify_failed',
         role: 'assistant' as const,
-        timestamp: '2024-01-01T00:00:00.000Z',
+        timestamp: '2025-07-09T10:30:00.000Z',
         blocks: [
           {
             type: 'task_notification' as const,
-            taskId: 'task-2',
+            taskId: 'task-agent-002',
             taskType: 'agent',
             status: 'failed',
-            summary: 'Explore agent encountered an error during file analysis'
+            summary: '代码审查子代理在分析 PaymentService.ts 时超时'
           }
         ]
       },
       {
         id: 'msg_notify_killed',
         role: 'assistant' as const,
-        timestamp: '2024-01-01T00:00:00.000Z',
+        timestamp: '2025-07-09T10:30:00.000Z',
         blocks: [
           {
             type: 'task_notification' as const,
-            taskId: 'task-3',
+            taskId: 'task-deploy-003',
             taskType: 'shell',
             status: 'killed',
-            summary: 'Long-running process was terminated by user'
+            summary: 'Kubernetes 部署过程被用户手动终止'
           }
         ]
       }
