@@ -381,9 +381,9 @@ describe("readTool", () => {
             ReturnType<typeof stat>
           >; // 25MB - exceeds limit
         }
-        return { size: 1024 * 1024 } as unknown as Awaited<
+        return { size: 100 * 1024 } as unknown as Awaited<
           ReturnType<typeof stat>
-        >; // 1MB - within limit
+        >; // 100KB - within limit
       });
     });
 

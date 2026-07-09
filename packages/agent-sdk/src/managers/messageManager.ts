@@ -31,6 +31,7 @@ import type { MemoryRuleManager } from "./MemoryRuleManager.js";
 import type { MemoryRule } from "../types/memoryRule.js";
 import type { MemoryService } from "../services/memory.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
+import { estimateTokens } from "../utils/tokenEstimate.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
 
 import { Container } from "../utils/container.js";
@@ -1063,7 +1064,7 @@ export class MessageManager {
   /**
    * Get recent file read contents, sorted by timestamp (newest first).
    * @param maxFiles - Maximum number of files to return
-   * @param maxTokensPerFile - Maximum tokens per file (~4 chars/token)
+   * @param maxTokensPerFile - Maximum tokens per file (CJK-aware estimation)
    * @returns Array of { path, content } sorted by recency
    */
   public getRecentFileReads(
@@ -1076,10 +1077,14 @@ export class MessageManager {
 
     const result: Array<{ path: string; content: string }> = [];
     for (const [path, { content }] of sorted) {
-      const truncated =
-        content.length > maxTokensPerFile * 4
-          ? content.slice(0, maxTokensPerFile * 4)
-          : content;
+      const tokenCount = estimateTokens(content);
+      let truncated = content;
+      if (tokenCount > maxTokensPerFile) {
+        // Truncate proportionally to fit within the token budget
+        const ratio = maxTokensPerFile / tokenCount;
+        const cutIndex = Math.floor(content.length * ratio);
+        truncated = content.slice(0, cutIndex);
+      }
       result.push({ path, content: truncated });
     }
     return result;
