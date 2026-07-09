@@ -141,6 +141,18 @@ export class ChatSession {
                 },
                 onCompleteBangMessage: () => {
                     this.callbacks.onBangMessageUpdated?.();
+                },
+                onNotificationMessageAdded: (params) => {
+                    // Incremental update: find the notification message and append it,
+                    // consistent with how onUserMessageAdded works.
+                    const notificationMessage = this.agent?.messages.find(
+                        m => m.role === 'user' && m.blocks.some(
+                            b => b.type === 'task_notification' && (b as { taskId: string }).taskId === params.taskId
+                        )
+                    );
+                    if (notificationMessage) {
+                        this.callbacks.onAssistantMessageAdded?.(notificationMessage);
+                    }
                 }
             };
 
