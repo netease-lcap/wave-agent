@@ -492,7 +492,7 @@ export class AIManager {
       );
 
       // 7. Execute message reconstruction
-      this.messageManager.compactMessagesAndUpdateSession(
+      await this.messageManager.compactMessagesAndUpdateSession(
         enhancedSummary,
         compactUsage,
       );

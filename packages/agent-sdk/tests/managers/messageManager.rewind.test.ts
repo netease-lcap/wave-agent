@@ -20,7 +20,7 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
   };
 });
 
-describe("MessageManager Cross-Session Rewind", () => {
+describe("MessageManager Single-Session Rewind", () => {
   let messageManager: MessageManager;
   const workdir = "/test/workdir";
   const container = new Container();
@@ -33,13 +33,17 @@ describe("MessageManager Cross-Session Rewind", () => {
     });
   });
 
-  it("should establish parentSessionId link after compaction", () => {
-    const oldSessionId = messageManager.getSessionId();
+  it("should keep same session ID after compaction (no parent session)", async () => {
+    const originalSessionId = messageManager.getSessionId();
     messageManager.addUserMessage({ content: "msg1" });
-    messageManager.compactMessagesAndUpdateSession("compacted content");
+    messageManager.addAssistantMessage("msg2");
 
-    expect(messageManager.getParentSessionId()).toBe(oldSessionId);
-    expect(messageManager.getSessionId()).not.toBe(oldSessionId);
+    await messageManager.compactMessagesAndUpdateSession("compacted content");
+
+    // Session ID stays the same — compaction appends to the same file
+    expect(messageManager.getSessionId()).toBe(originalSessionId);
+    // getRootSessionId returns the same ID (no separate root concept)
+    expect(messageManager.getRootSessionId()).toBe(originalSessionId);
   });
 
   it("should call loadFullMessageThread when getFullMessageThread is called", async () => {
@@ -61,68 +65,81 @@ describe("MessageManager Cross-Session Rewind", () => {
     expect(result).toEqual(mockThread);
   });
 
-  it("should handle truncateHistory across session boundaries", async () => {
-    const session1Id = "session1";
-    const session2Id = "session2";
-
-    const session1Messages = [
-      { role: "user", blocks: [{ type: "text", content: "user1" }] },
-      { role: "assistant", blocks: [{ type: "text", content: "assistant1" }] },
+  it("should truncate history within a single session", async () => {
+    const messages = [
+      {
+        id: "msg1",
+        role: "user",
+        blocks: [{ type: "text", content: "user1" }],
+      },
+      {
+        id: "msg2",
+        role: "assistant",
+        blocks: [{ type: "text", content: "assistant1" }],
+      },
+      {
+        id: "msg3",
+        role: "user",
+        blocks: [{ type: "text", content: "user2" }],
+      },
     ];
-    const session2Messages = [
-      { role: "assistant", blocks: [{ type: "compact", content: "summary" }] },
-      { role: "user", blocks: [{ type: "text", content: "user2" }] },
-    ];
 
-    // Mock loadFullMessageThread to return concatenated messages (with compact block removed)
+    // Mock loadFullMessageThread to return current session's messages
     vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages: [
-        session1Messages[0],
-        session1Messages[1],
-        session2Messages[1], // user2
-      ] as Message[],
-      sessionIds: [session1Id, session2Id],
+      messages: messages as Message[],
+      sessionIds: [messageManager.getSessionId()],
     });
 
-    // Mock loadSessionFromJsonl for both sessions
-    vi.mocked(sessionService.loadSessionFromJsonl).mockImplementation(
-      async (id) => {
-        if (id === session1Id)
-          return {
-            id: session1Id,
-            messages: session1Messages,
-          } as unknown as sessionService.SessionData;
-        if (id === session2Id)
-          return {
-            id: session2Id,
-            messages: session2Messages,
-            parentSessionId: session1Id,
-          } as unknown as sessionService.SessionData;
-        return null;
-      },
-    );
+    // Set messages in memory
+    messageManager.setMessages(messages as Message[]);
 
-    // Set current session to session2
-    messageManager.initializeFromSession({
-      id: session2Id,
-      messages: session2Messages,
-      parentSessionId: session1Id,
-      metadata: {
-        lastActiveAt: new Date().toISOString(),
-        latestTotalTokens: 0,
-        workdir,
-      },
-    } as unknown as sessionService.SessionData);
-
-    // Truncate to index 1 (assistant1 in session1)
+    // Truncate to index 1 (keep only msg1)
     await messageManager.truncateHistory(1);
-
-    // Verify session ID was restored to session1
-    expect(messageManager.getSessionId()).toBe(session1Id);
 
     // Verify messages in memory are truncated
     const currentMessages = messageManager.getMessages();
     expect(currentMessages.length).toBe(1);
     expect((currentMessages[0].blocks[0] as TextBlock).content).toBe("user1");
+  });
+
+  it("should truncate history after compaction boundary", async () => {
+    // Simulate a session that has been compacted: [compact, user1, assistant1, user2]
+    const messages = [
+      {
+        id: "msg0",
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary" }],
+      },
+      {
+        id: "msg1",
+        role: "user",
+        blocks: [{ type: "text", content: "user1" }],
+      },
+      {
+        id: "msg2",
+        role: "assistant",
+        blocks: [{ type: "text", content: "assistant1" }],
+      },
+      {
+        id: "msg3",
+        role: "user",
+        blocks: [{ type: "text", content: "user2" }],
+      },
+    ];
+
+    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
+      messages: messages as Message[],
+      sessionIds: [messageManager.getSessionId()],
+    });
+
+    messageManager.setMessages(messages as Message[]);
+
+    // Truncate to index 2 (keep compact + user1)
+    await messageManager.truncateHistory(2);
+
+    const currentMessages = messageManager.getMessages();
+    expect(currentMessages.length).toBe(2);
+    expect(currentMessages[0].blocks[0].type).toBe("compact");
+    expect((currentMessages[1].blocks[0] as TextBlock).content).toBe("user1");
   });
 });

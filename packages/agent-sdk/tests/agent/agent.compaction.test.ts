@@ -319,7 +319,6 @@ describe("Agent Message Compaction Tests", () => {
           {
             type: "compact",
             content: "Compacted content: Contains summary of first 6 messages",
-            sessionId: "test-session-id",
           },
         ],
         timestamp: new Date().toISOString(),

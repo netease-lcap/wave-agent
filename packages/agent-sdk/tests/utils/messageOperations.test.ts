@@ -1136,7 +1136,6 @@ describe("getMessageContent", () => {
         {
           type: "compact",
           content: "summarized context",
-          sessionId: "test-session",
         },
       ],
       timestamp: expect.any(String),
