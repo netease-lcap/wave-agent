@@ -166,7 +166,7 @@ export class InteractionService {
     messageManager.initializeFromSession(sessionData);
 
     // Update task manager with the root session ID to ensure continuity across compactions
-    taskManager.setTaskListId(sessionData.rootSessionId || sessionData.id);
+    taskManager.setTaskListId(sessionData.id);
 
     // 7. Load tasks for the restored session
     const tasks = await taskManager.listTasks();

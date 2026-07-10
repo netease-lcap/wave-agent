@@ -185,15 +185,15 @@ describe("MessageManager Coverage Improvements", () => {
     );
   });
 
-  it("should handle compactMessagesAndUpdateSession and preserve rootSessionId and last 3 messages", () => {
-    const initialRootSessionId = messageManager.getRootSessionId();
+  it("should handle compactMessagesAndUpdateSession and keep same session with last messages", async () => {
+    const initialSessionId = messageManager.getSessionId();
     messageManager.addUserMessage({ content: "msg1" });
     messageManager.addAssistantMessage("msg2");
     messageManager.addUserMessage({ content: "msg3" });
     messageManager.addAssistantMessage("msg4");
     messageManager.addUserMessage({ content: "msg5" });
 
-    messageManager.compactMessagesAndUpdateSession("compacted content");
+    await messageManager.compactMessagesAndUpdateSession("compacted content");
 
     const messages = messageManager.getMessages();
     expect(messages.length).toBe(4); // [compact] + msg3, msg4, msg5
@@ -204,8 +204,7 @@ describe("MessageManager Coverage Improvements", () => {
     expect((messages[1].blocks[0] as { content: string }).content).toBe("msg3");
     expect((messages[2].blocks[0] as { content: string }).content).toBe("msg4");
     expect((messages[3].blocks[0] as { content: string }).content).toBe("msg5");
-    expect(messageManager.getRootSessionId()).toBe(initialRootSessionId);
-    expect(messageManager.getSessionId()).not.toBe(initialRootSessionId);
+    expect(messageManager.getSessionId()).toBe(initialSessionId);
   });
 
   it("should handle addFileHistoryBlock", () => {

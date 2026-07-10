@@ -442,7 +442,6 @@ describe("convertMessagesForAPI", () => {
             type: "compact",
             content:
               "[Compacted Message Summary] User asked to refactor a function...",
-            sessionId: "test-session",
           },
         ],
         timestamp: new Date().toISOString(),

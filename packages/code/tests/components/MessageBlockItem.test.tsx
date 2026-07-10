@@ -158,7 +158,6 @@ describe("MessageBlockItem Component", () => {
       const block: MessageBlock = {
         type: "compact",
         content: "compacted",
-        sessionId: "s1",
       };
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,

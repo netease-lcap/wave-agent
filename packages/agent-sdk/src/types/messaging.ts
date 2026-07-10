@@ -89,7 +89,6 @@ export interface BangBlock {
 export interface CompactBlock {
   type: "compact";
   content: string;
-  sessionId: string;
 }
 
 export interface ReasoningBlock {

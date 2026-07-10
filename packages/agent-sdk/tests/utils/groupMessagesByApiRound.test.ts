@@ -28,7 +28,7 @@ function createCompactMsg(content = "compacted"): Message {
   return {
     id: generateMessageId(),
     role: "assistant",
-    blocks: [{ type: "compact", content, sessionId: "session-1" }],
+    blocks: [{ type: "compact", content }],
     timestamp: new Date().toISOString(),
   };
 }

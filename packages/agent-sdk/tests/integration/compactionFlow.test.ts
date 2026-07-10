@@ -205,7 +205,6 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
         {
           type: "compact",
           content: "Previous summary",
-          sessionId: "old-session",
         },
       ],
       timestamp: new Date().toISOString(),
@@ -247,7 +246,6 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
         {
           type: "compact",
           content: "Initial work summarized",
-          sessionId: "s1",
         },
       ],
       timestamp: new Date().toISOString(),

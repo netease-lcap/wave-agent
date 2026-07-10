@@ -326,9 +326,7 @@ export class InitializationService {
         messageManager.initializeFromSession(sessionToRestore);
 
         // Update task manager with the root session ID to ensure continuity across compactions
-        taskManager.setTaskListId(
-          sessionToRestore.rootSessionId || sessionToRestore.id,
-        );
+        taskManager.setTaskListId(sessionToRestore.id);
 
         // After session is initialized, load tasks for the session
         const tasks = await taskManager.listTasks();
