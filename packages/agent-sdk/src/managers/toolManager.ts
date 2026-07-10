@@ -279,6 +279,7 @@ class ToolManager {
         endToolSpan({
           success: result.success,
           durationMs: Date.now() - toolStartTime,
+          output: result.content,
         });
         return result;
       } catch (error) {
@@ -303,6 +304,7 @@ class ToolManager {
         endToolSpan({
           success: result.success,
           durationMs: Date.now() - toolStartTime,
+          output: result.content,
         });
         return result;
       } catch (error) {

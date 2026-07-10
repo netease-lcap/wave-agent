@@ -814,6 +814,7 @@ export class AIManager {
       let turnDepth = turnOffset;
 
       inner: while (true) {
+        let llmSpan: import("@opentelemetry/api").Span | undefined;
         try {
           // Save session in each iteration to ensure message persistence
           await this.messageManager.saveSession();
@@ -950,15 +951,21 @@ export class AIManager {
             };
           }
 
-          startLLMRequestSpan(model || this.getModelConfig().model || "");
+          llmSpan = startLLMRequestSpan(
+            model || this.getModelConfig().model || "",
+          );
 
           const result = await aiService.callAgent(callAgentOptions);
 
           // End LLM span with usage data
-          endLLMRequestSpan({
+          endLLMRequestSpan(llmSpan, {
             model: model || this.getModelConfig().model || "",
             success: true,
             hasToolCall: !!(result.tool_calls && result.tool_calls.length > 0),
+            inputTokens: result.usage?.prompt_tokens,
+            outputTokens: result.usage?.completion_tokens,
+            cacheReadTokens: result.usage?.cache_read_input_tokens,
+            cacheCreationTokens: result.usage?.cache_creation_input_tokens,
           });
 
           const createdByStreaming = assistantMessageCreated;
@@ -1239,7 +1246,7 @@ export class AIManager {
           break inner;
         } catch (error) {
           // End LLM span with error
-          endLLMRequestSpan({
+          endLLMRequestSpan(llmSpan, {
             model: model || this.getModelConfig().model || "",
             success: false,
             error: error instanceof Error ? error.message : String(error),
