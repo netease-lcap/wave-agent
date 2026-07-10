@@ -848,9 +848,16 @@ export class McpManager {
         textContent.push(String(result.content));
       }
 
+      const textContentStr =
+        textContent.length > 0
+          ? textContent.join("\n")
+          : images.length > 0
+            ? `Tool returned ${images.length} image(s).`
+            : "No content";
+
       return {
         success: true,
-        content: textContent.length > 0 ? textContent.join("\n") : "No content",
+        content: textContentStr,
         images: images.length > 0 ? images : undefined,
         serverName,
       };

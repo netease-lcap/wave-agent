@@ -1654,6 +1654,7 @@ export class AIManager {
         shortResult: toolResult.shortResult,
         isManuallyBackgrounded: toolResult.isManuallyBackgrounded,
         startLineNumber: toolResult.startLineNumber,
+        images: toolResult.images,
         timestamp: Date.now(),
       });
 
