@@ -68,6 +68,8 @@ export interface ToolMetadata {
   error?: string;
   /** Execution time (ms) */
   durationMs: number;
+  /** Tool output content (recorded when logToolContent is true) */
+  output?: string;
 }
 
 /** Event names for OTel structured logging */
