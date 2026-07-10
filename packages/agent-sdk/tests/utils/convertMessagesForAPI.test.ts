@@ -432,6 +432,203 @@ describe("convertMessagesForAPI", () => {
     expect(assistantMessage.reasoning_content).toBeUndefined();
   });
 
+  it("should produce valid tool_call_id pairing for tool results with images", () => {
+    // When a tool result contains images, it must still produce a role:"tool"
+    // message, otherwise Claude API reports:
+    // "tool_use ids were found without tool_result blocks"
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Analyze this figma design" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "tool_call_1",
+            name: "get_design_context",
+            parameters: '{"nodeId": "9804:91114"}',
+            stage: "end",
+            result: "const img = 'http://localhost/assets/abc.svg';",
+            success: true,
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "tool_call_2",
+            name: "get_screenshot",
+            parameters: '{"nodeId": "9804:91114"}',
+            stage: "end",
+            result: "Tool returned 1 image(s).",
+            success: true,
+            images: [{ data: "iVBORw0KGgoAAAANS...", mediaType: "image/png" }],
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    // Find all assistant messages with tool_calls
+    type AssistantWithTools = ChatCompletionMessageParam & {
+      tool_calls: ChatCompletionMessageToolCall[];
+    };
+    const assistantWithToolCalls = apiMessages.filter(
+      (m): m is AssistantWithTools =>
+        m.role === "assistant" &&
+        "tool_calls" in m &&
+        Array.isArray((m as AssistantWithTools).tool_calls),
+    );
+
+    // For each assistant tool_call, there must be a role:"tool" message with matching tool_call_id
+    for (const assistantMsg of assistantWithToolCalls) {
+      const assistantIdx = apiMessages.indexOf(assistantMsg);
+
+      for (const tc of assistantMsg.tool_calls) {
+        const toolResult = apiMessages.find(
+          (m, idx) =>
+            idx > assistantIdx &&
+            m.role === "tool" &&
+            "tool_call_id" in m &&
+            (m as unknown as { tool_call_id: string }).tool_call_id === tc.id,
+        );
+        expect(
+          toolResult,
+          `tool_call_id "${tc.id}" must have a corresponding role:"tool" message`,
+        ).toBeDefined();
+      }
+    }
+  });
+
+  it("should handle single assistant message with image tool result correctly", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Take a screenshot" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "tool_img_1",
+            name: "get_screenshot",
+            parameters: '{"nodeId": "123"}',
+            stage: "end",
+            result: "Screenshot taken.",
+            success: true,
+            images: [{ data: "base64data", mediaType: "image/png" }],
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    // The tool message must use role:"tool" with proper tool_call_id
+    const toolMsg = apiMessages.find(
+      (m) =>
+        m.role === "tool" &&
+        "tool_call_id" in m &&
+        (m as unknown as { tool_call_id: string }).tool_call_id ===
+          "tool_img_1",
+    );
+    expect(
+      toolMsg,
+      "Image tool result must still produce a role:'tool' message with tool_call_id",
+    ).toBeDefined();
+
+    // Image should also be present somewhere (as user message)
+    type ContentPart = { type: string; image_url?: { url: string } };
+    const userMsgWithImage = apiMessages.find(
+      (m) =>
+        m.role === "user" &&
+        Array.isArray(m.content) &&
+        (m.content as ContentPart[]).some((p) => p.type === "image_url"),
+    );
+    expect(
+      userMsgWithImage,
+      "Image data should be passed to the model via a user message",
+    ).toBeDefined();
+  });
+
+  it("should not interleave user messages between tool messages for multi-tool calls", () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Do multiple things" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "tc_a",
+            name: "bash",
+            parameters: '{"command": "ls"}',
+            stage: "end",
+            result: "file1.txt",
+            success: true,
+          },
+          {
+            type: "tool",
+            id: "tc_b",
+            name: "get_screenshot",
+            parameters: '{"nodeId": "1"}',
+            stage: "end",
+            result: "Image captured.",
+            success: true,
+            images: [{ data: "imgdata", mediaType: "image/png" }],
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    // Find the assistant message index
+    const assistantIdx = apiMessages.findIndex(
+      (m) => m.role === "assistant" && "tool_calls" in m,
+    );
+    expect(assistantIdx).toBeGreaterThanOrEqual(0);
+
+    // All tool messages must come immediately after assistant (contiguously)
+    const afterAssistant = apiMessages.slice(assistantIdx + 1);
+    let foundNonTool = false;
+    let toolCount = 0;
+    for (const msg of afterAssistant) {
+      if (msg.role === "tool") {
+        expect(
+          foundNonTool,
+          "tool messages must be contiguous after assistant",
+        ).toBe(false);
+        toolCount++;
+      } else {
+        foundNonTool = true;
+      }
+    }
+    expect(toolCount).toBe(2);
+  });
+
   it("should convert compact block to user role for API (matching Claude Code auto-compact)", () => {
     const messages: Message[] = [
       {

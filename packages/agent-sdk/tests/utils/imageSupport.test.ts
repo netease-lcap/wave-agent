@@ -58,7 +58,7 @@ describe("Image Support in Tool Results", () => {
     }
   });
 
-  it("should convert tool block with images to user message in convertMessagesForAPI", () => {
+  it("should convert tool block with images to tool message plus user message in convertMessagesForAPI", () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -85,8 +85,8 @@ describe("Image Support in Tool Results", () => {
 
     const apiMessages = convertMessagesForAPI(messages);
 
-    // Should generate two messages: assistant message (tool calls) + user message (tool result with images)
-    expect(apiMessages).toHaveLength(2);
+    // Should generate three messages: assistant (tool_calls) + tool (result) + user (images)
+    expect(apiMessages).toHaveLength(3);
 
     // First should be assistant message containing tool calls
     expect(apiMessages[0].role).toBe("assistant");
@@ -99,30 +99,21 @@ describe("Image Support in Tool Results", () => {
       }
     }
 
-    // Second should be user message containing tool results and images
-    expect(apiMessages[1].role).toBe("user");
+    // Second should be tool message with proper tool_call_id pairing
+    expect(apiMessages[1].role).toBe("tool");
+    expect(apiMessages[1]).toHaveProperty("tool_call_id", "tool-123");
+    expect(apiMessages[1].content).toBe("Screenshot captured successfully");
 
-    // Check content structure
-    const content = apiMessages[1].content;
+    // Third should be user message containing images
+    expect(apiMessages[2].role).toBe("user");
+    const content = apiMessages[2].content;
     expect(Array.isArray(content)).toBe(true);
 
     if (Array.isArray(content)) {
-      // Should contain text and images
-      expect(content).toHaveLength(2);
-
-      // First part should be text
-      expect(content[0].type).toBe("text");
-      expect(content[0]).toHaveProperty("text");
-      if (content[0].type === "text") {
-        expect(content[0].text).toContain("screenshot_tool");
-        expect(content[0].text).toContain("Screenshot captured successfully");
-      }
-
-      // Second part should be image
-      expect(content[1].type).toBe("image_url");
-      expect(content[1]).toHaveProperty("image_url");
-      if (content[1].type === "image_url") {
-        expect(content[1].image_url.url).toContain("data:image/png;base64,");
+      expect(content).toHaveLength(1);
+      expect(content[0].type).toBe("image_url");
+      if (content[0].type === "image_url") {
+        expect(content[0].image_url.url).toContain("data:image/png;base64,");
       }
     }
   });
@@ -192,33 +183,37 @@ describe("Image Support in Tool Results", () => {
 
     const apiMessages = convertMessagesForAPI(messages);
 
-    // Should generate two messages: assistant message + user message with images
-    expect(apiMessages).toHaveLength(2);
+    // Should generate three messages: assistant + tool + user (images)
+    expect(apiMessages).toHaveLength(3);
 
     // First should be assistant message
     expect(apiMessages[0].role).toBe("assistant");
     expect(apiMessages[0]).toHaveProperty("tool_calls");
 
-    // Second should be user message containing images
-    expect(apiMessages[1].role).toBe("user");
+    // Second should be tool message with proper pairing
+    expect(apiMessages[1].role).toBe("tool");
+    expect(apiMessages[1]).toHaveProperty("tool_call_id", "tool-789");
+    expect(apiMessages[1].content).toBe("Multiple screenshots captured");
 
-    const content = apiMessages[1].content;
+    // Third should be user message containing images
+    expect(apiMessages[2].role).toBe("user");
+
+    const content = apiMessages[2].content;
     if (Array.isArray(content)) {
-      // Should contain 1 text + 2 images = 3 content parts
-      expect(content).toHaveLength(3);
+      // Should contain 2 images
+      expect(content).toHaveLength(2);
 
-      expect(content[0].type).toBe("text");
+      expect(content[0].type).toBe("image_url");
       expect(content[1].type).toBe("image_url");
-      expect(content[2].type).toBe("image_url");
 
       // Check image URL format
-      if (content[1].type === "image_url") {
-        expect(content[1].image_url.url).toContain(
+      if (content[0].type === "image_url") {
+        expect(content[0].image_url.url).toContain(
           "data:image/png;base64,image1_base64_data",
         );
       }
-      if (content[2].type === "image_url") {
-        expect(content[2].image_url.url).toContain(
+      if (content[1].type === "image_url") {
+        expect(content[1].image_url.url).toContain(
           "data:image/jpeg;base64,image2_base64_data",
         );
       }
