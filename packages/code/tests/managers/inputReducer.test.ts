@@ -862,6 +862,56 @@ describe("inputReducer", () => {
       });
     });
 
+    it("should extract referenced images and clear attachedImages on send", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "Check this out [Image #1]",
+        attachedImages: [
+          { id: 1, path: "/tmp/img1.png", mimeType: "image/png" },
+          { id: 2, path: "/tmp/img2.png", mimeType: "image/png" },
+        ],
+      };
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+      expect(result.inputText).toBe("");
+      expect(result.attachedImages).toEqual([]);
+      expect(result.pendingEffect).toEqual({
+        type: "SEND_MESSAGE",
+        content: "Check this out",
+        images: [{ path: "/tmp/img1.png", mimeType: "image/png" }],
+        longTextMap: {},
+      });
+    });
+
+    it("should clear attachedImages when sending /btw command", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "/btw what is this [Image #1]",
+        attachedImages: [
+          { id: 1, path: "/tmp/img1.png", mimeType: "image/png" },
+        ],
+      };
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "",
+          key: { return: true } as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+      expect(result.attachedImages).toEqual([]);
+      expect(result.pendingEffect).toEqual({
+        type: "ASK_BTW",
+        question: "what is this",
+      });
+    });
+
     it("should handle /btw command", () => {
       const state = { ...initialState, inputText: "/btw what is life?" };
       const result = inputReducer(state, {

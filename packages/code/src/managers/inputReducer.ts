@@ -1008,6 +1008,7 @@ export function inputReducer(
               cursorPosition: 0,
               historyIndex: -1,
               longTextMap: {},
+              attachedImages: [],
               btwState: {
                 question,
                 isLoading: true,
@@ -1047,6 +1048,7 @@ export function inputReducer(
                 cursorPosition: 0,
                 historyIndex: -1,
                 longTextMap: {},
+                attachedImages: [],
                 pendingEffect: {
                   type: "EXECUTE_COMMAND",
                   command: commandName,
@@ -1062,6 +1064,7 @@ export function inputReducer(
             cursorPosition: 0,
             historyIndex: -1,
             longTextMap: {},
+            attachedImages: [],
             pendingEffect: {
               type: "SEND_MESSAGE",
               content: contentWithPlaceholders,
