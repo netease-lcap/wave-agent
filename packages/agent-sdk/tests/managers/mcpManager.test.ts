@@ -1220,7 +1220,7 @@ describe("McpManager", () => {
 
       expect(result).toEqual({
         success: true,
-        content: "No content",
+        content: "Tool returned 1 image(s).",
         images: [
           {
             data: "only_image_data",
