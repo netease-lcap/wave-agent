@@ -531,17 +531,7 @@ export const useInputManager = (
   }, []);
 
   const handleInput = useCallback(
-    async (
-      input: string,
-      key: Key,
-      _attachedImages: Array<{ id: number; path: string; mimeType: string }>,
-      clearImages?: () => void,
-    ) => {
-      // Clear images side effect if return is pressed
-      if (key.return) {
-        clearImages?.();
-      }
-
+    async (input: string, key: Key) => {
       dispatch({
         type: "HANDLE_KEY",
         payload: {
