@@ -86,24 +86,25 @@ export function convertMessagesForAPI(
       const completedToolIds = new Set<string>(); // Record completed tool IDs
 
       if (toolBlocks.length > 0) {
+        // Collect image user messages to place after all tool messages
+        const imageUserMessages: ChatCompletionMessageParam[] = [];
+
         toolBlocks.forEach((toolBlock) => {
           // Only add completed tool blocks (i.e., stage is 'end')
           if (toolBlock.id && toolBlock.stage === "end") {
             completedToolIds.add(toolBlock.id);
 
-            // Check for image data
+            // Always add a proper tool message to satisfy tool_call_id pairing
+            recentMessages.unshift({
+              tool_call_id: toolBlock.id,
+              role: "tool",
+              content: stripAnsiColors(toolBlock.result || ""),
+            });
+
+            // If there are images, also prepare a user message with image content
             if (toolBlock.images && toolBlock.images.length > 0) {
-              // If there is an image, create a user message instead of a tool message
               const contentParts: ChatCompletionContentPart[] = [];
 
-              // Add tool result as text
-              const toolResultText = `Tool result for ${toolBlock.name || "unknown tool"}:\n${stripAnsiColors(toolBlock.result || "")}`;
-              contentParts.push({
-                type: "text",
-                text: toolResultText,
-              });
-
-              // Add image
               toolBlock.images.forEach((image) => {
                 const imageUrl = image.data.startsWith("data:")
                   ? image.data
@@ -118,21 +119,22 @@ export function convertMessagesForAPI(
                 });
               });
 
-              // Add user message
-              recentMessages.unshift({
+              imageUserMessages.push({
                 role: "user",
                 content: contentParts,
-              });
-            } else {
-              // Normal tool message
-              recentMessages.unshift({
-                tool_call_id: toolBlock.id,
-                role: "tool",
-                content: stripAnsiColors(toolBlock.result || ""),
               });
             }
           }
         });
+
+        // Insert image user messages after all tool messages but before the
+        // assistant message (which will be unshifted next). Since tool messages
+        // were unshifted to the front, we splice images right after them.
+        if (imageUserMessages.length > 0) {
+          // Tool messages are at indices 0..N-1, existing messages start at N
+          const toolMsgCount = completedToolIds.size;
+          recentMessages.splice(toolMsgCount, 0, ...imageUserMessages);
+        }
       }
 
       // Construct the content of the assistant message
