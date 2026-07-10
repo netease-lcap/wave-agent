@@ -58,6 +58,20 @@ export interface LLMRequestMetadata {
   error?: string;
   /** Response included tool calls */
   hasToolCall?: boolean;
+  /** Model text output (recorded when logToolContent is true) */
+  modelOutput?: string;
+}
+
+/** Input context for an LLM request span (content capture gated by logToolContent) */
+export interface LLMRequestInput {
+  /** Scope context */
+  context?: "interaction" | "standalone";
+  /** System prompt string (when available) */
+  systemPrompt?: string;
+  /** Messages array sent to the API */
+  inputMessages?: unknown[];
+  /** Tool schemas JSON string */
+  toolsSchema?: string;
 }
 
 /** Metadata for tool execution spans */
@@ -79,4 +93,6 @@ export type OTelEventName =
   | "user_prompt"
   | "tool_decision"
   | "compaction"
-  | "error";
+  | "error"
+  | "system_prompt"
+  | "tool_schema";
