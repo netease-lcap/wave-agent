@@ -45,6 +45,7 @@ import {
   endInteractionSpan,
   startLLMRequestSpan,
   endLLMRequestSpan,
+  resetTracingState,
 } from "../telemetry/sessionTracing.js";
 import { logOTelEvent } from "../telemetry/events.js";
 
@@ -523,6 +524,9 @@ export class AIManager {
 
       this.consecutiveCompactionFailures = 0;
 
+      // Reset incremental tracing state after compaction
+      resetTracingState();
+
       // 9. Log OTEL event
       logOTelEvent("compaction", {
         beforeTokens: String(messagesToCompact.length),
@@ -953,6 +957,17 @@ export class AIManager {
 
           llmSpan = startLLMRequestSpan(
             model || this.getModelConfig().model || "",
+            {
+              context: "interaction",
+              systemPrompt:
+                typeof callAgentOptions.systemPrompt === "string"
+                  ? callAgentOptions.systemPrompt
+                  : undefined,
+              inputMessages: callAgentOptions.messages,
+              toolsSchema: callAgentOptions.tools
+                ? JSON.stringify(callAgentOptions.tools)
+                : undefined,
+            },
           );
 
           const result = await aiService.callAgent(callAgentOptions);
@@ -966,6 +981,7 @@ export class AIManager {
             outputTokens: result.usage?.completion_tokens,
             cacheReadTokens: result.usage?.cache_read_input_tokens,
             cacheCreationTokens: result.usage?.cache_creation_input_tokens,
+            modelOutput: result.content,
           });
 
           const createdByStreaming = assistantMessageCreated;

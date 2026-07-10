@@ -11,6 +11,12 @@ vi.mock("@/telemetry/instrumentation.js", () => ({
   getCurrentConfig: () => mockGetCurrentConfig(),
 }));
 
+// Mock the events module (sessionTracing now imports logOTelEvent)
+const mockLogOTelEvent = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/telemetry/events.js", () => ({
+  logOTelEvent: mockLogOTelEvent,
+}));
+
 describe("sessionTracing", () => {
   let tracing: typeof import("@/telemetry/sessionTracing.js");
 
@@ -308,16 +314,18 @@ describe("sessionTracing", () => {
       expect(callArgs.attributes).not.toHaveProperty("tool_input");
     });
 
-    it("startToolSpan truncates long input to 1000 chars", () => {
+    it("startToolSpan truncates long input to 60KB", () => {
       mockGetCurrentConfig.mockReturnValue({ logToolContent: true });
       tracing.startInteractionSpan("Hello", 1);
 
-      const longInput = "a".repeat(2000);
+      const longInput = "a".repeat(70000);
       tracing.startToolSpan("Write", longInput);
 
       const callArgs = mockTracer.startSpan.mock.calls[1][1];
       const inputAttr = callArgs.attributes["tool_input"] as string;
-      expect(inputAttr.length).toBe(1000);
+      expect(inputAttr.length).toBe(60000);
+      expect(callArgs.attributes["tool_input_truncated"]).toBe(true);
+      expect(callArgs.attributes["tool_input_original_length"]).toBe(70000);
     });
 
     it("startToolSpan with string input when logToolContent is true", () => {
@@ -339,17 +347,18 @@ describe("sessionTracing", () => {
       );
     });
 
-    it("startToolSpan truncates long string input to 1000 chars", () => {
+    it("startToolSpan truncates long string input to 60KB", () => {
       mockGetCurrentConfig.mockReturnValue({ logToolContent: true });
       tracing.startInteractionSpan("Hello", 1);
 
-      const longInput = "x".repeat(2000);
+      const longInput = "x".repeat(70000);
       tracing.startToolSpan("Write", longInput);
 
       const callArgs = mockTracer.startSpan.mock.calls[1][1];
       const inputAttr = callArgs.attributes["tool_input"] as string;
-      expect(inputAttr.length).toBe(1000);
-      expect(inputAttr).toBe("x".repeat(1000));
+      expect(inputAttr.length).toBe(60000);
+      expect(inputAttr).toBe("x".repeat(60000));
+      expect(callArgs.attributes["tool_input_truncated"]).toBe(true);
     });
 
     it("startToolSpan excludes input when logToolContent is false even with input provided", () => {
@@ -426,12 +435,12 @@ describe("sessionTracing", () => {
       );
     });
 
-    it("endToolSpan truncates tool_output to 1000 chars", () => {
+    it("endToolSpan truncates tool_output to 60KB", () => {
       mockGetCurrentConfig.mockReturnValue({ logToolContent: true });
       tracing.startInteractionSpan("Hello", 1);
       tracing.startToolSpan("Bash");
 
-      const longOutput = "y".repeat(2000);
+      const longOutput = "y".repeat(70000);
       tracing.endToolSpan({
         success: true,
         durationMs: 100,
@@ -442,7 +451,15 @@ describe("sessionTracing", () => {
         (c) => c[0] === "tool_output",
       );
       expect(outputCall).toBeDefined();
-      expect((outputCall![1] as string).length).toBe(1000);
+      expect((outputCall![1] as string).length).toBe(60000);
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+        "tool_output_truncated",
+        true,
+      );
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+        "tool_output_original_length",
+        70000,
+      );
     });
 
     it("endToolSpan does not record tool_output when output is undefined", () => {
@@ -526,6 +543,260 @@ describe("sessionTracing", () => {
         "Exit code 1",
       );
       expect(mockSpan.setAttribute).toHaveBeenCalledWith("duration_ms", 300);
+    });
+  });
+
+  describe("content capture (logToolContent enabled)", () => {
+    const mockSpan = {
+      spanContext: () => ({ traceId: "trace123", spanId: "span456" }),
+      attributes: {},
+      setAttribute: vi.fn(),
+      end: vi.fn(),
+    };
+
+    const mockTracer = {
+      startSpan: vi.fn().mockReturnValue(mockSpan),
+    };
+
+    const mockTrace = {
+      getTracer: vi.fn().mockReturnValue(mockTracer),
+      setSpan: vi.fn().mockReturnValue({}),
+    };
+
+    const mockContext = {
+      active: vi.fn().mockReturnValue({}),
+    };
+
+    beforeEach(() => {
+      mockIsInitialized.mockReturnValue(true);
+      mockGetOTELApi.mockReturnValue({
+        trace: mockTrace,
+        context: mockContext,
+      });
+      mockGetCurrentConfig.mockReturnValue({ logToolContent: true });
+    });
+
+    it("startLLMRequestSpan captures system prompt hash and preview", () => {
+      tracing.startInteractionSpan("Hello", 1);
+      tracing.startLLMRequestSpan("gpt-4", {
+        systemPrompt: "You are a helpful assistant.",
+      });
+
+      const callArgs = mockTracer.startSpan.mock.calls[1][1];
+      expect(callArgs.attributes).toHaveProperty("system_prompt_hash");
+      expect(callArgs.attributes.system_prompt_hash).toHaveLength(12);
+      expect(callArgs.attributes).toHaveProperty("system_prompt_length");
+      expect(callArgs.attributes.system_prompt_length).toBe(
+        "You are a helpful assistant.".length,
+      );
+      expect(callArgs.attributes).toHaveProperty("system_prompt_preview");
+      expect(callArgs.attributes.system_prompt_preview).toBe(
+        "You are a helpful assistant.",
+      );
+    });
+
+    it("startLLMRequestSpan truncates system prompt preview to 500 chars", () => {
+      tracing.startInteractionSpan("Hello", 1);
+      const longPrompt = "a".repeat(600);
+      tracing.startLLMRequestSpan("gpt-4", {
+        systemPrompt: longPrompt,
+      });
+
+      const callArgs = mockTracer.startSpan.mock.calls[1][1];
+      expect((callArgs.attributes.system_prompt_preview as string).length).toBe(
+        500,
+      );
+      expect(callArgs.attributes.system_prompt_length).toBe(600);
+    });
+
+    it("startLLMRequestSpan emits system_prompt event only once per hash", () => {
+      tracing.startInteractionSpan("Hello", 1);
+      tracing.startLLMRequestSpan("gpt-4", {
+        systemPrompt: "Same prompt",
+      });
+      tracing.endInteractionSpan();
+
+      tracing.startInteractionSpan("Hello again", 2);
+      tracing.startLLMRequestSpan("gpt-4", {
+        systemPrompt: "Same prompt",
+      });
+
+      const systemPromptEvents = mockLogOTelEvent.mock.calls.filter(
+        (c: unknown[]) => c[0] === "system_prompt",
+      );
+      expect(systemPromptEvents).toHaveLength(1);
+    });
+
+    it("startLLMRequestSpan captures incremental new_context", () => {
+      tracing.startInteractionSpan("Hello", 1);
+      const messages1 = [
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi" },
+      ];
+      tracing.startLLMRequestSpan("gpt-4", {
+        inputMessages: messages1,
+      });
+
+      let callArgs = mockTracer.startSpan.mock.calls[1][1];
+      expect(callArgs.attributes).toHaveProperty("new_context");
+      expect(callArgs.attributes.new_context_message_count).toBe(2);
+
+      // Second call with additional messages — should only send delta
+      tracing.startLLMRequestSpan("gpt-4", {
+        inputMessages: [
+          ...messages1,
+          { role: "user", content: "How are you?" },
+        ],
+      });
+
+      callArgs = mockTracer.startSpan.mock.calls[2][1];
+      const newContext = JSON.parse(callArgs.attributes.new_context as string);
+      expect(newContext).toHaveLength(1);
+      expect(newContext[0].content).toBe("How are you?");
+      expect(callArgs.attributes.new_context_message_count).toBe(1);
+    });
+
+    it("startLLMRequestSpan captures tools schema with hashes", () => {
+      tracing.startInteractionSpan("Hello", 1);
+      const tools = [
+        {
+          type: "function",
+          function: {
+            name: "Bash",
+            description: "Run a command",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+        {
+          type: "function",
+          function: {
+            name: "Read",
+            description: "Read a file",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ];
+      tracing.startLLMRequestSpan("gpt-4", {
+        toolsSchema: JSON.stringify(tools),
+      });
+
+      const callArgs = mockTracer.startSpan.mock.calls[1][1];
+      expect(callArgs.attributes).toHaveProperty("tools");
+      expect(callArgs.attributes.tools_count).toBe(2);
+      const toolsAttr = JSON.parse(callArgs.attributes.tools as string);
+      expect(toolsAttr[0]).toHaveProperty("name", "Bash");
+      expect(toolsAttr[0]).toHaveProperty("hash");
+      expect(toolsAttr[0].hash).toHaveLength(12);
+    });
+
+    it("startLLMRequestSpan emits tool_schema event only once per hash", () => {
+      tracing.startInteractionSpan("Hello", 1);
+      const tools = [
+        {
+          type: "function",
+          function: {
+            name: "Bash",
+            description: "Run a command",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ];
+      const toolsSchema = JSON.stringify(tools);
+      tracing.startLLMRequestSpan("gpt-4", { toolsSchema });
+      tracing.endInteractionSpan();
+
+      tracing.startInteractionSpan("Hello again", 2);
+      tracing.startLLMRequestSpan("gpt-4", { toolsSchema });
+
+      const toolSchemaEvents = mockLogOTelEvent.mock.calls.filter(
+        (c: unknown[]) => c[0] === "tool_schema",
+      );
+      expect(toolSchemaEvents).toHaveLength(1);
+    });
+
+    it("endLLMRequestSpan captures model_output", () => {
+      tracing.startInteractionSpan("Hello", 1);
+      const span = tracing.startLLMRequestSpan("gpt-4");
+
+      tracing.endLLMRequestSpan(span, {
+        model: "gpt-4",
+        success: true,
+        modelOutput: "This is the model response.",
+      });
+
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+        "response.model_output",
+        "This is the model response.",
+      );
+    });
+
+    it("endLLMRequestSpan truncates model_output to 60KB", () => {
+      tracing.startInteractionSpan("Hello", 1);
+      const span = tracing.startLLMRequestSpan("gpt-4");
+
+      const longOutput = "z".repeat(70000);
+      tracing.endLLMRequestSpan(span, {
+        model: "gpt-4",
+        success: true,
+        modelOutput: longOutput,
+      });
+
+      const outputCall = mockSpan.setAttribute.mock.calls.find(
+        (c) => c[0] === "response.model_output",
+      );
+      expect(outputCall).toBeDefined();
+      expect((outputCall![1] as string).length).toBe(60000);
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+        "response.model_output_truncated",
+        true,
+      );
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+        "response.model_output_original_length",
+        70000,
+      );
+    });
+
+    it("content capture gated by OTEL_LOG_TOOL_CONTENT (disabled)", () => {
+      mockGetCurrentConfig.mockReturnValue({ logToolContent: false });
+      tracing.startInteractionSpan("Hello", 1);
+
+      tracing.startLLMRequestSpan("gpt-4", {
+        systemPrompt: "You are a helpful assistant.",
+        inputMessages: [{ role: "user", content: "Hello" }],
+        toolsSchema: JSON.stringify([
+          { type: "function", function: { name: "Bash" } },
+        ]),
+      });
+
+      const callArgs = mockTracer.startSpan.mock.calls[1][1];
+      expect(callArgs.attributes).not.toHaveProperty("system_prompt_hash");
+      expect(callArgs.attributes).not.toHaveProperty("new_context");
+      expect(callArgs.attributes).not.toHaveProperty("tools");
+      expect(callArgs.attributes).not.toHaveProperty("tools_count");
+    });
+
+    it("resetTracingState clears incremental message tracking", () => {
+      tracing.startInteractionSpan("Hello", 1);
+      tracing.startLLMRequestSpan("gpt-4", {
+        inputMessages: [
+          { role: "user", content: "Message 1" },
+          { role: "assistant", content: "Response 1" },
+        ],
+      });
+
+      // Reset state (simulating compaction)
+      tracing.resetTracingState();
+
+      // After reset, all messages should be treated as new
+      tracing.startLLMRequestSpan("gpt-4", {
+        inputMessages: [
+          { role: "user", content: "Message 1" },
+          { role: "assistant", content: "Response 1" },
+        ],
+      });
+
+      const callArgs = mockTracer.startSpan.mock.calls[2][1];
+      expect(callArgs.attributes.new_context_message_count).toBe(2);
     });
   });
 });

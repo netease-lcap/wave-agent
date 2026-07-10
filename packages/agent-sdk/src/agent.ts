@@ -598,17 +598,20 @@ export class Agent {
       options,
     );
 
-    // Initialize OpenTelemetry (non-blocking, graceful degradation)
+    // Initialize OpenTelemetry (awaited to ensure ALS context is ready before
+    // startInteractionSpan is called, preventing trace context fragmentation)
     const telemetryConfig = this.configurationService.resolveTelemetryConfig();
-    initializeTelemetry(telemetryConfig).catch((error) => {
+    try {
+      await initializeTelemetry(telemetryConfig);
+    } catch (error) {
       this.logger?.warn("Telemetry initialization failed:", error);
-    });
+    }
 
     // Log session_start event
     try {
       const modelConfig = this.getModelConfig();
       if (modelConfig.model) {
-        logOTelEvent("session_start", {
+        await logOTelEvent("session_start", {
           sessionId: this.messageManager.getSessionId(),
           model: modelConfig.model,
           workdir: this.workdir,
