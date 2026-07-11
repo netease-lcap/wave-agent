@@ -70,7 +70,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const [slashPopupPosition, setSlashPopupPosition] = useState({ top: 0, left: 0 });
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-  const [isLoadingSlashCommands, setIsLoadingSlashCommands] = useState(false);
   const [isHistorySearchVisible, setIsHistorySearchVisible] = useState(false);
   const [historyPopupPosition, setHistoryPopupPosition] = useState({ top: 0, left: 0 });
   const [isComposing, setIsComposing] = useState(false);
@@ -140,7 +139,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     setSlashCommand({ isActive: false, filterText: '', startPos: 0, endPos: 0 });
     setSlashCommands([]);
     setSelectedSlashIndex(0);
-    setIsLoadingSlashCommands(false);
   }, []);
 
   const closeHistorySearch = useCallback(() => {
@@ -306,8 +304,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
 
   // Request 指令 from extension
   const requestSlashCommands = useCallback((filterText: string) => {
-    setIsLoadingSlashCommands(true);
-
     vscode.postMessage({
       command: 'requestSlashCommands',
       filterText: filterText
@@ -334,9 +330,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
         requestSlashCommands(slashCommand.filterText);
       }, 150);
       return () => clearTimeout(timer);
-    } else {
-      setSlashCommands([]);
-      setIsLoadingSlashCommands(false);
     }
   }, [slashCommand.isActive, slashCommand.filterText, requestSlashCommands]);
 
@@ -489,10 +482,8 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       } else if (data.command === 'slashCommandsResponse') {
         setSlashCommands(data.commands || []);
         setSelectedSlashIndex(0);
-        setIsLoadingSlashCommands(false);
       } else if (data.command === 'slashCommandsError') {
         setSlashCommands([]);
-        setIsLoadingSlashCommands(false);
         console.error('指令错误:', data.error);
       } else if (data.command === 'uploadSuccess') {
         // Insert uploaded file paths into the input after the @ symbol
@@ -1205,12 +1196,11 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
         {/* 指令弹窗 */}
         <SlashCommandsPopup
           commands={slashCommands}
-          isVisible={slashCommand.isActive && (slashCommands.length > 0 || isLoadingSlashCommands)}
+          isVisible={slashCommand.isActive && slashCommands.length > 0}
           selectedIndex={selectedSlashIndex}
           onSelect={handleSlashCommandSelect}
           onClose={closeSlashCommandPopup}
           position={slashPopupPosition}
-          isLoading={isLoadingSlashCommands}
         />
 
         {/* 历史记录搜索弹窗 */}

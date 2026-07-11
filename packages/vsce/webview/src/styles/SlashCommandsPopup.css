@@ -21,7 +21,6 @@
     border-bottom: 1px solid var(--vscode-panel-border);
 }
 
-.slash-commands-loading,
 .slash-commands-empty {
     padding: 12px;
     text-align: center;
