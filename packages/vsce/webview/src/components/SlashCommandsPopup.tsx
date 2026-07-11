@@ -14,7 +14,6 @@ interface SlashCommandsPopupProps {
   onSelect: (command: SlashCommand) => void;
   onClose: () => void;
   position: { top: number; left: number };
-  isLoading?: boolean;
 }
 
 export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
@@ -23,8 +22,7 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
   selectedIndex,
   onSelect,
   onClose,
-  position,
-  isLoading = false
+  position
 }) => {
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -88,11 +86,7 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
         指令
       </div>
 
-      {isLoading ? (
-        <div className="slash-commands-loading">
-          正在加载命令...
-        </div>
-      ) : commands.length === 0 ? (
+      {commands.length === 0 ? (
         <div className="slash-commands-empty">
           未找到可用命令
         </div>
