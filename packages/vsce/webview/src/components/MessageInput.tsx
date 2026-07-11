@@ -899,7 +899,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       } else {
         setAtMention(mentionState);
         setDropdownPosition(calculateDropdownPosition());
-        console.log(`[debounce] -> requestFileSuggestions("${mentionState.filterText}")`);
         requestFileSuggestions(mentionState.filterText);
       }
 
@@ -908,7 +907,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       } else {
         setSlashCommand(slashCommandState);
         setSlashPopupPosition(calculateDropdownPosition());
-        console.log(`[debounce] -> requestSlashCommands("${slashCommandState.filterText}")`);
         requestSlashCommands(slashCommandState.filterText);
       }
       selectionChangeTimerRef.current = null;
