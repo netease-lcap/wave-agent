@@ -310,29 +310,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     });
   }, [vscode]);
 
-  // Debounced file suggestion requests
-  useEffect(() => {
-    if (atMention.isActive) {
-      const timer = setTimeout(() => {
-        requestFileSuggestions(atMention.filterText);
-      }, 150);
-      return () => clearTimeout(timer);
-    } else {
-      setSuggestions([]);
-      setIsLoadingSuggestions(false);
-    }
-  }, [atMention.isActive, atMention.filterText, requestFileSuggestions]);
-
-  // Debounced 指令 requests
-  useEffect(() => {
-    if (slashCommand.isActive) {
-      const timer = setTimeout(() => {
-        requestSlashCommands(slashCommand.filterText);
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [slashCommand.isActive, slashCommand.filterText, requestSlashCommands]);
-
   // Handle inserting uploaded file paths into the input
   const insertUploadedFilePaths = useCallback((uploadedFiles: string[]) => {
     if (!textareaRef.current || uploadedFiles.length === 0) return;
@@ -884,9 +861,9 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     const preCaretRange = range.cloneRange();
     preCaretRange.selectNodeContents(textareaRef.current);
     preCaretRange.setEnd(range.endContainer, range.endOffset);
-    
+
     const cursorPos = preCaretRange.toString().length;
-    
+
     // Skip if cursor position hasn't changed (avoid redundant work)
     if (cursorPos === lastSelectionChangePosRef.current) {
       return;
@@ -908,7 +885,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       const pre = rng.cloneRange();
       pre.selectNodeContents(textareaRef.current!);
       pre.setEnd(rng.endContainer, rng.endOffset);
-      
+
       const textBeforeCursor = pre.toString();
 
       // Use textBeforeCursor for detection as it's more reliable for cursor position
@@ -917,9 +894,13 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
 
       if (!mentionState.isActive) {
         closeDropdown();
+        setSuggestions([]);
+        setIsLoadingSuggestions(false);
       } else {
         setAtMention(mentionState);
         setDropdownPosition(calculateDropdownPosition());
+        console.log(`[debounce] -> requestFileSuggestions("${mentionState.filterText}")`);
+        requestFileSuggestions(mentionState.filterText);
       }
 
       if (!slashCommandState.isActive) {
@@ -927,10 +908,12 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       } else {
         setSlashCommand(slashCommandState);
         setSlashPopupPosition(calculateDropdownPosition());
+        console.log(`[debounce] -> requestSlashCommands("${slashCommandState.filterText}")`);
+        requestSlashCommands(slashCommandState.filterText);
       }
       selectionChangeTimerRef.current = null;
-    }, 100);
-  }, [detectAtMention, detectSlashCommand, closeDropdown, closeSlashCommandPopup, calculateDropdownPosition]);
+    }, 200);
+  }, [detectAtMention, detectSlashCommand, closeDropdown, closeSlashCommandPopup, calculateDropdownPosition, requestFileSuggestions, requestSlashCommands]);
 
   const handleInput = useCallback((event: React.FormEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
