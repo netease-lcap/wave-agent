@@ -94,7 +94,7 @@ export async function setInputText(element: HTMLElement, text: string) {
 export async function fireInput(element: HTMLElement, options?: { data?: string; inputType?: string }) {
     await act(async () => {
         fireEvent.input(element, options);
-        // Try to advance timers if fake timers are enabled (flushes 100ms debounce in handleSelectionChange)
+        // Try to advance timers if fake timers are enabled (flushes 150ms debounce in handleSelectionChange)
         try {
             await vi.advanceTimersByTimeAsync(150);
         } catch {

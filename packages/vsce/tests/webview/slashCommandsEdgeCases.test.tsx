@@ -23,7 +23,7 @@ async function typeInInput(text: string) {
 
     await act(async () => {
         fireEvent.input(input, { data: text, inputType: 'insertText' });
-        // Advance timers to flush debounced state updates (handleSelectionChange has 100ms debounce)
+        // Advance timers to flush debounced state updates (handleSelectionChange has 150ms debounce)
         await vi.advanceTimersByTimeAsync(150);
     });
 }
