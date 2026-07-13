@@ -20,6 +20,25 @@ import {
 
 const BASH_DEFAULT_TIMEOUT_MS = 120000;
 
+/**
+ * Wrap a user command so we can append CWD tracking (`&& pwd -P`) without the
+ * appended part being affected by trailing here-docs, unbalanced quotes, or
+ * multi-line syntax in the user command.
+ *
+ * The command is single-quoted (with embedded single quotes escaped via the
+ * classic `'"'"'` sequence) and run through `eval`. Because the entire user
+ * command becomes a single literal argument to `eval`, any here-doc inside it
+ * only opens/closes during eval's own second parse pass and cannot leak out to
+ * clobber the trailing `&& pwd -P`. Works on sh/dash/bash and Git Bash.
+ */
+function wrapCommandForCwdTracking(
+  command: string,
+  cwdFileForBash: string,
+): string {
+  const escaped = command.replace(/'/g, `'"'"'`);
+  return `eval '${escaped}' && pwd -P >| ${cwdFileForBash}`;
+}
+
 // Commands that should not be auto-backgrounded on timeout (e.g. sleep should just be killed)
 const DISALLOWED_AUTO_BACKGROUND_COMMANDS = ["sleep"];
 
@@ -248,7 +267,10 @@ The working directory persists between commands. Try to maintain your current wo
         `wave_cwd_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.tmp`,
       );
       const tempCwdFileForBash = toPosixPath(tempCwdFile);
-      const wrappedCommand = `${command} && pwd -P >| ${tempCwdFileForBash}`;
+      const wrappedCommand = wrapCommandForCwdTracking(
+        command,
+        tempCwdFileForBash,
+      );
 
       const child: ChildProcess = spawn(wrappedCommand, {
         shell: shellPath || true,

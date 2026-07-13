@@ -558,6 +558,76 @@ describe("bashTool", () => {
     });
   });
 
+  describe("CWD tracking command wrapping", () => {
+    const makeExitingProcess = () => ({
+      pid: 1234,
+      stdout: { on: vi.fn() },
+      stderr: { on: vi.fn() },
+      on: vi.fn((event, callback) => {
+        if (event === "exit") {
+          setTimeout(() => callback(0), 10);
+        }
+      }),
+      kill: vi.fn(),
+      killed: false,
+    });
+
+    it("should wrap a plain command inside eval single quotes with pwd -P appended", async () => {
+      mockSpawn.mockReturnValue(
+        makeExitingProcess() as unknown as ChildProcess,
+      );
+
+      await bashTool.execute({ command: "echo hello" }, context);
+
+      const spawnCallArgs = mockSpawn.mock.calls[0];
+      expect(typeof spawnCallArgs[0]).toBe("string");
+      const wrapped = spawnCallArgs[0] as string;
+      expect(wrapped).toContain("eval 'echo hello'");
+      expect(wrapped).toContain("pwd -P");
+      expect(wrapped).toMatch(/&& pwd -P >\| \/tmp\/wave_cwd_.*\.tmp$/);
+    });
+
+    it("should escape single quotes in the user command", async () => {
+      mockSpawn.mockReturnValue(
+        makeExitingProcess() as unknown as ChildProcess,
+      );
+
+      await bashTool.execute({ command: "echo 'hi'" }, context);
+
+      const wrapped = mockSpawn.mock.calls[0][0] as string;
+      // Each single quote in the user command is replaced with '"'"'
+      expect(wrapped).toContain(`eval 'echo '"'"'hi'"'"''`);
+      expect(wrapped).toMatch(
+        /^eval '.*' && pwd -P >\| \/tmp\/wave_cwd_.*\.tmp$/,
+      );
+    });
+
+    it("should keep && pwd -P outside the eval quotes for a heredoc command", async () => {
+      mockSpawn.mockReturnValue(
+        makeExitingProcess() as unknown as ChildProcess,
+      );
+
+      const command = `gh pr create -b "$(cat <<'EOF'
+line with \`backtick\`
+EOF
+)"`;
+
+      await bashTool.execute({ command }, context);
+
+      const wrapped = mockSpawn.mock.calls[0][0] as string;
+      // Whole user command wrapped in eval '...'
+      expect(wrapped.startsWith("eval '")).toBe(true);
+      expect(wrapped).toContain("pwd -P");
+      // The heredoc's single quotes are escaped to '"'"'
+      expect(wrapped).toContain(`<<'"'"'EOF'"'"'`);
+      // The && pwd -P suffix must appear after the eval-quoted user command
+      const evalStart = wrapped.lastIndexOf("eval '");
+      const pwdIndex = wrapped.indexOf("&& pwd -P");
+      expect(pwdIndex).toBeGreaterThan(evalStart);
+      expect(wrapped).toMatch(/&& pwd -P >\| \/tmp\/wave_cwd_.*\.tmp$/);
+    });
+  });
+
   describe("CWD reset when outside safe zone", () => {
     const createMockProcess = (exitCode: number, newCwd: string) => {
       const mockProcess = {
