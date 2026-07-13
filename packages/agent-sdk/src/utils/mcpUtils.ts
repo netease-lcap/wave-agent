@@ -132,6 +132,7 @@ export function findToolServer(
 ): McpServerStatus | undefined {
   return servers.find(
     (s) =>
-      s.status === "connected" && s.tools?.some((t) => t.name === toolName),
+      (s.status === "connected" || s.status === "reconnecting") &&
+      s.tools?.some((t) => t.name === toolName),
   );
 }

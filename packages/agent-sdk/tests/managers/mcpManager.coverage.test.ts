@@ -268,6 +268,39 @@ describe("McpManager Coverage", () => {
       expect(plugins).toHaveLength(1);
       expect(plugins[0].name).toBe("mcp__s1__t1");
     });
+
+    it("should retain tools while a server is reconnecting", () => {
+      mcpManager.addServer("s1", { command: "c1" });
+      mcpManager.updateServerStatus("s1", {
+        status: "connected",
+        tools: [{ name: "t1", description: "desc", inputSchema: {} }],
+      });
+
+      // Transient SSE disconnect: status flips to "reconnecting" but the
+      // tool snapshot is preserved (updateServerStatus merges).
+      mcpManager.updateServerStatus("s1", {
+        status: "reconnecting",
+        error: "SSE stream disconnected",
+      });
+
+      const plugins = mcpManager.getMcpToolPlugins();
+      expect(plugins).toHaveLength(1);
+      expect(plugins[0].name).toBe("mcp__s1__t1");
+    });
+
+    it("should drop tools once a server errors out", () => {
+      mcpManager.addServer("s1", { command: "c1" });
+      mcpManager.updateServerStatus("s1", {
+        status: "connected",
+        tools: [{ name: "t1", description: "desc", inputSchema: {} }],
+      });
+      mcpManager.updateServerStatus("s1", {
+        status: "error",
+        error: "boom",
+      });
+
+      expect(mcpManager.getMcpToolPlugins()).toHaveLength(0);
+    });
   });
 
   describe("executeMcpToolByRegistry", () => {
