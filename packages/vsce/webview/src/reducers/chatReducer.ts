@@ -1,4 +1,4 @@
-import type { ChatState, ChatAction, MessageBlock, TextBlock, ToolBlock } from '../types';
+import type { ChatState, ChatAction, MessageBlock, TextBlock, ToolBlock, ErrorBlock } from '../types';
 
 export const initialState: ChatState = {
   messages: [],
@@ -309,6 +309,34 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
       const newMessages = state.messages.map((m, idx) => {
         if (idx === messageIndex) {
+          return { ...m, blocks: newBlocks };
+        }
+        return m;
+      });
+
+      return {
+        ...state,
+        messages: newMessages
+      };
+    }
+    case 'APPEND_ERROR_BLOCK': {
+      const { error } = action.payload;
+      // Find the last assistant message
+      let targetIndex = -1;
+      for (let i = state.messages.length - 1; i >= 0; i--) {
+        if (state.messages[i].role === 'assistant') {
+          targetIndex = i;
+          break;
+        }
+      }
+      if (targetIndex === -1) return state;
+
+      const message = state.messages[targetIndex];
+      const newErrorBlock: ErrorBlock = { type: 'error', content: error };
+      const newBlocks = [...message.blocks, newErrorBlock];
+
+      const newMessages = state.messages.map((m, idx) => {
+        if (idx === targetIndex) {
           return { ...m, blocks: newBlocks };
         }
         return m;

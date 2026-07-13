@@ -191,6 +191,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         case 'updateToolBlock':
           dispatch({ type: 'UPDATE_TOOL_BLOCK', payload: message.params as ToolBlockUpdateCallbackParams });
           break;
+        case 'updateErrorBlock':
+          dispatch({ type: 'APPEND_ERROR_BLOCK', payload: { error: message.error } });
+          break;
       }
     };
 

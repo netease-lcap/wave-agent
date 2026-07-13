@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { chatReducer, initialState } from '../../webview/src/reducers/chatReducer';
-import type { Message, TextBlock, ToolBlock, ReasoningBlock } from '../../webview/src/types';
+import type { Message, TextBlock, ToolBlock, ReasoningBlock, ErrorBlock } from '../../webview/src/types';
 
 describe('chatReducer', () => {
   describe('APPEND_MESSAGE', () => {
@@ -319,6 +319,92 @@ describe('chatReducer', () => {
       expect(newState.messages).toHaveLength(2);
       expect(newState.messages[0].id).toBe('new-1');
       expect(newState.messages[1].id).toBe('new-2');
+    });
+  });
+
+  describe('APPEND_ERROR_BLOCK', () => {
+    it('should append error block to last assistant message', () => {
+      const textBlock: TextBlock = { type: 'text', content: 'Hello', stage: 'end' };
+      const assistantMessage: Message = {
+        id: 'msg-1',
+        role: 'assistant',
+        timestamp: '0',
+        blocks: [textBlock]
+      };
+      const state = { ...initialState, messages: [assistantMessage] };
+
+      const newState = chatReducer(state, {
+        type: 'APPEND_ERROR_BLOCK',
+        payload: { error: 'API rate limit exceeded' }
+      });
+
+      expect(newState.messages[0].blocks).toHaveLength(2);
+      const errorBlock = newState.messages[0].blocks[1] as ErrorBlock;
+      expect(errorBlock.type).toBe('error');
+      expect(errorBlock.content).toBe('API rate limit exceeded');
+    });
+
+    it('should append error block to last assistant message when multiple messages exist', () => {
+      const userMessage: Message = {
+        id: 'msg-1',
+        role: 'user',
+        timestamp: '0',
+        blocks: [{ type: 'text', content: 'Hi', stage: 'end' }]
+      };
+      const assistantMessage: Message = {
+        id: 'msg-2',
+        role: 'assistant',
+        timestamp: '0',
+        blocks: [{ type: 'text', content: 'Hello', stage: 'end' }]
+      };
+      const state = { ...initialState, messages: [userMessage, assistantMessage] };
+
+      const newState = chatReducer(state, {
+        type: 'APPEND_ERROR_BLOCK',
+        payload: { error: 'Something went wrong' }
+      });
+
+      expect(newState.messages[1].blocks).toHaveLength(2);
+      const errorBlock = newState.messages[1].blocks[1] as ErrorBlock;
+      expect(errorBlock.type).toBe('error');
+      expect(errorBlock.content).toBe('Something went wrong');
+      // User message unchanged
+      expect(newState.messages[0].blocks).toHaveLength(1);
+    });
+
+    it('should return original state if no assistant message exists', () => {
+      const userMessage: Message = {
+        id: 'msg-1',
+        role: 'user',
+        timestamp: '0',
+        blocks: []
+      };
+      const state = { ...initialState, messages: [userMessage] };
+
+      const newState = chatReducer(state, {
+        type: 'APPEND_ERROR_BLOCK',
+        payload: { error: 'Error' }
+      });
+
+      expect(newState).toBe(state);
+    });
+
+    it('should not mutate original state', () => {
+      const assistantMessage: Message = {
+        id: 'msg-1',
+        role: 'assistant',
+        timestamp: '0',
+        blocks: []
+      };
+      const state = { ...initialState, messages: [assistantMessage] };
+
+      const newState = chatReducer(state, {
+        type: 'APPEND_ERROR_BLOCK',
+        payload: { error: 'Error' }
+      });
+
+      expect(state.messages[0].blocks).toHaveLength(0);
+      expect(newState.messages[0].blocks).toHaveLength(1);
     });
   });
 
