@@ -324,7 +324,7 @@ export async function main() {
       if (!name || name === "") {
         name = generateRandomName();
       }
-      worktreeSession = createWorktree(name, originalCwd);
+      worktreeSession = await createWorktree(name, originalCwd);
 
       // Register worktree session so system prompt includes worktree warnings
       setCurrentWorktreeSession({
@@ -334,6 +334,7 @@ export async function main() {
         worktreeName: worktreeSession.name,
         isNew: worktreeSession.isNew,
         repoRoot: worktreeSession.repoRoot,
+        hookBased: worktreeSession.hookBased,
       });
     }
 

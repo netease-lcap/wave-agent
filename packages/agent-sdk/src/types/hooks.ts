@@ -188,6 +188,7 @@ export interface HookJsonInput {
   user_prompt?: string; // Present for UserPromptSubmit only
   subagent_type?: string; // Present when hook is executed by a subagent
   name?: string; // Present for WorktreeCreate events
+  worktree_path?: string; // Present for WorktreeRemove events
   old_cwd?: string; // Present for CwdChanged events
   new_cwd?: string; // Present for CwdChanged events
   source?: SessionStartSource; // Present for SessionStart events
@@ -208,6 +209,7 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   userPrompt?: string; // User prompt text (UserPromptSubmit only)
   subagentType?: string; // Subagent type when hook is executed by a subagent
   worktreeName?: string; // Worktree name (WorktreeCreate only)
+  mainRepoDir?: string; // Main repo path (WorktreeCreate only)
   oldCwd?: string; // Previous working directory (CwdChanged only)
   newCwd?: string; // New working directory (CwdChanged only)
   source?: SessionStartSource; // Session start source (SessionStart only)
@@ -220,5 +222,6 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
 // Environment variables injected into hook processes
 export interface HookEnvironment {
   WAVE_PROJECT_DIR: string; // Absolute path to project root
-  [key: string]: string; // Inherit all parent process environment variables
+  WAVE_MAIN_REPO_DIR?: string; // Main repo path (WorktreeCreate only)
+  [key: string]: string | undefined; // Inherit all parent process environment variables
 }

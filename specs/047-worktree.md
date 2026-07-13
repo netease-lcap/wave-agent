@@ -151,8 +151,8 @@
 - **FR-015**：如果用户取消退出提示（例如通过 Esc），CLI 必须返回活动会话。
 - **FR-016**：如果同名 worktree 已存在，系统必须重用它并跳过创建步骤。
 - **FR-017**：退出检测必须在 500ms 内完成，以避免用户可感知的延迟。
-- **FR-018**：系统必须在新 worktree 创建时触发 `WorktreeCreate` 钩子事件。
-- **FR-019**：`WorktreeCreate` 钩子必须通过 stdin 提供包含 `name` 字段的 JSON 输入。钩子必须在新创建的 worktree 目录中执行。
+- **FR-018**：当配置了 `WorktreeCreate` 钩子时，钩子即是创建机制——钩子负责运行 `git worktree add` 并在 stdout 输出 worktree 绝对路径。未配置时回退到内置 `git worktree add`。
+- **FR-019**：`WorktreeCreate` 钩子必须在主仓库目录中执行（worktree 尚未创建）。`WAVE_PROJECT_DIR` 指向主仓库。stdin JSON 含 `name` 字段。
 - **FR-020**：重用现有 worktree 时不得触发 `WorktreeCreate` 钩子。
 - **FR-021**：在 worktree 会话期间，系统必须自动拒绝尝试修改主仓库（当前 worktree 之外）文件的 `Write` 和 `Edit` 工具操作。
 - **FR-022**：自动拒绝机制必须提供描述性错误消息，说明在 worktree 会话期间对主仓库的修改受到限制。
@@ -172,8 +172,11 @@
 - **FR-036**：如果没有活跃的 EnterWorktree 会话，`ExitWorktree` 工具必须是无操作（无文件系统更改）。
 - **FR-037**：`ExitWorktree` 工具必须通过 `AIManager.setWorkdir()` 将会话的工作目录恢复到原始 CWD。
 - **FR-038**：当 `action` 为 `"remove"` 时，系统必须使用 `git worktree remove --force` 删除 worktree 目录，并使用 `git branch -D` 删除关联分支。
-- **FR-039**：`EnterWorktree` 工具不得触发 `WorktreeCreate` 钩子事件（钩子支持不在会话中工具的范围内）。
+- **FR-039**：`EnterWorktree` 工具在配置了 `WorktreeCreate` 钩子时通过钩子创建 worktree（从 stdout 提取路径）。未配置时使用内置 `git worktree add`。
 - **FR-040**：系统必须验证从 `origin/HEAD` 解析的分支存在于 `refs/remotes/origin/` 中。如果分支不存在（陈旧的 `origin/HEAD`），系统必须尝试 `git fetch origin HEAD` 来解析正确的默认分支。
+- **FR-041**：当配置了 `WorktreeRemove` 钩子且 worktree 会话为钩子创建（`hookBased: true`）时，钩子负责删除 worktree 目录。未配置时回退到 `git worktree remove`。
+- **FR-042**：`WorktreeSession` 必须跟踪 `hookBased` 标志，标识 worktree 是否由钩子创建，以决定删除路径。
+- **FR-043**：`WorktreeRemove` 钩子必须在主仓库目录中执行。stdin JSON 含 `worktree_path` 字段，指向要删除的 worktree 路径。
 
 ### 关键实体
 

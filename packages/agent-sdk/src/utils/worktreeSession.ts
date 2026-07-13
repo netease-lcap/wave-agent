@@ -21,6 +21,7 @@ export interface WorktreeSession {
   repoRoot: string;
   /** The HEAD commit of the original branch at worktree creation time */
   originalHeadCommit?: string;
+  hookBased: boolean;
 }
 
 let currentWorktreeSession: WorktreeSession | null = null;

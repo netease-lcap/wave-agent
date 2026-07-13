@@ -129,8 +129,6 @@ export interface ChatContextType {
   workdir?: string;
   // Agent recreation (e.g. after plugin install)
   recreateAgent: () => void;
-  // Trigger WorktreeRemove hook BEFORE agent destruction
-  triggerWorktreeRemoveHook: (worktreePath: string) => Promise<void>;
   // Goal state
   isGoalActive: boolean;
   goalElapsed?: string;
@@ -471,7 +469,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           disallowedTools,
           workdir,
           worktreeName: worktreeSession?.name,
-          isNewWorktree: worktreeSession?.isNew,
           model,
           mcpServers,
         });
@@ -567,14 +564,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       }
     };
   }, []);
-
-  // Trigger WorktreeRemove hook BEFORE agent destruction
-  const triggerWorktreeRemoveHook = useCallback(
-    async (worktreePath: string) => {
-      await agentRef.current?.triggerWorktreeRemoveHook(worktreePath);
-    },
-    [],
-  );
 
   // Send message function (including judgment logic)
   const sendMessage = useCallback(
@@ -893,7 +882,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     version,
     workdir,
     recreateAgent,
-    triggerWorktreeRemoveHook,
     isGoalActive,
     goalElapsed,
     isGoalEvaluating,
