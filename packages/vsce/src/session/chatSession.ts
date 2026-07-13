@@ -19,6 +19,7 @@ export interface ChatSessionCallbacks {
     onStreamingContentUpdate?: (params: { messageId: string; accumulated: string; stage: 'streaming' | 'end' }) => void;
     onStreamingReasoningUpdate?: (params: { messageId: string; accumulated: string; stage: 'streaming' | 'end' }) => void;
     onToolBlockUpdate?: (params: ToolBlockUpdateCallbackParams) => void;
+    onErrorBlockAdded?: (error: string) => void;
     // Bang message callbacks
     onBangMessageAdded?: () => void;
     onBangMessageUpdated?: () => void;
@@ -106,6 +107,9 @@ export class ChatSession {
                 },
                 onToolBlockUpdated: (params) => {
                     this.callbacks.onToolBlockUpdate?.(params);
+                },
+                onErrorBlockAdded: (error: string) => {
+                    this.callbacks.onErrorBlockAdded?.(error);
                 },
                 onTasksChange: (tasks: Task[]) => {
                     this.tasks = tasks;
