@@ -167,7 +167,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       const hasCommits = hasNewCommits(cwd, baseBranch);
 
       if (!hasChanges && !hasCommits) {
-        removeWorktree(worktreeSession);
+        await removeWorktree(worktreeSession);
       } else {
         process.stdout.write(
           `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,
@@ -203,7 +203,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         const hasCommits = hasNewCommits(cwd, baseBranch);
 
         if (!hasChanges && !hasCommits) {
-          removeWorktree(worktreeSession);
+          await removeWorktree(worktreeSession);
         } else {
           process.stdout.write(
             `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,

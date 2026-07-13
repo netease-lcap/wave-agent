@@ -20,6 +20,7 @@ describe("exitWorktreeTool", () => {
     isNew: true,
     repoRoot: "/repo",
     originalHeadCommit: "abc123",
+    hookBased: false,
   };
 
   beforeEach(() => {
@@ -36,7 +37,6 @@ describe("exitWorktreeTool", () => {
       } as never,
     };
 
-    // Default: no active session (override in specific tests)
     vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(null);
   });
 
@@ -174,7 +174,7 @@ describe("exitWorktreeTool", () => {
       expect(worktreeUtils.removeWorktree).toHaveBeenCalled();
     });
 
-    it("should trigger WorktreeRemove hooks when hookManager is available", async () => {
+    it("should use hook to remove worktree when hookBased and WorktreeRemove hooks are configured", async () => {
       const mockExecuteHooks = vi.fn().mockResolvedValue([]);
       const mockProcessHookResults = vi.fn();
       const mockGetTranscriptPath = vi
@@ -185,12 +185,17 @@ describe("exitWorktreeTool", () => {
         changedFiles: 0,
         commits: 0,
       });
+      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue({
+        ...mockSession,
+        hookBased: true,
+      });
 
       const contextWithHooks: ToolContext = {
         ...mockContext,
         hookManager: {
           executeHooks: mockExecuteHooks,
           processHookResults: mockProcessHookResults,
+          hasHooks: vi.fn().mockReturnValue(true),
         } as never,
         messageManager: {
           getTranscriptPath: mockGetTranscriptPath,
@@ -207,11 +212,11 @@ describe("exitWorktreeTool", () => {
       expect(result.content).toContain("WorktreeRemove hooks were executed");
       expect(mockExecuteHooks).toHaveBeenCalledWith("WorktreeRemove", {
         event: "WorktreeRemove",
-        projectDir: "/original/dir",
+        projectDir: "/repo",
         timestamp: expect.any(Date),
         sessionId: "test-session-id",
         transcriptPath: "/test/transcript.jsonl",
-        cwd: "/original/dir",
+        cwd: "/repo",
         worktreePath: "/repo/.wave/worktrees/test",
         env: expect.any(Object),
       });
@@ -220,38 +225,11 @@ describe("exitWorktreeTool", () => {
         [],
         contextWithHooks.messageManager,
       );
+      expect(worktreeUtils.removeWorktree).not.toHaveBeenCalled();
     });
 
-    it("should NOT trigger hooks when hookManager is not available", async () => {
+    it("should call removeWorktree when hookBased is false even if hooks are configured", async () => {
       const mockExecuteHooks = vi.fn().mockResolvedValue([]);
-
-      vi.mocked(worktreeUtils.countWorktreeChanges).mockReturnValue({
-        changedFiles: 0,
-        commits: 0,
-      });
-
-      const contextWithoutHooks: ToolContext = {
-        ...mockContext,
-        hookManager: undefined,
-        messageManager: {} as never,
-      };
-
-      const result = await exitWorktreeTool.execute(
-        { action: "remove" },
-        contextWithoutHooks,
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.content).not.toContain(
-        "WorktreeRemove hooks were executed",
-      );
-      expect(mockExecuteHooks).not.toHaveBeenCalled();
-    });
-
-    it("should not fail tool when hooks throw an error", async () => {
-      const mockExecuteHooks = vi
-        .fn()
-        .mockRejectedValue(new Error("Hook execution failed"));
 
       vi.mocked(worktreeUtils.countWorktreeChanges).mockReturnValue({
         changedFiles: 0,
@@ -263,8 +241,46 @@ describe("exitWorktreeTool", () => {
         hookManager: {
           executeHooks: mockExecuteHooks,
           processHookResults: vi.fn(),
+          hasHooks: vi.fn().mockReturnValue(true),
         } as never,
-        messageManager: {} as never,
+        messageManager: { addErrorBlock: vi.fn() } as never,
+      };
+
+      const result = await exitWorktreeTool.execute(
+        { action: "remove" },
+        contextWithHooks,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).not.toContain(
+        "WorktreeRemove hooks were executed",
+      );
+      expect(mockExecuteHooks).not.toHaveBeenCalled();
+      expect(worktreeUtils.removeWorktree).toHaveBeenCalled();
+    });
+
+    it("should not fail tool when hooks throw an error", async () => {
+      const mockExecuteHooks = vi
+        .fn()
+        .mockRejectedValue(new Error("Hook execution failed"));
+
+      vi.mocked(worktreeUtils.countWorktreeChanges).mockReturnValue({
+        changedFiles: 0,
+        commits: 0,
+      });
+      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue({
+        ...mockSession,
+        hookBased: true,
+      });
+
+      const contextWithHooks: ToolContext = {
+        ...mockContext,
+        hookManager: {
+          executeHooks: mockExecuteHooks,
+          processHookResults: vi.fn(),
+          hasHooks: vi.fn().mockReturnValue(true),
+        } as never,
+        messageManager: { addErrorBlock: vi.fn() } as never,
       };
 
       const result = await exitWorktreeTool.execute(
@@ -282,18 +298,20 @@ describe("exitWorktreeTool", () => {
     it("should NOT trigger WorktreeRemove hooks when action is keep", async () => {
       const mockExecuteHooks = vi.fn().mockResolvedValue([]);
 
+      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue({
+        ...mockSession,
+        hookBased: true,
+      });
+
       const contextWithHooks: ToolContext = {
         ...mockContext,
         hookManager: {
           executeHooks: mockExecuteHooks,
           processHookResults: vi.fn(),
+          hasHooks: vi.fn().mockReturnValue(true),
         } as never,
-        messageManager: {} as never,
+        messageManager: { addErrorBlock: vi.fn() } as never,
       };
-
-      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
-        mockSession,
-      );
 
       const result = await exitWorktreeTool.execute(
         { action: "keep" },
