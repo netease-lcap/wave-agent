@@ -725,11 +725,17 @@ export class McpManager {
     }
   }
 
-  // Get all tools from connected servers
+  // Get all tools from connected servers.
+  // "reconnecting" servers retain their last-known tool snapshot so that
+  // transient SSE disconnects don't churn the tool list (which would bust
+  // the prompt cache). Tools are only dropped once the server truly fails
+  // (status "error"/"disconnected").
   getAllConnectedTools(): McpTool[] {
     const allTools: McpTool[] = [];
     for (const server of this.servers.values()) {
-      if (server.status === "connected" && server.tools) {
+      const usable =
+        server.status === "connected" || server.status === "reconnecting";
+      if (usable && server.tools) {
         allTools.push(...server.tools);
       }
     }
