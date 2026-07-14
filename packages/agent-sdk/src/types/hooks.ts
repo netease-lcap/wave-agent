@@ -188,6 +188,7 @@ export interface HookJsonInput {
   user_prompt?: string; // Present for UserPromptSubmit only
   subagent_type?: string; // Present when hook is executed by a subagent
   name?: string; // Present for WorktreeCreate events
+  worktree_path?: string; // Present for WorktreeRemove events
   old_cwd?: string; // Present for CwdChanged events
   new_cwd?: string; // Present for CwdChanged events
   source?: SessionStartSource; // Present for SessionStart events

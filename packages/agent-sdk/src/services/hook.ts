@@ -89,6 +89,13 @@ async function buildHookJsonInput(
     }
   }
 
+  // Add worktree_path field for WorktreeRemove events
+  if (context.event === "WorktreeRemove") {
+    if (context.worktreePath !== undefined) {
+      jsonInput.worktree_path = context.worktreePath;
+    }
+  }
+
   // Add SessionStart-specific fields
   if (context.event === "SessionStart") {
     if (context.source !== undefined) {
