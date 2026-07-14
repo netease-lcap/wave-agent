@@ -13,8 +13,12 @@ Wave supports the following hook events:
 - `Stop`: Triggered when Wave finishes its response cycle (no more tool calls).
 - `SubagentStop`: Triggered when a subagent finishes its response cycle.
 - `WorktreeCreate`: Triggered when a new worktree is created.
+- `WorktreeRemove`: Triggered when a worktree is removed (e.g., via ExitWorktree with `action: "remove"`). Non-blocking. Useful for cleanup tasks after worktree deletion.
+- `CwdChanged`: Triggered when the working directory changes (e.g., entering/exiting a worktree). Non-blocking.
 - `SessionStart`: Triggered during session initialization. Hooks can inject `additionalContext` and `initialUserMessage` via stdout.
 - `SessionEnd`: Triggered during agent destruction (fire-and-forget, non-blocking). Useful for cleanup, resource teardown, and analytics.
+- `PreCompact`: Triggered before conversation compaction. Hook stdout is captured as additional instructions and merged into the compaction prompt.
+- `PostCompact`: Triggered after conversation compaction completes. Receives the compact summary text.
 
 ## Hook Configuration Structure
 
@@ -75,6 +79,10 @@ Wave provides detailed context to hook processes via `stdin` as a JSON object. T
 - `user_prompt`: (UserPromptSubmit) The text submitted by the user.
 - `subagent_type`: (If executed by a subagent) The type of the subagent.
 - `name`: (WorktreeCreate) The name of the new worktree.
+- `old_cwd`: (CwdChanged) The previous working directory.
+- `new_cwd`: (CwdChanged) The new working directory.
+- `compact_instructions`: (PreCompact) Custom instructions for the compaction, if any.
+- `compact_summary`: (PostCompact) The AI-generated compaction summary text.
 - `source`: (SessionStart) The session start source: `"startup"`, `"resume"`, or `"compact"`.
 - `agent_type`: (SessionStart) The agent type identifier.
 - `end_source`: (SessionEnd) The session end source: `"exit"`, `"stop"`, or `"compact"`.
@@ -89,6 +97,7 @@ Hooks can communicate status and control Wave's behavior using exit codes:
     - `PreToolUse`: Blocks tool execution and provides `stderr` to the agent as feedback.
     - `PostToolUse`: Appends `stderr` to the tool result as feedback for the agent.
     - `Stop`: Blocks the stop operation and provides `stderr` to the agent.
+    - `WorktreeCreate` / `WorktreeRemove` / `CwdChanged` / `PreCompact` / `PostCompact`: Shows `stderr` in an error block, but does not block the operation.
     - `SessionStart` / `SessionEnd`: Shows `stderr` in an error block, but does not block startup or shutdown.
 - **Other Exits (e.g., Exit 1)**: Non-blocking error. Wave continues execution but shows `stderr` as a warning to the user.
 
