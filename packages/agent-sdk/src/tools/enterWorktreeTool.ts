@@ -13,11 +13,10 @@ import {
   createWorktree,
   validateWorktreeName,
   generateWorktreeName,
-  getHeadCommit,
 } from "../utils/worktreeUtils.js";
 import { getGitMainRepoRoot } from "../utils/gitUtils.js";
 import { ENTER_WORKTREE_TOOL_NAME } from "../constants/tools.js";
-import { extractWorktreePath } from "../utils/worktreeHooks.js";
+import { logger } from "../utils/globalLogger.js";
 
 export const ENTER_WORKTREE_TOOL_PROMPT = `Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.
 
@@ -106,87 +105,18 @@ export const enterWorktreeTool: ToolPlugin = {
       };
     }
 
-    const hasHook = context.hookManager?.hasHooks("WorktreeCreate") ?? false;
-
-    let worktreePath: string;
-    let branch: string;
-    let repoRoot: string;
-    let isNew: boolean;
-    let originalHeadCommit: string | undefined;
-    let hookBased: boolean;
-
-    if (hasHook && context.hookManager) {
-      const hookResults = await context.hookManager.executeHooks(
-        "WorktreeCreate",
-        {
-          event: "WorktreeCreate",
-          projectDir: mainRepoRoot,
-          timestamp: new Date(),
-          sessionId: context.sessionId ?? "",
-          transcriptPath: context.messageManager?.getTranscriptPath() ?? "",
-          cwd: mainRepoRoot,
-          worktreeName: name,
-          mainRepoDir: mainRepoRoot,
-          env: Object.fromEntries(
-            Object.entries(process.env).filter((e) => e[1] !== undefined),
-          ) as Record<string, string>,
-        },
-      );
-
-      if (context.messageManager) {
-        context.hookManager.processHookResults(
-          "WorktreeCreate",
-          hookResults,
-          context.messageManager,
-        );
-      }
-
-      if (hookResults.some((r) => !r.success)) {
-        return {
-          success: false,
-          content: "WorktreeCreate hook failed. Check hook output for details.",
-          error: "WorktreeCreate hook failed",
-        };
-      }
-
-      // Extract worktree path from hook stdout
-      const allStdout = hookResults.map((r) => r.stdout ?? "").join("\n");
-      worktreePath = extractWorktreePath(allStdout) ?? "";
-      if (!worktreePath) {
-        return {
-          success: false,
-          content:
-            "WorktreeCreate hook did not output a valid worktree path on stdout.",
-          error: "WorktreeCreate hook produced no path",
-        };
-      }
-
-      branch = `worktree-${name}`;
-      repoRoot = mainRepoRoot;
-      isNew = true;
-      originalHeadCommit = getHeadCommit(mainRepoRoot);
-      hookBased = true;
-    } else {
-      // No hook → git worktree add
-      const worktreeInfo = createWorktree(name, mainRepoRoot);
-      worktreePath = worktreeInfo.path;
-      branch = worktreeInfo.branch;
-      repoRoot = worktreeInfo.repoRoot;
-      isNew = worktreeInfo.isNew;
-      originalHeadCommit = worktreeInfo.originalHeadCommit;
-      hookBased = false;
-    }
+    // Create the worktree (captures originalHeadCommit internally)
+    const worktreeInfo = createWorktree(name, mainRepoRoot);
 
     // Build session state
     const session: WorktreeSession = {
       originalCwd: context.workdir,
-      worktreePath,
-      worktreeBranch: branch,
-      worktreeName: name,
-      isNew,
-      repoRoot,
-      originalHeadCommit,
-      hookBased,
+      worktreePath: worktreeInfo.path,
+      worktreeBranch: worktreeInfo.branch,
+      worktreeName: worktreeInfo.name,
+      isNew: worktreeInfo.isNew,
+      repoRoot: worktreeInfo.repoRoot,
+      originalHeadCommit: worktreeInfo.originalHeadCommit,
     };
 
     // Set module-level session state
@@ -195,15 +125,58 @@ export const enterWorktreeTool: ToolPlugin = {
     // Update CWD via AIManager
     const aiManager = context.aiManager;
     if (aiManager) {
-      aiManager.setWorkdir(worktreePath);
+      aiManager.setWorkdir(worktreeInfo.path);
     }
 
-    const branchInfo = branch ? ` on branch ${branch}` : "";
-    const hookInfo = hookBased ? " WorktreeCreate hooks were executed." : "";
+    // Also update the container's Workdir entry
+    // (Container is not directly accessible from ToolContext, but AIManager.setWorkdir
+    // handles both its internal field and process.chdir)
+
+    // Trigger WorktreeCreate hook if worktree is new
+    let hookTriggered = false;
+    if (session.isNew && context.hookManager) {
+      try {
+        const hookResults = await context.hookManager.executeHooks(
+          "WorktreeCreate",
+          {
+            event: "WorktreeCreate",
+            projectDir: worktreeInfo.path,
+            timestamp: new Date(),
+            sessionId: context.sessionId ?? "",
+            transcriptPath: context.messageManager?.getTranscriptPath() ?? "",
+            cwd: worktreeInfo.path,
+            worktreeName: worktreeInfo.name,
+            env: Object.fromEntries(
+              Object.entries(process.env).filter((e) => e[1] !== undefined),
+            ) as Record<string, string>,
+          },
+        );
+
+        if (context.messageManager) {
+          context.hookManager.processHookResults(
+            "WorktreeCreate",
+            hookResults,
+            context.messageManager,
+          );
+        }
+
+        hookTriggered = true;
+      } catch (error) {
+        // Non-blocking: log but don't fail the tool
+        logger?.warn("WorktreeCreate hooks execution failed:", error);
+      }
+    }
+
+    const branchInfo = worktreeInfo.branch
+      ? ` on branch ${worktreeInfo.branch}`
+      : "";
+    const hookInfo = hookTriggered
+      ? " WorktreeCreate hooks were executed."
+      : "";
 
     return {
       success: true,
-      content: `Created worktree at ${worktreePath}${branchInfo}. The session is now working in the worktree. Use ExitWorktree to leave mid-session, or exit the session to be prompted.${hookInfo}`,
+      content: `Created worktree at ${worktreeInfo.path}${branchInfo}. The session is now working in the worktree. Use ExitWorktree to leave mid-session, or exit the session to be prompted.${hookInfo}`,
     };
   },
 };

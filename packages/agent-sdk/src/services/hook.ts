@@ -82,15 +82,10 @@ async function buildHookJsonInput(
     jsonInput.subagent_type = context.subagentType;
   }
 
+  // Add name field for WorktreeCreate events
   if (context.event === "WorktreeCreate") {
     if (context.worktreeName !== undefined) {
       jsonInput.name = context.worktreeName;
-    }
-  }
-
-  if (context.event === "WorktreeRemove") {
-    if (context.worktreePath !== undefined) {
-      jsonInput.worktree_path = context.worktreePath;
     }
   }
 
@@ -173,9 +168,6 @@ export async function executeCommand(
         HOOK_EVENT: context.event,
         HOOK_TOOL_NAME: context.toolName || "",
         WAVE_PROJECT_DIR: context.projectDir,
-        ...("mainRepoDir" in context && context.mainRepoDir
-          ? { WAVE_MAIN_REPO_DIR: context.mainRepoDir }
-          : {}),
       },
     });
 

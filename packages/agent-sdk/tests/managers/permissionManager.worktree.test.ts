@@ -157,7 +157,6 @@ describe("PermissionManager Worktree Safety — EnterWorktree mid-session", () =
       worktreeBranch: "worktree-feat-mid",
       worktreeName,
       isNew: true,
-      hookBased: false,
       repoRoot: mainRepoRoot,
       originalHeadCommit: "abc123",
     });

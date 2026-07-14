@@ -40,7 +40,6 @@ describe("startCli", () => {
       hasUncommittedChanges: false,
       hasNewCommits: false,
       isNew: true,
-      hookBased: false,
     };
 
     // Mock render to call onExit with true

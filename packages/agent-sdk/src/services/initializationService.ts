@@ -222,6 +222,36 @@ export class InitializationService {
       logger?.warn("SessionStart hooks execution failed:", error);
     }
 
+    // Trigger WorktreeCreate hook if this is a new worktree
+    if (agentOptions.isNewWorktree && hookManager) {
+      try {
+        logger?.info(
+          `Triggering WorktreeCreate hook for ${agentOptions.worktreeName}...`,
+        );
+        const hookResults = await hookManager.executeHooks("WorktreeCreate", {
+          event: "WorktreeCreate",
+          projectDir: workdir,
+          timestamp: new Date(),
+          sessionId: messageManager.getSessionId(),
+          transcriptPath: messageManager.getTranscriptPath(),
+          cwd: workdir,
+          worktreeName: agentOptions.worktreeName,
+          env: Object.fromEntries(
+            Object.entries(process.env).filter((e) => e[1] !== undefined),
+          ) as Record<string, string>,
+        });
+
+        // Process hook results
+        hookManager.processHookResults(
+          "WorktreeCreate",
+          hookResults,
+          messageManager,
+        );
+      } catch (error) {
+        logger?.warn("WorktreeCreate hooks execution failed:", error);
+      }
+    }
+
     // Resolve and validate configuration after loading settings.json
     resolveAndValidateConfig();
 
