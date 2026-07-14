@@ -706,6 +706,51 @@ describe("Hook Services", () => {
     });
   });
 
+  describe("WorktreeRemove hook", () => {
+    it("should include worktree_path in JSON input for WorktreeRemove event", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const worktreeRemoveContext: ExtendedHookExecutionContext = {
+        event: "WorktreeRemove",
+        projectDir: "/test/main-repo",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/main-repo",
+        worktreePath: "/test/main-repo/.wave/worktrees/my-feature",
+      };
+
+      const resultPromise = executeCommand("echo test", worktreeRemoveContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(stdinData).toBeTruthy();
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("WorktreeRemove");
+      expect(parsedInput.worktree_path).toBe(
+        "/test/main-repo/.wave/worktrees/my-feature",
+      );
+    });
+  });
+
   describe("SessionStart hook", () => {
     it("should include source and agent_type in JSON input for SessionStart event", async () => {
       const mockProcess = new MockChildProcess();
