@@ -83,7 +83,6 @@ describe("App Component", () => {
       hasUncommittedChanges: false,
       hasNewCommits: false,
       isNew: false,
-      hookBased: false,
     };
 
     vi.mocked(hasUncommittedChanges).mockReturnValue(false);
@@ -111,7 +110,6 @@ describe("App Component", () => {
       hasUncommittedChanges: false,
       hasNewCommits: false,
       isNew: false,
-      hookBased: false,
     };
 
     vi.mocked(hasUncommittedChanges).mockReturnValue(true);

@@ -68,7 +68,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     // Cleanup worktree if requested
     if (shouldRemoveWorktree && worktreeSession) {
       process.chdir(worktreeSession.repoRoot);
-      await removeWorktree(worktreeSession);
+      removeWorktree(worktreeSession);
     }
 
     process.exit(0);

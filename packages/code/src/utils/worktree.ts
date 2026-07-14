@@ -1,12 +1,7 @@
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import {
-  getDefaultRemoteBranch,
-  getGitMainRepoRoot,
-  executeWorktreeCreateHookDirect,
-  executeWorktreeRemoveHookDirect,
-} from "wave-agent-sdk";
+import { getDefaultRemoteBranch, getGitMainRepoRoot } from "wave-agent-sdk";
 
 export interface WorktreeSession {
   name: string;
@@ -16,7 +11,6 @@ export interface WorktreeSession {
   hasUncommittedChanges: boolean;
   hasNewCommits: boolean;
   isNew: boolean;
-  hookBased: boolean;
 }
 
 /**
@@ -25,26 +19,8 @@ export interface WorktreeSession {
  * @param cwd Current working directory
  * @returns Worktree session details
  */
-export async function createWorktree(
-  name: string,
-  cwd: string,
-): Promise<WorktreeSession> {
+export function createWorktree(name: string, cwd: string): WorktreeSession {
   const repoRoot = getGitMainRepoRoot(cwd);
-
-  const hookPath = await executeWorktreeCreateHookDirect(name, repoRoot);
-  if (hookPath) {
-    return {
-      name,
-      path: hookPath,
-      branch: `worktree-${name}`,
-      repoRoot,
-      hasUncommittedChanges: false,
-      hasNewCommits: false,
-      isNew: true,
-      hookBased: true,
-    };
-  }
-
   const worktreePath = path.join(repoRoot, ".wave", "worktrees", name);
   const branchName = `worktree-${name}`;
   const baseBranch = getDefaultRemoteBranch(cwd);
@@ -66,7 +42,6 @@ export async function createWorktree(
       hasUncommittedChanges: false,
       hasNewCommits: false,
       isNew: false,
-      hookBased: false,
     };
   }
 
@@ -89,7 +64,6 @@ export async function createWorktree(
       hasUncommittedChanges: false,
       hasNewCommits: false,
       isNew: true,
-      hookBased: false,
     };
   } catch (error: unknown) {
     const stderr = (error as { stderr?: Buffer }).stderr?.toString() || "";
@@ -108,7 +82,6 @@ export async function createWorktree(
           hasUncommittedChanges: false,
           hasNewCommits: false,
           isNew: true,
-          hookBased: false,
         };
       } catch (innerError: unknown) {
         throw new Error(
@@ -143,7 +116,6 @@ export async function createWorktree(
           hasUncommittedChanges: false,
           hasNewCommits: false,
           isNew: true,
-          hookBased: false,
         };
       } catch {
         // Fetch or retry failed — fall back to HEAD
@@ -164,7 +136,6 @@ export async function createWorktree(
             hasUncommittedChanges: false,
             hasNewCommits: false,
             isNew: true,
-            hookBased: false,
           };
         } catch {
           throw new Error(
@@ -183,15 +154,7 @@ export async function createWorktree(
  * Remove a git worktree and its associated branch
  * @param session Worktree session details
  */
-export async function removeWorktree(session: WorktreeSession): Promise<void> {
-  if (session.hookBased) {
-    const removed = await executeWorktreeRemoveHookDirect(
-      session.path,
-      session.repoRoot,
-    );
-    if (removed) return;
-  }
-
+export function removeWorktree(session: WorktreeSession): void {
   const repoRoot = session.repoRoot;
 
   try {

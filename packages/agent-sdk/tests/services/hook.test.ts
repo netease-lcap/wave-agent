@@ -647,7 +647,6 @@ describe("Hook Services", () => {
         timestamp: new Date(),
         sessionId: "test-session-123",
         worktreeName: "test-worktree",
-        mainRepoDir: "/test/main-repo",
       };
 
       const resultPromise = executeCommand("echo test", worktreeContext);
@@ -663,7 +662,6 @@ describe("Hook Services", () => {
       expect(spawnEnv!.HOOK_WORKTREE_NAME).toBeUndefined();
       expect(spawnEnv!.HOOK_WORKTREE_PATH).toBeUndefined();
       expect(spawnEnv!.WAVE_PROJECT_DIR).toBe("/test/worktree-path");
-      expect(spawnEnv!.WAVE_MAIN_REPO_DIR).toBe("/test/main-repo");
     });
 
     it("should include 'name' field in JSON input and NOT include 'worktree_name' or 'worktree_path'", async () => {
@@ -689,7 +687,6 @@ describe("Hook Services", () => {
         timestamp: new Date(),
         sessionId: "test-session-123",
         worktreeName: "test-worktree",
-        mainRepoDir: "/test/main-repo",
       };
 
       const resultPromise = executeCommand("echo test", worktreeContext);
@@ -706,48 +703,6 @@ describe("Hook Services", () => {
       expect(parsedInput.worktree_name).toBeUndefined();
       expect(parsedInput.worktree_path).toBeUndefined();
       expect(parsedInput.hook_event_name).toBe("WorktreeCreate");
-    });
-  });
-
-  describe("WorktreeRemove hook", () => {
-    it("should include worktree_path in JSON input for WorktreeRemove event", async () => {
-      const mockProcess = new MockChildProcess();
-      const mockStdin = new MockStdin();
-      let stdinData = "";
-
-      vi.spyOn(mockStdin, "write").mockImplementation(
-        (_data?: string | Buffer | Uint8Array) => {
-          if (_data) {
-            stdinData += _data.toString();
-          }
-          return true;
-        },
-      );
-
-      mockProcess.stdin = mockStdin;
-      mockSpawn.mockReturnValue(mockProcess);
-
-      const worktreeRemoveContext: ExtendedHookExecutionContext = {
-        event: "WorktreeRemove",
-        projectDir: "/test/main-repo",
-        timestamp: new Date(),
-        sessionId: "test-session-123",
-        cwd: "/test/main-repo",
-        worktreePath: "/test/worktree-to-remove",
-      };
-
-      const resultPromise = executeCommand("echo test", worktreeRemoveContext);
-
-      setImmediate(() => {
-        mockProcess.emit("close", 0);
-      });
-
-      await resultPromise;
-
-      expect(stdinData).toBeTruthy();
-      const parsedInput = JSON.parse(stdinData);
-      expect(parsedInput.hook_event_name).toBe("WorktreeRemove");
-      expect(parsedInput.worktree_path).toBe("/test/worktree-to-remove");
     });
   });
 

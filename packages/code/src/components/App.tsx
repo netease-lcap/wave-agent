@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useInput } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
-import { ChatProvider } from "../contexts/useChat.js";
+import { ChatProvider, useChat } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
 import { WorktreeExitPrompt } from "./WorktreeExitPrompt.js";
 import {
@@ -21,11 +21,12 @@ interface AppWithProvidersProps extends BaseAppProps {
   onExit: (shouldRemove: boolean) => void;
 }
 
-/** Wraps ChatInterface with worktree exit handling. */
+/** Wraps ChatInterface with worktree exit handling, using useChat() for hook access. */
 const ChatWithExitPrompt: React.FC<{
   worktreeSession: NonNullable<BaseAppProps["worktreeSession"]>;
   onExit: (shouldRemove: boolean) => void;
 }> = ({ worktreeSession, onExit }) => {
+  const { triggerWorktreeRemoveHook } = useChat();
   const [isExiting, setIsExiting] = useState(false);
   const [worktreeStatus, setWorktreeStatus] = useState<{
     hasUncommittedChanges: boolean;
@@ -76,7 +77,10 @@ const ChatWithExitPrompt: React.FC<{
         hasUncommittedChanges={worktreeStatus.hasUncommittedChanges}
         hasNewCommits={worktreeStatus.hasNewCommits}
         onKeep={() => onExit(false)}
-        onRemove={() => onExit(true)}
+        onRemove={async () => {
+          await triggerWorktreeRemoveHook(worktreeSession.path);
+          onExit(true);
+        }}
         onCancel={() => setIsExiting(false)}
       />
     );

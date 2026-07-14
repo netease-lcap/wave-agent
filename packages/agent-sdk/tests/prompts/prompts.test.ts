@@ -222,7 +222,6 @@ describe("prompts", () => {
         worktreeBranch: "wave-test-feature",
         worktreeName: "test-feature",
         isNew: true,
-        hookBased: false,
         repoRoot: "/original/repo",
       });
 
@@ -332,7 +331,6 @@ describe("prompts", () => {
         worktreeBranch: "wave-fix-bug",
         worktreeName: "fix-bug",
         isNew: true,
-        hookBased: false,
         repoRoot: "/original/repo",
       });
 

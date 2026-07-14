@@ -23,7 +23,6 @@ describe("worktreeSession", () => {
       worktreeBranch: "worktree-test",
       worktreeName: "test",
       isNew: true,
-      hookBased: false,
       repoRoot: "/repo",
       originalHeadCommit: "abc123",
     };
@@ -39,7 +38,6 @@ describe("worktreeSession", () => {
       worktreeBranch: "worktree-test",
       worktreeName: "test",
       isNew: true,
-      hookBased: false,
       repoRoot: "/repo",
     };
 

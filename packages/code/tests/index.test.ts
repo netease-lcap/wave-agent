@@ -54,19 +54,15 @@ vi.mock("../src/cli.js");
 vi.mock("../src/print-cli.js");
 vi.mock("../src/session-selector-cli.js");
 vi.mock("../src/utils/worktree.js", () => ({
-  createWorktree: vi.fn().mockImplementation((name, cwd) =>
-    Promise.resolve({
-      name,
-      path: path.join(cwd, "..", `${path.basename(cwd)}.worktrees`, name),
-      branch: `worktree-${name}`,
-      repoRoot: cwd,
-      isNew: true,
-      hasUncommittedChanges: false,
-      hasNewCommits: false,
-      hookBased: false,
-    }),
-  ),
-  removeWorktree: vi.fn().mockResolvedValue(undefined),
+  createWorktree: vi.fn().mockImplementation((name, cwd) => ({
+    name,
+    path: path.join(cwd, "..", `${path.basename(cwd)}.worktrees`, name),
+    branch: `worktree-${name}`,
+    repoRoot: cwd,
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+  })),
+  removeWorktree: vi.fn(),
 }));
 
 describe("main", () => {

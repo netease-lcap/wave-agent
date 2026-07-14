@@ -13,6 +13,7 @@ import {
   countWorktreeChanges,
 } from "../utils/worktreeUtils.js";
 import { EXIT_WORKTREE_TOOL_NAME } from "../constants/tools.js";
+import { logger } from "../utils/globalLogger.js";
 
 export const EXIT_WORKTREE_TOOL_PROMPT = `Exit a worktree session created by EnterWorktree and return the session to the original working directory.
 
@@ -153,6 +154,13 @@ export const exitWorktreeTool: ToolPlugin = {
     }
 
     // action === "remove"
+    const worktreeInfo = {
+      name: session.worktreeName,
+      path: worktreePath,
+      branch: worktreeBranch,
+      repoRoot: session.repoRoot,
+      isNew: session.isNew,
+    };
 
     // Count changes BEFORE removing the worktree (directory will be gone after)
     const summary = countWorktreeChanges(
@@ -160,18 +168,30 @@ export const exitWorktreeTool: ToolPlugin = {
       session.originalHeadCommit,
     ) ?? { changedFiles: 0, commits: 0 };
 
+    removeWorktree(worktreeInfo);
+
+    // Clear session state
+    setCurrentWorktreeSession(null);
+
+    // Restore CWD
+    const aiManager = context.aiManager;
+    if (aiManager) {
+      aiManager.setWorkdir(originalCwd);
+    }
+
+    // Trigger WorktreeRemove hook (non-blocking)
     let hookTriggered = false;
-    if (session.hookBased && context.hookManager?.hasHooks("WorktreeRemove")) {
+    if (context.hookManager) {
       try {
         const hookResults = await context.hookManager.executeHooks(
           "WorktreeRemove",
           {
             event: "WorktreeRemove",
-            projectDir: session.repoRoot,
+            projectDir: originalCwd,
             timestamp: new Date(),
             sessionId: context.sessionId ?? "",
             transcriptPath: context.messageManager?.getTranscriptPath() ?? "",
-            cwd: session.repoRoot,
+            cwd: originalCwd,
             worktreePath,
             env: Object.fromEntries(
               Object.entries(process.env).filter((e) => e[1] !== undefined),
@@ -189,35 +209,9 @@ export const exitWorktreeTool: ToolPlugin = {
 
         hookTriggered = true;
       } catch (error) {
-        // Hook failed — fall back to git worktree remove
-        context.messageManager?.addErrorBlock(
-          `WorktreeRemove hook failed: ${(error as Error).message}. Falling back to git worktree remove.`,
-        );
-        removeWorktree({
-          name: session.worktreeName,
-          path: worktreePath,
-          branch: worktreeBranch,
-          repoRoot: session.repoRoot,
-          isNew: session.isNew,
-        });
+        // Non-blocking: log but don't fail the tool
+        logger?.warn("WorktreeRemove hooks execution failed:", error);
       }
-    } else {
-      removeWorktree({
-        name: session.worktreeName,
-        path: worktreePath,
-        branch: worktreeBranch,
-        repoRoot: session.repoRoot,
-        isNew: session.isNew,
-      });
-    }
-
-    // Clear session state
-    setCurrentWorktreeSession(null);
-
-    // Restore CWD
-    const aiManager = context.aiManager;
-    if (aiManager) {
-      aiManager.setWorkdir(originalCwd);
     }
 
     const discardParts: string[] = [];
