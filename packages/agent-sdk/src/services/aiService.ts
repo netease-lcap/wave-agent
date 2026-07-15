@@ -313,24 +313,9 @@ export async function callAgent(
       );
     }
 
-    // Get model configuration - use injected modelConfig with optional override
-    const {
-      model: _model,
-      fastModel: _fastModel,
-      maxTokens: _maxTokens,
-      permissionMode: _permissionMode,
-      capabilities: _capabilities,
-      ...extraParams
-    } = modelConfig;
-    void _model;
-    void _fastModel;
-    void _maxTokens;
-    void _permissionMode;
-    void _capabilities;
-
     const openaiModelConfig = getModelConfig(model || modelConfig.model, {
       max_tokens: resolvedMaxTokens,
-      ...extraParams,
+      ...(modelConfig.options || {}),
     });
 
     // Determine if streaming is needed
@@ -861,27 +846,11 @@ export async function compactMessages(
     fetch: gatewayConfig.fetch,
   });
 
-  // Get model configuration - use injected agent model
-  const {
-    model: _model,
-    fastModel: _fastModel,
-    maxTokens: _maxTokens,
-    permissionMode: _permissionMode,
-    capabilities: _capabilities,
-    fastModelConfig: _fastModelConfig,
-    ...extraParams
-  } = modelConfig;
-  void _model;
-  void _fastModel;
-  void _maxTokens;
-  void _permissionMode;
-  void _capabilities;
-
-  // When a fast model override is provided, use the fast model's hyperparams
-  // (if configured); otherwise fall back to the agent model's extraParams.
+  // When a fast model override is provided, use the fast model's options
+  // (if configured); otherwise fall back to the agent model's options.
   const activeExtraParams = options.model
-    ? _fastModelConfig || {}
-    : extraParams;
+    ? modelConfig.fastModelOptions || {}
+    : modelConfig.options || {};
 
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
@@ -986,27 +955,11 @@ export async function processWebContent(
     fetch: gatewayConfig.fetch,
   });
 
-  // Get model configuration - use injected agent model
-  const {
-    model: _model,
-    fastModel: _fastModel,
-    maxTokens: _maxTokens,
-    permissionMode: _permissionMode,
-    capabilities: _capabilities,
-    fastModelConfig: _fastModelConfig,
-    ...extraParams
-  } = modelConfig;
-  void _model;
-  void _fastModel;
-  void _maxTokens;
-  void _permissionMode;
-  void _capabilities;
-
-  // When a fast model override is provided, use the fast model's hyperparams
-  // (if configured); otherwise fall back to the agent model's extraParams.
+  // When a fast model override is provided, use the fast model's options
+  // (if configured); otherwise fall back to the agent model's options.
   const activeExtraParams = options.model
-    ? _fastModelConfig || {}
-    : extraParams;
+    ? modelConfig.fastModelOptions || {}
+    : modelConfig.options || {};
 
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
@@ -1105,25 +1058,10 @@ export async function btw(options: BtwOptions): Promise<BtwResult> {
     fetch: gatewayConfig.fetch,
   });
 
-  // Get model configuration - use injected agent model
-  const {
-    model: _model,
-    fastModel: _fastModel,
-    maxTokens: _maxTokens,
-    permissionMode: _permissionMode,
-    capabilities: _capabilities,
-    ...extraParams
-  } = modelConfig;
-  void _model;
-  void _fastModel;
-  void _maxTokens;
-  void _permissionMode;
-  void _capabilities;
-
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
     max_tokens: 4096,
-    ...extraParams,
+    ...(modelConfig.options || {}),
   });
 
   try {
@@ -1214,25 +1152,10 @@ export async function evaluateGoal(
     fetch: gatewayConfig.fetch,
   });
 
-  const {
-    model: _model,
-    fastModel: _fastModel,
-    maxTokens: _maxTokens,
-    permissionMode: _permissionMode,
-    fastModelConfig: _fastModelConfig,
-  } = modelConfig;
-  void _model;
-  void _fastModel;
-  void _maxTokens;
-  void _permissionMode;
-
-  // evaluateGoal always uses the fast model; use its hyperparams if configured.
-  const activeExtraParams = _fastModelConfig || {};
-
   const openaiModelConfig = getModelConfig(model, {
     temperature: 0,
     max_tokens: 200,
-    ...activeExtraParams,
+    ...(modelConfig.fastModelOptions || {}),
   });
 
   // Strip images from messages to reduce token usage (same as compact)

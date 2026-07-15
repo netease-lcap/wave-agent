@@ -152,8 +152,10 @@ describe("AI Service - BTW", () => {
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7,
-          reasoning_effort: "high",
+          options: {
+            temperature: 0.7,
+            reasoning_effort: "high",
+          },
         },
         messages,
         question,

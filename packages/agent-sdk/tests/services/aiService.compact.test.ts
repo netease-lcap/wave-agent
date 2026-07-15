@@ -289,8 +289,10 @@ describe("AI Service - CompactMessages", () => {
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7,
-          reasoning_effort: "high",
+          options: {
+            temperature: 0.7,
+            reasoning_effort: "high",
+          },
         },
         messages,
       });
@@ -300,7 +302,7 @@ describe("AI Service - CompactMessages", () => {
       expect(callArgs.reasoning_effort).toBe("high");
     });
 
-    it("should use fastModelConfig hyperparams when model option is provided", async () => {
+    it("should use fastModelOptions hyperparams when model option is provided", async () => {
       const messages = [
         {
           role: "user" as const,
@@ -312,8 +314,8 @@ describe("AI Service - CompactMessages", () => {
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7, // agent model hyperparam
-          fastModelConfig: { temperature: 0.2, top_p: 0.9 }, // fast model hyperparams
+          options: { temperature: 0.7 }, // agent model hyperparam
+          fastModelOptions: { temperature: 0.2, top_p: 0.9 }, // fast model hyperparams
         },
         messages,
         model: "fast-model",
@@ -337,8 +339,8 @@ describe("AI Service - CompactMessages", () => {
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7,
-          fastModelConfig: { temperature: 0.2 },
+          options: { temperature: 0.7 },
+          fastModelOptions: { temperature: 0.2 },
         },
         messages,
         // no model option — uses agent model
@@ -349,7 +351,7 @@ describe("AI Service - CompactMessages", () => {
       expect(callArgs.temperature).toBe(0.7);
     });
 
-    it("should use no extra hyperparams when model option is provided but fastModelConfig is undefined", async () => {
+    it("should use no extra hyperparams when model option is provided but fastModelOptions is undefined", async () => {
       const messages = [
         {
           role: "user" as const,
@@ -361,7 +363,7 @@ describe("AI Service - CompactMessages", () => {
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7, // agent model hyperparam — should NOT be used
+          options: { temperature: 0.7 }, // agent model hyperparam — should NOT be used
         },
         messages,
         model: "fast-model",
@@ -373,7 +375,7 @@ describe("AI Service - CompactMessages", () => {
     });
   });
 
-  describe("processWebContent — fastModelConfig", () => {
+  describe("processWebContent — fastModelOptions", () => {
     let processWebContent: (
       options: import("@/services/aiService.js").ProcessWebContentOptions,
     ) => Promise<import("@/services/aiService.js").ProcessWebContentResult>;
@@ -383,13 +385,13 @@ describe("AI Service - CompactMessages", () => {
       processWebContent = aiService.processWebContent;
     });
 
-    it("should use fastModelConfig hyperparams when model option is provided", async () => {
+    it("should use fastModelOptions hyperparams when model option is provided", async () => {
       await processWebContent({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7,
-          fastModelConfig: { temperature: 0.2, top_p: 0.9 },
+          options: { temperature: 0.7 },
+          fastModelOptions: { temperature: 0.2, top_p: 0.9 },
         },
         content: "web content",
         prompt: "summarize",
@@ -407,8 +409,8 @@ describe("AI Service - CompactMessages", () => {
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7,
-          fastModelConfig: { temperature: 0.2 },
+          options: { temperature: 0.7 },
+          fastModelOptions: { temperature: 0.2 },
         },
         content: "web content",
         prompt: "summarize",
@@ -420,7 +422,7 @@ describe("AI Service - CompactMessages", () => {
     });
   });
 
-  describe("evaluateGoal — fastModelConfig", () => {
+  describe("evaluateGoal — fastModelOptions", () => {
     let evaluateGoal: (
       options: import("@/services/aiService.js").EvaluateGoalOptions,
     ) => Promise<import("@/services/aiService.js").EvaluateGoalResult>;
@@ -430,13 +432,13 @@ describe("AI Service - CompactMessages", () => {
       evaluateGoal = aiService.evaluateGoal;
     });
 
-    it("should use fastModelConfig hyperparams", async () => {
+    it("should use fastModelOptions hyperparams", async () => {
       await evaluateGoal({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7,
-          fastModelConfig: { temperature: 0, top_p: 0.95 },
+          options: { temperature: 0.7 },
+          fastModelOptions: { temperature: 0, top_p: 0.95 },
         },
         model: "fast-model",
         goalCondition: "task is done",
@@ -454,12 +456,12 @@ describe("AI Service - CompactMessages", () => {
       expect(callArgs.top_p).toBe(0.95);
     });
 
-    it("should use no extra hyperparams when fastModelConfig is undefined", async () => {
+    it("should use no extra hyperparams when fastModelOptions is undefined", async () => {
       await evaluateGoal({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7, // agent model hyperparam — should NOT be used
+          options: { temperature: 0.7 }, // agent model hyperparam — should NOT be used
         },
         model: "fast-model",
         goalCondition: "task is done",

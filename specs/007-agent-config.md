@@ -175,9 +175,9 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 - **FR-015**：如果通过自定义请求头提供了替代认证，SDK 不得在初始化时强制要求 `apiKey`
 - **FR-016**：系统必须支持通过 `AgentOptions` 或 `settings.json` 设置 `language`
 - **FR-017**：系统必须在配置了语言时向系统提示注入语言指令，遵循指定格式
-- **FR-018**：`AgentOptions` 和 `ModelConfig` 必须支持任意额外属性以允许模型特定参数（如 `temperature`、`reasoning_effort`、`thinking`）
-- **FR-019**：系统必须支持通过 `settings.json` 的 `models` 字段进行模型特定覆盖
-- **FR-020**：系统必须允许通过在配置中设置为 `null` 来取消设置默认参数
+- **FR-018**：`AgentOptions` 和 `ModelConfig` 必须支持 `options` 字段用于传递模型特定的生成参数（如 `temperature`、`reasoning_effort`、`thinking`）
+- **FR-019**：系统必须支持通过 `settings.json` 的 `models` 字段进行模型特定覆盖，生成参数嵌套在 `options` 子对象中
+- **FR-020**：系统必须允许通过在 `options` 字段中设置为 `null` 来取消设置默认生成参数
 - **FR-021**：settings.json 必须支持可选的 "env" 字段，包含环境变量的键值对
 - **FR-022**：系统必须合并用户级和项目级 env 配置，项目级优先
 - **FR-023**：系统必须验证 env 字段格式并对无效配置显示清晰错误
@@ -195,7 +195,7 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 
 - **AgentConfig**：直接放在 `AgentOptions` 中的扁平化配置参数（apiKey、baseURL、model、fastModel、maxInputTokens、maxTokens、language）
 - **GatewayConfig**：网关服务的已解析配置，包括认证、端点详情和自定义请求头
-- **ModelConfig**：已解析的模型选择配置，指定不同操作使用的模型
+- **ModelConfig**：已解析的模型选择配置，指定不同操作使用的模型；包含 `options` 字段用于携带模型特定的生成参数（如 `temperature`、`reasoning_effort`、`thinking`）
 - **设置配置**：包含 hooks、环境变量和其他配置选项，监视更改
 - **文件监视器**：监视配置文件并触发重载事件
 - **环境上下文**：从用户和项目设置合并的环境变量，传递给代理进程
