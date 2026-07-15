@@ -214,6 +214,20 @@ describe("questionReducer", () => {
       expect(result.otherText).toBe("abc");
       expect(result.otherCursorPosition).toBe(2);
     });
+
+    it("should replace newlines with spaces in pasted text", () => {
+      const state: QuestionState = {
+        ...initialState,
+        selectedOptionIndex: 2,
+      };
+      const result = questionReducer(state, {
+        type: "INSERT_OTHER",
+        text: "line1\nline2\r\nline3",
+        optionsLength: 3,
+      });
+      expect(result.otherText).toBe("line1 line2 line3");
+      expect(result.otherCursorPosition).toBe(17);
+    });
   });
 
   describe("DELETE_OTHER", () => {

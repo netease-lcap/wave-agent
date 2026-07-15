@@ -40,16 +40,17 @@ export function confirmationReducer(
     case "SELECT_OPTION":
       return { ...state, selectedOption: action.option };
     case "INSERT_TEXT": {
+      const sanitized = action.text.replace(/\r\n?|\n/g, " ");
       const nextText =
         state.alternativeText.slice(0, state.alternativeCursorPosition) +
-        action.text +
+        sanitized +
         state.alternativeText.slice(state.alternativeCursorPosition);
       return {
         ...state,
         selectedOption: "alternative",
         alternativeText: nextText,
         alternativeCursorPosition:
-          state.alternativeCursorPosition + action.text.length,
+          state.alternativeCursorPosition + sanitized.length,
         hasUserInput: true,
       };
     }
@@ -210,16 +211,17 @@ export function confirmationReducer(
       }
 
       if (input && !key.ctrl && !key.meta && !("alt" in key && key.alt)) {
+        const sanitized = input.replace(/\r\n?|\n/g, " ");
         const nextText =
           state.alternativeText.slice(0, state.alternativeCursorPosition) +
-          input +
+          sanitized +
           state.alternativeText.slice(state.alternativeCursorPosition);
         return {
           ...state,
           selectedOption: "alternative",
           alternativeText: nextText,
           alternativeCursorPosition:
-            state.alternativeCursorPosition + input.length,
+            state.alternativeCursorPosition + sanitized.length,
           hasUserInput: true,
         };
       }

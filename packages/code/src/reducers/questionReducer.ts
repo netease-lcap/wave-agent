@@ -145,14 +145,15 @@ export function questionReducer(
     }
     case "INSERT_OTHER": {
       if (state.selectedOptionIndex !== action.optionsLength - 1) return state;
+      const sanitized = action.text.replace(/\r\n?|\n/g, " ");
       const newText =
         state.otherText.slice(0, state.otherCursorPosition) +
-        action.text +
+        sanitized +
         state.otherText.slice(state.otherCursorPosition);
       return {
         ...state,
         otherText: newText,
-        otherCursorPosition: state.otherCursorPosition + action.text.length,
+        otherCursorPosition: state.otherCursorPosition + sanitized.length,
       };
     }
     case "DELETE_OTHER":
@@ -431,14 +432,15 @@ export function questionReducer(
           return state;
         }
         if (input && !key.ctrl && !key.meta) {
+          const sanitized = input.replace(/\r\n?|\n/g, " ");
           const newText =
             state.otherText.slice(0, state.otherCursorPosition) +
-            input +
+            sanitized +
             state.otherText.slice(state.otherCursorPosition);
           return {
             ...state,
             otherText: newText,
-            otherCursorPosition: state.otherCursorPosition + input.length,
+            otherCursorPosition: state.otherCursorPosition + sanitized.length,
           };
         }
       }
