@@ -13,41 +13,6 @@ describe('Model, Status, and Login Commands', () => {
         vi.clearAllMocks();
     });
 
-    describe('/model command', () => {
-        it('should open model dialog via /model', async () => {
-            renderChatApp();
-
-            await act(async () => {
-                sendCommand('configurationResponse', {
-                    configurationData: { model: 'gpt-4', fastModel: 'gpt-4-mini' }
-                });
-                sendCommand('configuredModelsResponse', {
-                    models: ['gpt-4'],
-                    fastModels: ['gpt-4-mini']
-                });
-            });
-
-            await act(async () => {
-                await typeAndSend('/model');
-            });
-
-            expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();
-            expect(document.querySelector('#model-select')).toBeInTheDocument();
-        });
-
-        it('should send getConfiguration and getConfiguredModels when /model is typed', async () => {
-            const { vscode } = renderChatApp();
-
-            vscode.postMessage.mockClear();
-            await act(async () => {
-                await typeAndSend('/model');
-            });
-
-            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'getConfiguration' });
-            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'getConfiguredModels' });
-        });
-    });
-
     describe('/status command', () => {
         it('should open status dialog and show version, sessionId, and workdir', async () => {
             renderChatApp();
@@ -155,9 +120,7 @@ describe('Model, Status, and Login Commands', () => {
             await act(async () => {
                 sendCommand('configurationResponse', {
                     configurationData: {
-                        baseURL: 'https://api.example.com',
-                        apiKey: 'test-key',
-                        model: 'gpt-4'
+                        language: 'Chinese'
                     }
                 });
             });
@@ -169,8 +132,8 @@ describe('Model, Status, and Login Commands', () => {
             await waitFor(() => {
                 expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();
             });
-            // Config dialog should have baseURL input
-            expect(document.querySelector('#baseURL')).toBeInTheDocument();
+            // Config dialog should have language select
+            expect(document.querySelector('#language')).toBeInTheDocument();
         });
 
         it('should send updateConfiguration when save is clicked', async () => {
@@ -179,9 +142,7 @@ describe('Model, Status, and Login Commands', () => {
             await act(async () => {
                 sendCommand('configurationResponse', {
                     configurationData: {
-                        baseURL: 'https://api.example.com',
-                        apiKey: 'test-key',
-                        model: 'gpt-4'
+                        language: 'Chinese'
                     }
                 });
             });
@@ -191,12 +152,12 @@ describe('Model, Status, and Login Commands', () => {
             });
 
             await waitFor(() => {
-                expect(document.querySelector('#baseURL')).toBeInTheDocument();
+                expect(document.querySelector('#language')).toBeInTheDocument();
             });
 
-            const baseURLInput = document.querySelector('#baseURL') as HTMLInputElement;
+            const languageSelect = document.querySelector('#language') as HTMLSelectElement;
             await act(async () => {
-                fireEvent.change(baseURLInput, { target: { value: 'https://new-api.example.com' } });
+                fireEvent.change(languageSelect, { target: { value: 'English' } });
             });
 
             const saveButton = document.querySelector('.configuration-save-btn') as HTMLButtonElement;
@@ -210,7 +171,7 @@ describe('Model, Status, and Login Commands', () => {
                     expect.objectContaining({
                         command: 'updateConfiguration',
                         configurationData: expect.objectContaining({
-                            baseURL: 'https://new-api.example.com'
+                            language: 'English'
                         })
                     })
                 );

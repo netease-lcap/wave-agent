@@ -1,8 +1,7 @@
 /**
  * ConfigDialog - General settings dialog for AI configuration
  *
- * Opened via the /config slash command. Contains server URL,
- * API key, model, and language configuration fields.
+ * Opened via the /config slash command. Contains language configuration.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -17,12 +16,6 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
   onCancel,
 }) => {
   const [formData, setFormData] = useState<ConfigurationData>({
-    serverUrl: '',
-    baseURL: '',
-    apiKey: '',
-    headers: '',
-    model: '',
-    fastModel: '',
     language: 'Chinese'
   });
 
@@ -82,67 +75,6 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
 
         <form onSubmit={handleSubmit} className="configuration-form">
           <div className="configuration-fields-scroll-area">
-            <div className="configuration-field">
-              <label htmlFor="baseURL">Base URL:</label>
-              <input
-                id="baseURL"
-                type="url"
-                value={formData.baseURL || ''}
-                onChange={(e) => handleInputChange('baseURL', e.target.value)}
-                placeholder="https://api.example.com/v1"
-                disabled={isLoading}
-              />
-            </div>
-
-            <div className="configuration-field">
-              <label htmlFor="apiKey">API Key:</label>
-              <input
-                id="apiKey"
-                type="password"
-                value={formData.apiKey || ''}
-                onChange={(e) => handleInputChange('apiKey', e.target.value)}
-                placeholder="输入 API Key"
-                disabled={isLoading}
-              />
-            </div>
-
-            <div className="configuration-field">
-              <label htmlFor="headers">Headers:</label>
-              <textarea
-                id="headers"
-                value={formData.headers || ''}
-                onChange={(e) => handleInputChange('headers', e.target.value)}
-                placeholder="Authorization: Bearer ..."
-                disabled={isLoading}
-                className="configuration-textarea"
-                rows={3}
-              />
-            </div>
-
-            <div className="configuration-field">
-              <label htmlFor="model">Model:</label>
-              <input
-                id="model"
-                type="text"
-                value={formData.model || ''}
-                onChange={(e) => handleInputChange('model', e.target.value)}
-                placeholder="请输入模型名称"
-                disabled={isLoading}
-              />
-            </div>
-
-            <div className="configuration-field">
-              <label htmlFor="fastModel">Fast Model:</label>
-              <input
-                id="fastModel"
-                type="text"
-                value={formData.fastModel || ''}
-                onChange={(e) => handleInputChange('fastModel', e.target.value)}
-                placeholder="请输入快速模型名称"
-                disabled={isLoading}
-              />
-            </div>
-
             <div className="configuration-field">
               <label htmlFor="language">语言 (Language):</label>
               <select

@@ -251,12 +251,10 @@ export interface ChatState {
   pendingConfirmations: ConfirmationRequest[];
   queuedMessages: QueuedMessage[];
   // Dialog state
-  activeDialog: 'config' | 'plugin' | 'mcp' | 'model' | 'status' | 'login' | null;
+  activeDialog: 'config' | 'plugin' | 'mcp' | 'status' | 'login' | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
   configurationError?: string;
-  configuredModels: string[];
-  currentModel: string;
   // Permission mode state
   permissionMode?: PermissionMode;
   // Attached images state
@@ -368,16 +366,6 @@ export interface McpDialogProps {
 }
 
 /**
- * Props for the model selector dialog component
- */
-export interface ModelDialogProps {
-  configurationData: ConfigurationData;
-  configuredModels: string[];
-  onSave: (config: Partial<ConfigurationData>) => void;
-  onClose: () => void;
-}
-
-/**
  * Props for the status info dialog component
  */
 export interface StatusDialogProps {
@@ -408,13 +396,11 @@ export type ChatAction =
   | { type: 'SET_SESSIONS_LOADING'; payload: boolean }
   | { type: 'SHOW_CONFIRMATION'; payload: ConfirmationRequest }
   | { type: 'HIDE_CONFIRMATION'; payload: string }
-  | { type: 'SHOW_DIALOG'; payload: { type: 'config' | 'plugin' | 'mcp' | 'model' | 'status' | 'login'; data?: ConfigurationData; error?: string } }
+  | { type: 'SHOW_DIALOG'; payload: { type: 'config' | 'plugin' | 'mcp' | 'status' | 'login'; data?: ConfigurationData; error?: string } }
   | { type: 'HIDE_DIALOG' }
   | { type: 'SET_CONFIGURATION_LOADING'; payload: boolean }
   | { type: 'SET_CONFIGURATION_ERROR'; payload: string | undefined }
   | { type: 'SET_CONFIGURATION_DATA'; payload: ConfigurationData }
-  | { type: 'SET_CONFIGURED_MODELS'; payload: string[] }
-  | { type: 'SET_CURRENT_MODEL'; payload: string }
   | { type: 'UPDATE_SELECTION'; payload: SelectionInfo | undefined }
   | { type: 'SET_PERMISSION_MODE'; payload: PermissionMode }
   | { type: 'SET_COMMAND_RUNNING'; payload: boolean }

@@ -15,7 +15,6 @@ export interface MessageHandlerContext {
     initializeAgent: (viewType: 'sidebar' | 'tab' | 'window', windowId?: string, restoreSessionId?: string) => Promise<void>;
     listSessions: (viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) => Promise<void>;
     updateAllSessionsConfig: (config: unknown) => void;
-    updateAllSessionsModel: (model: string) => void;
 }
 
 export class MessageHandler {
@@ -150,12 +149,6 @@ export class MessageHandler {
                 break;
             case 'getStatus':
                 await this.handleGetStatus(viewType, windowId);
-                break;
-            case 'setModel':
-                await this.handleSetModel(msg.configurationData, viewType, windowId);
-                break;
-            case 'getConfiguredModels':
-                await this.handleGetConfiguredModels(viewType, windowId);
                 break;
             case 'getMcpServers':
                 await this.handleGetMcpServers(viewType, windowId);
@@ -612,7 +605,6 @@ export class MessageHandler {
                 { id: 'config', name: 'config', description: '打开配置设置' },
                 { id: 'plugin', name: 'plugin', description: '打开插件管理' },
                 { id: 'mcp', name: 'mcp', description: '打开 MCP 服务器管理' },
-                { id: 'model', name: 'model', description: '切换 AI 模型' },
                 { id: 'status', name: 'status', description: '查看当前状态' },
                 { id: 'login', name: 'login', description: 'SSO 登录/登出' },
                 { id: 'clear', name: 'clear', description: '清除对话历史并重置会话' }
@@ -735,42 +727,6 @@ export class MessageHandler {
             workdir: session.agent?.workingDirectory || '',
             configurationData: config
         }, viewType, windowId);
-    }
-
-    private async handleSetModel(configData: unknown, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
-        try {
-            const { model } = configData as { model: string };
-            this.context.updateAllSessionsModel(model);
-
-            this.context.postMessage({ command: 'configurationUpdated' }, viewType, windowId);
-            this.context.postMessage({ command: 'focusInput' }, viewType, windowId);
-        } catch (error) {
-            console.error(`Failed to set model for ${viewType}:`, error);
-            this.context.postMessage({
-                command: 'configurationError',
-                error: 'Failed to save model: ' + error
-            }, viewType, windowId);
-        }
-    }
-
-    private async handleGetConfiguredModels(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
-        try {
-            const session = this.context.getChatSession(viewType || 'tab', windowId);
-            const models = session.agent?.getConfiguredModels() || [];
-            const modelConfig = session.agent?.getModelConfig() || { model: '' };
-            this.context.postMessage({
-                command: 'configuredModelsResponse',
-                models,
-                currentModel: modelConfig.model || ''
-            }, viewType, windowId);
-        } catch (error) {
-            console.error(`Failed to get configured models for ${viewType}:`, error);
-            this.context.postMessage({
-                command: 'configuredModelsResponse',
-                models: [],
-                currentModel: ''
-            }, viewType, windowId);
-        }
     }
 
     private async handleGetMcpServers(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {

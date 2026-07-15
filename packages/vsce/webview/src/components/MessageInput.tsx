@@ -676,7 +676,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
           range.deleteContents();
 
           // Local commands (config/plugin/mcp) open dialog directly without inserting text
-          const localCommands = ['config', 'plugin', 'mcp', 'model', 'status', 'login', 'clear'];
+          const localCommands = ['config', 'plugin', 'mcp', 'status', 'login', 'clear'];
           if (localCommands.includes(command.name)) {
             // Restore cursor after removing the slash
             selection.removeAllRanges();

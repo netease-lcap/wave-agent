@@ -292,10 +292,6 @@ export class ChatSession {
         this.clearQueue();
     }
 
-    public setModel(model: string): void {
-        this.agent?.setModel(model);
-    }
-
     public async updateConfig(config: ConfigurationData, extensionMode: vscode.ExtensionMode) {
         if (this.agent) {
             const currentSessionId = this.sessionId;
