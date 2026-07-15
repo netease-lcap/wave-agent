@@ -205,7 +205,11 @@ export function setupAgentContainer(
 
   const rootSessionId = messageManager.getRootSessionId();
 
-  container.register("ReversionService", new ReversionService(rootSessionId));
+  const reversionService = new ReversionService(rootSessionId);
+  container.register("ReversionService", reversionService);
+  reversionService.cleanupOldSessions(30).catch((error) => {
+    logger.error("Failed to cleanup old file history:", error);
+  });
   const reversionManager = new ReversionManager(container);
   container.register("ReversionManager", reversionManager);
 
