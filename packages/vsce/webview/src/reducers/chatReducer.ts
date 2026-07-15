@@ -20,8 +20,6 @@ export const initialState: ChatState = {
   configurationData: undefined,
   configurationLoading: false,
   configurationError: undefined,
-  configuredModels: [],
-  currentModel: '',
   // Permission mode state
   permissionMode: 'default',
   // Attached images state
@@ -135,20 +133,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         configurationData: action.payload,
         configurationLoading: false
-      };
-    case 'SET_CONFIGURED_MODELS':
-      return {
-        ...state,
-        configuredModels: action.payload
-      };
-    case 'SET_CURRENT_MODEL':
-      return {
-        ...state,
-        currentModel: action.payload,
-        configurationData: {
-          ...state.configurationData,
-          model: action.payload || state.configurationData?.model
-        }
       };
     case 'SET_INITIAL_STATE':
       return {
