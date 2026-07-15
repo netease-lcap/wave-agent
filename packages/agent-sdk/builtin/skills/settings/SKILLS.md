@@ -48,12 +48,14 @@ When this skill is invoked, follow these steps:
 
 ## Skill Locations
 
-Wave looks for skills in two locations:
+Wave looks for skills in multiple locations, with later sources overriding earlier ones for same-named skills:
 
-1.  **User Skills**: `~/.wave/skills/` (Available in all projects)
-2.  **Project Skills**: `.wave/skills/` (Specific to the current project)
+1.  **User Skills**: `~/.agents/skills/` → `~/.claude/skills/` → `~/.wave/skills/` (Available in all projects)
+2.  **Project Skills**: `.agents/skills/` → `.claude/skills/` → `.wave/skills/` (Specific to the current project)
 
-Project skills take precedence over user skills with the same name.
+The `.agents/skills` directory is the cross-tool standard adopted by Codex, Cursor, Cline, Gemini CLI, GitHub Copilot, and OpenCode, so a single skill directory can be shared across all your AI tools.
+
+Project skills take precedence over user skills with the same name. Within each level, `.wave` overrides `.claude`, which overrides `.agents`.
 
 ## Invoking Skills
 

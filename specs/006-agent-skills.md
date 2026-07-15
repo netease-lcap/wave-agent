@@ -174,6 +174,7 @@ Wave 需要根据用户请求和技能描述自主发现何时使用可用技能
 - **FR-023**：Wave 必须将技能 bash 输出上限设为每个命令 30,000 字符；截断的输出包含 2,048 字符预览和完整输出的临时文件路径
 - **FR-024**：Wave 必须在 `String.replace` 中使用函数替换器以避免 bash 输出替换时 `$$`、`$&`、`$'` 的损坏
 - **FR-025**：Wave 必须将内联 bash 模式扫描置于 `content.includes('!`')` 检查之后以提高性能
+- **FR-026**：Wave 必须支持从 `.agents/skills/` 目录发现技能（个人级 `~/.agents/skills/` 和项目级 `{workdir}/.agents/skills/`），作为跨工具共享技能目录的最低优先级来源。在个人级和项目级中，`.wave/skills` 优先于 `.claude/skills`，`.claude/skills` 优先于 `.agents/skills`
 
 ### 关键实体
 

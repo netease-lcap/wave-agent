@@ -30,6 +30,7 @@ import { logger } from "../utils/globalLogger.js";
 export class SkillManager extends EventEmitter {
   private personalSkillsPath: string;
   private personalClaudeSkillsPath: string;
+  private personalAgentsSkillsPath: string;
   private scanTimeout: number;
   private workdir: string;
 
@@ -50,6 +51,8 @@ export class SkillManager extends EventEmitter {
       options.personalSkillsPath || join(homedir(), ".wave", "skills");
     this.personalClaudeSkillsPath =
       options.personalClaudeSkillsPath || join(homedir(), ".claude", "skills");
+    this.personalAgentsSkillsPath =
+      options.personalAgentsSkillsPath || join(homedir(), ".agents", "skills");
     this.scanTimeout = options.scanTimeout || 5000;
     this.workdir = options.workdir || process.cwd();
     this.watchEnabled = options.watch ?? false;
@@ -131,8 +134,10 @@ export class SkillManager extends EventEmitter {
     const pathsToWatch = [
       this.personalSkillsPath,
       this.personalClaudeSkillsPath,
+      this.personalAgentsSkillsPath,
       join(this.workdir, ".wave", "skills"),
       join(this.workdir, ".claude", "skills"),
+      join(this.workdir, ".agents", "skills"),
     ];
 
     logger?.debug(`Setting up skill watcher for: ${pathsToWatch.join(", ")}`);
@@ -225,6 +230,11 @@ export class SkillManager extends EventEmitter {
       "builtin",
     );
 
+    const personalAgentsCollection = await this.discoverSkillCollection(
+      this.personalAgentsSkillsPath,
+      "personal",
+    );
+
     const personalClaudeCollection = await this.discoverSkillCollection(
       this.personalClaudeSkillsPath,
       "personal",
@@ -243,12 +253,14 @@ export class SkillManager extends EventEmitter {
     return {
       builtinSkills: builtinCollection.skills,
       personalSkills: new Map([
-        ...personalClaudeCollection.skills,
+        ...personalAgentsCollection.skills, // lowest priority
+        ...personalClaudeCollection.skills, // overrides .agents
         ...personalCollection.skills, // .wave overrides .claude
       ]),
       projectSkills: projectCollection.skills,
       errors: [
         ...builtinCollection.errors,
+        ...personalAgentsCollection.errors,
         ...personalClaudeCollection.errors,
         ...personalCollection.errors,
         ...projectCollection.errors,
@@ -271,9 +283,11 @@ export class SkillManager extends EventEmitter {
     };
 
     if (type === "project") {
-      // Scan .claude/skills first, then .wave/skills (wave overrides)
+      // Scan .agents/skills first, then .claude/skills, then .wave/skills (wave overrides)
+      const agentsPath = join(basePath, ".agents", "skills");
       const claudePath = join(basePath, ".claude", "skills");
       const wavePath = join(basePath, ".wave", "skills");
+      await this.scanSkillPath(agentsPath, collection);
       await this.scanSkillPath(claudePath, collection);
       await this.scanSkillPath(wavePath, collection);
     } else {
