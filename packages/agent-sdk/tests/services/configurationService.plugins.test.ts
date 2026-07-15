@@ -13,6 +13,8 @@ vi.mock("fs", async () => {
       mkdir: vi.fn(),
       readFile: vi.fn(),
       writeFile: vi.fn(),
+      rename: vi.fn().mockResolvedValue(undefined),
+      unlink: vi.fn().mockResolvedValue(undefined),
     },
   };
 });
@@ -71,9 +73,13 @@ describe("ConfigurationService - Plugins", () => {
         recursive: true,
       });
       expect(fs.writeFile).toHaveBeenCalledWith(
-        userConfigPath,
+        expect.any(String),
         expect.stringContaining('"test-plugin": false'),
         "utf-8",
+      );
+      expect(fs.rename).toHaveBeenCalledWith(
+        expect.any(String),
+        userConfigPath,
       );
       const writtenConfig = JSON.parse(
         vi.mocked(fs.writeFile).mock.calls[0][1] as string,
@@ -102,9 +108,13 @@ describe("ConfigurationService - Plugins", () => {
         recursive: true,
       });
       expect(fs.writeFile).toHaveBeenCalledWith(
-        projectConfigPath,
+        expect.any(String),
         expect.stringContaining('"test-plugin": true'),
         "utf-8",
+      );
+      expect(fs.rename).toHaveBeenCalledWith(
+        expect.any(String),
+        projectConfigPath,
       );
     });
 
@@ -130,9 +140,13 @@ describe("ConfigurationService - Plugins", () => {
         recursive: true,
       });
       expect(fs.writeFile).toHaveBeenCalledWith(
-        localConfigPath,
+        expect.any(String),
         expect.stringContaining('"test-plugin": true'),
         "utf-8",
+      );
+      expect(fs.rename).toHaveBeenCalledWith(
+        expect.any(String),
+        localConfigPath,
       );
     });
 
@@ -152,9 +166,13 @@ describe("ConfigurationService - Plugins", () => {
       );
 
       expect(fs.writeFile).toHaveBeenCalledWith(
-        localConfigPath,
+        expect.any(String),
         expect.stringContaining('"test-plugin": true'),
         "utf-8",
+      );
+      expect(fs.rename).toHaveBeenCalledWith(
+        expect.any(String),
+        localConfigPath,
       );
     });
   });
@@ -174,9 +192,13 @@ describe("ConfigurationService - Plugins", () => {
       await configService.removeEnabledPlugin(workdir, "user", "test-plugin");
 
       expect(fs.writeFile).toHaveBeenCalledWith(
-        userConfigPath,
+        expect.any(String),
         expect.stringContaining('"other-plugin"'),
         "utf-8",
+      );
+      expect(fs.rename).toHaveBeenCalledWith(
+        expect.any(String),
+        userConfigPath,
       );
       const writtenConfig = JSON.parse(
         vi.mocked(fs.writeFile).mock.calls[0][1] as string,
@@ -205,9 +227,13 @@ describe("ConfigurationService - Plugins", () => {
       );
 
       expect(fs.writeFile).toHaveBeenCalledWith(
-        projectConfigPath,
+        expect.any(String),
         expect.stringContaining("enabledPlugins"),
         "utf-8",
+      );
+      expect(fs.rename).toHaveBeenCalledWith(
+        expect.any(String),
+        projectConfigPath,
       );
       const writtenConfig = JSON.parse(
         vi.mocked(fs.writeFile).mock.calls[0][1] as string,

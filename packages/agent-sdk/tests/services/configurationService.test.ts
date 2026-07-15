@@ -19,7 +19,9 @@ import {
   validateEnvironmentConfig,
   mergeEnvironmentConfig,
   loadMergedWaveConfig,
+  loadWaveConfigFromFile,
 } from "../../src/services/configurationService.js";
+import { atomicWriteFile } from "../../src/utils/atomicWrite.js";
 import {
   DEFAULT_WAVE_MAX_OUTPUT_TOKENS,
   DEFAULT_WAVE_MAX_INPUT_TOKENS,
@@ -898,6 +900,144 @@ describe("ConfigurationService", () => {
 
       const result = loadMergedWaveConfig(tempDir);
       expect(result?.model).toBe("user-model");
+    });
+  });
+
+  describe("loadWaveConfigFromFile — read tolerance", () => {
+    it("should return null for empty file (not throw)", () => {
+      const configPath = path.join(tempDir, "settings.json");
+      mockExistsSync.mockImplementation((p) => p.toString() === configPath);
+      mockReadFileSync.mockReturnValue("");
+
+      expect(() => loadWaveConfigFromFile(configPath)).not.toThrow();
+      expect(loadWaveConfigFromFile(configPath)).toBeNull();
+    });
+
+    it("should return null for whitespace-only file (not throw)", () => {
+      const configPath = path.join(tempDir, "settings.json");
+      mockExistsSync.mockImplementation((p) => p.toString() === configPath);
+      mockReadFileSync.mockReturnValue("   \n\t  ");
+
+      expect(() => loadWaveConfigFromFile(configPath)).not.toThrow();
+      expect(loadWaveConfigFromFile(configPath)).toBeNull();
+    });
+
+    it("should return null for corrupted JSON (not throw)", () => {
+      const configPath = path.join(tempDir, "settings.json");
+      mockExistsSync.mockImplementation((p) => p.toString() === configPath);
+      mockReadFileSync.mockReturnValue('{"model": "test"');
+
+      expect(() => loadWaveConfigFromFile(configPath)).not.toThrow();
+      expect(loadWaveConfigFromFile(configPath)).toBeNull();
+    });
+
+    it("should still return config for valid JSON", () => {
+      const configPath = path.join(tempDir, "settings.json");
+      mockExistsSync.mockImplementation((p) => p.toString() === configPath);
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({ model: "valid-model" }),
+      );
+
+      const result = loadWaveConfigFromFile(configPath);
+      expect(result).not.toBeNull();
+      expect(result?.model).toBe("valid-model");
+    });
+  });
+
+  describe("atomicWriteFile", () => {
+    it("should write file content correctly", async () => {
+      const filePath = path.join(tempDir, "test-atomic.json");
+      const data = JSON.stringify({ key: "value" }, null, 2);
+
+      await atomicWriteFile(filePath, data);
+
+      const content = await fs.readFile(filePath, "utf-8");
+      expect(content).toBe(data);
+      expect(JSON.parse(content)).toEqual({ key: "value" });
+    });
+
+    it("should leave no temp file on success", async () => {
+      const filePath = path.join(tempDir, "test-no-tmp.json");
+      await atomicWriteFile(filePath, "{}");
+
+      const dirEntries = await fs.readdir(tempDir);
+      const tmpFiles = dirEntries.filter((f) => f.includes(".tmp."));
+      expect(tmpFiles).toHaveLength(0);
+    });
+
+    it("should overwrite existing file atomically", async () => {
+      const filePath = path.join(tempDir, "overwrite.json");
+      await fs.writeFile(filePath, JSON.stringify({ old: true }));
+
+      await atomicWriteFile(filePath, JSON.stringify({ new: true }));
+
+      const content = await fs.readFile(filePath, "utf-8");
+      expect(JSON.parse(content)).toEqual({ new: true });
+    });
+
+    it("should not leave temp file on write failure", async () => {
+      const filePath = path.join(tempDir, "nonexistent-dir", "fail.json");
+
+      await expect(atomicWriteFile(filePath, "{}")).rejects.toThrow();
+
+      // The temp file should have been cleaned up (directory doesn't exist
+      // so the temp file was never created, but the cleanup path ran)
+      // Verify no temp files in tempDir itself
+      const dirEntries = await fs.readdir(tempDir);
+      const tmpFiles = dirEntries.filter((f) => f.includes(".tmp."));
+      expect(tmpFiles).toHaveLength(0);
+    });
+  });
+
+  describe("atomic settings write integration", () => {
+    it("addMarketplaceToScope should produce valid JSON immediately after write", async () => {
+      const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
+      mockExistsSync.mockImplementation(
+        (p) => p.toString() === projectConfigPath || p.toString() === tempDir,
+      );
+
+      const marketConfig = {
+        source: { source: "git", url: "https://example.com/repo.git" },
+      } as unknown as import("../../src/types/configuration.js").MarketplaceConfig;
+
+      await configService.addMarketplaceToScope(
+        tempDir,
+        "project",
+        "test-market",
+        marketConfig,
+      );
+
+      // Read back the real file (not mocked) — it should be valid JSON
+      const content = await fs.readFile(projectConfigPath, "utf-8");
+      expect(() => JSON.parse(content)).not.toThrow();
+      const parsed = JSON.parse(content);
+      expect(parsed.marketplaces["test-market"]).toBeDefined();
+      expect(parsed.marketplaces["test-market"].source.source).toBe("git");
+
+      // Ensure no leftover temp files
+      const waveDir = path.join(tempDir, ".wave");
+      const dirEntries = await fs.readdir(waveDir);
+      const tmpFiles = dirEntries.filter((f) => f.includes(".tmp."));
+      expect(tmpFiles).toHaveLength(0);
+    });
+
+    it("updateEnabledPlugin should produce valid JSON immediately after write", async () => {
+      const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
+      mockExistsSync.mockImplementation(
+        (p) => p.toString() === projectConfigPath || p.toString() === tempDir,
+      );
+
+      await configService.updateEnabledPlugin(
+        tempDir,
+        "project",
+        "plugin@market",
+        true,
+      );
+
+      const content = await fs.readFile(projectConfigPath, "utf-8");
+      expect(() => JSON.parse(content)).not.toThrow();
+      const parsed = JSON.parse(content);
+      expect(parsed.enabledPlugins["plugin@market"]).toBe(true);
     });
   });
 });

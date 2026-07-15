@@ -48,6 +48,7 @@ import {
 } from "./remoteSettingsService.js";
 import { createAuthAwareFetch } from "./authService.js";
 import { ensureWaveRuntimeFilesExcluded } from "../utils/gitUtils.js";
+import { atomicWriteFile } from "../utils/atomicWrite.js";
 
 /**
  * Default ConfigurationService implementation
@@ -729,7 +730,7 @@ export class ConfigurationService {
     }
 
     config.model = model;
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+    await atomicWriteFile(configPath, JSON.stringify(config, null, 2));
   }
 
   /**
@@ -816,11 +817,7 @@ export class ConfigurationService {
 
     if (!config.permissions.allow.includes(rule)) {
       config.permissions.allow.push(rule);
-      await fs.writeFile(
-        localConfigPath,
-        JSON.stringify(config, null, 2),
-        "utf-8",
-      );
+      await atomicWriteFile(localConfigPath, JSON.stringify(config, null, 2));
     }
   }
 
@@ -868,7 +865,7 @@ export class ConfigurationService {
 
     config.enabledPlugins[pluginId] = enabled;
 
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+    await atomicWriteFile(configPath, JSON.stringify(config, null, 2));
   }
 
   /**
@@ -940,11 +937,7 @@ export class ConfigurationService {
     }
     fileConfig.marketplaces[name] = config;
 
-    await fs.writeFile(
-      configPath,
-      JSON.stringify(fileConfig, null, 2),
-      "utf-8",
-    );
+    await atomicWriteFile(configPath, JSON.stringify(fileConfig, null, 2));
   }
 
   /**
@@ -978,11 +971,7 @@ export class ConfigurationService {
 
       if (fileConfig.marketplaces && name in fileConfig.marketplaces) {
         delete fileConfig.marketplaces[name];
-        await fs.writeFile(
-          configPath,
-          JSON.stringify(fileConfig, null, 2),
-          "utf-8",
-        );
+        await atomicWriteFile(configPath, JSON.stringify(fileConfig, null, 2));
       }
     } catch {
       // Ignore errors for corrupted or non-existent files
@@ -1020,11 +1009,7 @@ export class ConfigurationService {
 
       if (config.enabledPlugins && pluginId in config.enabledPlugins) {
         delete config.enabledPlugins[pluginId];
-        await fs.writeFile(
-          configPath,
-          JSON.stringify(config, null, 2),
-          "utf-8",
-        );
+        await atomicWriteFile(configPath, JSON.stringify(config, null, 2));
       }
     } catch {
       // Ignore errors for corrupted or non-existent files
@@ -1171,6 +1156,15 @@ export function loadWaveConfigFromFile(
 
   try {
     const content = readFileSync(filePath, "utf-8");
+
+    // Tolerate empty/whitespace-only files: a concurrent writer may have the
+    // file truncated mid-write. Returning null lets callers skip this source
+    // instead of crashing (consistent with the "file not found" path).
+    if (content.trim() === "") {
+      logger.warn(`Empty configuration file (likely mid-write): ${filePath}`);
+      return null;
+    }
+
     const config = JSON.parse(content) as WaveConfiguration;
 
     return {
@@ -1189,10 +1183,14 @@ export function loadWaveConfigFromFile(
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw new Error(`Invalid JSON syntax in ${filePath}: ${error.message}`);
+      // Tolerate corrupt JSON: a concurrent writer may leave the file in a
+      // partially-written state. Warn and return null so callers skip this
+      // source instead of crashing.
+      logger.warn(`Invalid JSON syntax in ${filePath}: ${error.message}`);
+      return null;
     }
 
-    // Re-throw validation errors and other errors as-is
+    // Re-throw other errors as-is
     throw error;
   }
 }
