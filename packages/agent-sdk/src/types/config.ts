@@ -26,7 +26,9 @@ export interface ModelConfig {
   fastModel?: string;
   maxTokens?: number;
   permissionMode?: PermissionMode;
-  fastModelConfig?: Record<string, unknown>;
   capabilities?: ModelCapabilities;
-  [key: string]: unknown;
+  /** Generation params passed through to the API provider (temperature, thinking, etc.) */
+  options?: Record<string, unknown>;
+  /** Fast model generation params (resolved from models[fastModel].options) */
+  fastModelOptions?: Record<string, unknown>;
 }

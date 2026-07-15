@@ -171,8 +171,8 @@ describe("ConfigurationService", () => {
         env: { VAR1: "user", VAR2: "user" },
         permissions: { allow: ["rule-user"], permissionMode: "default" },
         models: {
-          model1: { temperature: 0.1, maxTokens: 500 },
-          model2: { temperature: 0.2 },
+          model1: { options: { temperature: 0.1 }, maxTokens: 500 },
+          model2: { options: { temperature: 0.2 } },
         },
       };
 
@@ -182,8 +182,8 @@ describe("ConfigurationService", () => {
         env: { VAR2: "project", VAR3: "project" },
         permissions: { allow: ["rule-project"], permissionMode: "acceptEdits" },
         models: {
-          model1: { temperature: 0.5, maxTokens: 1000 },
-          model2: { temperature: 0.8 },
+          model1: { options: { temperature: 0.5 }, maxTokens: 1000 },
+          model2: { options: { temperature: 0.8 } },
         },
       };
 
@@ -196,7 +196,7 @@ describe("ConfigurationService", () => {
           permissionMode: "bypassPermissions",
         },
         models: {
-          model2: { reasoning_effort: "high" },
+          model2: { options: { reasoning_effort: "high" } },
         },
       };
 
@@ -255,12 +255,11 @@ describe("ConfigurationService", () => {
 
       // Verify models (merged with precedence)
       expect(result?.models?.["model1"]).toEqual({
-        temperature: 0.5,
+        options: { temperature: 0.5 },
         maxTokens: 1000,
       });
       expect(result?.models?.["model2"]).toEqual({
-        temperature: 0.8,
-        reasoning_effort: "high",
+        options: { reasoning_effort: "high" },
       });
     });
   });
@@ -462,8 +461,10 @@ describe("ConfigurationService", () => {
       const config = {
         models: {
           "gpt-4o": {
-            temperature: 0.5,
-            reasoning_effort: "high",
+            options: {
+              temperature: 0.5,
+              reasoning_effort: "high",
+            },
           },
         },
       };
@@ -474,17 +475,17 @@ describe("ConfigurationService", () => {
       const resolved = configService.resolveModelConfig("gpt-4o");
 
       expect(resolved.model).toBe("gpt-4o");
-      expect(resolved.temperature).toBe(0.5);
-      expect(resolved.reasoning_effort).toBe("high");
+      expect(resolved.options?.temperature).toBe(0.5);
+      expect(resolved.options?.reasoning_effort).toBe("high");
     });
   });
 
-  describe("resolveModelConfig — fastModelConfig", () => {
-    it("should set fastModelConfig from models[fastModel] hyperparams", async () => {
+  describe("resolveModelConfig — fastModelOptions", () => {
+    it("should set fastModelOptions from models[fastModel] options", async () => {
       const config = {
         models: {
-          "gpt-4o": { temperature: 0.7 },
-          "gpt-4o-mini": { temperature: 0.2, top_p: 0.9 },
+          "gpt-4o": { options: { temperature: 0.7 } },
+          "gpt-4o-mini": { options: { temperature: 0.2, top_p: 0.9 } },
         },
       };
       mockExistsSync.mockReturnValue(true);
@@ -501,7 +502,7 @@ describe("ConfigurationService", () => {
           "gpt-4o-mini",
         );
 
-        expect(resolved.fastModelConfig).toEqual({
+        expect(resolved.fastModelOptions).toEqual({
           temperature: 0.2,
           top_p: 0.9,
         });
@@ -514,7 +515,7 @@ describe("ConfigurationService", () => {
       }
     });
 
-    it("should strip structural fields from fastModelConfig", async () => {
+    it("should strip structural fields from fastModelOptions", async () => {
       const config = {
         models: {
           "gpt-4o-mini": {
@@ -522,7 +523,7 @@ describe("ConfigurationService", () => {
             fastModel: "should-be-stripped",
             maxTokens: 999,
             permissionMode: "default",
-            temperature: 0.3,
+            options: { temperature: 0.3 },
           },
         },
       };
@@ -540,7 +541,7 @@ describe("ConfigurationService", () => {
           "gpt-4o-mini",
         );
 
-        expect(resolved.fastModelConfig).toEqual({ temperature: 0.3 });
+        expect(resolved.fastModelOptions).toEqual({ temperature: 0.3 });
       } finally {
         if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
         else delete process.env.WAVE_MODEL;
@@ -550,10 +551,10 @@ describe("ConfigurationService", () => {
       }
     });
 
-    it("should leave fastModelConfig undefined when fast model not in models", async () => {
+    it("should leave fastModelOptions undefined when fast model not in models", async () => {
       const config = {
         models: {
-          "gpt-4o": { temperature: 0.7 },
+          "gpt-4o": { options: { temperature: 0.7 } },
         },
       };
       mockExistsSync.mockReturnValue(true);
@@ -570,7 +571,7 @@ describe("ConfigurationService", () => {
           "unknown-fast-model",
         );
 
-        expect(resolved.fastModelConfig).toBeUndefined();
+        expect(resolved.fastModelOptions).toBeUndefined();
       } finally {
         if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
         else delete process.env.WAVE_MODEL;
@@ -580,10 +581,10 @@ describe("ConfigurationService", () => {
       }
     });
 
-    it("should leave fastModelConfig undefined when no fast model configured", async () => {
+    it("should leave fastModelOptions undefined when no fast model configured", async () => {
       const config = {
         models: {
-          "gpt-4o": { temperature: 0.7 },
+          "gpt-4o": { options: { temperature: 0.7 } },
         },
       };
       mockExistsSync.mockReturnValue(true);
@@ -597,7 +598,7 @@ describe("ConfigurationService", () => {
         await configService.loadMergedConfiguration(tempDir);
         const resolved = configService.resolveModelConfig("gpt-4o");
 
-        expect(resolved.fastModelConfig).toBeUndefined();
+        expect(resolved.fastModelOptions).toBeUndefined();
       } finally {
         if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
         else delete process.env.WAVE_MODEL;
@@ -641,13 +642,13 @@ describe("ConfigurationService", () => {
       }
     });
 
-    it("should strip capabilities from fastModelConfig extraction", async () => {
+    it("should strip capabilities from fastModelOptions extraction", async () => {
       const config = {
         models: {
           "gpt-4o": { capabilities: { promptCaching: true } },
           "gpt-4o-mini": {
             capabilities: { vision: false },
-            temperature: 0.2,
+            options: { temperature: 0.2 },
           },
         },
       };
@@ -665,9 +666,9 @@ describe("ConfigurationService", () => {
           "gpt-4o-mini",
         );
 
-        // capabilities should NOT leak into fastModelConfig
-        expect(resolved.fastModelConfig).toEqual({ temperature: 0.2 });
-        expect(resolved.fastModelConfig).not.toHaveProperty("capabilities");
+        // capabilities should NOT leak into fastModelOptions
+        expect(resolved.fastModelOptions).toEqual({ temperature: 0.2 });
+        expect(resolved.fastModelOptions).not.toHaveProperty("capabilities");
       } finally {
         if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
         else delete process.env.WAVE_MODEL;

@@ -63,13 +63,17 @@ For detailed model configuration, see [MODELS.md](${WAVE_SKILL_DIR}/MODELS.md).
 {
   "models": {
     "claude-3-7-sonnet-20250219": {
-      "thinking": {
-        "type": "enabled",
-        "budget_tokens": 1024
+      "options": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 1024
+        }
       }
     },
     "o3-mini": {
-      "reasoning_effort": "high"
+      "options": {
+        "reasoning_effort": "high"
+      }
     }
   }
 }

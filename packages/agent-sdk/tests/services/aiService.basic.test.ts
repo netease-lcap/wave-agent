@@ -346,9 +346,11 @@ describe("AI Service - Basic CallAgent", () => {
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: 0.7,
-          reasoning_effort: "high",
-          thinking: { type: "enabled", budget_tokens: 1024 },
+          options: {
+            temperature: 0.7,
+            reasoning_effort: "high",
+            thinking: { type: "enabled", budget_tokens: 1024 },
+          },
         },
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
@@ -368,7 +370,7 @@ describe("AI Service - Basic CallAgent", () => {
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: {
           ...TEST_MODEL_CONFIG,
-          temperature: null as unknown as number,
+          options: { temperature: null as unknown as number },
         },
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",

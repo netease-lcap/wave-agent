@@ -1259,11 +1259,29 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 ### 模型配置 {#settings-models}
 
-在 `models` 字段中定义 AI 模型及其专属参数，支持任意模型参数：
+在 `models` 字段中定义 AI 模型及其专属参数。生成参数需嵌套在每个模型的 `options` 子对象下：
 
 - `temperature`：控制输出的随机性
 - `reasoning_effort`：推理强度（`low`/`medium`/`high`），适用于支持推理的模型
 - `thinking`：是否开启思考模式及预算 tokens，如 `{"type": "enabled", "budget_tokens": 2048}`
+
+```json
+{
+  "models": {
+    "claude-3-7-sonnet-20250219": {
+      "options": {
+        "thinking": { "type": "enabled", "budget_tokens": 2048 },
+        "temperature": 1.0
+      }
+    },
+    "o3-mini": {
+      "options": {
+        "reasoning_effort": "high"
+      }
+    }
+  }
+}
+```
 
 此外还支持 `fastModel` 配置，用于子代理（Explore）和网页抓取摘要等轻量场景。
 

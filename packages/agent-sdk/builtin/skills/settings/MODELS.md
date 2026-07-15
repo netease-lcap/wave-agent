@@ -10,17 +10,23 @@ You can define overrides for specific models in the `models` field. The key shou
 {
   "models": {
     "claude-3-7-sonnet-20250219": {
-      "thinking": {
-        "type": "enabled",
-        "budget_tokens": 1024
-      },
-      "temperature": 1.0
+      "options": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 1024
+        },
+        "temperature": 1.0
+      }
     },
     "o3-mini": {
-      "reasoning_effort": "high"
+      "options": {
+        "reasoning_effort": "high"
+      }
     },
     "gpt-4o": {
-      "temperature": 0.5
+      "options": {
+        "temperature": 0.5
+      }
     }
   }
 }
@@ -28,7 +34,7 @@ You can define overrides for specific models in the `models` field. The key shou
 
 ## Supported Parameters
 
-Wave supports passing arbitrary parameters to the underlying AI provider. Common parameters include:
+Generation parameters are nested under the `options` field within each model's configuration. Wave supports passing arbitrary parameters to the underlying AI provider. Common parameters include:
 
 - `temperature`: Controls randomness (0.0 to 2.0).
 - `maxTokens`: Maximum number of tokens to generate in the response.
@@ -39,7 +45,7 @@ Wave supports passing arbitrary parameters to the underlying AI provider. Common
 
 ## Model Capabilities
 
-Wave needs to know whether a model supports certain features. Instead of guessing from the model name, you declare these explicitly via the `capabilities` field:
+Wave needs to know whether a model supports certain features. Instead of guessing from the model name, you declare these explicitly via the `capabilities` field. Note that `capabilities` is set at the top level of the model configuration, **not** inside the `options` field — `options` is reserved for generation parameters only.
 
 - `vision` (default: `true`): Whether the model can accept image inputs. When `false`, images are stripped and replaced with text placeholders.
 - `promptCaching` (default: `false`): Whether the model supports ephemeral prompt caching (e.g., Anthropic's `cache_control` markers). When `true`, Wave injects cache markers on the system prompt and last user message.
@@ -76,13 +82,15 @@ You can also set `capabilities` at the top level of `settings.json` to apply to 
 
 ## Unsetting Default Parameters
 
-If a model does not support a default parameter (like `temperature` for some reasoning models), you can explicitly set it to `null` to ensure it is not sent to the provider.
+If a model does not support a default parameter (like `temperature` for some reasoning models), you can explicitly set it to `null` inside the `options` field to ensure it is not sent to the provider.
 
 ```json
 {
   "models": {
     "o1-preview": {
-      "temperature": null
+      "options": {
+        "temperature": null
+      }
     }
   }
 }
