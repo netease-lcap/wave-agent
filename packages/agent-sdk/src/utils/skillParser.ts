@@ -57,7 +57,9 @@ export function parseSkillFile(
       skillPath.includes("/.wave/skills") ||
       skillPath.includes("\\.wave\\skills") ||
       skillPath.includes("/.claude/skills") ||
-      skillPath.includes("\\.claude\\skills")
+      skillPath.includes("\\.claude\\skills") ||
+      skillPath.includes("/.agents/skills") ||
+      skillPath.includes("\\.agents\\skills")
         ? "project"
         : "personal";
 
