@@ -669,4 +669,132 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[1].role).toBe("user");
     expect(apiMessages[2].role).toBe("assistant");
   });
+
+  describe("supportsVision option", () => {
+    it("should replace user ImageBlock with text placeholder when supportsVision is false", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            { type: "text", content: "What is in this image?" },
+            {
+              type: "image",
+              imageUrls: ["data:image/png;base64,iVBORw0KGgoAAAANS..."],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages, {
+        supportsVision: false,
+      });
+
+      expect(apiMessages).toHaveLength(1);
+      expect(apiMessages[0].role).toBe("user");
+      const content = apiMessages[0].content as Array<{
+        type: string;
+        text?: string;
+      }>;
+      expect(content).toHaveLength(2);
+      expect(content[0]).toEqual({
+        type: "text",
+        text: "What is in this image?",
+      });
+      expect(content[1].type).toBe("text");
+      expect(content[1].text).toContain("does not support image recognition");
+
+      // Ensure no image_url parts remain
+      const allContent = JSON.stringify(apiMessages);
+      expect(allContent).not.toContain("image_url");
+    });
+
+    it("should replace tool result images with text placeholder when supportsVision is false", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [{ type: "text", content: "Take a screenshot" }],
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: generateMessageId(),
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool",
+              id: "tool_img_1",
+              name: "get_screenshot",
+              parameters: '{"nodeId": "123"}',
+              stage: "end",
+              result: "Screenshot taken.",
+              success: true,
+              images: [{ data: "base64data", mediaType: "image/png" }],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages, {
+        supportsVision: false,
+      });
+
+      // Find the user message that contains the placeholder (not the original text)
+      type ContentPart = { type: string; text?: string; image_url?: unknown };
+      const userMessages = apiMessages.filter((m) => m.role === "user");
+
+      // The placeholder should be in one of the user messages (string or array content)
+      const placeholderFound = userMessages.some((m) => {
+        if (typeof m.content === "string") {
+          return m.content.includes("does not support image recognition");
+        }
+        if (Array.isArray(m.content)) {
+          const parts = m.content as ContentPart[];
+          return parts.some(
+            (p) =>
+              p.type === "text" &&
+              typeof p.text === "string" &&
+              p.text.includes("does not support image recognition"),
+          );
+        }
+        return false;
+      });
+      expect(placeholderFound).toBe(true);
+
+      // Ensure no image_url parts remain
+      const allContent = JSON.stringify(apiMessages);
+      expect(allContent).not.toContain("image_url");
+    });
+
+    it("should send images as image_url when supportsVision is true (default)", () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            { type: "text", content: "What is in this image?" },
+            {
+              type: "image",
+              imageUrls: ["data:image/png;base64,iVBORw0KGgoAAAANS..."],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      // Default (no options) = supportsVision undefined = true
+      const apiMessagesDefault = convertMessagesForAPI(messages);
+      const allContentDefault = JSON.stringify(apiMessagesDefault);
+      expect(allContentDefault).toContain("image_url");
+
+      // Explicitly true
+      const apiMessagesTrue = convertMessagesForAPI(messages, {
+        supportsVision: true,
+      });
+      const allContentTrue = JSON.stringify(apiMessagesTrue);
+      expect(allContentTrue).toContain("image_url");
+    });
+  });
 });

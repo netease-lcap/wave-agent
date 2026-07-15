@@ -608,6 +608,76 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("resolveModelConfig — capabilities", () => {
+    it("should merge capabilities from models[modelName] into resolved config", async () => {
+      const config = {
+        models: {
+          "claude-sonnet-4": {
+            capabilities: { promptCaching: true, vision: true },
+          },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const resolved = configService.resolveModelConfig("claude-sonnet-4");
+
+        expect(resolved.capabilities).toEqual({
+          promptCaching: true,
+          vision: true,
+        });
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+
+    it("should strip capabilities from fastModelConfig extraction", async () => {
+      const config = {
+        models: {
+          "gpt-4o": { capabilities: { promptCaching: true } },
+          "gpt-4o-mini": {
+            capabilities: { vision: false },
+            temperature: 0.2,
+          },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      const origFastModel = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const resolved = configService.resolveModelConfig(
+          "gpt-4o",
+          "gpt-4o-mini",
+        );
+
+        // capabilities should NOT leak into fastModelConfig
+        expect(resolved.fastModelConfig).toEqual({ temperature: 0.2 });
+        expect(resolved.fastModelConfig).not.toHaveProperty("capabilities");
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+        else delete process.env.WAVE_MODEL;
+        if (origFastModel !== undefined)
+          process.env.WAVE_FAST_MODEL = origFastModel;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    });
+  });
+
   describe("resolveMaxInputTokens", () => {
     const originalEnv = process.env.WAVE_MAX_INPUT_TOKENS;
 

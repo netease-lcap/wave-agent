@@ -37,6 +37,43 @@ Wave supports passing arbitrary parameters to the underlying AI provider. Common
   - `type`: `"enabled"` or `"disabled"`.
   - `budget_tokens`: Maximum tokens to use for thinking.
 
+## Model Capabilities
+
+Wave needs to know whether a model supports certain features. Instead of guessing from the model name, you declare these explicitly via the `capabilities` field:
+
+- `vision` (default: `true`): Whether the model can accept image inputs. When `false`, images are stripped and replaced with text placeholders.
+- `promptCaching` (default: `false`): Whether the model supports ephemeral prompt caching (e.g., Anthropic's `cache_control` markers). When `true`, Wave injects cache markers on the system prompt and last user message.
+
+```json
+{
+  "models": {
+    "claude-3-7-sonnet-20250219": {
+      "capabilities": {
+        "vision": true,
+        "promptCaching": true
+      }
+    },
+    "deepseek-r1": {
+      "capabilities": {
+        "vision": false,
+        "promptCaching": false
+      }
+    }
+  }
+}
+```
+
+You can also set `capabilities` at the top level of `settings.json` to apply to the default model:
+
+```json
+{
+  "capabilities": {
+    "vision": true,
+    "promptCaching": false
+  }
+}
+```
+
 ## Unsetting Default Parameters
 
 If a model does not support a default parameter (like `temperature` for some reasoning models), you can explicitly set it to `null` to ensure it is not sent to the provider.

@@ -13,6 +13,8 @@ import type {
   CompletionUsage,
 } from "openai/resources";
 import { logger } from "./globalLogger.js";
+import { supportsPromptCaching } from "./modelCapabilities.js";
+import type { ModelCapabilities } from "../types/config.js";
 
 // ============================================================================
 // Core Types
@@ -72,41 +74,6 @@ export interface ClaudeUsage extends CompletionUsage {
 // ============================================================================
 // Utility Functions (Basic Structure - to be implemented)
 // ============================================================================
-
-/**
- * Determines if a model supports prompt caching
- * @param modelName - Model identifier
- * @returns True if model name matches the cache pattern (default: contains 'claude')
- */
-export function supportsPromptCaching(modelName: string): boolean {
-  // Handle null, undefined, and non-string inputs
-  if (!modelName || typeof modelName !== "string") {
-    return false;
-  }
-
-  // Handle empty strings and whitespace-only strings
-  const trimmed = modelName.trim();
-  if (trimmed.length === 0) {
-    return false;
-  }
-
-  const cachePattern = process.env.WAVE_PROMPT_CACHE_REGEX || "claude";
-  try {
-    const regex = new RegExp(cachePattern, "i");
-    return regex.test(trimmed);
-  } catch {
-    // If regex is invalid, fall back to simple includes check with default
-    return trimmed.toLowerCase().includes("claude");
-  }
-}
-
-/**
- * Determines if a model supports cache control
- * @param modelName - Model identifier
- * @returns True if model name contains 'claude' (case-insensitive)
- * @deprecated Use supportsPromptCaching instead
- */
-export const isClaudeModel = supportsPromptCaching;
 
 /**
  * Validates cache control structure
@@ -254,12 +221,12 @@ export function countContentBlocks(
  * Tools are marked separately via addCacheControlToLastTool (called by aiService).
  *
  * @param messages - Original OpenAI message array
- * @param modelName - Model name for cache detection
+ * @param capabilities - Declarative model capabilities for cache detection
  * @returns Messages with cache control markers applied
  */
 export function transformMessagesForExplicitCache(
   messages: ChatCompletionMessageParam[],
-  modelName: string,
+  capabilities?: ModelCapabilities,
 ): ChatCompletionMessageParam[] {
   // Validate inputs
   if (!messages || !Array.isArray(messages)) {
@@ -274,7 +241,7 @@ export function transformMessagesForExplicitCache(
   }
 
   // Only apply cache control for models that support prompt caching
-  if (!supportsPromptCaching(modelName)) {
+  if (!supportsPromptCaching(capabilities)) {
     return messages;
   }
 

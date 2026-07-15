@@ -1,6 +1,7 @@
 import { type CallAgentOptions } from "../services/aiService.js";
 import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
+import { supportsVision } from "../utils/modelCapabilities.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
@@ -842,7 +843,10 @@ export class AIManager {
 
           // Get recent message history
           const rawMessages = this.messageManager.getMessages();
-          const recentMessages = convertMessagesForAPI(rawMessages);
+          const currentModelConfig = this.getModelConfig();
+          const recentMessages = convertMessagesForAPI(rawMessages, {
+            supportsVision: supportsVision(currentModelConfig.capabilities),
+          });
 
           // Track if assistant message has been created
           let assistantMessageCreated = false;

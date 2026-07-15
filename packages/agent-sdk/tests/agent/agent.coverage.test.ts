@@ -15,7 +15,6 @@ vi.mock("@/services/aiService", () => ({
     content: "compacted",
     usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
   }),
-  isClaudeModel: vi.fn().mockReturnValue(false),
   transformMessagesForExplicitCache: vi.fn((m) => m),
   extendUsageWithCacheMetrics: vi.fn((u) => u),
 }));

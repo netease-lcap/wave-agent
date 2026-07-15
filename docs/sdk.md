@@ -1238,7 +1238,6 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 | `WAVE_MAX_OUTPUT_TOKENS` | 最大输出 Token 数 |
 | `WAVE_DISABLE_AUTO_MEMORY` | 禁用自动记忆 |
 | `WAVE_AUTO_MEMORY_FREQUENCY` | 自动记忆触发频率 |
-| `WAVE_PROMPT_CACHE_REGEX` | Prompt 缓存匹配正则（默认 `claude`） |
 | `WAVE_PLUGIN_GIT_TIMEOUT_MS` | 插件 Git 操作超时（毫秒） |
 
 #### OTEL_* 变量（OpenTelemetry）
@@ -1268,14 +1267,30 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 此外还支持 `fastModel` 配置，用于子代理（Explore）和网页抓取摘要等轻量场景。
 
-### Prompt 缓存 {#settings-prompt-cache}
+### 模型能力配置 {#settings-capabilities}
 
-SDK 默认对名称包含 `claude` 的模型自动启用 Prompt Cache（提示词缓存），通过在消息内容中插入 `ephemeral` 缓存标记来复用上下文，降低 API 调用成本。
+在 `models` 字段中通过 `capabilities` 声明式配置每个模型的能力，支持以下字段：
 
-对于其他支持 Prompt Cache 的模型，可通过 `WAVE_PROMPT_CACHE_REGEX` 匹配模型名称：
+- `promptCaching`：是否支持 Prompt Cache（提示词缓存）。设为 `true` 时，SDK 会在消息内容中插入 `ephemeral` 缓存标记来复用上下文，降低 API 调用成本。默认 `false`。
+- `vision`：是否支持图像识别（视觉）。设为 `false` 时，SDK 会在发送前自动剥离图像并用文本占位符替换。默认 `true`。
 
-- `WAVE_PROMPT_CACHE_REGEX="qwen"` — 匹配 qwen 系列模型
-- `WAVE_PROMPT_CACHE_REGEX="(qwen|claude)"` — 同时匹配多个
+```json
+{
+  "models": {
+    "claude-sonnet-4": {
+      "capabilities": { "promptCaching": true, "vision": true }
+    },
+    "deepseek-r1": {
+      "capabilities": { "vision": false }
+    },
+    "qwen-plus": {
+      "capabilities": { "promptCaching": true }
+    }
+  }
+}
+```
+
+> **注意**：`promptCaching` 默认为 `false`。即使是 Claude 模型，也需要显式声明 `capabilities: { promptCaching: true }` 才会启用缓存。
 
 ### MCP 协议 {#settings-mcp}
 

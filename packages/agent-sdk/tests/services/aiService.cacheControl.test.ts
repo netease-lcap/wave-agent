@@ -14,6 +14,7 @@ const TEST_GATEWAY_CONFIG: GatewayConfig = {
 const CLAUDE_MODEL_CONFIG: ModelConfig = {
   model: "claude-3-sonnet-20240229",
   fastModel: "gemini-2.5-flash",
+  capabilities: { promptCaching: true },
 };
 
 // Non-Claude model config for compatibility testing
@@ -69,111 +70,50 @@ describe("AI Service - Claude Cache Control", () => {
 
   describe("Cache Control Utilities", () => {
     let cacheUtils: typeof import("@/utils/cacheControlUtils.js");
+    let modelCaps: typeof import("@/utils/modelCapabilities.js");
 
     beforeEach(async () => {
       cacheUtils = await import("@/utils/cacheControlUtils.js");
+      modelCaps = await import("@/utils/modelCapabilities.js");
     });
 
     describe("supportsPromptCaching", () => {
-      it("should return true for Claude model names (case-insensitive)", async () => {
-        expect(
-          cacheUtils.supportsPromptCaching("claude-3-sonnet-20240229"),
-        ).toBe(true);
-        expect(cacheUtils.supportsPromptCaching("CLAUDE-3-OPUS")).toBe(true);
-        expect(cacheUtils.supportsPromptCaching("anthropic/claude-2")).toBe(
+      it("should return true when promptCaching is true", async () => {
+        expect(modelCaps.supportsPromptCaching({ promptCaching: true })).toBe(
           true,
         );
-        expect(cacheUtils.supportsPromptCaching("Claude-Instant")).toBe(true);
       });
 
-      it("should return false for non-Claude model names", async () => {
-        expect(cacheUtils.supportsPromptCaching("gpt-4o")).toBe(false);
-        expect(cacheUtils.supportsPromptCaching("gpt-3.5-turbo")).toBe(false);
-        expect(cacheUtils.supportsPromptCaching("gemini-pro")).toBe(false);
-        expect(cacheUtils.supportsPromptCaching("llama2")).toBe(false);
-      });
-
-      it("should handle invalid inputs gracefully", async () => {
-        expect(cacheUtils.supportsPromptCaching("")).toBe(false);
-        expect(
-          cacheUtils.supportsPromptCaching(null as unknown as string),
-        ).toBe(false);
-        expect(
-          cacheUtils.supportsPromptCaching(undefined as unknown as string),
-        ).toBe(false);
-        expect(cacheUtils.supportsPromptCaching(123 as unknown as string)).toBe(
+      it("should return false when promptCaching is false", async () => {
+        expect(modelCaps.supportsPromptCaching({ promptCaching: false })).toBe(
           false,
         );
       });
 
-      it("should support regex patterns via WAVE_PROMPT_CACHE_REGEX", async () => {
-        // Save original env
-        const originalEnv = process.env.WAVE_PROMPT_CACHE_REGEX;
-
-        // Test with regex pattern "claude|qwen"
-        process.env.WAVE_PROMPT_CACHE_REGEX = "claude|qwen";
-
-        // Re-import to pick up new env variable
-        vi.resetModules();
-        const cacheUtilsNew = await import("@/utils/cacheControlUtils.js");
-
-        // Should match claude
-        expect(cacheUtilsNew.supportsPromptCaching("claude-3-sonnet")).toBe(
-          true,
-        );
-        // Should match qwen
-        expect(cacheUtilsNew.supportsPromptCaching("qwen3.6-plus")).toBe(true);
-        expect(cacheUtilsNew.supportsPromptCaching("QWEN-turbo")).toBe(true);
-        // Should not match others
-        expect(cacheUtilsNew.supportsPromptCaching("gpt-4o")).toBe(false);
-        expect(cacheUtilsNew.supportsPromptCaching("gemini-pro")).toBe(false);
-
-        // Restore original env
-        if (originalEnv === undefined) {
-          delete process.env.WAVE_PROMPT_CACHE_REGEX;
-        } else {
-          process.env.WAVE_PROMPT_CACHE_REGEX = originalEnv;
-        }
-        vi.resetModules();
+      it("should return false (default) when capabilities is undefined", async () => {
+        expect(modelCaps.supportsPromptCaching(undefined)).toBe(false);
       });
 
-      it("should fall back to default for invalid regex patterns", async () => {
-        // Save original env
-        const originalEnv = process.env.WAVE_PROMPT_CACHE_REGEX;
-
-        // Test with invalid regex pattern
-        process.env.WAVE_PROMPT_CACHE_REGEX = "[invalid(regex";
-
-        // Re-import to pick up new env variable
-        vi.resetModules();
-        const cacheUtilsNew = await import("@/utils/cacheControlUtils.js");
-
-        // Should fall back to default "claude" matching
-        expect(cacheUtilsNew.supportsPromptCaching("claude-3-sonnet")).toBe(
-          true,
-        );
-        expect(cacheUtilsNew.supportsPromptCaching("CLAUDE")).toBe(true);
-        expect(cacheUtilsNew.supportsPromptCaching("gpt-4o")).toBe(false);
-
-        // Restore original env
-        if (originalEnv === undefined) {
-          delete process.env.WAVE_PROMPT_CACHE_REGEX;
-        } else {
-          process.env.WAVE_PROMPT_CACHE_REGEX = originalEnv;
-        }
-        vi.resetModules();
+      it("should return false (default) when capabilities is empty object", async () => {
+        expect(modelCaps.supportsPromptCaching({})).toBe(false);
       });
     });
 
-    describe("isClaudeModel (deprecated alias)", () => {
-      it("should be an alias for supportsPromptCaching", async () => {
-        // Both should return the same result
-        expect(cacheUtils.isClaudeModel("claude-3-sonnet")).toBe(
-          cacheUtils.supportsPromptCaching("claude-3-sonnet"),
-        );
-        expect(cacheUtils.isClaudeModel("gpt-4o")).toBe(
-          cacheUtils.supportsPromptCaching("gpt-4o"),
-        );
+    describe("supportsVision", () => {
+      it("should return true when vision is true", async () => {
+        expect(modelCaps.supportsVision({ vision: true })).toBe(true);
+      });
+
+      it("should return false when vision is false", async () => {
+        expect(modelCaps.supportsVision({ vision: false })).toBe(false);
+      });
+
+      it("should return true (default) when capabilities is undefined", async () => {
+        expect(modelCaps.supportsVision(undefined)).toBe(true);
+      });
+
+      it("should return true (default) when capabilities is empty object", async () => {
+        expect(modelCaps.supportsVision({})).toBe(true);
       });
     });
 
@@ -322,10 +262,9 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "system" as const, content: "Last system message" },
         ];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: true,
+        });
 
         // First system message (index 1) should have cache control
         expect(Array.isArray(result[1].content)).toBe(true);
@@ -376,10 +315,9 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "user" as const, content: "What can you do?" },
         ];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: true,
+        });
 
         // System message (index 0) should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
@@ -405,10 +343,9 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "assistant" as const, content: "Hello!" },
         ];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: true,
+        });
 
         // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
@@ -443,10 +380,9 @@ describe("AI Service - Claude Cache Control", () => {
           },
         ];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: true,
+        });
 
         // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
@@ -471,18 +407,17 @@ describe("AI Service - Claude Cache Control", () => {
         expect(typeof result[1].content).toBe("string");
       });
 
-      it("should not apply cache control for non-Claude models", async () => {
+      it("should not apply cache control for models without promptCaching capability", async () => {
         const messages = Array.from({ length: 25 }, (_, i) => ({
           role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
           content: `Message ${i + 1}`,
         })) as ChatCompletionMessageParam[];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "gpt-4o",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: false,
+        });
 
-        // Should return messages unchanged for non-Claude models
+        // Should return messages unchanged for non-caching models
         expect(result).toEqual(messages);
         result.forEach((message) => {
           expect(typeof message.content).toBe("string");
@@ -492,20 +427,22 @@ describe("AI Service - Claude Cache Control", () => {
       it("should handle edge cases gracefully", async () => {
         // Empty conversation
         expect(
-          cacheUtils.transformMessagesForExplicitCache([], "claude-3-sonnet"),
+          cacheUtils.transformMessagesForExplicitCache([], {
+            promptCaching: true,
+          }),
         ).toEqual([]);
 
         // Invalid messages array
         expect(
           cacheUtils.transformMessagesForExplicitCache(
             null as unknown as ChatCompletionMessageParam[],
-            "claude-3-sonnet",
+            { promptCaching: true },
           ),
         ).toEqual([]);
         expect(
           cacheUtils.transformMessagesForExplicitCache(
             undefined as unknown as ChatCompletionMessageParam[],
-            "claude-3-sonnet",
+            { promptCaching: true },
           ),
         ).toEqual([]);
       });
@@ -526,10 +463,9 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "assistant" as const, content: "I can see the image" },
         ];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: true,
+        });
 
         // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
@@ -566,10 +502,9 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "user" as const, content: "How are you?" },
         ];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: true,
+        });
 
         // System message (index 0) should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
@@ -613,10 +548,9 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "assistant" as const, content: "Hi there!" },
         ];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: true,
+        });
 
         // System message (index 0) should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
@@ -652,10 +586,9 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "user" as const, content: "Thanks" },
         ];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: true,
+        });
 
         // System message (index 0) should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
@@ -686,7 +619,7 @@ describe("AI Service - Claude Cache Control", () => {
 
         const shortResult = cacheUtils.transformMessagesForExplicitCache(
           shortMessages,
-          "claude-3-sonnet",
+          { promptCaching: true },
         );
 
         // System + last message = 2 markers
@@ -714,7 +647,7 @@ describe("AI Service - Claude Cache Control", () => {
 
         const longResult = cacheUtils.transformMessagesForExplicitCache(
           longMessages,
-          "claude-3-sonnet",
+          { promptCaching: true },
         );
 
         // System + last message = 2 markers (no bridge)
@@ -738,10 +671,9 @@ describe("AI Service - Claude Cache Control", () => {
           { role: "system" as const, content: "You are helpful" },
         ];
 
-        const result = cacheUtils.transformMessagesForExplicitCache(
-          messages,
-          "claude-3-sonnet",
-        );
+        const result = cacheUtils.transformMessagesForExplicitCache(messages, {
+          promptCaching: true,
+        });
 
         // System message should have cache control
         expect(Array.isArray(result[0].content)).toBe(true);
@@ -1321,14 +1253,28 @@ describe("AI Service - Claude Cache Control", () => {
         });
       });
 
-      it("should handle mixed Claude and non-Claude model names correctly", async () => {
+      it("should handle caching and non-caching model configs correctly", async () => {
         const testCases = [
-          { modelName: "claude-3-sonnet", shouldCache: true },
-          { modelName: "gpt-4o-claude-variant", shouldCache: true }, // Contains 'claude'
-          { modelName: "anthropic-claude-2", shouldCache: true },
-          { modelName: "CLAUDE-INSTANT", shouldCache: true },
-          { modelName: "gpt-4o", shouldCache: false }, // Pure GPT model
-          { modelName: "gemini-pro", shouldCache: false }, // Pure Gemini model
+          {
+            modelName: "claude-3-sonnet",
+            shouldCache: true,
+            capabilities: { promptCaching: true },
+          },
+          {
+            modelName: "qwen-plus",
+            shouldCache: true,
+            capabilities: { promptCaching: true },
+          },
+          {
+            modelName: "gpt-4o",
+            shouldCache: false,
+            capabilities: undefined,
+          },
+          {
+            modelName: "gemini-pro",
+            shouldCache: false,
+            capabilities: { promptCaching: false },
+          },
         ];
 
         for (const testCase of testCases) {
@@ -1337,6 +1283,7 @@ describe("AI Service - Claude Cache Control", () => {
             modelConfig: {
               model: testCase.modelName,
               fastModel: "gpt-4o-mini",
+              capabilities: testCase.capabilities,
             },
             messages: [{ role: "user", content: "Test message" }],
             workdir: "/test/workdir",
