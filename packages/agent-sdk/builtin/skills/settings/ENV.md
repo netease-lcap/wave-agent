@@ -32,7 +32,6 @@ Wave uses several environment variables to control its core functionality.
 | `WAVE_DISABLE_AUTO_MEMORY` | Set to `1` or `true` to disable the auto-memory feature. | `false` |
 | `WAVE_AUTO_MEMORY_FREQUENCY` | Auto memory update frequency. `1` = every turn, `2` = every 2 turns, etc. | `1` |
 | `WAVE_TASK_LIST_ID` | Explicitly set the task list ID for the session. | (Session ID) |
-| `WAVE_PROMPT_CACHE_REGEX` | Regex pattern to match model names that support prompt caching. Models matching this pattern will have cache control markers applied. | `claude` |
 | `WAVE_PLUGIN_GIT_TIMEOUT_MS` | Timeout in milliseconds for git operations when installing plugins. | `300000` |
 
 ## Configuration Scopes

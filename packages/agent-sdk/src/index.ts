@@ -14,6 +14,7 @@ export * from "./managers/messageQueue.js";
 // Export all utilities
 export * from "./utils/bashParser.js";
 export * from "./utils/convertMessagesForAPI.js";
+export * from "./utils/modelCapabilities.js";
 export * from "./utils/fileSearch.js";
 export * from "./utils/globalLogger.js";
 export * from "./utils/mcpUtils.js";

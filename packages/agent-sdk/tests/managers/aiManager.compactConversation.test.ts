@@ -45,7 +45,6 @@ vi.mock("../../src/services/aiService.js", () => ({
     };
   }),
   compactMessages: compactMessagesMock,
-  isClaudeModel: vi.fn().mockReturnValue(false),
   transformMessagesForExplicitCache: vi.fn((m) => m),
   extendUsageWithCacheMetrics: vi.fn((u) => u),
 }));

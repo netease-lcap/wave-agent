@@ -40,14 +40,25 @@ function safeToolArguments(args: string): string {
 }
 
 /**
+ * Options for converting messages to API format.
+ */
+export interface ConvertMessagesOptions {
+  /** When false, images are stripped and replaced with text placeholders. */
+  supportsVision?: boolean;
+}
+
+/**
  * Convert message format to API call format, stopping when a compacted message is encountered.
  * Messages with no meaningful content or tool calls are filtered out.
  * @param messages Message list
+ * @param options Optional conversion options (e.g. supportsVision)
  * @returns Converted API message format list
  */
 export function convertMessagesForAPI(
   messages: Message[],
+  options?: ConvertMessagesOptions,
 ): ChatCompletionMessageParam[] {
+  const supportsVision = options?.supportsVision !== false;
   const recentMessages: ChatCompletionMessageParam[] = [];
 
   const startIndex = messages.length - 1;
@@ -103,26 +114,35 @@ export function convertMessagesForAPI(
 
             // If there are images, also prepare a user message with image content
             if (toolBlock.images && toolBlock.images.length > 0) {
-              const contentParts: ChatCompletionContentPart[] = [];
+              if (supportsVision) {
+                const contentParts: ChatCompletionContentPart[] = [];
 
-              toolBlock.images.forEach((image) => {
-                const imageUrl = image.data.startsWith("data:")
-                  ? image.data
-                  : `data:${image.mediaType || "image/png"};base64,${image.data}`;
+                toolBlock.images.forEach((image) => {
+                  const imageUrl = image.data.startsWith("data:")
+                    ? image.data
+                    : `data:${image.mediaType || "image/png"};base64,${image.data}`;
 
-                contentParts.push({
-                  type: "image_url",
-                  image_url: {
-                    url: imageUrl,
-                    detail: "auto",
-                  },
+                  contentParts.push({
+                    type: "image_url",
+                    image_url: {
+                      url: imageUrl,
+                      detail: "auto",
+                    },
+                  });
                 });
-              });
 
-              imageUserMessages.push({
-                role: "user",
-                content: contentParts,
-              });
+                imageUserMessages.push({
+                  role: "user",
+                  content: contentParts,
+                });
+              } else {
+                // Non-vision model: replace images with a text placeholder
+                imageUserMessages.push({
+                  role: "user",
+                  content:
+                    "[Tool returned an image, but the current model does not support image recognition]",
+                });
+              }
             }
           }
         });
@@ -229,32 +249,40 @@ export function convertMessagesForAPI(
           block.imageUrls &&
           block.imageUrls.length > 0
         ) {
-          block.imageUrls.forEach((imageUrl: string) => {
-            // Check if it's already base64, convert if not
-            let finalImageUrl = imageUrl;
-            if (!imageUrl.startsWith("data:image/")) {
-              // If it's a file path, it needs to be converted to base64
-              try {
-                finalImageUrl = convertImageToBase64(imageUrl);
-              } catch (error) {
-                logger.error(
-                  "Failed to convert image path to base64:",
-                  imageUrl,
-                  error,
-                );
-                // Skip this image, do not add to content
-                return;
-              }
-            }
-
+          if (!supportsVision) {
+            // Non-vision model: replace images with a text placeholder
             contentParts.push({
-              type: "image_url",
-              image_url: {
-                url: finalImageUrl,
-                detail: "auto",
-              },
+              type: "text",
+              text: "[User shared an image, but the current model does not support image recognition]",
             });
-          });
+          } else {
+            block.imageUrls.forEach((imageUrl: string) => {
+              // Check if it's already base64, convert if not
+              let finalImageUrl = imageUrl;
+              if (!imageUrl.startsWith("data:image/")) {
+                // If it's a file path, it needs to be converted to base64
+                try {
+                  finalImageUrl = convertImageToBase64(imageUrl);
+                } catch (error) {
+                  logger.error(
+                    "Failed to convert image path to base64:",
+                    imageUrl,
+                    error,
+                  );
+                  // Skip this image, do not add to content
+                  return;
+                }
+              }
+
+              contentParts.push({
+                type: "image_url",
+                image_url: {
+                  url: finalImageUrl,
+                  detail: "auto",
+                },
+              });
+            });
+          }
         }
 
         // If there is a tool block in user message, add its result

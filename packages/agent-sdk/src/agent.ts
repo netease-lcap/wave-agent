@@ -41,6 +41,7 @@ import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
 import { btw } from "./services/aiService.js";
 import { convertMessagesForAPI } from "./utils/convertMessagesForAPI.js";
+import { supportsVision } from "./utils/modelCapabilities.js";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { InitializationService } from "./services/initializationService.js";
 import { InteractionService } from "./services/interactionService.js";
@@ -995,7 +996,9 @@ export class Agent {
    * @returns Promise that resolves to the AI's answer
    */
   public async askBtw(question: string): Promise<string> {
-    const messages = convertMessagesForAPI(this.messageManager.getMessages());
+    const messages = convertMessagesForAPI(this.messageManager.getMessages(), {
+      supportsVision: supportsVision(this.getModelConfig().capabilities),
+    });
     const result = await btw({
       gatewayConfig: this.getGatewayConfig(),
       modelConfig: this.getModelConfig(),

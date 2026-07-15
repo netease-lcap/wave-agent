@@ -545,12 +545,14 @@ export class ConfigurationService {
         fastModel: _ffm,
         maxTokens: _fmt,
         permissionMode: _fpm,
+        capabilities: _fcap,
         ...fastHyperparams
       } = fastModelConfigSource;
       void _fm;
       void _ffm;
       void _fmt;
       void _fpm;
+      void _fcap;
       baseConfig.fastModelConfig = fastHyperparams;
     }
 

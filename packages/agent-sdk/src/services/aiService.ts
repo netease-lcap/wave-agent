@@ -13,11 +13,11 @@ import type { GatewayConfig, ModelConfig } from "../types/index.js";
 import { ConfigurationError, CONFIG_ERRORS } from "../types/index.js";
 import {
   transformMessagesForExplicitCache,
-  supportsPromptCaching,
   extendUsageWithCacheMetrics,
   type ClaudeUsage,
   type ClaudeChatCompletionContentPartText,
 } from "../utils/cacheControlUtils.js";
+import { supportsPromptCaching } from "../utils/modelCapabilities.js";
 
 import * as os from "os";
 import * as fs from "fs";
@@ -265,13 +265,12 @@ export async function callAgent(
     });
 
     // Determine model early (needed for system prompt construction)
-    const currentModel = model || modelConfig.model;
     const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
     // Build system message content
     let systemMessage: ChatCompletionMessageParam;
     if (Array.isArray(systemPrompt)) {
-      if (supportsPromptCaching(currentModel)) {
+      if (supportsPromptCaching(modelConfig.capabilities)) {
         // For Claude models, map blocks to content parts with cache_control on cacheable blocks
         const contentParts: ClaudeChatCompletionContentPartText[] =
           systemPrompt.map((block) => {
@@ -307,10 +306,10 @@ export async function callAgent(
 
     processedTools = tools;
 
-    if (supportsPromptCaching(currentModel)) {
+    if (supportsPromptCaching(modelConfig.capabilities)) {
       openaiMessages = transformMessagesForExplicitCache(
         openaiMessages,
-        currentModel,
+        modelConfig.capabilities,
       );
     }
 
@@ -320,12 +319,14 @@ export async function callAgent(
       fastModel: _fastModel,
       maxTokens: _maxTokens,
       permissionMode: _permissionMode,
+      capabilities: _capabilities,
       ...extraParams
     } = modelConfig;
     void _model;
     void _fastModel;
     void _maxTokens;
     void _permissionMode;
+    void _capabilities;
 
     const openaiModelConfig = getModelConfig(model || modelConfig.model, {
       max_tokens: resolvedMaxTokens,
@@ -866,6 +867,7 @@ export async function compactMessages(
     fastModel: _fastModel,
     maxTokens: _maxTokens,
     permissionMode: _permissionMode,
+    capabilities: _capabilities,
     fastModelConfig: _fastModelConfig,
     ...extraParams
   } = modelConfig;
@@ -873,6 +875,7 @@ export async function compactMessages(
   void _fastModel;
   void _maxTokens;
   void _permissionMode;
+  void _capabilities;
 
   // When a fast model override is provided, use the fast model's hyperparams
   // (if configured); otherwise fall back to the agent model's extraParams.
@@ -989,6 +992,7 @@ export async function processWebContent(
     fastModel: _fastModel,
     maxTokens: _maxTokens,
     permissionMode: _permissionMode,
+    capabilities: _capabilities,
     fastModelConfig: _fastModelConfig,
     ...extraParams
   } = modelConfig;
@@ -996,6 +1000,7 @@ export async function processWebContent(
   void _fastModel;
   void _maxTokens;
   void _permissionMode;
+  void _capabilities;
 
   // When a fast model override is provided, use the fast model's hyperparams
   // (if configured); otherwise fall back to the agent model's extraParams.
@@ -1106,12 +1111,14 @@ export async function btw(options: BtwOptions): Promise<BtwResult> {
     fastModel: _fastModel,
     maxTokens: _maxTokens,
     permissionMode: _permissionMode,
+    capabilities: _capabilities,
     ...extraParams
   } = modelConfig;
   void _model;
   void _fastModel;
   void _maxTokens;
   void _permissionMode;
+  void _capabilities;
 
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
