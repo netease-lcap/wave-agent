@@ -78,6 +78,15 @@ describe("confirmationReducer", () => {
       expect(result.alternativeText).toBe("hello");
       expect(result.alternativeCursorPosition).toBe(5);
     });
+
+    it("should replace newlines with spaces in pasted text", () => {
+      const result = confirmationReducer(initialState, {
+        type: "INSERT_TEXT",
+        text: "line1\nline2\r\nline3",
+      });
+      expect(result.alternativeText).toBe("line1 line2 line3");
+      expect(result.alternativeCursorPosition).toBe(17);
+    });
   });
 
   describe("BACKSPACE", () => {
