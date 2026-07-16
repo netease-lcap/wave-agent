@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { chatReducer, initialState } from '../../webview/src/reducers/chatReducer';
-import type { Message, TextBlock, ToolBlock, ReasoningBlock, ErrorBlock } from '../../webview/src/types';
+import { chatReducer, initialState } from '../../src/reducers/chatReducer';
+import type { Message, TextBlock, ToolBlock, ReasoningBlock, ErrorBlock } from '../../src/types';
 
 describe('chatReducer', () => {
   describe('APPEND_MESSAGE', () => {

@@ -2,8 +2,8 @@ import React from 'react';
 import { vi } from 'vitest';
 import { render, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { VsCodeApi } from '../../webview/src/types';
-import { ChatApp } from '../../webview/src/components/ChatApp';
+import type { VsCodeApi } from '../../src/types';
+import { ChatApp } from '../../src/components/ChatApp';
 
 // Mock heavy dependencies
 vi.mock('mermaid', () => ({
@@ -20,8 +20,8 @@ vi.mock('dompurify', () => ({
 }));
 
 // Mock CSS imports
-vi.mock('../../webview/src/styles/ChatApp.css', () => ({}));
-vi.mock('../../webview/src/styles/globals.css', () => ({}));
+vi.mock('../../src/styles/ChatApp.css', () => ({}));
+vi.mock('../../src/styles/globals.css', () => ({}));
 vi.mock('@vscode/codicons/dist/codicon.css', () => ({}));
 
 // Mock ResizeObserver (not available in jsdom)

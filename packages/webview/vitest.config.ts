@@ -1,18 +1,12 @@
 import { defineConfig } from 'vitest/config';
-import path from 'path';
 
 export default defineConfig({
-    resolve: {
-        alias: {
-            vscode: path.resolve(__dirname, 'tests/__mocks__/vscode.ts'),
-        },
-    },
     test: {
         globals: true,
         reporter: 'dot',
-        environment: 'node',
+        environment: 'jsdom',
         include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-        exclude: ['tests/services/**', 'node_modules'],
+        exclude: ['node_modules'],
         setupFiles: ['tests/setup.ts'],
         server: {
             deps: {
@@ -22,6 +16,7 @@ export default defineConfig({
         coverage: {
             provider: 'v8',
             include: ['src/**'],
+            exclude: ['src/index.tsx', 'src/**/*.css'],
         },
     },
 });

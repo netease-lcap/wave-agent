@@ -1,0 +1,21 @@
+<idea-plugin>
+    <id>com.wave.jetbrains</id>
+    <name>Wave</name>
+    <vendor>wave-code</vendor>
+
+    <description><![CDATA[
+        Wave code for JetBrains IDEs — AI-powered development assistant.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService
+            serviceImplementation="com.wave.jetbrains.config.WavePluginService"/>
+        <toolWindow
+            id="Wave"
+            anchor="right"
+            factoryClass="com.wave.jetbrains.WaveToolWindowFactory"
+            icon="AllIcons.Toolwindows.ToolWindowProject"/>
+    </extensions>
+</idea-plugin>
