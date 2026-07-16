@@ -4,6 +4,7 @@ import {
   AuthService,
   PluginCore,
   PromptHistoryManager,
+  listSessions,
   searchFiles,
 } from "wave-agent-sdk";
 
@@ -18,7 +19,10 @@ const stderrWriteSpy = vi
 import { AgentBridge, RpcError } from "../../src/stdio/agentBridge.js";
 import type {
   AgentCallbacks,
+  McpServerStatus,
   Message,
+  QueuedMessage,
+  Task,
   ToolPermissionContext,
 } from "wave-agent-sdk";
 
@@ -226,6 +230,139 @@ test("onPermissionModeChange emits permissionModeChange notification", async () 
   expect(notifications).toContainEqual({
     method: "permissionModeChange",
     params: { mode: "plan" },
+  });
+});
+
+test("onCommandRunningChange emits commandRunningChange notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onCommandRunningChange!(true);
+
+  expect(notifications).toContainEqual({
+    method: "commandRunningChange",
+    params: { running: true },
+  });
+});
+
+test("onQueuedMessagesChange emits queuedMessagesChange notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  const queued = [{ id: "q1", content: "hello" }] as QueuedMessage[];
+  callbacks.onQueuedMessagesChange!(queued);
+
+  expect(notifications).toContainEqual({
+    method: "queuedMessagesChange",
+    params: { messages: queued },
+  });
+});
+
+test("onTasksChange emits tasksChange notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  const tasks = [{ id: "t1", subject: "Task 1", status: "pending" }] as Task[];
+  callbacks.onTasksChange!(tasks);
+
+  expect(notifications).toContainEqual({
+    method: "tasksChange",
+    params: { tasks },
+  });
+});
+
+test("onSessionIdChange emits sessionIdChange notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onSessionIdChange!("session-new");
+
+  expect(notifications).toContainEqual({
+    method: "sessionIdChange",
+    params: { sessionId: "session-new" },
+  });
+});
+
+test("onMcpServersChange emits mcpServersChange notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  const servers = [
+    { name: "server1", status: "connected" },
+  ] as McpServerStatus[];
+  callbacks.onMcpServersChange!(servers);
+
+  expect(notifications).toContainEqual({
+    method: "mcpServersChange",
+    params: { servers },
+  });
+});
+
+test("onAddBangMessage emits bangMessageAdded notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onAddBangMessage!("ls");
+
+  expect(notifications).toContainEqual({
+    method: "bangMessageAdded",
+    params: {},
+  });
+});
+
+test("onUpdateBangMessage emits bangMessageUpdated notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onUpdateBangMessage!("ls", "output");
+
+  expect(notifications).toContainEqual({
+    method: "bangMessageUpdated",
+    params: {},
+  });
+});
+
+test("onCompleteBangMessage emits bangMessageCompleted notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onCompleteBangMessage!("ls", 0);
+
+  expect(notifications).toContainEqual({
+    method: "bangMessageCompleted",
+    params: {},
   });
 });
 
@@ -830,4 +967,405 @@ test("onNotificationMessageAdded emits with full message", async () => {
       message: notificationMessage,
     },
   });
+});
+
+// ── Branch coverage: null params, untested switch cases ──────────
+
+test("handleRequest with null params defaults to empty object", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", {});
+  // getSessionInfo uses p but doesn't read any field, so null params should work
+  const result = await bridge.handleRequest("getSessionInfo", null);
+  expect(result).toEqual({
+    sessionId: "test-session-id",
+    workingDirectory: "/test/workdir",
+    latestTotalTokens: 100,
+    permissionMode: "default",
+    availableTools: ["Bash", "Read", "Write"],
+  });
+});
+
+test("restoreSession delegates to agent.restoreSession", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", {});
+  await bridge.handleRequest("restoreSession", { sessionId: "old-session" });
+
+  expect(mockAgent.restoreSession).toHaveBeenCalledWith("old-session");
+});
+
+test("listSessions with workdir delegates to listSessions SDK", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  await bridge.handleRequest("initialize", {});
+
+  await bridge.handleRequest("listSessions", { workdir: "/custom/workdir" });
+
+  expect(listSessions).toHaveBeenCalledWith("/custom/workdir");
+});
+
+test("listSessions without agent or workdir falls back to process.cwd()", async () => {
+  const { bridge } = createBridge();
+  // Don't initialize — agent is undefined
+
+  await bridge.handleRequest("listSessions", {});
+
+  expect(listSessions).toHaveBeenCalledWith(process.cwd());
+});
+
+test("updateConfig destroys and recreates agent with merged config", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", { model: "gpt-4" });
+  const result = await bridge.handleRequest("updateConfig", {
+    permissionMode: "plan",
+  });
+
+  expect(mockAgent.destroy).toHaveBeenCalled();
+  expect(result).toEqual({ sessionId: "test-session-id" });
+  // Second Agent.create call should have merged config
+  const secondCall = vi.mocked(Agent.create).mock.calls[1][0];
+  expect(secondCall.model).toBe("gpt-4");
+  expect(secondCall.permissionMode).toBe("plan");
+});
+
+test("destroy without agent is a no-op", async () => {
+  const { bridge } = createBridge();
+  // Don't initialize — agent is undefined
+  const result = await bridge.handleRequest("destroy", {});
+  expect(result).toBeNull();
+});
+
+test("getPromptHistory delegates to PromptHistoryManager", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(PromptHistoryManager.getHistory).mockResolvedValue([]);
+
+  await bridge.handleRequest("getPromptHistory", { workdir: "/test/workdir" });
+
+  expect(PromptHistoryManager.getHistory).toHaveBeenCalledWith({
+    workdir: "/test/workdir",
+  });
+});
+
+test("searchPromptHistory delegates to PromptHistoryManager", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(PromptHistoryManager.searchHistory).mockResolvedValue([]);
+
+  await bridge.handleRequest("searchPromptHistory", {
+    query: "hello",
+    workdir: "/test/workdir",
+  });
+
+  expect(PromptHistoryManager.searchHistory).toHaveBeenCalledWith("hello", {
+    workdir: "/test/workdir",
+  });
+});
+
+test("updatePlugin delegates to PluginCore", async () => {
+  const { bridge } = createBridge();
+  const updatePlugin = vi.fn().mockResolvedValue(undefined);
+  mockPluginCore({ updatePlugin });
+
+  await bridge.handleRequest("updatePlugin", { pluginId: "test@official" });
+
+  expect(updatePlugin).toHaveBeenCalledWith("test@official");
+});
+
+// ── Branch coverage: handleNotification ──────────────────────────
+
+test("handleNotification ignores unknown methods", () => {
+  const { bridge } = createBridge();
+  // Should not throw
+  bridge.handleNotification("unknownMethod", {});
+});
+
+test("handleNotification with unknown requestId does nothing", () => {
+  const { bridge } = createBridge();
+  bridge.handleNotification("permissionResponse", {
+    requestId: "unknown-id",
+    decision: { behavior: "allow" },
+  });
+  // No error, no crash
+});
+
+// ── Branch coverage: sendMessage force ───────────────────────────
+
+test("sendMessage with force aborts before sending", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", {});
+  await bridge.handleRequest("sendMessage", {
+    text: "hello",
+    force: true,
+  });
+
+  expect(mockAgent.abortMessage).toHaveBeenCalled();
+  expect(mockAgent.sendMessage).toHaveBeenCalledWith("hello", undefined);
+});
+
+// ── Branch coverage: rewindToMessage edge cases ──────────────────
+
+test("rewindToMessage throws when messageId not found", async () => {
+  const { bridge } = createBridge();
+  const messages = [
+    { id: "msg-1", role: "user", blocks: [{ type: "text", content: "hello" }] },
+  ] as unknown as Message[];
+  const mockAgent = createMockAgent({
+    messages,
+    getFullMessageThread: vi.fn().mockResolvedValue({
+      messages,
+      sessionIds: ["test-session-id"],
+    }),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", {});
+
+  await expect(
+    bridge.handleRequest("rewindToMessage", { messageId: "nonexistent" }),
+  ).rejects.toThrow("Message not found: nonexistent");
+});
+
+test("rewindToMessage returns empty string when message has no text block", async () => {
+  const { bridge } = createBridge();
+  const messages = [
+    { id: "msg-1", role: "user", blocks: [{ type: "image" }] },
+  ] as unknown as Message[];
+  const mockAgent = createMockAgent({
+    messages,
+    getFullMessageThread: vi.fn().mockResolvedValue({
+      messages,
+      sessionIds: ["test-session-id"],
+    }),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", {});
+  const result = await bridge.handleRequest("rewindToMessage", {
+    messageId: "msg-1",
+  });
+
+  expect(result).toEqual({ inputContent: "" });
+});
+
+// ── Branch coverage: searchFiles / history without agent ─────────
+
+test("searchFiles without agent or workdir falls back to process.cwd()", async () => {
+  const { bridge } = createBridge();
+  // Don't initialize — agent is undefined
+
+  await bridge.handleRequest("searchFiles", { query: "test" });
+
+  expect(searchFiles).toHaveBeenCalledWith("test", {
+    maxResults: undefined,
+    workingDirectory: process.cwd(),
+  });
+});
+
+test("getPromptHistory without agent falls back to undefined workdir", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(PromptHistoryManager.getHistory).mockResolvedValue([]);
+
+  await bridge.handleRequest("getPromptHistory", {});
+
+  expect(PromptHistoryManager.getHistory).toHaveBeenCalledWith({
+    workdir: undefined,
+  });
+});
+
+test("searchPromptHistory without agent falls back to undefined workdir", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(PromptHistoryManager.searchHistory).mockResolvedValue([]);
+
+  await bridge.handleRequest("searchPromptHistory", { query: "test" });
+
+  expect(PromptHistoryManager.searchHistory).toHaveBeenCalledWith("test", {
+    workdir: undefined,
+  });
+});
+
+// ── Branch coverage: PluginCore cache hit ────────────────────────
+
+test("PluginCore is cached for same workdir", async () => {
+  const { bridge } = createBridge();
+  const listPlugins = vi
+    .fn()
+    .mockResolvedValue({ plugins: [], mergedEnabled: {} });
+  mockPluginCore({ listPlugins });
+
+  // First call creates PluginCore, second uses cache
+  await bridge.handleRequest("listPlugins", { workdir: "/same/workdir" });
+  await bridge.handleRequest("listPlugins", { workdir: "/same/workdir" });
+
+  // PluginCore constructor should only be called once
+  expect(PluginCore).toHaveBeenCalledTimes(1);
+});
+
+test("PluginCore uses agent workingDirectory when no workdir provided", async () => {
+  const { bridge } = createBridge();
+  const listPlugins = vi
+    .fn()
+    .mockResolvedValue({ plugins: [], mergedEnabled: {} });
+  mockPluginCore({ listPlugins });
+
+  // Initialize agent first, then call listPlugins without workdir
+  await bridge.handleRequest("initialize", { workdir: "/test/workdir" });
+  await bridge.handleRequest("listPlugins", {});
+
+  // PluginCore should be constructed with agent's workingDirectory
+  expect(PluginCore).toHaveBeenCalledWith("/test/workdir");
+});
+
+// ── Branch coverage: callback edge cases ─────────────────────────
+
+test("onUserMessageAdded with no user messages does not emit", async () => {
+  const { bridge, notifications } = createBridge();
+  // Agent with no messages
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ messages: [] }));
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onUserMessageAdded!({} as never);
+
+  // Should not emit userMessageAdded
+  expect(
+    notifications.filter((n) => n.method === "userMessageAdded"),
+  ).toHaveLength(0);
+});
+
+test("onAssistantMessageAdded with unknown messageId does not emit", async () => {
+  const { bridge, notifications } = createBridge();
+  const messages = [
+    { id: "msg-1", role: "assistant", blocks: [] },
+  ] as unknown as Message[];
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ messages }));
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onAssistantMessageAdded!("nonexistent-id");
+
+  expect(
+    notifications.filter((n) => n.method === "assistantMessageAdded"),
+  ).toHaveLength(0);
+});
+
+test("onUserMessageAdded before initialize does not crash", async () => {
+  const { bridge, notifications } = createBridge();
+  // Initialize with an agent that has no messages, then destroy agent to test undefined path
+  // Actually, we need to capture callbacks before agent is created.
+  // The findLastUserMessage uses this.agent?.messages which is undefined before init.
+  // We can't easily get callbacks without calling initialize, but we can test
+  // by creating a bridge and calling the callback after destroying the agent.
+
+  const mockAgent = createMockAgent({ messages: [] });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  // Destroy agent so this.agent becomes undefined
+  await bridge.handleRequest("destroy", {});
+
+  // Now onUserMessageAdded should handle undefined agent gracefully
+  callbacks.onUserMessageAdded!({} as never);
+
+  expect(
+    notifications.filter((n) => n.method === "userMessageAdded"),
+  ).toHaveLength(0);
+});
+
+// ── Branch coverage: canUseTool timeout ─────────────────────────
+
+test("canUseTool auto-denies after 5-minute timeout", async () => {
+  vi.useFakeTimers();
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const options = vi.mocked(Agent.create).mock.calls[0][0];
+  const canUseTool = options.canUseTool!;
+
+  const context: ToolPermissionContext = {
+    toolName: "Bash",
+    permissionMode: "default",
+    toolInput: { command: "ls" },
+  };
+
+  const permissionPromise = canUseTool(context);
+
+  // Wait for notification
+  await vi.waitFor(() => {
+    expect(notifications.some((n) => n.method === "permissionRequest")).toBe(
+      true,
+    );
+  });
+
+  // Advance time past 5-minute timeout
+  vi.advanceTimersByTime(5 * 60 * 1000 + 1000);
+
+  const decision = await permissionPromise;
+  expect(decision).toEqual({
+    behavior: "deny",
+    message: "Permission request timed out",
+  });
+
+  vi.useRealTimers();
+});
+
+test("canUseTool timeout is no-op when permission already resolved", async () => {
+  vi.useFakeTimers();
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const options = vi.mocked(Agent.create).mock.calls[0][0];
+  const canUseTool = options.canUseTool!;
+
+  const context: ToolPermissionContext = {
+    toolName: "Bash",
+    permissionMode: "default",
+    toolInput: { command: "ls" },
+  };
+
+  const permissionPromise = canUseTool(context);
+
+  await vi.waitFor(() => {
+    expect(notifications.some((n) => n.method === "permissionRequest")).toBe(
+      true,
+    );
+  });
+
+  const permNotification = notifications.find(
+    (n) => n.method === "permissionRequest",
+  )!;
+  const requestId = (permNotification.params as { requestId: string })
+    .requestId;
+
+  // Resolve via permissionResponse before timeout
+  bridge.handleNotification("permissionResponse", {
+    requestId,
+    decision: { behavior: "allow" },
+  });
+
+  const decision = await permissionPromise;
+  expect(decision).toEqual({ behavior: "allow" });
+
+  // Advance past timeout — should be a no-op (false branch of the if)
+  vi.advanceTimersByTime(5 * 60 * 1000 + 1000);
+
+  vi.useRealTimers();
 });
