@@ -1,9 +1,9 @@
 ---
 layout: home
-title: Wave Agent
+title: CodeChat
 ---
 
-# Wave Agent
+# CodeChat AI辅助编程工具
 
 AI 辅助编程工具链，提供 SDK、CLI 终端界面与 VS Code 扩展三种使用方式。
 

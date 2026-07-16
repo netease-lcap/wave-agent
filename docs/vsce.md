@@ -93,7 +93,6 @@ _输入框中的代码选中标签_
 - **`/config`**：打开常规设置弹窗（详见 [第 10.1 节 配置设置](#configuration-settings)）
 - **`/plugin`**：打开插件管理弹窗（详见 [第 11 章 插件系统](#plugin-system)）
 - **`/mcp`**：打开 MCP 服务器管理弹窗（详见 [第 6.3 节 MCP 协议集成](#mcp-integration)）
-- **`/model`**：打开模型设置弹窗，快速切换主模型和快速模型（详见 [第 10.1 节 配置设置](#configuration-settings)）
 - **`/status`**：打开状态信息弹窗，查看版本、会话 ID、工作目录、模型配置和认证状态
 - **`/login`**：打开 SSO 认证弹窗，进行登录/登出操作（详见 [第 10.1 节 配置设置](#configuration-settings)）
 
@@ -487,16 +486,12 @@ _会话管理_
 
 ### 10.1 配置设置 {#configuration-settings}
 
-用户可以自定义 AI 模型、API Key、Base URL 等关键参数，以适配不同的 AI 服务提供商。通过 `/config`、`/model`、`/login`、`/status`、`/plugin`、`/mcp` 六个斜杠命令分别唤起独立的弹窗进行管理。配置界面中的表单字段仅显示用户手动输入的值，不会被环境变量填充；但如果设置了相应的环境变量（如 `WAVE_BASE_URL`），其值会作为 placeholder 提示显示在输入框中。服务端链接字段默认 placeholder 为"请联系管理员获取"。
+用户可以自定义 API Key、Base URL 等关键参数，以适配不同的 AI 服务提供商。通过 `/config`、`/login`、`/status`、`/plugin`、`/mcp` 五个斜杠命令分别唤起独立的弹窗进行管理。配置界面中的表单字段仅显示用户手动输入的值，不会被环境变量填充；但如果设置了相应的环境变量（如 `WAVE_BASE_URL`），其值会作为 placeholder 提示显示在输入框中。服务端链接字段默认 placeholder 为"请联系管理员获取"。
 
 **主要特性：**
 
 - **常规设置（`/config`）**：配置服务端链接、API Key、Base URL、Headers、语言等。
   - **服务端链接**：配置 Wave AI 服务端地址，用于 SSO 认证。支持环境变量 `WAVE_SERVER_URL` 作为 fallback，默认 placeholder 提示"请联系管理员获取"。
-- **模型设置（`/model`）**：快速切换主模型和快速模型，支持环境变量 `WAVE_MODEL` / `WAVE_FAST_MODEL` 作为 placeholder 提示。
-
-![模型设置](/screenshots/spec-model-dialog.png)
-_模型设置弹窗_
 
 - **SSO 认证（`/login`）**：当配置了服务端链接后，用户可通过 SSO 认证进行登录，无需手动配置 API Key。登录后所有 API 请求自动通过 Wave AI 代理路由。
   - **浏览器登录**：点击"SSO 登录"后自动打开浏览器，用户在 Wave AI 登录页完成认证（支持 SSO 企业身份提供商或账号密码登录），授权码通过 localhost 回调自动交换为 JWT 并保存。VS Code Remote SSH 环境会自动转发端口，远程服务器体验与本地一致。
