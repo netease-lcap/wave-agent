@@ -13,7 +13,7 @@
   "type": "module",
   "engines": {
     "vscode": "^1.107.0",
-    "node": ">=22.0.0"
+    "node": ">=20"
   },
   "files": [
     "dist/",

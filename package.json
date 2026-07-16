@@ -44,7 +44,7 @@
   },
   "packageManager": "pnpm@11.9.0",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=20"
   },
   "license": "MIT"
 }
