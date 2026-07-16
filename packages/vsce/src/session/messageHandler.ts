@@ -5,8 +5,7 @@ import { ConfigurationService, type ConfigurationData } from '../services/config
 import { FileService } from '../services/fileService';
 import { SessionService } from '../services/sessionService';
 import { PluginService } from '../services/pluginService';
-import { PromptHistoryManager } from 'wave-agent-sdk';
-import { AuthService } from 'wave-agent-sdk/dist/services/authService';
+import type { StdioClient } from '../stdio/stdioClient';
 import type { Scope, PermissionMode, PermissionDecision } from 'wave-agent-sdk';
 
 export interface MessageHandlerContext {
@@ -22,6 +21,7 @@ export class MessageHandler {
     private fileService: FileService;
     private sessionService: SessionService;
     private pluginService: PluginService;
+    private utilityClient: StdioClient;
     private context: MessageHandlerContext;
 
     constructor(
@@ -29,12 +29,14 @@ export class MessageHandler {
         fileService: FileService,
         sessionService: SessionService,
         pluginService: PluginService,
+        utilityClient: StdioClient,
         context: MessageHandlerContext
     ) {
         this.configService = configService;
         this.fileService = fileService;
         this.sessionService = sessionService;
         this.pluginService = pluginService;
+        this.utilityClient = utilityClient;
         this.context = context;
     }
 
@@ -164,10 +166,10 @@ export class MessageHandler {
 
     private async handleRequestHistory(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         try {
-            const history = await PromptHistoryManager.getHistory();
+            const result = await this.utilityClient.request('getPromptHistory') as { history: unknown[] };
             this.context.postMessage({
                 command: 'historyResponse',
-                history: history
+                history: result.history
             }, viewType, windowId);
         } catch (error) {
             console.error(`获取 ${viewType} 历史记录失败:`, error);
@@ -180,10 +182,10 @@ export class MessageHandler {
 
     private async handleSearchHistory(query: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         try {
-            const history = await PromptHistoryManager.searchHistory(query);
+            const result = await this.utilityClient.request('searchPromptHistory', { query }) as { history: unknown[] };
             this.context.postMessage({
                 command: 'historyResponse',
-                history: history
+                history: result.history
             }, viewType, windowId);
         } catch (error) {
             console.error(`搜索 ${viewType} 历史记录失败:`, error);
@@ -598,7 +600,7 @@ export class MessageHandler {
     private async handleSlashCommandsRequest(filterText: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         const session = this.context.getChatSession(viewType || 'tab', windowId);
         try {
-            const sdkCommands = session.getSlashCommands();
+            const sdkCommands = await session.getSlashCommands();
 
             // Local UI slash commands (not in SDK, intercepted in webview)
             const localCommands = [
@@ -640,13 +642,14 @@ export class MessageHandler {
 
     private async handleGetAuthStatus(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         try {
-            const authService = AuthService.getInstance();
-            const isAuthenticated = authService.isSSOAuthenticated();
-            const user = authService.getAuthUser();
+            const result = await this.utilityClient.request('getAuthStatus') as {
+                isAuthenticated: boolean;
+                user: { id: string; email?: string } | undefined;
+            };
             this.context.postMessage({
                 command: 'authStatusResponse',
-                isAuthenticated,
-                user
+                isAuthenticated: result.isAuthenticated,
+                user: result.user
             }, viewType, windowId);
         } catch (error) {
             console.error('获取认证状态失败:', error);
@@ -660,22 +663,15 @@ export class MessageHandler {
 
     private async handleLogin(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         try {
-            const authService = AuthService.getInstance();
-
-            // Open browser via VS Code
-            const onAuthUrl = async (url: string) => {
-                await vscode.env.openExternal(vscode.Uri.parse(url));
+            // authUrl notification is handled by ChatProvider (opens browser via vscode.env.openExternal)
+            const result = await this.utilityClient.request('login') as {
+                user: { id: string; email?: string } | undefined;
             };
-
-            // authService.login() resolves server URL via getServerUrl()
-            // (env var WAVE_SERVER_URL > default)
-            await authService.login({ onAuthUrl });
-            const user = authService.getAuthUser();
 
             this.context.postMessage({
                 command: 'loginResponse',
                 success: true,
-                user
+                user: result.user
             }, viewType, windowId);
 
             // After successful login, reinitialize all sessions to pick up SSO config
@@ -694,8 +690,7 @@ export class MessageHandler {
 
     private async handleLogout(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         try {
-            const authService = AuthService.getInstance();
-            authService.clearAuth();
+            await this.utilityClient.request('logout');
 
             this.context.postMessage({
                 command: 'logoutResponse',

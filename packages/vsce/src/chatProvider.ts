@@ -16,6 +16,8 @@ import { SelectionService } from './services/selectionService';
 import { PluginService } from './services/pluginService';
 import { WebviewManager } from './session/webviewManager';
 import { MessageHandler } from './session/messageHandler';
+import { StdioClient } from './stdio/stdioClient';
+import { resolveWaveBinary } from './stdio/binaryResolver';
 
 export class ChatProvider implements vscode.WebviewViewProvider {
     private static formatConfigError(error: unknown): string {
@@ -43,14 +45,20 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     private pluginService: PluginService;
     private webviewManager: WebviewManager;
     private messageHandler: MessageHandler;
+    private utilityClient: StdioClient | undefined;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
         this.configService = new ConfigurationService(context);
-        this.fileService = new FileService();
-        this.sessionService = new SessionService();
+
+        // Create utility stdio client for standalone calls (searchFiles, listSessions,
+        // promptHistory, plugins, auth). Never calls initialize.
+        this.initUtilityClient();
+
+        this.fileService = new FileService(this.utilityClient!);
+        this.sessionService = new SessionService(this.utilityClient!);
         this.selectionService = new SelectionService(context);
-        this.pluginService = new PluginService();
+        this.pluginService = new PluginService(this.utilityClient!);
 
         this.webviewManager = new WebviewManager(context, {
             onMessage: async (message, viewType, windowId) => {
@@ -81,6 +89,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             this.fileService,
             this.sessionService,
             this.pluginService,
+            this.utilityClient!,
             {
                 getChatSession: (viewType, windowId) => this.getChatSession(viewType, windowId),
                 postMessage: (message, viewType, windowId) => this.webviewManager.postMessage(message, viewType, windowId),
@@ -88,9 +97,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 listSessions: (viewType, windowId) => this.listSessions(viewType, windowId),
                 updateAllSessionsConfig: (config) => {
                     const cfg = config as ConfigurationData;
-                    this.sidebarSession.updateConfig(cfg, this.context.extensionMode);
-                    this.tabSessions.forEach(session => session.updateConfig(cfg, this.context.extensionMode));
-                    this.windowSessions.forEach(session => session.updateConfig(cfg, this.context.extensionMode));
+                    this.sidebarSession.updateConfig(cfg);
+                    this.tabSessions.forEach(session => session.updateConfig(cfg));
+                    this.windowSessions.forEach(session => session.updateConfig(cfg));
                 }
             }
         );
@@ -123,6 +132,25 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             });
         });
         */
+    }
+
+    private initUtilityClient(): void {
+        try {
+            const binaryPath = resolveWaveBinary();
+            this.utilityClient = new StdioClient(binaryPath, ['--stdio']);
+            // Open browser when auth URL is received from the server
+            this.utilityClient.onNotification('authUrl', (params) => {
+                const p = params as { url: string };
+                if (p.url) {
+                    vscode.env.openExternal(vscode.Uri.parse(p.url));
+                }
+            });
+        } catch (err) {
+            console.error('[Wave] Failed to resolve wave binary:', err);
+            vscode.window.showErrorMessage(
+                '无法启动 wave 二进制文件。请手动安装: npm install -g wave-code',
+            );
+        }
     }
 
     public async addToWave() {
@@ -229,7 +257,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         try {
             const config = await this.configService.loadConfiguration();
             
-            await session.initialize(config, this.context.extensionMode, restoreSessionId);
+            await session.initialize(config, restoreSessionId);
         } catch (error) {
             console.error(`初始化 ${viewType} 智能体失败:`, error);
             const isConfigError = error && typeof error === 'object' && 'name' in error && error.name === 'ConfigurationError';
@@ -441,7 +469,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             console.error('销毁智能体时出错:', error);
         }
-        
+
+        this.utilityClient?.dispose();
+
         this.webviewManager.dispose();
         
         console.log('ChatProvider 资源清理完成');

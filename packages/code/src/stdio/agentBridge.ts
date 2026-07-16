@@ -22,9 +22,12 @@ import {
   type QueuedMessage,
   type SessionMetadata,
   type McpServerConfig,
+  type Scope,
   listSessions,
   searchFiles,
   PromptHistoryManager,
+  AuthService,
+  PluginCore,
   type SlashCommand,
 } from "wave-agent-sdk";
 import {
@@ -67,6 +70,12 @@ interface UpdateConfigParams {
   language?: string;
 }
 
+interface SearchFilesParams {
+  query: string;
+  maxResults?: number;
+  workdir?: string;
+}
+
 export class AgentBridge {
   private agent: Agent | undefined;
   private pendingPermissions = new Map<
@@ -76,6 +85,8 @@ export class AgentBridge {
   private permissionCounter = 0;
   private storedConfig: Partial<InitializeParams> = {};
   private emit: NotificationEmitter;
+  private pluginCore: PluginCore | undefined;
+  private pluginCoreWorkdir: string | undefined;
 
   constructor(options: AgentBridgeOptions) {
     this.emit = options.emit;
@@ -144,14 +155,73 @@ export class AgentBridge {
 
       // ── File / History ──
       case "searchFiles":
-        return this.searchFiles(
-          p.query as string,
-          p.maxResults as number | undefined,
-        );
+        return this.searchFiles(p as unknown as SearchFilesParams);
       case "getPromptHistory":
         return this.getPromptHistory(p.workdir as string | undefined);
       case "searchPromptHistory":
-        return this.searchPromptHistory(p.query as string);
+        return this.searchPromptHistory(
+          p.query as string,
+          p.workdir as string | undefined,
+        );
+
+      // ── Auth ──
+      case "getAuthStatus":
+        return this.getAuthStatus();
+      case "login":
+        return this.login(p.serverUrl as string | undefined);
+      case "logout":
+        return this.logout();
+
+      // ── Plugins ──
+      case "listPlugins":
+        return this.listPlugins(p.workdir as string | undefined);
+      case "installPlugin":
+        return this.installPlugin(
+          p.pluginId as string,
+          p.scope as Scope | undefined,
+          p.workdir as string | undefined,
+        );
+      case "uninstallPlugin":
+        return this.uninstallPlugin(
+          p.pluginId as string,
+          p.workdir as string | undefined,
+        );
+      case "enablePlugin":
+        return this.enablePlugin(
+          p.pluginId as string,
+          p.scope as Scope | undefined,
+          p.workdir as string | undefined,
+        );
+      case "disablePlugin":
+        return this.disablePlugin(
+          p.pluginId as string,
+          p.scope as Scope | undefined,
+          p.workdir as string | undefined,
+        );
+      case "updatePlugin":
+        return this.updatePlugin(
+          p.pluginId as string,
+          p.workdir as string | undefined,
+        );
+      case "listMarketplaces":
+        return this.listMarketplaces(p.workdir as string | undefined);
+      case "addMarketplace":
+        return this.addMarketplace(
+          p.input as string,
+          p.scope as Scope | undefined,
+          p.workdir as string | undefined,
+        );
+      case "removeMarketplace":
+        return this.removeMarketplace(
+          p.name as string,
+          p.scope as Scope | undefined,
+          p.workdir as string | undefined,
+        );
+      case "updateMarketplace":
+        return this.updateMarketplace(
+          p.name as string | undefined,
+          p.workdir as string | undefined,
+        );
 
       default:
         throw new RpcError(
@@ -180,6 +250,8 @@ export class AgentBridge {
   private async initialize(params: InitializeParams): Promise<{
     sessionId: string;
     workingDirectory: string;
+    permissionMode: PermissionMode;
+    latestTotalTokens: number;
   }> {
     // Merge with stored config (CLI defaults can be overridden by client)
     this.storedConfig = { ...this.storedConfig, ...params };
@@ -209,6 +281,8 @@ export class AgentBridge {
     return {
       sessionId: this.agent.sessionId,
       workingDirectory: this.agent.workingDirectory,
+      permissionMode: this.agent.getPermissionMode(),
+      latestTotalTokens: this.agent.latestTotalTokens,
     };
   }
 
@@ -279,6 +353,17 @@ export class AgentBridge {
     this.requireAgent();
     if (params.force) {
       this.agent!.abortMessage();
+    }
+    // Save prompt to history (mirrors VSCE chatSession.ts:236-242)
+    try {
+      await PromptHistoryManager.addEntry(
+        params.text,
+        this.agent!.sessionId,
+        {},
+        this.agent!.workingDirectory,
+      );
+    } catch {
+      // Best-effort; don't block message sending on history save failure
     }
     await this.agent!.sendMessage(params.text, params.images);
     return null;
@@ -387,12 +472,12 @@ export class AgentBridge {
   // ── File / History ────────────────────────────────────────────
 
   private async searchFiles(
-    query: string,
-    maxResults?: number,
+    params: SearchFilesParams,
   ): Promise<{ files: Awaited<ReturnType<typeof searchFiles>> }> {
-    const files = await searchFiles(query, {
-      maxResults,
-      workingDirectory: this.agent?.workingDirectory,
+    const files = await searchFiles(params.query, {
+      maxResults: params.maxResults,
+      workingDirectory:
+        params.workdir || this.agent?.workingDirectory || process.cwd(),
     });
     return { files };
   }
@@ -406,11 +491,14 @@ export class AgentBridge {
     return { history };
   }
 
-  private async searchPromptHistory(query: string): Promise<{
+  private async searchPromptHistory(
+    query: string,
+    workdir?: string,
+  ): Promise<{
     history: Awaited<ReturnType<typeof PromptHistoryManager.searchHistory>>;
   }> {
     const history = await PromptHistoryManager.searchHistory(query, {
-      workdir: this.agent?.workingDirectory,
+      workdir: workdir || this.agent?.workingDirectory,
     });
     return { history };
   }
@@ -441,6 +529,125 @@ export class AgentBridge {
     });
   }
 
+  // ── Auth ─────────────────────────────────────────────────────
+
+  private async getAuthStatus(): Promise<{
+    isAuthenticated: boolean;
+    user: { id: string; email?: string } | undefined;
+  }> {
+    const authService = AuthService.getInstance();
+    return {
+      isAuthenticated: authService.isSSOAuthenticated(),
+      user: authService.getAuthUser(),
+    };
+  }
+
+  private async login(
+    serverUrl?: string,
+  ): Promise<{ user: { id: string; email?: string } | undefined }> {
+    const authService = AuthService.getInstance();
+    await authService.login({
+      onAuthUrl: (url: string) => {
+        this.emit("authUrl", { url });
+      },
+      serverUrl,
+    });
+    return { user: authService.getAuthUser() };
+  }
+
+  private async logout(): Promise<null> {
+    const authService = AuthService.getInstance();
+    await authService.clearAuth();
+    return null;
+  }
+
+  // ── Plugins ──────────────────────────────────────────────────
+
+  private getPluginCore(workdir?: string): PluginCore {
+    const resolvedWorkdir =
+      workdir || this.agent?.workingDirectory || process.cwd();
+    if (!this.pluginCore || this.pluginCoreWorkdir !== resolvedWorkdir) {
+      this.pluginCore = new PluginCore(resolvedWorkdir);
+      this.pluginCoreWorkdir = resolvedWorkdir;
+    }
+    return this.pluginCore;
+  }
+
+  private async listPlugins(workdir?: string) {
+    const core = this.getPluginCore(workdir);
+    const { plugins, mergedEnabled } = await core.listPlugins();
+    return {
+      plugins: plugins.map((p) => {
+        const pluginId = `${p.name}@${p.marketplace}`;
+        return {
+          id: pluginId,
+          name: p.name,
+          description: p.description,
+          marketplace: p.marketplace,
+          installed: p.installed,
+          version: p.version,
+          enabled: mergedEnabled[pluginId] !== false,
+          scope: p.scope,
+        };
+      }),
+    };
+  }
+
+  private async installPlugin(
+    pluginId: string,
+    scope?: Scope,
+    workdir?: string,
+  ) {
+    return this.getPluginCore(workdir).installPlugin(pluginId, scope);
+  }
+
+  private async uninstallPlugin(pluginId: string, workdir?: string) {
+    await this.getPluginCore(workdir).uninstallPlugin(pluginId);
+    return null;
+  }
+
+  private async enablePlugin(
+    pluginId: string,
+    scope?: Scope,
+    workdir?: string,
+  ) {
+    return this.getPluginCore(workdir).enablePlugin(pluginId, scope);
+  }
+
+  private async disablePlugin(
+    pluginId: string,
+    scope?: Scope,
+    workdir?: string,
+  ) {
+    return this.getPluginCore(workdir).disablePlugin(pluginId, scope);
+  }
+
+  private async updatePlugin(pluginId: string, workdir?: string) {
+    return this.getPluginCore(workdir).updatePlugin(pluginId);
+  }
+
+  private async listMarketplaces(workdir?: string) {
+    return this.getPluginCore(workdir).listMarketplaces();
+  }
+
+  private async addMarketplace(input: string, scope?: Scope, workdir?: string) {
+    return this.getPluginCore(workdir).addMarketplace(input, scope);
+  }
+
+  private async removeMarketplace(
+    name: string,
+    scope?: Scope,
+    workdir?: string,
+  ) {
+    await this.getPluginCore(workdir).removeMarketplace(name, scope);
+    return null;
+  }
+
+  private async updateMarketplace(name?: string, workdir?: string) {
+    await this.getPluginCore(workdir).updateMarketplace(name);
+    return null;
+  }
+
   // ── Callbacks → Notifications ─────────────────────────────────
 
   private createCallbacks(): AgentCallbacks {
@@ -469,7 +676,10 @@ export class AgentBridge {
         this.emit("errorBlockAdded", { error });
       },
       onLoadingChange: (loading: boolean) => {
-        this.emit("loadingChange", { loading });
+        this.emit("loadingChange", {
+          loading,
+          latestTotalTokens: this.agent?.latestTotalTokens,
+        });
       },
       onCommandRunningChange: (running: boolean) => {
         this.emit("commandRunningChange", { running });
@@ -499,7 +709,19 @@ export class AgentBridge {
         this.emit("bangMessageCompleted", {});
       },
       onNotificationMessageAdded: (params) => {
-        this.emit("notificationMessageAdded", params);
+        const msg = this.agent?.messages.find(
+          (m) =>
+            m.role === "user" &&
+            m.blocks.some(
+              (b) =>
+                b.type === "task_notification" &&
+                (b as { taskId: string }).taskId === params.taskId,
+            ),
+        );
+        this.emit("notificationMessageAdded", {
+          ...params,
+          message: msg,
+        });
       },
     };
   }
