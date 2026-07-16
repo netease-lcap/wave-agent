@@ -22,15 +22,13 @@ describe('Configuration Logic', () => {
         const config = {
             apiKey: '',
             headers: '',
-            baseURL: '',
-            serverUrl: ''
+            baseURL: ''
         };
 
         const isAuthValid = (!!config.apiKey || !!process.env.WAVE_API_KEY)
-            || (!!config.headers || !!process.env.WAVE_CUSTOM_HEADERS)
-            || (!!config.serverUrl || !!process.env.WAVE_SERVER_URL);
+            || (!!config.headers || !!process.env.WAVE_CUSTOM_HEADERS);
 
-        const isBaseURLValid = !!config.baseURL || !!process.env.WAVE_BASE_URL || !!config.serverUrl || !!process.env.WAVE_SERVER_URL;
+        const isBaseURLValid = !!config.baseURL || !!process.env.WAVE_BASE_URL;
 
         expect(isAuthValid).toBe(true);
         expect(isBaseURLValid).toBe(true);
@@ -40,15 +38,13 @@ describe('Configuration Logic', () => {
         const config = {
             apiKey: '',
             headers: '',
-            baseURL: '',
-            serverUrl: ''
+            baseURL: ''
         };
 
         const isAuthValid = (!!config.apiKey || !!process.env.WAVE_API_KEY)
-            || (!!config.headers || !!process.env.WAVE_CUSTOM_HEADERS)
-            || (!!config.serverUrl || !!process.env.WAVE_SERVER_URL);
+            || (!!config.headers || !!process.env.WAVE_CUSTOM_HEADERS);
 
-        const isBaseURLValid = !!config.baseURL || !!process.env.WAVE_BASE_URL || !!config.serverUrl || !!process.env.WAVE_SERVER_URL;
+        const isBaseURLValid = !!config.baseURL || !!process.env.WAVE_BASE_URL;
 
         expect(isAuthValid).toBe(false);
         expect(isBaseURLValid).toBe(false);

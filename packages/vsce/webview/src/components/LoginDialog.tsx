@@ -10,7 +10,6 @@ import { LoginDialogProps, VsCodeApi } from '../types';
 import '../styles/ConfigurationDialog.css';
 
 const LoginDialog: React.FC<LoginDialogProps & { vscode: VsCodeApi }> = ({
-  configurationData,
   onClose,
   vscode
 }) => {
@@ -18,15 +17,7 @@ const LoginDialog: React.FC<LoginDialogProps & { vscode: VsCodeApi }> = ({
   const [authUser, setAuthUser] = useState<{ id: string; email?: string } | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState('');
-  const [serverUrlInput, setServerUrlInput] = useState('');
-  const [serverUrlSaved, setServerUrlSaved] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
-
-  // Initialize serverUrl input from configuration
-  useEffect(() => {
-    setServerUrlInput(configurationData?.serverUrl || '');
-    setServerUrlSaved(!!configurationData?.serverUrl);
-  }, [configurationData?.serverUrl]);
 
   // Fetch auth status on mount
   useEffect(() => {
@@ -74,17 +65,6 @@ const LoginDialog: React.FC<LoginDialogProps & { vscode: VsCodeApi }> = ({
     vscode?.postMessage({ command: 'logout' });
   };
 
-  const handleSaveServerUrl = () => {
-    vscode?.postMessage({
-      command: 'updateConfiguration',
-      configurationData: {
-        ...configurationData,
-        serverUrl: serverUrlInput
-      }
-    });
-    setServerUrlSaved(true);
-  };
-
   // Click outside / Escape to close
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -105,8 +85,6 @@ const LoginDialog: React.FC<LoginDialogProps & { vscode: VsCodeApi }> = ({
     };
   }, [onClose]);
 
-  const serverUrl = serverUrlSaved ? serverUrlInput : (configurationData?.serverUrl || '');
-
   return (
     <div className="configuration-dialog-overlay">
       <div ref={dialogRef} className="configuration-dialog">
@@ -116,28 +94,6 @@ const LoginDialog: React.FC<LoginDialogProps & { vscode: VsCodeApi }> = ({
 
         <div className="configuration-form">
           <div className="configuration-fields-scroll-area">
-            <div className="configuration-field">
-              <label htmlFor="login-serverUrl">服务端链接:</label>
-              <div className="login-serverUrl-row">
-                <input
-                  id="login-serverUrl"
-                  type="url"
-                  value={serverUrlInput}
-                  onChange={(e) => { setServerUrlInput(e.target.value); setServerUrlSaved(false); }}
-                  placeholder="https://wave.example.com"
-                />
-                <button
-                  type="button"
-                  id="login-save-serverUrl"
-                  className="login-save-serverUrl-btn"
-                  onClick={handleSaveServerUrl}
-                  disabled={!serverUrlInput || serverUrlSaved}
-                >
-                  {serverUrlSaved ? '已保存' : '保存'}
-                </button>
-              </div>
-            </div>
-
             <div className="configuration-field sso-auth-section">
               <label>认证状态:</label>
               {isAuthenticated ? (
@@ -162,7 +118,7 @@ const LoginDialog: React.FC<LoginDialogProps & { vscode: VsCodeApi }> = ({
                     type="button"
                     className="sso-login-btn"
                     onClick={handleLogin}
-                    disabled={authLoading || !serverUrl}
+                    disabled={authLoading}
                   >
                     {authLoading ? '登录中...' : 'SSO 登录'}
                   </button>

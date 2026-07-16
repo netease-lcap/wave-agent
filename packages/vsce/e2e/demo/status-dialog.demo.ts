@@ -17,8 +17,7 @@ test.describe('Status Dialog Demo', () => {
                 configurationData: {
                     model: 'claude-sonnet-4-20250514',
                     fastModel: 'claude-haiku-4-20250514',
-                    baseURL: 'https://api.nebula-tech.com/v1',
-                    serverUrl: 'https://wave.nebula-tech.com'
+                    baseURL: 'https://api.nebula-tech.com/v1'
                 }
             });
         });
@@ -33,8 +32,7 @@ test.describe('Status Dialog Demo', () => {
                 configurationData: {
                     model: 'claude-sonnet-4-20250514',
                     fastModel: 'claude-haiku-4-20250514',
-                    baseURL: 'https://api.nebula-tech.com/v1',
-                    serverUrl: 'https://wave.nebula-tech.com'
+                    baseURL: 'https://api.nebula-tech.com/v1'
                 }
             });
         });

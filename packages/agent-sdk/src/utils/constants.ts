@@ -31,3 +31,9 @@ export const USER_MEMORY_FILE = path.join(DATA_DIRECTORY, "AGENTS.md");
  */
 export const DEFAULT_WAVE_MAX_INPUT_TOKENS = 200000; // Default token limit
 export const DEFAULT_WAVE_MAX_OUTPUT_TOKENS = 32000; // Default output token limit (aligned with Claude Code)
+
+/**
+ * Default server URL for SSO authentication.
+ * Overridden by WAVE_SERVER_URL env var or programmatic AgentOptions.serverUrl.
+ */
+export const DEFAULT_SERVER_URL = "https://codechat.codewave.163.com";

@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 
 export interface ConfigurationData {
-    serverUrl?: string;
     apiKey?: string;
     headers?: string;
     baseURL?: string;
@@ -15,7 +14,6 @@ export class ConfigurationService {
 
     public async loadConfiguration(): Promise<ConfigurationData> {
         return {
-            serverUrl: this.context.globalState.get<string>('serverUrl') || '',
             apiKey: this.context.globalState.get<string>('apiKey') || '',
             headers: this.context.globalState.get<string>('headers') || '',
             baseURL: this.context.globalState.get<string>('baseURL') || '',
@@ -27,7 +25,6 @@ export class ConfigurationService {
 
     public async saveConfiguration(configData: Partial<ConfigurationData>): Promise<void> {
         try {
-            if (configData.serverUrl !== undefined) await this.context.globalState.update('serverUrl', configData.serverUrl);
             if (configData.apiKey !== undefined) await this.context.globalState.update('apiKey', configData.apiKey);
             if (configData.headers !== undefined) await this.context.globalState.update('headers', configData.headers);
             if (configData.baseURL !== undefined) await this.context.globalState.update('baseURL', configData.baseURL);

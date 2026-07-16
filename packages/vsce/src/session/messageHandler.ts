@@ -661,16 +661,15 @@ export class MessageHandler {
     private async handleLogin(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         try {
             const authService = AuthService.getInstance();
-            const config = await this.configService.loadConfiguration();
 
             // Open browser via VS Code
             const onAuthUrl = async (url: string) => {
                 await vscode.env.openExternal(vscode.Uri.parse(url));
             };
 
-            // Use configured serverUrl first, fallback to env var
-            const serverUrl = config.serverUrl || process.env.WAVE_SERVER_URL;
-            await authService.login({ onAuthUrl, serverUrl });
+            // authService.login() resolves server URL via getServerUrl()
+            // (env var WAVE_SERVER_URL > default)
+            await authService.login({ onAuthUrl });
             const user = authService.getAuthUser();
 
             this.context.postMessage({
@@ -680,7 +679,8 @@ export class MessageHandler {
             }, viewType, windowId);
 
             // After successful login, reinitialize all sessions to pick up SSO config
-            this.context.updateAllSessionsConfig(config);
+            const updatedConfig = await this.configService.loadConfiguration();
+            this.context.updateAllSessionsConfig(updatedConfig);
         } catch (error) {
             console.error('登录失败:', error);
             const errorMessage = error instanceof Error ? error.message : String(error);

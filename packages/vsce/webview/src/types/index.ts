@@ -295,8 +295,6 @@ export interface ConfirmationDialogProps {
  * Maps to VS Code global state
  */
 export interface ConfigurationData {
-  /** Wave server URL for SSO authentication (user-configured value) */
-  serverUrl?: string;
   /** API key for authentication */
   apiKey?: string;
   /** Headers for authentication */
@@ -377,7 +375,6 @@ export interface StatusDialogProps {
  * Props for the SSO login dialog component
  */
 export interface LoginDialogProps {
-  configurationData: ConfigurationData;
   onClose: () => void;
 }
 

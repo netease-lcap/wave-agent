@@ -125,12 +125,7 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
 
   const isAuthenticated = authService.isSSOAuthenticated();
   const token = authService.getSSOToken();
-  let serverUrl: string | undefined;
-  try {
-    serverUrl = authService.getServerUrl();
-  } catch {
-    // serverUrl not configured, skip display
-  }
+  const serverUrl = authService.getServerUrl();
 
   const truncatedToken =
     token && token.length > 14

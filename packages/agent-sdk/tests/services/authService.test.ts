@@ -321,11 +321,9 @@ describe("AuthService", () => {
       expect(service.getServerUrl()).toBe("https://server.example.com");
     });
 
-    it("throws when WAVE_SERVER_URL is not set", () => {
+    it("returns default when WAVE_SERVER_URL is not set", () => {
       const service = AuthService.getInstance();
-      expect(() => service.getServerUrl()).toThrow(
-        "WAVE_SERVER_URL environment variable is not set",
-      );
+      expect(service.getServerUrl()).toBe("https://codechat.codewave.163.com");
     });
 
     it("returns _serverUrl when set via setServerUrl", () => {
@@ -348,11 +346,9 @@ describe("AuthService", () => {
       expect(service.getServerUrl()).toBe("https://fallback.example.com");
     });
 
-    it("throws when neither _serverUrl nor env var is set", () => {
+    it("falls back to default when neither _serverUrl nor env var is set", () => {
       const service = AuthService.getInstance();
-      expect(() => service.getServerUrl()).toThrow(
-        "WAVE_SERVER_URL environment variable is not set",
-      );
+      expect(service.getServerUrl()).toBe("https://codechat.codewave.163.com");
     });
   });
 

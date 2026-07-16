@@ -39,6 +39,7 @@ import {
 import {
   DEFAULT_WAVE_MAX_INPUT_TOKENS,
   DEFAULT_WAVE_MAX_OUTPUT_TOKENS,
+  DEFAULT_SERVER_URL,
 } from "../utils/constants.js";
 import { ClientOptions } from "openai";
 import { parseCustomHeaders } from "../utils/stringUtils.js";
@@ -420,9 +421,12 @@ export class ConfigurationService {
     fetch?: ClientOptions["fetch"],
   ): GatewayConfig {
     // Check for SSO token first - if present and server URL is available, use SSO mode
-    // Server URL resolution: options > process.env
+    // Server URL resolution: options > process.env > default
     const ssoToken = this.readSSOToken();
-    const serverUrl = this.options.serverUrl || process.env.WAVE_SERVER_URL;
+    const serverUrl =
+      this.options.serverUrl ||
+      process.env.WAVE_SERVER_URL ||
+      DEFAULT_SERVER_URL;
     if (ssoToken && serverUrl) {
       const baseFetch = fetch ?? this.options.fetch ?? globalThis.fetch;
       const authAwareFetch = createAuthAwareFetch(
