@@ -47,6 +47,12 @@ export async function main() {
         type: "string",
         global: false,
       })
+      .option("stdio", {
+        description: "Start in stdio mode (JSON-RPC over stdin/stdout)",
+        type: "boolean",
+        default: false,
+        global: false,
+      })
       .option("show-stats", {
         description: "Show timing and usage statistics in print mode",
         type: "boolean",
@@ -391,6 +397,12 @@ export async function main() {
         model: argv.model as string | undefined,
         mcpServers,
       });
+    }
+
+    // Handle stdio mode
+    if (argv.stdio) {
+      const { startStdioCli } = await import("./stdio-cli.js");
+      return startStdioCli();
     }
 
     await startCli({
