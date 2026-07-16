@@ -470,7 +470,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       )}
       {state.activeDialog === 'login' && (
         <LoginDialog
-          configurationData={state.configurationData || {}}
           onClose={handleDialogClose}
           vscode={vscode}
         />

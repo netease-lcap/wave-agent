@@ -21,6 +21,7 @@ import { createServer, Server } from "http";
 import { URL } from "url";
 import type { AuthConfig, AuthUser, TokenResponse } from "../types/auth.js";
 import { logger } from "../utils/globalLogger.js";
+import { DEFAULT_SERVER_URL } from "../utils/constants.js";
 
 /** Persistent anonymous ID for telemetry fallback when SSO is not authenticated. */
 let _anonymousId: string | undefined;
@@ -137,13 +138,7 @@ export class AuthService {
   }
 
   getServerUrl(): string {
-    const url = this._serverUrl || process.env.WAVE_SERVER_URL;
-    if (!url) {
-      throw new Error(
-        "WAVE_SERVER_URL environment variable is not set. SSO authentication requires this to be configured.",
-      );
-    }
-    return url;
+    return this._serverUrl || process.env.WAVE_SERVER_URL || DEFAULT_SERVER_URL;
   }
 
   async login(options?: {

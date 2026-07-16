@@ -174,7 +174,6 @@ export class ChatSession {
                     apiKey: config.apiKey || undefined,
                     defaultHeaders: this.parseHeaders(config.headers),
                     baseURL: config.baseURL || undefined,
-                    serverUrl: config.serverUrl || undefined,
                     model: config.model,
                     fastModel: config.fastModel,
                     language: config.language,

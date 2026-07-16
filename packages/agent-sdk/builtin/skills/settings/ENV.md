@@ -23,7 +23,7 @@ Wave uses several environment variables to control its core functionality.
 | :--- | :--- | :--- |
 | `WAVE_API_KEY` | API key for the AI gateway. | - |
 | `WAVE_BASE_URL` | Base URL for the AI gateway. | - |
-| `WAVE_SERVER_URL` | Server URL for SSO authentication. | - |
+| `WAVE_SERVER_URL` | Server URL for SSO authentication. | `https://codechat.codewave.163.com` |
 | `WAVE_CUSTOM_HEADERS` | Custom HTTP headers for the AI gateway. Newline-separated `Key: Value` pairs (e.g., `"X-Foo: bar\nAuthorization: Bearer xxx"`). | - |
 | `WAVE_MODEL` | The primary AI model to use for the agent. | `gemini-3-flash` |
 | `WAVE_FAST_MODEL` | The fast AI model to use for quick tasks. | `gemini-2.5-flash` |

@@ -75,41 +75,7 @@ describe('Model, Status, and Login Commands', () => {
             await waitFor(() => {
                 expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();
             });
-            expect(document.querySelector('#login-serverUrl')).toBeInTheDocument();
-        });
-
-        it('should send updateConfiguration with serverUrl when save is clicked', async () => {
-            const { vscode } = renderChatApp();
-
-            await act(async () => {
-                await typeAndSend('/login');
-            });
-
-            await waitFor(() => {
-                expect(document.querySelector('#login-serverUrl')).toBeInTheDocument();
-            });
-
-            const serverUrlInput = document.querySelector('#login-serverUrl') as HTMLInputElement;
-            await act(async () => {
-                fireEvent.change(serverUrlInput, { target: { value: 'https://wave.example.com' } });
-            });
-
-            const saveButton = document.querySelector('#login-save-serverUrl') as HTMLButtonElement;
-            vscode.postMessage.mockClear();
-            await act(async () => {
-                fireEvent.click(saveButton);
-            });
-
-            await waitFor(() => {
-                expect(vscode.postMessage).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        command: 'updateConfiguration',
-                        configurationData: expect.objectContaining({
-                            serverUrl: 'https://wave.example.com'
-                        })
-                    })
-                );
-            });
+            expect(document.querySelector('.sso-auth-section')).toBeInTheDocument();
         });
     });
 

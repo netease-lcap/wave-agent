@@ -652,39 +652,6 @@ input:checked + .slider:before {
     color: var(--vscode-errorForeground);
 }
 
-/* Login Dialog - Server URL row */
-.login-serverUrl-row {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-}
-
-.login-serverUrl-row input {
-    flex: 1;
-    min-width: 0;
-}
-
-.login-save-serverUrl-btn {
-    background-color: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
-    padding: 6px 10px;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 12px;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.login-save-serverUrl-btn:hover {
-    background-color: var(--vscode-button-hoverBackground);
-}
-
-.login-save-serverUrl-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
 /* MCP Server Management */
 .mcp-container {
     display: flex;
