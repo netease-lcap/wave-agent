@@ -13,10 +13,10 @@
 
 | 指标 | 数量 |
 |------|------|
-| 规格文件 | 59 |
-| 用户故事 | 252 |
+| 规格文件 | 58 |
+| 用户故事 | 250 |
 | 功能需求 | 971 |
-| 测试用例 | 4,143 |
+| 测试用例 | 4,193 |
 
 ## 规格列表
 
@@ -25,19 +25,63 @@
 | 功能 | 描述 | 用户故事 | 功能需求 | 链接 |
 |------|------|----------|----------|------|
 | 文件系统工具 | Read, Write, Edit, Glob, Grep 文件操作工具 | 3 | 19 | [规格](001-fs-tools.md) |
-| Bash 工具 | Bash, BashOutput, KillBash shell 命令执行工具 | 3 | 18 | [规格](002-bash-tools.md) |
+| Bash 工具 | Bash, BashOutput, KillBash shell 命令执行工具 | 4 | 24 | [规格](002-bash-tools.md) |
 | WebFetch 工具 | 获取 URL 内容，HTML 转 markdown，AI 模型处理，支持缓存 | 5 | 14 | [规格](016-web-fetch-tool.md) |
 | LSP 集成 | Language Server Protocol 代码智能（定义跳转、引用查找、悬停信息） | 3 | 8 | [规格](034-lsp-integration.md) |
 | 自定义工具 buildTool() | buildTool() 工厂方法，供 SDK 用户定义自定义工具 | 3 | 11 | [规格](054-custom-tools.md) |
 | Agent 配置 | 基于构造函数的配置替代环境变量，支持 max output tokens 和自定义 headers | 9 | 32 | [规格](007-agent-config.md) |
 | 消息压缩 | 对话历史和用户输入大小管理 | 6 | 23 | [规格](013-message-compact.md) |
 | Prompt 工程 | Prompt 构建和管理框架 | 5 | 13 | [规格](020-prompt-engineering.md) |
-| Prompt 缓存控制 | 基于正则匹配的显式缓存标记，支持 Claude、Qwen 等多种模型 | 4 | 7 | [规格](019-prompt-cache-control.md) |
+| Prompt 缓存控制 | 基于正则匹配的显式缓存标记，支持 Claude、Qwen 等多种模型 | 5 | 8 | [规格](019-prompt-cache-control.md) |
 | 记忆管理 | 通过记忆文件在对话间持久化信息 | 8 | 26 | [规格](017-memory-management.md) |
 | 流式输出 | 助手消息和工具参数的实时内容流式传输 | 5 | 22 | [规格](011-stream-content-updates.md) |
 | AI 错误处理 | 处理输出 token 限制超限，提示 agent 将工作拆分为更小的块 | 6 | 10 | [规格](012-ai-error-handling.md) |
 | 工具权限系统 | 权限系统，支持模式、通配符、拒绝规则、信任、acceptEdits、dontAsk、安全区 | 18 | 55 | [规格](022-tool-permission-system.md) |
-| Plan 模式 | Shift+Tab plan 模式，只读分析并增量编辑 plan 文件 | 8 | 25 | [规格](036-plan-mode.md) |
+| Plan 模式 | Shift+Tab plan 模式，只读分析并增量编辑 plan 文件 | 9 | 29 | [规格](036-plan-mode.md) |
+| MCP 支持 |  | 3 | 19 | [规格](003-mcp.md) |
+| 会话管理 |  | 3 | 17 | [规格](004-session-management.md) |
+| Hooks 支持 |  | 16 | 62 | [规格](005-hooks.md) |
+| Agent 技能支持 |  | 8 | 26 | [规格](006-agent-skills.md) |
+| 自定义斜杠命令 |  | 6 | 22 | [规格](008-slash-commands.md) |
+| 子代理支持 |  | 5 | 24 | [规格](009-subagent.md) |
+| SDK 用量追踪与回调系统 |  | 4 | 15 | [规格](010-usage-tracking-callback.md) |
+| 图片粘贴 |  | 3 | 10 | [规格](014-image-pasting.md) |
+| 文件选择器 |  | 3 | 8 | [规格](015-file-selector.md) |
+| Markdown 渲染系统 |  | 3 | 8 | [规格](018-markdown-rendering-system.md) |
+| 长文本占位符 |  | 1 | 5 | [规格](021-long-text-placeholder.md) |
+| 内置子 Agent 支持 |  | 2 | 10 | [规格](023-builtin-subagent.md) |
+| 清除命令 |  | 2 | 6 | [规格](024-clear-command.md) |
+| 消息渲染系统 |  | 3 | 8 | [规格](025-message-rendering-system.md) |
+| Bang Shell 命令 |  | 3 | 9 | [规格](026-bang-shell-command.md) |
+| 帮助命令 |  | 3 | 10 | [规格](027-help-command.md) |
+| 状态栏组件重构 |  | 2 | 10 | [规格](028-status-line.md) |
+| 更新命令 |  | 2 | 7 | [规格](029-update-command.md) |
+| BTW 命令 |  | 2 | 10 | [规格](030-btw-command.md) |
+| /model 命令 |  | 3 | 13 | [规格](031-model-command.md) |
+| 确认 UI |  | 5 | 13 | [规格](032-confirm-ui.md) |
+| 打印模式 |  | 3 | 7 | [规格](033-print-mode.md) |
+| 插件支持与市场 |  | 6 | 28 | [规格](035-plugin.md) |
+| 支持 AskUserQuestion 工具 |  | 3 | 11 | [规格](037-ask-user-tool.md) |
+| Init 斜杠命令 |  | 2 | 7 | [规格](038-init-slash-command.md) |
+| Rewind 命令 |  | 3 | 10 | [规格](039-rewind-command.md) |
+| 历史搜索提示 |  | 2 | 10 | [规格](040-history-search-prompt.md) |
+| 通用 Agent |  | 2 | 7 | [规格](041-general-purpose-agent.md) |
+| 任务后台执行与管理 |  | 6 | 24 | [规格](042-task-background-execution.md) |
+| 任务管理工具与 UI |  | 6 | 31 | [规格](043-task-management-tools.md) |
+| Plan 子 Agent 支持 |  | 4 | 16 | [规格](044-plan-subagent.md) |
+| 添加 Bash 内置子 Agent |  | 1 | 7 | [规格](045-bash-subagent.md) |
+| 工具选择 |  | 4 | 8 | [规格](046-tools-selection.md) |
+| CLI Worktree 支持 |  | 7 | 40 | [规格](047-worktree.md) |
+| Status 命令 |  | 1 | 9 | [规格](048-status-command.md) |
+| 内置 Settings Skill |  | 3 | 8 | [规格](050-builtin-settings-skill.md) |
+| /loop 斜杠命令 |  | 2 | 10 | [规格](051-loop-slash-command.md) |
+| OpenTelemetry 集成 |  | 3 | 16 | [规格](052-opentelemetry.md) |
+| SSO 认证 |  | 3 | 27 | [规格](053-sso-auth.md) |
+| 服务器托管配置下载 |  | 3 | 11 | [规格](055-server-managed-config.md) |
+| /goal 命令 |  | 3 | 17 | [规格](056-goal-command.md) |
+| Workflow — 确定性多子 Agent 编排 |  | 4 | 20 | [规格](057-workflow.md) |
+| Code Review Skill |  | 5 | 27 | [规格](058-code-review-skill.md) |
+| Simplify Skill |  | 3 | 14 | [规格](059-simplify-skill.md) |
 
 ### 交互与 UI
 
@@ -75,7 +119,7 @@
 | Plan 子代理 | 内置 Plan 子代理，在编码前设计实现方案 | 4 | 16 | [规格](044-plan-subagent.md) |
 | Bash 子代理 | 内置 Bash 子代理，执行 shell 命令 | 1 | 7 | [规格](045-bash-subagent.md) |
 | 任务后台执行 | `run_in_background`、`TaskOutput`/`TaskStop` 工具，`/tasks` 命令替代 `/bashes` | 6 | 24 | [规格](042-task-background-execution.md) |
-| 任务管理工具 | TaskCreate/TaskGet/TaskUpdate/TaskList，`~/.wave/tasks/` 存储和任务列表 UI | 5 | 22 | [规格](043-task-management-tools.md) |
+| 任务管理工具 | TaskCreate/TaskGet/TaskUpdate/TaskList，`~/.wave/tasks/` 存储和任务列表 UI | 6 | 31 | [规格](043-task-management-tools.md) |
 | Workflow 编排 | 确定性多子代理编排，支持 pipeline、parallel 和 phase 控制流 | 4 | 20 | [规格](057-workflow.md) |
 | CLI Worktree | `-w/--worktree` 隔离的 git worktree，位于 `.wave/worktrees/`，支持安全退出 | 7 | 40 | [规格](047-worktree.md) |
 
@@ -83,14 +127,13 @@
 
 | 功能 | 描述 | 用户故事 | 功能需求 | 链接 |
 |------|------|----------|----------|------|
-| Agent 技能 | 可发现的技能包，通过 SKILL.md 文件提供模型可调用的能力 | 8 | 25 | [规格](006-agent-skills.md) |
+| Agent 技能 | 可发现的技能包，通过 SKILL.md 文件提供模型可调用的能力 | 8 | 26 | [规格](006-agent-skills.md) |
 | 内置 Settings 技能 | 引导用户配置 `settings.json`、钩子和 Wave 设置管理 | 3 | 8 | [规格](050-builtin-settings-skill.md) |
 | Init 命令 | `/init` 斜杠命令，使用 init-prompt.md 进行项目初始化 | 2 | 7 | [规格](038-init-slash-command.md) |
 | Code Review 技能 | 审查当前 `git diff` 的正确性 bug，附带文件/行号引用 | 5 | 27 | [规格](058-code-review-skill.md) |
 | Simplify 技能 | 审查已变更代码的质量问题（重复、低效）并通过 `/simplify` 自动修复 | 3 | 14 | [规格](059-simplify-skill.md) |
-| MCP | Model Context Protocol 外部工具和上下文源支持 | 4 | 23 | [规格](003-mcp.md) |
+| MCP | Model Context Protocol 外部工具和上下文源支持 | 3 | 19 | [规格](003-mcp.md) |
 | 插件系统 | 插件系统，支持 marketplace、作用域、技能、LSP、MCP、钩子、代理 | 6 | 28 | [规格](035-plugin.md) |
-| ACP Bridge | Agent Communication Protocol 桥接，用于连接外部客户端 | 5 | 17 | [规格](049-acp-bridge.md) |
 
 ### 自动化
 

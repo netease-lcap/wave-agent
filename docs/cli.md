@@ -35,14 +35,6 @@ echo "分析这段代码的问题" | wave -p
 
 配合 `--show-stats` 可在输出末尾显示耗时和 Token 用量统计。
 
-**ACP 桥模式**（`--acp`）
-
-以 Agent Communication Protocol 桥接方式运行，用于与其他 Agent 系统集成。
-
-```bash
-wave --acp
-```
-
 ---
 
 ## 2. 命令行选项 {#cli-options}
