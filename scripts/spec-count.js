@@ -18,6 +18,7 @@ function walkDir(dir, callback) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) walkDir(fullPath, callback);
+    else if (entry.isFile()) callback(fullPath);
   }
 }
 

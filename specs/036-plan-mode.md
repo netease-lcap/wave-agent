@@ -200,7 +200,6 @@
 - **FR-013**：用户选择 "Feedback" 后，agent 必须保持在 "plan mode" 中并接收用户输入作为工具的输出。
 - **FR-014**：`ExitPlanMode` 工具必须始终在工具列表中可见，无论当前权限模式如何。当 agent 不在计划模式时，工具通过运行时守卫返回错误信息。
 - **FR-015**：当 `permissionMode` 设置为 `bypassPermissions` 时，`ExitPlanMode` 不得可用。
-- **FR-016**：当通过 ACP 桥接使用时，`ExitPlanMode` 可以提供简化的审批流程（如 "Approve Plan" 和 "Reject Plan"）并在批准后自动转换到 `default` 模式。
 - **FR-017**：系统必须跟踪 `hasExitedPlanMode` 状态。当 agent 退出计划模式（通过 ExitPlanMode 或模式转换）时，此标志必须设置为 true。
 - **FR-018**：当进入计划模式且 `hasExitedPlanMode` 为 true 且计划文件已存在时，系统必须注入重新进入 `<system-reminder>` 消息，指示模型：(a) 读取现有计划文件，(b) 评估用户请求是新任务还是继续，(c) 在调用 ExitPlanMode 之前始终编辑计划文件。标志必须在注入后清除（一次性）。
 - **FR-019**：当计划模式活动时，系统必须在每次进入时恰好注入一次计划模式提醒——在进入计划模式后的第一次 AI 调用时。`PlanManager` 跟踪 `planEntryReminderPending` 标志，在进入计划模式时设置为 `true`，在提醒注入后消费（设置为 `false`）。后续轮次不注入重复或节流提醒。

@@ -105,11 +105,6 @@ export async function main() {
         type: "string",
         global: false,
       })
-      .option("acp", {
-        description: "Run as an ACP bridge",
-        type: "boolean",
-        global: false,
-      })
       .command("plugin", "Manage plugins and marketplaces", (yargs) => {
         return yargs
           .help()
@@ -341,12 +336,6 @@ export async function main() {
 
     if (worktreeSession) {
       process.chdir(workdir);
-    }
-
-    // Handle ACP mode
-    if (argv.acp) {
-      const { runAcp } = await import("./acp-cli.js");
-      return runAcp();
     }
 
     // Handle restore session command
