@@ -1,4 +1,4 @@
-name: VS Code Extension Release
+name: Release
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write  # Required for npm OIDC provenance
 
 jobs:
   release:
@@ -24,6 +25,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 
       - name: Cache ripgrep binaries
@@ -37,12 +39,44 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build SDK
-        run: pnpm -F wave-agent-sdk build
+      - name: Build all packages
+        run: pnpm build
 
+      - name: Run tests
+        run: pnpm test
+
+      # --- npm publish ---
+      - name: Publish to npm
+        run: pnpm -r publish --no-git-checks --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # --- VS Code extension (.vsix) ---
       - name: Package .vsix
         run: pnpm -F wave-vsce run package
 
+      # --- Docs (docs.tar.gz) ---
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        run: pnpm -F wave-vsce exec playwright install --with-deps chromium
+
+      - name: Generate screenshots
+        run: pnpm -F wave-vsce run test:demo
+
+      - name: Build docs with base /docs/
+        run: npx vitepress build docs --base /docs/
+
+      - name: Package docs.tar.gz
+        run: tar -czf docs.tar.gz -C docs/.vitepress/dist .
+
+      # --- GitHub Release ---
       - name: Get previous tag
         id: prev-tag
         run: |
@@ -52,7 +86,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: packages/vsce/releases/*.vsix
+          files: |
+            packages/vsce/releases/*.vsix
+            docs.tar.gz
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
