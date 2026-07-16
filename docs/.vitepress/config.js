@@ -1,6 +1,6 @@
 export default {
   base: '/wave-agent/',
-  title: 'Wave Agent',
+  title: 'CodeChat',
   description: 'AI 辅助编程工具链 — SDK、CLI 与 VS Code 扩展',
   themeConfig: {
     nav: [
