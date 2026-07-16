@@ -47,7 +47,7 @@ export const test = base.extend<WebviewTestContext>({
         });
 
         // Load the React webview app for testing
-        const webviewDistPath = path.join(process.cwd(), 'webview', 'dist');
+        const webviewDistPath = path.join(process.cwd(), 'dist');
         const vscodeStylesPath = path.join(process.cwd(), 'e2e', 'utils', 'vscode-styles.css');
 
         let vscodeStyles = '';
