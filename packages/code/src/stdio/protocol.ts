@@ -65,7 +65,22 @@ export type RequestMethod =
   | "searchFiles"
   | "getPromptHistory"
   | "searchPromptHistory"
-  | "updateConfig";
+  | "updateConfig"
+  // Auth
+  | "getAuthStatus"
+  | "login"
+  | "logout"
+  // Plugins
+  | "listPlugins"
+  | "installPlugin"
+  | "uninstallPlugin"
+  | "enablePlugin"
+  | "disablePlugin"
+  | "updatePlugin"
+  | "listMarketplaces"
+  | "addMarketplace"
+  | "removeMarketplace"
+  | "updateMarketplace";
 
 // ── Client → Server notification methods ────────────────────────
 
@@ -92,7 +107,8 @@ export type ServerNotificationMethod =
   | "bangMessageUpdated"
   | "bangMessageCompleted"
   | "notificationMessageAdded"
-  | "permissionRequest";
+  | "permissionRequest"
+  | "authUrl";
 
 // ── Helper: is this a request (has id)? ─────────────────────────
 

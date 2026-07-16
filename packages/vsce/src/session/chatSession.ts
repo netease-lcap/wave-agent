@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
-import { Agent, Message, PermissionDecision, ToolPermissionContext, AgentCallbacks, PermissionMode, Task, PromptHistoryManager, TextBlock, QueuedMessage, McpServerStatus, ToolBlockUpdateCallbackParams } from 'wave-agent-sdk';
+import type { Message, PermissionDecision, ToolPermissionContext, PermissionMode, Task, QueuedMessage, McpServerStatus, ToolBlockUpdateCallbackParams } from 'wave-agent-sdk';
 import { ConfigurationData } from '../services/configurationService';
-import { VscodeLspAdapter } from '../services/lspAdapter';
+import { StdioClient } from '../stdio/stdioClient';
+import { StdioAgent, type StdioAgentCallbacks } from '../stdio/stdioAgent';
+import { resolveWaveBinary } from '../stdio/binaryResolver';
 
 export interface ChatSessionCallbacks {
     onMessagesChange: (messages: Message[]) => void;
@@ -26,7 +28,7 @@ export interface ChatSessionCallbacks {
 }
 
 export class ChatSession {
-    public agent: Agent | undefined;
+    public agent: StdioAgent | undefined;
     public messages: Message[] = [];
     public tasks: Task[] = [];
     public sessionId: string | undefined;
@@ -35,8 +37,8 @@ export class ChatSession {
     public isInitializing: boolean = false;
     public inputContent: string = '';
     public messageQueue: QueuedMessage[] = [];
-    public pendingConfirmations: Map<string, { 
-        resolve: (decision: PermissionDecision) => void; 
+    public pendingConfirmations: Map<string, {
+        resolve: (decision: PermissionDecision) => void;
         toolName: string;
         confirmationType: string;
         toolInput: unknown;
@@ -61,7 +63,7 @@ export class ChatSession {
         private callbacks: ChatSessionCallbacks
     ) {}
 
-    public async initialize(config: ConfigurationData, extensionMode: vscode.ExtensionMode, restoreSessionId?: string) {
+    public async initialize(config: ConfigurationData, restoreSessionId?: string) {
         if (this.isInitializing) {
             return;
         }
@@ -76,28 +78,19 @@ export class ChatSession {
             if (workdir) {
                 console.log(`设置智能体工作目录为: ${workdir}`);
             }
-            
-            const agentCallbacks: AgentCallbacks = {
-                // Keep onMessagesChange for clear/restore/rewind, but not triggered by SDK callbacks during streaming
+
+            const binaryPath = await resolveWaveBinary();
+            const client = new StdioClient(binaryPath, ['--stdio']);
+
+            const agentCallbacks: StdioAgentCallbacks = {
                 onMessagesChange: (messages: Message[]) => {
                     this.messages = messages;
-                    // Only trigger full update for non-streaming scenarios (clear/restore/rewind)
-                    // During streaming, incremental callbacks handle updates
                 },
-                onUserMessageAdded: () => {
-                    // Find the newly added user message from agent.messages (last user message)
-                    const userMessages = this.agent?.messages.filter(m => m.role === 'user') || [];
-                    const newUserMessage = userMessages[userMessages.length - 1];
-                    if (newUserMessage) {
-                        this.callbacks.onAssistantMessageAdded?.(newUserMessage);
-                    }
+                onUserMessageAdded: (message: Message) => {
+                    this.callbacks.onAssistantMessageAdded?.(message);
                 },
-                onAssistantMessageAdded: (messageId: string) => {
-                    // Find the newly added message from agent.messages
-                    const newMessage = this.agent?.messages.find(m => m.id === messageId);
-                    if (newMessage) {
-                        this.callbacks.onAssistantMessageAdded?.(newMessage);
-                    }
+                onAssistantMessageAdded: (message: Message) => {
+                    this.callbacks.onAssistantMessageAdded?.(message);
                 },
                 onAssistantContentUpdated: (params) => {
                     this.throttledStreamingContentUpdate(params.messageId, params.accumulated, params.stage);
@@ -137,60 +130,47 @@ export class ChatSession {
                 onMcpServersChange: (servers: McpServerStatus[]) => {
                     this.callbacks.onMcpServersChange?.(servers);
                 },
-                onAddBangMessage: () => {
+                onBangMessageAdded: () => {
                     this.callbacks.onBangMessageAdded?.();
                 },
-                onUpdateBangMessage: () => {
+                onBangMessageUpdated: () => {
                     this.callbacks.onBangMessageUpdated?.();
                 },
-                onCompleteBangMessage: () => {
+                onBangMessageCompleted: () => {
                     this.callbacks.onBangMessageUpdated?.();
                 },
                 onNotificationMessageAdded: (params) => {
-                    // Incremental update: find the notification message and append it,
-                    // consistent with how onUserMessageAdded works.
-                    const notificationMessage = this.agent?.messages.find(
-                        m => m.role === 'user' && m.blocks.some(
-                            b => b.type === 'task_notification' && (b as { taskId: string }).taskId === params.taskId
-                        )
-                    );
-                    if (notificationMessage) {
-                        this.callbacks.onAssistantMessageAdded?.(notificationMessage);
+                    if (params.message) {
+                        this.callbacks.onAssistantMessageAdded?.(params.message);
                     }
-                }
+                },
+                onPermissionRequest: (requestId, context) => {
+                    this.callbacks.onToolPermissionRequest(context).then(decision => {
+                        this.agent?.sendPermissionResponse(requestId, decision);
+                    });
+                },
             };
 
-            const createAgent = async (restoreId?: string) => {
-                return await Agent.create({
-                    logger: extensionMode === vscode.ExtensionMode.Development ? console : {
-                        info: (...args: unknown[]) => console.info(...args),
-                        warn: (...args: unknown[]) => console.warn(...args),
-                        error: (...args: unknown[]) => console.error(...args),
-                        debug: () => {},
-                    },
-                    callbacks: agentCallbacks,
-                    workdir,
-                    restoreSessionId: restoreId,
-                    apiKey: config.apiKey || undefined,
-                    defaultHeaders: this.parseHeaders(config.headers),
-                    baseURL: config.baseURL || undefined,
-                    model: config.model,
-                    fastModel: config.fastModel,
-                    language: config.language,
-                    lspManager: new VscodeLspAdapter(),
-                    canUseTool: async (context: ToolPermissionContext): Promise<PermissionDecision> => {
-                        return await this.callbacks.onToolPermissionRequest(context);
-                    }
-                });
+            this.agent = new StdioAgent(client, agentCallbacks);
+
+            const initParams = {
+                workdir,
+                restoreSessionId,
+                apiKey: config.apiKey || undefined,
+                defaultHeaders: this.parseHeaders(config.headers),
+                baseURL: config.baseURL || undefined,
+                model: config.model,
+                fastModel: config.fastModel,
+                language: config.language,
             };
 
             try {
-                this.agent = await createAgent(restoreSessionId);
+                await this.agent.initialize(initParams);
             } catch (createError) {
                 // If session not found, retry without restoreSessionId (new session)
                 if (createError instanceof Error && createError.message.startsWith('Session not found:')) {
                     console.log(`${this.viewType} 会话文件不存在，以新会话模式重新初始化`);
-                    this.agent = await createAgent(undefined);
+                    await this.agent.initialize({ ...initParams, restoreSessionId: undefined });
                 } else {
                     throw createError;
                 }
@@ -198,13 +178,13 @@ export class ChatSession {
 
             // 同步 sessionId 从 agent 到 ChatSession
             // 因为 MessageManager 构造函数中设置 sessionId 不会触发 onSessionIdChange 回调
-            if (this.agent && this.sessionId !== this.agent.sessionId) {
+            if (this.agent && this.agent.sessionId && this.sessionId !== this.agent.sessionId) {
                 this.sessionId = this.agent.sessionId;
                 this.callbacks.onSessionIdChange(this.sessionId);
             }
 
             console.log(`${this.viewType} 智能体初始化成功`);
-            
+
         } catch (error) {
             console.error(`初始化 ${this.viewType} 智能体失败:`, error);
             this.callbacks.onError(error);
@@ -218,12 +198,6 @@ export class ChatSession {
             throw new Error('智能体未初始化');
         }
 
-        if (this.isStreaming && force) {
-            this.agent.abortMessage();
-            // SDK will re-enqueue automatically via abortMessage clearing the queue,
-            // then the caller should re-send after abort.
-        }
-
         let processedImages: Array<{ path: string; mimeType: string; }> | undefined;
         if (images && images.length > 0) {
             processedImages = images.map(image => ({
@@ -231,33 +205,24 @@ export class ChatSession {
                 mimeType: image.mediaType
             }));
         }
-        
-        // Save prompt to history
-        try {
-            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-            const workdir = workspaceFolder?.uri.fsPath;
-            await PromptHistoryManager.addEntry(text, this.sessionId, {}, workdir);
-        } catch (error) {
-            console.error('Failed to save prompt to history:', error);
-        }
-        
-        // SDK handles queueing internally when agent is busy
+
+        // Prompt history and force-abort are handled server-side by agentBridge
+
         if (text.startsWith('!')) {
             await this.agent.bang(text.slice(1));
         } else {
-            await this.agent.sendMessage(text, processedImages);
+            await this.agent.sendMessage(text, processedImages, force);
         }
     }
 
-    public deleteQueuedMessage(index: number) {
+    public async deleteQueuedMessage(index: number) {
         if (!this.agent) return;
-        // Use SDK's removeQueuedMessage to delete from the internal queue
-        this.agent.removeQueuedMessage(index);
+        await this.agent.removeQueuedMessage(index);
     }
 
-    public abortMessage() {
+    public async abortMessage() {
         if (this.agent) {
-            this.agent.abortMessage();
+            await this.agent.abortMessage();
         }
     }
 
@@ -265,15 +230,15 @@ export class ChatSession {
         if (this.agent) {
             this.forceNextUpdateImmediate = true;
             this.inputContent = '';
-            this.agent.clearMessages();
+            await this.agent.clearMessages();
             this.throttledUpdateChatMessages([]);
         }
-        this.clearQueue();
+        await this.clearQueue();
     }
 
-    private clearQueue() {
+    private async clearQueue() {
         if (this.agent && this.agent.queuedMessages.length > 0) {
-            this.agent.abortMessage();
+            await this.agent.abortMessage();
         } else if (this.messageQueue.length > 0) {
             this.messageQueue = [];
             this.callbacks.onQueueChange(this.messageQueue);
@@ -285,19 +250,16 @@ export class ChatSession {
             this.forceNextUpdateImmediate = true;
             this.inputContent = '';
             await this.agent.restoreSession(sessionId);
-            // Push restored messages to webview (SDK callback only stores this.messages)
+            // Push restored messages to webview (notification updates this.messages)
             this.throttledUpdateChatMessages(this.messages);
         }
-        this.clearQueue();
+        await this.clearQueue();
     }
 
-    public async updateConfig(config: ConfigurationData, extensionMode: vscode.ExtensionMode) {
+    public async updateConfig(config: ConfigurationData) {
         if (this.agent) {
             const currentSessionId = this.sessionId;
-            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-            const workdir = workspaceFolder?.uri.fsPath;
-            console.log(`[updateConfig] ${this.viewType} 开始更新配置，sessionId: ${currentSessionId}, workdir: ${workdir}`);
-            console.log(`[updateConfig] ${this.viewType} 当前 agent.sessionId: ${this.agent.sessionId}`);
+            console.log(`[updateConfig] ${this.viewType} 开始更新配置，sessionId: ${currentSessionId}`);
 
             // 重置 streaming 状态
             if (this.isStreaming) {
@@ -305,21 +267,20 @@ export class ChatSession {
                 this.callbacks.onStreamingChange(false);
             }
 
-            // 销毁当前 agent，但不清除消息和会话 ID，因为我们要恢复它们
-            try {
-                await this.agent.destroy();
-            } catch (error) {
-                console.error(`[updateConfig] 销毁旧 agent 时出错:`, error);
-            }
-            this.agent = undefined;
-
-            // 重新初始化（如果会话文件不存在会自动以新会话模式初始化）
-            await this.initialize(config, extensionMode, currentSessionId);
+            // Server-side destroy + recreate with restored session
+            await this.agent.updateConfig({
+                apiKey: config.apiKey || undefined,
+                baseURL: config.baseURL || undefined,
+                defaultHeaders: this.parseHeaders(config.headers),
+                model: config.model,
+                fastModel: config.fastModel,
+                language: config.language,
+            });
             console.log(`[updateConfig] ${this.viewType} 配置更新完成，sessionId: ${this.sessionId}`);
         } else {
             console.log(`[updateConfig] ${this.viewType} agent 为 undefined，跳过更新`);
         }
-        this.clearQueue();
+        await this.clearQueue();
     }
 
     private parseHeaders(headersStr?: string): Record<string, string> | undefined {
@@ -351,9 +312,9 @@ export class ChatSession {
         }
     }
 
-    public getSlashCommands() {
+    public async getSlashCommands() {
         if (this.agent) {
-            return this.agent.getSlashCommands();
+            return await this.agent.getSlashCommands();
         }
         return [];
     }
@@ -456,23 +417,12 @@ export class ChatSession {
             throw new Error('智能体未初始化');
         }
 
-        const { messages } = await this.agent.getFullMessageThread();
-        const index = messages.findIndex(m => m.id === messageId);
-        
-        if (index === -1) {
-            throw new Error(`未找到 ID 为 ${messageId} 的消息`);
-        }
+        const { inputContent } = await this.agent.rewindToMessage(messageId);
+        this.inputContent = inputContent;
 
-        const messageToRevert = messages[index];
-        const textBlock = messageToRevert.blocks.find(b => b.type === 'text') as TextBlock | undefined;
-        this.inputContent = textBlock?.content || '';
-
-        // Truncate starting from the selected message to remove it
-        await this.agent.truncateHistory(index);
-
-        // Update local messages and notify frontend
-        const { messages: updatedMessages } = await this.agent.getFullMessageThread();
-        this.throttledUpdateChatMessages(updatedMessages);
+        // Messages updated via messagesChange notification; force immediate push
+        this.forceNextUpdateImmediate = true;
+        this.throttledUpdateChatMessages(this.messages);
     }
 
     public async destroy() {
@@ -512,11 +462,11 @@ export class ChatSession {
     }
 
     // MCP server management
-    public getMcpServers(): McpServerStatus[] {
+    public async getMcpServers(): Promise<McpServerStatus[]> {
         if (!this.agent) {
             return [];
         }
-        return this.agent.getMcpServers();
+        return await this.agent.getMcpServers();
     }
 
     public async connectMcpServer(serverName: string): Promise<boolean> {

@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { searchFiles } from 'wave-agent-sdk';
+import type { StdioClient } from '../stdio/stdioClient';
 
 export class FileService {
+    constructor(private utilityClient: StdioClient) {}
+
     public async findWorkspaceFiles(filterText: string): Promise<Record<string, string | boolean>[]> {
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
@@ -14,11 +16,13 @@ export class FileService {
         try {
             const workspacePath = workspaceFolder.uri.fsPath;
             
-            // Use searchFiles from SDK for more efficient file searching
-            const fileItems = await searchFiles(filterText || '', {
-                maxResults: 20, // Limit total results to 20 for better UX
-                workingDirectory: workspacePath,
-            });
+            // Use searchFiles via stdio subprocess
+            const result = await this.utilityClient.request('searchFiles', {
+                query: filterText || '',
+                maxResults: 20,
+                workdir: workspacePath,
+            }) as { files: Array<{ path: string; type: string }> };
+            const fileItems = result.files;
 
             // Convert FileItem objects to the format expected by the UI
             const allItems = fileItems.map((item) => {

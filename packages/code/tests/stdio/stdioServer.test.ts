@@ -98,6 +98,8 @@ test("initialize request returns response with sessionId", async () => {
   expect(response.result).toEqual({
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
+    permissionMode: "default",
+    latestTotalTokens: 0,
   });
 
   server.stop();
@@ -265,11 +267,11 @@ test("callback triggers notification output on stdout", async () => {
   const msgs = await waitForMessages(2);
   const notification = msgs[1] as {
     method: string;
-    params: { loading: boolean };
+    params: { loading: boolean; latestTotalTokens?: number };
   };
 
   expect(notification.method).toBe("loadingChange");
-  expect(notification.params).toEqual({ loading: true });
+  expect(notification.params).toEqual({ loading: true, latestTotalTokens: 0 });
 
   server.stop();
 });
