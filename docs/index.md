@@ -11,6 +11,10 @@ AI 辅助编程工具链，提供 SDK、CLI 终端界面与 VS Code 扩展三种
 
 ## 快速开始
 
+### VS Code 扩展
+
+下载 `.vsix` 文件安装，在对话中输入 `/login` 完成 SSO 登录。
+
 ### CLI 终端
 
 ```bash
@@ -23,10 +27,6 @@ wave
 # 在对话中输入 /login，通过浏览器完成 SSO 登录
 /login
 ```
-
-### VS Code 扩展
-
-下载 `.vsix` 文件安装，在对话中输入 `/login` 完成 SSO 登录。
 
 ### SDK 集成
 
