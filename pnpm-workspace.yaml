@@ -1,7 +1,5 @@
 packages:
   - "packages/*"
 allowBuilds:
-  '@vscode/vsce-sign': true
   esbuild: true
-  keytar: true
   protobufjs: true

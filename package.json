@@ -22,11 +22,6 @@
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major",
-    "docs:dev": "vitepress dev docs --host 0.0.0.0",
-    "docs:build": "vitepress build docs",
-    "jb:run": "./packages/jetbrains/gradlew -p packages/jetbrains runIde --no-daemon",
-    "jb:build": "pnpm -F wave-webview build && ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon",
-    "jb:package": "./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -42,7 +37,6 @@
     "prettier": "3.6.2",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.0",
-    "vitepress": "^1.6.4",
     "vitest": "^4.1.7"
   },
   "packageManager": "pnpm@11.9.0",

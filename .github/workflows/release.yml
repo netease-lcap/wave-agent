@@ -51,35 +51,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # --- VS Code extension (.vsix) ---
-      - name: Package .vsix
-        run: pnpm -F wave-vsce run package
-
-      # --- Docs (docs.tar.gz) ---
-      - name: Cache Playwright browsers
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            playwright-chromium-${{ runner.os }}-
-
-      - name: Install Playwright Chromium
-        run: pnpm -F wave-webview exec playwright install --with-deps chromium
-
-      - name: Generate screenshots
-        run: pnpm -F wave-webview run test:demo
-
-      - name: Build docs with base /docs/
-        env:
-          # CodeChat embeds these docs and hides the GitHub Releases download link;
-          # only the Release artifact gets this flag, GitHub Pages keeps the link.
-          DOCS_HIDE_DOWNLOAD: '1'
-        run: npx vitepress build docs --base /docs/
-
-      - name: Package docs.tar.gz
-        run: tar -czf docs.tar.gz -C docs/.vitepress/dist .
-
       # --- GitHub Release ---
       - name: Get previous tag
         id: prev-tag
@@ -90,9 +61,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: |
-            packages/vsce/releases/*.vsix
-            docs.tar.gz
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
