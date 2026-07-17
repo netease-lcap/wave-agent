@@ -24,6 +24,9 @@
     "release:major": "node scripts/release.js major",
     "docs:dev": "vitepress dev docs --host 0.0.0.0",
     "docs:build": "vitepress build docs",
+    "jb:run": "./packages/jetbrains/gradlew -p packages/jetbrains runIde --no-daemon",
+    "jb:build": "pnpm -F wave-webview build && ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon",
+    "jb:package": "./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon",
     "prepare": "husky"
   },
   "devDependencies": {
