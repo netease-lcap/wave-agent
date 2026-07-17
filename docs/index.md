@@ -9,14 +9,6 @@ AI 辅助编程工具链，提供 SDK、CLI 终端界面与 VS Code 扩展三种
 
 [VS Code 扩展](/vsce) · [CLI](/cli) · [SDK](/sdk)
 
-## 项目结构
-
-| 包 | 说明 |
-| --- | --- |
-| **agent-sdk** | 核心 SDK，处理 AI 模型集成、工具系统与记忆管理 |
-| **code** | CLI 终端界面，基于 React Ink 构建的交互式命令行 |
-| **vsce** | VS Code 扩展，带 React Webview 聊天 UI |
-
 ## 快速开始
 
 ### CLI 终端
@@ -34,7 +26,7 @@ wave
 
 ### VS Code 扩展
 
-从 [Releases](https://github.com/netease-lcap/wave-agent/releases) 下载 `.vsix` 文件安装，在对话中输入 `/login` 完成 SSO 登录。
+下载 `.vsix` 文件安装，在对话中输入 `/login` 完成 SSO 登录。
 
 ### SDK 集成
 
