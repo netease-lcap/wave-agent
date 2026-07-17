@@ -48,8 +48,6 @@ jobs:
       # --- npm publish ---
       - name: Publish to npm
         run: pnpm -r publish --no-git-checks --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # --- GitHub Release ---
       - name: Get previous tag
