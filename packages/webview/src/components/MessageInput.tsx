@@ -1176,7 +1176,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
 
           <div className="button-spacer" />
 
-          <Tooltip text="停止" position="top">
+          <Tooltip text="停止" position="left">
             <button
               className="abort-button"
               id="abortButton"
@@ -1189,7 +1189,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
             </button>
           </Tooltip>
 
-          <Tooltip text={isStreaming ? "加入队列" : "发送"} position="top-left">
+          <Tooltip text={isStreaming ? "加入队列" : "发送"} position="left">
             <button
               id="sendButton"
               className="send-button"
