@@ -7,7 +7,7 @@ title: CodeChat
 
 AI 辅助编程工具链，提供 SDK、CLI 终端界面与 VS Code 扩展三种使用方式。
 
-[VS Code 扩展](/vsce) · [CLI](/cli) · [SDK](/sdk)
+[企业开通](/guide) · [VS Code 扩展](/vsce) · [CLI](/cli) · [SDK](/sdk)
 
 ## 快速开始
 
