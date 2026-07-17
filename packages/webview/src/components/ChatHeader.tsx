@@ -24,7 +24,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         />
       </div>
       <div className="header-buttons">
-        <Tooltip text="清除聊天" position="bottom-left">
+        <Tooltip text="清除聊天" position="left">
           <button
             className="header-button"
             onClick={onClearChat}
