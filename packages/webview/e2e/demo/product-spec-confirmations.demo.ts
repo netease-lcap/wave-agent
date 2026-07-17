@@ -106,7 +106,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
             mode: 'default'
         });
         await webviewPage.waitForSelector('.permission-mode-select');
-        await expect(webviewPage.locator('.permission-mode-select')).toHaveValue('default');
+        await expect(webviewPage.locator('.permission-mode-select')).toHaveClass(/mode-default/);
         await permissionModeSelect.focus();
         await inputContainer.screenshot({ path: '../../docs/public/screenshots/spec-permission-mode-default.png' });
 
@@ -114,7 +114,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await injector.simulateExtensionMessage('updatePermissionMode', {
             mode: 'acceptEdits'
         });
-        await expect(webviewPage.locator('.permission-mode-select')).toHaveValue('acceptEdits');
+        await expect(webviewPage.locator('.permission-mode-select')).toHaveClass(/mode-acceptEdits/);
         await permissionModeSelect.focus();
         await inputContainer.screenshot({ path: '../../docs/public/screenshots/spec-permission-mode-accept.png' });
 
@@ -122,7 +122,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await injector.simulateExtensionMessage('updatePermissionMode', {
             mode: 'plan'
         });
-        await expect(webviewPage.locator('.permission-mode-select')).toHaveValue('plan');
+        await expect(webviewPage.locator('.permission-mode-select')).toHaveClass(/mode-plan/);
         await permissionModeSelect.focus();
         await inputContainer.screenshot({ path: '../../docs/public/screenshots/spec-permission-mode-plan.png' });
 
@@ -130,7 +130,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await injector.simulateExtensionMessage('updatePermissionMode', {
             mode: 'default'
         });
-        await expect(webviewPage.locator('.permission-mode-select')).toHaveValue('default');
+        await expect(webviewPage.locator('.permission-mode-select')).toHaveClass(/mode-default/);
 
         // 15. Plan 确认对话框 - 只显示确认对话框组件
         await injector.simulateExtensionMessage('showConfirmation', {
