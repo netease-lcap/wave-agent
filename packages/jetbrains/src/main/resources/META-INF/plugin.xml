@@ -18,7 +18,7 @@
             id="Wave"
             anchor="right"
             factoryClass="com.wave.jetbrains.WaveToolWindowFactory"
-            icon="AllIcons.Toolwindows.ToolWindowProject"/>
+            icon="com.wave.jetbrains.icons.WaveIcons.Wave"/>
         <notificationGroup id="Wave" displayType="BALLOON"/>
     </extensions>
 
