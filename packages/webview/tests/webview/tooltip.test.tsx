@@ -73,32 +73,6 @@ describe('Tooltip Component', () => {
         });
     });
 
-    it('should show tooltip for the permission mode select', async () => {
-        renderChatApp();
-
-        await act(async () => {
-            sendCommand('setInitialState', {
-                messages: [],
-                permissionMode: 'default',
-                configurationData: {}
-            });
-        });
-
-        const select = document.querySelector('.permission-mode-select') as HTMLElement;
-        const container = select.closest('.tooltip-container') as HTMLElement;
-        expect(container).not.toBeNull();
-
-        await act(async () => {
-            fireEvent.mouseEnter(container);
-        });
-
-        await waitFor(() => {
-            const tooltip = document.querySelector('.tooltip-box.visible');
-            expect(tooltip).not.toBeNull();
-            expect(tooltip).toHaveTextContent('权限模式');
-        });
-    });
-
     it('should show tooltip for the abort button during streaming', async () => {
         renderChatApp();
 

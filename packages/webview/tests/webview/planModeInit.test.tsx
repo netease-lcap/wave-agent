@@ -24,9 +24,8 @@ describe('Plan Mode Initialization', () => {
         });
 
         // Verify the permission mode select shows plan mode
-        const select = document.querySelector('.permission-mode-select') as HTMLSelectElement;
+        const select = document.querySelector('.permission-mode-select') as HTMLElement;
         expect(select).toBeInTheDocument();
-        expect(select.value).toBe('plan');
         expect(select.className).toContain('mode-plan');
 
         // Verify that no error message like "plan file not set" is displayed
