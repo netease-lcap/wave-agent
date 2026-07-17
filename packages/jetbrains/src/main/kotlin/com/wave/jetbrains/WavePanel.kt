@@ -25,19 +25,10 @@ class WavePanel(private val project: Project) {
     private val bridge: JcefBrowserBridge = JcefBrowserBridge(browser)
 
     private val session: WaveSession = WaveSession(project) { command, payload ->
-        // Kotlin → webview
-        if (SwingUtilities.isEventDispatchThread()) {
-            bridge.postMessage(command, payload)
-        } else {
-            Edt.invokeLater { bridge.postMessage(command, payload) }
-        }
+        postToWebview(command, payload)
     }
-    private val handler: MessageHandler = MessageHandler(session) { command, payload ->
-        if (SwingUtilities.isEventDispatchThread()) {
-            bridge.postMessage(command, payload)
-        } else {
-            Edt.invokeLater { bridge.postMessage(command, payload) }
-        }
+    private val handler: MessageHandler = MessageHandler(project, session) { command, payload ->
+        postToWebview(command, payload)
     }
 
     val component: JPanel = JPanel(BorderLayout()).apply {
@@ -47,8 +38,21 @@ class WavePanel(private val project: Project) {
 
     init {
         bridge.onMessage = { msg -> handler.handle(msg) }
+        WavePanelHolder.getInstance(project).panel = this
         loadWebview()
     }
+
+    /** Kotlin → webview, marshalled onto the EDT. */
+    private fun postToWebview(command: String, payload: JsonObject) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            bridge.postMessage(command, payload)
+        } else {
+            Edt.invokeLater { bridge.postMessage(command, payload) }
+        }
+    }
+
+    /** Public entry for IDE actions (e.g. AddSelectionToWaveAction) to push messages into the webview. */
+    fun postMessage(command: String, payload: JsonObject) = postToWebview(command, payload)
 
     private fun loadWebview() {
         try {
@@ -64,5 +68,11 @@ class WavePanel(private val project: Project) {
         session.dispose()
         bridge.dispose()
         browser.dispose()
+        try {
+            if (WavePanelHolder.getInstance(project).panel === this) {
+                WavePanelHolder.getInstance(project).panel = null
+            }
+        } catch (_: Exception) {
+        }
     }
 }

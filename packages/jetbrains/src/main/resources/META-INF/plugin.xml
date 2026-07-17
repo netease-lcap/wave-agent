@@ -12,10 +12,34 @@
     <extensions defaultExtensionNs="com.intellij">
         <applicationService
             serviceImplementation="com.wave.jetbrains.config.WavePluginService"/>
+        <projectService
+            serviceImplementation="com.wave.jetbrains.WavePanelHolder"/>
         <toolWindow
             id="Wave"
             anchor="right"
             factoryClass="com.wave.jetbrains.WaveToolWindowFactory"
             icon="AllIcons.Toolwindows.ToolWindowProject"/>
+        <notificationGroup id="Wave" displayType="BALLOON"/>
     </extensions>
+
+    <actions>
+        <action
+            id="com.wave.jetbrains.openWave"
+            class="com.wave.jetbrains.actions.OpenWaveToolWindowAction"
+            text="Open Wave"
+            description="Open the Wave tool window">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action
+            id="com.wave.jetbrains.addSelectionToWave"
+            class="com.wave.jetbrains.actions.AddSelectionToWaveAction"
+            text="Add Selection to Wave"
+            description="Insert the current editor selection into the Wave chat input">
+            <override-text place="EditorPopupMenu" text="Add to Wave"/>
+        </action>
+        <group id="WaveEditorPopupMenu" text="Wave" popup="true">
+            <reference ref="com.wave.jetbrains.addSelectionToWave"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </group>
+    </actions>
 </idea-plugin>

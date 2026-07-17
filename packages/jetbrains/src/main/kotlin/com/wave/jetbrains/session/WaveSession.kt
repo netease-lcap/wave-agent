@@ -1,5 +1,6 @@
 package com.wave.jetbrains.session
 
+import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.config.WavePluginService
@@ -8,6 +9,7 @@ import com.wave.jetbrains.stdio.BinaryResolver
 import com.wave.jetbrains.stdio.StdioAgent
 import com.wave.jetbrains.stdio.StdioClient
 import com.wave.jetbrains.stdio.StdioClientException
+import com.wave.jetbrains.util.Edt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,6 +25,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
@@ -246,7 +249,36 @@ class WaveSession(
 
     override fun onSessionIdChange(sessionId: String) {
         this.sessionId = sessionId
-        postMessage("updateCurrentSession", buildJsonObject { put("sessionId", sessionId) })
+        // VSCE chatProvider.ts:438-449: push full session metadata, then refresh the session list.
+        val workdir = agent?.workingDirectory ?: project.basePath ?: ""
+        postMessage("updateCurrentSession", buildJsonObject {
+            put("session", buildJsonObject {
+                put("id", sessionId)
+                put("sessionType", "main")
+                put("workdir", workdir)
+                put("latestTotalTokens", agent?.latestTotalTokens ?: 0)
+            })
+        })
+        refreshSessions()
+    }
+
+    /**
+     * Pull the session list from the agent and push `updateSessions` to the webview.
+     * Mirrors VSCE chatProvider.ts:368 listSessions() (filter main sessions, take 10).
+     */
+    fun refreshSessions() {
+        val workdir = agent?.workingDirectory ?: project.basePath ?: return
+        scope.launch {
+            val sessions = try {
+                val res = agent?.listSessions(workdir)?.jsonObject
+                val all = res?.get("sessions")?.jsonArray ?: JsonArray(emptyList())
+                all.filter { it.jsonObject["sessionType"]?.jsonPrimitive?.content == "main" }.take(10)
+            } catch (e: StdioClientException) {
+                LOG.warn("refreshSessions failed: ${e.message}")
+                JsonArray(emptyList())
+            }
+            postMessage("updateSessions", buildJsonObject { put("sessions", JsonArray(sessions)) })
+        }
     }
 
     override fun onPermissionModeChange(mode: String) {
@@ -256,6 +288,32 @@ class WaveSession(
 
     override fun onMcpServersChange(servers: JsonElement?) {
         postMessage("mcpServersUpdate", buildJsonObject { put("servers", servers ?: JsonArray(emptyList())) })
+    }
+
+    // VSCE chatProvider.ts:229-236 / chatSession.ts:139-141: all three bang notifications
+    // re-push the full message list via updateMessages (onBangMessageCompleted delegates to Updated).
+    override fun onBangMessageAdded() {
+        scope.launch { throttledMessagesUpdate(messages) }
+    }
+
+    override fun onBangMessageUpdated() {
+        scope.launch { throttledMessagesUpdate(messages) }
+    }
+
+    override fun onBangMessageCompleted() {
+        scope.launch { throttledMessagesUpdate(messages) }
+    }
+
+    // VSCE chatSession.ts:142-146: if params.message is present, forward to appendMessage.
+    override fun onNotificationMessageAdded(message: JsonObject) {
+        val msg = message["message"]
+        if (msg != null) postMessage("appendMessage", buildJsonObject { put("message", msg) })
+    }
+
+    // VSCE chatProvider.ts:142-147: open the auth URL in the system browser (on EDT).
+    override fun onAuthUrl(url: String) {
+        if (url.isEmpty()) return
+        Edt.invokeLater { BrowserUtil.browse(url) }
     }
 
     override fun onPermissionRequest(requestId: String, context: JsonElement?) {
