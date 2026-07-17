@@ -1,14 +1,21 @@
+const SHOW_DOWNLOAD_LINK = process.env.DOCS_HIDE_DOWNLOAD !== '1';
+
+const nav = [
+  { text: '首页', link: '/' },
+  { text: 'VS Code 扩展', link: '/vsce' },
+  { text: 'CLI', link: '/cli' },
+  { text: 'SDK', link: '/sdk' },
+];
+if (SHOW_DOWNLOAD_LINK) {
+  nav.push({ text: '下载', link: 'https://github.com/netease-lcap/wave-agent/releases' });
+}
+
 export default {
   base: '/wave-agent/',
   title: 'CodeChat',
   description: 'AI 辅助编程工具链 — SDK、CLI 与 VS Code 扩展',
   themeConfig: {
-    nav: [
-      { text: '首页', link: '/' },
-      { text: 'VS Code 扩展', link: '/vsce' },
-      { text: 'CLI', link: '/cli' },
-      { text: 'SDK', link: '/sdk' },
-    ],
+    nav,
     sidebar: {
       '/vsce': [
         {
