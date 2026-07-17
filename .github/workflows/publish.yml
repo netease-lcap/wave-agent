@@ -8,7 +8,7 @@ on:
 
 permissions:
   id-token: write  # Required for OIDC
-  contents: read
+  contents: write  # Required for creating GitHub Release
 
 jobs:
   publish:
@@ -40,3 +40,20 @@ jobs:
       - run: pnpm build
       - run: pnpm test
       - run: pnpm -r publish --no-git-checks --provenance --access public
+
+      # --- GitHub Release ---
+      - name: Get previous tag
+        id: prev-tag
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname --list 'v*' | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          echo "tag=${PREV_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          generate_release_notes: true
+          previous_tag: ${{ steps.prev-tag.outputs.tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
