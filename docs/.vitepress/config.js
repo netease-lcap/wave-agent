@@ -2,6 +2,7 @@ const SHOW_DOWNLOAD_LINK = process.env.DOCS_HIDE_DOWNLOAD !== '1';
 
 const nav = [
   { text: '首页', link: '/' },
+  { text: '企业开通', link: '/guide' },
   { text: 'VS Code 扩展', link: '/vsce' },
   { text: 'CLI', link: '/cli' },
   { text: 'SDK', link: '/sdk' },
@@ -17,6 +18,18 @@ export default {
   themeConfig: {
     nav,
     sidebar: {
+      '/guide': [
+        {
+          text: '企业开通指南',
+          collapsed: false,
+          items: [
+            { text: '一、企业管理员账号开通', link: '/guide#admin-account' },
+            { text: '二、下载插件', link: '/guide#download-plugin' },
+            { text: '三、添加团队成员', link: '/guide#add-members' },
+            { text: '四、查看积分', link: '/guide#view-credits' },
+          ],
+        },
+      ],
       '/vsce': [
         {
           text: '1. 核心聊天体验',
