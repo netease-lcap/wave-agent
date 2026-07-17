@@ -600,14 +600,19 @@ class MessageHandler(
             LOG.warn("getSlashCommands failed: ${e.message}")
             emptyList()
         }
-        // Local UI commands (mirror VSCE's 6)
+        // Local UI commands (mirror VSCE's 6). name MUST be the english id — webview's
+        // handleSlashCommandSelect checks `localCommands.includes(command.name)` against
+        // ['config','plugin','mcp','status','login','clear'] to decide between opening a
+        // dialog (onSendMessage(`/${name}`)) and inserting text. A non-english name falls
+        // through to the text-insert branch, which is the "inserts into input instead of
+        // opening a popup" bug.
         val local = listOf(
-            triple("config", "配置", "打开配置设置"),
-            triple("plugin", "插件", "管理插件"),
-            triple("mcp", "MCP", "管理 MCP 服务器"),
-            triple("status", "状态", "查看状态信息"),
-            triple("login", "登录", "登录账户"),
-            triple("clear", "清除", "清除对话"),
+            triple("config", "config", "打开配置设置"),
+            triple("plugin", "plugin", "打开插件管理"),
+            triple("mcp", "mcp", "打开 MCP 服务器管理"),
+            triple("status", "status", "查看当前状态"),
+            triple("login", "login", "SSO 登录/登出"),
+            triple("clear", "clear", "清除对话历史并重置会话"),
         )
         val all = sdkCommands + local
         // VSCE messageHandler.ts:618-624: filter by id/name (case-insensitive includes)
