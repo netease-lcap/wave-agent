@@ -17,13 +17,3 @@ nohup.out
 .wave/scheduled_tasks.json
 .wave/scheduled_tasks.lock
 vendor/
-
-# VS Code Extension
-*.vsix
-packages/vsce/webview/dist/
-packages/vsce/releases/
-docs/.vitepress/dist/
-docs/.vitepress/cache/
-docs/.vitepress/.temp/
-docs/.vitepress/data/
-docs/public/screenshots/
