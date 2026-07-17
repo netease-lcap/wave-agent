@@ -3,6 +3,7 @@ import { MessageInjector } from '../utils/messageInjector.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import {
     type Message,
     type SessionMetadata
@@ -81,7 +82,7 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
         await webviewPage.keyboard.type(' 这是图片 ');
 
         // 13c. Insert Image Tag (via paste)
-        const logoPath = path.join(process.cwd(), 'LOGO.png');
+        const logoPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'docs', 'public', 'LOGO.png');
         const logoBase64 = fs.readFileSync(logoPath, { encoding: 'base64' });
         const logoDataUrl = `data:image/png;base64,${logoBase64}`;
 
