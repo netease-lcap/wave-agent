@@ -1,24 +1,15 @@
 plugins {
-    id("org.jetbrains.intellij.platform") version "2.2.1"
-    kotlin("jvm") version "2.0.21"
-    kotlin("plugin.serialization") version "2.0.21"
+    id("org.jetbrains.intellij.platform")
+    kotlin("jvm")
+    kotlin("plugin.serialization")
 }
 
 group = providers.gradleProperty("pluginGroup").get()
 version = providers.gradleProperty("pluginVersion").get()
 
-repositories {
-    mavenCentral()
-    intellijPlatform {
-        defaultRepositories()
-    }
-}
-
 dependencies {
     intellijPlatform {
         create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
-        instrumentationTools()
-        pluginVerifier()
     }
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.9.0")
