@@ -54,13 +54,13 @@ jobs:
             playwright-chromium-${{ runner.os }}-
 
       - name: Install Playwright Chromium
-        run: pnpm -F wave-vsce exec playwright install --with-deps chromium
+        run: pnpm -F wave-webview exec playwright install --with-deps chromium
 
       - name: Build agent-sdk
         run: pnpm -F wave-agent-sdk build
 
       - name: Generate screenshots
-        run: pnpm -F wave-vsce run test:demo
+        run: pnpm -F wave-webview run test:demo
 
       - name: Build VitePress
         run: pnpm run docs:build
