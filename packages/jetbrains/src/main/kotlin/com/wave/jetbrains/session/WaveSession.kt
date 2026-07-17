@@ -97,7 +97,7 @@ class WaveSession(
         isInitializing = true
         return try {
             val binary = BinaryResolver.resolveWaveBinary()
-            val client = StdioClient(binary, listOf("--stdio"))
+            val client = StdioClient(binary, listOf("--stdio"), BinaryResolver.resolveEnv())
             val a = StdioAgent(client, this)
             agent = a
             val config = WavePluginService.getInstance().loadConfiguration()
