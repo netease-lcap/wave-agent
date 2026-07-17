@@ -726,7 +726,7 @@ export class MessageHandler {
 
     private async handleGetMcpServers(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         const session = this.context.getChatSession(viewType || 'tab', windowId);
-        const servers = session.getMcpServers();
+        const servers = await session.getMcpServers();
         this.context.postMessage({
             command: 'mcpServersResponse',
             servers
