@@ -65,10 +65,10 @@ jobs:
             playwright-chromium-${{ runner.os }}-
 
       - name: Install Playwright Chromium
-        run: pnpm -F wave-vsce exec playwright install --with-deps chromium
+        run: pnpm -F wave-webview exec playwright install --with-deps chromium
 
       - name: Generate screenshots
-        run: pnpm -F wave-vsce run test:demo
+        run: pnpm -F wave-webview run test:demo
 
       - name: Build docs with base /docs/
         env:
