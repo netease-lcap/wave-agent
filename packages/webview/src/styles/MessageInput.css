@@ -110,6 +110,9 @@
 }
 
 .permission-mode-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
     background-color: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
@@ -120,6 +123,11 @@
     outline: none;
     font-family: inherit;
     transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.permission-mode-caret {
+    font-size: 12px;
+    opacity: 0.8;
 }
 
 .permission-mode-select:hover,
@@ -142,9 +150,42 @@
     font-weight: bold;
 }
 
-.permission-mode-select option {
-    background-color: var(--vscode-dropdown-background);
+/* Custom permission dropdown — expands upward (bottom:100%) so it is not clipped at
+   the bottom of the webview viewport in JCEF, where a native <select> popup expands
+   downward and gets cut off. */
+.permission-mode-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 4px;
+    list-style: none;
+    margin-top: 0;
+    padding: 2px 0;
+    background: var(--vscode-dropdown-background);
     color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+    z-index: 10000;
+    min-width: 140px;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.permission-mode-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    color: var(--vscode-dropdown-foreground);
+}
+
+.permission-mode-item:hover,
+.permission-mode-item.selected {
+    background: var(--vscode-list-hoverBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.permission-mode-item.selected {
+    background: var(--vscode-list-activeSelectionBackground);
 }
 /* Selection Tag */
 .selection-tag {

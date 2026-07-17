@@ -24,6 +24,19 @@ interface SlashCommandState {
   endPos: number;
 }
 
+// Permission mode options rendered in the custom dropdown. A custom dropdown is used
+// instead of a native <select> so the option list can be forced to expand upward
+// (bottom:100%): the native <select> popup expands downward by default and gets
+// clipped at the bottom of the webview viewport in JCEF.
+const PERMISSION_MODES: { value: PermissionMode; label: string }[] = [
+  { value: 'default', label: '修改前询问' },
+  { value: 'acceptEdits', label: '自动接受修改' },
+  { value: 'bypassPermissions', label: '跳过权限确认' },
+  { value: 'plan', label: '计划模式' },
+];
+const permissionModeLabel = (m?: PermissionMode): string =>
+  PERMISSION_MODES.find(x => x.value === m)?.label ?? '修改前询问';
+
 export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>((props, ref) => {
   const {
     onSendMessage,
@@ -43,13 +56,29 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
   const [message, setMessage] = useState('');
   const _lastSelectionRef = useRef<Selection | null>(null);
 
-  const handlePermissionModeSelect = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
-    const mode = event.target.value as PermissionMode;
+  // Permission mode custom dropdown state
+  const [permMenuOpen, setPermMenuOpen] = useState(false);
+  const permMenuRef = useRef<HTMLDivElement>(null);
+
+  const handlePermissionModeSelect = useCallback((mode: PermissionMode) => {
     vscode.postMessage({
       command: 'setPermissionMode',
       mode: mode
     });
+    setPermMenuOpen(false);
   }, [vscode]);
+
+  // Close the permission dropdown when clicking outside of it.
+  useEffect(() => {
+    if (!permMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (permMenuRef.current && !permMenuRef.current.contains(e.target as Node)) {
+        setPermMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [permMenuOpen]);
 
   const [atMention, setAtMention] = useState<AtMentionState>({
     isActive: false,
@@ -1116,21 +1145,33 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
 
         {/* Buttons row */}
         <div className="input-buttons-row">
-          {/* Left side - Permission Mode Select */}
-          <div className="permission-mode-container">
-            <Tooltip text="权限模式" position="top">
-              <select 
-                className={`permission-mode-select mode-${permissionMode || 'default'}`}
-                value={permissionMode || 'default'}
-                onChange={handlePermissionModeSelect}
-                aria-label="权限模式"
-              >
-                <option value="default">修改前询问</option>
-                <option value="acceptEdits">自动接受修改</option>
-                <option value="bypassPermissions">跳过权限确认</option>
-                <option value="plan">计划模式</option>
-              </select>
-            </Tooltip>
+          {/* Left side - Permission Mode Select (custom dropdown, expands upward) */}
+          <div className="permission-mode-container" ref={permMenuRef}>
+            <button
+              type="button"
+              className={`permission-mode-select mode-${permissionMode || 'default'}`}
+              aria-label="权限模式"
+              aria-expanded={permMenuOpen}
+              onClick={() => setPermMenuOpen(o => !o)}
+            >
+              {permissionModeLabel(permissionMode)}
+              <i className="codicon codicon-chevron-down permission-mode-caret" />
+            </button>
+            {permMenuOpen && (
+              <ul className="permission-mode-menu" role="listbox">
+                {PERMISSION_MODES.map(m => (
+                  <li
+                    key={m.value}
+                    role="option"
+                    aria-selected={m.value === (permissionMode || 'default')}
+                    className={`permission-mode-item${m.value === (permissionMode || 'default') ? ' selected' : ''}`}
+                    onClick={() => handlePermissionModeSelect(m.value)}
+                  >
+                    {m.label}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className="button-spacer" />
