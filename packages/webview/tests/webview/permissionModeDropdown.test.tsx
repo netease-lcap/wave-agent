@@ -18,17 +18,19 @@ describe('Permission Mode Select', () => {
             });
         });
 
-        const select = document.querySelector('.permission-mode-select') as HTMLSelectElement;
+        const select = document.querySelector('.permission-mode-select') as HTMLElement;
         expect(select).toBeInTheDocument();
-        expect(select.value).toBe('default');
         expect(select.className).toContain('mode-default');
 
         // Clear mock to focus on new messages sent after change
         vscode.postMessage.mockClear();
 
-        // Change to acceptEdits
+        // Change to acceptEdits (open menu, then click the option)
         await act(async () => {
-            fireEvent.change(select, { target: { value: 'acceptEdits' } });
+            fireEvent.click(select);
+        });
+        await act(async () => {
+            fireEvent.click(document.querySelector('.permission-mode-item[data-value="acceptEdits"]') as HTMLElement);
         });
 
         // Verify the extension is notified
@@ -44,7 +46,6 @@ describe('Permission Mode Select', () => {
             sendCommand('updatePermissionMode', { mode: 'acceptEdits' });
         });
 
-        expect(select.value).toBe('acceptEdits');
         expect(select.className).toContain('mode-acceptEdits');
     });
 
@@ -59,12 +60,17 @@ describe('Permission Mode Select', () => {
             });
         });
 
-        const select = document.querySelector('.permission-mode-select') as HTMLSelectElement;
+        const select = document.querySelector('.permission-mode-select') as HTMLElement;
         expect(select).toBeInTheDocument();
 
+        // Open the menu to reveal the options
+        await act(async () => {
+            fireEvent.click(select);
+        });
+
         // Verify all options are present
-        const options = Array.from(select.querySelectorAll('option'));
-        const optionValues = options.map(o => o.value);
+        const options = Array.from(document.querySelectorAll('.permission-mode-item'));
+        const optionValues = options.map(o => o.getAttribute('data-value'));
         expect(optionValues).toContain('default');
         expect(optionValues).toContain('plan');
         expect(optionValues).toContain('acceptEdits');
@@ -73,7 +79,7 @@ describe('Permission Mode Select', () => {
         // Select bypassPermissions
         vscode.postMessage.mockClear();
         await act(async () => {
-            fireEvent.change(select, { target: { value: 'bypassPermissions' } });
+            fireEvent.click(document.querySelector('.permission-mode-item[data-value="bypassPermissions"]') as HTMLElement);
         });
 
         await waitFor(() => {
@@ -88,7 +94,6 @@ describe('Permission Mode Select', () => {
             sendCommand('updatePermissionMode', { mode: 'bypassPermissions' });
         });
 
-        expect(select.value).toBe('bypassPermissions');
         expect(select.className).toContain('mode-bypassPermissions');
     });
 
@@ -103,12 +108,15 @@ describe('Permission Mode Select', () => {
             });
         });
 
-        const select = document.querySelector('.permission-mode-select') as HTMLSelectElement;
-        expect(select.value).toBe('bypassPermissions');
+        const select = document.querySelector('.permission-mode-select') as HTMLElement;
+        expect(select.className).toContain('mode-bypassPermissions');
 
         vscode.postMessage.mockClear();
         await act(async () => {
-            fireEvent.change(select, { target: { value: 'default' } });
+            fireEvent.click(select);
+        });
+        await act(async () => {
+            fireEvent.click(document.querySelector('.permission-mode-item[data-value="default"]') as HTMLElement);
         });
 
         await waitFor(() => {
@@ -122,7 +130,6 @@ describe('Permission Mode Select', () => {
             sendCommand('updatePermissionMode', { mode: 'default' });
         });
 
-        expect(select.value).toBe('default');
         expect(select.className).toContain('mode-default');
     });
 });

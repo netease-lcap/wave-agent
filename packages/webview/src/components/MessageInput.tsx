@@ -1163,6 +1163,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
                   <li
                     key={m.value}
                     role="option"
+                    data-value={m.value}
                     aria-selected={m.value === (permissionMode || 'default')}
                     className={`permission-mode-item${m.value === (permissionMode || 'default') ? ' selected' : ''}`}
                     onClick={() => handlePermissionModeSelect(m.value)}

@@ -18,8 +18,8 @@ describe('Permission Mode Cycling via Shift+Tab', () => {
         });
 
         const input = screen.getByTestId('message-input');
-        const select = document.querySelector('.permission-mode-select') as HTMLSelectElement;
-        expect(select.value).toBe('default');
+        const select = document.querySelector('.permission-mode-select') as HTMLElement;
+        expect(select.className).toContain('mode-default');
 
         // default -> acceptEdits
         vscode.postMessage.mockClear();
@@ -35,7 +35,7 @@ describe('Permission Mode Cycling via Shift+Tab', () => {
         await act(async () => {
             sendCommand('updatePermissionMode', { mode: 'acceptEdits' });
         });
-        expect(select.value).toBe('acceptEdits');
+        expect(select.className).toContain('mode-acceptEdits');
 
         // acceptEdits -> bypassPermissions
         vscode.postMessage.mockClear();
@@ -51,7 +51,7 @@ describe('Permission Mode Cycling via Shift+Tab', () => {
         await act(async () => {
             sendCommand('updatePermissionMode', { mode: 'bypassPermissions' });
         });
-        expect(select.value).toBe('bypassPermissions');
+        expect(select.className).toContain('mode-bypassPermissions');
 
         // bypassPermissions -> plan
         vscode.postMessage.mockClear();
@@ -67,7 +67,7 @@ describe('Permission Mode Cycling via Shift+Tab', () => {
         await act(async () => {
             sendCommand('updatePermissionMode', { mode: 'plan' });
         });
-        expect(select.value).toBe('plan');
+        expect(select.className).toContain('mode-plan');
     });
 
     it('should wrap around from plan back to default', async () => {
@@ -82,8 +82,8 @@ describe('Permission Mode Cycling via Shift+Tab', () => {
         });
 
         const input = screen.getByTestId('message-input');
-        const select = document.querySelector('.permission-mode-select') as HTMLSelectElement;
-        expect(select.value).toBe('plan');
+        const select = document.querySelector('.permission-mode-select') as HTMLElement;
+        expect(select.className).toContain('mode-plan');
 
         vscode.postMessage.mockClear();
         await act(async () => {
@@ -98,7 +98,7 @@ describe('Permission Mode Cycling via Shift+Tab', () => {
         await act(async () => {
             sendCommand('updatePermissionMode', { mode: 'default' });
         });
-        expect(select.value).toBe('default');
+        expect(select.className).toContain('mode-default');
     });
 
     it('should update the select visual style when mode changes via extension update', async () => {
@@ -112,7 +112,7 @@ describe('Permission Mode Cycling via Shift+Tab', () => {
             });
         });
 
-        const select = document.querySelector('.permission-mode-select') as HTMLSelectElement;
+        const select = document.querySelector('.permission-mode-select') as HTMLElement;
         expect(select.className).toContain('mode-default');
 
         // Simulate extension sending a different mode (e.g. from external change)
@@ -120,7 +120,6 @@ describe('Permission Mode Cycling via Shift+Tab', () => {
             sendCommand('updatePermissionMode', { mode: 'plan' });
         });
 
-        expect(select.value).toBe('plan');
         expect(select.className).toContain('mode-plan');
         expect(select.className).not.toContain('mode-default');
     });
