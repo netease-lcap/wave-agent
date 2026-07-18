@@ -5,7 +5,7 @@ import { ConcurrencyLimiter } from "./concurrencyLimiter.js";
 import { BudgetTracker } from "./budgetTracker.js";
 import { ProgressReporter } from "./progressReporter.js";
 import { Journal } from "./journal.js";
-import type { BudgetInfo, AgentMeta, WorkflowProgressEvent } from "./types.js";
+import type { BudgetInfo, AgentMeta } from "./types.js";
 import {
   createStructuredOutputPrompt,
   createStructuredOutputTool,
@@ -54,8 +54,6 @@ interface WorkflowApiContext {
   runDir: string;
   /** Per-agent abort controllers for kill/skip support */
   agentControllers: Map<number, AbortController>;
-  /** Optional callback for progress events */
-  onProgress?: (event: WorkflowProgressEvent) => void;
 }
 
 interface AgentOpts {
