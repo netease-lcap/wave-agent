@@ -37,12 +37,14 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # Run type-check + lint + tests WITHOUT coverage on Windows.
-      # The v8 coverage provider crashes silently on Windows (process exits
-      # right after "Coverage enabled with v8" with no output), which is an
-      # upstream tooling issue unrelated to this repo's code. Coverage is
-      # already enforced by the Linux CI (required check). Windows only needs
-      # to verify the tests themselves pass cross-platform.
+      # Run tests WITHOUT coverage, type-check, or lint on Windows.
+      # - Coverage: the v8 provider crashes silently on Windows (process exits
+      #   right after "Coverage enabled with v8" with no output); already
+      #   enforced by the blocking Linux CI.
+      # - Type-check & lint: platform-agnostic (identical result on Linux), and
+      #   already enforced by the blocking Linux CI. Skipping them here saves
+      #   ~40s of redundant work — the only purpose of this Windows workflow is
+      #   to verify the tests themselves pass cross-platform.
       #
       # Tests are invoked per-package via `pnpm --filter <pkg> exec vitest run`
       # rather than `pnpm -r test`. The latter runs each package's `test`
@@ -51,8 +53,6 @@ jobs:
       # agent-sdk vitest process to crash silently right after emitting "RUN".
       # Calling `vitest run` directly (default reporter) is the invocation
       # pattern proven to run all 3221 agent-sdk tests green on Windows.
-      - name: Type-check & lint
-        run: pnpm -r --parallel type-check && pnpm -r --parallel lint
       - name: Tests
         run: |
           pnpm --filter wave-agent-sdk exec vitest run &&
