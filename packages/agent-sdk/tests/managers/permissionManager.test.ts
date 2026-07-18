@@ -1622,9 +1622,15 @@ describe("PermissionManager", () => {
       });
 
       it("should set hidePersistentOption for out-of-bounds cd", () => {
+        // Source resolves "cd .." via path.resolve(workdir, ".."), which yields
+        // /home/user on Linux and D:\home\user on Windows. Compare the realpathSync
+        // arg against path.resolve(workdir, "..") so the mock distinguishes the
+        // parent (out-of-bounds) from the workdir on both platforms.
         vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
-          if (p.toString() === "/home/user") return "/home/user";
-          return "/home/user/project";
+          const resolved = path.resolve(p.toString());
+          const parent = path.resolve(workdir, "..");
+          if (resolved === parent) return parent;
+          return path.resolve(workdir);
         });
 
         const context = permissionManager.createContext(
@@ -1980,10 +1986,14 @@ describe("PermissionManager", () => {
     });
 
     it("should deny 'cd ..' if it goes outside workdir", async () => {
+      // Source resolves "cd .." via path.resolve(workdir, ".."). Mirror that
+      // so the mock distinguishes the parent (out-of-bounds) from the workdir
+      // on both Linux (/home/user) and Windows (D:\home\user).
       vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
-        const pathStr = p.toString();
-        if (pathStr === "/home/user") return "/home/user";
-        return "/home/user/project";
+        const resolved = path.resolve(p.toString());
+        const parent = path.resolve(workdir, "..");
+        if (resolved === parent) return parent;
+        return path.resolve(workdir);
       });
 
       const context: ToolPermissionContext = {

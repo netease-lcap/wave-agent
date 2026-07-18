@@ -175,7 +175,7 @@ describe("SubagentManager - Session Functionality", () => {
       expect(transcriptPath).toMatch(
         /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jsonl$/,
       );
-      expect(transcriptPath).toContain("/mock/session/dir/");
+      expect(transcriptPath).toMatch(/[/\\]mock[/\\]session[/\\]dir[/\\]/);
     });
 
     it("should save subagent sessions using appendMessages function", async () => {

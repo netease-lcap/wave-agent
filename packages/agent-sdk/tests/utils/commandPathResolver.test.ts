@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import * as path from "path";
 
 import {
   generateCommandId,
@@ -23,10 +24,11 @@ describe("Command Path Resolver Utilities", () => {
 
     it("should reject nested commands", () => {
       // Test nested command: .wave/commands/openspec/apply.md -> should be rejected
-      expect(() =>
-        generateCommandId("/root/commands/openspec/apply.md", "/root/commands"),
-      ).toThrow(
-        "Command nesting not supported: openspec/apply.md. Commands must be in the root directory.",
+      const filePath = "/root/commands/openspec/apply.md";
+      const rootDir = "/root/commands";
+      const relativePath = path.relative(rootDir, filePath);
+      expect(() => generateCommandId(filePath, rootDir)).toThrow(
+        `Command nesting not supported: ${relativePath}. Commands must be in the root directory.`,
       );
     });
 

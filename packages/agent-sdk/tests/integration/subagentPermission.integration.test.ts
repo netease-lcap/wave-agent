@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import path from "node:path";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
@@ -183,8 +184,11 @@ describe("Subagent Permission Integration", () => {
     );
     expect(subagentPermissionManager.getAllowedRules()).toContain("git:*");
     expect(subagentPermissionManager.getDeniedRules()).toContain("Bash(rm *)");
+    // Source resolves additionalDirectories via path.resolve; "/tmp/other" is absolute
+    // so source does path.resolve("/tmp/other") which yields /tmp/other on Linux and
+    // D:\tmp\other on Windows. Mirror the transformation in the assertion.
     expect(subagentPermissionManager.getAdditionalDirectories()).toContain(
-      "/tmp/other",
+      path.resolve("/tmp/other"),
     );
     expect(subagentPermissionManager.getPlanFilePath()).toBe(
       "/tmp/test/plan.md",

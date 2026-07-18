@@ -86,8 +86,14 @@ export class PathEncoder {
     // Convert to safe directory name
     let encoded = pathToEncode;
 
-    // Remove leading slash to avoid empty directory names
-    if (encoded.startsWith("/")) {
+    // Remove Windows drive letter prefix (e.g. "D:") so encoded names are
+    // stable across platforms — path.resolve("/home/user/project") yields
+    // "D:\home\user\project" on Windows and we want the same encoded name
+    // as on Linux ("home-user-project").
+    encoded = encoded.replace(/^[a-zA-Z]:/, "");
+
+    // Remove leading slash/backslash to avoid empty directory names
+    if (encoded.startsWith("/") || encoded.startsWith("\\")) {
       encoded = encoded.substring(1);
     }
 

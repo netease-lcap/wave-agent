@@ -6,6 +6,7 @@ import {
   taskListTool,
 } from "../../src/tools/taskManagementTools.js";
 import { promises as fs } from "fs";
+import * as path from "path";
 import { TaskManager } from "../../src/services/taskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import { Container } from "../../src/utils/container.js";
@@ -59,11 +60,18 @@ describe("Task Management Integration Tests", () => {
       return content;
     });
 
-    vi.mocked(fs.readdir).mockImplementation(async (path) => {
-      const dirPath = path.toString();
+    vi.mocked(fs.readdir).mockImplementation(async (p) => {
+      const dirPath = p.toString();
+      // Source builds paths with path.join (backslash on Windows), so strip
+      // either separator when deriving the entry name from the stored path.
       const files = Array.from(virtualFs.keys())
-        .filter((p) => p.startsWith(dirPath))
-        .map((p) => p.replace(dirPath + "/", ""));
+        .filter(
+          (key) =>
+            key.startsWith(dirPath + path.sep) ||
+            key.startsWith(dirPath + "/") ||
+            key.startsWith(dirPath + "\\"),
+        )
+        .map((key) => key.slice(dirPath.length).replace(/^[\\/]/, ""));
 
       return files as unknown as Awaited<ReturnType<typeof fs.readdir>>;
     });

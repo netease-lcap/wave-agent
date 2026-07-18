@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as path from "node:path";
 import * as worktreeUtils from "@/utils/worktreeUtils.js";
 import * as gitUtils from "@/utils/gitUtils.js";
 import * as fs from "node:fs";
@@ -91,7 +92,9 @@ describe("worktreeUtils", () => {
 
       expect(result.name).toBe("my-feat");
       expect(result.branch).toBe("worktree-my-feat");
-      expect(result.path).toBe("/test/repo/.wave/worktrees/my-feat");
+      expect(result.path).toBe(
+        path.join("/test/repo", ".wave", "worktrees", "my-feat"),
+      );
       expect(result.repoRoot).toBe("/test/repo");
       expect(result.isNew).toBe(true);
       expect(result.originalHeadCommit).toBe("abc123");

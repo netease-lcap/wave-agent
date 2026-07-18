@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { resolvePath, getDisplayPath } from "../../src/utils/path.js";
 import { homedir } from "os";
-import { resolve } from "path";
+import { resolve, join } from "path";
 
 describe("path utils", () => {
   describe("resolvePath", () => {
@@ -55,7 +55,7 @@ describe("path utils", () => {
         "/Users/test/project/src/utils/path.ts",
         mockWorkdir,
       );
-      expect(result).toBe("src/utils/path.ts");
+      expect(result).toBe(join("src", "utils", "path.ts"));
     });
 
     it("should return absolute path when relative path starts with ..", () => {
@@ -127,7 +127,7 @@ describe("path utils", () => {
         "/custom/workdir/src/utils/file.ts",
         customWorkdir,
       );
-      expect(result).toBe("src/utils/file.ts");
+      expect(result).toBe(join("src", "utils", "file.ts"));
 
       // Test with different path that would be longer as relative
       const absolutePath = "/other/path/file.ts";

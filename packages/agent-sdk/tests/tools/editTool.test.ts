@@ -2,8 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { editTool } from "@/tools/editTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { readFile, writeFile, stat } from "fs/promises";
+import * as path from "path";
 import type { ToolContext } from "@/tools/types.js";
 import { Container } from "@/utils/container.js";
+
+// Source resolves file_path against context.workdir via path.resolve().
+// On Windows that prepends a drive letter (D:\...), so any path the source
+// stores/returns (readFileState keys, result.filePath, readFile/writeFile
+// call args) must be expressed as path.resolve(...) to match cross-platform.
+// Input file_path args stay literal; only the *resolved* form is wrapped.
+const WORKDIR = "/test/workdir";
+const r = (p: string) => path.resolve(WORKDIR, p);
 
 // Mock fs/promises
 vi.mock("fs/promises");
@@ -20,15 +29,16 @@ describe("editTool", () => {
   beforeEach(() => {
     mockContext = {
       abortSignal: new AbortController().signal,
-      workdir: "/test/workdir",
+      workdir: WORKDIR,
       taskManager: new TaskManager(new Container(), "test-session"),
       // Pre-populate readFileState so read-before-edit check passes.
+      // Keys must be the *resolved* path (matches source's resolvePath()).
       // Individual tests can override with an empty Map or undefined.
       readFileState: new Map([
-        ["/test/file.js", { mtime: 1000, hash: "abc" }],
-        ["/test/workdir/file.js", { mtime: 1000, hash: "abc" }],
-        ["/test/nonexistent.js", { mtime: 1000, hash: "abc" }],
-        ["/absolute/path/file.js", { mtime: 1000, hash: "abc" }],
+        [r("/test/file.js"), { mtime: 1000, hash: "abc" }],
+        [r("/test/workdir/file.js"), { mtime: 1000, hash: "abc" }],
+        [r("/test/nonexistent.js"), { mtime: 1000, hash: "abc" }],
+        [r("/absolute/path/file.js"), { mtime: 1000, hash: "abc" }],
       ]),
     };
   });
@@ -85,11 +95,11 @@ describe("editTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Text replaced successfully");
-    expect(result.filePath).toBe("/test/file.js");
+    expect(result.filePath).toBe(r("/test/file.js"));
 
-    expect(readFile).toHaveBeenCalledWith("/test/file.js", "utf-8");
+    expect(readFile).toHaveBeenCalledWith(r("/test/file.js"), "utf-8");
     expect(writeFile).toHaveBeenCalledWith(
-      "/test/file.js",
+      r("/test/file.js"),
       expectedContent,
       "utf-8",
     );
@@ -116,7 +126,7 @@ describe("editTool", () => {
     expect(result.content).toContain("Replaced 3 instances");
 
     expect(writeFile).toHaveBeenCalledWith(
-      "/test/file.js",
+      r("/test/file.js"),
       expectedContent,
       "utf-8",
     );
@@ -320,9 +330,9 @@ describe("editTool", () => {
 
     expect(result.success).toBe(true);
     // Should preserve absolute path
-    expect(readFile).toHaveBeenCalledWith("/absolute/path/file.js", "utf-8");
+    expect(readFile).toHaveBeenCalledWith(r("/absolute/path/file.js"), "utf-8");
     expect(writeFile).toHaveBeenCalledWith(
-      "/absolute/path/file.js",
+      r("/absolute/path/file.js"),
       expectedContent,
       "utf-8",
     );
@@ -412,7 +422,7 @@ describe("editTool", () => {
     expect(result.success).toBe(true);
     expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
       "msg-123",
-      "/test/file.js",
+      r("/test/file.js"),
       "modify",
     );
     expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(
@@ -486,7 +496,7 @@ describe("editTool", () => {
       {
         ...mockContext,
         readFileState: new Map([
-          ["/test/workdir/file.js", { mtime: 1000, hash: "abc" }],
+          [r("/test/workdir/file.js"), { mtime: 1000, hash: "abc" }],
         ]),
       },
     );
@@ -514,7 +524,7 @@ describe("editTool", () => {
 
     expect(result.success).toBe(true);
     expect(writeFile).toHaveBeenCalledWith(
-      "/test/file.js",
+      r("/test/file.js"),
       expectedContent,
       "utf-8",
     );
@@ -546,7 +556,7 @@ describe("editTool", () => {
       string,
       { mtime: number; hash: string; offset?: number; limit?: number }
     >();
-    readFileState.set("/test/file.js", { mtime: 1000, hash: "abc" });
+    readFileState.set(r("/test/file.js"), { mtime: 1000, hash: "abc" });
 
     vi.mocked(stat).mockResolvedValue({
       mtime: { getTime: () => 2000 } as Date,
@@ -575,7 +585,7 @@ describe("editTool", () => {
       string,
       { mtime: number; hash: string; offset?: number; limit?: number }
     >();
-    readFileState.set("/test/file.js", { mtime: 1000, hash: "abc" });
+    readFileState.set(r("/test/file.js"), { mtime: 1000, hash: "abc" });
 
     // First stat: staleness check (mtime matches)
     // Second stat: post-write state update
@@ -608,7 +618,7 @@ describe("editTool", () => {
       string,
       { mtime: number; hash: string; offset?: number; limit?: number }
     >();
-    readFileState.set("/test/file.js", { mtime: 1000, hash: "abc" });
+    readFileState.set(r("/test/file.js"), { mtime: 1000, hash: "abc" });
 
     // First stat: staleness check (mtime matches readFileState)
     // Second stat: post-write state update (new mtime)
@@ -630,7 +640,7 @@ describe("editTool", () => {
     );
 
     expect(result.success).toBe(true);
-    const updated = readFileState.get("/test/file.js");
+    const updated = readFileState.get(r("/test/file.js"));
     expect(updated).toBeDefined();
     expect(updated?.mtime).toBe(2000);
   });
