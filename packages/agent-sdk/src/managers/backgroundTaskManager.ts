@@ -35,7 +35,12 @@ export class BackgroundTaskManager {
     return this.container.get<NotificationQueue>("NotificationQueue")!;
   }
 
-  private notifyTasksChange(): void {
+  /**
+   * Fire the onBackgroundTasksChange callback so UI consumers refresh.
+   * Public so other managers (e.g. WorkflowManager) can trigger a refresh
+   * when their state changes without mutating a background task.
+   */
+  public notifyTasksChange(): void {
     this.callbacks.onBackgroundTasksChange?.(Array.from(this.tasks.values()));
   }
 

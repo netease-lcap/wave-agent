@@ -164,13 +164,20 @@ export class WorkflowManager {
     );
     const progressReporter = new ProgressReporter(run.meta, runId);
 
-    // Forward progress events via onProgress callback
+    // Forward progress events: mirror live counts onto the WorkflowRun and
+    // trigger a UI refresh so /workflows updates mid-execution (not just at
+    // completion). The UI reads getWorkflowRuns() -> listRuns(), which returns
+    // these same in-memory run objects.
     const onProgress = (
       event: import("../workflow/types.js").WorkflowProgressEvent,
     ) => {
       logger.debug(
         `[Workflow:${runId}] progress: ${event.type} phase=${event.phaseIndex} agent=${event.agentIndex}`,
       );
+      run.phases = progressReporter.getPhaseStates();
+      run.totalAgents = progressReporter.totalAgents;
+      run.totalTokens = progressReporter.totalTokens;
+      this.backgroundTaskManager.notifyTasksChange();
     };
     progressReporter.onEvent(onProgress);
 
@@ -251,11 +258,6 @@ export class WorkflowManager {
       sessionDir: this.sessionDir,
       runDir: path.join(this.sessionDir, "workflows", runId),
       agentControllers: runAgentControllers,
-      onProgress: (event) => {
-        logger.debug(
-          `[Workflow:${runId}] progress: ${event.type} phase=${event.phaseIndex} agent=${event.agentIndex}`,
-        );
-      },
       onLog: (message: string) => {
         logger.info(`[Workflow:${runId}] ${message}`);
       },

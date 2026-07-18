@@ -17,6 +17,7 @@ function createMockContainer(sessionDir?: string) {
     generateId: vi.fn().mockReturnValue("task-1"),
     addTask: vi.fn(),
     getTask: vi.fn().mockReturnValue(null),
+    notifyTasksChange: vi.fn(),
   };
 
   const mockNotificationQueue = {
@@ -376,6 +377,123 @@ describe("WorkflowManager", () => {
       await expect(manager.retryAgent("wf_nonexistent", 0)).rejects.toThrow(
         "not found",
       );
+    });
+  });
+
+  describe("live progress updates", () => {
+    // Verifies that WorkflowRun fields (phases, totalAgents, totalTokens)
+    // update live during execution, not only at completion — so the
+    // /workflows UI reflects progress mid-run.
+    it("updates run phases/agents/tokens and notifies mid-run, not only at completion", async () => {
+      const tmpDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "wf-progress-"),
+      );
+
+      const notifyTasksChange = vi.fn();
+      // Agent() blocks on these gates so the test can observe mid-run state.
+      let resolveScan: () => void = () => {};
+      let resolveSynth: () => void = () => {};
+      const scanGate = new Promise<void>((r) => {
+        resolveScan = r;
+      });
+      const synthGate = new Promise<void>((r) => {
+        resolveSynth = r;
+      });
+
+      const container = new Container();
+      container.register("BackgroundTaskManager", {
+        generateId: vi.fn().mockReturnValue("task-progress"),
+        addTask: vi.fn(),
+        getTask: vi
+          .fn()
+          .mockReturnValue({ id: "task-progress", status: "running" }),
+        notifyTasksChange,
+      });
+      container.register("NotificationQueue", { enqueue: vi.fn() });
+      container.register("SubagentManager", {
+        findSubagent: vi.fn().mockResolvedValue({ id: "general-purpose" }),
+        createInstance: vi.fn().mockResolvedValue({
+          subagentId: "sub-1",
+          toolManager: { register: vi.fn() },
+          permissionManager: { addTemporaryRules: vi.fn() },
+          messageManager: {
+            getMessages: vi
+              .fn()
+              .mockReturnValue([
+                { role: "assistant", usage: { total_tokens: 1234 } },
+              ]),
+            getTranscriptPath: vi.fn().mockReturnValue(undefined),
+          },
+        }),
+        // Block scan agents on the scan gate, synth agent on the synth gate.
+        executeAgent: vi
+          .fn()
+          .mockImplementation(async (_inst: unknown, _prompt: string) => {
+            if (_prompt.startsWith("scan")) {
+              await scanGate;
+            } else {
+              await synthGate;
+            }
+            return "result";
+          }),
+        cleanupInstance: vi.fn(),
+      });
+      container.register("MessageManager", {
+        getSessionDir: vi.fn().mockReturnValue(tmpDir),
+      });
+      container.register("workdir", tmpDir);
+
+      const progressManager = new WorkflowManager(container);
+
+      const script = [
+        "export const meta = { name: 'live-progress', description: 'd', phases: [{ title: 'Scan' }, { title: 'Synthesize' }] }",
+        "phase('Scan')",
+        "await parallel([() => agent('scan-a'), () => agent('scan-b')])",
+        "phase('Synthesize')",
+        "await agent('synthesize')",
+        "return 'done'",
+      ].join("\n");
+      const run = await progressManager.createRun(script);
+      await progressManager.startRun(run.runId);
+
+      // Let the event loop turn so scan agents start and emit agent_started.
+      await new Promise((r) => setTimeout(r, 20));
+
+      // --- MID-RUN snapshot: scan agents started, not yet completed ---
+      const midRun = progressManager.getRun(run.runId)!;
+      expect(midRun.status).toBe("running");
+      expect(midRun.totalAgents).toBe(2);
+      expect(midRun.totalTokens).toBe(0);
+      expect(midRun.phases).toHaveLength(2);
+      expect(midRun.phases[0].agentCount).toBe(2); // Scan phase
+      expect(midRun.phases[1].agentCount).toBe(0); // Synthesize not started
+      // notifyTasksChange fired for the phase/agent_started events.
+      expect(notifyTasksChange).toHaveBeenCalled();
+
+      // Release scan agents -> they complete and Synthesize starts.
+      resolveScan();
+      await new Promise((r) => setTimeout(r, 20));
+
+      // --- After scan completes, before synth completes ---
+      const afterScan = progressManager.getRun(run.runId)!;
+      expect(afterScan.status).toBe("running");
+      expect(afterScan.totalAgents).toBe(3);
+      expect(afterScan.totalTokens).toBe(2468); // 2 scan agents * 1234 tokens
+      expect(afterScan.phases[0].tokens).toBe(2468);
+      expect(afterScan.phases[1].agentCount).toBe(1); // synth agent started
+
+      // Release synth -> run completes.
+      resolveSynth();
+      await run.completionPromise;
+
+      // --- Final snapshot ---
+      expect(run.status).toBe("completed");
+      expect(run.totalAgents).toBe(3);
+      expect(run.totalTokens).toBe(3702); // 3 agents * 1234 tokens
+      expect(run.phases[0].tokens).toBe(2468);
+      expect(run.phases[1].tokens).toBe(1234);
+
+      await fs.promises.rm(tmpDir, { recursive: true, force: true });
     });
   });
 });
