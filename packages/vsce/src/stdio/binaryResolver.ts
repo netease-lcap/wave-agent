@@ -135,12 +135,25 @@ export function resetCache(): void {
  * Resets the cached path on success and returns the freshly-resolved binary path.
  */
 export async function upgradeWaveBinary(targetVersion: string): Promise<string> {
+    // Validate the version before it touches a shell. targetVersion originates
+    // from the extension's package.json (trusted), but on Windows execFile runs
+    // through cmd.exe (see shell option below); a strict semver check preserves
+    // the "no shell injection of the version arg" guarantee this function held
+    // when it used execFile without a shell.
+    const SEMVER_RE = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+    if (!SEMVER_RE.test(targetVersion)) {
+        throw new Error(`Invalid version: ${targetVersion}`);
+    }
+
     const npm = findNpm();
     await new Promise<void>((resolve, reject) => {
         execFile(
             npm,
             ['install', '-g', `wave-code@${targetVersion}`, `--registry=${NPM_REGISTRY}`],
-            { encoding: 'utf-8' },
+            // `npm` is `npm.cmd` on Windows; Node refuses to execFile a `.cmd`
+            // without a shell (ERR_CHILD_PROCESS_INVALID_COMMAND_FILE). The
+            // validated version above contains no shell metacharacters.
+            { encoding: 'utf-8', shell: process.platform === 'win32' },
             (err) => {
                 if (err) reject(err);
                 else resolve();
