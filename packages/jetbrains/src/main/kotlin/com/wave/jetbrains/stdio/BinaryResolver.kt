@@ -10,6 +10,7 @@ import java.io.File
 object BinaryResolver {
     private val LOG = logger<BinaryResolver>()
     private const val PACKAGE = "wave-code"
+    const val NPM_REGISTRY = "https://registry.npmmirror.com"
 
     @Volatile
     private var cachedPath: String? = null
@@ -37,8 +38,8 @@ object BinaryResolver {
 
         // 4. auto-install
         val npm = findNpm()
-        LOG.info("wave not found; running: \"$npm\" install -g $PACKAGE")
-        runCommand(npm, "install", "-g", PACKAGE)
+        LOG.info("wave not found; running: \"$npm\" install -g $PACKAGE --registry=$NPM_REGISTRY")
+        runCommand(npm, "install", "-g", PACKAGE, "--registry=$NPM_REGISTRY")
 
         // 5. recheck global bin
         if (File(globalPath).exists()) return cache(globalPath)
@@ -47,7 +48,19 @@ object BinaryResolver {
         findOnPath(waveName)?.let { return cache(it) }
 
         // 7. fail
-        throw StdioClientException("wave binary not found after installation. Ensure npm global bin is on PATH.")
+        throw StdioClientException("wave binary not found after installation. Install manually: npm install -g $PACKAGE --registry=$NPM_REGISTRY")
+    }
+
+    /**
+     * Upgrade the globally-installed `wave-code` CLI to [targetVersion].
+     * Resets the cached path on success and returns the freshly-resolved binary path.
+     */
+    fun upgradeWaveBinary(targetVersion: String): String {
+        val npm = findNpm()
+        LOG.info("Upgrading $PACKAGE to $targetVersion via: \"$npm\" install -g $PACKAGE@$targetVersion --registry=$NPM_REGISTRY")
+        runCommand(npm, "install", "-g", "$PACKAGE@$targetVersion", "--registry=$NPM_REGISTRY")
+        resetCache()
+        return resolveWaveBinary()
     }
 
     /**
@@ -173,7 +186,7 @@ object BinaryResolver {
      * Leading `v` is stripped, segments compared numerically; missing/unparseable
      * segments count as 0. Returns negative/zero/positive like [Comparator].
      */
-    internal fun compareVersions(a: String, b: String): Int {
+    fun compareVersions(a: String, b: String): Int {
         val sa = a.trimStart('v').split('.').map { it.toIntOrNull() ?: 0 }
         val sb = b.trimStart('v').split('.').map { it.toIntOrNull() ?: 0 }
         val n = maxOf(sa.size, sb.size)

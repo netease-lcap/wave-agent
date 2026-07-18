@@ -54,6 +54,8 @@ class StdioAgent(
         private set
     @Volatile var permissionMode: String? = null
         private set
+    @Volatile var serverVersion: String? = null
+        private set
 
     val isDisposed get() = client.disposed
 
@@ -141,11 +143,13 @@ class StdioAgent(
         workingDirectory = res["workingDirectory"]?.jsonPrimitive?.content
         permissionMode = res["permissionMode"]?.jsonPrimitive?.content
         res["latestTotalTokens"]?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }
+        res["serverVersion"]?.jsonPrimitive?.content?.let { serverVersion = it }
         return InitializeResult(
             sessionId = sessionId,
             workingDirectory = workingDirectory,
             permissionMode = permissionMode,
             latestTotalTokens = latestTotalTokens,
+            serverVersion = serverVersion,
         )
     }
 
@@ -301,6 +305,7 @@ data class InitializeResult(
     val workingDirectory: String?,
     val permissionMode: String?,
     val latestTotalTokens: Int,
+    val serverVersion: String? = null,
 )
 
 private val JsonPrimitive.intOrNull: Int? get() = content.toIntOrNull()

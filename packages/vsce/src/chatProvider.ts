@@ -17,7 +17,8 @@ import { PluginService } from './services/pluginService';
 import { WebviewManager } from './session/webviewManager';
 import { MessageHandler } from './session/messageHandler';
 import { StdioClient } from './stdio/stdioClient';
-import { resolveWaveBinary } from './stdio/binaryResolver';
+import { resolveWaveBinary, upgradeWaveBinary } from './stdio/binaryResolver';
+import { parseVersion, compareVersions } from './services/updateService';
 
 export class ChatProvider implements vscode.WebviewViewProvider {
     private static formatConfigError(error: unknown): string {
@@ -46,6 +47,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     private webviewManager: WebviewManager;
     private messageHandler: MessageHandler;
     private utilityClient: StdioClient | undefined;
+    private cliUpgradeAttempted = false;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -254,10 +256,33 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             return;
         }
 
+        const clientVersion: string | undefined = this.context.extension.packageJSON?.version;
+        const upgradedThisCall = this.cliUpgradeAttempted;
+
         try {
             const config = await this.configService.loadConfiguration();
-            
-            await session.initialize(config, restoreSessionId);
+            await session.initialize(config, restoreSessionId, clientVersion);
+
+            // Version negotiation: if the CLI is older than the extension, silently
+            // upgrade once per activation and re-initialize.
+            if (!upgradedThisCall && clientVersion && session.agent?.serverVersion) {
+                const client = parseVersion(clientVersion);
+                const server = parseVersion(session.agent.serverVersion);
+                if (client && server && compareVersions(server, client) < 0) {
+                    this.cliUpgradeAttempted = true;
+                    try {
+                        console.log(`[Wave] CLI ${session.agent.serverVersion} < extension ${clientVersion}, upgrading...`);
+                        await upgradeWaveBinary(clientVersion);
+                        await session.destroy();
+                        await session.initialize(config, undefined, clientVersion);
+                    } catch (upgradeError) {
+                        console.error('[Wave] CLI auto-upgrade failed:', upgradeError);
+                        vscode.window.showErrorMessage(
+                            'Wave CLI 升级失败，请手动执行: npm install -g wave-code --registry=https://registry.npmmirror.com',
+                        );
+                    }
+                }
+            }
         } catch (error) {
             console.error(`初始化 ${viewType} 智能体失败:`, error);
             const isConfigError = error && typeof error === 'object' && 'name' in error && error.name === 'ConfigurationError';

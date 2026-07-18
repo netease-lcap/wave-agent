@@ -42,6 +42,7 @@ export interface InitializeParams {
     disallowedTools?: string[];
     pluginDirs?: string[];
     mcpServers?: Record<string, McpServerConfig>;
+    clientVersion?: string;
 }
 
 export interface InitializeResult {
@@ -49,6 +50,7 @@ export interface InitializeResult {
     workingDirectory: string;
     permissionMode: PermissionMode;
     latestTotalTokens: number;
+    serverVersion?: string;
 }
 
 export interface UpdateConfigParams {
@@ -110,6 +112,7 @@ export class StdioAgent {
     public workingDirectory: string | undefined;
     public latestTotalTokens = 0;
     public permissionMode: PermissionMode | undefined;
+    public serverVersion: string | undefined;
     public messages: Message[] = [];
     public queuedMessages: QueuedMessage[] = [];
     public tasks: Task[] = [];
@@ -136,6 +139,7 @@ export class StdioAgent {
         this.workingDirectory = result.workingDirectory;
         this.permissionMode = result.permissionMode;
         this.latestTotalTokens = result.latestTotalTokens;
+        this.serverVersion = result.serverVersion;
         return result;
     }
 

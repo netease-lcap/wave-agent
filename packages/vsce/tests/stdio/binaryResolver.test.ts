@@ -4,10 +4,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockExecSync = vi.hoisted(() => vi.fn());
 const mockExistsSync = vi.hoisted(() => vi.fn());
+const mockExecFile = vi.hoisted(() => vi.fn());
 
 vi.mock('child_process', () => ({
-    default: { execSync: mockExecSync },
+    default: { execSync: mockExecSync, execFile: mockExecFile },
     execSync: mockExecSync,
+    execFile: mockExecFile,
 }));
 
 vi.mock('fs', () => ({
@@ -17,7 +19,7 @@ vi.mock('fs', () => ({
 
 // ── Import after mocks ─────────────────────────────────────────
 
-import { resolveWaveBinary, _resetCacheForTesting } from '../../src/stdio/binaryResolver';
+import { resolveWaveBinary, _resetCacheForTesting, upgradeWaveBinary, resetCache, NPM_REGISTRY } from '../../src/stdio/binaryResolver';
 
 describe('binaryResolver', () => {
     beforeEach(() => {
@@ -149,5 +151,92 @@ describe('binaryResolver', () => {
         expect(() => resolveWaveBinary()).toThrow(
             'wave binary not found after installation',
         );
+    });
+
+    // ── install-if-missing registry ──────────────────────────────
+
+    it('install-if-missing uses npmmirror registry', async () => {
+        let installCmd = '';
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes('which wave')) {
+                if (installCmd) return '/usr/local/bin/wave\n';
+                throw new Error('not found');
+            }
+            if (cmd.includes('which npm')) return '/usr/bin/npm\n';
+            if (cmd.includes('prefix -g')) return '/usr/local\n';
+            if (cmd.includes('install -g wave-code')) {
+                installCmd = cmd;
+                return '';
+            }
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExistsSync.mockImplementation((p: string) => !!installCmd && p === '/usr/local/bin/wave');
+
+        const result = await resolveWaveBinary();
+        expect(result).toBe('/usr/local/bin/wave');
+        expect(installCmd).toContain(`--registry=${NPM_REGISTRY}`);
+    });
+
+    // ── resetCache ───────────────────────────────────────────────
+
+    it('resetCache clears the cached path', async () => {
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes('which wave')) return '/usr/local/bin/wave\n';
+            throw new Error('unexpected');
+        });
+
+        await resolveWaveBinary();
+        resetCache();
+        await resolveWaveBinary();
+
+        const whichCalls = mockExecSync.mock.calls.filter(
+            (c: unknown[]) => (c[0] as string).includes('which wave'),
+        );
+        expect(whichCalls).toHaveLength(2);
+    });
+
+    // ── upgradeWaveBinary ────────────────────────────────────────
+
+    it('upgradeWaveBinary installs the target version via execFile with npmmirror registry', async () => {
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes('which npm')) return '/usr/bin/npm\n';
+            if (cmd.includes('which wave')) return '/usr/local/bin/wave\n';
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExecFile.mockImplementation((...args: unknown[]) => {
+            const cb = args[args.length - 1] as (err: Error | null) => void;
+            cb(null);
+        });
+
+        const result = await upgradeWaveBinary('1.2.3');
+
+        expect(result).toBe('/usr/local/bin/wave');
+        expect(mockExecFile).toHaveBeenCalledTimes(1);
+        const callArgs = mockExecFile.mock.calls[0];
+        expect(callArgs[0]).toBe('/usr/bin/npm');
+        expect(callArgs[1]).toEqual([
+            'install',
+            '-g',
+            'wave-code@1.2.3',
+            `--registry=${NPM_REGISTRY}`,
+        ]);
+        // cache was invalidated: resolveWaveBinary re-ran `which wave`
+        const whichCalls = mockExecSync.mock.calls.filter(
+            (c: unknown[]) => (c[0] as string).includes('which wave'),
+        );
+        expect(whichCalls).toHaveLength(1);
+    });
+
+    it('upgradeWaveBinary rejects when execFile errors', async () => {
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes('which npm')) return '/usr/bin/npm\n';
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExecFile.mockImplementation((...args: unknown[]) => {
+            const cb = args[args.length - 1] as (err: Error | null) => void;
+            cb(new Error('install failed'));
+        });
+
+        await expect(upgradeWaveBinary('1.2.3')).rejects.toThrow('install failed');
     });
 });

@@ -7,6 +7,14 @@ import {
   listSessions,
   searchFiles,
 } from "wave-agent-sdk";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import path from "path";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CLI_PACKAGE_VERSION = JSON.parse(
+  readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8"),
+).version as string;
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
@@ -93,6 +101,7 @@ test("initialize creates Agent with correct options and returns session info", a
     workingDirectory: "/test/workdir",
     permissionMode: "default",
     latestTotalTokens: 100,
+    serverVersion: CLI_PACKAGE_VERSION,
   });
   expect(Agent.create).toHaveBeenCalledTimes(1);
 
@@ -118,6 +127,27 @@ test("initialize passes pluginDirs as PluginConfig[]", async () => {
     { type: "local", path: "/path/to/plugin1" },
     { type: "local", path: "/path/to/plugin2" },
   ]);
+});
+
+test("initialize returns serverVersion from package.json", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  const result = (await bridge.handleRequest("initialize", {
+    workdir: "/test",
+  })) as { serverVersion: string };
+
+  expect(typeof result.serverVersion).toBe("string");
+  expect(result.serverVersion).toBe(CLI_PACKAGE_VERSION);
+});
+
+test("initialize accepts missing clientVersion without error", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await expect(
+    bridge.handleRequest("initialize", { workdir: "/test" }),
+  ).resolves.toBeDefined();
 });
 
 // ── Callbacks → Notifications ────────────────────────────────────
