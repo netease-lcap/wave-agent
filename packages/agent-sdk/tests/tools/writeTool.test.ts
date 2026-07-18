@@ -285,7 +285,7 @@ describe("writeTool", () => {
 
     expect(result.success).toBe(true);
     expect(writeFile).toHaveBeenCalledWith(
-      "/test/special.txt",
+      path.resolve("/test/special.txt"),
       content,
       "utf-8",
     );
@@ -403,7 +403,7 @@ describe("writeTool", () => {
       expect(result.success).toBe(true);
       expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
         "msg-1",
-        "/test/new.txt",
+        path.resolve("/test/new.txt"),
         "create",
       );
       expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(
@@ -433,7 +433,7 @@ describe("writeTool", () => {
       expect(result.success).toBe(true);
       expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
         "msg-2",
-        "/test/existing.txt",
+        path.resolve("/test/existing.txt"),
         "modify",
       );
       expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(
