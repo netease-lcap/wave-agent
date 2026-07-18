@@ -15,6 +15,7 @@ import {
   statSync,
 } from "fs";
 import * as os from "os";
+import * as path from "path";
 
 // ---- http mock with controllable behavior ----
 interface MockResponse {
@@ -101,7 +102,9 @@ describe("AuthService", () => {
     it("returns ~/.wave/auth.json", () => {
       vi.mocked(os.homedir).mockReturnValue("/home/user");
       const service = AuthService.getInstance();
-      expect(service.getAuthPath()).toBe("/home/user/.wave/auth.json");
+      expect(service.getAuthPath()).toBe(
+        path.join("/home/user", ".wave", "auth.json"),
+      );
     });
   });
 
@@ -135,15 +138,18 @@ describe("AuthService", () => {
       const service = AuthService.getInstance();
       service.saveAuth({ SSO_TOKEN: "new-token" });
 
-      expect(mockedMkdir).toHaveBeenCalledWith("/tmp/.wave", {
+      expect(mockedMkdir).toHaveBeenCalledWith(path.join("/tmp", ".wave"), {
         recursive: true,
       });
       expect(mockedWriteFile).toHaveBeenCalledWith(
-        "/tmp/.wave/auth.json",
+        path.join("/tmp", ".wave", "auth.json"),
         JSON.stringify({ SSO_TOKEN: "new-token" }, null, 2),
         "utf-8",
       );
-      expect(mockedChmod).toHaveBeenCalledWith("/tmp/.wave/auth.json", 0o600);
+      expect(mockedChmod).toHaveBeenCalledWith(
+        path.join("/tmp", ".wave", "auth.json"),
+        0o600,
+      );
     });
 
     it("does not create directory if it already exists", () => {
@@ -168,7 +174,9 @@ describe("AuthService", () => {
       const service = AuthService.getInstance();
       await service.clearAuth();
 
-      expect(mockedRm).toHaveBeenCalledWith("/tmp/.wave/auth.json");
+      expect(mockedRm).toHaveBeenCalledWith(
+        path.join("/tmp", ".wave", "auth.json"),
+      );
     });
 
     it("removes SSO_REFRESH_TOKEN and SSO_TOKEN_EXPIRES_AT along with SSO_TOKEN", async () => {
@@ -185,7 +193,7 @@ describe("AuthService", () => {
       await service.clearAuth();
 
       expect(mockedWriteFile).toHaveBeenCalledWith(
-        "/tmp/.wave/auth.json",
+        path.join("/tmp", ".wave", "auth.json"),
         JSON.stringify({ OTHER_KEY: "value" }, null, 2),
         "utf-8",
       );
@@ -201,7 +209,7 @@ describe("AuthService", () => {
       await service.clearAuth();
 
       expect(mockedWriteFile).toHaveBeenCalledWith(
-        "/tmp/.wave/auth.json",
+        path.join("/tmp", ".wave", "auth.json"),
         JSON.stringify({ OTHER_KEY: "value" }, null, 2),
         "utf-8",
       );
