@@ -63,7 +63,7 @@ export class ChatSession {
         private callbacks: ChatSessionCallbacks
     ) {}
 
-    public async initialize(config: ConfigurationData, restoreSessionId?: string) {
+    public async initialize(config: ConfigurationData, restoreSessionId?: string, clientVersion?: string) {
         if (this.isInitializing) {
             return;
         }
@@ -162,6 +162,7 @@ export class ChatSession {
                 model: config.model,
                 fastModel: config.fastModel,
                 language: config.language,
+                clientVersion,
             };
 
             try {

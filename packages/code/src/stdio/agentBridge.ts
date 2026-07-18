@@ -35,6 +35,21 @@ import {
   INTERNAL_ERROR as PROTOCOL_INTERNAL_ERROR,
   METHOD_NOT_FOUND as PROTOCOL_METHOD_NOT_FOUND,
 } from "./protocol.js";
+import { readFileSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CLI_VERSION: string = (() => {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8"),
+    );
+    return pkg.version ?? "";
+  } catch {
+    return "";
+  }
+})();
 
 export type NotificationEmitter = (method: string, params: unknown) => void;
 
@@ -58,6 +73,7 @@ interface InitializeParams {
   disallowedTools?: string[];
   pluginDirs?: string[];
   mcpServers?: Record<string, McpServerConfig>;
+  clientVersion?: string;
 }
 
 interface UpdateConfigParams {
@@ -252,6 +268,7 @@ export class AgentBridge {
     workingDirectory: string;
     permissionMode: PermissionMode;
     latestTotalTokens: number;
+    serverVersion: string;
   }> {
     // Merge with stored config (CLI defaults can be overridden by client)
     this.storedConfig = { ...this.storedConfig, ...params };
@@ -278,11 +295,18 @@ export class AgentBridge {
 
     this.agent = await Agent.create(options);
 
+    if (params.clientVersion) {
+      console.debug(
+        `[agentBridge] clientVersion=${params.clientVersion} serverVersion=${CLI_VERSION}`,
+      );
+    }
+
     return {
       sessionId: this.agent.sessionId,
       workingDirectory: this.agent.workingDirectory,
       permissionMode: this.agent.getPermissionMode(),
       latestTotalTokens: this.agent.latestTotalTokens,
+      serverVersion: CLI_VERSION,
     };
   }
 

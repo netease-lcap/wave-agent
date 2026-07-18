@@ -1,9 +1,12 @@
 package com.wave.jetbrains.session
 
 import com.intellij.ide.BrowserUtil
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.config.WavePluginService
+import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.AgentCallbacks
 import com.wave.jetbrains.stdio.BinaryResolver
 import com.wave.jetbrains.stdio.StdioAgent
@@ -111,6 +114,7 @@ class WaveSession(
                 if (config.model.isNotEmpty()) put("model", config.model)
                 if (config.fastModel.isNotEmpty()) put("fastModel", config.fastModel)
                 put("language", config.language)
+                put("clientVersion", pluginVersion())
             }
             try {
                 a.initialize(params)
@@ -127,6 +131,28 @@ class WaveSession(
                 sessionId = a.sessionId
             }
             permissionMode = a.permissionMode
+            // Version negotiation: if the CLI is older than the plugin, silently upgrade once per activation.
+            val pluginVer = pluginVersion()
+            if (!cliUpgradeAttempted && pluginVer.isNotEmpty() && !a.serverVersion.isNullOrEmpty()) {
+                val cmp = try {
+                    BinaryResolver.compareVersions(a.serverVersion!!, pluginVer)
+                } catch (_: Exception) { 0 }
+                if (cmp < 0) {
+                    cliUpgradeAttempted = true
+                    try {
+                        LOG.info("CLI ${a.serverVersion} < plugin $pluginVer; upgrading wave-code to $pluginVer")
+                        BinaryResolver.upgradeWaveBinary(pluginVer)
+                        // Restart on the new binary: destroy current agent and re-initialize once.
+                        try { a.close() } catch (_: Exception) {}
+                        agent = null
+                        isInitializing = false
+                        return initialize(null)
+                    } catch (e: Exception) {
+                        LOG.error("CLI auto-upgrade failed", e)
+                        IdeService.showError(project, "Wave CLI 升级失败，请手动执行: npm install -g wave-code --registry=https://registry.npmmirror.com")
+                    }
+                }
+            }
             true
         } catch (e: Exception) {
             LOG.error("Failed to initialize wave session", e)
@@ -353,6 +379,12 @@ class WaveSession(
     }
 
     companion object {
+        @Volatile
+        private var cliUpgradeAttempted = false
+
+        fun pluginVersion(): String =
+            PluginManagerCore.getPlugin(PluginId.getId("com.wave.jetbrains"))?.version ?: ""
+
         fun parseHeaders(text: String): JsonObject? {
             if (text.isBlank()) return null
             return try {

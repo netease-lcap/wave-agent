@@ -8,9 +8,12 @@
  * Result is cached for the extension lifetime.
  */
 
-import { execSync } from 'child_process';
+import { execSync, execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+
+/** npm registry mirror for China users (faster than the default registry). */
+export const NPM_REGISTRY = 'https://registry.npmmirror.com';
 
 let cachedPath: string | undefined;
 
@@ -80,7 +83,7 @@ export function resolveWaveBinary(): string {
         globalBin = getNpmGlobalBin();
     } catch {
         throw new Error(
-            'Failed to determine npm global directory. Please install wave-code manually: npm install -g wave-code',
+            'Failed to determine npm global directory. Please install wave-code manually: npm install -g wave-code --registry=https://registry.npmmirror.com',
         );
     }
 
@@ -94,7 +97,7 @@ export function resolveWaveBinary(): string {
     // 3. Install globally
     console.log('[Wave] wave binary not found, installing wave-code globally...');
     const npm = findNpm();
-    execSync(`"${npm}" install -g wave-code`, {
+    execSync(`"${npm}" install -g wave-code --registry=${NPM_REGISTRY}`, {
         encoding: 'utf-8',
         stdio: 'pipe',
     });
@@ -117,8 +120,35 @@ export function resolveWaveBinary(): string {
     }
 
     throw new Error(
-        'wave binary not found after installation. Please install manually: npm install -g wave-code',
+        'wave binary not found after installation. Please install manually: npm install -g wave-code --registry=https://registry.npmmirror.com',
     );
+}
+
+/** Reset cached binary path. Public so callers can force re-resolve after an upgrade. */
+export function resetCache(): void {
+    cachedPath = undefined;
+}
+
+/**
+ * Upgrade the globally-installed `wave-code` CLI to a specific version.
+ * Uses `execFile` (not a shell string) to avoid shell injection of the version arg.
+ * Resets the cached path on success and returns the freshly-resolved binary path.
+ */
+export async function upgradeWaveBinary(targetVersion: string): Promise<string> {
+    const npm = findNpm();
+    await new Promise<void>((resolve, reject) => {
+        execFile(
+            npm,
+            ['install', '-g', `wave-code@${targetVersion}`, `--registry=${NPM_REGISTRY}`],
+            { encoding: 'utf-8' },
+            (err) => {
+                if (err) reject(err);
+                else resolve();
+            },
+        );
+    });
+    cachedPath = undefined; // invalidate cache so resolveWaveBinary picks up the new binary
+    return resolveWaveBinary();
 }
 
 /** Reset cached path — for testing only. */
