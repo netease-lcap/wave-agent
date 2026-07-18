@@ -27,6 +27,7 @@
     "jb:run": "./packages/jetbrains/gradlew -p packages/jetbrains runIde --no-daemon",
     "jb:build": "pnpm -F wave-webview build && ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon",
     "jb:package": "./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon",
+    "jb:test": "./packages/jetbrains/gradlew -p packages/jetbrains test --no-daemon",
     "prepare": "husky"
   },
   "devDependencies": {

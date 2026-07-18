@@ -1,0 +1,46 @@
+name: CI (JetBrains)
+
+# Runs the JetBrains plugin's Gradle (JUnit) test suite.
+# The Node-based `pnpm -r test` in ci.yml skips this package (it has no
+# package.json), so without this workflow BinaryResolver and other Kotlin
+# logic has no merge gate.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-jetbrains-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-jetbrains:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Detect jetbrains changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            jetbrains:
+              - 'packages/jetbrains/**'
+
+      - name: Setup JDK 17
+        if: steps.filter.outputs.jetbrains == 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        if: steps.filter.outputs.jetbrains == 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run tests
+        if: steps.filter.outputs.jetbrains == 'true'
+        run: ./packages/jetbrains/gradlew -p packages/jetbrains test --no-daemon
