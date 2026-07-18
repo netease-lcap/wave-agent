@@ -274,8 +274,8 @@ describe("main", () => {
       continueLastSession: undefined,
       bypassPermissions: false,
       pluginDirs: [
-        expect.stringContaining("/tmp/plugins1"),
-        expect.stringContaining("/tmp/plugins2"),
+        expect.stringContaining(path.join("/tmp", "plugins1")),
+        expect.stringContaining(path.join("/tmp", "plugins2")),
       ],
       tools: undefined,
       worktreeSession: undefined,
