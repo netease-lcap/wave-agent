@@ -46,19 +46,6 @@ await agent.sendMessage('帮我写一个排序算法');
 await agent.destroy();
 ```
 
-### 开发 {#development}
-
-```bash
-# 构建
-pnpm -F wave-agent-sdk build
-
-# 运行测试
-pnpm -F wave-agent-sdk test
-
-# 类型检查
-pnpm -F wave-agent-sdk run type-check
-```
-
 ## 2. Agent 生命周期 {#agent-lifecycle}
 
 ### 创建 Agent {#agent-create}
