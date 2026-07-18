@@ -1,0 +1,48 @@
+{
+  "name": "wave-webview",
+  "private": true,
+  "description": "Shared webview layer (React IIFE bundle) for Wave VS Code and JetBrains plugins",
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "pnpm run compile",
+    "clean": "node -e \"import('fs').then(fs => {try{fs.rmSync('dist', {recursive:true, force:true})}catch(e){}})\"",
+    "compile": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "type-check": "tsc --noEmit && tsc -p tests --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "pretest:demo": "pnpm run type-check && tsc -p e2e --noEmit && pnpm run compile",
+    "test:demo": "playwright test --project=demo"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/diff": "^7.0.2",
+    "@types/node": "^25.0.1",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "esbuild": "^0.28.0",
+    "jsdom": "^29.1.1",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5",
+    "wave-agent-sdk": "workspace:*"
+  },
+  "dependencies": {
+    "@vscode/codicons": "^0.0.43",
+    "diff": "^8.0.2",
+    "dompurify": "^3.3.0",
+    "marked": "^9.1.6",
+    "mermaid": "^11.12.2"
+  }
+}

@@ -1,0 +1,14 @@
+/* Chat Layout */
+.chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.input-area-container {
+    border-top: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-panel-background);
+    display: flex;
+    flex-direction: column;
+}

@@ -1,0 +1,191 @@
+/* DiffViewer Component Styles */
+
+/* Main container */
+.diff-viewer-container {
+    margin: 4px 0;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    overflow: hidden;
+    background-color: var(--vscode-editor-background);
+    max-height: 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Main content area */
+.diff-viewer-content {
+    flex: 1;
+    overflow-y: auto;
+    font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', monospace);
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.diff-viewer-content:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+/* Diff changes container */
+.diff-changes {
+    display: flex;
+    flex-direction: column;
+}
+
+.diff-change {
+    margin: 0;
+}
+
+/* Individual diff lines */
+.diff-line {
+    display: flex;
+    align-items: flex-start;
+    border: none;
+    margin: 0;
+}
+
+.diff-prefix {
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+    font-weight: bold;
+    user-select: none;
+    padding: 2px 0;
+}
+
+.diff-content {
+    flex: 1;
+    padding: 2px 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Added lines (green) */
+.diff-line-added {
+    background-color: var(--vscode-diffEditor-insertedTextBackground, rgba(0, 255, 0, 0.1));
+}
+
+.diff-line-added .diff-prefix {
+    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+}
+
+/* Removed lines (red) */
+.diff-line-removed {
+    background-color: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.1));
+}
+
+.diff-line-removed .diff-prefix {
+    color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+
+/* Context lines (unchanged) */
+.diff-line-context .diff-prefix {
+    color: var(--vscode-editorLineNumber-foreground);
+}
+
+/* Word-level diff highlighting */
+.diff-word-added {
+    background-color: var(--vscode-diffEditor-insertedTextBackground, rgba(0, 255, 0, 0.3));
+    color: var(--vscode-diffEditor-insertedTextForeground);
+}
+
+.diff-word-removed {
+    background-color: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.3));
+    color: var(--vscode-diffEditor-removedTextForeground);
+    text-decoration: line-through;
+}
+
+.diff-word-unchanged {
+    color: var(--vscode-editor-foreground);
+}
+
+/* Error state */
+.diff-error {
+    padding: 12px;
+    color: var(--vscode-errorForeground);
+    background-color: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    border-radius: 4px;
+    margin: 4px;
+}
+
+/* Empty diff message */
+.diff-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Ellipsis line for truncated context */
+.diff-line-ellipsis {
+    color: var(--vscode-descriptionForeground);
+    padding: 2px 28px;
+    font-style: italic;
+    user-select: none;
+    font-size: 11px;
+}
+
+/* Scrollbar styling */
+.diff-viewer-content::-webkit-scrollbar {
+    width: 10px;
+}
+
+.diff-viewer-content::-webkit-scrollbar-track {
+    background: var(--vscode-scrollbar-shadow);
+}
+
+.diff-viewer-content::-webkit-scrollbar-thumb {
+    background: var(--vscode-scrollbarSlider-background);
+    border-radius: 5px;
+}
+
+.diff-viewer-content::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+/* Legacy compatibility - keeping old chunk-based styles for backward compatibility */
+.diff-chunk {
+    display: flex;
+    align-items: flex-start;
+    border: none;
+}
+
+.diff-chunk-prefix {
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+    font-weight: bold;
+    user-select: none;
+    padding-top: 2px;
+}
+
+.diff-chunk-content {
+    flex: 1;
+    padding: 2px 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Added chunks (green) */
+.diff-chunk-added {
+    background-color: var(--vscode-diffEditor-insertedTextBackground, rgba(0, 255, 0, 0.1));
+}
+
+.diff-chunk-added .diff-chunk-prefix {
+    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+}
+
+/* Removed chunks (red) */
+.diff-chunk-removed {
+    background-color: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.1));
+}
+
+.diff-chunk-removed .diff-chunk-prefix {
+    color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+
+/* Unchanged chunks */
+.diff-chunk:not(.diff-chunk-added):not(.diff-chunk-removed) .diff-chunk-prefix {
+    color: var(--vscode-editorLineNumber-foreground);
+}

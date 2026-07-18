@@ -1,0 +1,44 @@
+.context-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+    color: var(--vscode-foreground);
+    margin: 2px;
+    user-select: none;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.context-tag .tag-at {
+    font-weight: bold;
+    font-size: 14px;
+    opacity: 0.9;
+    margin-right: 4px;
+}
+
+.context-tag.clickable {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.context-tag.clickable:hover {
+    background-color: var(--vscode-editor-selectionBackground);
+    color: var(--vscode-button-foreground);
+    text-decoration: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.context-tag.clickable:active {
+    transform: translateY(1px);
+    box-shadow: none;
+}
+
+.context-tag .tag-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
