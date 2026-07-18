@@ -236,7 +236,7 @@ describe("main", () => {
       restoreSessionId: undefined,
       continueLastSession: undefined,
       bypassPermissions: false,
-      pluginDirs: [expect.stringContaining("/tmp/plugins")],
+      pluginDirs: [expect.stringContaining(path.join("/tmp", "plugins"))],
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
