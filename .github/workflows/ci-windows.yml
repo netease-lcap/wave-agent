@@ -39,3 +39,10 @@ jobs:
 
       - name: CI
         run: pnpm run ci
+
+      # TEMP: diagnose agent-sdk test:coverage silent failure on Windows.
+      # Runs agent-sdk tests in isolation with verbose reporter so output
+      # is not swallowed by pnpm --parallel. Remove once root cause is fixed.
+      - name: Diagnose agent-sdk tests (verbose)
+        if: always()
+        run: pnpm --filter wave-agent-sdk test:coverage -- --reporter=verbose
