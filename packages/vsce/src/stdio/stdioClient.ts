@@ -27,9 +27,15 @@ export class StdioClient {
         args: string[] = [],
         env?: Record<string, string>,
     ) {
+        // On Windows, binaryPath may be a `wave.cmd` shim. Node (since the
+        // CVE-2024-27980 patch) refuses to spawn `.cmd`/`.bat` files without a
+        // shell, throwing ERR_CHILD_PROCESS_INVALID_COMMAND_FILE. `args` is a
+        // fixed flag list (`['--stdio']`) with no metacharacters, so enabling
+        // the shell on Windows is safe; Unix behaviour is unchanged.
         this.proc = spawn(binaryPath, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: { ...process.env, ...env },
+            shell: process.platform === 'win32',
         });
 
         const rl = createInterface({ input: this.proc.stdout! });

@@ -100,6 +100,66 @@ describe('StdioClient', () => {
         expect(callEnv).toHaveProperty('PATH'); // inherited from process.env
     });
 
+    // ── Windows .cmd handling ─────────────────────────────────
+    // Node (since CVE-2024-27980, in VS Code's bundled Node 20.x) refuses to
+    // spawn a `.cmd`/`.bat` without `shell: true`, throwing
+    // ERR_CHILD_PROCESS_INVALID_COMMAND_FILE. `resolveWaveBinary` returns
+    // `wave.cmd` on Windows, so StdioClient must set `shell: true` there.
+    // These tests simulate that guard on Linux so the reproducer runs in the
+    // blocking CI pipeline.
+
+    function withPlatform<T>(platform: string, fn: () => T): T {
+        const original = Object.getOwnPropertyDescriptor(process, 'platform');
+        Object.defineProperty(process, 'platform', { value: platform });
+        try {
+            return fn();
+        } finally {
+            if (original) Object.defineProperty(process, 'platform', original);
+        }
+    }
+
+    /** Mock spawn that enforces Node's Windows `.cmd` guard. */
+    function spawnWithCmdGuard(proc: MockProc) {
+        mockSpawn.mockImplementation((cmd: string, _args: string[], options: { shell?: boolean } | undefined) => {
+            const isCmdShim = /\.cmd$/i.test(cmd);
+            if (isCmdShim && options?.shell !== true) {
+                const err = new Error('spawn wave.cmd ERR_CHILD_PROCESS_INVALID_COMMAND_FILE');
+                (err as Error & { code?: string }).code = 'ERR_CHILD_PROCESS_INVALID_COMMAND_FILE';
+                throw err;
+            }
+            return proc;
+        });
+    }
+
+    it('spawns wave.cmd with shell:true on Windows', () => {
+        withPlatform('win32', () => {
+            const proc = createMockProc();
+            const rl = new EventEmitter();
+            spawnWithCmdGuard(proc);
+            mockCreateInterface.mockReturnValue(rl);
+
+            // With the fix, shell:true is set → guard does not throw.
+            expect(() => new StdioClient('C:\\nodejs\\wave.cmd', ['--stdio'])).not.toThrow();
+
+            const call = mockSpawn.mock.calls[0];
+            expect(call[0]).toBe('C:\\nodejs\\wave.cmd');
+            expect(call[2].shell).toBe(true);
+        });
+    });
+
+    it('does not set shell on non-Windows platforms', () => {
+        // Force-evaluate on a non-win32 platform to confirm Unix parity.
+        withPlatform('linux', () => {
+            const proc = createMockProc();
+            mockSpawn.mockReturnValue(proc);
+            mockCreateInterface.mockReturnValue(new EventEmitter());
+
+            new StdioClient('/usr/local/bin/wave', ['--stdio']);
+
+            expect(mockSpawn.mock.calls[0][2].shell).toBe(false);
+        });
+    });
+
     // ── Request / Response ─────────────────────────────────────
 
     it('sends request with auto-incrementing id and returns result', async () => {

@@ -255,4 +255,74 @@ describe('binaryResolver', () => {
 
         await expect(upgradeWaveBinary('1.2.3')).rejects.toThrow('install failed');
     });
+
+    // ── Version validation (shell-injection guard) ────────────
+    // On Windows, execFile runs through cmd.exe; the version is validated
+    // first so shell metacharacters can never reach the shell.
+
+    it('upgradeWaveBinary rejects non-semver versions and never reaches execFile', async () => {
+        await expect(upgradeWaveBinary('1.2.3; rm -rf /')).rejects.toThrow('Invalid version');
+        await expect(upgradeWaveBinary('$(rm -rf /)')).rejects.toThrow('Invalid version');
+        await expect(upgradeWaveBinary('')).rejects.toThrow('Invalid version');
+        expect(mockExecFile).not.toHaveBeenCalled();
+    });
+
+    it('upgradeWaveBinary accepts prerelease/build semver', async () => {
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes(npmLookup)) return `${npmBin}\n`;
+            if (cmd.includes(waveLookup)) return `${globalWave}\n`;
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExecFile.mockImplementation((...args: unknown[]) => {
+            const cb = args[args.length - 1] as (err: Error | null) => void;
+            cb(null);
+        });
+
+        await expect(upgradeWaveBinary('1.2.3-alpha.1')).resolves.toBe(globalWave);
+        await expect(upgradeWaveBinary('1.2.3+build.7')).resolves.toBe(globalWave);
+    });
+
+    // ── Windows .cmd execFile guard ───────────────────────────
+    // `npm` resolves to `npm.cmd` on Windows; execFile refuses a `.cmd`
+    // without `shell: true` (ERR_CHILD_PROCESS_INVALID_COMMAND_FILE).
+    // Simulate the guard on Linux so the reproducer runs in blocking CI.
+
+    function withPlatform<T>(platform: string, fn: () => Promise<T>): Promise<T> {
+        const original = Object.getOwnPropertyDescriptor(process, 'platform');
+        Object.defineProperty(process, 'platform', { value: platform });
+        return fn().finally(() => {
+            if (original) Object.defineProperty(process, 'platform', original);
+        });
+    }
+
+    it('upgradeWaveBinary uses shell:true for npm.cmd on Windows', async () => {
+        const npmCmd = 'C:\\nodejs\\npm.cmd';
+        const waveCmd = 'C:\\nodejs\\wave.cmd';
+
+        await withPlatform('win32', async () => {
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('where npm')) return `${npmCmd}\n`;
+                if (cmd.includes('where wave')) return `${waveCmd}\n`;
+                if (cmd.includes('prefix -g')) return 'C:\\nodejs\n';
+                throw new Error(`unexpected: ${cmd}`);
+            });
+            mockExecFile.mockImplementation((...args: unknown[]) => {
+                const cmd = args[0] as string;
+                const opts = args[2] as { shell?: boolean } | undefined;
+                // Enforce Node's Windows guard: refuse npm.cmd without shell.
+                if (/\.cmd$/i.test(cmd) && opts?.shell !== true) {
+                    throw new Error('ERR_CHILD_PROCESS_INVALID_COMMAND_FILE');
+                }
+                const cb = args[args.length - 1] as (err: Error | null) => void;
+                cb(null);
+            });
+
+            const result = await upgradeWaveBinary('1.2.3');
+
+            expect(result).toBe(waveCmd);
+            const callArgs = mockExecFile.mock.calls[0];
+            expect(callArgs[0]).toBe(npmCmd);
+            expect((callArgs[2] as { shell?: boolean }).shell).toBe(true);
+        });
+    });
 });
