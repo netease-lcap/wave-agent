@@ -466,7 +466,7 @@ describe("lspTool", () => {
       character: 5,
     };
     const result = lspTool.formatCompactParams?.(params, context);
-    expect(result).toBe(`hover ${path.join("src", "main.ts")}:10:5`);
+    expect(result).toBe("hover src/main.ts:10:5");
   });
 
   it("should handle LocationLink in goToDefinition", async () => {
@@ -906,9 +906,7 @@ describe("lspTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("No definition found");
-    expect(result.content).toContain(
-      `Context at ${path.join("src", "main.ts")}:1:3:`,
-    );
+    expect(result.content).toContain("Context at src/main.ts:1:3:");
     expect(result.content).toContain(mockLineContent);
     expect(result.content).toContain("  ^");
     expect(result.content).toContain(
