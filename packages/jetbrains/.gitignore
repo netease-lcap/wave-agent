@@ -1,0 +1,12 @@
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+.intellijPlatform/
+*.ipr
+*.iml
+*.iws
+out/
+.DS_Store
+# webview assets are copied at build time by copyWebviewAssets (from packages/webview/dist)
+src/main/resources/webview/chat.js
+src/main/resources/webview/chat.css

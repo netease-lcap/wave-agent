@@ -7,3 +7,8 @@ yarn.lock
 pnpm-lock.yaml
 *.min.js
 *.min.css
+packages/vsce/dist/
+packages/vsce/webview/dist/
+packages/vsce/releases/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
