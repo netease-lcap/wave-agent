@@ -37,12 +37,11 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: CI
-        run: pnpm run ci
-
-      # TEMP diagnosis: agent-sdk tests have Unix-path hardcoding that fails on
-      # Windows. This verbose step (no coverage) surfaces every failing assertion
-      # so we can iterate. Remove once all agent-sdk tests pass on Windows.
-      - name: Diagnose agent-sdk tests (verbose)
-        if: always()
-        run: pnpm --filter wave-agent-sdk exec vitest run --reporter=verbose
+      # Run type-check + lint + tests WITHOUT coverage on Windows.
+      # The v8 coverage provider crashes silently on Windows (process exits
+      # right after "Coverage enabled with v8" with no output), which is an
+      # upstream tooling issue unrelated to this repo's code. Coverage is
+      # already enforced by the Linux CI (required check). Windows only needs
+      # to verify the tests themselves pass cross-platform.
+      - name: CI (no coverage)
+        run: pnpm -r --parallel type-check && pnpm -r --parallel lint && pnpm -r test
