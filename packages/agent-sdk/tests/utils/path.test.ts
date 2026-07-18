@@ -118,7 +118,8 @@ describe("path utils", () => {
         "C:\\Users\\test\\project\\src\\file.ts",
         mockWorkdir,
       );
-      expect(result).toBe("src\\file.ts");
+      // getDisplayPath normalizes to forward slashes on all platforms
+      expect(result).toBe("src/file.ts");
     });
 
     it("should handle different workdir consistently", () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "fs";
+import * as path from "path";
 
 // Mock fs
 vi.mock("fs", async () => {
@@ -108,15 +109,16 @@ describe("toolResultStorage", () => {
   describe("getToolResultsDir", () => {
     it("should create directory with mkdirSync recursive", () => {
       const dir = getToolResultsDir();
-      expect(dir).toBe("/tmp/wave-tool-results");
-      expect(fs.mkdirSync).toHaveBeenCalledWith("/tmp/wave-tool-results", {
+      const expected = path.join("/tmp", "wave-tool-results");
+      expect(dir).toBe(expected);
+      expect(fs.mkdirSync).toHaveBeenCalledWith(expected, {
         recursive: true,
       });
     });
 
     it("should use os.tmpdir() as base path", () => {
       const dir = getToolResultsDir();
-      expect(dir.startsWith("/tmp/")).toBe(true);
+      expect(dir.startsWith(path.join("/tmp"))).toBe(true);
       expect(dir).toContain("wave-tool-results");
     });
   });
@@ -127,10 +129,12 @@ describe("toolResultStorage", () => {
       const result = persistToolResult(content, "bash");
 
       expect(result).toMatch(
-        /\/tmp\/wave-tool-results\/bash_\d+_[a-z0-9]+\.txt$/,
+        /[/\\]wave-tool-results[/\\]bash_\d+_[a-z0-9]+\.txt$/,
       );
       expect(fs.writeFileSync).toHaveBeenCalledWith(
-        expect.stringContaining("/tmp/wave-tool-results/bash_"),
+        expect.stringContaining(
+          path.join("/tmp", "wave-tool-results", "bash_"),
+        ),
         content,
         "utf8",
       );
@@ -139,7 +143,7 @@ describe("toolResultStorage", () => {
     it("should use default prefix 'tool' when none provided", () => {
       const result = persistToolResult("content");
       expect(result).toMatch(
-        /\/tmp\/wave-tool-results\/tool_\d+_[a-z0-9]+\.txt$/,
+        /[/\\]wave-tool-results[/\\]tool_\d+_[a-z0-9]+\.txt$/,
       );
     });
 
@@ -179,7 +183,7 @@ describe("toolResultStorage", () => {
 
       expect(result).toContain("<persisted-output>");
       expect(result).toContain("100 characters");
-      expect(result).toContain("/tmp/wave-tool-results/bash_");
+      expect(result).toContain(path.join("/tmp", "wave-tool-results", "bash_"));
       expect(result).toContain("</persisted-output>");
       expect(fs.writeFileSync).toHaveBeenCalledWith(
         expect.stringContaining("bash_"),
@@ -228,7 +232,9 @@ describe("toolResultStorage", () => {
       processToolResult(content, 50);
 
       expect(fs.writeFileSync).toHaveBeenCalledWith(
-        expect.stringContaining("/tmp/wave-tool-results/tool_"),
+        expect.stringContaining(
+          path.join("/tmp", "wave-tool-results", "tool_"),
+        ),
         content,
         "utf8",
       );

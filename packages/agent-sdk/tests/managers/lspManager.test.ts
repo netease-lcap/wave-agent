@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as path from "path";
 import { LspManager } from "../../src/managers/lspManager.js";
 import { Container } from "../../src/utils/container.js";
 import { spawn, ChildProcess } from "child_process";
@@ -281,7 +282,7 @@ describe("LspManager (Mocked)", () => {
 
   it("should load config from .lsp.json", async () => {
     const workdir = "/mock/workdir";
-    const lspJsonPath = "/mock/workdir/.lsp.json";
+    const lspJsonPath = path.join(workdir, ".lsp.json");
     const mockConfig = {
       python: {
         command: "pyright-langserver",

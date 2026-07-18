@@ -191,7 +191,7 @@ describe("MarketplaceService - Builtin Marketplace", () => {
     };
     const result = service.getMarketplacePath(marketplace.source);
     expect(result).toContain("marketplaces");
-    expect(result).toContain("user/repo");
+    expect(result).toContain(path.join("user", "repo"));
   });
 
   it("should return correct marketplace path for directory source", () => {

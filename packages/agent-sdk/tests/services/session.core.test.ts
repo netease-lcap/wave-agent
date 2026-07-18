@@ -352,13 +352,14 @@ describe("Session Core Functionality", () => {
     it("should create files in correct project directory structure", async () => {
       const sessionId = generateSessionId();
       const filePath = await getSessionFilePath(sessionId, testWorkdir);
+      const normalizedFilePath = filePath.replace(/\\/g, "/");
 
       // Should be in tempDir/encoded-workdir/sessionId.jsonl format
-      expect(filePath).toContain(tempDir);
+      expect(normalizedFilePath).toContain(tempDir);
       expect(filePath).not.toBe(`${tempDir}/${sessionId}.jsonl`); // Not directly in tempDir
 
       // Should be in a subdirectory
-      const relativePath = filePath.replace(tempDir, "");
+      const relativePath = normalizedFilePath.replace(tempDir, "");
       const pathParts = relativePath.split("/").filter((p) => p);
       expect(pathParts).toHaveLength(2); // [encoded-workdir, sessionId.jsonl]
     });
@@ -376,7 +377,7 @@ describe("Session Core Functionality", () => {
         const sessionId = generateSessionId();
         const filePath = await getSessionFilePath(sessionId, workdir);
 
-        expect(filePath).toContain(tempDir);
+        expect(filePath.replace(/\\/g, "/")).toContain(tempDir);
         expect(filePath.endsWith(`${sessionId}.jsonl`)).toBe(true);
 
         // In the real implementation, paths would be encoded, but in our mock test,

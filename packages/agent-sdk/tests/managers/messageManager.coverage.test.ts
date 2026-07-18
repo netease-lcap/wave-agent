@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as path from "path";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import * as sessionService from "../../src/services/session.js";
 import { Container } from "../../src/utils/container.js";
@@ -452,7 +453,9 @@ describe("MessageManager Coverage Improvements", () => {
             type: "tool" as const,
             name: "Read",
             stage: "end" as const,
-            parameters: JSON.stringify({ file_path: "src/index.ts" }),
+            parameters: JSON.stringify({
+              file_path: path.join("src", "index.ts"),
+            }),
             result: "file contents",
           },
         ],

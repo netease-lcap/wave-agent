@@ -151,14 +151,14 @@ describe("PluginManager", () => {
       );
       expect(mockLspManager.registerServer).toHaveBeenCalledWith("go", {
         ...lspConfig.go,
-        pluginRoot: "/test/workdir/plugins/test-plugin",
+        pluginRoot: path.resolve(workdir, configs[0].path),
       });
       expect(mockMcpManager.addServer).toHaveBeenCalledWith("test", {
         ...mcpConfig.mcpServers.test,
-        pluginRoot: "/test/workdir/plugins/test-plugin",
+        pluginRoot: path.resolve(workdir, configs[0].path),
       });
       expect(mockHookManager.registerPluginHooks).toHaveBeenCalledWith(
-        "/test/workdir/plugins/test-plugin",
+        path.resolve(workdir, configs[0].path),
         hooksConfig,
       );
 
@@ -339,9 +339,10 @@ describe("PluginManager", () => {
         enabledPlugins,
       );
 
+      const localPluginPath = path.resolve(workdir, configs[0].path);
       vi.mocked(PluginLoader.loadManifest).mockImplementation(
         async function (p) {
-          if (p.includes("plugins/test-plugin")) {
+          if (p === localPluginPath) {
             return localManifest as PluginManifest;
           }
           return marketplaceManifest as PluginManifest;

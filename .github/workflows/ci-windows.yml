@@ -1,0 +1,61 @@
+name: CI (Windows)
+
+# Non-blocking Windows compatibility check.
+# Runs in parallel with the main Linux CI but is NOT a required check —
+# failures surface in the PR checks list (visible) but do not block merge.
+# Configure in repo Settings → Branches → main protection rule:
+# keep only the Linux `check` job as required; do NOT add `check-windows`.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # Run type-check + lint + tests WITHOUT coverage on Windows.
+      # The v8 coverage provider crashes silently on Windows (process exits
+      # right after "Coverage enabled with v8" with no output), which is an
+      # upstream tooling issue unrelated to this repo's code. Coverage is
+      # already enforced by the Linux CI (required check). Windows only needs
+      # to verify the tests themselves pass cross-platform.
+      #
+      # Tests are invoked per-package via `pnpm --filter <pkg> exec vitest run`
+      # rather than `pnpm -r test`. The latter runs each package's `test`
+      # script (which uses `--reporter=dot`); under pnpm's child-process
+      # management on Windows the dot reporter's stdout buffering causes the
+      # agent-sdk vitest process to crash silently right after emitting "RUN".
+      # Calling `vitest run` directly (default reporter) is the invocation
+      # pattern proven to run all 3221 agent-sdk tests green on Windows.
+      - name: Type-check & lint
+        run: pnpm -r --parallel type-check && pnpm -r --parallel lint
+      - name: Tests
+        run: |
+          pnpm --filter wave-agent-sdk exec vitest run &&
+          pnpm --filter wave-code exec vitest run &&
+          pnpm --filter wave-vsce exec vitest run &&
+          pnpm --filter wave-webview exec vitest run

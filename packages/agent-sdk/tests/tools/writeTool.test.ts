@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as path from "path";
 import { writeTool } from "@/tools/writeTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { readFile, writeFile, mkdir } from "fs/promises";
@@ -70,11 +71,14 @@ describe("writeTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("File created");
     expect(result.shortResult).toBe("File created");
-    expect(result.filePath).toBe("/test/newfile.js");
+    expect(result.filePath).toBe(path.resolve("/test/newfile.js"));
 
-    expect(mkdir).toHaveBeenCalledWith("/test", { recursive: true });
+    expect(mkdir).toHaveBeenCalledWith(
+      path.dirname(path.resolve("/test/newfile.js")),
+      { recursive: true },
+    );
     expect(writeFile).toHaveBeenCalledWith(
-      "/test/newfile.js",
+      path.resolve("/test/newfile.js"),
       content,
       "utf-8",
     );
@@ -99,11 +103,14 @@ describe("writeTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("File overwritten");
     expect(result.shortResult).toBe("File overwritten");
-    expect(result.filePath).toBe("/test/file.js");
+    expect(result.filePath).toBe(path.resolve("/test/file.js"));
 
-    expect(readFile).toHaveBeenCalledWith("/test/file.js", "utf-8");
+    expect(readFile).toHaveBeenCalledWith(
+      path.resolve("/test/file.js"),
+      "utf-8",
+    );
     expect(writeFile).toHaveBeenCalledWith(
-      "/test/file.js",
+      path.resolve("/test/file.js"),
       newContent,
       "utf-8",
     );
@@ -187,13 +194,19 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(readFile).toHaveBeenCalledWith("/absolute/path/file.js", "utf-8");
+    expect(readFile).toHaveBeenCalledWith(
+      path.resolve("/absolute/path/file.js"),
+      "utf-8",
+    );
     expect(writeFile).toHaveBeenCalledWith(
-      "/absolute/path/file.js",
+      path.resolve("/absolute/path/file.js"),
       content,
       "utf-8",
     );
-    expect(mkdir).toHaveBeenCalledWith("/absolute/path", { recursive: true });
+    expect(mkdir).toHaveBeenCalledWith(
+      path.dirname(path.resolve("/absolute/path/file.js")),
+      { recursive: true },
+    );
   });
 
   it("should handle directory creation gracefully when directory exists", async () => {
@@ -272,7 +285,7 @@ describe("writeTool", () => {
 
     expect(result.success).toBe(true);
     expect(writeFile).toHaveBeenCalledWith(
-      "/test/special.txt",
+      path.resolve("/test/special.txt"),
       content,
       "utf-8",
     );
@@ -390,7 +403,7 @@ describe("writeTool", () => {
       expect(result.success).toBe(true);
       expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
         "msg-1",
-        "/test/new.txt",
+        path.resolve("/test/new.txt"),
         "create",
       );
       expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(
@@ -420,7 +433,7 @@ describe("writeTool", () => {
       expect(result.success).toBe(true);
       expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
         "msg-2",
-        "/test/existing.txt",
+        path.resolve("/test/existing.txt"),
         "modify",
       );
       expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { loadCustomSlashCommands } from "../../src/utils/customCommands.js";
 import * as fs from "fs";
+import * as path from "path";
 
 // Mock fs operations
 vi.mock("fs", () => ({
@@ -109,8 +110,8 @@ This is a test command without description.`;
 
   describe("Claude ecosystem compatibility", () => {
     it("should load commands from .claude/commands directories", () => {
-      const claudeUserDir = "/mock/home/.claude/commands";
-      const claudeProjectDir = "/mock/tmp/wave-test-123/.claude/commands";
+      const claudeUserDir = path.join("/mock/home", ".claude", "commands");
+      const claudeProjectDir = path.join(mockTestDir, ".claude", "commands");
 
       vi.mocked(fs.existsSync).mockImplementation((p) => {
         const path = p.toString();
@@ -158,8 +159,8 @@ Project claude command content`;
     });
 
     it("should let .wave/commands override .claude/commands for same-named command", () => {
-      const claudeProjectDir = "/mock/tmp/wave-test-123/.claude/commands";
-      const waveProjectDir = "/mock/tmp/wave-test-123/.wave/commands";
+      const claudeProjectDir = path.join(mockTestDir, ".claude", "commands");
+      const waveProjectDir = path.join(mockTestDir, ".wave", "commands");
 
       vi.mocked(fs.existsSync).mockImplementation((p) => {
         const path = p.toString();
@@ -178,13 +179,19 @@ Project claude command content`;
 
       vi.mocked(fs.readFileSync).mockImplementation((filePath) => {
         const p = filePath.toString();
-        if (p.includes(".claude/commands") && p.includes("shared-cmd.md")) {
+        if (
+          p.match(/[/\\]\.claude[/\\]commands/) &&
+          p.includes("shared-cmd.md")
+        ) {
           return `---
 description: Claude version
 ---
 Claude content`;
         }
-        if (p.includes(".wave/commands") && p.includes("shared-cmd.md")) {
+        if (
+          p.match(/[/\\]\.wave[/\\]commands/) &&
+          p.includes("shared-cmd.md")
+        ) {
           return `---
 description: Wave version
 ---

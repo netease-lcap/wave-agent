@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as path from "path";
 import { loadSubagentConfigurations } from "../../src/utils/subagentParser.js";
 import * as configPaths from "../../src/utils/configPaths.js";
 
@@ -51,7 +52,7 @@ describe("SubagentParser with Built-ins", () => {
       } as import("fs").Stats);
 
       vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
-        if (filePath === "/builtin/subagents/explore.md") {
+        if (filePath === path.join("/builtin/subagents", "explore.md")) {
           return `---
 description: Built-in codebase exploration agent
 tools: [Glob, Grep, Read, Bash]
@@ -90,7 +91,7 @@ You are a file search specialist...`;
       } as import("fs").Stats);
 
       vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
-        if (filePath === "/builtin/subagents/explore.md") {
+        if (filePath === path.join("/builtin/subagents", "explore.md")) {
           return `---
 description: Built-in codebase exploration agent
 ---
@@ -148,7 +149,7 @@ test`;
             typeof import("fs").readdirSync
           >;
         }
-        if (dirPath === "/home/testuser/.wave/agents") {
+        if (dirPath === path.join("/home/testuser", ".wave", "agents")) {
           return ["explore.md"] as unknown as ReturnType<
             typeof import("fs").readdirSync
           >;
@@ -161,13 +162,16 @@ test`;
       } as import("fs").Stats);
 
       vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
-        if (filePath === "/builtin/subagents/explore.md") {
+        if (filePath === path.join("/builtin/subagents", "explore.md")) {
           return `---
 description: Built-in agent
 ---
 builtin prompt`;
         }
-        if (filePath === "/home/testuser/.wave/agents/explore.md") {
+        if (
+          filePath ===
+          path.join("/home/testuser", ".wave", "agents", "explore.md")
+        ) {
           return `---
 name: explore
 description: Custom Explore agent
@@ -197,12 +201,12 @@ Custom system prompt for user override`;
       process.env.HOME = "/home/testuser";
 
       vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
-        if (dirPath === "/home/testuser/.claude/agents") {
+        if (dirPath === path.join("/home/testuser", ".claude", "agents")) {
           return ["claude-agent.md"] as unknown as ReturnType<
             typeof import("fs").readdirSync
           >;
         }
-        if (dirPath === "/test/workdir/.claude/agents") {
+        if (dirPath === path.join("/test/workdir", ".claude", "agents")) {
           return ["project-claude-agent.md"] as unknown as ReturnType<
             typeof import("fs").readdirSync
           >;
@@ -215,14 +219,23 @@ Custom system prompt for user override`;
       } as import("fs").Stats);
 
       vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
-        if (filePath === "/home/testuser/.claude/agents/claude-agent.md") {
+        if (
+          filePath ===
+          path.join("/home/testuser", ".claude", "agents", "claude-agent.md")
+        ) {
           return `---
 description: User-level Claude agent
 ---
 Claude agent system prompt`;
         }
         if (
-          filePath === "/test/workdir/.claude/agents/project-claude-agent.md"
+          filePath ===
+          path.join(
+            "/test/workdir",
+            ".claude",
+            "agents",
+            "project-claude-agent.md",
+          )
         ) {
           return `---
 description: Project-level Claude agent
@@ -258,8 +271,8 @@ Project Claude agent system prompt`;
 
       vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
         if (
-          dirPath === "/home/testuser/.claude/agents" ||
-          dirPath === "/home/testuser/.wave/agents"
+          dirPath === path.join("/home/testuser", ".claude", "agents") ||
+          dirPath === path.join("/home/testuser", ".wave", "agents")
         ) {
           return ["shared-agent.md"] as unknown as ReturnType<
             typeof import("fs").readdirSync
@@ -273,14 +286,20 @@ Project Claude agent system prompt`;
       } as import("fs").Stats);
 
       vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
-        if (filePath === "/home/testuser/.claude/agents/shared-agent.md") {
+        if (
+          filePath ===
+          path.join("/home/testuser", ".claude", "agents", "shared-agent.md")
+        ) {
           return `---
 name: shared-agent
 description: Claude version
 ---
 Claude version prompt`;
         }
-        if (filePath === "/home/testuser/.wave/agents/shared-agent.md") {
+        if (
+          filePath ===
+          path.join("/home/testuser", ".wave", "agents", "shared-agent.md")
+        ) {
           return `---
 name: shared-agent
 description: Wave version

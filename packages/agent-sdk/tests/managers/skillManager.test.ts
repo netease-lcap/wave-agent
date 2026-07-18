@@ -8,6 +8,7 @@ import type {
   Skill,
 } from "../../src/types/index.js";
 import { readdir, stat } from "fs/promises";
+import * as path from "path";
 import { logger } from "../../src/utils/globalLogger.js";
 import { FileWatcherService } from "../../src/services/fileWatcher.js";
 
@@ -105,7 +106,7 @@ describe("SkillManager", () => {
   describe("initialize", () => {
     it("should discover builtin, personal and project skills successfully", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
-        const p = path.toString();
+        const p = path.toString().replace(/\\/g, "/");
         if (p.includes("builtin-skills")) {
           return [
             { name: "builtin1", isDirectory: () => true },
@@ -154,7 +155,7 @@ describe("SkillManager", () => {
 
     it("should return skill metadata by name", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
-        if (path.toString().includes(".wave/skills")) {
+        if (path.toString().replace(/\\/g, "/").includes(".wave/skills")) {
           return [
             { name: "skill1", isDirectory: () => true },
           ] as unknown as Awaited<ReturnType<typeof readdir>>;
@@ -191,7 +192,7 @@ describe("SkillManager", () => {
 
     it("should handle discovery errors and log warnings", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
-        const p = path.toString();
+        const p = path.toString().replace(/\\/g, "/");
         if (p.includes(".wave/skills") || p.includes("builtin-skills")) {
           return [
             { name: "invalid-skill", isDirectory: () => true },
@@ -284,7 +285,7 @@ describe("SkillManager", () => {
 
     it("should handle invalid skill files", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
-        const p = path.toString();
+        const p = path.toString().replace(/\\/g, "/");
         if (p.includes(".wave/skills") || p.includes("builtin-skills")) {
           return [
             { name: "bad-skill", isDirectory: () => true },
@@ -434,7 +435,7 @@ describe("SkillManager", () => {
   describe("loadSkill", () => {
     it("should load skill from skillContent map", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
-        if (path.toString().includes(".wave/skills")) {
+        if (path.toString().replace(/\\/g, "/").includes(".wave/skills")) {
           return [
             { name: "skill1", isDirectory: () => true },
           ] as unknown as Awaited<ReturnType<typeof readdir>>;
@@ -847,11 +848,11 @@ describe("SkillManager", () => {
 
       expect(FileWatcherService).toHaveBeenCalled();
       expect(mockFileWatcher.watchFile).toHaveBeenCalledWith(
-        expect.stringContaining(".wave/skills"),
+        expect.stringMatching(/[/\\]\.wave[/\\]skills$/),
         expect.any(Function),
       );
       expect(mockFileWatcher.watchFile).toHaveBeenCalledWith(
-        expect.stringContaining("/test/workdir/.wave/skills"),
+        expect.stringContaining(path.join("/test/workdir", ".wave", "skills")),
         expect.any(Function),
       );
     });
@@ -888,7 +889,7 @@ describe("SkillManager", () => {
 
       // Mock readdir to return a new skill after refresh
       vi.mocked(readdir).mockImplementation(async (path) => {
-        if (path.toString().includes(".wave/skills")) {
+        if (path.toString().replace(/\\/g, "/").includes(".wave/skills")) {
           return [
             { name: "new-skill", isDirectory: () => true },
           ] as unknown as Awaited<ReturnType<typeof readdir>>;
@@ -1018,7 +1019,7 @@ describe("SkillManager", () => {
       });
 
       vi.mocked(readdir).mockImplementation(async (path) => {
-        const p = path.toString();
+        const p = path.toString().replace(/\\/g, "/");
         if (p === "/test/workdir/.claude/skills") {
           return [
             { name: "claude-skill", isDirectory: () => true },
@@ -1101,7 +1102,7 @@ describe("SkillManager", () => {
       });
 
       vi.mocked(readdir).mockImplementation(async (path) => {
-        const p = path.toString();
+        const p = path.toString().replace(/\\/g, "/");
         if (
           p === "/test/workdir/.claude/skills" ||
           p === "/test/workdir/.wave/skills"
@@ -1171,7 +1172,9 @@ describe("SkillManager", () => {
         (call: unknown[]) => call[0] as string,
       );
 
-      expect(watchedPaths).toContain("/test/workdir/.claude/skills");
+      expect(watchedPaths).toContain(
+        path.join("/test/workdir", ".claude", "skills"),
+      );
       expect(watchedPaths).toContain("/home/user/.claude/skills");
 
       await manager.destroy();
@@ -1183,7 +1186,7 @@ describe("SkillManager", () => {
       });
 
       vi.mocked(readdir).mockImplementation(async (path) => {
-        const p = path.toString();
+        const p = path.toString().replace(/\\/g, "/");
         if (p === "/test/workdir/.agents/skills") {
           return [
             { name: "agents-skill", isDirectory: () => true },
@@ -1266,7 +1269,7 @@ describe("SkillManager", () => {
       });
 
       vi.mocked(readdir).mockImplementation(async (path) => {
-        const p = path.toString();
+        const p = path.toString().replace(/\\/g, "/");
         if (
           p === "/test/workdir/.agents/skills" ||
           p === "/test/workdir/.wave/skills"
@@ -1328,7 +1331,7 @@ describe("SkillManager", () => {
       });
 
       vi.mocked(readdir).mockImplementation(async (path) => {
-        const p = path.toString();
+        const p = path.toString().replace(/\\/g, "/");
         if (
           p === "/test/workdir/.agents/skills" ||
           p === "/test/workdir/.claude/skills"
@@ -1462,7 +1465,9 @@ describe("SkillManager", () => {
         (call: unknown[]) => call[0] as string,
       );
 
-      expect(watchedPaths).toContain("/test/workdir/.agents/skills");
+      expect(watchedPaths).toContain(
+        path.join("/test/workdir", ".agents", "skills"),
+      );
       expect(watchedPaths).toContain("/home/user/.agents/skills");
 
       await manager.destroy();

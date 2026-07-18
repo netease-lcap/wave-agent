@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as path from "path";
 import {
   tryAcquireSchedulerLock,
   releaseSchedulerLock,
@@ -19,7 +20,6 @@ vi.mock("crypto", () => ({
 }));
 
 const MOCK_DIR = "/mock/project";
-const WAVE_DIR = `${MOCK_DIR}/.wave`;
 
 import {
   readFileSync,
@@ -58,7 +58,9 @@ describe("cronTasksLock", () => {
       });
 
       expect(result).toBe(true);
-      expect(mkdirSync).toHaveBeenCalledWith(WAVE_DIR, { recursive: true });
+      expect(mkdirSync).toHaveBeenCalledWith(path.join(MOCK_DIR, ".wave"), {
+        recursive: true,
+      });
       expect(writeFileSync).toHaveBeenCalled();
     });
 

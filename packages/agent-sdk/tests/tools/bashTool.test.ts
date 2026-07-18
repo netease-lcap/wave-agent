@@ -58,6 +58,7 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 
 import { spawn } from "child_process";
 import { logger } from "../../src/utils/globalLogger.js";
+import { resolveShellPath } from "../../src/utils/shellResolver.js";
 const mockSpawn = vi.mocked(spawn);
 
 describe("bashTool", () => {
@@ -123,7 +124,7 @@ describe("bashTool", () => {
       expect(spawnCallArgs[0]).toContain("echo hello");
       expect(spawnCallArgs[0]).toContain("pwd -P");
       expect(spawnCallArgs[1]).toMatchObject({
-        shell: true,
+        shell: resolveShellPath() || true,
         stdio: "pipe",
         cwd: "/test/workdir",
       });

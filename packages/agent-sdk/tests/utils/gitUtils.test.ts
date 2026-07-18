@@ -99,31 +99,41 @@ describe("gitUtils", () => {
 
   describe("resolveGitDir", () => {
     it("should find .git directory for a normal repo", () => {
+      const root = path.resolve("/repo/root");
+      const expectedGitDir = path.join(root, ".git");
       vi.mocked(fsSync.existsSync).mockImplementation(
-        (p) => p === "/repo/root/.git",
+        (p) => p === expectedGitDir,
       );
       vi.mocked(fsSync.statSync).mockReturnValue({
         isDirectory: () => true,
       } as unknown as fsSync.Stats);
-      expect(resolveGitDir("/repo/root")).toBe("/repo/root/.git");
+      expect(resolveGitDir("/repo/root")).toBe(expectedGitDir);
     });
 
     it("should resolve worktree git dir via commondir", () => {
-      const worktreeGitDir = "/repo/main/.git/worktrees/wt1";
+      const worktreeRoot = path.resolve("/repo/worktree");
+      const worktreeGitFile = path.join(worktreeRoot, ".git");
+      const worktreeGitDir = path.join(
+        path.resolve("/repo/main"),
+        ".git",
+        "worktrees",
+        "wt1",
+      );
       vi.mocked(fsSync.existsSync).mockImplementation(
         (p) =>
-          p === "/repo/worktree/.git" ||
-          p === path.join(worktreeGitDir, "commondir"),
+          p === worktreeGitFile || p === path.join(worktreeGitDir, "commondir"),
       );
       vi.mocked(fsSync.statSync).mockReturnValue({
         isDirectory: () => false,
       } as unknown as fsSync.Stats);
       vi.mocked(fsSync.readFileSync).mockImplementation((p) => {
-        if (p === "/repo/worktree/.git") return `gitdir: ${worktreeGitDir}`;
+        if (p === worktreeGitFile) return `gitdir: ${worktreeGitDir}`;
         if (p === path.join(worktreeGitDir, "commondir")) return "../..\n";
         throw new Error("Not found");
       });
-      expect(resolveGitDir("/repo/worktree")).toBe("/repo/main/.git");
+      expect(resolveGitDir("/repo/worktree")).toBe(
+        path.join(path.resolve("/repo/main"), ".git"),
+      );
     });
 
     it("should return null if no .git found", () => {
@@ -133,12 +143,12 @@ describe("gitUtils", () => {
   });
 
   describe("getDefaultRemoteBranch", () => {
-    const gitDir = "/repo/root/.git";
+    const gitDir = path.join(path.resolve("/repo/root"), ".git");
 
     function mockGitDirFound() {
       vi.mocked(fsSync.existsSync).mockImplementation(
         (p) =>
-          p === "/repo/root/.git" ||
+          p === gitDir ||
           p === path.join(gitDir, "refs/remotes/origin/main") ||
           p === path.join(gitDir, "refs/remotes/origin/master") ||
           p === path.join(gitDir, "refs/remotes/origin/HEAD"),
@@ -162,7 +172,7 @@ describe("gitUtils", () => {
     it("should skip stale origin/HEAD and fallback (Step 1 stale)", () => {
       vi.mocked(fsSync.existsSync).mockImplementation(
         (p) =>
-          p === "/repo/root/.git" ||
+          p === gitDir ||
           p === path.join(gitDir, "refs/remotes/origin/HEAD") ||
           p === path.join(gitDir, "refs/remotes/origin/main"),
       );
@@ -181,8 +191,7 @@ describe("gitUtils", () => {
     it("should fallback to origin/main if ref exists (Step 2)", () => {
       vi.mocked(fsSync.existsSync).mockImplementation(
         (p) =>
-          p === "/repo/root/.git" ||
-          p === path.join(gitDir, "refs/remotes/origin/main"),
+          p === gitDir || p === path.join(gitDir, "refs/remotes/origin/main"),
       );
       vi.mocked(fsSync.statSync).mockReturnValue({
         isDirectory: () => true,
@@ -194,8 +203,7 @@ describe("gitUtils", () => {
     it("should fallback to origin/master if ref exists (Step 3)", () => {
       vi.mocked(fsSync.existsSync).mockImplementation(
         (p) =>
-          p === "/repo/root/.git" ||
-          p === path.join(gitDir, "refs/remotes/origin/master"),
+          p === gitDir || p === path.join(gitDir, "refs/remotes/origin/master"),
       );
       vi.mocked(fsSync.statSync).mockReturnValue({
         isDirectory: () => true,
@@ -204,9 +212,7 @@ describe("gitUtils", () => {
     });
 
     it("should return 'main' as hardcoded fallback (Step 4)", () => {
-      vi.mocked(fsSync.existsSync).mockImplementation(
-        (p) => p === "/repo/root/.git",
-      );
+      vi.mocked(fsSync.existsSync).mockImplementation((p) => p === gitDir);
       vi.mocked(fsSync.statSync).mockReturnValue({
         isDirectory: () => true,
       } as unknown as fsSync.Stats);
@@ -220,8 +226,7 @@ describe("gitUtils", () => {
 
     it("should find ref in packed-refs", () => {
       vi.mocked(fsSync.existsSync).mockImplementation(
-        (p) =>
-          p === "/repo/root/.git" || p === path.join(gitDir, "packed-refs"),
+        (p) => p === gitDir || p === path.join(gitDir, "packed-refs"),
       );
       vi.mocked(fsSync.statSync).mockReturnValue({
         isDirectory: () => true,
@@ -236,8 +241,7 @@ describe("gitUtils", () => {
 
     it("should skip comments and peeled lines in packed-refs", () => {
       vi.mocked(fsSync.existsSync).mockImplementation(
-        (p) =>
-          p === "/repo/root/.git" || p === path.join(gitDir, "packed-refs"),
+        (p) => p === gitDir || p === path.join(gitDir, "packed-refs"),
       );
       vi.mocked(fsSync.statSync).mockReturnValue({
         isDirectory: () => true,
@@ -291,11 +295,9 @@ describe("gitUtils", () => {
     });
 
     it("should write marker + patterns to info/exclude when marker absent", () => {
-      const gitDir = "/repo/write-test/.git";
+      const gitDir = path.join(path.resolve("/repo/write-test"), ".git");
       const excludePath = path.join(gitDir, "info", "exclude");
-      vi.mocked(fsSync.existsSync).mockImplementation(
-        (p) => p === path.join("/repo/write-test", ".git"),
-      );
+      vi.mocked(fsSync.existsSync).mockImplementation((p) => p === gitDir);
       vi.mocked(fsSync.statSync).mockReturnValue({
         isDirectory: () => true,
       } as unknown as fsSync.Stats);
@@ -325,7 +327,7 @@ describe("gitUtils", () => {
 
     it("should skip when marker already present (idempotent)", () => {
       vi.mocked(fsSync.existsSync).mockImplementation(
-        (p) => p === path.join("/repo/idempotent-test", ".git"),
+        (p) => p === path.join(path.resolve("/repo/idempotent-test"), ".git"),
       );
       vi.mocked(fsSync.statSync).mockReturnValue({
         isDirectory: () => true,

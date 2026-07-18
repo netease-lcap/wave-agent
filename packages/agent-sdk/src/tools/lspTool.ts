@@ -2,7 +2,7 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { relative, join, isAbsolute } from "path";
 import * as fs from "fs";
 import { logger } from "../utils/globalLogger.js";
-import { getDisplayPath } from "../utils/path.js";
+import { getDisplayPath, toPosixPath } from "../utils/path.js";
 import { LSP_TOOL_NAME } from "../constants/tools.js";
 import type {
   LspLocation as Location,
@@ -45,10 +45,10 @@ function formatUri(uri: string, workdir?: string): string {
       relativePath.length < path.length &&
       !relativePath.startsWith("../../")
     ) {
-      return relativePath;
+      return toPosixPath(relativePath);
     }
   }
-  return path;
+  return toPosixPath(path);
 }
 
 /**

@@ -70,7 +70,7 @@ describe("TaskManager", () => {
         { recursive: true },
       );
       expect(fs.open).toHaveBeenCalledWith(
-        expect.stringMatching(/\/\.lock$/),
+        expect.stringMatching(/[/\\]\.lock$/),
         "wx",
       );
       expect(fs.writeFile).toHaveBeenCalledWith(
@@ -80,7 +80,7 @@ describe("TaskManager", () => {
       );
       expect(mockFileHandle.close).toHaveBeenCalled();
       expect(fs.unlink).toHaveBeenCalledWith(
-        expect.stringMatching(/\/\.lock$/),
+        expect.stringMatching(/[/\\]\.lock$/),
       );
     });
 
@@ -254,7 +254,7 @@ describe("TaskManager", () => {
 
       expect(mockFileHandle.close).toHaveBeenCalled();
       expect(fs.unlink).toHaveBeenCalledWith(
-        expect.stringMatching(/\/\.lock$/),
+        expect.stringMatching(/[/\\]\.lock$/),
       );
     });
 
@@ -326,7 +326,7 @@ describe("TaskManager", () => {
 
       expect(fs.unlink).toHaveBeenCalledWith(expect.stringContaining("1.json"));
       expect(fs.unlink).toHaveBeenCalledWith(
-        expect.stringMatching(/\/\.lock$/),
+        expect.stringMatching(/[/\\]\.lock$/),
       );
     });
 

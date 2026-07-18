@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import path from "node:path";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
 import { Container } from "../../src/utils/container.js";
 import type { ToolPermissionContext } from "../../src/types/permissions.js";
@@ -90,15 +91,23 @@ describe("PermissionManager - Safe Zone anchored to original workdir", () => {
 
       manager.updateAdditionalDirectories(["./config", "./data"]);
 
-      expect(manager.getAdditionalDirectories()).toContain("/a/config");
-      expect(manager.getAdditionalDirectories()).toContain("/a/data");
+      // Source resolves relative dirs via path.resolve(workdir, dir); mirror that
+      // so the assertion matches on both Linux (/a/config) and Windows (D:\a\config).
+      expect(manager.getAdditionalDirectories()).toContain(
+        path.resolve("/a", "config"),
+      );
+      expect(manager.getAdditionalDirectories()).toContain(
+        path.resolve("/a", "data"),
+      );
 
       // Change workdir
       container.register("Workdir", "/a/frontend");
 
       // Update additional directories - should still resolve against /a
       manager.updateAdditionalDirectories(["./shared"]);
-      expect(manager.getAdditionalDirectories()).toContain("/a/shared");
+      expect(manager.getAdditionalDirectories()).toContain(
+        path.resolve("/a", "shared"),
+      );
     });
 
     it("should consider files in additional directories as safe after workdir changes", async () => {
@@ -135,8 +144,9 @@ describe("PermissionManager - Safe Zone anchored to original workdir", () => {
       manager.addSystemAdditionalDirectory("./system-data");
 
       const dirs = manager.getSystemAdditionalDirectories();
-      expect(dirs).toContain("/a/system-config");
-      expect(dirs).toContain("/a/system-data");
+      // Source resolves via path.resolve(workdir, dir); mirror in assertion.
+      expect(dirs).toContain(path.resolve("/a", "system-config"));
+      expect(dirs).toContain(path.resolve("/a", "system-data"));
     });
   });
 });

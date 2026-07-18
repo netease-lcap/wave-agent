@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import path from "node:path";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
@@ -127,7 +128,11 @@ describe("Subagent Permission Sync", () => {
     parentPermissionManager.updateAdditionalDirectories(["/tmp/other"]);
 
     // Subagent should have synced
-    expect(subagentPm.getAdditionalDirectories()).toEqual(["/tmp/other"]);
+    // Source resolves additionalDirectories via path.resolve, which yields
+    // /tmp/other on Linux and D:\tmp\other on Windows. Mirror the transformation.
+    expect(subagentPm.getAdditionalDirectories()).toEqual([
+      path.resolve("/tmp/other"),
+    ]);
   });
 
   it("should sync to multiple running subagents", async () => {
@@ -193,6 +198,9 @@ describe("Subagent Permission Sync", () => {
 
     expect(subagentPm.getAllowedRules()).toEqual(["git:*"]);
     expect(subagentPm.getDeniedRules()).toEqual(["Bash(rm *)"]);
-    expect(subagentPm.getAdditionalDirectories()).toEqual(["/tmp/shared"]);
+    // Source resolves additionalDirectories via path.resolve; mirror transformation.
+    expect(subagentPm.getAdditionalDirectories()).toEqual([
+      path.resolve("/tmp/shared"),
+    ]);
   });
 });

@@ -5,6 +5,7 @@ import {
 } from "../../src/utils/pathEncoder.js";
 import { realpath, mkdir } from "fs/promises";
 import { homedir, platform } from "os";
+import * as path from "path";
 
 // Mock fs/promises
 vi.mock("fs/promises");
@@ -110,7 +111,9 @@ describe("PathEncoder", () => {
       // Mock realpath to return the input path directly (no resolution)
       vi.mocked(realpath).mockResolvedValue("C:\\Users\\John\\Project");
       const result = await pathEncoder.encode("C:\\Users\\John\\Project");
-      expect(result).toBe("C:-Users-John-Project");
+      // Drive letter is stripped so the encoded name is stable cross-platform
+      // (matches what "C:\\Users\\John\\Project" would encode to on Linux).
+      expect(result).toBe("Users-John-Project");
     });
 
     it("should truncate long paths and add hash", async () => {
@@ -174,7 +177,7 @@ describe("PathEncoder", () => {
 
       // Verify realpath was called with expanded path
       expect(realpath).toHaveBeenCalledWith(
-        expect.stringContaining("/home/testuser/project"),
+        expect.stringMatching(/home[/\\]testuser[/\\]project$/),
       );
     });
 
@@ -198,7 +201,7 @@ describe("PathEncoder", () => {
       );
 
       const result = await pathEncoder.resolvePath("relative/path");
-      expect(result).toMatch(/.*relative\/path$/);
+      expect(result).toMatch(/.*[/\\]relative[/\\]path$/);
     });
 
     it("should throw error when realpath fails", async () => {
@@ -215,7 +218,7 @@ describe("PathEncoder", () => {
       const result = await pathEncoder.resolvePath("/path/to/symlink");
       expect(result).toBe("/real/path/target");
       expect(realpath).toHaveBeenCalledWith(
-        expect.stringMatching(/.*path\/to\/symlink$/),
+        expect.stringMatching(/.*[/\\]path[/\\]to[/\\]symlink$/),
       );
     });
   });
@@ -239,16 +242,19 @@ describe("PathEncoder", () => {
       );
 
       expect(result).toEqual({
-        originalPath: "/home/user/project",
+        originalPath: path.resolve("/home/user/project"),
         encodedName: "home-user-project",
-        encodedPath: "/session/base/home-user-project",
+        encodedPath: path.join("/session/base", "home-user-project"),
         pathHash: undefined,
         isSymbolicLink: false,
       });
 
-      expect(mkdir).toHaveBeenCalledWith("/session/base/home-user-project", {
-        recursive: true,
-      });
+      expect(mkdir).toHaveBeenCalledWith(
+        path.join("/session/base", "home-user-project"),
+        {
+          recursive: true,
+        },
+      );
     });
 
     it("should detect symbolic links", async () => {
@@ -274,7 +280,7 @@ describe("PathEncoder", () => {
         baseSessionDir,
       );
 
-      expect(result.originalPath).toBe("/home/testuser/project");
+      expect(result.originalPath).toBe(path.resolve("/home/testuser/project"));
       expect(result.encodedName).toBe("home-testuser-project");
     });
 
@@ -310,7 +316,7 @@ describe("PathEncoder", () => {
       );
 
       // Should use absolute path when realpath fails
-      expect(result.originalPath).toMatch(/.*protected\/path$/);
+      expect(result.originalPath).toMatch(/.*[/\\]protected[/\\]path$/);
       expect(result.isSymbolicLink).toBe(false);
     });
 
@@ -324,7 +330,7 @@ describe("PathEncoder", () => {
 
       // Should not throw error
       expect(result).toBeDefined();
-      expect(result.originalPath).toBe("/home/user/project");
+      expect(result.originalPath).toBe(path.resolve("/home/user/project"));
     });
 
     it("should create nested encoded path correctly", async () => {
@@ -337,7 +343,7 @@ describe("PathEncoder", () => {
 
       expect(result.encodedName).toBe("very-deep-nested-project-structure");
       expect(result.encodedPath).toBe(
-        "/session/base/very-deep-nested-project-structure",
+        path.join("/session/base", "very-deep-nested-project-structure"),
       );
     });
   });
@@ -670,10 +676,10 @@ describe("PathEncoder", () => {
 
       expect(projectDir.encodedName).toBe(encoded);
       expect(projectDir.originalPath).toBe(
-        "/home/testuser/my project/subfolder",
+        path.resolve("/home/testuser/my project/subfolder"),
       );
       expect(mkdir).toHaveBeenCalledWith(
-        "/tmp/sessions/home-testuser-my_project-subfolder",
+        path.join("/tmp/sessions", "home-testuser-my_project-subfolder"),
         { recursive: true },
       );
     });

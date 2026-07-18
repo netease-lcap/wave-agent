@@ -48,8 +48,29 @@ describe("ConfigurationService", () => {
   });
 
   afterEach(async () => {
-    await fs.rm(tempDir, { recursive: true, force: true });
-    await fs.rm(userHome, { recursive: true, force: true });
+    // setModel() fires off an async persistModelToSettings() write to
+    // ~/.wave/settings.json without awaiting. On Windows the write can still
+    // be in-flight (or file handles linger) when rm runs, causing ENOTEMPTY.
+    // Retry a few times to let the write settle and locks release.
+    const rmRetry = async (target: string, attempts = 5) => {
+      for (let i = 0; i < attempts; i++) {
+        try {
+          await fs.rm(target, { recursive: true, force: true });
+          return;
+        } catch (e) {
+          if (
+            (e as NodeJS.ErrnoException).code === "ENOTEMPTY" &&
+            i < attempts - 1
+          ) {
+            await new Promise((r) => setTimeout(r, 50 * (i + 1)));
+            continue;
+          }
+          throw e;
+        }
+      }
+    };
+    await rmRetry(tempDir);
+    await rmRetry(userHome);
     vi.restoreAllMocks();
   });
 

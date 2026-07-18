@@ -56,7 +56,15 @@ describe("MemoryService Auto-Memory", () => {
 
       expect(getGitCommonDir).toHaveBeenCalledWith("/repo/root/worktree");
       expect(pathEncoder.encodeSync).toHaveBeenCalledWith("/repo/root");
-      expect(result).toBe("/home/user/.wave/projects/repo-root-hash/memory");
+      expect(result).toBe(
+        path.join(
+          "/home/user",
+          ".wave",
+          "projects",
+          "repo-root-hash",
+          "memory",
+        ),
+      );
     });
   });
 
@@ -70,7 +78,13 @@ describe("MemoryService Auto-Memory", () => {
 
       await memoryService.ensureAutoMemoryDirectory("/repo/root/worktree");
 
-      const expectedDir = "/home/user/.wave/projects/repo-root-hash/memory";
+      const expectedDir = path.join(
+        "/home/user",
+        ".wave",
+        "projects",
+        "repo-root-hash",
+        "memory",
+      );
       const expectedFile = path.join(expectedDir, "MEMORY.md");
 
       expect(fsPromises.mkdir).toHaveBeenCalledWith(expectedDir, {
