@@ -24,10 +24,16 @@ export function resolvePath(filePath: string, workdir: string): string {
 }
 
 /**
- * Get relative path for display, use relative path if shorter and not in parent directory
+ * Get relative path for display, use relative path if shorter and not in parent directory.
+ *
+ * The returned path is always normalized to forward slashes (posix) regardless of
+ * platform. This keeps display output consistent across Windows/Unix so that logs,
+ * LLM context, and tests don't need platform-specific branches — `path.relative`
+ * and `path.join` produce backslashes on Windows, which we collapse here.
+ *
  * @param filePath Absolute path
  * @param workdir Working directory
- * @returns Path for display (relative or absolute)
+ * @returns Path for display (relative or absolute), always forward-slash
  */
 export function getDisplayPath(filePath: string, workdir: string): string {
   if (!filePath) {
@@ -47,12 +53,12 @@ export function getDisplayPath(filePath: string, workdir: string): string {
       relativePath.length < filePath.length &&
       !relativePath.startsWith("..")
     ) {
-      return relativePath;
+      return toPosixPath(relativePath);
     }
   } catch {
     // If calculating the relative path fails, keep the original path
   }
-  return filePath;
+  return toPosixPath(filePath);
 }
 
 /**

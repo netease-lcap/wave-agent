@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "fs";
-import * as path from "path";
 import { lspTool, MAX_RESULTS, MAX_FILES } from "../../src/tools/lspTool.js";
 
 vi.mock("fs", async (importOriginal) => {
@@ -62,9 +61,7 @@ describe("lspTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain(
-      `Defined in ${path.join("src", "index.ts")}:11:6`,
-    );
+    expect(result.content).toContain("Defined in src/index.ts:11:6");
     expect(mockLspManager.execute).toHaveBeenCalledWith({
       operation: "goToDefinition",
       filePath: "src/main.ts",
@@ -108,8 +105,8 @@ describe("lspTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Found 2 definitions:");
-    expect(result.content).toContain(`${path.join("src", "index.ts")}:11:6`);
-    expect(result.content).toContain(`${path.join("src", "other.ts")}:21:1`);
+    expect(result.content).toContain("src/index.ts:11:6");
+    expect(result.content).toContain("src/other.ts:21:1");
   });
 
   it("should format hover result", async () => {
@@ -204,7 +201,7 @@ describe("lspTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Found 1 reference:");
-    expect(result.content).toContain(`${path.join("src", "index.ts")}:11:6`);
+    expect(result.content).toContain("src/index.ts:11:6");
   });
 
   it("should format documentSymbol result", async () => {
@@ -289,7 +286,7 @@ describe("lspTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Found 1 symbol in workspace:");
-    expect(result.content).toContain(`${path.join("src", "globals.ts")}:`);
+    expect(result.content).toContain("src/globals.ts:");
     expect(result.content).toContain("GlobalVar (Variable) - Line 6");
   });
 
@@ -327,7 +324,7 @@ describe("lspTool", () => {
     );
     expect(prepareResult.success).toBe(true);
     expect(prepareResult.content).toContain(
-      `Call hierarchy item: myFunc (Function) - ${path.join("src", "main.ts")}:11`,
+      "Call hierarchy item: myFunc (Function) - src/main.ts:11",
     );
 
     // incomingCalls
@@ -494,9 +491,7 @@ describe("lspTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain(
-      `Defined in ${path.join("src", "link.ts")}:6:1`,
-    );
+    expect(result.content).toContain("Defined in src/link.ts:6:1");
   });
 
   it("should handle hover with array contents", async () => {
