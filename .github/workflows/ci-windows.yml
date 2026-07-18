@@ -52,10 +52,18 @@ jobs:
       # management on Windows the dot reporter's stdout buffering causes the
       # agent-sdk vitest process to crash silently right after emitting "RUN".
       # Calling `vitest run` directly (default reporter) is the invocation
-      # pattern proven to run all 3221 agent-sdk tests green on Windows.
+      # pattern proven to run all agent-sdk tests green on Windows.
+      #
+      # Only packages with platform-specific code paths (subprocess spawning,
+      # fs, .cmd/.exe resolution) are run here — these are the paths that can
+      # actually regress on Windows. wave-webview is omitted: its 43 tests are
+      # pure React/jsdom component + reducer logic with no OS contact (no
+      # process.platform / fs / child_process anywhere in tests/ or src/),
+      # so they produce identical results on Linux and are already covered by
+      # the blocking Linux `check` job. Skipping them saves ~48s (~30% of the
+      # remaining test time).
       - name: Tests
         run: |
           pnpm --filter wave-agent-sdk exec vitest run &&
           pnpm --filter wave-code exec vitest run &&
-          pnpm --filter wave-vsce exec vitest run &&
-          pnpm --filter wave-webview exec vitest run
+          pnpm --filter wave-vsce exec vitest run
