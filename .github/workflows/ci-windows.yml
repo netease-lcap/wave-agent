@@ -43,5 +43,19 @@ jobs:
       # upstream tooling issue unrelated to this repo's code. Coverage is
       # already enforced by the Linux CI (required check). Windows only needs
       # to verify the tests themselves pass cross-platform.
-      - name: CI (no coverage)
-        run: pnpm -r --parallel type-check && pnpm -r --parallel lint && pnpm -r test
+      #
+      # Tests are invoked per-package via `pnpm --filter <pkg> exec vitest run`
+      # rather than `pnpm -r test`. The latter runs each package's `test`
+      # script (which uses `--reporter=dot`); under pnpm's child-process
+      # management on Windows the dot reporter's stdout buffering causes the
+      # agent-sdk vitest process to crash silently right after emitting "RUN".
+      # Calling `vitest run` directly (default reporter) is the invocation
+      # pattern proven to run all 3221 agent-sdk tests green on Windows.
+      - name: Type-check & lint
+        run: pnpm -r --parallel type-check && pnpm -r --parallel lint
+      - name: Tests
+        run: |
+          pnpm --filter wave-agent-sdk exec vitest run &&
+          pnpm --filter wave-code exec vitest run &&
+          pnpm --filter wave-vsce exec vitest run &&
+          pnpm --filter wave-webview exec vitest run
