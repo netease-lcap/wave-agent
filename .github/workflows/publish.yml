@@ -61,10 +61,6 @@ jobs:
         run: pnpm -F wave-webview run test:demo
 
       - name: Build docs with base /docs/
-        env:
-          # CodeChat embeds these docs and hides the GitHub Releases download link;
-          # only the Release artifact gets this flag, GitHub Pages keeps the link.
-          DOCS_HIDE_DOWNLOAD: '1'
         run: npx vitepress build docs --base /docs/
 
       - name: Package docs.tar.gz

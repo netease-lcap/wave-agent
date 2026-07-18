@@ -327,18 +327,3 @@ wave -p --show-stats "分析这个项目的依赖关系"
 | `LOG_FILE` | `~/.wave/app.log` | 日志文件路径 |
 
 > 了解更多：详见 [SDK 文档 - 环境变量](/sdk#settings-env)
-
----
-
-## 9. 开发 {#development}
-
-```bash
-# 开发模式运行
-pnpm wave
-
-# 构建
-pnpm -F wave-code build
-
-# 运行测试
-pnpm -F wave-code test
-```

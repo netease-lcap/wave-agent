@@ -1,5 +1,3 @@
-const SHOW_DOWNLOAD_LINK = process.env.DOCS_HIDE_DOWNLOAD !== '1';
-
 const nav = [
   { text: '首页', link: '/' },
   { text: '企业管控台', link: '/guide' },
@@ -7,9 +5,6 @@ const nav = [
   { text: 'CLI', link: '/cli' },
   { text: 'SDK', link: '/sdk' },
 ];
-if (SHOW_DOWNLOAD_LINK) {
-  nav.push({ text: '下载', link: 'https://github.com/netease-lcap/wave-agent/releases' });
-}
 
 export default {
   base: '/wave-agent/',
@@ -207,13 +202,6 @@ export default {
             { text: '配置列表', link: '/cli#environment-variables' },
           ],
         },
-        {
-          text: '9. 开发',
-          collapsed: true,
-          items: [
-            { text: '构建与测试', link: '/cli#development' },
-          ],
-        },
       ],
       '/sdk': [
         {
@@ -223,7 +211,6 @@ export default {
             { text: '安装', link: '/sdk#install' },
             { text: '核心能力', link: '/sdk#capabilities' },
             { text: '基本用法', link: '/sdk#basic-usage' },
-            { text: '开发', link: '/sdk#development' },
           ],
         },
         {
@@ -380,9 +367,6 @@ export default {
         },
       ],
     },
-    socialLinks: [
-      { icon: 'github', link: 'https://github.com/netease-lcap/wave-agent' },
-    ],
   },
   head: [
     ['link', { rel: 'icon', href: 'LOGO.png' }],
