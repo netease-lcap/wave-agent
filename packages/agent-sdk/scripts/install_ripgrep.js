@@ -16,7 +16,7 @@ async function main() {
   }
 
   const manifestContent = fs.readFileSync(MANIFEST_PATH, "utf-8");
-  const jsonContent = manifestContent.replace(/^#!.*\n/, "");
+  const jsonContent = manifestContent.replace(/^#!.*\r?\n/, "");
   const manifest = JSON.parse(jsonContent);
   const platforms = manifest.platforms;
 
