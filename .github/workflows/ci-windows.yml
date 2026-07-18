@@ -41,8 +41,12 @@ jobs:
         run: pnpm run ci
 
       # TEMP: diagnose agent-sdk test:coverage silent failure on Windows.
-      # Runs agent-sdk tests in isolation with verbose reporter so output
-      # is not swallowed by pnpm --parallel. Remove once root cause is fixed.
-      - name: Diagnose agent-sdk tests (verbose)
+      # Step 1: run tests WITHOUT coverage to isolate whether v8 coverage
+      # provider is the culprit. Step 2: run WITH coverage but default reporter.
+      # Remove once root cause is fixed.
+      - name: Diagnose agent-sdk tests (no coverage)
         if: always()
-        run: pnpm --filter wave-agent-sdk test:coverage -- --reporter=verbose
+        run: pnpm --filter wave-agent-sdk exec vitest run --reporter=verbose
+      - name: Diagnose agent-sdk tests (with coverage, verbose)
+        if: always()
+        run: pnpm --filter wave-agent-sdk exec vitest run --coverage --reporter=verbose
