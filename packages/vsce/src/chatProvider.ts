@@ -19,7 +19,7 @@ import { MessageHandler } from './session/messageHandler';
 import { StdioClient } from './stdio/stdioClient';
 import { NotificationRouter } from './stdio/notificationRouter';
 import { resolveWaveBinary, upgradeWaveBinary } from './stdio/binaryResolver';
-import { parseVersion, compareVersions } from './services/updateService';
+import { parseVersion, compareVersions, checkAndNotify } from './services/updateService';
 
 export class ChatProvider implements vscode.WebviewViewProvider {
     private static formatConfigError(error: unknown): string {
@@ -50,6 +50,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     private sharedClient: StdioClient | undefined;
     private notificationRouter: NotificationRouter | undefined;
     private cliUpgradeAttempted = false;
+    private updateCheckTriggered = false;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -105,7 +106,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                     this.sidebarSession.updateConfig(cfg);
                     this.tabSessions.forEach(session => session.updateConfig(cfg));
                     this.windowSessions.forEach(session => session.updateConfig(cfg));
-                }
+                },
+                checkForUpdates: () => checkAndNotify(this.context, true)
             }
         );
 
@@ -273,6 +275,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 this.sharedClient!,
                 this.notificationRouter!,
             );
+
+            // Auto-update check: trigger once per activation after the first agent is created.
+            // The 24h cooldown is enforced inside checkAndNotify via globalState.
+            if (!this.updateCheckTriggered) {
+                this.updateCheckTriggered = true;
+                checkAndNotify(this.context).catch(err => {
+                    console.warn('[UpdateService] Update check failed:', err);
+                });
+            }
 
             // Version negotiation: if the CLI is older than the extension, silently
             // upgrade once per activation and re-initialize. Because the shared process

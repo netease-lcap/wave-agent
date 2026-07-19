@@ -70,11 +70,6 @@
         "command": "wave-code.addToWave",
         "title": "添加到 Wave",
         "category": "Wave"
-      },
-      {
-        "command": "wave-code.checkForUpdates",
-        "title": "检查更新",
-        "category": "Wave"
       }
     ],
     "menus": {

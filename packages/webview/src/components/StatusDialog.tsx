@@ -92,7 +92,24 @@ const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: 
 
         <div className="configuration-form">
           <div className="configuration-fields-scroll-area">
-            <StatusRow label="版本" value={version} />
+            <div className="configuration-field">
+              <label>版本:</label>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                color: 'var(--vscode-descriptionForeground)',
+                fontFamily: 'var(--vscode-editor-font-family, monospace)',
+                wordBreak: 'break-all',
+                padding: '4px 0'
+              }}>
+                <span>{version || '—'}</span>
+                <button type="button" onClick={() => vscode?.postMessage({ command: 'checkForUpdates' })} className="configuration-cancel-btn" style={{ padding: '2px 8px' }}>
+                  检查更新
+                </button>
+              </div>
+            </div>
             <StatusRow label="Session ID" value={sessionId} />
             <StatusRow label="工作目录" value={workdir} />
             <StatusRow label="Base URL" value={baseURL} />
