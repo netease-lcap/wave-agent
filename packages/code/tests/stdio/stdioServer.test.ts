@@ -119,9 +119,19 @@ test("multiple sequential requests get correct responses", async () => {
   server.start();
 
   send({ id: 1, method: "initialize", params: {} });
-  await waitForMessages(1);
+  const initMsgs = await waitForMessages(1);
+  const initResp = initMsgs[0] as {
+    id: number;
+    result: { sessionId: string };
+  };
+  const sessionId = initResp.result.sessionId;
 
-  send({ id: 2, method: "getPermissionMode", params: {} });
+  send({
+    id: 2,
+    method: "getPermissionMode",
+    params: {},
+    sessionId,
+  });
   const msgs = await waitForMessages(2);
 
   const resp2 = msgs[1] as { id: number; result: unknown };
@@ -252,7 +262,7 @@ test("calling method before initialize returns internal error", async () => {
 
   expect(response.id).toBe(1);
   expect(response.error.code).toBe(-32603); // INTERNAL_ERROR
-  expect(response.error.message).toContain("not initialized");
+  expect(response.error.message).toContain("sessionId is required");
 
   server.stop();
 });
@@ -264,7 +274,12 @@ test("callback triggers notification output on stdout", async () => {
   server.start();
 
   send({ id: 1, method: "initialize", params: {} });
-  await waitForMessages(1);
+  const initMsgs = await waitForMessages(1);
+  const initResp = initMsgs[0] as {
+    id: number;
+    result: { sessionId: string };
+  };
+  const sessionId = initResp.result.sessionId;
 
   // Grab callbacks from Agent.create
   const options = vi.mocked(Agent.create).mock.calls[0][0];
@@ -277,10 +292,12 @@ test("callback triggers notification output on stdout", async () => {
   const notification = msgs[1] as {
     method: string;
     params: { loading: boolean; latestTotalTokens?: number };
+    sessionId?: string;
   };
 
   expect(notification.method).toBe("loadingChange");
   expect(notification.params).toEqual({ loading: true, latestTotalTokens: 0 });
+  expect(notification.sessionId).toBe(sessionId);
 
   server.stop();
 });
@@ -292,7 +309,12 @@ test("canUseTool triggers permissionRequest notification and resolves on permiss
   server.start();
 
   send({ id: 1, method: "initialize", params: {} });
-  await waitForMessages(1);
+  const initMsgs = await waitForMessages(1);
+  const initResp = initMsgs[0] as {
+    id: number;
+    result: { sessionId: string };
+  };
+  const sessionId = initResp.result.sessionId;
 
   // Get canUseTool from options
   const options = vi.mocked(Agent.create).mock.calls[0][0];
@@ -318,10 +340,15 @@ test("canUseTool triggers permissionRequest notification and resolves on permiss
   const allMsgs = getMessages();
   const permNotif = allMsgs.find(
     (m) => (m as { method: string }).method === "permissionRequest",
-  ) as { method: string; params: { requestId: string } };
+  ) as {
+    method: string;
+    params: { requestId: string };
+    sessionId?: string;
+  };
   const requestId = permNotif.params.requestId;
+  expect(permNotif.sessionId).toBe(sessionId);
 
-  // Client sends permissionResponse notification
+  // Client sends permissionResponse notification (uses requestId, no sessionId needed)
   send({
     method: "permissionResponse",
     params: { requestId, decision: { behavior: "allow" } },
@@ -345,4 +372,90 @@ test("stop() closes the readline interface", async () => {
 
   // No crash = pass
   expect(true).toBe(true);
+});
+
+// ── sendNotification sessionId envelope ──────────────────────────
+
+test("sendNotification includes sessionId in envelope when provided", () => {
+  const { server, getMessages } = createServer();
+
+  server.sendNotification("messagesChange", { messages: [] }, "sess-1");
+
+  const msgs = getMessages();
+  expect(msgs).toHaveLength(1);
+  expect(msgs[0]).toEqual({
+    method: "messagesChange",
+    params: { messages: [] },
+    sessionId: "sess-1",
+  });
+});
+
+test("sendNotification omits sessionId when not provided", () => {
+  const { server, getMessages } = createServer();
+
+  server.sendNotification("authUrl", { url: "https://example.com" });
+
+  const msgs = getMessages();
+  expect(msgs).toHaveLength(1);
+  expect(msgs[0]).toEqual({
+    method: "authUrl",
+    params: { url: "https://example.com" },
+  });
+  expect(msgs[0]).not.toHaveProperty("sessionId");
+});
+
+// ── sessionId extraction/forwarding ──────────────────────────────
+
+test("handleRequest extracts msg.sessionId and passes to bridge.handleRequest", async () => {
+  const { server, send, waitForMessages } = createServer();
+  server.start();
+
+  send({ id: 1, method: "initialize", params: {} });
+  const initMsgs = await waitForMessages(1);
+  const sessionId = (initMsgs[0] as { result: { sessionId: string } }).result
+    .sessionId;
+
+  // Calling getMessages WITHOUT sessionId → should error
+  send({ id: 2, method: "getMessages", params: {} });
+  const msgsNoSession = await waitForMessages(2);
+  const errResp = msgsNoSession[1] as {
+    id: number;
+    error: { code: number; message: string };
+  };
+  expect(errResp.error.message).toContain("sessionId is required");
+
+  // Calling getMessages WITH sessionId → should succeed
+  send({ id: 3, method: "getMessages", params: {}, sessionId });
+  const msgs = await waitForMessages(3);
+  const okResp = msgs[2] as { id: number; result: unknown };
+  expect(okResp.id).toBe(3);
+  expect(okResp.result).toEqual({ messages: [] });
+
+  server.stop();
+});
+
+test("handleNotification forwards permissionResponse notification without throwing", async () => {
+  const { server, send, waitForMessages } = createServer();
+  server.start();
+
+  send({ id: 1, method: "initialize", params: {} });
+  const initMsgs = await waitForMessages(1);
+  const sessionId = (initMsgs[0] as { result: { sessionId: string } }).result
+    .sessionId;
+
+  const linesBefore = waitForMessages(1);
+
+  // Send permissionResponse notification — handleNotification should not throw
+  // even though the notification carries a sessionId (lookup uses requestId only)
+  send({
+    method: "permissionResponse",
+    params: { requestId: "unknown-id", decision: { behavior: "allow" } },
+    sessionId,
+  });
+
+  // No new response written for notifications
+  await linesBefore;
+  expect(true).toBe(true);
+
+  server.stop();
 });

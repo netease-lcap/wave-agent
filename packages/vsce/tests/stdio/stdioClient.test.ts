@@ -219,6 +219,33 @@ describe('StdioClient', () => {
         expect(await promise).toBe('ok');
     });
 
+    it('injects sessionId into request envelope when provided', async () => {
+        const { client, proc, rl } = createClient();
+
+        const promise = client.request('sendMessage', { text: 'hi' }, 'session-1');
+        const sent = JSON.parse(proc.stdin.write.mock.calls[0][0]);
+        expect(sent).toEqual({
+            id: 1,
+            method: 'sendMessage',
+            params: { text: 'hi' },
+            sessionId: 'session-1',
+        });
+
+        rl.emit('line', JSON.stringify({ id: 1, result: null }));
+        await promise;
+    });
+
+    it('does not include sessionId in request envelope when omitted', async () => {
+        const { client, proc, rl } = createClient();
+
+        const promise = client.request('initialize', { workdir: '/x' });
+        const sent = JSON.parse(proc.stdin.write.mock.calls[0][0]);
+        expect(sent).not.toHaveProperty('sessionId');
+
+        rl.emit('line', JSON.stringify({ id: 1, result: null }));
+        await promise;
+    });
+
     // ── Notify ─────────────────────────────────────────────────
 
     it('sends notification without id', () => {
@@ -244,6 +271,28 @@ describe('StdioClient', () => {
         expect(sent.params).toBeUndefined();
     });
 
+    it('injects sessionId into notify envelope when provided', () => {
+        const { client, proc } = createClient();
+
+        client.notify('permissionResponse', { requestId: 'r1' }, 'session-1');
+
+        const sent = JSON.parse(proc.stdin.write.mock.calls[0][0]);
+        expect(sent).toEqual({
+            method: 'permissionResponse',
+            params: { requestId: 'r1' },
+            sessionId: 'session-1',
+        });
+    });
+
+    it('does not include sessionId in notify envelope when omitted', () => {
+        const { client, proc } = createClient();
+
+        client.notify('someNotification');
+
+        const sent = JSON.parse(proc.stdin.write.mock.calls[0][0]);
+        expect(sent).not.toHaveProperty('sessionId');
+    });
+
     // ── Notifications ──────────────────────────────────────────
 
     it('calls registered handler when notification arrives', () => {
@@ -254,7 +303,7 @@ describe('StdioClient', () => {
 
         rl.emit('line', JSON.stringify({ method: 'messagesChange', params: { messages: [] } }));
 
-        expect(handler).toHaveBeenCalledWith({ messages: [] });
+        expect(handler).toHaveBeenCalledWith({ messages: [] }, undefined);
     });
 
     it('supports multiple handlers for same notification', () => {
@@ -267,8 +316,8 @@ describe('StdioClient', () => {
 
         rl.emit('line', JSON.stringify({ method: 'tasksChange', params: { tasks: [] } }));
 
-        expect(h1).toHaveBeenCalledWith({ tasks: [] });
-        expect(h2).toHaveBeenCalledWith({ tasks: [] });
+        expect(h1).toHaveBeenCalledWith({ tasks: [] }, undefined);
+        expect(h2).toHaveBeenCalledWith({ tasks: [] }, undefined);
     });
 
     it('offNotification removes specific handler', () => {
@@ -283,7 +332,22 @@ describe('StdioClient', () => {
         rl.emit('line', JSON.stringify({ method: 'loadingChange', params: { loading: true } }));
 
         expect(h1).not.toHaveBeenCalled();
-        expect(h2).toHaveBeenCalledWith({ loading: true });
+        expect(h2).toHaveBeenCalledWith({ loading: true }, undefined);
+    });
+
+    it('passes sessionId to handler when present in notification', () => {
+        const { client, rl } = createClient();
+
+        const handler = vi.fn();
+        client.onNotification('messagesChange', handler);
+
+        rl.emit('line', JSON.stringify({
+            method: 'messagesChange',
+            params: { messages: [] },
+            sessionId: 's1',
+        }));
+
+        expect(handler).toHaveBeenCalledWith({ messages: [] }, 's1');
     });
 
     it('does not call handlers for different notification methods', () => {

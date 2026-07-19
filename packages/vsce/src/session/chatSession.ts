@@ -3,7 +3,7 @@ import type { Message, PermissionDecision, ToolPermissionContext, PermissionMode
 import { ConfigurationData } from '../services/configurationService';
 import { StdioClient } from '../stdio/stdioClient';
 import { StdioAgent, type StdioAgentCallbacks } from '../stdio/stdioAgent';
-import { resolveWaveBinary } from '../stdio/binaryResolver';
+import { NotificationRouter } from '../stdio/notificationRouter';
 
 export interface ChatSessionCallbacks {
     onMessagesChange: (messages: Message[]) => void;
@@ -63,7 +63,13 @@ export class ChatSession {
         private callbacks: ChatSessionCallbacks
     ) {}
 
-    public async initialize(config: ConfigurationData, restoreSessionId?: string, clientVersion?: string) {
+    public async initialize(
+        config: ConfigurationData,
+        restoreSessionId: string | undefined,
+        clientVersion: string | undefined,
+        sharedClient: StdioClient,
+        router: NotificationRouter,
+    ) {
         if (this.isInitializing) {
             return;
         }
@@ -78,9 +84,6 @@ export class ChatSession {
             if (workdir) {
                 console.log(`设置智能体工作目录为: ${workdir}`);
             }
-
-            const binaryPath = await resolveWaveBinary();
-            const client = new StdioClient(binaryPath, ['--stdio']);
 
             const agentCallbacks: StdioAgentCallbacks = {
                 onMessagesChange: (messages: Message[]) => {
@@ -151,7 +154,7 @@ export class ChatSession {
                 },
             };
 
-            this.agent = new StdioAgent(client, agentCallbacks);
+            this.agent = new StdioAgent(sharedClient, router, agentCallbacks);
 
             const initParams = {
                 workdir,
