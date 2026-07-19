@@ -53,7 +53,7 @@ describe('Model, Status, and Login Commands', () => {
                 expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();
             });
 
-            const closeButton = document.querySelector('.configuration-cancel-btn') as HTMLButtonElement;
+            const closeButton = document.querySelector('.configuration-actions .configuration-cancel-btn') as HTMLButtonElement;
             await act(async () => {
                 fireEvent.click(closeButton);
             });
