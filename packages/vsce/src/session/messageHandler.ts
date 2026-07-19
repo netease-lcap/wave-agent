@@ -14,6 +14,7 @@ export interface MessageHandlerContext {
     initializeAgent: (viewType: 'sidebar' | 'tab' | 'window', windowId?: string, restoreSessionId?: string) => Promise<void>;
     listSessions: (viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) => Promise<void>;
     updateAllSessionsConfig: (config: unknown) => void;
+    checkForUpdates: () => Promise<void>;
 }
 
 export class MessageHandler {
@@ -160,6 +161,9 @@ export class MessageHandler {
                 break;
             case 'disconnectMcpServer':
                 await this.handleDisconnectMcpServer(msg.serverName as string, viewType, windowId);
+                break;
+            case 'checkForUpdates':
+                await this.context.checkForUpdates();
                 break;
         }
     }

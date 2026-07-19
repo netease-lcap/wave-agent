@@ -36,6 +36,7 @@ function createHandler(session: ChatSession) {
         initializeAgent: vi.fn(),
         listSessions: vi.fn(),
         updateAllSessionsConfig: vi.fn(),
+        checkForUpdates: vi.fn(),
     };
     const handler = new MessageHandler(
         {} as unknown as ConfigurationService,

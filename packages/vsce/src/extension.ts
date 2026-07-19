@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { ChatProvider } from './chatProvider';
-import { checkAndNotify } from './services/updateService';
 
 let chatProvider: ChatProvider | undefined;
 
@@ -9,11 +8,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Create a single ChatProvider instance for the extension lifecycle
     chatProvider = new ChatProvider(context);
-
-    // Check for updates asynchronously (non-blocking)
-    checkAndNotify(context).catch(err => {
-        console.warn('[UpdateService] Update check failed:', err);
-    });
 
     // Register sidebar command
     const openChatSidebarCommand = vscode.commands.registerCommand('wave-code.openChatSidebar', async () => {
@@ -50,16 +44,6 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Register check for updates command
-    const checkUpdatesCommand = vscode.commands.registerCommand('wave-code.checkForUpdates', async () => {
-        try {
-            await checkAndNotify(context, true);
-        } catch (error) {
-            console.error('检查更新时出错:', error);
-            vscode.window.showErrorMessage('检查更新失败: ' + error);
-        }
-    });
-
     async function openChatWithProgress(mode: 'sidebar' | 'tab' | 'window') {
         try {
             // Show progress indicator while opening chat
@@ -81,8 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
         openChatTabCommand,
         openChatWindowCommand,
         focusViewCommand,
-        addToWaveCommand,
-        checkUpdatesCommand
+        addToWaveCommand
     );
     
     console.log('Wave 聊天命令注册成功');
