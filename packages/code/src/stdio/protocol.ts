@@ -13,6 +13,8 @@ export interface JsonRpcRequest {
   id: number | string;
   method: string;
   params?: unknown;
+  /** Session-scoped requests carry sessionId for routing to the right Agent. */
+  sessionId?: string;
 }
 
 export interface JsonRpcResponse {
@@ -30,6 +32,8 @@ export interface JsonRpcError {
 export interface JsonRpcNotification {
   method: string;
   params?: unknown;
+  /** Session-scoped notifications carry sessionId for demultiplexing on the client. */
+  sessionId?: string;
 }
 
 // ── Error codes (JSON-RPC 2.0 standard) ────────────────────────

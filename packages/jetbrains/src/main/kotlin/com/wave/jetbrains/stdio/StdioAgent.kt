@@ -158,49 +158,49 @@ class StdioAgent(
             put("text", text)
             if (images != null) put("images", images)
             if (force) put("force", true)
-        })
+        }, sessionId)
     }
 
     suspend fun bang(command: String) {
-        client.request("bang", buildJsonObject { put("command", command) })
+        client.request("bang", buildJsonObject { put("command", command) }, sessionId)
     }
 
-    suspend fun abortMessage() { client.request("abortMessage") }
-    suspend fun clearMessages() { client.request("clearMessages") }
+    suspend fun abortMessage() { client.request("abortMessage", sessionId = sessionId) }
+    suspend fun clearMessages() { client.request("clearMessages", sessionId = sessionId) }
 
     suspend fun restoreSession(sessionId: String) {
-        client.request("restoreSession", buildJsonObject { put("sessionId", sessionId) })
+        client.request("restoreSession", buildJsonObject { put("sessionId", sessionId) }, this.sessionId)
     }
 
     suspend fun setPermissionMode(mode: String) {
-        client.request("setPermissionMode", buildJsonObject { put("mode", mode) })
+        client.request("setPermissionMode", buildJsonObject { put("mode", mode) }, sessionId)
     }
 
     suspend fun deleteQueuedMessage(index: Int) {
-        client.request("deleteQueuedMessage", buildJsonObject { put("index", index) })
+        client.request("deleteQueuedMessage", buildJsonObject { put("index", index) }, sessionId)
     }
 
-    suspend fun getSlashCommands(): JsonElement? = client.request("getSlashCommands")
+    suspend fun getSlashCommands(): JsonElement? = client.request("getSlashCommands", sessionId = sessionId)
 
     suspend fun updateConfig(params: JsonObject) {
-        client.request("updateConfig", params)
+        client.request("updateConfig", params, sessionId)
     }
 
     suspend fun rewindToMessage(messageId: String): String {
-        val result = client.request("rewindToMessage", buildJsonObject { put("messageId", messageId) })
+        val result = client.request("rewindToMessage", buildJsonObject { put("messageId", messageId) }, sessionId)
         return result?.jsonObject?.get("inputContent")?.jsonPrimitive?.content ?: ""
     }
 
     suspend fun getMcpServers(): JsonElement =
-        client.request("getMcpServers") ?: JsonObject(emptyMap())
+        client.request("getMcpServers", sessionId = sessionId) ?: JsonObject(emptyMap())
 
     suspend fun connectMcpServer(serverName: String): Boolean {
-        val result = client.request("connectMcpServer", buildJsonObject { put("serverName", serverName) })
+        val result = client.request("connectMcpServer", buildJsonObject { put("serverName", serverName) }, sessionId)
         return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
     }
 
     suspend fun disconnectMcpServer(serverName: String): Boolean {
-        val result = client.request("disconnectMcpServer", buildJsonObject { put("serverName", serverName) })
+        val result = client.request("disconnectMcpServer", buildJsonObject { put("serverName", serverName) }, sessionId)
         return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
     }
 
@@ -210,7 +210,7 @@ class StdioAgent(
         client.notify("permissionResponse", buildJsonObject {
             put("requestId", requestId)
             put("decision", decision)
-        })
+        }, sessionId)
     }
 
     // ── Utility RPCs (standalone, mirror VSCE services) ───────────

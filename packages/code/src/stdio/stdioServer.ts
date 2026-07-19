@@ -37,7 +37,8 @@ export class StdioServer {
     this.output = options.output ?? process.stdout;
     this.bridge = new AgentBridge({
       ...options.bridgeOptions,
-      emit: (method, params) => this.sendNotification(method, params),
+      emit: (method, params, sessionId) =>
+        this.sendNotification(method, params, sessionId),
     });
   }
 
@@ -113,7 +114,11 @@ export class StdioServer {
 
   private async handleRequest(msg: JsonRpcRequest): Promise<void> {
     try {
-      const result = await this.bridge.handleRequest(msg.method, msg.params);
+      const result = await this.bridge.handleRequest(
+        msg.method,
+        msg.params,
+        msg.sessionId,
+      );
       this.sendResponse(msg.id, result);
     } catch (err) {
       const code =
@@ -152,8 +157,9 @@ export class StdioServer {
     this.write(response);
   }
 
-  sendNotification(method: string, params?: unknown): void {
+  sendNotification(method: string, params?: unknown, sessionId?: string): void {
     const notification: JsonRpcNotification = { method, params };
+    if (sessionId) notification.sessionId = sessionId;
     this.write(notification);
   }
 

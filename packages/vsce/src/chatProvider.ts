@@ -17,6 +17,7 @@ import { PluginService } from './services/pluginService';
 import { WebviewManager } from './session/webviewManager';
 import { MessageHandler } from './session/messageHandler';
 import { StdioClient } from './stdio/stdioClient';
+import { NotificationRouter } from './stdio/notificationRouter';
 import { resolveWaveBinary, upgradeWaveBinary } from './stdio/binaryResolver';
 import { parseVersion, compareVersions } from './services/updateService';
 
@@ -46,21 +47,23 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     private pluginService: PluginService;
     private webviewManager: WebviewManager;
     private messageHandler: MessageHandler;
-    private utilityClient: StdioClient | undefined;
+    private sharedClient: StdioClient | undefined;
+    private notificationRouter: NotificationRouter | undefined;
     private cliUpgradeAttempted = false;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
         this.configService = new ConfigurationService(context);
 
-        // Create utility stdio client for standalone calls (searchFiles, listSessions,
-        // promptHistory, plugins, auth). Never calls initialize.
-        this.initUtilityClient();
+        // Create the single shared stdio client + notification router for all sessions.
+        // Session-scoped notifications are demuxed by sessionId via the router.
+        // Global notifications (authUrl) are handled here.
+        this.initSharedClient();
 
-        this.fileService = new FileService(this.utilityClient!);
-        this.sessionService = new SessionService(this.utilityClient!);
+        this.fileService = new FileService(this.sharedClient!);
+        this.sessionService = new SessionService(this.sharedClient!);
         this.selectionService = new SelectionService(context);
-        this.pluginService = new PluginService(this.utilityClient!);
+        this.pluginService = new PluginService(this.sharedClient!);
 
         this.webviewManager = new WebviewManager(context, {
             onMessage: async (message, viewType, windowId) => {
@@ -91,7 +94,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             this.fileService,
             this.sessionService,
             this.pluginService,
-            this.utilityClient!,
+            this.sharedClient!,
             {
                 getChatSession: (viewType, windowId) => this.getChatSession(viewType, windowId),
                 postMessage: (message, viewType, windowId) => this.webviewManager.postMessage(message, viewType, windowId),
@@ -136,12 +139,14 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         */
     }
 
-    private initUtilityClient(): void {
+    private initSharedClient(): void {
         try {
             const binaryPath = resolveWaveBinary();
-            this.utilityClient = new StdioClient(binaryPath, ['--stdio']);
-            // Open browser when auth URL is received from the server
-            this.utilityClient.onNotification('authUrl', (params) => {
+            this.sharedClient = new StdioClient(binaryPath, ['--stdio']);
+            this.notificationRouter = new NotificationRouter(this.sharedClient);
+            this.notificationRouter.attach();
+            // Open browser when auth URL is received (global — no sessionId).
+            this.notificationRouter.registerGlobal('authUrl', (params) => {
                 const p = params as { url: string };
                 if (p.url) {
                     vscode.env.openExternal(vscode.Uri.parse(p.url));
@@ -261,10 +266,17 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
         try {
             const config = await this.configService.loadConfiguration();
-            await session.initialize(config, restoreSessionId, clientVersion);
+            await session.initialize(
+                config,
+                restoreSessionId,
+                clientVersion,
+                this.sharedClient!,
+                this.notificationRouter!,
+            );
 
             // Version negotiation: if the CLI is older than the extension, silently
-            // upgrade once per activation and re-initialize.
+            // upgrade once per activation and re-initialize. Because the shared process
+            // must be killed to pick up the new binary, ALL active sessions are re-init'd.
             if (!upgradedThisCall && clientVersion && session.agent?.serverVersion) {
                 const client = parseVersion(clientVersion);
                 const server = parseVersion(session.agent.serverVersion);
@@ -272,9 +284,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                     this.cliUpgradeAttempted = true;
                     try {
                         console.log(`[Wave] CLI ${session.agent.serverVersion} < extension ${clientVersion}, upgrading...`);
-                        await upgradeWaveBinary(clientVersion);
-                        await session.destroy();
-                        await session.initialize(config, undefined, clientVersion);
+                        await this.reinitAllAfterUpgrade(config, clientVersion);
                     } catch (upgradeError) {
                         console.error('[Wave] CLI auto-upgrade failed:', upgradeError);
                         vscode.window.showErrorMessage(
@@ -292,6 +302,65 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 vscode.window.showErrorMessage(`初始化 ${viewType} AI 智能体失败: ` + error);
             }
         }
+    }
+
+    /**
+     * Kill the shared process, upgrade the CLI binary, rebuild the shared client +
+     * router, and re-initialize every active session with its restoreSessionId.
+     *
+     * This is called when the running CLI is older than the extension. Because the
+     * binary is replaced on disk, the shared process must be restarted to pick it up.
+     * All sessions that were live before the upgrade are re-initialized on the new
+     * process, preserving their session IDs so conversation history is restored.
+     */
+    private async reinitAllAfterUpgrade(config: ConfigurationData, clientVersion: string): Promise<void> {
+        // Collect every active session along with the sessionId to restore.
+        const active: Array<{ session: ChatSession; restoreSessionId: string | undefined }> = [];
+        if (this.sidebarSession.agent) {
+            active.push({ session: this.sidebarSession, restoreSessionId: this.sidebarSession.sessionId });
+        }
+        for (const session of this.tabSessions.values()) {
+            if (session.agent) {
+                active.push({ session, restoreSessionId: session.sessionId });
+            }
+        }
+        for (const session of this.windowSessions.values()) {
+            if (session.agent) {
+                active.push({ session, restoreSessionId: session.sessionId });
+            }
+        }
+
+        // Best-effort destroy: unregisters each agent from the router and sends a
+        // destroy request to the server. Failures are swallowed because the process
+        // will be killed next regardless.
+        await Promise.all(active.map(({ session }) => session.destroy().catch(() => {})));
+
+        // Kill the old shared process so the binary file can be replaced and the new
+        // binary picked up on restart.
+        this.sharedClient?.dispose();
+        this.sharedClient = undefined;
+        this.notificationRouter = undefined;
+
+        await upgradeWaveBinary(clientVersion);
+
+        // Rebuild the shared client + router against the freshly installed binary.
+        this.initSharedClient();
+
+        // Re-initialize every previously-active session on the new process, restoring
+        // each one's conversation history by sessionId.
+        await Promise.all(
+            active.map(({ session, restoreSessionId }) =>
+                session.initialize(
+                    config,
+                    restoreSessionId,
+                    clientVersion,
+                    this.sharedClient!,
+                    this.notificationRouter!,
+                ).catch((err) => {
+                    console.error('[Wave] Failed to re-initialize session after upgrade:', err);
+                }),
+            ),
+        );
     }
 
     private getChatSession(viewType: 'sidebar' | 'tab' | 'window', windowId?: string): ChatSession {
@@ -495,7 +564,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             console.error('销毁智能体时出错:', error);
         }
 
-        this.utilityClient?.dispose();
+        this.sharedClient?.dispose();
 
         this.webviewManager.dispose();
         

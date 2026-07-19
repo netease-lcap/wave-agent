@@ -8,7 +8,7 @@
 import { type ChildProcess, spawn } from 'child_process';
 import { createInterface } from 'readline';
 
-export type NotificationHandler = (params: unknown) => void;
+export type NotificationHandler = (params: unknown, sessionId?: string) => void;
 
 interface PendingRequest {
     resolve: (value: unknown) => void;
@@ -63,12 +63,18 @@ export class StdioClient {
 
     // ── Public API ────────────────────────────────────────────────
 
-    async request(method: string, params?: unknown): Promise<unknown> {
+    async request(
+        method: string,
+        params?: unknown,
+        sessionId?: string,
+    ): Promise<unknown> {
         if (this.disposed) {
             throw new Error('StdioClient is disposed');
         }
         const id = this.nextId++;
-        const message = JSON.stringify({ id, method, params }) + '\n';
+        const envelope: Record<string, unknown> = { id, method, params };
+        if (sessionId) envelope.sessionId = sessionId;
+        const message = JSON.stringify(envelope) + '\n';
 
         return new Promise((resolve, reject) => {
             this.pending.set(id, { resolve, reject });
@@ -76,9 +82,11 @@ export class StdioClient {
         });
     }
 
-    notify(method: string, params?: unknown): void {
+    notify(method: string, params?: unknown, sessionId?: string): void {
         if (this.disposed) return;
-        const message = JSON.stringify({ method, params }) + '\n';
+        const envelope: Record<string, unknown> = { method, params };
+        if (sessionId) envelope.sessionId = sessionId;
+        const message = JSON.stringify(envelope) + '\n';
         this.proc.stdin!.write(message);
     }
 
@@ -135,10 +143,12 @@ export class StdioClient {
         if ('method' in obj && !('id' in obj)) {
             const method = obj.method as string;
             const params = obj.params;
+            const sessionId =
+                typeof obj.sessionId === 'string' ? obj.sessionId : undefined;
             const set = this.handlers.get(method);
             if (set) {
                 for (const handler of set) {
-                    handler(params);
+                    handler(params, sessionId);
                 }
             }
             return;

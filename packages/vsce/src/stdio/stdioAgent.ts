@@ -1,13 +1,16 @@
 /**
  * StdioAgent — typed wrapper around StdioClient that mirrors the Agent API.
  *
- * Replaces direct `Agent` usage in ChatSession. All previously-synchronous
- * methods (abortMessage, clearMessages, getSlashCommands, etc.) are now async
- * because they cross a subprocess boundary.
+ * In the single-shared-process architecture, all sessions share one
+ * StdioClient. The NotificationRouter dispatches incoming notifications to
+ * the appropriate StdioAgent via `handleNotification()`. The agent no longer
+ * subscribes directly to the client.
  *
- * Cached state (sessionId, workingDirectory, latestTotalTokens, permissionMode,
- * messages, queuedMessages, tasks) is kept in sync via notifications, allowing
- * synchronous property access where the old code used `agent.xxx`.
+ * All session-scoped requests carry `this.sessionId` on the JSON-RPC envelope
+ * so the server can route them to the right Agent.
+ *
+ * `destroy()` only unregisters from the router and sends the destroy request;
+ * it does NOT dispose the shared StdioClient.
  */
 
 import type {
@@ -23,6 +26,7 @@ import type {
     McpServerConfig,
 } from 'wave-agent-sdk';
 import { StdioClient } from './stdioClient';
+import { NotificationRouter } from './notificationRouter';
 
 // ── Params / Results ─────────────────────────────────────────────
 
@@ -118,12 +122,17 @@ export class StdioAgent {
     public tasks: Task[] = [];
 
     private client: StdioClient;
+    private router: NotificationRouter;
     private callbacks: StdioAgentCallbacks;
 
-    constructor(client: StdioClient, callbacks: StdioAgentCallbacks) {
+    constructor(
+        client: StdioClient,
+        router: NotificationRouter,
+        callbacks: StdioAgentCallbacks,
+    ) {
         this.client = client;
+        this.router = router;
         this.callbacks = callbacks;
-        this.registerNotifications();
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────
@@ -140,28 +149,47 @@ export class StdioAgent {
         this.permissionMode = result.permissionMode;
         this.latestTotalTokens = result.latestTotalTokens;
         this.serverVersion = result.serverVersion;
+        // Register with the router so subsequent notifications are routed here
+        this.router.register(this.sessionId, this);
         return result;
     }
 
     async destroy(): Promise<void> {
-        try {
-            await this.client.request('destroy');
-        } finally {
-            this.client.dispose();
+        if (this.sessionId) {
+            this.router.unregister(this.sessionId);
         }
+        try {
+            await this.client.request('destroy', undefined, this.sessionId);
+        } catch {
+            // Process may have already exited; best-effort
+        }
+        // NOTE: do NOT dispose the shared client — other sessions may still use it
     }
 
     async restoreSession(sessionId: string): Promise<void> {
-        await this.client.request('restoreSession', { sessionId });
+        await this.client.request(
+            'restoreSession',
+            { sessionId },
+            this.sessionId,
+        );
     }
 
     async updateConfig(
         params: UpdateConfigParams,
     ): Promise<{ sessionId: string }> {
-        return (await this.client.request(
+        const oldSessionId = this.sessionId;
+        const result = (await this.client.request(
             'updateConfig',
             params,
+            this.sessionId,
         )) as { sessionId: string };
+        // If sessionId changed, re-register with the router
+        if (oldSessionId && result.sessionId !== oldSessionId) {
+            this.router.unregister(oldSessionId);
+            this.sessionId = result.sessionId;
+            this.router.register(this.sessionId, this);
+        }
+        return result;
     }
 
     // ── Messages ──────────────────────────────────────────────────
@@ -171,31 +199,41 @@ export class StdioAgent {
         images?: Array<{ path: string; mimeType: string }>,
         force?: boolean,
     ): Promise<void> {
-        await this.client.request('sendMessage', { text, images, force });
+        await this.client.request(
+            'sendMessage',
+            { text, images, force },
+            this.sessionId,
+        );
     }
 
     async bang(command: string): Promise<void> {
-        await this.client.request('bang', { command });
+        await this.client.request('bang', { command }, this.sessionId);
     }
 
     async abortMessage(): Promise<void> {
-        await this.client.request('abortMessage');
+        await this.client.request('abortMessage', undefined, this.sessionId);
     }
 
     async clearMessages(): Promise<void> {
-        await this.client.request('clearMessages');
+        await this.client.request('clearMessages', undefined, this.sessionId);
     }
 
     async rewindToMessage(
         messageId: string,
     ): Promise<{ inputContent: string }> {
-        return (await this.client.request('rewindToMessage', {
-            messageId,
-        })) as { inputContent: string };
+        return (await this.client.request(
+            'rewindToMessage',
+            { messageId },
+            this.sessionId,
+        )) as { inputContent: string };
     }
 
     async removeQueuedMessage(index: number): Promise<void> {
-        await this.client.request('deleteQueuedMessage', { index });
+        await this.client.request(
+            'deleteQueuedMessage',
+            { index },
+            this.sessionId,
+        );
     }
 
     async getFullMessageThread(): Promise<{
@@ -204,13 +242,19 @@ export class StdioAgent {
     }> {
         return (await this.client.request(
             'getFullMessageThread',
+            undefined,
+            this.sessionId,
         )) as { messages: Message[]; sessionIds: string[] };
     }
 
     // ── Permissions ───────────────────────────────────────────────
 
     async setPermissionMode(mode: PermissionMode): Promise<void> {
-        await this.client.request('setPermissionMode', { mode });
+        await this.client.request(
+            'setPermissionMode',
+            { mode },
+            this.sessionId,
+        );
     }
 
     /** Returns cached permission mode (updated via notification). */
@@ -222,172 +266,175 @@ export class StdioAgent {
         requestId: string,
         decision: PermissionDecision,
     ): void {
-        this.client.notify('permissionResponse', { requestId, decision });
+        this.client.notify(
+            'permissionResponse',
+            { requestId, decision },
+            this.sessionId,
+        );
     }
 
     // ── MCP ───────────────────────────────────────────────────────
 
     async getMcpServers(): Promise<McpServerStatus[]> {
-        const result = (await this.client.request('getMcpServers')) as {
-            servers: McpServerStatus[];
-        };
+        const result = (await this.client.request(
+            'getMcpServers',
+            undefined,
+            this.sessionId,
+        )) as { servers: McpServerStatus[] };
         return result.servers;
     }
 
     async connectMcpServer(serverName: string): Promise<boolean> {
-        const result = (await this.client.request('connectMcpServer', {
-            serverName,
-        })) as { success: boolean };
+        const result = (await this.client.request(
+            'connectMcpServer',
+            { serverName },
+            this.sessionId,
+        )) as { success: boolean };
         return result.success;
     }
 
     async disconnectMcpServer(serverName: string): Promise<boolean> {
-        const result = (await this.client.request('disconnectMcpServer', {
-            serverName,
-        })) as { success: boolean };
+        const result = (await this.client.request(
+            'disconnectMcpServer',
+            { serverName },
+            this.sessionId,
+        )) as { success: boolean };
         return result.success;
     }
 
     // ── Commands ──────────────────────────────────────────────────
 
     async getSlashCommands(): Promise<SlashCommand[]> {
-        const result = (await this.client.request('getSlashCommands')) as {
-            commands: SlashCommand[];
-        };
+        const result = (await this.client.request(
+            'getSlashCommands',
+            undefined,
+            this.sessionId,
+        )) as { commands: SlashCommand[] };
         return result.commands;
     }
 
-    // ── Notification registration ─────────────────────────────────
+    // ── Notification dispatch (called by NotificationRouter) ──────
 
-    private registerNotifications(): void {
-        const on = (method: string, handler: NotificationHandler) => {
-            this.client.onNotification(method, handler);
-        };
-
-        on('messagesChange', (params) => {
-            const p = params as { messages: Message[] };
-            this.messages = p.messages;
-            this.callbacks.onMessagesChange?.(this.messages);
-        });
-
-        on('userMessageAdded', (params) => {
-            const p = params as { message: Message };
-            if (p.message) this.callbacks.onUserMessageAdded?.(p.message);
-        });
-
-        on('assistantMessageAdded', (params) => {
-            const p = params as { message: Message };
-            if (p.message) this.callbacks.onAssistantMessageAdded?.(p.message);
-        });
-
-        on('assistantContentUpdated', (params) => {
-            this.callbacks.onAssistantContentUpdated?.(
-                params as {
-                    messageId: string;
-                    accumulated: string;
-                    stage: 'streaming' | 'end';
-                },
-            );
-        });
-
-        on('assistantReasoningUpdated', (params) => {
-            this.callbacks.onAssistantReasoningUpdated?.(
-                params as {
-                    messageId: string;
-                    accumulated: string;
-                    stage: 'streaming' | 'end';
-                },
-            );
-        });
-
-        on('toolBlockUpdated', (params) => {
-            this.callbacks.onToolBlockUpdated?.(
-                params as ToolBlockUpdateCallbackParams,
-            );
-        });
-
-        on('errorBlockAdded', (params) => {
-            const p = params as { error: string };
-            this.callbacks.onErrorBlockAdded?.(p.error);
-        });
-
-        on('loadingChange', (params) => {
-            const p = params as {
-                loading: boolean;
-                latestTotalTokens: number;
-            };
-            if (p.latestTotalTokens !== undefined) {
-                this.latestTotalTokens = p.latestTotalTokens;
+    handleNotification(method: string, params: unknown): void {
+        switch (method) {
+            case 'messagesChange': {
+                const p = params as { messages: Message[] };
+                this.messages = p.messages;
+                this.callbacks.onMessagesChange?.(this.messages);
+                break;
             }
-            this.callbacks.onLoadingChange?.(p.loading);
-        });
-
-        on('commandRunningChange', (params) => {
-            const p = params as { running: boolean };
-            this.callbacks.onCommandRunningChange?.(p.running);
-        });
-
-        on('queuedMessagesChange', (params) => {
-            const p = params as { messages: QueuedMessage[] };
-            this.queuedMessages = p.messages;
-            this.callbacks.onQueuedMessagesChange?.(p.messages);
-        });
-
-        on('tasksChange', (params) => {
-            const p = params as { tasks: Task[] };
-            this.tasks = p.tasks;
-            this.callbacks.onTasksChange?.(p.tasks);
-        });
-
-        on('sessionIdChange', (params) => {
-            const p = params as { sessionId: string };
-            this.sessionId = p.sessionId;
-            this.callbacks.onSessionIdChange?.(p.sessionId);
-        });
-
-        on('permissionModeChange', (params) => {
-            const p = params as { mode: PermissionMode };
-            this.permissionMode = p.mode;
-            this.callbacks.onPermissionModeChange?.(p.mode);
-        });
-
-        on('mcpServersChange', (params) => {
-            const p = params as { servers: McpServerStatus[] };
-            this.callbacks.onMcpServersChange?.(p.servers);
-        });
-
-        on('bangMessageAdded', () => {
-            this.callbacks.onBangMessageAdded?.();
-        });
-
-        on('bangMessageUpdated', () => {
-            this.callbacks.onBangMessageUpdated?.();
-        });
-
-        on('bangMessageCompleted', () => {
-            this.callbacks.onBangMessageCompleted?.();
-        });
-
-        on('notificationMessageAdded', (params) => {
-            this.callbacks.onNotificationMessageAdded?.(
-                params as {
-                    taskId: string;
-                    taskType: string;
-                    status: string;
-                    summary: string;
-                    message?: Message;
-                },
-            );
-        });
-
-        on('permissionRequest', (params) => {
-            const p = params as {
-                requestId: string;
-                context: ToolPermissionContext;
-            };
-            this.callbacks.onPermissionRequest?.(p.requestId, p.context);
-        });
+            case 'userMessageAdded': {
+                const p = params as { message: Message };
+                if (p.message) this.callbacks.onUserMessageAdded?.(p.message);
+                break;
+            }
+            case 'assistantMessageAdded': {
+                const p = params as { message: Message };
+                if (p.message)
+                    this.callbacks.onAssistantMessageAdded?.(p.message);
+                break;
+            }
+            case 'assistantContentUpdated':
+                this.callbacks.onAssistantContentUpdated?.(
+                    params as {
+                        messageId: string;
+                        accumulated: string;
+                        stage: 'streaming' | 'end';
+                    },
+                );
+                break;
+            case 'assistantReasoningUpdated':
+                this.callbacks.onAssistantReasoningUpdated?.(
+                    params as {
+                        messageId: string;
+                        accumulated: string;
+                        stage: 'streaming' | 'end';
+                    },
+                );
+                break;
+            case 'toolBlockUpdated':
+                this.callbacks.onToolBlockUpdated?.(
+                    params as ToolBlockUpdateCallbackParams,
+                );
+                break;
+            case 'errorBlockAdded': {
+                const p = params as { error: string };
+                this.callbacks.onErrorBlockAdded?.(p.error);
+                break;
+            }
+            case 'loadingChange': {
+                const p = params as {
+                    loading: boolean;
+                    latestTotalTokens: number;
+                };
+                if (p.latestTotalTokens !== undefined) {
+                    this.latestTotalTokens = p.latestTotalTokens;
+                }
+                this.callbacks.onLoadingChange?.(p.loading);
+                break;
+            }
+            case 'commandRunningChange': {
+                const p = params as { running: boolean };
+                this.callbacks.onCommandRunningChange?.(p.running);
+                break;
+            }
+            case 'queuedMessagesChange': {
+                const p = params as { messages: QueuedMessage[] };
+                this.queuedMessages = p.messages;
+                this.callbacks.onQueuedMessagesChange?.(p.messages);
+                break;
+            }
+            case 'tasksChange': {
+                const p = params as { tasks: Task[] };
+                this.tasks = p.tasks;
+                this.callbacks.onTasksChange?.(p.tasks);
+                break;
+            }
+            case 'sessionIdChange': {
+                const p = params as { sessionId: string };
+                this.sessionId = p.sessionId;
+                this.callbacks.onSessionIdChange?.(p.sessionId);
+                break;
+            }
+            case 'permissionModeChange': {
+                const p = params as { mode: PermissionMode };
+                this.permissionMode = p.mode;
+                this.callbacks.onPermissionModeChange?.(p.mode);
+                break;
+            }
+            case 'mcpServersChange': {
+                const p = params as { servers: McpServerStatus[] };
+                this.callbacks.onMcpServersChange?.(p.servers);
+                break;
+            }
+            case 'bangMessageAdded':
+                this.callbacks.onBangMessageAdded?.();
+                break;
+            case 'bangMessageUpdated':
+                this.callbacks.onBangMessageUpdated?.();
+                break;
+            case 'bangMessageCompleted':
+                this.callbacks.onBangMessageCompleted?.();
+                break;
+            case 'notificationMessageAdded':
+                this.callbacks.onNotificationMessageAdded?.(
+                    params as {
+                        taskId: string;
+                        taskType: string;
+                        status: string;
+                        summary: string;
+                        message?: Message;
+                    },
+                );
+                break;
+            case 'permissionRequest': {
+                const p = params as {
+                    requestId: string;
+                    context: ToolPermissionContext;
+                };
+                this.callbacks.onPermissionRequest?.(p.requestId, p.context);
+                break;
+            }
+        }
     }
 }
-
-type NotificationHandler = (params: unknown) => void;

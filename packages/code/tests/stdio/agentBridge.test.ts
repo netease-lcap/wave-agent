@@ -66,9 +66,14 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
 }
 
 function createBridge() {
-  const notifications: Array<{ method: string; params: unknown }> = [];
+  const notifications: Array<{
+    method: string;
+    params: unknown;
+    sessionId?: string;
+  }> = [];
   const bridge = new AgentBridge({
-    emit: (method, params) => notifications.push({ method, params }),
+    emit: (method, params, sessionId) =>
+      notifications.push({ method, params, sessionId }),
   });
   return { bridge, notifications };
 }
@@ -168,6 +173,7 @@ test("onMessagesChange emits messagesChange notification", async () => {
   expect(notifications).toContainEqual({
     method: "messagesChange",
     params: { messages },
+    sessionId: "test-session-id",
   });
 });
 
@@ -190,6 +196,7 @@ test("onUserMessageAdded finds last user message and emits notification", async 
   expect(notifications).toContainEqual({
     method: "userMessageAdded",
     params: { message: userMessage },
+    sessionId: "test-session-id",
   });
 });
 
@@ -212,6 +219,7 @@ test("onAssistantMessageAdded finds message by id and emits notification", async
   expect(notifications).toContainEqual({
     method: "assistantMessageAdded",
     params: { message: assistantMessage },
+    sessionId: "test-session-id",
   });
 });
 
@@ -228,6 +236,7 @@ test("onLoadingChange emits loadingChange notification", async () => {
   expect(notifications).toContainEqual({
     method: "loadingChange",
     params: { loading: true, latestTotalTokens: 100 },
+    sessionId: "test-session-id",
   });
 });
 
@@ -244,6 +253,7 @@ test("onErrorBlockAdded emits errorBlockAdded notification", async () => {
   expect(notifications).toContainEqual({
     method: "errorBlockAdded",
     params: { error: "something went wrong" },
+    sessionId: "test-session-id",
   });
 });
 
@@ -260,6 +270,7 @@ test("onPermissionModeChange emits permissionModeChange notification", async () 
   expect(notifications).toContainEqual({
     method: "permissionModeChange",
     params: { mode: "plan" },
+    sessionId: "test-session-id",
   });
 });
 
@@ -276,6 +287,7 @@ test("onCommandRunningChange emits commandRunningChange notification", async () 
   expect(notifications).toContainEqual({
     method: "commandRunningChange",
     params: { running: true },
+    sessionId: "test-session-id",
   });
 });
 
@@ -293,6 +305,7 @@ test("onQueuedMessagesChange emits queuedMessagesChange notification", async () 
   expect(notifications).toContainEqual({
     method: "queuedMessagesChange",
     params: { messages: queued },
+    sessionId: "test-session-id",
   });
 });
 
@@ -310,6 +323,7 @@ test("onTasksChange emits tasksChange notification", async () => {
   expect(notifications).toContainEqual({
     method: "tasksChange",
     params: { tasks },
+    sessionId: "test-session-id",
   });
 });
 
@@ -326,6 +340,7 @@ test("onSessionIdChange emits sessionIdChange notification", async () => {
   expect(notifications).toContainEqual({
     method: "sessionIdChange",
     params: { sessionId: "session-new" },
+    sessionId: "test-session-id",
   });
 });
 
@@ -345,6 +360,7 @@ test("onMcpServersChange emits mcpServersChange notification", async () => {
   expect(notifications).toContainEqual({
     method: "mcpServersChange",
     params: { servers },
+    sessionId: "test-session-id",
   });
 });
 
@@ -361,6 +377,7 @@ test("onAddBangMessage emits bangMessageAdded notification", async () => {
   expect(notifications).toContainEqual({
     method: "bangMessageAdded",
     params: {},
+    sessionId: "test-session-id",
   });
 });
 
@@ -377,6 +394,7 @@ test("onUpdateBangMessage emits bangMessageUpdated notification", async () => {
   expect(notifications).toContainEqual({
     method: "bangMessageUpdated",
     params: {},
+    sessionId: "test-session-id",
   });
 });
 
@@ -393,6 +411,7 @@ test("onCompleteBangMessage emits bangMessageCompleted notification", async () =
   expect(notifications).toContainEqual({
     method: "bangMessageCompleted",
     params: {},
+    sessionId: "test-session-id",
   });
 });
 
@@ -424,10 +443,11 @@ test("canUseTool emits permissionRequest and resolves when permissionResponse re
   const permNotification = notifications.find(
     (n) => n.method === "permissionRequest",
   )!;
+  expect(permNotification.sessionId).toBe("test-session-id");
   const requestId = (permNotification.params as { requestId: string })
     .requestId;
 
-  // Client responds with allow
+  // Client responds with allow (permissionResponse uses requestId, no sessionId needed)
   bridge.handleNotification("permissionResponse", {
     requestId,
     decision: { behavior: "allow" },
@@ -470,11 +490,16 @@ test("sendMessage calls agent.sendMessage with text and images", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("sendMessage", {
-    text: "hello world",
-    images: [{ path: "/img.png", mimeType: "image/png" }],
-  });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest(
+    "sendMessage",
+    {
+      text: "hello world",
+      images: [{ path: "/img.png", mimeType: "image/png" }],
+    },
+    sessionId,
+  );
 
   expect(mockAgent.sendMessage).toHaveBeenCalledWith("hello world", [
     { path: "/img.png", mimeType: "image/png" },
@@ -486,8 +511,9 @@ test("bang calls agent.bang with command", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("bang", { command: "git status" });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("bang", { command: "git status" }, sessionId);
 
   expect(mockAgent.bang).toHaveBeenCalledWith("git status");
 });
@@ -497,8 +523,9 @@ test("abortMessage calls agent.abortMessage", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("abortMessage", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("abortMessage", {}, sessionId);
 
   expect(mockAgent.abortMessage).toHaveBeenCalled();
 });
@@ -508,8 +535,9 @@ test("clearMessages calls agent.clearMessages", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("clearMessages", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("clearMessages", {}, sessionId);
 
   expect(mockAgent.clearMessages).toHaveBeenCalled();
 });
@@ -522,10 +550,11 @@ test("getMessages returns agent messages", async () => {
   const mockAgent = createMockAgent({ messages: testMessages });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("getMessages", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("getMessages", {}, sessionId);
 
-  expect(result).toEqual({ messages: testMessages });
+  expect(r).toEqual({ messages: testMessages });
 });
 
 test("getFullMessageThread returns messages and sessionIds", async () => {
@@ -533,10 +562,11 @@ test("getFullMessageThread returns messages and sessionIds", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("getFullMessageThread", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("getFullMessageThread", {}, sessionId);
 
-  expect(result).toEqual({
+  expect(r).toEqual({
     messages: [],
     sessionIds: ["test-session-id"],
   });
@@ -547,10 +577,11 @@ test("getSessionInfo returns session info", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("getSessionInfo", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("getSessionInfo", {}, sessionId);
 
-  expect(result).toEqual({
+  expect(r).toEqual({
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
     latestTotalTokens: 100,
@@ -564,8 +595,9 @@ test("setPermissionMode calls agent.setPermissionMode", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("setPermissionMode", { mode: "plan" });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("setPermissionMode", { mode: "plan" }, sessionId);
 
   expect(mockAgent.setPermissionMode).toHaveBeenCalledWith("plan");
 });
@@ -574,10 +606,11 @@ test("getPermissionMode returns current mode", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("getPermissionMode", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("getPermissionMode", {}, sessionId);
 
-  expect(result).toEqual({ mode: "default" });
+  expect(r).toEqual({ mode: "default" });
 });
 
 test("getMcpServers returns server list", async () => {
@@ -587,10 +620,11 @@ test("getMcpServers returns server list", async () => {
     createMockAgent({ getMcpServers: vi.fn().mockReturnValue(servers) }),
   );
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("getMcpServers", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("getMcpServers", {}, sessionId);
 
-  expect(result).toEqual({ servers });
+  expect(r).toEqual({ servers });
 });
 
 test("connectMcpServer calls agent.connectMcpServer", async () => {
@@ -598,13 +632,16 @@ test("connectMcpServer calls agent.connectMcpServer", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("connectMcpServer", {
-    serverName: "my-server",
-  });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "connectMcpServer",
+    { serverName: "my-server" },
+    sessionId,
+  );
 
   expect(mockAgent.connectMcpServer).toHaveBeenCalledWith("my-server");
-  expect(result).toEqual({ success: true });
+  expect(r).toEqual({ success: true });
 });
 
 test("disconnectMcpServer calls agent.disconnectMcpServer", async () => {
@@ -612,13 +649,16 @@ test("disconnectMcpServer calls agent.disconnectMcpServer", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("disconnectMcpServer", {
-    serverName: "my-server",
-  });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "disconnectMcpServer",
+    { serverName: "my-server" },
+    sessionId,
+  );
 
   expect(mockAgent.disconnectMcpServer).toHaveBeenCalledWith("my-server");
-  expect(result).toEqual({ success: true });
+  expect(r).toEqual({ success: true });
 });
 
 test("getSlashCommands returns command list", async () => {
@@ -628,10 +668,11 @@ test("getSlashCommands returns command list", async () => {
     createMockAgent({ getSlashCommands: vi.fn().mockReturnValue(commands) }),
   );
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("getSlashCommands", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("getSlashCommands", {}, sessionId);
 
-  expect(result).toEqual({ commands });
+  expect(r).toEqual({ commands });
 });
 
 test("rewindToMessage truncates history and returns input content", async () => {
@@ -653,13 +694,16 @@ test("rewindToMessage truncates history and returns input content", async () => 
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("rewindToMessage", {
-    messageId: "msg-1",
-  });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "rewindToMessage",
+    { messageId: "msg-1" },
+    sessionId,
+  );
 
   expect(mockAgent.truncateHistory).toHaveBeenCalledWith(0);
-  expect(result).toEqual({ inputContent: "hello" });
+  expect(r).toEqual({ inputContent: "hello" });
 });
 
 test("deleteQueuedMessage calls removeQueuedMessage", async () => {
@@ -667,8 +711,9 @@ test("deleteQueuedMessage calls removeQueuedMessage", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("deleteQueuedMessage", { index: 2 });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("deleteQueuedMessage", { index: 2 }, sessionId);
 
   expect(mockAgent.removeQueuedMessage).toHaveBeenCalledWith(2);
 });
@@ -678,8 +723,9 @@ test("destroy destroys the agent", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("destroy", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("destroy", {}, sessionId);
 
   expect(mockAgent.destroy).toHaveBeenCalled();
 });
@@ -702,7 +748,7 @@ test("calling method before initialize throws INTERNAL_ERROR", async () => {
 
   await expect(
     bridge.handleRequest("sendMessage", { text: "hi" }),
-  ).rejects.toThrow("Agent not initialized");
+  ).rejects.toThrow("sessionId is required for this request");
 });
 
 test("RpcError has correct code and toJsonRpcError", () => {
@@ -719,10 +765,9 @@ test("sendMessage saves prompt to history before sending", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("sendMessage", {
-    text: "hello world",
-  });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("sendMessage", { text: "hello world" }, sessionId);
 
   expect(PromptHistoryManager.addEntry).toHaveBeenCalledWith(
     "hello world",
@@ -738,13 +783,18 @@ test("sendMessage saves prompt to history before sending", async () => {
 test("searchFiles uses workdir param when provided", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-  await bridge.handleRequest("initialize", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
 
-  await bridge.handleRequest("searchFiles", {
-    query: "test",
-    maxResults: 10,
-    workdir: "/custom/workdir",
-  });
+  await bridge.handleRequest(
+    "searchFiles",
+    {
+      query: "test",
+      maxResults: 10,
+      workdir: "/custom/workdir",
+    },
+    sessionId,
+  );
 
   expect(searchFiles).toHaveBeenCalledWith("test", {
     maxResults: 10,
@@ -755,9 +805,10 @@ test("searchFiles uses workdir param when provided", async () => {
 test("searchFiles falls back to agent workingDirectory", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-  await bridge.handleRequest("initialize", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
 
-  await bridge.handleRequest("searchFiles", { query: "test" });
+  await bridge.handleRequest("searchFiles", { query: "test" }, sessionId);
 
   expect(searchFiles).toHaveBeenCalledWith("test", {
     maxResults: undefined,
@@ -996,6 +1047,7 @@ test("onNotificationMessageAdded emits with full message", async () => {
       summary: "Done",
       message: notificationMessage,
     },
+    sessionId: "test-session-id",
   });
 });
 
@@ -1006,9 +1058,10 @@ test("handleRequest with null params defaults to empty object", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
+  const initResult = await bridge.handleRequest("initialize", {});
+  const sessionId = (initResult as { sessionId: string }).sessionId;
   // getSessionInfo uses p but doesn't read any field, so null params should work
-  const result = await bridge.handleRequest("getSessionInfo", null);
+  const result = await bridge.handleRequest("getSessionInfo", null, sessionId);
   expect(result).toEqual({
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
@@ -1023,8 +1076,13 @@ test("restoreSession delegates to agent.restoreSession", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("restoreSession", { sessionId: "old-session" });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest(
+    "restoreSession",
+    { sessionId: "old-session" },
+    sessionId,
+  );
 
   expect(mockAgent.restoreSession).toHaveBeenCalledWith("old-session");
 });
@@ -1032,9 +1090,14 @@ test("restoreSession delegates to agent.restoreSession", async () => {
 test("listSessions with workdir delegates to listSessions SDK", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-  await bridge.handleRequest("initialize", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
 
-  await bridge.handleRequest("listSessions", { workdir: "/custom/workdir" });
+  await bridge.handleRequest(
+    "listSessions",
+    { workdir: "/custom/workdir" },
+    sessionId,
+  );
 
   expect(listSessions).toHaveBeenCalledWith("/custom/workdir");
 });
@@ -1053,13 +1116,16 @@ test("updateConfig destroys and recreates agent with merged config", async () =>
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", { model: "gpt-4" });
-  const result = await bridge.handleRequest("updateConfig", {
-    permissionMode: "plan",
-  });
+  const result = await bridge.handleRequest("initialize", { model: "gpt-4" });
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "updateConfig",
+    { permissionMode: "plan" },
+    sessionId,
+  );
 
   expect(mockAgent.destroy).toHaveBeenCalled();
-  expect(result).toEqual({ sessionId: "test-session-id" });
+  expect(r).toEqual({ sessionId: "test-session-id" });
   // Second Agent.create call should have merged config
   const secondCall = vi.mocked(Agent.create).mock.calls[1][0];
   expect(secondCall.model).toBe("gpt-4");
@@ -1132,11 +1198,13 @@ test("sendMessage with force aborts before sending", async () => {
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  await bridge.handleRequest("sendMessage", {
-    text: "hello",
-    force: true,
-  });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest(
+    "sendMessage",
+    { text: "hello", force: true },
+    sessionId,
+  );
 
   expect(mockAgent.abortMessage).toHaveBeenCalled();
   expect(mockAgent.sendMessage).toHaveBeenCalledWith("hello", undefined);
@@ -1158,10 +1226,15 @@ test("rewindToMessage throws when messageId not found", async () => {
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
 
   await expect(
-    bridge.handleRequest("rewindToMessage", { messageId: "nonexistent" }),
+    bridge.handleRequest(
+      "rewindToMessage",
+      { messageId: "nonexistent" },
+      sessionId,
+    ),
   ).rejects.toThrow("Message not found: nonexistent");
 });
 
@@ -1179,12 +1252,15 @@ test("rewindToMessage returns empty string when message has no text block", asyn
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
-  const result = await bridge.handleRequest("rewindToMessage", {
-    messageId: "msg-1",
-  });
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "rewindToMessage",
+    { messageId: "msg-1" },
+    sessionId,
+  );
 
-  expect(result).toEqual({ inputContent: "" });
+  expect(r).toEqual({ inputContent: "" });
 });
 
 // ── Branch coverage: searchFiles / history without agent ─────────
@@ -1248,8 +1324,11 @@ test("PluginCore uses agent workingDirectory when no workdir provided", async ()
   mockPluginCore({ listPlugins });
 
   // Initialize agent first, then call listPlugins without workdir
-  await bridge.handleRequest("initialize", { workdir: "/test/workdir" });
-  await bridge.handleRequest("listPlugins", {});
+  const result = await bridge.handleRequest("initialize", {
+    workdir: "/test/workdir",
+  });
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("listPlugins", {}, sessionId);
 
   // PluginCore should be constructed with agent's workingDirectory
   expect(PluginCore).toHaveBeenCalledWith("/test/workdir");
@@ -1303,12 +1382,13 @@ test("onUserMessageAdded before initialize does not crash", async () => {
   const mockAgent = createMockAgent({ messages: [] });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
-  await bridge.handleRequest("initialize", {});
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
   const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
     .callbacks as AgentCallbacks;
 
   // Destroy agent so this.agent becomes undefined
-  await bridge.handleRequest("destroy", {});
+  await bridge.handleRequest("destroy", {}, sessionId);
 
   // Now onUserMessageAdded should handle undefined agent gracefully
   callbacks.onUserMessageAdded!({} as never);
@@ -1398,4 +1478,103 @@ test("canUseTool timeout is no-op when permission already resolved", async () =>
   vi.advanceTimersByTime(5 * 60 * 1000 + 1000);
 
   vi.useRealTimers();
+});
+
+// ── Multi-session (multi-tenant) ─────────────────────────────────
+
+test("two sessions are independent and route notifications by sessionId", async () => {
+  const { bridge } = createBridge();
+  const agentA = createMockAgent({ sessionId: "sess-A" });
+  const agentB = createMockAgent({ sessionId: "sess-B" });
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(agentA)
+    .mockResolvedValueOnce(agentB);
+
+  const initA = await bridge.handleRequest("initialize", {});
+  const initB = await bridge.handleRequest("initialize", {});
+  const sessionA = (initA as { sessionId: string }).sessionId;
+  const sessionB = (initB as { sessionId: string }).sessionId;
+  expect(sessionA).toBe("sess-A");
+  expect(sessionB).toBe("sess-B");
+
+  // Send message on each; verify each agent's sendMessage is called exactly once
+  await bridge.handleRequest("sendMessage", { text: "hi-A" }, sessionA);
+  await bridge.handleRequest("sendMessage", { text: "hi-B" }, sessionB);
+
+  expect(agentA.sendMessage).toHaveBeenCalledTimes(1);
+  expect(agentA.sendMessage).toHaveBeenCalledWith("hi-A", undefined);
+  expect(agentB.sendMessage).toHaveBeenCalledTimes(1);
+  expect(agentB.sendMessage).toHaveBeenCalledWith("hi-B", undefined);
+
+  // Verify getMessages routes to the correct session's agent
+  const msgsA = await bridge.handleRequest("getMessages", {}, sessionA);
+  const msgsB = await bridge.handleRequest("getMessages", {}, sessionB);
+  expect(agentA.messages).toBe((msgsA as { messages: Message[] }).messages);
+  expect(agentB.messages).toBe((msgsB as { messages: Message[] }).messages);
+});
+
+test("destroying one session leaves the other intact", async () => {
+  const { bridge } = createBridge();
+  const agentA = createMockAgent({ sessionId: "sess-A" });
+  const agentB = createMockAgent({ sessionId: "sess-B" });
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(agentA)
+    .mockResolvedValueOnce(agentB);
+
+  const initA = await bridge.handleRequest("initialize", {});
+  const initB = await bridge.handleRequest("initialize", {});
+  const sessionA = (initA as { sessionId: string }).sessionId;
+  const sessionB = (initB as { sessionId: string }).sessionId;
+
+  // Destroy session A
+  await bridge.handleRequest("destroy", {}, sessionA);
+  expect(agentA.destroy).toHaveBeenCalledTimes(1);
+
+  // Session B should still work
+  const result = await bridge.handleRequest("getMessages", {}, sessionB);
+  expect(result).toEqual({ messages: [] });
+  expect(agentB.destroy).not.toHaveBeenCalled();
+});
+
+test("notifications route by sessionId when callbacks fire", async () => {
+  const { bridge, notifications } = createBridge();
+  const agentA = createMockAgent({ sessionId: "sess-A" });
+  const agentB = createMockAgent({ sessionId: "sess-B" });
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(agentA)
+    .mockResolvedValueOnce(agentB);
+
+  await bridge.handleRequest("initialize", {});
+  await bridge.handleRequest("initialize", {});
+
+  // Grab callbacks for each Agent.create call
+  const callbacksA = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+  const callbacksB = vi.mocked(Agent.create).mock.calls[1][0]
+    .callbacks as AgentCallbacks;
+
+  const messagesA = [
+    { id: "a-1", role: "user", blocks: [] },
+  ] as unknown as Message[];
+  const messagesB = [
+    { id: "b-1", role: "user", blocks: [] },
+  ] as unknown as Message[];
+
+  // Fire onMessagesChange for session A's callbacks
+  callbacksA.onMessagesChange!(messagesA);
+
+  // The notification emitted via session A's callbacks should carry sessionId "sess-A"
+  expect(notifications).toContainEqual({
+    method: "messagesChange",
+    params: { messages: messagesA },
+    sessionId: "sess-A",
+  });
+
+  // Fire for session B → should carry "sess-B"
+  callbacksB.onMessagesChange!(messagesB);
+  expect(notifications).toContainEqual({
+    method: "messagesChange",
+    params: { messages: messagesB },
+    sessionId: "sess-B",
+  });
 });

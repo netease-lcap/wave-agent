@@ -2,9 +2,15 @@
  * AgentBridge — wraps the SDK Agent and translates between the JSON-RPC-like
  * stdio protocol and Agent method calls / callbacks.
  *
+ * Multi-tenant: maintains a Map<sessionId, {agent, storedConfig}> so a single
+ * `wave --stdio` process can host multiple sessions. Session-scoped requests
+ * carry `sessionId` on the JSON-RPC envelope for routing; global requests
+ * (listSessions/searchFiles/auth/plugins) don't require it but may use it
+ * for workdir fallback.
+ *
  * Responsibilities:
- * - Route incoming requests to the appropriate Agent method
- * - Translate AgentCallbacks into outgoing notifications
+ * - Route incoming requests to the appropriate Agent method (by sessionId)
+ * - Translate AgentCallbacks into outgoing notifications (with sessionId)
  * - Implement the canUseTool permission flow over the stdio protocol
  * - Handle config updates by destroying and recreating the Agent
  */
@@ -51,7 +57,11 @@ const CLI_VERSION: string = (() => {
   }
 })();
 
-export type NotificationEmitter = (method: string, params: unknown) => void;
+export type NotificationEmitter = (
+  method: string,
+  params: unknown,
+  sessionId?: string,
+) => void;
 
 export interface AgentBridgeOptions {
   emit: NotificationEmitter;
@@ -92,14 +102,30 @@ interface SearchFilesParams {
   workdir?: string;
 }
 
+interface SessionEntry {
+  agent: Agent;
+  storedConfig: Partial<InitializeParams>;
+}
+
+/**
+ * Mutable holder so callbacks/canUseTool (created before Agent.create resolves)
+ * can reference the agent and its registered sessionId after creation.
+ * `registeredSessionId` is the sessionId the client knows about; it's used as
+ * the envelope sessionId for outgoing notifications so the client's router can
+ * demultiplex correctly. It's updated atomically when onSessionIdChange fires.
+ */
+interface SessionContext {
+  agent?: Agent;
+  registeredSessionId?: string;
+}
+
 export class AgentBridge {
-  private agent: Agent | undefined;
+  private sessions = new Map<string, SessionEntry>();
   private pendingPermissions = new Map<
     string,
     (decision: PermissionDecision) => void
   >();
   private permissionCounter = 0;
-  private storedConfig: Partial<InitializeParams> = {};
   private emit: NotificationEmitter;
   private pluginCore: PluginCore | undefined;
   private pluginCoreWorkdir: string | undefined;
@@ -110,22 +136,26 @@ export class AgentBridge {
 
   // ── Public API ────────────────────────────────────────────────
 
-  async handleRequest(method: string, params: unknown): Promise<unknown> {
+  async handleRequest(
+    method: string,
+    params: unknown,
+    sessionId?: string,
+  ): Promise<unknown> {
     const p = (params ?? {}) as Record<string, unknown>;
     switch (method) {
       // ── Lifecycle ──
       case "initialize":
         return this.initialize(p as unknown as InitializeParams);
       case "destroy":
-        return this.destroy();
+        return this.destroy(sessionId);
       case "restoreSession":
-        return this.restoreSession(p.sessionId as string);
+        return this.restoreSession(p.sessionId as string, sessionId);
       case "listSessions":
-        return this.listSessions(p.workdir as string | undefined);
+        return this.listSessions(p.workdir as string | undefined, sessionId);
       case "getSessionInfo":
-        return this.getSessionInfo();
+        return this.getSessionInfo(sessionId);
       case "updateConfig":
-        return this.updateConfig(p as unknown as UpdateConfigParams);
+        return this.updateConfig(p as unknown as UpdateConfigParams, sessionId);
 
       // ── Messages ──
       case "sendMessage":
@@ -135,52 +165,57 @@ export class AgentBridge {
             images?: Array<{ path: string; mimeType: string }>;
             force?: boolean;
           },
+          sessionId,
         );
       case "bang":
-        return this.bang(p.command as string);
+        return this.bang(p.command as string, sessionId);
       case "abortMessage":
-        return this.abortMessage();
+        return this.abortMessage(sessionId);
       case "clearMessages":
-        return this.clearMessages();
+        return this.clearMessages(sessionId);
       case "rewindToMessage":
-        return this.rewindToMessage(p.messageId as string);
+        return this.rewindToMessage(p.messageId as string, sessionId);
       case "deleteQueuedMessage":
-        return this.deleteQueuedMessage(p.index as number);
+        return this.deleteQueuedMessage(p.index as number, sessionId);
       case "getMessages":
-        return this.getMessages();
+        return this.getMessages(sessionId);
       case "getFullMessageThread":
-        return this.getFullMessageThread();
+        return this.getFullMessageThread(sessionId);
 
       // ── Permissions ──
       case "setPermissionMode":
-        return this.setPermissionMode(p.mode as PermissionMode);
+        return this.setPermissionMode(p.mode as PermissionMode, sessionId);
       case "getPermissionMode":
-        return this.getPermissionMode();
+        return this.getPermissionMode(sessionId);
 
       // ── MCP ──
       case "getMcpServers":
-        return this.getMcpServers();
+        return this.getMcpServers(sessionId);
       case "connectMcpServer":
-        return this.connectMcpServer(p.serverName as string);
+        return this.connectMcpServer(p.serverName as string, sessionId);
       case "disconnectMcpServer":
-        return this.disconnectMcpServer(p.serverName as string);
+        return this.disconnectMcpServer(p.serverName as string, sessionId);
 
       // ── Commands ──
       case "getSlashCommands":
-        return this.getSlashCommands();
+        return this.getSlashCommands(sessionId);
 
-      // ── File / History ──
+      // ── File / History (global — no session required) ──
       case "searchFiles":
-        return this.searchFiles(p as unknown as SearchFilesParams);
+        return this.searchFiles(p as unknown as SearchFilesParams, sessionId);
       case "getPromptHistory":
-        return this.getPromptHistory(p.workdir as string | undefined);
+        return this.getPromptHistory(
+          p.workdir as string | undefined,
+          sessionId,
+        );
       case "searchPromptHistory":
         return this.searchPromptHistory(
           p.query as string,
           p.workdir as string | undefined,
+          sessionId,
         );
 
-      // ── Auth ──
+      // ── Auth (global — no session required) ──
       case "getAuthStatus":
         return this.getAuthStatus();
       case "login":
@@ -188,55 +223,66 @@ export class AgentBridge {
       case "logout":
         return this.logout();
 
-      // ── Plugins ──
+      // ── Plugins (global — no session required) ──
       case "listPlugins":
-        return this.listPlugins(p.workdir as string | undefined);
+        return this.listPlugins(p.workdir as string | undefined, sessionId);
       case "installPlugin":
         return this.installPlugin(
           p.pluginId as string,
           p.scope as Scope | undefined,
           p.workdir as string | undefined,
+          sessionId,
         );
       case "uninstallPlugin":
         return this.uninstallPlugin(
           p.pluginId as string,
           p.workdir as string | undefined,
+          sessionId,
         );
       case "enablePlugin":
         return this.enablePlugin(
           p.pluginId as string,
           p.scope as Scope | undefined,
           p.workdir as string | undefined,
+          sessionId,
         );
       case "disablePlugin":
         return this.disablePlugin(
           p.pluginId as string,
           p.scope as Scope | undefined,
           p.workdir as string | undefined,
+          sessionId,
         );
       case "updatePlugin":
         return this.updatePlugin(
           p.pluginId as string,
           p.workdir as string | undefined,
+          sessionId,
         );
       case "listMarketplaces":
-        return this.listMarketplaces(p.workdir as string | undefined);
+        return this.listMarketplaces(
+          p.workdir as string | undefined,
+          sessionId,
+        );
       case "addMarketplace":
         return this.addMarketplace(
           p.input as string,
           p.scope as Scope | undefined,
           p.workdir as string | undefined,
+          sessionId,
         );
       case "removeMarketplace":
         return this.removeMarketplace(
           p.name as string,
           p.scope as Scope | undefined,
           p.workdir as string | undefined,
+          sessionId,
         );
       case "updateMarketplace":
         return this.updateMarketplace(
           p.name as string | undefined,
           p.workdir as string | undefined,
+          sessionId,
         );
 
       default:
@@ -253,6 +299,7 @@ export class AgentBridge {
         requestId: string;
         decision: PermissionDecision;
       };
+      // requestId is process-level unique; lookup doesn't need sessionId
       const resolve = this.pendingPermissions.get(p.requestId);
       if (resolve) {
         this.pendingPermissions.delete(p.requestId);
@@ -270,10 +317,9 @@ export class AgentBridge {
     latestTotalTokens: number;
     serverVersion: string;
   }> {
-    // Merge with stored config (CLI defaults can be overridden by client)
-    this.storedConfig = { ...this.storedConfig, ...params };
+    const ctx: SessionContext = {};
+    const callbacks = this.createCallbacks(ctx);
 
-    const callbacks = this.createCallbacks();
     const options: AgentOptions = {
       callbacks,
       workdir: params.workdir,
@@ -290,10 +336,18 @@ export class AgentBridge {
       disallowedTools: params.disallowedTools,
       plugins: params.pluginDirs?.map((path) => ({ type: "local", path })),
       mcpServers: params.mcpServers,
-      canUseTool: (context: ToolPermissionContext) => this.canUseTool(context),
+      canUseTool: (context: ToolPermissionContext) =>
+        this.canUseTool(context, ctx),
     };
 
-    this.agent = await Agent.create(options);
+    const agent = await Agent.create(options);
+    ctx.agent = agent;
+    ctx.registeredSessionId = agent.sessionId;
+
+    this.sessions.set(agent.sessionId, {
+      agent,
+      storedConfig: { ...params },
+    });
 
     if (params.clientVersion) {
       console.debug(
@@ -302,120 +356,164 @@ export class AgentBridge {
     }
 
     return {
-      sessionId: this.agent.sessionId,
-      workingDirectory: this.agent.workingDirectory,
-      permissionMode: this.agent.getPermissionMode(),
-      latestTotalTokens: this.agent.latestTotalTokens,
+      sessionId: agent.sessionId,
+      workingDirectory: agent.workingDirectory,
+      permissionMode: agent.getPermissionMode(),
+      latestTotalTokens: agent.latestTotalTokens,
       serverVersion: CLI_VERSION,
     };
   }
 
-  private async destroy(): Promise<null> {
-    if (this.agent) {
-      await this.agent.destroy();
-      this.agent = undefined;
+  private async destroy(sessionId?: string): Promise<null> {
+    if (sessionId) {
+      const entry = this.sessions.get(sessionId);
+      if (entry) {
+        await entry.agent.destroy();
+        this.sessions.delete(sessionId);
+      }
     }
     return null;
   }
 
-  private async restoreSession(sessionId: string): Promise<null> {
-    this.requireAgent();
-    await this.agent!.restoreSession(sessionId);
+  private async restoreSession(
+    restoreId: string,
+    sessionId?: string,
+  ): Promise<null> {
+    const entry = this.requireSession(sessionId);
+    await entry.agent.restoreSession(restoreId);
     return null;
   }
 
   private async listSessions(
     workdir?: string,
+    sessionId?: string,
   ): Promise<{ sessions: SessionMetadata[] }> {
     const sessions = await listSessions(
-      workdir || this.agent?.workingDirectory || process.cwd(),
+      workdir || this.getSessionWorkdir(sessionId) || process.cwd(),
     );
     return { sessions };
   }
 
-  private getSessionInfo(): {
+  private getSessionInfo(sessionId?: string): {
     sessionId: string;
     workingDirectory: string;
     latestTotalTokens: number;
     permissionMode: PermissionMode;
     availableTools: string[];
   } {
-    this.requireAgent();
+    const entry = this.requireSession(sessionId);
     return {
-      sessionId: this.agent!.sessionId,
-      workingDirectory: this.agent!.workingDirectory,
-      latestTotalTokens: this.agent!.latestTotalTokens,
-      permissionMode: this.agent!.getPermissionMode(),
-      availableTools: this.agent!.getAvailableToolNames(),
+      sessionId: entry.agent.sessionId,
+      workingDirectory: entry.agent.workingDirectory,
+      latestTotalTokens: entry.agent.latestTotalTokens,
+      permissionMode: entry.agent.getPermissionMode(),
+      availableTools: entry.agent.getAvailableToolNames(),
     };
   }
 
   private async updateConfig(
     params: UpdateConfigParams,
+    sessionId?: string,
   ): Promise<{ sessionId: string }> {
-    this.requireAgent();
-    const currentSessionId = this.agent!.sessionId;
+    const entry = this.requireSession(sessionId);
+    const currentSessionId = entry.agent.sessionId;
     // Merge new config into stored config
-    this.storedConfig = { ...this.storedConfig, ...params };
-    // Destroy and recreate
-    await this.agent!.destroy();
-    this.agent = undefined;
-    await this.initialize({
-      ...this.storedConfig,
+    entry.storedConfig = { ...entry.storedConfig, ...params };
+    // Destroy and recreate within the same session slot
+    await entry.agent.destroy();
+    this.sessions.delete(currentSessionId);
+
+    const ctx: SessionContext = {};
+    const callbacks = this.createCallbacks(ctx);
+    const options: AgentOptions = {
+      callbacks,
+      workdir: entry.storedConfig.workdir,
       restoreSessionId: currentSessionId,
+      apiKey: entry.storedConfig.apiKey,
+      baseURL: entry.storedConfig.baseURL,
+      defaultHeaders: entry.storedConfig.defaultHeaders,
+      model: entry.storedConfig.model,
+      fastModel: entry.storedConfig.fastModel,
+      language: entry.storedConfig.language,
+      permissionMode: entry.storedConfig.permissionMode,
+      tools: entry.storedConfig.tools,
+      allowedTools: entry.storedConfig.allowedTools,
+      disallowedTools: entry.storedConfig.disallowedTools,
+      plugins: entry.storedConfig.pluginDirs?.map((p) => ({
+        type: "local",
+        path: p,
+      })),
+      mcpServers: entry.storedConfig.mcpServers,
+      canUseTool: (context: ToolPermissionContext) =>
+        this.canUseTool(context, ctx),
+    };
+
+    const agent = await Agent.create(options);
+    ctx.agent = agent;
+    ctx.registeredSessionId = agent.sessionId;
+    this.sessions.set(agent.sessionId, {
+      agent,
+      storedConfig: { ...entry.storedConfig },
     });
-    return { sessionId: this.agent!.sessionId };
+
+    return { sessionId: agent.sessionId };
   }
 
   // ── Messages ──────────────────────────────────────────────────
 
-  private async sendMessage(params: {
-    text: string;
-    images?: Array<{ path: string; mimeType: string }>;
-    force?: boolean;
-  }): Promise<null> {
-    this.requireAgent();
+  private async sendMessage(
+    params: {
+      text: string;
+      images?: Array<{ path: string; mimeType: string }>;
+      force?: boolean;
+    },
+    sessionId?: string,
+  ): Promise<null> {
+    const entry = this.requireSession(sessionId);
     if (params.force) {
-      this.agent!.abortMessage();
+      entry.agent.abortMessage();
     }
     // Save prompt to history (mirrors VSCE chatSession.ts:236-242)
     try {
       await PromptHistoryManager.addEntry(
         params.text,
-        this.agent!.sessionId,
+        entry.agent.sessionId,
         {},
-        this.agent!.workingDirectory,
+        entry.agent.workingDirectory,
       );
     } catch {
       // Best-effort; don't block message sending on history save failure
     }
-    await this.agent!.sendMessage(params.text, params.images);
+    await entry.agent.sendMessage(params.text, params.images);
     return null;
   }
 
-  private async bang(command: string): Promise<null> {
-    this.requireAgent();
-    await this.agent!.bang(command);
+  private async bang(command: string, sessionId?: string): Promise<null> {
+    const entry = this.requireSession(sessionId);
+    await entry.agent.bang(command);
     return null;
   }
 
-  private async abortMessage(): Promise<null> {
-    this.requireAgent();
-    this.agent!.abortMessage();
+  private async abortMessage(sessionId?: string): Promise<null> {
+    const entry = this.requireSession(sessionId);
+    entry.agent.abortMessage();
     return null;
   }
 
-  private async clearMessages(): Promise<null> {
-    this.requireAgent();
-    this.agent!.clearMessages();
+  private async clearMessages(sessionId?: string): Promise<null> {
+    const entry = this.requireSession(sessionId);
+    entry.agent.clearMessages();
     return null;
   }
 
-  private async rewindToMessage(messageId: string): Promise<{
+  private async rewindToMessage(
+    messageId: string,
+    sessionId?: string,
+  ): Promise<{
     inputContent: string;
   }> {
-    this.requireAgent();
-    const { messages } = await this.agent!.getFullMessageThread();
+    const entry = this.requireSession(sessionId);
+    const { messages } = await entry.agent.getFullMessageThread();
     const index = messages.findIndex((m) => m.id === messageId);
     if (index === -1) {
       throw new RpcError(
@@ -427,90 +525,99 @@ export class AgentBridge {
     const textBlock = message.blocks.find((b) => b.type === "text") as
       | { content?: string }
       | undefined;
-    await this.agent!.truncateHistory(index);
+    await entry.agent.truncateHistory(index);
     return { inputContent: textBlock?.content || "" };
   }
 
-  private deleteQueuedMessage(index: number): null {
-    this.requireAgent();
-    this.agent!.removeQueuedMessage(index);
+  private deleteQueuedMessage(index: number, sessionId?: string): null {
+    const entry = this.requireSession(sessionId);
+    entry.agent.removeQueuedMessage(index);
     return null;
   }
 
-  private getMessages(): { messages: Message[] } {
-    this.requireAgent();
-    return { messages: this.agent!.messages };
+  private getMessages(sessionId?: string): { messages: Message[] } {
+    const entry = this.requireSession(sessionId);
+    return { messages: entry.agent.messages };
   }
 
-  private async getFullMessageThread(): Promise<{
+  private async getFullMessageThread(sessionId?: string): Promise<{
     messages: Message[];
     sessionIds: string[];
   }> {
-    this.requireAgent();
-    return this.agent!.getFullMessageThread();
+    const entry = this.requireSession(sessionId);
+    return entry.agent.getFullMessageThread();
   }
 
   // ── Permissions ───────────────────────────────────────────────
 
-  private async setPermissionMode(mode: PermissionMode): Promise<null> {
-    this.requireAgent();
-    await this.agent!.setPermissionMode(mode);
+  private async setPermissionMode(
+    mode: PermissionMode,
+    sessionId?: string,
+  ): Promise<null> {
+    const entry = this.requireSession(sessionId);
+    await entry.agent.setPermissionMode(mode);
     return null;
   }
 
-  private getPermissionMode(): { mode: PermissionMode } {
-    this.requireAgent();
-    return { mode: this.agent!.getPermissionMode() };
+  private getPermissionMode(sessionId?: string): { mode: PermissionMode } {
+    const entry = this.requireSession(sessionId);
+    return { mode: entry.agent.getPermissionMode() };
   }
 
   // ── MCP ───────────────────────────────────────────────────────
 
-  private getMcpServers(): { servers: McpServerStatus[] } {
-    this.requireAgent();
-    return { servers: this.agent!.getMcpServers() };
+  private getMcpServers(sessionId?: string): { servers: McpServerStatus[] } {
+    const entry = this.requireSession(sessionId);
+    return { servers: entry.agent.getMcpServers() };
   }
 
   private async connectMcpServer(
     serverName: string,
+    sessionId?: string,
   ): Promise<{ success: boolean }> {
-    this.requireAgent();
-    const success = await this.agent!.connectMcpServer(serverName);
+    const entry = this.requireSession(sessionId);
+    const success = await entry.agent.connectMcpServer(serverName);
     return { success };
   }
 
   private async disconnectMcpServer(
     serverName: string,
+    sessionId?: string,
   ): Promise<{ success: boolean }> {
-    this.requireAgent();
-    const success = await this.agent!.disconnectMcpServer(serverName);
+    const entry = this.requireSession(sessionId);
+    const success = await entry.agent.disconnectMcpServer(serverName);
     return { success };
   }
 
   // ── Commands ──────────────────────────────────────────────────
 
-  private getSlashCommands(): { commands: SlashCommand[] } {
-    this.requireAgent();
-    return { commands: this.agent!.getSlashCommands() };
+  private getSlashCommands(sessionId?: string): { commands: SlashCommand[] } {
+    const entry = this.requireSession(sessionId);
+    return { commands: entry.agent.getSlashCommands() };
   }
 
-  // ── File / History ────────────────────────────────────────────
+  // ── File / History (global) ───────────────────────────────────
 
   private async searchFiles(
     params: SearchFilesParams,
+    sessionId?: string,
   ): Promise<{ files: Awaited<ReturnType<typeof searchFiles>> }> {
     const files = await searchFiles(params.query, {
       maxResults: params.maxResults,
       workingDirectory:
-        params.workdir || this.agent?.workingDirectory || process.cwd(),
+        params.workdir || this.getSessionWorkdir(sessionId) || process.cwd(),
     });
     return { files };
   }
 
-  private async getPromptHistory(workdir?: string): Promise<{
+  private async getPromptHistory(
+    workdir?: string,
+    sessionId?: string,
+  ): Promise<{
     history: Awaited<ReturnType<typeof PromptHistoryManager.getHistory>>;
   }> {
     const history = await PromptHistoryManager.getHistory({
-      workdir: workdir || this.agent?.workingDirectory,
+      workdir: workdir || this.getSessionWorkdir(sessionId),
     });
     return { history };
   }
@@ -518,11 +625,12 @@ export class AgentBridge {
   private async searchPromptHistory(
     query: string,
     workdir?: string,
+    sessionId?: string,
   ): Promise<{
     history: Awaited<ReturnType<typeof PromptHistoryManager.searchHistory>>;
   }> {
     const history = await PromptHistoryManager.searchHistory(query, {
-      workdir: workdir || this.agent?.workingDirectory,
+      workdir: workdir || this.getSessionWorkdir(sessionId),
     });
     return { history };
   }
@@ -531,11 +639,16 @@ export class AgentBridge {
 
   private canUseTool(
     context: ToolPermissionContext,
+    ctx: SessionContext,
   ): Promise<PermissionDecision> {
     const requestId = `perm_${++this.permissionCounter}`;
     return new Promise<PermissionDecision>((resolve) => {
       this.pendingPermissions.set(requestId, resolve);
-      this.emit("permissionRequest", { requestId, context });
+      this.emit(
+        "permissionRequest",
+        { requestId, context },
+        ctx.registeredSessionId,
+      );
 
       // 5-minute timeout → auto-deny
       setTimeout(
@@ -553,7 +666,7 @@ export class AgentBridge {
     });
   }
 
-  // ── Auth ─────────────────────────────────────────────────────
+  // ── Auth (global) ────────────────────────────────────────────
 
   private async getAuthStatus(): Promise<{
     isAuthenticated: boolean;
@@ -585,11 +698,11 @@ export class AgentBridge {
     return null;
   }
 
-  // ── Plugins ──────────────────────────────────────────────────
+  // ── Plugins (global) ─────────────────────────────────────────
 
-  private getPluginCore(workdir?: string): PluginCore {
+  private getPluginCore(workdir?: string, sessionId?: string): PluginCore {
     const resolvedWorkdir =
-      workdir || this.agent?.workingDirectory || process.cwd();
+      workdir || this.getSessionWorkdir(sessionId) || process.cwd();
     if (!this.pluginCore || this.pluginCoreWorkdir !== resolvedWorkdir) {
       this.pluginCore = new PluginCore(resolvedWorkdir);
       this.pluginCoreWorkdir = resolvedWorkdir;
@@ -597,8 +710,8 @@ export class AgentBridge {
     return this.pluginCore;
   }
 
-  private async listPlugins(workdir?: string) {
-    const core = this.getPluginCore(workdir);
+  private async listPlugins(workdir?: string, sessionId?: string) {
+    const core = this.getPluginCore(workdir, sessionId);
     const { plugins, mergedEnabled } = await core.listPlugins();
     return {
       plugins: plugins.map((p) => {
@@ -621,12 +734,20 @@ export class AgentBridge {
     pluginId: string,
     scope?: Scope,
     workdir?: string,
+    sessionId?: string,
   ) {
-    return this.getPluginCore(workdir).installPlugin(pluginId, scope);
+    return this.getPluginCore(workdir, sessionId).installPlugin(
+      pluginId,
+      scope,
+    );
   }
 
-  private async uninstallPlugin(pluginId: string, workdir?: string) {
-    await this.getPluginCore(workdir).uninstallPlugin(pluginId);
+  private async uninstallPlugin(
+    pluginId: string,
+    workdir?: string,
+    sessionId?: string,
+  ) {
+    await this.getPluginCore(workdir, sessionId).uninstallPlugin(pluginId);
     return null;
   }
 
@@ -634,106 +755,154 @@ export class AgentBridge {
     pluginId: string,
     scope?: Scope,
     workdir?: string,
+    sessionId?: string,
   ) {
-    return this.getPluginCore(workdir).enablePlugin(pluginId, scope);
+    return this.getPluginCore(workdir, sessionId).enablePlugin(pluginId, scope);
   }
 
   private async disablePlugin(
     pluginId: string,
     scope?: Scope,
     workdir?: string,
+    sessionId?: string,
   ) {
-    return this.getPluginCore(workdir).disablePlugin(pluginId, scope);
+    return this.getPluginCore(workdir, sessionId).disablePlugin(
+      pluginId,
+      scope,
+    );
   }
 
-  private async updatePlugin(pluginId: string, workdir?: string) {
-    return this.getPluginCore(workdir).updatePlugin(pluginId);
+  private async updatePlugin(
+    pluginId: string,
+    workdir?: string,
+    sessionId?: string,
+  ) {
+    return this.getPluginCore(workdir, sessionId).updatePlugin(pluginId);
   }
 
-  private async listMarketplaces(workdir?: string) {
-    return this.getPluginCore(workdir).listMarketplaces();
+  private async listMarketplaces(workdir?: string, sessionId?: string) {
+    return this.getPluginCore(workdir, sessionId).listMarketplaces();
   }
 
-  private async addMarketplace(input: string, scope?: Scope, workdir?: string) {
-    return this.getPluginCore(workdir).addMarketplace(input, scope);
+  private async addMarketplace(
+    input: string,
+    scope?: Scope,
+    workdir?: string,
+    sessionId?: string,
+  ) {
+    return this.getPluginCore(workdir, sessionId).addMarketplace(input, scope);
   }
 
   private async removeMarketplace(
     name: string,
     scope?: Scope,
     workdir?: string,
+    sessionId?: string,
   ) {
-    await this.getPluginCore(workdir).removeMarketplace(name, scope);
+    await this.getPluginCore(workdir, sessionId).removeMarketplace(name, scope);
     return null;
   }
 
-  private async updateMarketplace(name?: string, workdir?: string) {
-    await this.getPluginCore(workdir).updateMarketplace(name);
+  private async updateMarketplace(
+    name?: string,
+    workdir?: string,
+    sessionId?: string,
+  ) {
+    await this.getPluginCore(workdir, sessionId).updateMarketplace(name);
     return null;
   }
 
   // ── Callbacks → Notifications ─────────────────────────────────
 
-  private createCallbacks(): AgentCallbacks {
+  private createCallbacks(ctx: SessionContext): AgentCallbacks {
     return {
       onMessagesChange: (messages: Message[]) => {
-        this.emit("messagesChange", { messages });
+        this.emit("messagesChange", { messages }, ctx.registeredSessionId);
       },
       onUserMessageAdded: () => {
-        const msg = this.findLastUserMessage();
-        if (msg) this.emit("userMessageAdded", { message: msg });
+        const msg = this.findLastUserMessage(ctx.agent);
+        if (msg)
+          this.emit(
+            "userMessageAdded",
+            { message: msg },
+            ctx.registeredSessionId,
+          );
       },
       onAssistantMessageAdded: (messageId: string) => {
-        const msg = this.agent?.messages.find((m) => m.id === messageId);
-        if (msg) this.emit("assistantMessageAdded", { message: msg });
+        const msg = ctx.agent?.messages.find((m) => m.id === messageId);
+        if (msg)
+          this.emit(
+            "assistantMessageAdded",
+            { message: msg },
+            ctx.registeredSessionId,
+          );
       },
       onAssistantContentUpdated: (params) => {
-        this.emit("assistantContentUpdated", params);
+        this.emit("assistantContentUpdated", params, ctx.registeredSessionId);
       },
       onAssistantReasoningUpdated: (params) => {
-        this.emit("assistantReasoningUpdated", params);
+        this.emit("assistantReasoningUpdated", params, ctx.registeredSessionId);
       },
       onToolBlockUpdated: (params) => {
-        this.emit("toolBlockUpdated", params);
+        this.emit("toolBlockUpdated", params, ctx.registeredSessionId);
       },
       onErrorBlockAdded: (error: string) => {
-        this.emit("errorBlockAdded", { error });
+        this.emit("errorBlockAdded", { error }, ctx.registeredSessionId);
       },
       onLoadingChange: (loading: boolean) => {
-        this.emit("loadingChange", {
-          loading,
-          latestTotalTokens: this.agent?.latestTotalTokens,
-        });
+        this.emit(
+          "loadingChange",
+          {
+            loading,
+            latestTotalTokens: ctx.agent?.latestTotalTokens,
+          },
+          ctx.registeredSessionId,
+        );
       },
       onCommandRunningChange: (running: boolean) => {
-        this.emit("commandRunningChange", { running });
+        this.emit("commandRunningChange", { running }, ctx.registeredSessionId);
       },
       onQueuedMessagesChange: (messages: QueuedMessage[]) => {
-        this.emit("queuedMessagesChange", { messages });
+        this.emit(
+          "queuedMessagesChange",
+          { messages },
+          ctx.registeredSessionId,
+        );
       },
       onTasksChange: (tasks: Task[]) => {
-        this.emit("tasksChange", { tasks });
+        this.emit("tasksChange", { tasks }, ctx.registeredSessionId);
       },
-      onSessionIdChange: (sessionId: string) => {
-        this.emit("sessionIdChange", { sessionId });
+      onSessionIdChange: (newSessionId: string) => {
+        const oldSessionId = ctx.registeredSessionId;
+        // Emit with the OLD sessionId so the client's router can deliver it
+        this.emit("sessionIdChange", { sessionId: newSessionId }, oldSessionId);
+        // Update the sessions Map key atomically (single-threaded, no await)
+        if (oldSessionId && oldSessionId !== newSessionId) {
+          const entry = this.sessions.get(oldSessionId);
+          if (entry) {
+            this.sessions.delete(oldSessionId);
+            this.sessions.set(newSessionId, entry);
+          }
+        }
+        ctx.registeredSessionId = newSessionId;
       },
       onPermissionModeChange: (mode: PermissionMode) => {
-        this.emit("permissionModeChange", { mode });
+        this.emit("permissionModeChange", { mode }, ctx.registeredSessionId);
       },
       onMcpServersChange: (servers: McpServerStatus[]) => {
-        this.emit("mcpServersChange", { servers });
+        this.emit("mcpServersChange", { servers }, ctx.registeredSessionId);
       },
       onAddBangMessage: () => {
-        this.emit("bangMessageAdded", {});
+        this.emit("bangMessageAdded", {}, ctx.registeredSessionId);
       },
       onUpdateBangMessage: () => {
-        this.emit("bangMessageUpdated", {});
+        this.emit("bangMessageUpdated", {}, ctx.registeredSessionId);
       },
       onCompleteBangMessage: () => {
-        this.emit("bangMessageCompleted", {});
+        this.emit("bangMessageCompleted", {}, ctx.registeredSessionId);
       },
       onNotificationMessageAdded: (params) => {
-        const msg = this.agent?.messages.find(
+        const msg = ctx.agent?.messages.find(
           (m) =>
             m.role === "user" &&
             m.blocks.some(
@@ -742,26 +911,42 @@ export class AgentBridge {
                 (b as { taskId: string }).taskId === params.taskId,
             ),
         );
-        this.emit("notificationMessageAdded", {
-          ...params,
-          message: msg,
-        });
+        this.emit(
+          "notificationMessageAdded",
+          { ...params, message: msg },
+          ctx.registeredSessionId,
+        );
       },
     };
   }
 
-  private findLastUserMessage(): Message | undefined {
-    const userMessages =
-      this.agent?.messages.filter((m) => m.role === "user") ?? [];
+  private findLastUserMessage(agent?: Agent): Message | undefined {
+    const userMessages = agent?.messages.filter((m) => m.role === "user") ?? [];
     return userMessages[userMessages.length - 1];
   }
 
   // ── Utils ─────────────────────────────────────────────────────
 
-  private requireAgent(): void {
-    if (!this.agent) {
-      throw new RpcError(PROTOCOL_INTERNAL_ERROR, "Agent not initialized");
+  private requireSession(sessionId?: string): SessionEntry {
+    if (!sessionId) {
+      throw new RpcError(
+        PROTOCOL_INTERNAL_ERROR,
+        "sessionId is required for this request",
+      );
     }
+    const entry = this.sessions.get(sessionId);
+    if (!entry) {
+      throw new RpcError(
+        PROTOCOL_INTERNAL_ERROR,
+        `Session not found: ${sessionId}`,
+      );
+    }
+    return entry;
+  }
+
+  private getSessionWorkdir(sessionId?: string): string | undefined {
+    if (!sessionId) return undefined;
+    return this.sessions.get(sessionId)?.agent.workingDirectory;
   }
 }
 

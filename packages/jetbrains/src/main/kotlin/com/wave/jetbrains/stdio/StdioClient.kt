@@ -106,7 +106,7 @@ class StdioClient(
     }
 
     /** Send a request (expects a response with matching id). */
-    suspend fun request(method: String, params: JsonObject? = null): JsonElement? {
+    suspend fun request(method: String, params: JsonObject? = null, sessionId: String? = null): JsonElement? {
         if (disposed) throw StdioClientException("StdioClient is disposed")
         val id = nextId.getAndIncrement()
         val deferred = CompletableDeferred<JsonElement?>()
@@ -116,6 +116,7 @@ class StdioClient(
                 put("id", id)
                 put("method", method)
                 if (params != null) put("params", params)
+                if (sessionId != null) put("sessionId", sessionId)
             }
             val line = json.encodeToString(JsonObject.serializer(), payload)
             writeLine(line)
@@ -127,11 +128,12 @@ class StdioClient(
     }
 
     /** Send a notification (no response expected). Fire-and-forget. */
-    suspend fun notify(method: String, params: JsonObject? = null) {
+    suspend fun notify(method: String, params: JsonObject? = null, sessionId: String? = null) {
         if (disposed) return
         val payload = buildJsonObject {
             put("method", method)
             if (params != null) put("params", params)
+            if (sessionId != null) put("sessionId", sessionId)
         }
         writeLine(json.encodeToString(JsonObject.serializer(), payload))
     }
