@@ -66,13 +66,15 @@ tasks.named("classes") {
 // welcome screen every time. The 2.x plugin moved the sandbox to
 // .intellijPlatform/sandbox/... and the old recentProjects history was lost, so reopen
 // has nothing to reopen. Passing the project path as a command-line arg makes the IDE
-// open it directly. Override per-run with -PrunIdeProjectPath=... or WAVE_RUN_IDE_PROJECT,
-// or disable by setting runIdeProjectPath= (empty) in gradle.properties.
+// open it directly. Defaults to the monorepo root (this module lives at
+// <root>/packages/jetbrains). Override per-run with -PrunIdeProjectPath=some/path.
 tasks.named<JavaExec>("runIde") {
-    val projectPath = (providers.gradleProperty("runIdeProjectPath").orNull
-        ?: System.getenv("WAVE_RUN_IDE_PROJECT"))
-        ?.takeIf { it.isNotBlank() }
-    if (projectPath != null) {
-        args = listOf(projectPath)
-    }
+    val configured = providers.gradleProperty("runIdeProjectPath").orNull?.takeIf { it.isNotBlank() }
+    args = listOf(configured ?: rootDir.parentFile.parentFile.absolutePath)
+
+    // The bundled Gradle plugin in IC-2024.2 crashes on startup when its JVM support matrix
+    // contains a future Java version it can't parse (e.g. "25"): GradleJvmSupportMatrix throws
+    // IllegalArgumentException. It is irrelevant to developing this plugin, so suppress it in the
+    // sandbox to keep the log clean.
+    jvmArgs("-Didea.suppressed.plugins.id=org.jetbrains.plugins.gradle,com.intellij.gradle")
 }

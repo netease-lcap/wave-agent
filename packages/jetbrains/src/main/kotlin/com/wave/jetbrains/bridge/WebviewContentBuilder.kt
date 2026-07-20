@@ -27,6 +27,20 @@ object WebviewContentBuilder {
     private const val RESOURCE_DIR = "/webview"
     private val ASSETS = listOf("chat.js", "chat.css", "vscode-shim.js", "theme-base.css")
 
+    /** id of the <style> element holding the LaF-derived `--vscode-*` overrides. */
+    const val LAF_STYLE_ID = "wave-laf-overrides"
+
+    /**
+     * JS that rewrites the [LAF_STYLE_ID] style element with freshly computed LaF overrides.
+     * Called by the panel when the IDE Look and Feel changes so the live webview re-themes
+     * without a full reload.
+     */
+    fun buildLafRefreshScript(): String {
+        val css = ":root {\n${buildLafOverrides()}\n}"
+        val escaped = css.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+        return "(function(){var s=document.getElementById('$LAF_STYLE_ID');if(s){s.textContent=`$escaped`;}})();"
+    }
+
     /** Extracted temp dir + the file:// URL of index.html to load. */
     data class ExtractedAssets(val dir: File, val indexUrl: String)
 
@@ -59,11 +73,13 @@ object WebviewContentBuilder {
     <title>Wave AI Chat</title>
     <style>
         $themeBase
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
+        #root { height: 100%; width: 100%; }
+    </style>
+    <style id="$LAF_STYLE_ID">
         :root {
 $lafOverrides
         }
-        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
-        #root { height: 100%; width: 100%; }
     </style>
     <link rel="stylesheet" href="$chatCss">
 </head>
@@ -85,8 +101,11 @@ $lafOverrides
      * the host theme. Only the key surface colors are overridden; the remaining 80+ variables
      * come from the bundled theme-base.css (a full VS Code dark theme). Placed AFTER theme-base
      * in the <style> so these win via cascade order.
+     *
+     * Public so [com.wave.jetbrains.WavePanel] can re-run it on LaF changes and re-inject the
+     * variables into the live page (JCEF does not re-theme on its own).
      */
-    private fun buildLafOverrides(): String {
+    fun buildLafOverrides(): String {
         val bg = laf("Panel.background", JBColor.PanelBackground, Color(0x1e1e1e))
         val fg = laf("Label.foreground", JBColor.foreground(), Color(0xd4d4d4))
         val inputBg = laf("TextField.background", bg.brighter(), Color(0x2a2a2a))
@@ -96,6 +115,8 @@ $lafOverrides
         val buttonFg = laf("Button.foreground", Color.WHITE, Color.WHITE)
         val linkFg = laf("Link.foreground", JBColor(0x589df6, 0x589df6), Color(0x589df6))
         val border = laf("Border.color", JBColor.border(), Color(0x3c3c3c))
+        val hoverBg = laf("ActionButton.hoverBackground", Color(90, 93, 94, 80), Color(90, 93, 94, 80))
+        val activeBg = laf("ActionButton.pressedBackground", Color(99, 102, 103, 80), Color(99, 102, 103, 80))
         val font = lafFont("Label.font")
 
         val vars = linkedMapOf(
@@ -116,6 +137,9 @@ $lafOverrides
             "--vscode-icon-foreground" to fg,
             "--vscode-textLink-foreground" to linkFg,
             "--vscode-textLink-activeForeground" to linkFg,
+            "--vscode-widget-border" to border,
+            "--vscode-toolbar-hoverBackground" to hoverBg,
+            "--vscode-toolbar-activeBackground" to activeBg,
         )
         return buildString {
             for ((key, color) in vars) {
@@ -124,8 +148,7 @@ $lafOverrides
             if (font != null) {
                 append("            --vscode-font-family: ").append(font).append(";\n")
                 append("            --vscode-editor-font-family: ").append(font).append(";\n")
-            }
-        }.trimEnd()
+            }        }.trimEnd()
     }
 
     /** Read a LaF color by key with fallbacks; null-safe. */
