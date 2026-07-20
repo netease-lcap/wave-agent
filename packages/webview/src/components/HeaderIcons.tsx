@@ -44,6 +44,29 @@ export const ExternalLinkIcon: React.FC<IconProps> = ({ className = 'header-icon
   </svg>
 );
 
+export const InfoIcon: React.FC<IconProps> = ({ className = 'header-icon' }) => (
+  // Circle + "i" info glyph in a padded 16x16 box, mirroring the Figma info icon.
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" className={className}>
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M8 2C4.68629 2 2 4.68629 2 8C2 11.3137 4.68629 14 8 14C11.3137 14 14 11.3137 14 8C14 4.68629 11.3137 2 8 2ZM1 8C1 4.13401 4.13401 1 8 1C11.866 1 15 4.13401 15 8C15 11.866 11.866 15 8 15C4.13401 15 1 11.866 1 8Z"
+      fill="currentColor"
+    />
+    <path d="M7.375 4.5H8.625V5.75H7.375V4.5Z" fill="currentColor" />
+    <path d="M7.375 7H8.625V11.5H7.375V7Z" fill="currentColor" />
+  </svg>
+);
+
+export const CloseIcon: React.FC<IconProps> = ({ className = 'header-icon' }) => (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" className={className}>
+    <path
+      d="M8 8.70711L11.6464 12.3536L12.3536 11.6464L8.70711 8L12.3536 4.35355L11.6464 3.64645L8 7.29289L4.35355 3.64645L3.64645 4.35355L7.29289 8L3.64645 11.6464L4.35355 12.3536L8 8.70711Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 export const MoreIcon: React.FC<IconProps> = ({ className = 'header-icon' }) => (
   <svg width={16} height={16} viewBox="0 0 16 16" fill="none" className={className}>
     <path
