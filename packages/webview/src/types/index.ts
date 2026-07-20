@@ -37,8 +37,6 @@ export interface FileItem {
   icon: string;
   /** Flag to distinguish files vs directories */
   isDirectory: boolean;
-  /** Flag to identify if this is the upload local files option */
-  isUploadOption?: boolean;
 }
 
 /**

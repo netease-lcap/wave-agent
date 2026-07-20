@@ -104,6 +104,12 @@
     flex: 1;
 }
 
+.context-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .permission-mode-container {
     position: relative;
     display: flex;
@@ -186,6 +192,74 @@
 
 .permission-mode-item.selected {
     background: var(--vscode-list-activeSelectionBackground);
+}
+
+/* Toolbar icon buttons ("+" and "/") — 22px square, 16px icon */
+.toolbar-icon-button {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent;
+    color: var(--vscode-icon-foreground);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.toolbar-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+.toolbar-icon-button:hover {
+    background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* "+" add menu — expands upward (bottom:100%) so it is not clipped at the bottom of
+   the webview viewport in JCEF. Reuses the permission dropdown visual language. */
+.plus-menu-container {
+    position: relative;
+    display: flex;
+}
+
+.plus-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 4px;
+    margin-top: 0;
+    list-style: none;
+    padding: 8px;
+    background: var(--vscode-menu-background);
+    color: var(--vscode-menu-foreground);
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+    z-index: 10000;
+    width: 160px;
+    white-space: nowrap;
+}
+
+.plus-menu-item {
+    display: flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--vscode-menu-foreground);
+}
+
+.plus-menu-item:hover {
+    background: var(--vscode-list-hoverBackground);
+    color: var(--vscode-list-activeSelectionForeground);
 }
 /* Selection Tag */
 .selection-tag {
