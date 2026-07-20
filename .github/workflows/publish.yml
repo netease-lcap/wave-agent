@@ -120,8 +120,13 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
+      # The webview bundles from wave-agent-sdk/dist (see imports like
+      # 'wave-agent-sdk/dist/types/...'), so build the SDK dist first.
+      - name: Build agent-sdk dist
+        run: pnpm -F wave-agent-sdk build
+
       # copyWebviewAssets (build.gradle.kts) copies chat.js/chat.css from
-      # packages/webview/dist into the plugin resources, so build the webview first.
+      # packages/webview/dist into the plugin resources, so build the webview next.
       - name: Build webview dist
         run: pnpm -F wave-webview run build
 
