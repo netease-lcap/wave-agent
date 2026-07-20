@@ -2,7 +2,7 @@
   "name": "wave-webview",
   "private": true,
   "description": "Shared webview layer (React IIFE bundle) for Wave VS Code and JetBrains plugins",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
