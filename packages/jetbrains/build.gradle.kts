@@ -62,15 +62,11 @@ tasks.named("classes") {
     dependsOn(copyWebviewAssets)
 }
 
-// Auto-open a project when running `runIde` so the sandbox IDE doesn't land on the
-// welcome screen every time. The 2.x plugin moved the sandbox to
-// .intellijPlatform/sandbox/... and the old recentProjects history was lost, so reopen
-// has nothing to reopen. Passing the project path as a command-line arg makes the IDE
-// open it directly. Defaults to the monorepo root (this module lives at
-// <root>/packages/jetbrains). Override per-run with -PrunIdeProjectPath=some/path.
 tasks.named<JavaExec>("runIde") {
-    val configured = providers.gradleProperty("runIdeProjectPath").orNull?.takeIf { it.isNotBlank() }
-    args = listOf(configured ?: rootDir.parentFile.parentFile.absolutePath)
+    // No project path is passed, so the sandbox IDE follows the platform's own
+    // recentProjects memory (reopens the last project on startup, else lands on the
+    // welcome screen). Note the sandbox lives under .intellijPlatform/sandbox/...; if
+    // that config dir is wiped/rebuilt the history is lost and it starts fresh.
 
     // The bundled Gradle plugin in IC-2024.2 crashes on startup when its JVM support matrix
     // contains a future Java version it can't parse (e.g. "25"): GradleJvmSupportMatrix throws
