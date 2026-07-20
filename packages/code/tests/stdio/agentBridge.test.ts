@@ -825,6 +825,7 @@ test("getAuthStatus returns auth state", async () => {
     getAuthUser: vi
       .fn()
       .mockReturnValue({ id: "user-1", email: "test@test.com" }),
+    getServerUrl: vi.fn().mockReturnValue("https://codechat.codewave.163.com"),
   } as unknown as AuthService);
 
   const result = await bridge.handleRequest("getAuthStatus", {});
@@ -832,6 +833,7 @@ test("getAuthStatus returns auth state", async () => {
   expect(result).toEqual({
     isAuthenticated: true,
     user: { id: "user-1", email: "test@test.com" },
+    serverUrl: "https://codechat.codewave.163.com",
   });
 });
 
