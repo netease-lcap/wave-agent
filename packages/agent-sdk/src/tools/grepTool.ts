@@ -8,6 +8,18 @@ import {
   AGENT_TOOL_NAME,
 } from "../constants/tools.js";
 
+// Version control system directories to exclude from searches.
+// These are excluded automatically because they create noise in search results.
+// Mirrors Claude Code's VCS_DIRECTORIES_TO_EXCLUDE.
+const VCS_DIRECTORIES_TO_EXCLUDE = [
+  ".git",
+  ".svn",
+  ".hg",
+  ".bzr",
+  ".jj",
+  ".sl",
+] as const;
+
 /**
  * Grep tool plugin - powerful search tool based on ripgrep
  */
@@ -144,7 +156,19 @@ export const grepTool: ToolPlugin = {
 
     try {
       const workdir = context.workdir;
-      const rgArgs: string[] = ["--color=never", "--max-columns=500"];
+      const rgArgs: string[] = [
+        "--color=never",
+        "--max-columns=500",
+        // Search hidden files/directories by default (aligns with Claude Code).
+        // --hidden does NOT disable .gitignore; only --no-ignore would.
+        "--hidden",
+      ];
+
+      // Exclude VCS directories to avoid noise from version control metadata.
+      // --hidden above would otherwise traverse .git/.svn/etc.
+      for (const dir of VCS_DIRECTORIES_TO_EXCLUDE) {
+        rgArgs.push("--glob", `!${dir}`);
+      }
 
       // Set output mode
       if (outputMode === "files_with_matches") {
