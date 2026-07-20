@@ -584,6 +584,18 @@ class MessageHandler(
         // sessionIdChange to trigger listSessions, but a freshly-created session
         // may not emit that notification, so refresh explicitly here.
         session.refreshSessions()
+        // Refresh serverUrl from auth status before sending initial state; otherwise the
+        // webview's configurationData carries a stale/empty serverUrl and the "enterprise
+        // console" action silently does nothing. Mirrors VSCE handleWebviewReady.
+        try {
+            val url = (session.agent?.getAuthStatus()?.jsonObject?.get("serverUrl") as? JsonPrimitive)?.contentOrNull ?: ""
+            if (url.isNotEmpty()) {
+                val merged = WavePluginService.getInstance().loadConfiguration().apply { serverUrl = url }
+                WavePluginService.getInstance().saveConfiguration(merged)
+            }
+        } catch (e: StdioClientException) {
+            LOG.warn("getAuthStatus on webviewReady failed: ${e.message}")
+        }
         val config = WavePluginService.getInstance().loadConfiguration()
         postMessage("setInitialState", buildJsonObject {
             put("messages", session.messages ?: JsonArray(emptyList()))

@@ -590,6 +590,10 @@ export class MessageHandler {
             const authResult = await this.utilityClient.request('getAuthStatus') as { isAuthenticated: boolean; serverUrl: string };
             isAuthenticated = authResult.isAuthenticated;
             await this.configService.saveConfiguration({ serverUrl: authResult.serverUrl });
+            // Reflect the freshly fetched serverUrl in the state sent to the webview;
+            // configurationData was loaded before saveConfiguration, so it would otherwise
+            // carry a stale/empty serverUrl (breaking the "enterprise console" action).
+            configurationData.serverUrl = authResult.serverUrl;
         } catch (error) {
             console.error('Failed to get auth status on webview ready:', error);
         }

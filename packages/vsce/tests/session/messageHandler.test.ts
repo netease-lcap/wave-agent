@@ -49,6 +49,50 @@ function createHandler(session: ChatSession) {
     return { handler, context };
 }
 
+function createReadySession(): ChatSession {
+    return {
+        agent: { getPermissionMode: vi.fn(), workingDirectory: '/tmp', latestTotalTokens: 0 },
+        pendingConfirmations: new Map(),
+        messages: [],
+        tasks: [],
+        messageQueue: [],
+        sessionId: undefined,
+        inputContent: '',
+        isStreaming: false,
+        isCommandRunning: false,
+    } as unknown as ChatSession;
+}
+
+function createReadyHandler(session: ChatSession) {
+    const configService = {
+        loadConfiguration: vi.fn().mockResolvedValue({ serverUrl: '', language: 'Chinese' }),
+        saveConfiguration: vi.fn(),
+    };
+    const sessionService = {
+        getSessionsList: vi.fn().mockResolvedValue([]),
+    };
+    const utilityClient = {
+        request: vi.fn().mockResolvedValue({ isAuthenticated: true, serverUrl: 'https://console.example.com' }),
+    };
+    const context: MessageHandlerContext = {
+        getChatSession: vi.fn().mockReturnValue(session),
+        postMessage: vi.fn(),
+        initializeAgent: vi.fn(),
+        listSessions: vi.fn(),
+        updateAllSessionsConfig: vi.fn(),
+        checkForUpdates: vi.fn(),
+    } as unknown as MessageHandlerContext;
+    const handler = new MessageHandler(
+        configService as unknown as ConfigurationService,
+        {} as unknown as FileService,
+        sessionService as unknown as SessionService,
+        {} as unknown as PluginService,
+        utilityClient as unknown as StdioClient,
+        context
+    );
+    return { handler, context, configService, sessionService, utilityClient };
+}
+
 // ── Tests ──────────────────────────────────────────────────────
 
 describe('MessageHandler MCP handlers', () => {
@@ -134,5 +178,27 @@ describe('MessageHandler MCP handlers', () => {
 
         expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
         expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    });
+
+    // Regression: setInitialState.configurationData.serverUrl must reflect the
+    // serverUrl freshly fetched from getAuthStatus, not the stale/empty value
+    // loaded before saveConfiguration. A stale empty serverUrl would silently
+    // break the "enterprise console" action in the webview.
+    test('webviewReady sends fresh serverUrl from getAuthStatus in setInitialState', async () => {
+        const session = createReadySession();
+        const { handler, context, configService, utilityClient } = createReadyHandler(session);
+
+        await handler.handleMessage({ command: 'webviewReady' }, 'tab');
+
+        expect(utilityClient.request).toHaveBeenCalledWith('getAuthStatus');
+        expect(configService.saveConfiguration).toHaveBeenCalledWith({ serverUrl: 'https://console.example.com' });
+
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls
+            .map((call) => call[0])
+            .find((msg) => msg.command === 'setInitialState') as { configurationData: { serverUrl: string }; isAuthenticated: boolean };
+
+        expect(posted).toBeDefined();
+        expect(posted.configurationData.serverUrl).toBe('https://console.example.com');
+        expect(posted.isAuthenticated).toBe(true);
     });
 });
