@@ -8,7 +8,6 @@ export const initialState: ChatState = {
   isQueueCollapsed: false,
   isStreaming: false,
   isCommandRunning: false,
-  inputDisabled: false,
   shouldClearInput: false,
   sessions: [],
   currentSession: undefined,
@@ -68,11 +67,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         isStreaming: false
-      };
-    case 'SET_INPUT_DISABLED':
-      return {
-        ...state,
-        inputDisabled: action.payload
       };
     case 'INPUT_CLEARED':
       return {

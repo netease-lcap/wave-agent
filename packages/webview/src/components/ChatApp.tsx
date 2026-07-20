@@ -454,7 +454,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           <MessageInput
             ref={messageInputRef}
             onSendMessage={handleSendMessage}
-            disabled={state.inputDisabled || !state.isAuthenticated}
             isStreaming={state.isStreaming}
             onAbortMessage={handleAbortMessage}
             onSendQueuedMessage={state.queuedMessages.length > 0 ? () => handleSendQueuedMessage(0) : undefined}

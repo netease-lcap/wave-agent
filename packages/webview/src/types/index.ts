@@ -167,7 +167,6 @@ export interface AttachedImage {
 
 export interface MessageInputProps {
   onSendMessage: (text: string, images?: Array<{ data: string; mediaType: string; }>) => void;
-  disabled: boolean;
   isStreaming: boolean;
   onAbortMessage: () => void;
   onSendQueuedMessage?: () => void;
@@ -237,7 +236,6 @@ export interface ChatState {
   isQueueCollapsed: boolean;
   isStreaming: boolean;
   isCommandRunning: boolean;
-  inputDisabled: boolean;
   shouldClearInput: boolean;
   sessions: SessionMetadata[];
   currentSession?: SessionMetadata;
@@ -377,7 +375,6 @@ export type ChatAction =
   | { type: 'TOGGLE_QUEUE_COLLAPSE' }
   | { type: 'START_STREAMING' }
   | { type: 'END_STREAMING' }
-  | { type: 'SET_INPUT_DISABLED'; payload: boolean }
   | { type: 'INPUT_CLEARED' }
   | { type: 'SET_SESSIONS'; payload: SessionMetadata[] }
   | { type: 'SET_CURRENT_SESSION'; payload: SessionMetadata | undefined }
