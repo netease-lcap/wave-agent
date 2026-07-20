@@ -169,27 +169,14 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
             session: sessions[0]
         });
         
-        // 等待会话选择器组件出现
-        await webviewPage.waitForSelector('.session-selector');
-        
-        // 为了在截图中展示下拉框内容，我们将 select 的 size 属性设置为大于 1
-        await webviewPage.evaluate(() => {
-            const select = document.querySelector('.session-dropdown') as HTMLSelectElement;
-            if (select) {
-                select.size = 4; // 展示 4 个选项
-                select.style.height = 'auto';
-            }
-        });
-        
+        // 打开历史对话弹窗以在截图中展示会话列表
+        await webviewPage.getByTestId('history-btn').click();
+        await webviewPage.waitForSelector('[data-testid="session-list-popup"]');
+
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-sessions.png' });
 
-        // 恢复 select 状态
-        await webviewPage.evaluate(() => {
-            const select = document.querySelector('.session-dropdown') as HTMLSelectElement;
-            if (select) {
-                select.size = 0;
-            }
-        });
+        // 关闭历史对话弹窗
+        await webviewPage.keyboard.press('Escape');
 
         // 22. Vision
         const visionMessages = [

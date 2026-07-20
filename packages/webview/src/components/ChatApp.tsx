@@ -211,6 +211,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
     vscode.postMessage({ command: 'login' });
   }, [vscode]);
 
+  const handleOpenSettings = useCallback(() => {
+    dispatch({ type: 'SHOW_DIALOG', payload: { type: 'config', data: stateRef.current.configurationData || {} } });
+    vscode.postMessage({ command: 'getConfiguration' });
+  }, [vscode]);
+
+  const handleOpenEnterpriseConsole = useCallback(() => {
+    const url = stateRef.current.configurationData?.serverUrl;
+    if (url) {
+      vscode.postMessage({ command: 'openExternal', url });
+    }
+  }, [vscode]);
+
+  const handleLogout = useCallback(() => {
+    vscode.postMessage({ command: 'logout' });
+  }, [vscode]);
+
   const handleSendMessage = useCallback((text: string, images?: Array<{ data: string; mediaType: string; }>, force: boolean = false) => {
     const trimmedText = text.trim();
     if (!trimmedText && (!images || images.length === 0)) return;
@@ -397,6 +413,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         currentSession={state.currentSession}
         onSessionSelect={handleSessionSelect}
         sessionsLoading={state.sessionsLoading}
+        onOpenSettings={handleOpenSettings}
+        onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+        onLogout={handleLogout}
       />
       
       {showWelcome ? (

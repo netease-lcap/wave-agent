@@ -109,6 +109,21 @@ object IdeService {
     }
 
     /**
+     * openExternal — mirrors VSCE handleOpenExternal (messageHandler.ts:133/openExternal).
+     * Params: url (String). Opens the URL in the system default browser.
+     */
+    fun openExternal(project: Project, params: JsonObject) {
+        val url = params["url"]?.jsonPrimitive?.content
+        if (url.isNullOrEmpty()) return
+        try {
+            BrowserUtil.browse(url)
+        } catch (e: Exception) {
+            LOG.warn("openExternal failed: ${e.message}", e)
+            showError(project, "打开外部链接失败: ${e.message}")
+        }
+    }
+
+    /**
      * downloadMermaid — mirrors VSCE handleDownloadMermaid (messageHandler.ts:388).
      * Params: content (String), format ("svg" | "png"). For png, content is a data URL
      * (data:image/png;base64,...); for svg, content is the raw SVG text.

@@ -241,6 +241,8 @@ class MessageHandler(
             "openFile" -> IdeService.openFile(project, msg)
             // VSCE :131/:241 → preview image
             "previewImage" -> IdeService.previewImage(project, msg)
+            // VSCE :133 → open external URL in system browser
+            "openExternal" -> IdeService.openExternal(project, msg)
 
             // ── Plugins ────────────────────────────────────────────────
             // VSCE :98/:256 → listPluginsResponse { plugins }

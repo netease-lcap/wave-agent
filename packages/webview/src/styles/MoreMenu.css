@@ -1,0 +1,40 @@
+.more-menu {
+  position: absolute;
+  top: 40px;
+  right: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 160px;
+  box-sizing: border-box;
+  padding: 8px;
+  background-color: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+}
+
+.more-menu-item {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.more-menu-item:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.more-menu-item--between {
+  justify-content: space-between;
+}
+
+.more-menu-item-icon {
+  flex-shrink: 0;
+}

@@ -69,7 +69,7 @@ describe('Tooltip Component', () => {
         await waitFor(() => {
             const tooltip = document.querySelector('.tooltip-box.visible');
             expect(tooltip).not.toBeNull();
-            expect(tooltip).toHaveTextContent('清除聊天');
+            expect(tooltip).toHaveTextContent('新建会话');
         });
     });
 

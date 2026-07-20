@@ -2,8 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { renderChatApp, screen, fireEvent, act, sendCommand } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
 
+/**
+ * Open the session history popup by clicking the history button in the header.
+ */
+function openSessionListPopup() {
+    const historyBtn = screen.getByTestId('history-btn');
+    act(() => {
+        fireEvent.click(historyBtn);
+    });
+    return screen.getByTestId('session-list-popup');
+}
+
 describe('Session Management', () => {
-    it('should load and display sessions', () => {
+    it('should load and display sessions in the history popup', () => {
         renderChatApp();
 
         const sessions = [
@@ -11,6 +22,7 @@ describe('Session Management', () => {
                 id: 'session-1',
                 sessionType: 'main',
                 workdir: '/test/project',
+                firstMessage: 'First session hello',
                 lastActiveAt: new Date('2023-12-01T10:00:00Z'),
                 latestTotalTokens: 150
             },
@@ -18,6 +30,7 @@ describe('Session Management', () => {
                 id: 'session-2',
                 sessionType: 'main',
                 workdir: '/test/project',
+                firstMessage: 'Second session world',
                 lastActiveAt: new Date('2023-12-01T11:00:00Z'),
                 latestTotalTokens: 250
             }
@@ -27,15 +40,12 @@ describe('Session Management', () => {
             sendCommand('updateSessions', { sessions });
         });
 
-        // Verify sessions are displayed in dropdown
-        const dropdown = screen.getByTestId('session-dropdown') as HTMLSelectElement;
-        expect(dropdown).not.toBeDisabled();
+        openSessionListPopup();
 
-        const option1 = dropdown.querySelector('option[value="session-1"]');
-        expect(option1).not.toBeNull();
-
-        const option2 = dropdown.querySelector('option[value="session-2"]');
-        expect(option2).not.toBeNull();
+        expect(screen.getByTestId('session-list-item-session-1')).toBeInTheDocument();
+        expect(screen.getByTestId('session-list-item-session-2')).toBeInTheDocument();
+        expect(screen.getByTestId('session-list-item-session-1')).toHaveTextContent('First session hello');
+        expect(screen.getByTestId('session-list-item-session-2')).toHaveTextContent('Second session world');
     });
 
     it('should select session and update current session', () => {
@@ -46,6 +56,7 @@ describe('Session Management', () => {
                 id: 'session-1',
                 sessionType: 'main',
                 workdir: '/test/project',
+                firstMessage: 'First session hello',
                 lastActiveAt: new Date('2023-12-01T10:00:00Z'),
                 latestTotalTokens: 150
             },
@@ -53,6 +64,7 @@ describe('Session Management', () => {
                 id: 'session-2',
                 sessionType: 'main',
                 workdir: '/test/project',
+                firstMessage: 'Second session world',
                 lastActiveAt: new Date('2023-12-01T11:00:00Z'),
                 latestTotalTokens: 250
             }
@@ -63,16 +75,16 @@ describe('Session Management', () => {
             sendCommand('updateCurrentSession', { session: sessions[0] });
         });
 
-        // Verify first session is selected
-        const dropdown = screen.getByTestId('session-dropdown') as HTMLSelectElement;
-        expect(dropdown.value).toBe('session-1');
+        // Title reflects the current session
+        expect(screen.getByTestId('chat-header')).toHaveTextContent('First session hello');
 
         // Clear message log to track new messages
         vscode.postMessage.mockClear();
 
-        // Select second session
+        // Open popup and select second session
+        openSessionListPopup();
         act(() => {
-            fireEvent.change(dropdown, { target: { value: 'session-2' } });
+            fireEvent.click(screen.getByTestId('session-list-item-session-2'));
         });
 
         // Verify restore session command was sent
@@ -83,13 +95,89 @@ describe('Session Management', () => {
             })
         );
 
+        // Popup closes after selection
+        expect(screen.queryByTestId('session-list-popup')).not.toBeInTheDocument();
+
         // Simulate session restore response
         act(() => {
             sendCommand('updateCurrentSession', { session: sessions[1] });
         });
 
-        // Verify second session is now selected
-        expect(dropdown.value).toBe('session-2');
+        // Verify title now reflects second session
+        expect(screen.getByTestId('chat-header')).toHaveTextContent('Second session world');
+    });
+
+    it('should filter sessions and highlight matches in the search box', () => {
+        renderChatApp();
+
+        const sessions = [
+            {
+                id: 'session-1',
+                sessionType: 'main',
+                workdir: '/test/project',
+                firstMessage: 'Alpha task about auth',
+                lastActiveAt: new Date('2023-12-01T10:00:00Z'),
+                latestTotalTokens: 150
+            },
+            {
+                id: 'session-2',
+                sessionType: 'main',
+                workdir: '/test/project',
+                firstMessage: 'Beta task about billing',
+                lastActiveAt: new Date('2023-12-01T11:00:00Z'),
+                latestTotalTokens: 250
+            }
+        ];
+
+        act(() => {
+            sendCommand('updateSessions', { sessions });
+        });
+
+        const popup = openSessionListPopup();
+        const searchInput = popup.querySelector('.session-list-search') as HTMLInputElement;
+        expect(searchInput).not.toBeNull();
+
+        // Type a query that matches only the first session
+        act(() => {
+            fireEvent.change(searchInput, { target: { value: 'alpha' } });
+        });
+
+        // Only session-1 should remain
+        expect(screen.getByTestId('session-list-item-session-1')).toBeInTheDocument();
+        expect(screen.queryByTestId('session-list-item-session-2')).not.toBeInTheDocument();
+
+        // Matched fragment should carry the highlight class
+        const highlight = popup.querySelector('.session-list-highlight');
+        expect(highlight).not.toBeNull();
+        expect(highlight).toHaveTextContent(/alpha/i);
+    });
+
+    it('should show empty state when no session matches the query', () => {
+        renderChatApp();
+
+        const sessions = [
+            {
+                id: 'session-1',
+                sessionType: 'main',
+                workdir: '/test/project',
+                firstMessage: 'Alpha task',
+                lastActiveAt: new Date('2023-12-01T10:00:00Z'),
+                latestTotalTokens: 150
+            }
+        ];
+
+        act(() => {
+            sendCommand('updateSessions', { sessions });
+        });
+
+        const popup = openSessionListPopup();
+        const searchInput = popup.querySelector('.session-list-search') as HTMLInputElement;
+
+        act(() => {
+            fireEvent.change(searchInput, { target: { value: 'nonexistent-keyword' } });
+        });
+
+        expect(popup).toHaveTextContent('未找到匹配的历史记录');
     });
 
     it('should create new session after clear chat through callbacks', () => {
@@ -101,6 +189,7 @@ describe('Session Management', () => {
                 id: 'session-original',
                 sessionType: 'main',
                 workdir: '/test/project',
+                firstMessage: 'Original session',
                 lastActiveAt: new Date('2023-12-01T10:00:00Z'),
                 latestTotalTokens: 150
             }
@@ -120,9 +209,8 @@ describe('Session Management', () => {
             sendCommand('updateMessages', { messages: conversation });
         });
 
-        // Verify session is selected and messages are present
-        const dropdown = screen.getByTestId('session-dropdown') as HTMLSelectElement;
-        expect(dropdown.value).toBe('session-original');
+        // Verify current session title and messages are present
+        expect(screen.getByTestId('chat-header')).toHaveTextContent('Original session');
 
         const messages = document.querySelectorAll('.messages-container .message');
         expect(messages.length).toBe(3); // Welcome + 2 conversation messages
@@ -130,7 +218,7 @@ describe('Session Management', () => {
         // Clear message log to track clear chat command
         vscode.postMessage.mockClear();
 
-        // Clear chat
+        // Clear chat (new session)
         const clearBtn = screen.getByTestId('clear-chat-btn');
         act(() => {
             fireEvent.click(clearBtn);
@@ -152,6 +240,7 @@ describe('Session Management', () => {
             id: 'session-new',
             sessionType: 'main',
             workdir: '/test/project',
+            firstMessage: 'Brand new session',
             lastActiveAt: new Date('2023-12-01T10:30:00Z'),
             latestTotalTokens: 0
         };
@@ -171,18 +260,16 @@ describe('Session Management', () => {
         // - Chat should be cleared (welcome view shown, no messages container)
         expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
 
-        // - Session selector should show the NEW session, not the original
-        expect(dropdown.value).toBe('session-new');
+        // - Header title should show the NEW session, not the original
+        expect(screen.getByTestId('chat-header')).toHaveTextContent('Brand new session');
 
-        // - Both sessions should be available in the dropdown
-        const optionOriginal = dropdown.querySelector('option[value="session-original"]');
-        expect(optionOriginal).not.toBeNull();
-
-        const optionNew = dropdown.querySelector('option[value="session-new"]');
-        expect(optionNew).not.toBeNull();
+        // - Both sessions should be available in the history popup
+        openSessionListPopup();
+        expect(screen.getByTestId('session-list-item-session-original')).toBeInTheDocument();
+        expect(screen.getByTestId('session-list-item-session-new')).toBeInTheDocument();
     });
 
-    it('should handle session selector during streaming', () => {
+    it('should disable the new session button during streaming', () => {
         renderChatApp();
 
         // Setup sessions
@@ -191,6 +278,7 @@ describe('Session Management', () => {
                 id: 'session-1',
                 sessionType: 'main',
                 workdir: '/test/project',
+                firstMessage: 'A session',
                 lastActiveAt: new Date('2023-12-01T10:00:00Z'),
                 latestTotalTokens: 150
             }
@@ -206,63 +294,44 @@ describe('Session Management', () => {
             sendCommand('startStreaming');
         });
 
-        // Session selector should be disabled during streaming
-        const dropdown = screen.getByTestId('session-dropdown') as HTMLSelectElement;
-        expect(dropdown).toBeDisabled();
+        // New session button should be disabled during streaming
+        expect(screen.getByTestId('clear-chat-btn')).toBeDisabled();
 
         // End streaming
         act(() => {
             sendCommand('endStreaming');
         });
 
-        // Session selector should be enabled again
-        expect(dropdown).not.toBeDisabled();
+        // Button should be enabled again
+        expect(screen.getByTestId('clear-chat-btn')).not.toBeDisabled();
     });
 
-    it('should render temporary option for currentSession not in sessions list', () => {
+    it('should show 新会话 title when current session is not yet in the list', () => {
         renderChatApp();
 
-        // Setup: sessions list with one session
+        // sessions list with one session
         const sessions = [
             {
                 id: 'session-in-list',
                 sessionType: 'main',
                 workdir: '/test/project',
+                firstMessage: 'Existing session',
                 lastActiveAt: new Date('2023-12-01T10:00:00Z'),
                 latestTotalTokens: 150
             }
         ];
 
-        // But currentSession is a different one not in the list
-        const currentSession = {
-            id: 'session-not-in-list',
-            sessionType: 'main',
-            workdir: '/test/project',
-            lastActiveAt: new Date('2023-12-01T11:00:00Z'),
-            latestTotalTokens: 250
-        };
-
+        // currentSession has no firstMessage -> label falls back to date/time,
+        // but with no currentSession set the title shows the default 新会话
         act(() => {
             sendCommand('updateSessions', { sessions });
-            sendCommand('updateCurrentSession', { session: currentSession });
         });
 
-        // Verify that currentSession is selected even though it's not in sessions list
-        const dropdown = screen.getByTestId('session-dropdown') as HTMLSelectElement;
-        expect(dropdown.value).toBe('session-not-in-list');
+        // Without a current session the header shows the default title
+        expect(screen.getByTestId('chat-header')).toHaveTextContent('新会话');
 
-        // Verify both the temporary option and the regular session exist
-        const tempOption = dropdown.querySelector('option[value="session-not-in-list"]');
-        expect(tempOption).not.toBeNull();
-
-        const regularOption = dropdown.querySelector('option[value="session-in-list"]');
-        expect(regularOption).not.toBeNull();
-
-        // Verify the temporary option has "新会话" in its text
-        expect(tempOption).toHaveTextContent('新会话');
-
-        // Should have 2 options total (excluding the disabled placeholder)
-        const allOptions = dropdown.querySelectorAll('option[value]:not([value=""])');
-        expect(allOptions.length).toBe(2);
+        // The existing session is still listed in the popup
+        openSessionListPopup();
+        expect(screen.getByTestId('session-list-item-session-in-list')).toBeInTheDocument();
     });
 });
