@@ -1,24 +1,29 @@
 package com.wave.jetbrains.update
 
+import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Unit tests for the pure version-parsing helpers in [UpdateChecker].
+ * Unit tests for the pure version-parsing helpers in [UpdateChecker], plus
+ * manifest-driven update checks via the swappable [UpdateChecker.httpGet] seam.
  *
  * These mirror the VSCode `updateService` test cases: strip leading `v`, drop
  * pre-release suffixes, require exactly three numeric components, and compare
  * major → minor → patch numerically (not lexicographically).
- *
- * The network/IDE-dependent paths (checkForUpdate, checkAndNotify, install)
- * are intentionally not covered here — they need a live GitHub API and an
- * Application/Project context, and are exercised manually via the webview
- * "检查更新" button and the auto-check on session init.
  */
 class UpdateCheckerTest {
+
+    @AfterEach
+    fun tearDown() {
+        UpdateChecker.httpGet = UpdateChecker::realHttpGet
+    }
+
 
     // ---- parseVersion --------------------------------------------------
 
@@ -114,5 +119,50 @@ class UpdateCheckerTest {
             // Restore so the static state doesn't leak into other tests.
             UpdateChecker.autoCheckTriggered = original
         }
+    }
+
+    // ---- checkForUpdate via CodeChat manifest --------------------------
+
+    @Test
+    fun `checkForUpdate returns CodeChat UpdateInfo when manifest has newer jetbrains version`() = runBlocking {
+        val manifestJson = """{"version":"0.19.4","downloads":{"vscode":"/api/downloads/codechat-vscode.vsix","jetbrains":"/api/downloads/codechat-jetbrains.zip"}}"""
+        UpdateChecker.httpGet = { url, _ ->
+            if (url.endsWith("/api/downloads/manifest.json")) manifestJson
+            else error("unexpected url: $url")
+        }
+        val info = UpdateChecker.checkForUpdate("0.19.3", "https://codechat.example.com")
+        assertNotNull(info)
+        assertEquals("0.19.4", info!!.latestVersion)
+        assertEquals("0.19.3", info.currentVersion)
+        assertTrue(info.zipUrl!!.endsWith("codechat-jetbrains.zip"), "zipUrl=${info.zipUrl}")
+        assertEquals(info.zipUrl, info.downloadUrl)
+        assertNull(info.releaseNotes)
+    }
+
+    @Test
+    fun `checkForUpdate returns null when CodeChat manifest has no jetbrains artifact`() = runBlocking {
+        val manifestJson = """{"version":"0.19.4","downloads":{"vscode":"/api/downloads/codechat-vscode.vsix"}}"""
+        UpdateChecker.httpGet = { url, _ ->
+            if (url.endsWith("/api/downloads/manifest.json")) manifestJson
+            else error("unexpected url: $url")
+        }
+        // No GitHub fallback when the manifest is authoritative but has no jetbrains artifact.
+        assertNull(UpdateChecker.checkForUpdate("0.19.3", "https://codechat.example.com"))
+    }
+
+    @Test
+    fun `checkForUpdate falls back to GitHub when CodeChat manifest throws`() = runBlocking {
+        val githubJson = """{"tag_name":"v0.19.5","html_url":"https://github.com/netease-lcap/wave-agent/releases/latest","body":"release notes","assets":[{"name":"codechat-jetbrains.zip","browser_download_url":"https://github.com/netease-lcap/wave-agent/releases/download/v0.19.5/codechat-jetbrains.zip"}]}"""
+        UpdateChecker.httpGet = { url, _ ->
+            if (url.endsWith("/api/downloads/manifest.json")) error("manifest endpoint down")
+            else githubJson
+        }
+        val info = UpdateChecker.checkForUpdate("0.19.4", "https://codechat.example.com")
+        assertNotNull(info)
+        assertEquals("0.19.5", info!!.latestVersion)
+        assertEquals("0.19.4", info.currentVersion)
+        assertEquals("https://github.com/netease-lcap/wave-agent/releases/latest", info.downloadUrl)
+        assertTrue(info.zipUrl!!.endsWith("codechat-jetbrains.zip"))
+        assertEquals("release notes", info.releaseNotes)
     }
 }

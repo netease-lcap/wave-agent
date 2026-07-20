@@ -7,6 +7,7 @@ export interface ConfigurationData {
     model?: string;
     fastModel?: string;
     language?: string;
+    serverUrl?: string;
 }
 
 export class ConfigurationService {
@@ -19,7 +20,8 @@ export class ConfigurationService {
             baseURL: this.context.globalState.get<string>('baseURL') || '',
             model: this.context.globalState.get<string>('model') || '',
             fastModel: this.context.globalState.get<string>('fastModel') || '',
-            language: this.context.globalState.get<string>('language') || 'Chinese'
+            language: this.context.globalState.get<string>('language') || 'Chinese',
+            serverUrl: this.context.globalState.get<string>('serverUrl') || ''
         };
     }
 
@@ -31,6 +33,7 @@ export class ConfigurationService {
             if (configData.model !== undefined) await this.context.globalState.update('model', configData.model);
             if (configData.fastModel !== undefined) await this.context.globalState.update('fastModel', configData.fastModel);
             if (configData.language !== undefined) await this.context.globalState.update('language', configData.language);
+            if (configData.serverUrl !== undefined) await this.context.globalState.update('serverUrl', configData.serverUrl);
         } catch (error) {
             console.error('Failed to save configuration:', error);
             throw error;

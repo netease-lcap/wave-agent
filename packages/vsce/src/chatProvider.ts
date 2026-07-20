@@ -107,7 +107,10 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                     this.tabSessions.forEach(session => session.updateConfig(cfg));
                     this.windowSessions.forEach(session => session.updateConfig(cfg));
                 },
-                checkForUpdates: () => checkAndNotify(this.context, true)
+                checkForUpdates: async () => {
+                    const cfg = await this.configService.loadConfiguration();
+                    return checkAndNotify(this.context, true, cfg.serverUrl);
+                }
             }
         );
 
@@ -280,7 +283,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             // The 24h cooldown is enforced inside checkAndNotify via globalState.
             if (!this.updateCheckTriggered) {
                 this.updateCheckTriggered = true;
-                checkAndNotify(this.context).catch(err => {
+                const cfg = await this.configService.loadConfiguration();
+                checkAndNotify(this.context, false, cfg.serverUrl).catch(err => {
                     console.warn('[UpdateService] Update check failed:', err);
                 });
             }

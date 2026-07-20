@@ -671,11 +671,13 @@ export class AgentBridge {
   private async getAuthStatus(): Promise<{
     isAuthenticated: boolean;
     user: { id: string; email?: string } | undefined;
+    serverUrl: string;
   }> {
     const authService = AuthService.getInstance();
     return {
       isAuthenticated: authService.isSSOAuthenticated(),
       user: authService.getAuthUser(),
+      serverUrl: authService.getServerUrl(),
     };
   }
 

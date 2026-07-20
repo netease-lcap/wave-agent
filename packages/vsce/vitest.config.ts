@@ -12,7 +12,7 @@ export default defineConfig({
         reporter: 'dot',
         environment: 'node',
         include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-        exclude: ['tests/services/**', 'node_modules'],
+        exclude: ['node_modules'],
         setupFiles: ['tests/setup.ts'],
         server: {
             deps: {

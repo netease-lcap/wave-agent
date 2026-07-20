@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as http from 'http';
 import * as https from 'https';
 import * as os from 'os';
 import * as path from 'path';
@@ -55,7 +56,8 @@ function httpGet(url: string, timeout = 10000): Promise<{ statusCode: number; bo
             reject(new Error('Request timed out'));
         }, timeout);
 
-        https.get(url, {
+        const getter = url.startsWith('https:') ? https.get : http.get;
+        getter(url, {
             headers: { 'User-Agent': 'Wave-VSCode-Extension' },
             timeout
         }, (res) => {
@@ -72,7 +74,81 @@ function httpGet(url: string, timeout = 10000): Promise<{ statusCode: number; bo
     });
 }
 
-export async function checkForUpdate(currentVersion: string): Promise<UpdateInfo | null> {
+async function checkViaGitHub(currentVersion: string, current: ParsedVersion): Promise<UpdateInfo | null> {
+    const { statusCode, body } = await httpGet('https://api.github.com/repos/netease-lcap/wave-agent/releases/latest');
+
+    if (statusCode !== 200) {
+        console.warn('[UpdateService] GitHub API returned non-OK status:', statusCode);
+        return null;
+    }
+
+    const data = JSON.parse(body) as {
+        tag_name: string;
+        html_url: string;
+        body?: string;
+        assets?: Array<{ name: string; browser_download_url: string }>;
+    };
+
+    const latestTag = data.tag_name.replace(/^v/, '');
+    const latest = parseVersion(latestTag);
+
+    if (!latest) {
+        console.warn('[UpdateService] Invalid latest version from GitHub:', data.tag_name);
+        return null;
+    }
+
+    if (compareVersions(latest, current) > 0) {
+        const vsixAsset = data.assets?.find(a => a.name.endsWith('.vsix'));
+        return {
+            latestVersion: latestTag,
+            currentVersion: currentVersion,
+            downloadUrl: data.html_url,
+            vsixUrl: vsixAsset?.browser_download_url,
+            releaseNotes: data.body
+        };
+    }
+
+    return null;
+}
+
+async function checkViaCodeChat(currentVersion: string, current: ParsedVersion, serverUrl: string): Promise<UpdateInfo | null> {
+    const { statusCode, body } = await httpGet(`${serverUrl}/api/downloads/manifest.json`, 5000);
+
+    if (statusCode !== 200) {
+        throw new Error(`CodeChat manifest returned non-OK status: ${statusCode}`);
+    }
+
+    const data = JSON.parse(body) as {
+        version: string;
+        downloads?: { vscode?: string };
+    };
+
+    const vsixPath = data.downloads?.vscode;
+    if (!vsixPath) {
+        return null;
+    }
+
+    const latest = parseVersion(data.version);
+    if (!latest) {
+        console.warn('[UpdateService] Invalid latest version from CodeChat:', data.version);
+        return null;
+    }
+
+    if (compareVersions(latest, current) <= 0) {
+        return null;
+    }
+
+    const vsixUrl = new URL(vsixPath, serverUrl).toString();
+    return {
+        latestVersion: data.version,
+        currentVersion: currentVersion,
+        downloadUrl: vsixUrl,
+        vsixUrl,
+        releaseNotes: undefined
+    };
+}
+
+export async function checkForUpdate(currentVersion: string, serverUrl?: string): Promise<UpdateInfo | null> {
     const current = parseVersion(currentVersion);
     if (!current) {
         console.warn('[UpdateService] Invalid current version:', currentVersion);
@@ -80,40 +156,14 @@ export async function checkForUpdate(currentVersion: string): Promise<UpdateInfo
     }
 
     try {
-        const { statusCode, body } = await httpGet('https://api.github.com/repos/netease-lcap/wave-vsce/releases/latest');
-
-        if (statusCode !== 200) {
-            console.warn('[UpdateService] GitHub API returned non-OK status:', statusCode);
-            return null;
+        if (serverUrl) {
+            try {
+                return await checkViaCodeChat(currentVersion, current, serverUrl);
+            } catch (error) {
+                console.warn('[UpdateService] CodeChat manifest check failed, falling back to GitHub:', error);
+            }
         }
-
-        const data = JSON.parse(body) as {
-            tag_name: string;
-            html_url: string;
-            body?: string;
-            assets?: Array<{ name: string; browser_download_url: string }>;
-        };
-
-        const latestTag = data.tag_name.replace(/^v/, '');
-        const latest = parseVersion(latestTag);
-
-        if (!latest) {
-            console.warn('[UpdateService] Invalid latest version from GitHub:', data.tag_name);
-            return null;
-        }
-
-        if (compareVersions(latest, current) > 0) {
-            const vsixAsset = data.assets?.find(a => a.name.endsWith('.vsix'));
-            return {
-                latestVersion: latestTag,
-                currentVersion: currentVersion,
-                downloadUrl: data.html_url,
-                vsixUrl: vsixAsset?.browser_download_url,
-                releaseNotes: data.body
-            };
-        }
-
-        return null;
+        return await checkViaGitHub(currentVersion, current);
     } catch (error) {
         console.warn('[UpdateService] Failed to check for updates:', error);
         return null;
@@ -128,7 +178,8 @@ function httpDownload(url: string, destPath: string, timeout = 120000): Promise<
             reject(new Error('Download timed out'));
         }, timeout);
 
-        https.get(url, {
+        const getter = url.startsWith('https:') ? https.get : http.get;
+        getter(url, {
             headers: { 'User-Agent': 'Wave-VSCode-Extension' },
             timeout
         }, (res) => {
@@ -177,7 +228,7 @@ async function downloadAndInstall(vsixUrl: string): Promise<void> {
  * Uses globalState to cache: checks at most once per 24 hours, and dismisses ignored versions.
  * @param skipCooldown - When true (e.g. manual check), bypass the 24-hour cooldown.
  */
-export async function checkAndNotify(context: vscode.ExtensionContext, skipCooldown = false): Promise<void> {
+export async function checkAndNotify(context: vscode.ExtensionContext, skipCooldown = false, serverUrl?: string): Promise<void> {
     const now = Date.now();
     const twentyFourHours = 24 * 60 * 60 * 1000;
 
@@ -192,7 +243,7 @@ export async function checkAndNotify(context: vscode.ExtensionContext, skipCoold
     await context.globalState.update('wave.lastUpdateCheck', now);
 
     const ignoredVersion = context.globalState.get<string>('wave.ignoredVersion');
-    const updateInfo = await checkForUpdate(context.extension.packageJSON.version);
+    const updateInfo = await checkForUpdate(context.extension.packageJSON.version, serverUrl);
 
     if (!updateInfo) {
         if (skipCooldown) {
