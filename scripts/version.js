@@ -38,8 +38,18 @@ export function bumpVersion(pkgPath) {
   }
 
   const newVersion = parts.join('.') + (type === 'patch' ? suffix : '');
-  pkg.version = newVersion;
+  return setVersion(pkgPath, newVersion);
+}
 
+// Overwrite a package's version to an explicit target (used to keep all
+// packages in the monorepo on the same version as the root).
+export function setVersion(pkgPath, newVersion) {
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  const oldVersion = pkg.version;
+  if (oldVersion === newVersion) {
+    return null;
+  }
+  pkg.version = newVersion;
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
   console.log(`${pkg.name}: ${oldVersion} -> ${newVersion}`);
   return { name: pkg.name, version: newVersion, path: pkgPath };
@@ -60,26 +70,26 @@ export function bumpGradleProperties(propsPath, newVersion) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const results = [];
   if (isAll) {
-    // Bump root
+    // Bump root first to determine the target version for the whole monorepo.
     const rootPkg = bumpVersion(path.resolve(process.cwd(), 'package.json'));
     if (rootPkg) results.push(rootPkg);
 
-    // Bump packages
+    // Sync every sub-package to the root's new version so the monorepo stays
+    // on a single consistent version (independent bumps drift when packages
+    // are added/removed mid-release).
     const packagesDir = path.resolve(process.cwd(), 'packages');
     const dirs = fs.readdirSync(packagesDir);
     for (const dir of dirs) {
       const pkgPath = path.resolve(packagesDir, dir, 'package.json');
       if (fs.existsSync(pkgPath)) {
-        const res = bumpVersion(pkgPath);
+        const res = setVersion(pkgPath, rootPkg.version);
         if (res) results.push(res);
       } else {
         // Packages without package.json (e.g. jetbrains) may have a gradle.properties
         // with a pluginVersion= field that must stay in sync with the monorepo version.
         const propsPath = path.resolve(packagesDir, dir, 'gradle.properties');
         if (fs.existsSync(propsPath)) {
-          // Use the root package's new version (already bumped above) as the target.
-          const targetVersion = rootPkg.version;
-          const res = bumpGradleProperties(propsPath, targetVersion);
+          const res = bumpGradleProperties(propsPath, rootPkg.version);
           if (res) results.push(res);
         }
       }
