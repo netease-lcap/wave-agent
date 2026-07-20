@@ -94,6 +94,7 @@ $lafOverrides
         val inputBorder = laf("TextField.borderColor", JBColor.border(), Color(0x3c3c3c))
         val buttonBg = laf("Button.background", JBColor(0x0e639c, 0x0e639c), Color(0x0e639c))
         val buttonFg = laf("Button.foreground", Color.WHITE, Color.WHITE)
+        val linkFg = laf("Link.foreground", JBColor(0x589df6, 0x589df6), Color(0x589df6))
         val border = laf("Border.color", JBColor.border(), Color(0x3c3c3c))
         val font = lafFont("Label.font")
 
@@ -113,6 +114,8 @@ $lafOverrides
             "--vscode-button-background" to buttonBg,
             "--vscode-button-foreground" to buttonFg,
             "--vscode-icon-foreground" to fg,
+            "--vscode-textLink-foreground" to linkFg,
+            "--vscode-textLink-activeForeground" to linkFg,
         )
         return buildString {
             for ((key, color) in vars) {

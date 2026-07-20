@@ -169,7 +169,7 @@
 
 /* Tools */
 .tool-block {
-    color: var(--vscode-button-background);
+    color: var(--vscode-textLink-foreground);
     font-weight: bold;
     font-size: 12px;
     white-space: nowrap;
