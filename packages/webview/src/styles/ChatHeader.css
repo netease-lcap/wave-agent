@@ -3,7 +3,7 @@
     height: 35px;
     padding: 0 12px;
     border-bottom: 1px solid var(--vscode-widget-border);
-    background-color: var(--vscode-editorGroupHeader-tabsBackground);
+    background-color: var(--vscode-panel-background);
     display: flex;
     justify-content: space-between;
     align-items: center;

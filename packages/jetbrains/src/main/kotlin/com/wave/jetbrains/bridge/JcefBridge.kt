@@ -81,6 +81,9 @@ class JcefBrowserBridge(
         browser.loadURL(url)
     }
 
+    /** Run arbitrary JS in the page (e.g. re-inject theme variables on LaF change). */
+    fun runJavaScript(script: String) = executeJavaScript(script)
+
     private fun executeJavaScript(script: String) {
         try {
             browser.cefBrowser.executeJavaScript(script, "", 0)
