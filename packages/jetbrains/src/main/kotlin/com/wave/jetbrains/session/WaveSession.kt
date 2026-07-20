@@ -12,6 +12,7 @@ import com.wave.jetbrains.stdio.BinaryResolver
 import com.wave.jetbrains.stdio.StdioAgent
 import com.wave.jetbrains.stdio.StdioClient
 import com.wave.jetbrains.stdio.StdioClientException
+import com.wave.jetbrains.update.UpdateChecker
 import com.wave.jetbrains.util.Edt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -152,6 +153,11 @@ class WaveSession(
                         IdeService.showError(project, "Wave CLI 升级失败，请手动执行: npm install -g wave-code --registry=https://registry.npmmirror.com")
                     }
                 }
+            }
+            // Plugin self-update check: once per activation, 24h cooldown (mirrors VSCE updateService).
+            if (!UpdateChecker.autoCheckTriggered) {
+                UpdateChecker.autoCheckTriggered = true
+                scope.launch { UpdateChecker.checkAndNotify(project) }
             }
             true
         } catch (e: Exception) {

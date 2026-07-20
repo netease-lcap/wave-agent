@@ -8,6 +8,7 @@ import com.intellij.openapi.ui.Messages
 import com.wave.jetbrains.config.WavePluginService
 import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.StdioClientException
+import com.wave.jetbrains.update.UpdateChecker
 import com.wave.jetbrains.util.Edt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -382,6 +383,13 @@ class MessageHandler(
                         put("language", config.language)
                     })
                 })
+            }
+
+            // ── Plugin update check (manual) ────────────────────────────
+            // VSCE updateService.checkAndNotify; shared webview "检查更新" button.
+            // Manual check bypasses the 24h cooldown (skipCooldown = true).
+            "checkForUpdates" -> {
+                UpdateChecker.checkAndNotify(project, skipCooldown = true)
             }
 
             // ── MCP servers ────────────────────────────────────────────
