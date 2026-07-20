@@ -14,6 +14,10 @@ object BinaryResolver {
 
     @Volatile
     private var cachedPath: String? = null
+    @Volatile
+    private var cachedLoginPath: String? = null
+    @Volatile
+    private var loginPathResolved = false
 
     private val isWindows = System.getProperty("os.name").lowercase().startsWith("win")
     private val waveName = if (isWindows) "wave.cmd" else "wave"
@@ -66,25 +70,71 @@ object BinaryResolver {
     /**
      * Environment variables to inject into spawned `wave`/`npm` processes.
      *
-     * GUI-launched IDEs don't inherit the shell PATH, so the `#!/usr/bin/env node`
-     * shebang on the nvm-managed `wave`/`npm` scripts can't resolve `node`. When
-     * nvm is detected we prepend its bin dir to PATH so the shebang resolves.
-     * Returns an empty map when nvm isn't in play (no change to inherited env).
+     * GUI-launched IDEs inherit a minimal launchd PATH and never source the
+     * shell profile, so homebrew, nvm, pnpm, and user-customized bin dirs are
+     * invisible to `System.getenv("PATH")` and the `#!/usr/bin/env node`
+     * shebang can't resolve `node`. We inject the login-shell PATH, which
+     * rebuilds the full PATH (including the nvm bin dir the shebang needs).
+     * Returns an empty map when there's nothing to inject.
      */
-    fun resolveEnv(): Map<String, String> = buildEnv(findNvmBinDir())
+    fun resolveEnv(): Map<String, String> = buildEnv(resolveLoginShellPath())
 
     /**
-     * Builds the env overlay for a resolved nvm bin dir. Split out from
-     * [resolveEnv] so it can be unit-tested with a synthetic dir.
+     * Assembles a deduped, ordered PATH: login-shell PATH first (the
+     * comprehensive set — homebrew, nvm, pnpm, user customizations), then the
+     * inherited PATH as a base. Split out from [resolveEnv] so it can be
+     * unit-tested with synthetic inputs. [currentPath] defaults to the live
+     * env so production callers don't need to pass it, while tests can inject
+     * a fixed value (or null to simulate unset).
      */
-    internal fun buildEnv(nvmBinDir: File?): Map<String, String> {
-        if (nvmBinDir == null) return emptyMap()
-        val currentPath = System.getenv("PATH") ?: ""
-        val newPath = if (currentPath.isEmpty())
-            nvmBinDir.path
-        else
-            nvmBinDir.path + File.pathSeparator + currentPath
-        return mapOf("PATH" to newPath)
+    internal fun buildEnv(
+        loginPath: String? = null,
+        currentPath: String? = System.getenv("PATH"),
+    ): Map<String, String> {
+        val segments = linkedSetOf<String>()
+        loginPath
+            ?.takeIf { it.isNotEmpty() }
+            ?.split(File.pathSeparator)
+            ?.forEach { if (it.isNotEmpty()) segments.add(it) }
+        currentPath
+            ?.takeIf { it.isNotEmpty() }
+            ?.split(File.pathSeparator)
+            ?.forEach { if (it.isNotEmpty()) segments.add(it) }
+        if (segments.isEmpty()) return emptyMap()
+        return mapOf("PATH" to segments.joinToString(File.pathSeparator))
+    }
+
+    /**
+     * Spawns the user's login shell once and captures the PATH it produces
+     * after sourcing the profile (login + interactive). GUI-launched IDEs
+     * inherit a minimal launchd PATH and never source `~/.zprofile`/`~/.zshrc`,
+     * so homebrew, nvm, pnpm, and user-customized bin dirs are invisible to
+     * `System.getenv("PATH")`. The login shell rebuilds the full PATH.
+     *
+     * Result is cached for the IDE session. Returns null on Windows or if the
+     * probe fails.
+     *
+     * Uses [runCommandRaw] (not [runCommand]) to avoid infinite recursion:
+     * `runCommand` injects [resolveEnv], which calls this method.
+     */
+    internal fun resolveLoginShellPath(): String? {
+        if (loginPathResolved) return cachedLoginPath
+        loginPathResolved = true
+        if (isWindows) return null
+        val shell = System.getenv("SHELL")
+            ?.takeIf { it.isNotEmpty() && File(it).exists() }
+            ?: listOf("/bin/zsh", "/bin/bash").firstOrNull { File(it).exists() }
+            ?: return null
+        cachedLoginPath = try {
+            // -l: login (sources profile), -i: interactive (sources rc, where
+            // nvm/brew/pnpm init usually live), -c: run command and exit.
+            // Take the last non-empty line in case rc files print banners.
+            val out = runCommandRaw(shell, "-lic", "echo \$PATH")
+            out.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() }
+        } catch (_: Exception) {
+            null
+        }
+        return cachedLoginPath
     }
 
     /** Reset cache (testing). */
@@ -196,6 +246,20 @@ object BinaryResolver {
             if (va != vb) return va - vb
         }
         return 0
+    }
+
+    /** Runs a command without injecting [resolveEnv] — used by the login-shell
+     *  PATH probe to avoid infinite recursion. Inherits the parent env as-is. */
+    private fun runCommandRaw(vararg cmd: String): String {
+        val proc = ProcessBuilder(cmd.toList()).apply {
+            redirectErrorStream(true)
+        }.start()
+        val out = proc.inputStream.bufferedReader().readText()
+        val code = proc.waitFor()
+        if (code != 0) {
+            throw StdioClientException("Command failed (${cmd.joinToString(" ")}): $out")
+        }
+        return out
     }
 
     private fun runCommand(vararg cmd: String): String {
