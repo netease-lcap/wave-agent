@@ -20,6 +20,7 @@
             factoryClass="com.wave.jetbrains.WaveToolWindowFactory"
             icon="com.wave.jetbrains.icons.WaveIcons.Wave"/>
         <notificationGroup id="Wave" displayType="BALLOON"/>
+        <iconMapper mappingFile="WavePluginIconMappings.json"/>
     </extensions>
 
     <actions>
