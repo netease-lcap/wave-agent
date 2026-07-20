@@ -109,6 +109,49 @@ describe("grepTool", () => {
     }
   });
 
+  it("should search hidden directories and exclude VCS dirs by default", async () => {
+    const stdout = ".wave/rules/testing.md\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
+    const result = await grepTool.execute(
+      {
+        pattern: "vitest-expert",
+        output_mode: "files_with_matches",
+      },
+      testContext,
+    );
+
+    expect(result.success).toBe(true);
+
+    // --hidden must always be present so hidden dirs like .wave/ are searched.
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["--hidden"]),
+      expect.any(Object),
+    );
+
+    // VCS directories must be excluded via negated --glob patterns.
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["--glob", "!.git"]),
+      expect.any(Object),
+    );
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["--glob", "!.svn"]),
+      expect.any(Object),
+    );
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["--glob", "!.hg"]),
+      expect.any(Object),
+    );
+
+    // Sanity: --no-ignore must NOT be present (gitignore still respected).
+    const callArgs = mockSpawn.mock.calls[0]?.[1] as string[];
+    expect(callArgs).not.toContain("--no-ignore");
+  });
+
   it("should find files containing pattern (files_with_matches mode)", async () => {
     const stdout = "src/index.ts\nsrc/utils.ts\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
