@@ -49,6 +49,9 @@ export function createMockVscode() {
 export function renderChatApp(vscode?: VsCodeApi) {
     const mockVscode = (vscode || createMockVscode()) as ReturnType<typeof createMockVscode>;
     const result = render(<ChatApp vscode={mockVscode} />);
+    // Default to authenticated so the message input is enabled and MessageList
+    // (not the unauthenticated WelcomeView) renders for empty-state assertions.
+    sendExtensionMessage({ command: 'authStatusResponse', isAuthenticated: true });
     const user = userEvent.setup();
     return { ...result, vscode: mockVscode, user };
 }

@@ -27,9 +27,8 @@ describe('Basic Message Flow', () => {
     it('should send and display messages correctly', async () => {
         const { vscode } = renderChatApp();
 
-        // Verify initial state - should have welcome message
-        expect(getMessages()).toHaveLength(1);
-        expect(getMessages()[0]).toHaveTextContent('您好！我是您的 AI 助手');
+        // Verify initial state - empty + authenticated shows the welcome view
+        expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
 
         // Clear message log
         vscode.postMessage.mockClear();

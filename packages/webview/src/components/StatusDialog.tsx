@@ -129,7 +129,7 @@ const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: 
                   <span style={{ color: 'var(--vscode-testing-iconPassed)', fontSize: '12px' }}>已登录</span>
                 </div>
               ) : (
-                <span style={{ color: 'var(--vscode-descriptionForeground)', fontSize: '12px' }}>未登录 (使用 /login 进行 SSO 认证)</span>
+                <span style={{ color: 'var(--vscode-descriptionForeground)', fontSize: '12px' }}>未登录</span>
               )}
             </div>
           </div>

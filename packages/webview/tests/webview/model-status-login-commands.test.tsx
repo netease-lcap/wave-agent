@@ -64,21 +64,6 @@ describe('Model, Status, and Login Commands', () => {
         });
     });
 
-    describe('/login command', () => {
-        it('should open login dialog via /login', async () => {
-            renderChatApp();
-
-            await act(async () => {
-                await typeAndSend('/login');
-            });
-
-            await waitFor(() => {
-                expect(document.querySelector('.configuration-dialog-overlay')).toBeInTheDocument();
-            });
-            expect(document.querySelector('.sso-auth-section')).toBeInTheDocument();
-        });
-    });
-
     describe('/config command', () => {
         it('should open config dialog via /config', async () => {
             renderChatApp();

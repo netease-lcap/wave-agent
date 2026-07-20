@@ -250,8 +250,10 @@ export interface ChatState {
   sessionsLoading: boolean;
   pendingConfirmations: ConfirmationRequest[];
   queuedMessages: QueuedMessage[];
+  // Auth state
+  isAuthenticated: boolean;
   // Dialog state
-  activeDialog: 'config' | 'plugin' | 'mcp' | 'status' | 'login' | null;
+  activeDialog: 'config' | 'plugin' | 'mcp' | 'status' | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
   configurationError?: string;
@@ -373,13 +375,6 @@ export interface StatusDialogProps {
   onClose: () => void;
 }
 
-/**
- * Props for the SSO login dialog component
- */
-export interface LoginDialogProps {
-  onClose: () => void;
-}
-
 export type ChatAction =
   | { type: 'SET_MESSAGES'; payload: Message[] }
   | { type: 'SET_TASKS'; payload: Task[] }
@@ -395,8 +390,9 @@ export type ChatAction =
   | { type: 'SET_SESSIONS_LOADING'; payload: boolean }
   | { type: 'SHOW_CONFIRMATION'; payload: ConfirmationRequest }
   | { type: 'HIDE_CONFIRMATION'; payload: string }
-  | { type: 'SHOW_DIALOG'; payload: { type: 'config' | 'plugin' | 'mcp' | 'status' | 'login'; data?: ConfigurationData; error?: string } }
+  | { type: 'SHOW_DIALOG'; payload: { type: 'config' | 'plugin' | 'mcp' | 'status'; data?: ConfigurationData; error?: string } }
   | { type: 'HIDE_DIALOG' }
+  | { type: 'SET_AUTHENTICATED'; payload: boolean }
   | { type: 'SET_CONFIGURATION_LOADING'; payload: boolean }
   | { type: 'SET_CONFIGURATION_ERROR'; payload: string | undefined }
   | { type: 'SET_CONFIGURATION_DATA'; payload: ConfigurationData }
@@ -419,6 +415,7 @@ export type ChatAction =
       permissionMode?: PermissionMode;
       attachedImages?: AttachedImage[];
       queuedMessages?: QueuedMessage[];
+      isAuthenticated?: boolean;
     } }
   // Incremental update actions for streaming optimization
   | { type: 'APPEND_MESSAGE'; payload: Message }

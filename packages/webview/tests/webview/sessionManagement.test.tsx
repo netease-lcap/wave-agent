@@ -168,9 +168,8 @@ describe('Session Management', () => {
         });
 
         // VERIFY EXPECTED BEHAVIOR:
-        // - Chat should be cleared (messages gone)
-        const messagesAfter = document.querySelectorAll('.messages-container .message');
-        expect(messagesAfter.length).toBe(1); // welcome only
+        // - Chat should be cleared (welcome view shown, no messages container)
+        expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
 
         // - Session selector should show the NEW session, not the original
         expect(dropdown.value).toBe('session-new');

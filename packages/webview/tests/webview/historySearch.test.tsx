@@ -155,10 +155,10 @@ describe('History Search Feature', () => {
             expect(screen.getByTestId('history-search-popup')).toBeInTheDocument();
         });
 
-        // 2. Click outside the popup (e.g., on the message list)
-        const messagesContainer = screen.getByTestId('messages-container');
+        // 2. Click outside the popup (e.g., on the chat container — empty state shows WelcomeView)
+        const chatContainer = screen.getByTestId('chat-container');
         await act(async () => {
-            fireEvent.mouseDown(messagesContainer);
+            fireEvent.mouseDown(chatContainer);
         });
 
         // 3. Verify popup is closed

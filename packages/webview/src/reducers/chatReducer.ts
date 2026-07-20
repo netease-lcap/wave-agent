@@ -23,7 +23,9 @@ export const initialState: ChatState = {
   // Permission mode state
   permissionMode: 'default',
   // Attached images state
-  attachedImages: []
+  attachedImages: [],
+  // Auth state
+  isAuthenticated: false
 };
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
@@ -117,6 +119,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         activeDialog: null,
         configurationError: undefined
       };
+    case 'SET_AUTHENTICATED':
+      return {
+        ...state,
+        isAuthenticated: action.payload
+      };
     case 'SET_CONFIGURATION_LOADING':
       return {
         ...state,
@@ -153,7 +160,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         permissionMode: action.payload.permissionMode || state.permissionMode,
         attachedImages: action.payload.attachedImages || [],
         sessionsLoading: false,
-        configurationLoading: false
+        configurationLoading: false,
+        isAuthenticated: action.payload.isAuthenticated !== undefined ? action.payload.isAuthenticated : state.isAuthenticated
       };
     case 'UPDATE_SELECTION':
       return {

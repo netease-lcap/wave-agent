@@ -1,4 +1,4 @@
-import { test } from '../utils/webviewTestHarness.js';
+import { test, expect } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { UIStateVerifier } from '../utils/uiStateVerifier.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
@@ -16,6 +16,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
             messages: [],
             isStreaming: false,
             sessions: [],
+            isAuthenticated: true,
             configurationData: {
                 apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
                 baseURL: 'https://api.anthropic.com/v1',
@@ -25,9 +26,66 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
             permissionMode: 'default'
         });
 
-        // 1. Welcome Message
-        await ui.verifyMessageCount(1);
+        // 1. Welcome View (logged-in empty state)
+        await expect(webviewPage.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeVisible();
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-welcome.png' });
+
+        // 1.1 Welcome View (unauthenticated state — with login button)
+        await injector.simulateExtensionMessage('setInitialState', {
+            messages: [],
+            isStreaming: false,
+            sessions: [],
+            isAuthenticated: false,
+            configurationData: {
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
+            },
+            permissionMode: 'default'
+        });
+        await expect(webviewPage.getByText('登 录')).toBeVisible();
+
+        // Verify layout geometry: logo svg present, login button full-width & horizontally centered
+        const geometry = await webviewPage.evaluate(() => {
+            const svg = document.querySelector('button svg, div svg');
+            const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('登'));
+            const container = document.querySelector('.chat-container') as HTMLElement | null;
+            if (!svg || !btn || !container) return null;
+            const sb = svg.getBoundingClientRect();
+            const bb = btn.getBoundingClientRect();
+            const cb = container.getBoundingClientRect();
+            return {
+                hasSvg: !!svg,
+                btnWidth: Math.round(bb.width),
+                containerWidth: Math.round(cb.width),
+                btnLeftOffset: Math.round(bb.left - cb.left),
+                btnRightOffset: Math.round(cb.right - bb.right),
+                btnCenterDelta: Math.round((bb.left + bb.right) / 2 - (cb.left + cb.right) / 2)
+            };
+        });
+        expect(geometry).not.toBeNull();
+        expect(geometry!.hasSvg).toBe(true);
+        // Button spans (nearly) the full container width
+        expect(geometry!.btnWidth).toBeGreaterThan(geometry!.containerWidth - 40);
+        // Button is horizontally centered within the container
+        expect(Math.abs(geometry!.btnCenterDelta)).toBeLessThan(5);
+
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-welcome-login.png' });
+
+        // Restore logged-in state for subsequent steps
+        await injector.simulateExtensionMessage('setInitialState', {
+            messages: [],
+            isStreaming: false,
+            sessions: [],
+            isAuthenticated: true,
+            configurationData: {
+                apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
+            },
+            permissionMode: 'default'
+        });
 
         // 1.3 Code Selection Tag
         await injector.simulateExtensionMessage('addSelectionToInput', {
@@ -84,7 +142,6 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
                 { id: 'plugin', name: 'plugin', description: '打开插件管理' },
                 { id: 'mcp', name: 'mcp', description: '打开 MCP 服务器管理' },
                 { id: 'status', name: 'status', description: '查看当前状态' },
-                { id: 'login', name: 'login', description: 'SSO 登录/登出' },
                 { id: 'clear', name: 'clear', description: '清除对话历史并重置会话' }
             ]
         });
