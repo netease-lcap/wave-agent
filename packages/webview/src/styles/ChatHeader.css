@@ -1,36 +1,52 @@
 /* Header */
 .chat-header {
-    padding: 10px;
-    border-bottom: 1px solid var(--vscode-panel-border);
-    background-color: var(--vscode-panel-background);
+    height: 35px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--vscode-widget-border);
+    background-color: var(--vscode-editorGroupHeader-tabsBackground);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    position: relative;
 }
 
-.header-left {
+.header-title {
     flex: 1;
-    display: flex;
-    align-items: center;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+    color: var(--vscode-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .header-buttons {
     display: flex;
-    gap: 8px;
+    gap: 4px;
     align-items: center;
 }
 
 .header-button {
+    width: 22px;
+    height: 22px;
+    padding: 0;
     background-color: transparent;
     color: var(--vscode-foreground);
     border: none;
-    padding: 4px;
-    border-radius: 3px;
+    border-radius: 4px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
+}
+
+.header-button .header-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
 }
 
 .header-button.active {
@@ -57,10 +73,6 @@
     justify-content: center;
     padding: 0 2px;
     font-weight: bold;
-}
-
-.header-button .codicon {
-    font-size: 16px;
 }
 
 .header-button:disabled {

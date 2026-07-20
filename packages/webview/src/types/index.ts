@@ -213,15 +213,9 @@ export interface ChatHeaderProps {
   currentSession?: SessionMetadata;
   onSessionSelect: (sessionId: string) => void;
   sessionsLoading: boolean;
-}
-
-// Session selector component props
-export interface SessionSelectorProps {
-  sessions: SessionMetadata[];
-  currentSession?: SessionMetadata;
-  onSessionSelect: (sessionId: string) => void;
-  loading: boolean;
-  disabled: boolean;
+  onOpenSettings: () => void;
+  onOpenEnterpriseConsole: () => void;
+  onLogout: () => void;
 }
 
 // Matches wave-agent-sdk's QueuedMessage type

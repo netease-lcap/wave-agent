@@ -132,6 +132,9 @@ export class MessageHandler {
             case 'previewImage':
                 await this.handlePreviewImage(msg.path as string);
                 break;
+            case 'openExternal':
+                await this.handleOpenExternal(msg.url as string);
+                break;
             case 'rewindToMessage':
                 await this.handleRewindToMessage(msg.messageId as string, viewType, windowId);
                 break;
@@ -239,6 +242,17 @@ export class MessageHandler {
         } catch (error) {
             console.error('打开文件失败:', error);
             vscode.window.showErrorMessage('打开文件失败: ' + error);
+        }
+    }
+
+    private async handleOpenExternal(url: string) {
+        if (!url) return;
+
+        try {
+            await vscode.env.openExternal(vscode.Uri.parse(url));
+        } catch (error) {
+            console.error('打开外部链接失败:', error);
+            vscode.window.showErrorMessage('打开外部链接失败: ' + error);
         }
     }
 

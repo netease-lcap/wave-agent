@@ -257,62 +257,44 @@ export class UIStateVerifier {
     }
 
     /**
-     * Get the session selector dropdown
+     * Get the history button that opens the session list popup
      */
-    get sessionSelector(): Locator {
-        return this.page.getByTestId('session-dropdown');
+    get historyButton(): Locator {
+        return this.page.getByTestId('history-btn');
     }
 
     /**
-     * Get session selector container
+     * Get the session list popup (opened via the history button)
      */
-    get sessionSelectorContainer(): Locator {
-        return this.page.getByTestId('session-selector');
+    get sessionListPopup(): Locator {
+        return this.page.getByTestId('session-list-popup');
     }
 
     /**
-     * Verify session selector state
+     * Open the session history popup
      */
-    async verifySessionSelectorValue(expectedValue: string) {
-        await expect(this.sessionSelector).toHaveValue(expectedValue);
+    async openSessionListPopup() {
+        await this.historyButton.click();
+        await this.sessionListPopup.waitFor({ state: 'visible' });
     }
 
     /**
-     * Verify session selector has specific option
+     * Verify a session item exists (or not) in the history popup
      */
     async verifySessionOption(sessionId: string, shouldExist: boolean = true) {
-        const option = this.sessionSelector.locator(`option[value="${sessionId}"]`);
+        const item = this.page.getByTestId(`session-list-item-${sessionId}`);
         if (shouldExist) {
-            await expect(option).toHaveCount(1);
+            await expect(item).toHaveCount(1);
         } else {
-            await expect(option).toHaveCount(0);
+            await expect(item).toHaveCount(0);
         }
     }
 
     /**
-     * Select a session from dropdown
+     * Select a session from the history popup
      */
     async selectSession(sessionId: string) {
-        await this.sessionSelector.selectOption(sessionId);
-    }
-
-    /**
-     * Get all session options
-     */
-    async getSessionOptions(): Promise<string[]> {
-        return await this.sessionSelector.locator('option[value]:not([value=""])').evaluateAll(
-            (elements) => elements.map(el => (el as HTMLOptionElement).value)
-        );
-    }
-
-    /**
-     * Verify session selector is disabled
-     */
-    async verifySessionSelectorDisabled(shouldBeDisabled: boolean = true) {
-        if (shouldBeDisabled) {
-            await expect(this.sessionSelector).toBeDisabled();
-        } else {
-            await expect(this.sessionSelector).toBeEnabled();
-        }
+        await this.openSessionListPopup();
+        await this.page.getByTestId(`session-list-item-${sessionId}`).click();
     }
 }
