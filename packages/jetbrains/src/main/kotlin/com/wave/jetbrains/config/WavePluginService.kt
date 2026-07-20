@@ -13,6 +13,7 @@ data class ConfigurationData(
     var model: String = "",
     var fastModel: String = "",
     var language: String = "Chinese",
+    var serverUrl: String = "",
 )
 
 @State(name = "WavePlugin", storages = [Storage("wave.xml")])

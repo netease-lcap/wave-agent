@@ -307,6 +307,8 @@ export interface ConfigurationData {
   fastModel?: string;
   /** Preferred language for agent communication */
   language?: string;
+  /** CodeChat server URL (reported by SDK, used for update checks) */
+  serverUrl?: string;
 }
 
 // Plugin related types

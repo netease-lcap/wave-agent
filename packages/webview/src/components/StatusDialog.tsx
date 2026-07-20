@@ -67,6 +67,7 @@ const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: 
   const baseURL = configurationData?.baseURL;
   const model = configurationData?.model;
   const fastModel = configurationData?.fastModel;
+  const serverUrl = configurationData?.serverUrl;
 
   const StatusRow = ({ label, value }: { label: string; value?: string }) => (
     <div className="configuration-field">
@@ -113,6 +114,7 @@ const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: 
             <StatusRow label="Session ID" value={sessionId} />
             <StatusRow label="工作目录" value={workdir} />
             <StatusRow label="Base URL" value={baseURL} />
+            <StatusRow label="Server URL" value={serverUrl} />
             <StatusRow label="Model" value={model} />
             <StatusRow label="Fast Model" value={fastModel} />
 

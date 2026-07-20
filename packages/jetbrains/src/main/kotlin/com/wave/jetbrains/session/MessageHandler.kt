@@ -21,6 +21,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -109,6 +110,7 @@ class MessageHandler(
                     model = data["model"]?.jsonPrimitive?.content ?: ""
                     fastModel = data["fastModel"]?.jsonPrimitive?.content ?: ""
                     language = data["language"]?.jsonPrimitive?.content ?: "Chinese"
+                    serverUrl = data["serverUrl"]?.jsonPrimitive?.content ?: this.serverUrl
                 }
                 WavePluginService.getInstance().saveConfiguration(config)
                 session.agent?.updateConfig(buildConfigParams(config))
@@ -320,17 +322,30 @@ class MessageHandler(
             // ── Auth ───────────────────────────────────────────────────
             // VSCE :143/:643 → authStatusResponse { isAuthenticated, user }
             "getAuthStatus" -> {
-                val (authenticated, user) = try {
+                val (authenticated, user, serverUrl) = try {
                     val res = session.agent?.getAuthStatus()?.jsonObject
-                    (res?.get("isAuthenticated")?.jsonPrimitive?.content?.toBoolean() ?: false) to res?.get("user")
+                    val url = (res?.get("serverUrl") as? JsonPrimitive)?.contentOrNull ?: ""
+                    if (url.isNotEmpty()) {
+                        val merged = WavePluginService.getInstance().loadConfiguration().apply {
+                            serverUrl = url
+                        }
+                        WavePluginService.getInstance().saveConfiguration(merged)
+                        postConfigurationResponse()
+                    }
+                    Triple(
+                        res?.get("isAuthenticated")?.jsonPrimitive?.content?.toBoolean() ?: false,
+                        res?.get("user"),
+                        url,
+                    )
                 } catch (e: StdioClientException) {
                     LOG.warn("getAuthStatus failed: ${e.message}")
-                    false to null
+                    Triple(false, null, "")
                 }
                 postMessage("authStatusResponse", buildJsonObject {
                     put("isAuthenticated", authenticated)
                     // VSCE sends user: null on failure; send JsonNull to match.
                     put("user", user ?: JsonNull)
+                    put("serverUrl", serverUrl)
                 })
             }
             // VSCE :146/:664 → loginResponse { success, user } + updateAllSessionsConfig
@@ -544,6 +559,7 @@ class MessageHandler(
                 put("model", config.model)
                 put("fastModel", config.fastModel)
                 put("language", config.language)
+                put("serverUrl", config.serverUrl)
             })
         })
     }
@@ -581,6 +597,7 @@ class MessageHandler(
                 put("model", config.model)
                 put("fastModel", config.fastModel)
                 put("language", config.language)
+                put("serverUrl", config.serverUrl)
             })
             put("permissionMode", session.permissionMode ?: "default")
             put("queuedMessages", session.messageQueue ?: JsonArray(emptyList()))

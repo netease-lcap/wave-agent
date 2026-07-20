@@ -18,6 +18,7 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.wave.jetbrains.config.WavePluginService
 import com.wave.jetbrains.util.Edt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -51,6 +52,7 @@ object UpdateChecker {
         "https://api.github.com/repos/netease-lcap/wave-agent/releases/latest"
     private const val USER_AGENT = "Wave-JetBrains-Plugin"
     private const val HTTP_TIMEOUT_MS = 10_000
+    private const val MANIFEST_TIMEOUT_MS = 5_000
     private const val DOWNLOAD_TIMEOUT_MS = 120_000
     private const val COOLDOWN_MS = 24L * 60 * 60 * 1000
     private const val KEY_LAST_CHECK = "wave.lastUpdateCheck"
@@ -84,6 +86,18 @@ object UpdateChecker {
         val browser_download_url: String,
     )
 
+    @Serializable
+    data class CodeChatManifest(
+        val version: String,
+        val downloads: CodeChatDownloads = CodeChatDownloads(),
+    )
+
+    @Serializable
+    data class CodeChatDownloads(
+        val vscode: String? = null,
+        val jetbrains: String? = null,
+    )
+
     // ── Version parsing (VSCode parity: strip 'v', drop pre-release, require 3 numeric parts) ──
 
     fun parseVersion(version: String): ParsedVersion? {
@@ -103,13 +117,15 @@ object UpdateChecker {
 
     // ── HTTP ────────────────────────────────────────────────────────────────────
 
-    private fun httpGet(url: String): String {
+    @Volatile internal var httpGet: (String, Int) -> String = ::realHttpGet
+
+    internal fun realHttpGet(url: String, timeoutMs: Int): String {
         val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             setRequestProperty("User-Agent", USER_AGENT)
             setRequestProperty("Accept", "application/vnd.github+json")
-            connectTimeout = HTTP_TIMEOUT_MS
-            readTimeout = HTTP_TIMEOUT_MS
+            connectTimeout = timeoutMs
+            readTimeout = timeoutMs
             instanceFollowRedirects = true
         }
         try {
@@ -141,33 +157,61 @@ object UpdateChecker {
 
     // ── Update check ────────────────────────────────────────────────────────────
 
-    suspend fun checkForUpdate(currentVersion: String): UpdateInfo? = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdate(currentVersion: String, serverUrl: String = ""): UpdateInfo? = withContext(Dispatchers.IO) {
         val current = parseVersion(currentVersion) ?: run {
             LOG.warn("Invalid current version: $currentVersion")
             return@withContext null
         }
         try {
-            val body = httpGet(LATEST_RELEASE_URL)
-            val release = JSON.decodeFromString<GithubRelease>(body)
-            val latestTag = release.tag_name.trimStart('v')
-            val latest = parseVersion(latestTag) ?: run {
-                LOG.warn("Invalid latest tag from GitHub: ${release.tag_name}")
-                return@withContext null
+            if (serverUrl.isNotEmpty()) {
+                try {
+                    return@withContext checkViaCodeChat(currentVersion, current, serverUrl)
+                } catch (e: Exception) {
+                    LOG.warn("CodeChat manifest check failed, falling back to GitHub: ${e.message}")
+                }
             }
-            if (compareVersions(latest, current) > 0) {
-                val zipAsset = release.assets.firstOrNull { it.name.endsWith(".zip") }
-                UpdateInfo(
-                    latestVersion = latestTag,
-                    currentVersion = currentVersion,
-                    downloadUrl = release.html_url,
-                    zipUrl = zipAsset?.browser_download_url,
-                    releaseNotes = release.body,
-                )
-            } else null
+            return@withContext checkViaGitHub(currentVersion, current)
         } catch (e: Exception) {
             LOG.warn("Failed to check for updates: ${e.message}")
             null
         }
+    }
+
+    private fun checkViaGitHub(currentVersion: String, current: ParsedVersion): UpdateInfo? {
+        val body = httpGet(LATEST_RELEASE_URL, HTTP_TIMEOUT_MS)
+        val release = JSON.decodeFromString<GithubRelease>(body)
+        val latestTag = release.tag_name.trimStart('v')
+        val latest = parseVersion(latestTag) ?: run {
+            LOG.warn("Invalid latest tag from GitHub: ${release.tag_name}")
+            return null
+        }
+        if (compareVersions(latest, current) > 0) {
+            val zipAsset = release.assets.firstOrNull { it.name.endsWith(".zip") }
+            return UpdateInfo(
+                latestVersion = latestTag,
+                currentVersion = currentVersion,
+                downloadUrl = release.html_url,
+                zipUrl = zipAsset?.browser_download_url,
+                releaseNotes = release.body,
+            )
+        }
+        return null
+    }
+
+    private fun checkViaCodeChat(currentVersion: String, current: ParsedVersion, serverUrl: String): UpdateInfo? {
+        val body = httpGet("${serverUrl}/api/downloads/manifest.json", MANIFEST_TIMEOUT_MS)
+        val manifest = JSON.decodeFromString<CodeChatManifest>(body)
+        val zipPath = manifest.downloads?.jetbrains ?: return null
+        val latest = parseVersion(manifest.version) ?: return null
+        if (compareVersions(latest, current) <= 0) return null
+        val zipUrl = URI(serverUrl).resolve(zipPath).toString()
+        return UpdateInfo(
+            latestVersion = manifest.version,
+            currentVersion = currentVersion,
+            downloadUrl = zipUrl,
+            zipUrl = zipUrl,
+            releaseNotes = null,
+        )
     }
 
     /**
@@ -186,7 +230,8 @@ object UpdateChecker {
 
         val current = currentVersion()
         if (current.isEmpty()) return
-        val info = checkForUpdate(current) ?: run {
+        val serverUrl = WavePluginService.getInstance().loadConfiguration().serverUrl
+        val info = checkForUpdate(current, serverUrl) ?: run {
             if (skipCooldown) Edt.invokeLater { showInfo(project, "当前已是最新版本") }
             return
         }

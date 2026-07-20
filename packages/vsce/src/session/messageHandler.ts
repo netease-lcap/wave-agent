@@ -649,11 +649,18 @@ export class MessageHandler {
             const result = await this.utilityClient.request('getAuthStatus') as {
                 isAuthenticated: boolean;
                 user: { id: string; email?: string } | undefined;
+                serverUrl: string;
             };
+            await this.configService.saveConfiguration({ serverUrl: result.serverUrl });
             this.context.postMessage({
                 command: 'authStatusResponse',
                 isAuthenticated: result.isAuthenticated,
-                user: result.user
+                user: result.user,
+                serverUrl: result.serverUrl
+            }, viewType, windowId);
+            this.context.postMessage({
+                command: 'configurationResponse',
+                configurationData: await this.configService.loadConfiguration()
             }, viewType, windowId);
         } catch (error) {
             console.error('获取认证状态失败:', error);
