@@ -109,33 +109,45 @@ class BinaryResolverTest {
     // ---- buildEnv ------------------------------------------------------
 
     @Test
-    fun `buildEnv returns empty map when nvmBinDir is null`() {
-        assertEquals(emptyMap<String, String>(), BinaryResolver.buildEnv(null))
+    fun `buildEnv returns empty map when all inputs are null`() {
+        assertEquals(emptyMap<String, String>(), BinaryResolver.buildEnv(null, null))
     }
 
     @Test
-    fun `buildEnv prepends nvm bin dir to existing PATH`() {
-        val nvmBin = File(tempDir.toFile(), "nvm-bin").apply { mkdirs() }
-        val env = BinaryResolver.buildEnv(nvmBin)
-        val path = env["PATH"]
-        assertTrue(path != null)
-        // nvm bin dir must come first so the shebang resolves to nvm's node
-        assertTrue(path!!.startsWith(nvmBin.path + File.pathSeparator))
-        // existing PATH must still be present (not clobbered)
-        val currentPath = System.getenv("PATH") ?: ""
-        if (currentPath.isNotEmpty()) {
-            assertTrue(path.contains(currentPath))
-        }
-    }
-
-    @Test
-    fun `buildEnv uses nvm bin dir alone when PATH is unset`() {
-        val nvmBin = File(tempDir.toFile(), "nvm-bin2").apply { mkdirs() }
-        // buildEnv reads System.getenv("PATH") which is the test runner's PATH;
-        // we can't nullify it here, so just assert the nvm bin dir is the prefix.
-        val env = BinaryResolver.buildEnv(nvmBin)
+    fun `buildEnv includes login shell PATH segments`() {
+        val loginPath = "/opt/homebrew/bin:/usr/local/bin"
+        val env = BinaryResolver.buildEnv(loginPath, currentPath = null)
         val path = env["PATH"]!!
-        assertTrue(path.startsWith(nvmBin.path))
+        assertTrue(path.contains("/opt/homebrew/bin"))
+        assertTrue(path.contains("/usr/local/bin"))
+    }
+
+    @Test
+    fun `buildEnv puts login path before current path`() {
+        val loginPath = "/opt/homebrew/bin"
+        val currentPath = "/usr/bin"
+        val env = BinaryResolver.buildEnv(loginPath, currentPath)
+        val segments = env["PATH"]!!.split(File.pathSeparator)
+        assertEquals("/opt/homebrew/bin", segments[0])
+        assertEquals("/usr/bin", segments[1])
+    }
+
+    @Test
+    fun `buildEnv uses login path alone when current path is unset`() {
+        val loginPath = "/opt/homebrew/bin"
+        val env = BinaryResolver.buildEnv(loginPath, currentPath = null)
+        assertEquals(loginPath, env["PATH"])
+    }
+
+    @Test
+    fun `buildEnv dedupes repeated segments`() {
+        val env = BinaryResolver.buildEnv(
+            loginPath = "/opt/homebrew/bin:/usr/local/bin",
+            currentPath = "/opt/homebrew/bin:/usr/local/bin",
+        )
+        val segments = env["PATH"]!!.split(File.pathSeparator)
+        assertEquals(1, segments.count { it == "/opt/homebrew/bin" })
+        assertEquals(1, segments.count { it == "/usr/local/bin" })
     }
 
     // ---- helpers -------------------------------------------------------
