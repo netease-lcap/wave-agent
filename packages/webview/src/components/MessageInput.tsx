@@ -40,7 +40,6 @@ const permissionModeLabel = (m?: PermissionMode): string =>
 export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>((props, ref) => {
   const {
     onSendMessage,
-    disabled,
     isStreaming,
     onAbortMessage,
     onSendQueuedMessage,
@@ -743,7 +742,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     const markdown = rawMarkdown.replace(/\u00A0/g, ' ');
     const allImages = [...attachedImages, ...extractedImages];
 
-    if ((markdown.trim() || allImages.length > 0) && !disabled) {
+    if (markdown.trim() || allImages.length > 0) {
       // Convert attached images to base64 format for SDK
       const images = allImages.map(img => ({
         data: img.data, // This is already base64 data URL
@@ -763,7 +762,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       setAttachedImages([]);
       closeDropdown();
     }
-  }, [attachedImages, disabled, onSendMessage, closeDropdown, vscode]);
+  }, [attachedImages, onSendMessage, closeDropdown, vscode]);
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     // Handle Shift+Tab to cycle permission mode
@@ -1132,7 +1131,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
           ref={textareaRef}
           id="messageInput"
           className="message-input content-editable-input"
-          contentEditable={!disabled}
+          contentEditable={true}
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           onSelect={handleSelectionChange}
@@ -1195,7 +1194,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
               id="sendButton"
               className="send-button"
               onClick={handleSend}
-              disabled={disabled || (!message.trim() && attachedImages.length === 0)}
+              disabled={!message.trim() && attachedImages.length === 0}
               data-testid="send-btn"
               aria-label={isStreaming ? "加入队列" : "发送"}
             >
