@@ -49,14 +49,14 @@ describe('File Upload Feature', () => {
     vi.clearAllMocks();
   });
 
-  it('should show upload option when typing @ without filter text', async () => {
+  it('should not show any upload option when typing @ without filter text', async () => {
     const { vscode } = renderChatApp();
 
     await typeInInput('@');
 
     const reqId1 = await waitForFileSuggestionRequest(vscode);
 
-    // Simulate response with no filter text
+    // Simulate response with no filter text and a single suggestion
     act(() => {
       sendCommand('fileSuggestionsResponse', {
         suggestions: [
@@ -77,24 +77,22 @@ describe('File Upload Feature', () => {
     // Wait for suggestions to render
     await waitFor(() => {
       const items = document.querySelectorAll('.suggestion-item');
-      expect(items.length).toBe(2);
+      expect(items.length).toBe(1);
     });
 
     const suggestionItems = document.querySelectorAll('.suggestion-item');
-    // Should have upload option + 1 file = 2 items
-    expect(suggestionItems.length).toBe(2);
+    // Only the returned suggestion should render, no extra upload option.
+    expect(suggestionItems.length).toBe(1);
 
-    // Verify the first item is the upload option
-    const uploadOption = suggestionItems[0];
-    expect(uploadOption).toHaveTextContent(/上传本地文件/);
-    expect(uploadOption.className).toMatch(/upload-option/);
+    // Verify there is no upload option anymore
+    const uploadOption = document.querySelector('.suggestion-item.upload-option');
+    expect(uploadOption).toBeNull();
 
-    // Verify upload option has correct icon
-    const uploadIcon = uploadOption.querySelector('.codicon-cloud-upload');
-    expect(uploadIcon).toBeInTheDocument();
+    // Verify the rendered suggestion is the returned file
+    expect(suggestionItems[0]).toHaveTextContent(/test.tsx/);
   });
 
-  it('should hide upload option when typing @ with filter text', async () => {
+  it('should not show upload option when typing @ with filter text', async () => {
     const { vscode } = renderChatApp();
 
     await typeInInput('@test');
@@ -119,7 +117,7 @@ describe('File Upload Feature', () => {
       });
     });
 
-    // Should only show filtered results (no upload option when there's filter text)
+    // Should only show filtered results (no upload option)
     await waitFor(() => {
       const items = document.querySelectorAll('.suggestion-item');
       expect(items.length).toBe(1);
@@ -136,40 +134,12 @@ describe('File Upload Feature', () => {
     expect(suggestionItems[0]).toHaveTextContent(/test.tsx/);
   });
 
-  it('should handle upload option selection', async () => {
-    const { vscode } = renderChatApp();
-
-    await typeInInput('@');
-
-    const reqId = await waitForFileSuggestionRequest(vscode);
-
-    // Simulate response with no filter text to show upload option
-    act(() => {
-      sendCommand('fileSuggestionsResponse', {
-        suggestions: [],
-        filterText: '',
-        requestId: reqId
-      });
-    });
-
-    // Find the upload option
-    await waitFor(() => {
-      const uploadOption = document.querySelector('.suggestion-item.upload-option');
-      expect(uploadOption).toBeInTheDocument();
-    });
-
-    const uploadOption = document.querySelector('.suggestion-item.upload-option')!;
-    // Verify the upload option text
-    expect(uploadOption).toHaveTextContent(/上传本地文件/);
-    expect(uploadOption).toHaveTextContent(/选择本地文件上传到临时目录/);
-  });
-
   it('should insert file paths into input after successful upload', async () => {
-    const { vscode } = renderChatApp();
+    renderChatApp();
 
-    await typeInInput('@');
-
-    await waitForFileSuggestionRequest(vscode);
+    // No @ mention needed: upload flow no longer goes through @.
+    const input = screen.getByTestId('message-input');
+    input.focus();
 
     // Simulate successful file upload response
     act(() => {
@@ -188,18 +158,16 @@ describe('File Upload Feature', () => {
       expect(tags.length).toBe(2);
     });
 
-    const input = screen.getByTestId('message-input');
     const inputValue = input.textContent?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
     expect(inputValue).toContain('document.pdf');
     expect(inputValue).toContain('image.png');
   });
 
   it('should handle single file upload path insertion', async () => {
-    const { vscode } = renderChatApp();
+    renderChatApp();
 
-    await typeInInput('@');
-
-    await waitForFileSuggestionRequest(vscode);
+    const input = screen.getByTestId('message-input');
+    input.focus();
 
     // Simulate successful single file upload response
     act(() => {
@@ -217,17 +185,17 @@ describe('File Upload Feature', () => {
       expect(tags.length).toBe(1);
     });
 
-    const input = screen.getByTestId('message-input');
     const inputValue = input.textContent?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
     expect(inputValue).toContain('single-file.txt');
   });
 
-  it('should insert file path correctly in basic scenario', async () => {
-    const { vscode } = renderChatApp();
+  it('should insert file path after existing input text', async () => {
+    renderChatApp();
 
-    await typeInInput('@');
+    // Type some plain text first, then upload — the tag is appended at the cursor/end.
+    await typeInInput('hello ');
 
-    await waitForFileSuggestionRequest(vscode);
+    const input = screen.getByTestId('message-input');
 
     // Simulate successful file upload response
     act(() => {
@@ -239,44 +207,15 @@ describe('File Upload Feature', () => {
       });
     });
 
-    // Verify that file path replaces the @ symbol correctly as a tag
+    // Verify that file path is inserted into the input as a tag
     await waitFor(() => {
       const tags = document.querySelectorAll('[data-testid="message-input"] .context-tag');
       expect(tags.length).toBe(1);
     });
 
-    const input = screen.getByTestId('message-input');
     const inputValue = input.textContent?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
     expect(inputValue).toContain('test.pdf');
-  });
-
-  it('should not add extra @ symbol when inserting file paths', async () => {
-    const { vscode } = renderChatApp();
-
-    await typeInInput('@test');
-
-    await waitForFileSuggestionRequest(vscode);
-
-    // Simulate successful file upload response
-    act(() => {
-      sendCommand('uploadSuccess', {
-        uploadedFiles: [
-          '/tmp/wave-artifacts/uploaded-file.txt'
-        ],
-        message: '成功上传 1 个文件到临时目录'
-      });
-    });
-
-    // Verify that file path replaces filter text correctly and doesn't add extra @
-    await waitFor(() => {
-      const tags = document.querySelectorAll('[data-testid="message-input"] .context-tag');
-      expect(tags.length).toBe(1);
-    });
-
-    const input = screen.getByTestId('message-input');
-    const inputValue = input.textContent?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-    expect(inputValue).toContain('uploaded-file.txt');
-    // Should not contain leftover @test filter text
-    expect(inputValue).not.toContain('@test');
+    // Existing input text is preserved (no longer replaced by the upload flow).
+    expect(inputValue).toContain('hello');
   });
 });

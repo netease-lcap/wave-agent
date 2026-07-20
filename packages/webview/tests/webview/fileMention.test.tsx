@@ -94,13 +94,13 @@ describe('File Mention Feature (@)', () => {
 
     // Check for suggestion items
     const suggestionItems = document.querySelectorAll('.suggestion-item');
-    // Expect to see the suggestions we injected (1 folder + 2 files) + 1 upload option = 4
-    expect(suggestionItems.length).toBe(4);
+    // Expect to see only the suggestions we injected (1 folder + 2 files) = 3.
+    // The upload option is no longer shown in the @ mention dropdown.
+    expect(suggestionItems.length).toBe(3);
 
-    // Verify the first item is the upload option when no filter text
-    const firstSuggestion = suggestionItems[0];
-    expect(firstSuggestion).toHaveTextContent(/上传本地文件/);
-    expect(firstSuggestion.className).toMatch(/upload-option/);
+    // Verify there is no upload option in the @ mention dropdown
+    const uploadOption = document.querySelector('.suggestion-item.upload-option');
+    expect(uploadOption).toBeNull();
   });
 
   it('should filter files as user types after @', async () => {

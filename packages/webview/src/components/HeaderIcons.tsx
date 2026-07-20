@@ -83,3 +83,30 @@ export const MoreIcon: React.FC<IconProps> = ({ className = 'header-icon' }) => 
     />
   </svg>
 );
+
+// Toolbar "+" (thin plus) — Figma 13x13 glyph centered in a padded 16x16 box (+1.5,+1.5).
+export const PlusIcon: React.FC<IconProps> = ({ className = 'header-icon' }) => (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" className={className}>
+    <path
+      transform="translate(1.5 1.5)"
+      d="M13 6V7H7V13H6V7H0V6H6V0H7V6H13Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+// Toolbar "/" (slash inside a rounded square) — Figma 13x13 glyph centered in a padded 16x16 box.
+export const SlashBoxIcon: React.FC<IconProps> = ({ className = 'header-icon' }) => (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" className={className}>
+    <g transform="translate(1.5 1.5)">
+      <path
+        d="M4.82275 10.3555H3.72607L8.16748 2.64453H9.27393L4.82275 10.3555Z"
+        fill="currentColor"
+      />
+      <path
+        d="M0.5 0H12.5L13 0.5V12.5L12.5 13H0.5L0 12.5V0.5L0.5 0ZM1 12H12V1H1V12Z"
+        fill="currentColor"
+      />
+    </g>
+  </svg>
+);

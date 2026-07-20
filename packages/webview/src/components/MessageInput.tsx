@@ -7,6 +7,7 @@ import type { MessageInputProps, FileItem, SlashCommand, AttachedImage, Permissi
 import { FileSuggestionDropdown } from './FileSuggestionDropdown';
 import { SlashCommandsPopup } from './SlashCommandsPopup';
 import { HistorySearchPopup } from './HistorySearchPopup';
+import { PlusIcon, SlashBoxIcon } from './HeaderIcons';
 import '../styles/MessageInput.css';
 import '../styles/HistorySearchPopup.css';
 
@@ -102,14 +103,22 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
   const [historyPopupPosition, setHistoryPopupPosition] = useState({ top: 0, left: 0 });
   const [isComposing, setIsComposing] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(initialAttachedImages || []);
-  
-  // Store the atMention state when file upload is triggered
-  const [_uploadAtMentionState, setUploadAtMentionState] = useState<AtMentionState>({ 
-    isActive: false, 
-    filterText: '', 
-    startPos: 0, 
-    endPos: 0 
-  });
+
+  // "+" (add) custom dropdown state
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const plusMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the "+" dropdown when clicking outside of it.
+  useEffect(() => {
+    if (!plusMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (plusMenuRef.current && !plusMenuRef.current.contains(e.target as Node)) {
+        setPlusMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [plusMenuOpen]);
 
   const textareaRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef<string>('');
@@ -346,63 +355,61 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     textareaRef.current.focus();
 
     const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
+    if (!selection) return;
 
-    const range = selection.getRangeAt(0);
-    const textNode = range.startContainer;
-    
-    if (textNode.nodeType === Node.TEXT_NODE) {
-      const text = textNode.textContent || '';
-      // Try to find the @ mention. If we have saved state, use it, otherwise look back from cursor.
-      const lastAtIndex = text.lastIndexOf('@', range.startOffset - 1);
-      
-      if (lastAtIndex !== -1) {
-        range.setStart(textNode, lastAtIndex);
-        range.deleteContents();
-        
-        uploadedFiles.forEach((filePath) => {
-          const fileName = filePath.split(/[/\\]/).pop() || filePath;
-          const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(fileName);
-          
-          const tagSpan = document.createElement('span');
-          tagSpan.className = 'context-tag-container';
-          tagSpan.contentEditable = 'false';
-          tagSpan.setAttribute('data-path', filePath);
-          tagSpan.setAttribute('data-name', fileName);
-          tagSpan.setAttribute('data-is-image', String(isImage));
-          tagSpan.innerText = isImage ? '[image]' : `[@file:${filePath}]`;
-          
-          const root = ReactDOM.createRoot(tagSpan);
-          root.render(
-            <ContextTag 
-              name={fileName} 
-              path={filePath} 
-              isImage={isImage}
-            />
-          );
-          
-          range.insertNode(tagSpan);
-          range.setStartAfter(tagSpan);
-          
-          // Add space after each tag
-          const space = document.createTextNode(' ');
-          range.insertNode(space);
-          range.setStartAfter(space);
-        });
-
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-
-        // Trigger input event to update message state
-        const inputEvent = new Event('input', { bubbles: true });
-        textareaRef.current?.dispatchEvent(inputEvent);
-      }
+    // Insert at the current cursor position; fall back to the end of the input
+    // if there is no active range inside the editor.
+    let range: Range;
+    if (
+      selection.rangeCount > 0 &&
+      textareaRef.current.contains(selection.getRangeAt(0).startContainer)
+    ) {
+      range = selection.getRangeAt(0);
+    } else {
+      range = document.createRange();
+      range.selectNodeContents(textareaRef.current);
+      range.collapse(false);
     }
 
-    // Close dropdown and clear saved state
+    uploadedFiles.forEach((filePath) => {
+      const fileName = filePath.split(/[/\\]/).pop() || filePath;
+      const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(fileName);
+
+      const tagSpan = document.createElement('span');
+      tagSpan.className = 'context-tag-container';
+      tagSpan.contentEditable = 'false';
+      tagSpan.setAttribute('data-path', filePath);
+      tagSpan.setAttribute('data-name', fileName);
+      tagSpan.setAttribute('data-is-image', String(isImage));
+      tagSpan.innerText = isImage ? '[image]' : `[@file:${filePath}]`;
+
+      const root = ReactDOM.createRoot(tagSpan);
+      root.render(
+        <ContextTag
+          name={fileName}
+          path={filePath}
+          isImage={isImage}
+        />
+      );
+
+      range.insertNode(tagSpan);
+      range.setStartAfter(tagSpan);
+
+      // Add space after each tag
+      const space = document.createTextNode(' ');
+      range.insertNode(space);
+      range.setStartAfter(space);
+    });
+
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    // Trigger input event to update message state
+    const inputEvent = new Event('input', { bubbles: true });
+    textareaRef.current?.dispatchEvent(inputEvent);
+
     closeDropdown();
-    setUploadAtMentionState({ isActive: false, filterText: '', startPos: 0, endPos: 0 });
   }, [closeDropdown]);
 
   // Handle inserting selection tags into the input
@@ -473,9 +480,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
         // Only process if this is the latest request
         if (data.requestId === requestIdRef.current) {
           setSuggestions(data.suggestions || []);
-          // Set initial selected index: -1 if no filter text (upload option), 0 otherwise
-          const hasFilterText = data.filterText && data.filterText.trim();
-          setSelectedIndex(hasFilterText ? 0 : -1);
+          setSelectedIndex(0);
           setIsLoadingSuggestions(false);
         }
       } else if (data.command === 'fileSuggestionsError') {
@@ -530,9 +535,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
 
   // Handle file upload
   const handleFileUpload = useCallback(() => {
-    // Save the current atMention state before file dialog opens
-    setUploadAtMentionState(atMention);
-    
     // Create a hidden file input element
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -544,15 +546,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       if (files && files.length > 0) {
         // Send files to backend for upload
         const fileArray = Array.from(files);
-        vscode.postMessage({
-          command: 'uploadFiles',
-          files: fileArray.map(file => ({
-            name: file.name,
-            size: file.size,
-            type: file.type
-          }))
-        });
-        
+
         // Read files as base64 for upload
         const readers = fileArray.map(file => {
           return new Promise((resolve, reject) => {
@@ -594,17 +588,45 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     
     // Close the dropdown after triggering upload
     closeDropdown();
-  }, [atMention, vscode, closeDropdown]);
+  }, [vscode, closeDropdown]);
+
+  // Handle "/" toolbar button: focus the input and insert a "/" at the cursor/end so the
+  // existing handleInput -> detectSlashCommand -> requestSlashCommands flow opens the popup.
+  const handleSlashButtonClick = useCallback(() => {
+    if (!textareaRef.current) return;
+
+    textareaRef.current.focus();
+
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    let range: Range;
+    if (
+      selection.rangeCount > 0 &&
+      textareaRef.current.contains(selection.getRangeAt(0).startContainer)
+    ) {
+      range = selection.getRangeAt(0);
+    } else {
+      range = document.createRange();
+      range.selectNodeContents(textareaRef.current);
+      range.collapse(false);
+    }
+
+    const slashNode = document.createTextNode('/');
+    range.insertNode(slashNode);
+    range.setStartAfter(slashNode);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    // Trigger input event so the slash-command detection runs and the popup appears.
+    const inputEvent = new Event('input', { bubbles: true });
+    textareaRef.current.dispatchEvent(inputEvent);
+  }, []);
 
   // Handle file selection
   const handleFileSelect = useCallback((file: FileItem) => {
     if (!textareaRef.current) return;
-
-    // Handle upload option selection
-    if (file.isUploadOption) {
-      handleFileUpload();
-      return;
-    }
 
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
@@ -676,7 +698,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     }
 
     closeDropdown();
-  }, [closeDropdown, handleFileUpload, vscode]);
+  }, [closeDropdown, vscode]);
 
   // Handle 指令 selection
   const handleSlashCommandSelect = useCallback((command: SlashCommand) => {
@@ -824,15 +846,13 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     }
 
     // Handle dropdown navigation
-    if (atMention.isActive && (suggestions.length > 0 || !atMention.filterText)) {
-      const hasUploadOption = !atMention.filterText;
-      const minIndex = hasUploadOption ? -1 : 0;
+    if (atMention.isActive && suggestions.length > 0) {
       const maxIndex = suggestions.length - 1;
 
       switch (event.key) {
         case 'ArrowUp':
           event.preventDefault();
-          setSelectedIndex((prev: number) => Math.max(minIndex, prev - 1));
+          setSelectedIndex((prev: number) => Math.max(0, prev - 1));
           return;
         case 'ArrowDown':
           event.preventDefault();
@@ -840,10 +860,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
           return;
         case 'Enter':
           event.preventDefault();
-          if (hasUploadOption && selectedIndex === -1) {
-            // Handle upload option
-            handleFileUpload();
-          } else if (suggestions[selectedIndex]) {
+          if (suggestions[selectedIndex]) {
             handleFileSelect(suggestions[selectedIndex]);
           }
           return;
@@ -876,7 +893,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
         handleSend();
       }
     }
-  }, [slashCommand.isActive, slashCommands, selectedSlashIndex, handleSlashCommandSelect, closeSlashCommandPopup, atMention.isActive, atMention.filterText, suggestions, selectedIndex, handleFileSelect, handleFileUpload, closeDropdown, handleSend, isComposing, permissionMode, vscode, onSendQueuedMessage, onToggleTaskList, calculateDropdownPosition, isStreaming, onAbortMessage]);
+  }, [slashCommand.isActive, slashCommands, selectedSlashIndex, handleSlashCommandSelect, closeSlashCommandPopup, atMention.isActive, suggestions, selectedIndex, handleFileSelect, closeDropdown, handleSend, isComposing, permissionMode, vscode, onSendQueuedMessage, onToggleTaskList, calculateDropdownPosition, isStreaming, onAbortMessage]);
 
   // Handle cursor position changes - debounced to wait for user to stop moving cursor
   const handleSelectionChange = useCallback(() => {
@@ -1144,6 +1161,46 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
 
         {/* Buttons row */}
         <div className="input-buttons-row">
+          {/* Context actions ("+" add menu + "/" slash command), 4px gap per design */}
+          <div className="context-actions">
+            {/* "+" add menu (custom dropdown, expands upward) */}
+            <div className="plus-menu-container" ref={plusMenuRef}>
+              <button
+                type="button"
+                className="toolbar-icon-button"
+                aria-label="添加"
+                aria-expanded={plusMenuOpen}
+                onClick={() => setPlusMenuOpen(o => !o)}
+              >
+                <PlusIcon className="toolbar-icon" />
+              </button>
+              {plusMenuOpen && (
+                <ul className="plus-menu" role="menu">
+                  <li
+                    role="menuitem"
+                    className="plus-menu-item"
+                    onClick={() => {
+                      handleFileUpload();
+                      setPlusMenuOpen(false);
+                    }}
+                  >
+                    上传文件
+                  </li>
+                </ul>
+              )}
+            </div>
+
+            {/* "/" slash command button */}
+            <button
+              type="button"
+              className="toolbar-icon-button"
+              aria-label="快捷指令"
+              onClick={handleSlashButtonClick}
+            >
+              <SlashBoxIcon className="toolbar-icon" />
+            </button>
+          </div>
+
           {/* Left side - Permission Mode Select (custom dropdown, expands upward) */}
           <div className="permission-mode-container" ref={permMenuRef}>
             <button
@@ -1206,7 +1263,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
         {/* File Suggestion Dropdown */}
         <FileSuggestionDropdown
           suggestions={suggestions}
-          isVisible={!!(atMention.isActive && (suggestions.length > 0 || isLoadingSuggestions || !atMention.filterText))}
+          isVisible={!!(atMention.isActive && (suggestions.length > 0 || isLoadingSuggestions))}
           selectedIndex={selectedIndex}
           onSelect={handleFileSelect}
           onClose={closeDropdown}

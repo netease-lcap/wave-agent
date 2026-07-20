@@ -93,31 +93,6 @@
     background: transparent;
 }
 
-/* Upload option specific styles */
-.suggestion-item.upload-option {
-    border-bottom: 2px solid var(--vscode-panel-border);
-    background: var(--vscode-button-background);
-}
-
-.suggestion-item.upload-option:hover,
-.suggestion-item.upload-option.selected {
-    background: var(--vscode-button-hoverBackground);
-}
-
-.suggestion-item.upload-option .suggestion-icon {
-    color: var(--vscode-button-foreground);
-}
-
-.suggestion-item.upload-option .suggestion-name {
-    color: var(--vscode-button-foreground);
-    font-weight: 600;
-}
-
-.suggestion-item.upload-option .suggestion-path {
-    color: var(--vscode-button-foreground);
-    opacity: 0.8;
-}
-
 /* Knowledge base option specific styles */
 .suggestion-item.kb-option {
     border-bottom: 2px solid var(--vscode-panel-border);

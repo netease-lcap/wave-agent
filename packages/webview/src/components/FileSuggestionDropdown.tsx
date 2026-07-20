@@ -36,15 +36,9 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
 
   // Scroll selected item into view
   useEffect(() => {
-    if (dropdownRef.current && selectedIndex >= -1) {
-      const hasUploadOption = !filterText;
-      let actualIndex = selectedIndex;
-      if (hasUploadOption) {
-        actualIndex = selectedIndex + 1;
-      }
-      
-      if (actualIndex >= 0 && actualIndex < dropdownRef.current.children.length) {
-        const selectedElement = dropdownRef.current.children[actualIndex] as HTMLElement;
+    if (dropdownRef.current && selectedIndex >= 0) {
+      if (selectedIndex < dropdownRef.current.children.length) {
+        const selectedElement = dropdownRef.current.children[selectedIndex] as HTMLElement;
         if (selectedElement) {
           selectedElement.scrollIntoView({
             block: 'nearest',
@@ -53,7 +47,7 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
         }
       }
     }
-  }, [selectedIndex, filterText]);
+  }, [selectedIndex]);
 
   if (!isVisible) {
     return null;
@@ -100,29 +94,6 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
         left: `${position.left}px`,
       }}
     >
-      {/* Show upload option only when there's no filter text */}
-      {!filterText && (
-        <div
-          key="upload-option"
-          className={`suggestion-item upload-option ${selectedIndex === -1 ? 'selected' : ''}`}
-          onClick={() => onSelect({
-            path: '__upload__',
-            relativePath: '__upload__',
-            name: '上传本地文件',
-            extension: '',
-            icon: 'codicon-cloud-upload',
-            isDirectory: false,
-            isUploadOption: true
-          })}
-        >
-          <span className="suggestion-icon codicon codicon-cloud-upload"></span>
-          <div className="suggestion-content">
-            <div className="suggestion-name">上传本地文件</div>
-            <div className="suggestion-path">选择本地文件上传到临时目录</div>
-          </div>
-        </div>
-      )}
-      
       {suggestions.map((file: FileItem, index: number) => (
         <div
           key={file.path}
