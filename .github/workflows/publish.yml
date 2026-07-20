@@ -85,3 +85,56 @@ jobs:
           previous_tag: ${{ steps.prev-tag.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --- JetBrains plugin (.zip) ---
+  # Builds the JB plugin distribution and attaches it to the same GitHub Release.
+  # Runs in parallel with `publish`; action-gh-release is idempotent (create-or-update)
+  # and merges assets, so both jobs targeting the same tag's release is safe. Only
+  # `publish` generates release notes / sets the body — this job adds the .zip asset
+  # and mirrors the prerelease flag in case it creates the release first.
+  build-jetbrains:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-tags: true
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      # copyWebviewAssets (build.gradle.kts) copies chat.js/chat.css from
+      # packages/webview/dist into the plugin resources, so build the webview first.
+      - name: Build webview dist
+        run: pnpm -F wave-webview run build
+
+      - name: Run Gradle tests
+        run: ./packages/jetbrains/gradlew -p packages/jetbrains test --no-daemon
+
+      - name: Build plugin distribution (.zip)
+        run: ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon
+
+      - name: Attach .zip to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: packages/jetbrains/build/distributions/*.zip
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
