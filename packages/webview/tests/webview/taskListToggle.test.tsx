@@ -46,10 +46,10 @@ describe('Task List Toggle Feature', () => {
         expect(screen.getByTestId('task-list')).not.toHaveClass('collapsed');
 
         // 6. Blur message input and press Ctrl+T
-        // Click on messages container to blur input
-        const messagesContainer = screen.getByTestId('messages-container');
+        // Click on chat container to blur input (empty state shows WelcomeView, no messages container)
+        const chatContainer = screen.getByTestId('chat-container');
         await act(async () => {
-            fireEvent.click(messagesContainer);
+            fireEvent.click(chatContainer);
         });
 
         await act(async () => {

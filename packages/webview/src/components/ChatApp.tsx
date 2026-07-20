@@ -9,7 +9,7 @@ import ConfigDialog from './ConfigDialog';
 import PluginDialog from './PluginDialog';
 import McpDialog from './McpDialog';
 import StatusDialog from './StatusDialog';
-import LoginDialog from './LoginDialog';
+import WelcomeView from './WelcomeView';
 import type {
   ChatAppProps,
   ConfigurationData,
@@ -116,7 +116,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
               inputContent: message.inputContent,
               permissionMode: message.permissionMode,
               attachedImages: message.attachedImages,
-              queuedMessages: message.queuedMessages
+              queuedMessages: message.queuedMessages,
+              isAuthenticated: message.isAuthenticated
             }
           });
           break;
@@ -134,10 +135,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           dispatch({ type: 'SHOW_DIALOG', payload: { type: message.dialogType } });
           break;
         case 'configurationUpdated':
-          // Only close config dialog; keep login dialog open for continued SSO flow
-          if (stateRef.current.activeDialog !== 'login') {
-            dispatch({ type: 'HIDE_DIALOG' });
-          }
+          dispatch({ type: 'HIDE_DIALOG' });
           break;
         case 'statusResponse':
           if (message.configurationData) {
@@ -181,6 +179,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         case 'updateErrorBlock':
           dispatch({ type: 'APPEND_ERROR_BLOCK', payload: { error: message.error } });
           break;
+        case 'authStatusResponse':
+          dispatch({ type: 'SET_AUTHENTICATED', payload: message.isAuthenticated || false });
+          break;
+        case 'loginResponse':
+          if (message.success) {
+            dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+          }
+          break;
+        case 'logoutResponse':
+          if (message.success) {
+            dispatch({ type: 'SET_AUTHENTICATED', payload: false });
+          }
+          break;
       }
     };
 
@@ -194,6 +205,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
     vscode.postMessage({
       command: 'clearChat'
     });
+  }, [vscode]);
+
+  const handleLogin = useCallback(() => {
+    vscode.postMessage({ command: 'login' });
   }, [vscode]);
 
   const handleSendMessage = useCallback((text: string, images?: Array<{ data: string; mediaType: string; }>, force: boolean = false) => {
@@ -220,10 +235,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
     }
     if (trimmedText === '/status') {
       dispatch({ type: 'SHOW_DIALOG', payload: { type: 'status', data: stateRef.current.configurationData || {} } });
-      return;
-    }
-    if (trimmedText === '/login') {
-      dispatch({ type: 'SHOW_DIALOG', payload: { type: 'login', data: stateRef.current.configurationData || {} } });
       return;
     }
 
@@ -303,6 +314,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
   const streamingMessageIndex = state.isStreaming && state.messages.length > 0 
     ? state.messages.length - 1 
     : undefined;
+
+  const showWelcome = !state.isAuthenticated || state.messages.length === 0;
 
   // Initialize webview and load sessions on component mount
   useEffect(() => {
@@ -386,16 +399,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         sessionsLoading={state.sessionsLoading}
       />
       
-      <MessageList 
-        ref={messageListRef}
-        messages={state.messages} 
-        queuedMessages={state.queuedMessages}
-        streamingMessageIndex={streamingMessageIndex}
-        vscode={vscode}
-        onDeleteQueuedMessage={handleDeleteQueuedMessage}
-        onSendQueuedMessage={handleSendQueuedMessage}
-        onRewindToMessage={handleRewindToMessage}
-      />
+      {showWelcome ? (
+        <WelcomeView isAuthenticated={state.isAuthenticated} onLogin={handleLogin} />
+      ) : (
+        <MessageList
+          ref={messageListRef}
+          messages={state.messages}
+          queuedMessages={state.queuedMessages}
+          streamingMessageIndex={streamingMessageIndex}
+          vscode={vscode}
+          onDeleteQueuedMessage={handleDeleteQueuedMessage}
+          onSendQueuedMessage={handleSendQueuedMessage}
+          onRewindToMessage={handleRewindToMessage}
+        />
+      )}
 
       <div className="input-area-container">
         <TaskList
@@ -418,7 +435,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           <MessageInput
             ref={messageInputRef}
             onSendMessage={handleSendMessage}
-            disabled={state.inputDisabled}
+            disabled={state.inputDisabled || !state.isAuthenticated}
             isStreaming={state.isStreaming}
             onAbortMessage={handleAbortMessage}
             onSendQueuedMessage={state.queuedMessages.length > 0 ? () => handleSendQueuedMessage(0) : undefined}
@@ -464,12 +481,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       {state.activeDialog === 'status' && (
         <StatusDialog
           configurationData={state.configurationData || {}}
-          onClose={handleDialogClose}
-          vscode={vscode}
-        />
-      )}
-      {state.activeDialog === 'login' && (
-        <LoginDialog
           onClose={handleDialogClose}
           vscode={vscode}
         />

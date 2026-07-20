@@ -94,7 +94,6 @@ _输入框中的代码选中标签_
 - **`/plugin`**：打开插件管理弹窗（详见 [第 11 章 插件系统](#plugin-system)）
 - **`/mcp`**：打开 MCP 服务器管理弹窗（详见 [第 6.3 节 MCP 协议集成](#mcp-integration)）
 - **`/status`**：打开状态信息弹窗，查看版本、会话 ID、工作目录、模型配置和认证状态
-- **`/login`**：打开 SSO 认证弹窗，进行登录/登出操作（详见 [第 10.1 节 配置设置](#configuration-settings)）
 
 选择这些指令后会直接弹出对应弹窗，无需按回车发送。
 
@@ -486,19 +485,19 @@ _会话管理_
 
 ### 10.1 配置设置 {#configuration-settings}
 
-用户可以自定义 API Key、Base URL 等关键参数，以适配不同的 AI 服务提供商。通过 `/config`、`/login`、`/status`、`/plugin`、`/mcp` 五个斜杠命令分别唤起独立的弹窗进行管理。配置界面中的表单字段仅显示用户手动输入的值，不会被环境变量填充；但如果设置了相应的环境变量（如 `WAVE_BASE_URL`），其值会作为 placeholder 提示显示在输入框中。服务端链接字段默认 placeholder 为"请联系管理员获取"。
+用户可以自定义 API Key、Base URL 等关键参数，以适配不同的 AI 服务提供商。通过 `/config`、`/status`、`/plugin`、`/mcp` 四个斜杠命令分别唤起独立的弹窗进行管理。配置界面中的表单字段仅显示用户手动输入的值，不会被环境变量填充；但如果设置了相应的环境变量（如 `WAVE_BASE_URL`），其值会作为 placeholder 提示显示在输入框中。服务端链接字段默认 placeholder 为"请联系管理员获取"。
 
 **主要特性：**
 
 - **常规设置（`/config`）**：配置服务端链接、API Key、Base URL、Headers、语言等。
   - **服务端链接**：配置 Wave AI 服务端地址，用于 SSO 认证。支持环境变量 `WAVE_SERVER_URL` 作为 fallback，默认 placeholder 提示"请联系管理员获取"。
 
-- **SSO 认证（`/login`）**：当配置了服务端链接后，用户可通过 SSO 认证进行登录，无需手动配置 API Key。登录后所有 API 请求自动通过 Wave AI 代理路由。
-  - **浏览器登录**：点击"SSO 登录"后自动打开浏览器，用户在 Wave AI 登录页完成认证（支持 SSO 企业身份提供商或账号密码登录），授权码通过 localhost 回调自动交换为 JWT 并保存。VS Code Remote SSH 环境会自动转发端口，远程服务器体验与本地一致。
-  - **登录状态显示**：已认证时显示用户邮箱/ID 和登出按钮；登出后自动恢复为直接 LLM API 模式。
+- **SSO 认证**：未登录时，聊天面板会展示欢迎页，居中显示登录按钮。点击"登录"后自动打开浏览器，用户在 Wave AI 登录页完成认证，授权码通过 localhost 回调自动交换为 JWT 并保存。登录成功后即可开始使用，无需手动配置 API Key，所有 API 请求自动通过 Wave AI 代理路由。VS Code Remote SSH 环境会自动转发端口，远程服务器体验与本地一致。
+  - **浏览器登录**：点击欢迎页的"登录"按钮后自动打开浏览器，用户在 Wave AI 登录页完成认证（支持 SSO 企业身份提供商或账号密码登录）。
+  - **登录态展示**：未登录时聊天面板显示欢迎页与登录按钮，登录后进入正常聊天界面。登出后自动恢复为直接 LLM API 模式。
 
-![SSO 认证](/screenshots/spec-login-dialog.png)
-_SSO 认证弹窗_
+![未登录欢迎页](/screenshots/spec-welcome-login.png)
+_未登录欢迎页_
 
 - **状态信息（`/status`）**：查看当前 Wave 的运行状态，包括版本号、Session ID、工作目录、服务端链接、Base URL、Model、Fast Model 及认证状态。
 

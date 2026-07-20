@@ -20,10 +20,8 @@ describe('Clear Chat Functionality', () => {
             sendCommand('updateMessages', { messages: [] });
         });
 
-        // Verify only welcome message remains
-        const messagesAfter = document.querySelectorAll('.messages-container .message');
-        expect(messagesAfter.length).toBe(1);
-        expect(messagesAfter[0]).toHaveTextContent('您好！我是您的 AI 助手');
+        // Verify welcome view is shown (empty + authenticated)
+        expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
     });
 
     it('should trigger clear chat via header button', () => {
@@ -130,9 +128,8 @@ describe('Clear Chat Functionality', () => {
             sendCommand('updateMessages', { messages: [] });
         });
 
-        // Verify chat is cleared but streaming state is preserved
-        const messages = document.querySelectorAll('.messages-container .message');
-        expect(messages.length).toBe(1); // welcome only
+        // Verify chat is cleared (welcome view shown) but streaming state is preserved
+        expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
 
         // Streaming state should still be active (abort button still visible)
         expect(abortBtn).toHaveStyle({ display: 'block' });
@@ -168,12 +165,11 @@ describe('Clear Chat Functionality', () => {
             sendCommand('updateMessages', { messages: [] });
         });
 
-        // Verify everything is cleared
-        const messagesAfter = document.querySelectorAll('.messages-container .message');
-        expect(messagesAfter.length).toBe(1); // welcome only
+        // Verify welcome view is shown
+        expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
 
         // Error message should no longer be visible
-        expect(screen.getByTestId('messages-container')).not.toHaveTextContent('Something went wrong');
+        expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
     });
 
     it('should allow new conversation after clearing', async () => {
@@ -194,9 +190,8 @@ describe('Clear Chat Functionality', () => {
             sendCommand('updateMessages', { messages: [] });
         });
 
-        // Verify cleared
-        const messagesAfterClear = document.querySelectorAll('.messages-container .message');
-        expect(messagesAfterClear.length).toBe(1); // welcome only
+        // Verify cleared (welcome view shown)
+        expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
 
         // Clear message log
         vscode.postMessage.mockClear();

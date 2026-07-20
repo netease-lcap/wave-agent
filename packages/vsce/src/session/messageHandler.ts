@@ -571,6 +571,14 @@ export class MessageHandler {
         }
         const configurationData = await this.configService.loadConfiguration();
         const sessions = await this.sessionService.getSessionsList();
+        let isAuthenticated = false;
+        try {
+            const authResult = await this.utilityClient.request('getAuthStatus') as { isAuthenticated: boolean; serverUrl: string };
+            isAuthenticated = authResult.isAuthenticated;
+            await this.configService.saveConfiguration({ serverUrl: authResult.serverUrl });
+        } catch (error) {
+            console.error('Failed to get auth status on webview ready:', error);
+        }
         const pendingConfirmations = Array.from(session.pendingConfirmations.entries()).map(([confirmationId, pending]) => ({
             confirmationId,
             toolName: pending.toolName,
@@ -597,7 +605,8 @@ export class MessageHandler {
             configurationData,
             pendingConfirmations,
             permissionMode: session.agent?.getPermissionMode(),
-            queuedMessages: session.messageQueue
+            queuedMessages: session.messageQueue,
+            isAuthenticated
         }, viewType, windowId);
     }
 
@@ -612,7 +621,6 @@ export class MessageHandler {
                 { id: 'plugin', name: 'plugin', description: '打开插件管理' },
                 { id: 'mcp', name: 'mcp', description: '打开 MCP 服务器管理' },
                 { id: 'status', name: 'status', description: '查看当前状态' },
-                { id: 'login', name: 'login', description: 'SSO 登录/登出' },
                 { id: 'clear', name: 'clear', description: '清除对话历史并重置会话' }
             ];
 

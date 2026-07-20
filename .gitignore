@@ -12,6 +12,7 @@ Thumbs.db
 *.swp
 .idea/
 nohup.out
+.mcp.json
 .wave/settings.local.json
 .wave/worktrees/
 .wave/scheduled_tasks.json
@@ -22,6 +23,7 @@ vendor/
 *.vsix
 packages/vsce/webview/dist/
 packages/vsce/releases/
+**/test-results/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 docs/.vitepress/.temp/
