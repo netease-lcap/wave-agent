@@ -1,99 +1,107 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Tooltip } from './Tooltip';
-import { Message } from './Message';
-import type { QueuedMessage, VsCodeApi } from '../types';
+import { QueueChevronIcon, QueueEditIcon, QueueSendIcon, QueueTrashIcon } from './HeaderIcons';
+import type { QueuedMessageListProps } from '../types';
 import '../styles/QueuedMessageList.css';
-
-interface QueuedMessageListProps {
-  queuedMessages: QueuedMessage[];
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
-  onDelete: (index: number) => void;
-  onSend: (index: number) => void;
-  vscode: VsCodeApi;
-}
 
 export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
   queuedMessages,
   isCollapsed,
   onToggleCollapse,
-  onDelete,
+  onEdit,
   onSend,
-  vscode
+  onDelete,
+  editingQueuedId
 }) => {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [showScrim, setShowScrim] = useState(false);
+
+  const items = isCollapsed ? queuedMessages.slice(0, 1) : queuedMessages;
+
+  // Show bottom scrim only when expanded and the list overflows / can scroll.
+  useEffect(() => {
+    if (isCollapsed) {
+      setShowScrim(false);
+      return;
+    }
+    const el = listRef.current;
+    if (!el) return;
+    const update = () => {
+      setShowScrim(el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+    };
+    update();
+    el.addEventListener('scroll', update);
+    return () => el.removeEventListener('scroll', update);
+  }, [isCollapsed, queuedMessages]);
+
   if (queuedMessages.length === 0) {
     return null;
   }
 
   return (
-    <div className={`queued-message-list-container ${isCollapsed ? 'collapsed' : ''}`} data-testid="queued-message-list">
-      <Tooltip text={isCollapsed ? "展开消息队列" : "折叠消息队列"} position="top" className="queued-message-list-tooltip">
-        <div className="queued-message-list-header" onClick={onToggleCollapse} aria-label={isCollapsed ? "展开消息队列" : "折叠消息队列"}>
-          <div className="queued-message-list-title">
-            <span className={`codicon codicon-chevron-${isCollapsed ? 'right' : 'down'}`}></span>
-            消息队列
-          </div>
-          <div className="queued-count">
-            {queuedMessages.length} 条消息
-          </div>
-        </div>
-      </Tooltip>
-      {!isCollapsed && (
-        <div className="queued-items">
-          {queuedMessages.map((qm, index) => (
-            <div key={index} className="queued-item">
-              <div className="queued-item-main">
-                <div className="queued-item-content">
-                  <Message 
-                    message={{
-                      id: `queued-${index}`,
-                      role: 'user',
-                      timestamp: new Date().toISOString(),
-                      blocks: [
-                        { type: 'text', content: (qm.type === 'bang' ? '!' : '') + (qm.content || qm.text || '') },
-                        ...(qm.images || []).map(img => ({
-                          type: 'image' as const,
-                          imageUrls: [img.path || (img as Record<string, string>).data || '']
-                        }))
-                      ]
-                    }}
-                    isQueued={true}
-                    vscode={vscode}
-                  />
-                </div>
+    <div className="queued-message-list-container" data-testid="queued-message-list">
+      <div
+        className="queued-message-list-header"
+        onClick={onToggleCollapse}
+        aria-label={isCollapsed ? '展开消息队列' : '折叠消息队列'}
+      >
+        <QueueChevronIcon className={`queued-chevron${isCollapsed ? '' : ' expanded'}`} />
+        <span className="queued-message-list-title">消息队列 ({queuedMessages.length})</span>
+      </div>
+
+      <div className={`queued-items${isCollapsed ? '' : ' expanded'}`} ref={listRef}>
+        {items.map((qm, index) => {
+          const id = qm.id ?? String(index);
+          const fullText = (qm.type === 'bang' ? '!' : '') + (qm.content || qm.text || '');
+          const isEditing = editingQueuedId != null && editingQueuedId === qm.id;
+          return (
+            <Tooltip key={id} text={fullText} position="top" className="queued-item-tooltip">
+              <div
+                className={`queued-item${isEditing ? ' editing' : ''}`}
+                data-testid={`queued-item-${id}`}
+              >
+                <span className="queued-item-text">{fullText}</span>
                 <div className="queued-item-actions">
-                  {index === 0 && (
-                    <Tooltip text="立即发送" position="top">
-                      <button 
-                        className="action-button send-now" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSend(index);
-                        }}
-                        aria-label="立即发送"
-                      >
-                        <i className="codicon codicon-play"></i>
-                      </button>
-                    </Tooltip>
-                  )}
-                  <Tooltip text="删除" position="top">
-                    <button 
-                      className="action-button delete-queued" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(index);
-                      }}
-                      aria-label="删除"
-                    >
-                      <i className="codicon codicon-trash"></i>
-                    </button>
-                  </Tooltip>
+                  <button
+                    className="queued-action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (qm.id != null) onEdit(qm.id);
+                    }}
+                    aria-label="编辑"
+                    data-testid={`queued-edit-${id}`}
+                  >
+                    <QueueEditIcon />
+                  </button>
+                  <button
+                    className="queued-action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (qm.id != null) onSend(qm.id);
+                    }}
+                    aria-label="立即发送"
+                    data-testid={`queued-send-${id}`}
+                  >
+                    <QueueSendIcon />
+                  </button>
+                  <button
+                    className="queued-action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (qm.id != null) onDelete(qm.id);
+                    }}
+                    aria-label="删除"
+                    data-testid={`queued-delete-${id}`}
+                  >
+                    <QueueTrashIcon />
+                  </button>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            </Tooltip>
+          );
+        })}
+      </div>
+      {showScrim && <div className="queued-items-scrim" aria-hidden="true"></div>}
     </div>
   );
 };

@@ -224,6 +224,20 @@ export class ChatSession {
         await this.agent.removeQueuedMessage(index);
     }
 
+    public async updateQueuedMessage(
+        id: string,
+        text: string,
+        images?: Array<{ path: string; mimeType: string }>,
+    ): Promise<boolean> {
+        if (!this.agent) return false;
+        return this.agent.updateQueuedMessageById(id, { content: text, images });
+    }
+
+    public async deleteQueuedMessageById(id: string): Promise<void> {
+        if (!this.agent) return;
+        await this.agent.removeQueuedMessageById(id);
+    }
+
     public async abortMessage() {
         if (this.agent) {
             await this.agent.abortMessage();

@@ -340,3 +340,11 @@
 .image-preview-close:hover {
     background-color: rgba(255, 255, 255, 0.2);
 }
+
+.queued-edit-chip {
+    color: var(--vscode-textLink-foreground);
+    font-size: 12px;
+    font-weight: 500;
+    user-select: none;
+    cursor: default;
+}

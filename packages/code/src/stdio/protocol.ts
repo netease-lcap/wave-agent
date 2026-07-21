@@ -58,6 +58,8 @@ export type RequestMethod =
   | "clearMessages"
   | "rewindToMessage"
   | "deleteQueuedMessage"
+  | "updateQueuedMessage"
+  | "deleteQueuedMessageById"
   | "getMessages"
   | "getFullMessageThread"
   | "setPermissionMode"

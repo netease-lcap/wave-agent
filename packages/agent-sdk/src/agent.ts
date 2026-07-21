@@ -390,6 +390,27 @@ export class Agent {
   }
 
   /**
+   * Update a queued message's content by its ID (does not change queue order)
+   * @param id - The ID of the message to update
+   * @param patch - The fields to update
+   * @returns true if the message was updated, false if not found
+   */
+  public updateQueuedMessageById(
+    id: string,
+    patch: {
+      content?: string;
+      images?: Array<{ path: string; mimeType: string }>;
+      type?: "message" | "bang";
+    },
+  ): boolean {
+    const updated = this.messageQueue.updateById(id, patch);
+    if (updated) {
+      this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+    }
+    return updated;
+  }
+
+  /**
    * Unified dequeue trigger — checks state machine before processing.
    * Called from onMessageEnqueued, onLoadingChange(false), and
    * onCommandRunningChange(false).

@@ -74,6 +74,23 @@ export class MessageQueue {
     return true;
   }
 
+  updateById(
+    id: string,
+    patch: {
+      content?: string;
+      images?: Array<{ path: string; mimeType: string }>;
+      type?: "message" | "bang";
+    },
+  ): boolean {
+    const m = this.queue.find((x) => x.id === id);
+    if (!m) return false;
+    if (patch.content !== undefined) m.content = patch.content;
+    if (patch.images !== undefined) m.images = patch.images;
+    if (patch.type !== undefined) m.type = patch.type;
+    this.onMessageEnqueued?.();
+    return true;
+  }
+
   popLastEditable(): QueuedMessage | null {
     for (let i = this.queue.length - 1; i >= 0; i--) {
       if (this.queue[i].editable !== false) {

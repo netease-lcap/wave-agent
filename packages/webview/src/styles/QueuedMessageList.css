@@ -1,112 +1,133 @@
 .queued-message-list-container {
-  background-color: var(--vscode-panel-background);
-  max-height: 200px;
-  overflow-y: auto;
+  position: relative;
   display: flex;
   flex-direction: column;
-  font-size: 12px;
-  border-top: 1px solid var(--vscode-panel-border);
-}
-
-.queued-message-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 12px;
-  background-color: var(--vscode-editor-background);
-  border-bottom: 1px solid var(--vscode-panel-border);
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  cursor: pointer;
-  user-select: none;
-  width: 100%;
+  gap: 6px;
+  padding: 8px 12px 12px;
+  background-color: var(--vscode-menu-background);
+  border-left: 1px solid var(--vscode-widget-border);
+  border-right: 1px solid var(--vscode-widget-border);
+  border-top: 1px solid var(--vscode-widget-border);
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
   box-sizing: border-box;
 }
 
-.queued-message-list-tooltip {
+.queued-message-list-header {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.queued-message-list-header .queued-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--vscode-foreground);
+  transition: transform 0.15s ease;
+}
+
+.queued-message-list-header .queued-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.queued-message-list-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-foreground);
+}
+
+.queued-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.queued-items.expanded {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.queued-item-tooltip {
   display: block;
   width: 100%;
 }
 
-.queued-message-list-header:hover {
+.queued-item {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.queued-item:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
 
-.queued-message-list-title {
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--vscode-foreground);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.queued-item.editing {
+  background-color: var(--vscode-list-activeSelectionBackground);
 }
 
-.queued-count {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.queued-items {
-  padding: 0;
-}
-
-.queued-item {
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border);
-}
-
-.queued-item:last-child {
-  border-bottom: none;
-}
-
-.queued-item-main {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.queued-item-content {
-  flex-grow: 1;
-  color: var(--vscode-descriptionForeground);
-  font-size: 11px;
+.queued-item-text {
+  flex: 1;
   min-width: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--vscode-editor-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .queued-item-actions {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
   flex-shrink: 0;
+  opacity: 0;
 }
 
-.action-button {
+.queued-item:hover .queued-item-actions,
+.queued-item.editing .queued-item-actions {
+  opacity: 1;
+}
+
+.queued-action-button {
   background: none;
   border: none;
-  color: var(--vscode-descriptionForeground);
   cursor: pointer;
   padding: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 3px;
-  transition: background-color 0.2s, color 0.2s;
+  color: var(--vscode-icon-foreground);
 }
 
-.action-button:hover {
+.queued-action-button:hover {
   background-color: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
 }
 
-.action-button.send-now:hover {
-  color: var(--vscode-button-background);
+.queued-action-button svg {
+  width: 14px;
+  height: 14px;
 }
 
-.action-button.delete-queued:hover {
-  color: var(--vscode-errorForeground);
-}
-
-.action-button i {
-  font-size: 14px;
+.queued-items-scrim {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 12px;
+  height: 24px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0),
+    var(--vscode-menu-background)
+  );
 }

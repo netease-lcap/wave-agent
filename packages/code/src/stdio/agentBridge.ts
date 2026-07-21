@@ -177,6 +177,15 @@ export class AgentBridge {
         return this.rewindToMessage(p.messageId as string, sessionId);
       case "deleteQueuedMessage":
         return this.deleteQueuedMessage(p.index as number, sessionId);
+      case "updateQueuedMessage":
+        return this.updateQueuedMessage(
+          p.id as string,
+          p.text as string,
+          p.images as Array<{ path: string; mimeType: string }> | undefined,
+          sessionId,
+        );
+      case "deleteQueuedMessageById":
+        return this.deleteQueuedMessageById(p.id as string, sessionId);
       case "getMessages":
         return this.getMessages(sessionId);
       case "getFullMessageThread":
@@ -532,6 +541,26 @@ export class AgentBridge {
   private deleteQueuedMessage(index: number, sessionId?: string): null {
     const entry = this.requireSession(sessionId);
     entry.agent.removeQueuedMessage(index);
+    return null;
+  }
+
+  private updateQueuedMessage(
+    id: string,
+    text: string,
+    images: Array<{ path: string; mimeType: string }> | undefined,
+    sessionId?: string,
+  ): { ok: boolean } {
+    const entry = this.requireSession(sessionId);
+    const ok = entry.agent.updateQueuedMessageById(id, {
+      content: text,
+      images,
+    });
+    return { ok };
+  }
+
+  private deleteQueuedMessageById(id: string, sessionId?: string): null {
+    const entry = this.requireSession(sessionId);
+    entry.agent.removeQueuedMessageById(id);
     return null;
   }
 

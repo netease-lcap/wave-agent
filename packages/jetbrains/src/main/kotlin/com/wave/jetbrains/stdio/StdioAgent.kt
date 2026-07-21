@@ -180,6 +180,19 @@ class StdioAgent(
         client.request("deleteQueuedMessage", buildJsonObject { put("index", index) }, sessionId)
     }
 
+    suspend fun updateQueuedMessage(id: String, text: String, images: JsonElement? = null): Boolean {
+        val result = client.request("updateQueuedMessage", buildJsonObject {
+            put("id", id)
+            put("text", text)
+            if (images != null) put("images", images)
+        }, sessionId)
+        return result?.jsonObject?.get("ok")?.jsonPrimitive?.booleanOrNull ?: false
+    }
+
+    suspend fun deleteQueuedMessageById(id: String) {
+        client.request("deleteQueuedMessageById", buildJsonObject { put("id", id) }, sessionId)
+    }
+
     suspend fun getSlashCommands(): JsonElement? = client.request("getSlashCommands", sessionId = sessionId)
 
     suspend fun updateConfig(params: JsonObject) {
