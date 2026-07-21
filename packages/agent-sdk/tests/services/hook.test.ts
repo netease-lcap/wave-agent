@@ -839,8 +839,8 @@ describe("Hook Services", () => {
     });
   });
 
-  describe("Stop hook active_background_subagents", () => {
-    it("should include active_background_subagents for Stop event when provided", async () => {
+  describe("Stop hook background_tasks and session_crons", () => {
+    it("should include background_tasks and session_crons for Stop event when provided", async () => {
       const mockProcess = new MockChildProcess();
       const mockStdin = new MockStdin();
       let stdinData = "";
@@ -864,7 +864,37 @@ describe("Hook Services", () => {
         sessionId: "test-session-123",
         transcriptPath: "/path/to/transcript.json",
         cwd: "/test/project",
-        activeBackgroundSubagents: 2,
+        backgroundTasks: [
+          {
+            id: "task-001",
+            type: "shell",
+            status: "running",
+            description: "tail logs",
+            command: "tail -f /var/log/syslog",
+          },
+          {
+            id: "task-002",
+            type: "subagent",
+            status: "running",
+            description: "refactor module",
+            agent_type: "general-purpose",
+          },
+          {
+            id: "task-003",
+            type: "workflow",
+            status: "running",
+            description: "Workflow: audit",
+            name: "audit",
+          },
+        ],
+        sessionCrons: [
+          {
+            id: "cron-001",
+            schedule: "0 9 * * 1-5",
+            recurring: true,
+            prompt: "check the build",
+          },
+        ],
       };
 
       const resultPromise = executeCommand("echo test", stopContext);
@@ -878,10 +908,40 @@ describe("Hook Services", () => {
       expect(stdinData).toBeTruthy();
       const parsedInput = JSON.parse(stdinData);
       expect(parsedInput.hook_event_name).toBe("Stop");
-      expect(parsedInput.active_background_subagents).toBe(2);
+      expect(parsedInput.background_tasks).toEqual([
+        {
+          id: "task-001",
+          type: "shell",
+          status: "running",
+          description: "tail logs",
+          command: "tail -f /var/log/syslog",
+        },
+        {
+          id: "task-002",
+          type: "subagent",
+          status: "running",
+          description: "refactor module",
+          agent_type: "general-purpose",
+        },
+        {
+          id: "task-003",
+          type: "workflow",
+          status: "running",
+          description: "Workflow: audit",
+          name: "audit",
+        },
+      ]);
+      expect(parsedInput.session_crons).toEqual([
+        {
+          id: "cron-001",
+          schedule: "0 9 * * 1-5",
+          recurring: true,
+          prompt: "check the build",
+        },
+      ]);
     });
 
-    it("should include active_background_subagents: 0 for Stop event when no background subagents", async () => {
+    it("should include empty background_tasks and session_crons arrays for Stop event when nothing in flight", async () => {
       const mockProcess = new MockChildProcess();
       const mockStdin = new MockStdin();
       let stdinData = "";
@@ -905,7 +965,8 @@ describe("Hook Services", () => {
         sessionId: "test-session-123",
         transcriptPath: "/path/to/transcript.json",
         cwd: "/test/project",
-        activeBackgroundSubagents: 0,
+        backgroundTasks: [],
+        sessionCrons: [],
       };
 
       const resultPromise = executeCommand("echo test", stopContext);
@@ -917,10 +978,11 @@ describe("Hook Services", () => {
       await resultPromise;
 
       const parsedInput = JSON.parse(stdinData);
-      expect(parsedInput.active_background_subagents).toBe(0);
+      expect(parsedInput.background_tasks).toEqual([]);
+      expect(parsedInput.session_crons).toEqual([]);
     });
 
-    it("should NOT include active_background_subagents for SubagentStop event", async () => {
+    it("should NOT include background_tasks and session_crons for SubagentStop event", async () => {
       const mockProcess = new MockChildProcess();
       const mockStdin = new MockStdin();
       let stdinData = "";
@@ -945,8 +1007,19 @@ describe("Hook Services", () => {
         transcriptPath: "/path/to/transcript.json",
         cwd: "/test/project",
         subagentType: "general-purpose",
-        // Even if provided, SubagentStop must not include this field
-        activeBackgroundSubagents: 1,
+        // Even if provided, SubagentStop must not include these fields
+        backgroundTasks: [
+          {
+            id: "task-001",
+            type: "subagent",
+            status: "running",
+            description: "x",
+            agent_type: "general-purpose",
+          },
+        ],
+        sessionCrons: [
+          { id: "c1", schedule: "0 9 * * *", recurring: true, prompt: "p" },
+        ],
       };
 
       const resultPromise = executeCommand("echo test", subagentStopContext);
@@ -959,10 +1032,11 @@ describe("Hook Services", () => {
 
       const parsedInput = JSON.parse(stdinData);
       expect(parsedInput.hook_event_name).toBe("SubagentStop");
-      expect(parsedInput.active_background_subagents).toBeUndefined();
+      expect(parsedInput.background_tasks).toBeUndefined();
+      expect(parsedInput.session_crons).toBeUndefined();
     });
 
-    it("should NOT include active_background_subagents for other hook events", async () => {
+    it("should NOT include background_tasks and session_crons for other hook events", async () => {
       const mockProcess = new MockChildProcess();
       const mockStdin = new MockStdin();
       let stdinData = "";
@@ -987,8 +1061,19 @@ describe("Hook Services", () => {
         transcriptPath: "/path/to/transcript.json",
         cwd: "/test/project",
         toolName: "Read",
-        // Even if provided, non-Stop events must not include this field
-        activeBackgroundSubagents: 3,
+        // Even if provided, non-Stop events must not include these fields
+        backgroundTasks: [
+          {
+            id: "task-001",
+            type: "shell",
+            status: "running",
+            description: "x",
+            command: "echo hi",
+          },
+        ],
+        sessionCrons: [
+          { id: "c1", schedule: "0 9 * * *", recurring: true, prompt: "p" },
+        ],
       };
 
       const resultPromise = executeCommand("echo test", postToolContext);
@@ -1001,7 +1086,8 @@ describe("Hook Services", () => {
 
       const parsedInput = JSON.parse(stdinData);
       expect(parsedInput.hook_event_name).toBe("PostToolUse");
-      expect(parsedInput.active_background_subagents).toBeUndefined();
+      expect(parsedInput.background_tasks).toBeUndefined();
+      expect(parsedInput.session_crons).toBeUndefined();
     });
   });
 });
