@@ -24,6 +24,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
             messages: [],
             isStreaming: false,
             sessions: [],
+            isAuthenticated: true,
             configurationData: {
                 apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
                 baseURL: 'https://api.anthropic.com/v1',
@@ -193,10 +194,28 @@ test.describe('Product Specification Screenshots - Tools', () => {
                         type: 'tool',
                         name: WRITE_TOOL_NAME,
                         stage: 'end',
-                        compactParams: 'src/middleware/optimisticLock.ts 1 lines, 89 chars',
-                        parameters: JSON.stringify({ file_path: 'src/middleware/optimisticLock.ts', content: 'export const withOptimisticLock = <T>(handler: (version: number) => Promise<T>) => { ... };' }),
-                        result: 'File created (1 lines, 89 characters)',
-                        shortResult: 'File created'
+                        compactParams: 'src/middleware/optimisticLock.ts 18 lines, 512 chars',
+                        parameters: JSON.stringify({
+                            file_path: 'src/middleware/optimisticLock.ts',
+                            content: `import { PaymentRepository } from '../repositories/PaymentRepository';
+
+/**
+ * 乐观锁中间件：基于版本号防止并发更新冲突。
+ * 读取当前版本后执行业务逻辑，提交时校验版本一致性。
+ */
+export const withOptimisticLock = async <T>(
+  repo: PaymentRepository,
+  id: string,
+  handler: (version: number) => Promise<T>
+): Promise<T> => {
+  const { version } = await repo.findById(id);
+  const result = await handler(version);
+  await repo.assertVersion(id, version);
+  return result;
+};`
+                        }),
+                        result: 'File created (18 lines, 512 characters)',
+                        shortResult: 'File created (18 lines, 512 characters)'
                     },
                     {
                         type: 'tool',
@@ -211,7 +230,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
             }
         ];
         await injector.updateMessages(fileOpMessages);
-        await webviewPage.waitForSelector('.tool-container');
+        await webviewPage.waitForSelector('.write-preview-box');
         await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-file-ops.png' });
 
         // 24. LSP

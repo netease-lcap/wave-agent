@@ -18,6 +18,8 @@ import {
 import type { MessageProps, ToolBlock, ImageBlock, TaskNotificationBlock, ReasoningBlock, MessageBlock } from '../types';
 import { DiffViewer } from './DiffViewer';
 import { MermaidRenderer } from './MermaidRenderer';
+import { ReasoningBlockView } from './ReasoningBlockView';
+import { WriteToolPreview } from './WriteToolPreview';
 import '../styles/Message.css';
 
 // Configure marked for VS Code webview context
@@ -284,6 +286,15 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
     }
     
     // For file editing tools, show diff below the header only when stage is 'end'
+    if (toolBlock.name === WRITE_TOOL_NAME) {
+      return (
+        <div key={index} className="tool-container">
+          {!errorContent && <WriteToolPreview toolBlock={toolBlock} vscode={props.vscode} />}
+          {errorContent && toolHeader}
+          {errorContent}
+        </div>
+      );
+    }
     if (toolBlock.name && [WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(toolBlock.name)) {
       return (
         <div key={index} className="tool-container">
@@ -455,15 +466,11 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
 
   const renderReasoningBlock = (reasoningBlock: ReasoningBlock, index: number) => {
     return (
-      <div key={`reasoning-${index}`} className="reasoning-block">
-        <div className="reasoning-header">
-          <i className="codicon codicon-lightbulb"></i>
-          <span>思考过程</span>
-        </div>
-        <div className="reasoning-content">
-          {renderMarkdownContent(reasoningBlock.content || '', index)}
-        </div>
-      </div>
+      <ReasoningBlockView
+        key={`reasoning-${index}`}
+        block={reasoningBlock}
+        renderContent={(content) => renderMarkdownContent(content, index)}
+      />
     );
   };
 
