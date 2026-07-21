@@ -53,7 +53,7 @@ describe('Diff Viewer', () => {
         expect(diffContent).toBeInTheDocument();
     });
 
-    it('should handle Write tool with new file content', () => {
+    it('should render a content preview (not a diff) for Write tool', () => {
         renderChatApp();
 
         const mockWriteMessage: Message = {
@@ -78,19 +78,17 @@ describe('Diff Viewer', () => {
 
         sendCommand('updateMessages', { messages: [mockWriteMessage] });
 
-        // Check that diff viewer is rendered for Write tool
+        // Write now renders WriteToolPreview, not a DiffViewer
         const diffContainer = document.querySelector('.diff-viewer-container');
-        expect(diffContainer).toBeInTheDocument();
+        expect(diffContainer).not.toBeInTheDocument();
 
-        // For Write operations, should show only added lines (no removed lines)
-        const addedLines = document.querySelectorAll('.diff-line-added');
-        expect(addedLines.length).toBeGreaterThanOrEqual(3); // content lines
+        const previewBox = document.querySelector('.write-preview-box');
+        expect(previewBox).toBeInTheDocument();
+        expect(previewBox).toHaveTextContent(/export const config/);
 
-        const removedLines = document.querySelectorAll('.diff-line-removed');
-        expect(removedLines).toHaveLength(0);
-
-        // Check content includes the written text
-        expect(addedLines[0]).toHaveTextContent(/export const config/);
+        // Path and enlarge button are present
+        expect(document.querySelector('.write-tool-path')).toHaveTextContent('src/newFile.ts');
+        expect(document.querySelector('[data-testid="write-preview-open"]')).toBeInTheDocument();
     });
 
     it('should not show diff for non-file-editing tools', () => {

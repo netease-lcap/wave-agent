@@ -21,6 +21,7 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
             messages: [],
             isStreaming: false,
             sessions: [],
+            isAuthenticated: true,
             configurationData: {
                 apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
                 baseURL: 'https://api.anthropic.com/v1',
@@ -195,6 +196,7 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
 
         // 27. Reasoning
         await injector.simulateExtensionMessage('setInitialState', {
+            isAuthenticated: true,
             messages: [
                 {
                     id: 'msg_demo_reasoning',
@@ -202,6 +204,7 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
                     blocks: [
                         {
                             type: 'reasoning',
+                            stage: 'end',
                             content: '用户需要对 PaymentService 进行重构以提高并发性能。我的分析步骤：\n\n1. **代码审查**：当前实现使用悲观锁，在高并发场景下会导致大量线程阻塞\n2. **性能分析**：数据库连接池在峰值时耗尽，平均响应时间 2.3s\n3. **重构方案**：\n   - 引入乐观锁替代悲观锁\n   - 添加 Redis 缓存层减少数据库访问\n   - 实现异步日志写入\n\n```typescript\n// 乐观锁实现示例\nconst withOptimisticLock = async <T>(\n  fn: (version: number) => Promise<T>\n): Promise<T> => {\n  const version = await getCurrentVersion();\n  return fn(version);\n};\n```'
                         },
                         {
@@ -212,6 +215,14 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
                 }
             ]
         });
+        // 展示思考过程折叠交互：确保处于展开态（含 header + chevron + 思考内容）再截图
+        await webviewPage.waitForSelector('.reasoning-header');
+        const reasoningExpanded = await webviewPage.locator('.reasoning-content').count();
+        if (reasoningExpanded === 0) {
+            await webviewPage.click('.reasoning-header');
+        }
+        await webviewPage.waitForSelector('.reasoning-chevron.expanded');
+        await webviewPage.waitForSelector('.reasoning-content');
         await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-reasoning.png' });
     });
 });

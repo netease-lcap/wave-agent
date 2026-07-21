@@ -205,29 +205,19 @@
 /* Reasoning blocks */
 .reasoning-block {
     margin: 8px 0;
-    padding: 8px 12px;
-    border-left: 4px solid var(--vscode-textBlockQuote-border);
     color: var(--vscode-descriptionForeground);
     font-size: 0.9em;
-    border-radius: 0 4px 4px 0;
 }
 
+/* Timeline connector lives on the content area only (below the header dot),
+   not around the header. The 6px dot starts at x=0, so its center is at 3px;
+   the border sits there and content is indented to align with the title. */
 .reasoning-content {
-    font-style: italic;
+    margin-left: 3px;
+    padding-left: 9px;
+    border-left: 1px solid var(--vscode-textBlockQuote-border);
     max-height: 200px;
     overflow-y: auto;
-}
-
-.reasoning-content .markdown-content code,
-.reasoning-content .markdown-content pre,
-.reasoning-content .markdown-content h1,
-.reasoning-content .markdown-content h2,
-.reasoning-content .markdown-content h3,
-.reasoning-content .markdown-content h4,
-.reasoning-content .markdown-content h5,
-.reasoning-content .markdown-content h6,
-.reasoning-content .markdown-content table {
-    font-style: normal;
 }
 
 .reasoning-header {
@@ -235,11 +225,124 @@
     align-items: center;
     gap: 6px;
     margin-bottom: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.reasoning-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--vscode-descriptionForeground);
+    flex-shrink: 0;
+}
+
+.reasoning-title {
+    font-size: 13px;
     font-weight: 600;
-    font-style: normal;
+    color: var(--vscode-editor-foreground);
+}
+
+.reasoning-chevron {
+    width: 16px;
+    height: 16px;
+    color: var(--vscode-descriptionForeground);
+    transition: transform 0.15s ease;
+}
+
+.reasoning-chevron.expanded {
+    transform: rotate(90deg);
+}
+
+/* Write tool preview */
+.write-tool-preview {
+    margin: 4px 0;
+}
+
+.write-tool-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.write-tool-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+}
+
+.write-tool-path {
+    font-family: Menlo, monospace;
+    font-size: 12px;
+    color: var(--vscode-textLink-foreground, #48a0c7);
+    text-decoration: underline dotted;
+    cursor: pointer;
+}
+
+.write-tool-stats {
+    padding-left: 12px;
+    margin-top: 2px;
     font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.write-preview-box {
+    position: relative;
+    margin: 6px 0 0 12px;
+    height: 120px;
+    padding: 10px;
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    overflow-y: auto;
+}
+
+.write-preview-content {
+    margin: 0;
+    font-family: Menlo, monospace;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--vscode-foreground);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.write-preview-scrim {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 40px;
+    background: linear-gradient(to bottom, transparent, var(--vscode-editor-background));
+    pointer-events: none;
+}
+
+.write-preview-open {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 4px;
+    background: var(--vscode-toolbar-hoverBackground);
+    border: 1px solid var(--vscode-editorGroup-border);
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.write-preview-box:hover .write-preview-open {
+    opacity: 1;
+}
+
+.write-preview-open-icon {
+    width: 16px;
+    height: 16px;
 }
 .image-block {
     margin: 8px 0;
