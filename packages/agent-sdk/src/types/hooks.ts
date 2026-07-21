@@ -196,7 +196,33 @@ export interface HookJsonInput {
   end_source?: SessionEndSource; // Present for SessionEnd events
   compact_instructions?: string; // Present for PreCompact events
   compact_summary?: string; // Present for PostCompact events
-  active_background_subagents?: number; // Present for Stop events: count of active/initializing background subagents at trigger instant
+  background_tasks?: BackgroundTaskInfo[]; // Present for Stop events: running background tasks snapshot
+  session_crons?: SessionCronInfo[]; // Present for Stop events: session-scoped cron jobs snapshot
+}
+
+// Describes one in-flight background task in the Stop hook input.
+// Aligned with Claude Code (v2.1.145+) background_tasks array element schema.
+// Conditional fields are populated based on `type`:
+//   - "shell":    `command` is set
+//   - "subagent": `agent_type` is set
+//   - "workflow": `name` is set
+export interface BackgroundTaskInfo {
+  id: string;
+  type: "shell" | "subagent" | "workflow";
+  status: string;
+  description: string; // Capped at 1000 chars with "… [+N chars]" marker
+  command?: string; // Present only for shell tasks (≤1000 chars)
+  agent_type?: string; // Present only for subagent tasks
+  name?: string; // Present only for workflow tasks
+}
+
+// Describes one session-scoped cron job in the Stop hook input.
+// Aligned with Claude Code (v2.1.145+) session_crons array element schema.
+export interface SessionCronInfo {
+  id: string;
+  schedule: string; // Cron expression
+  recurring: boolean;
+  prompt: string;
 }
 
 // Extended context interface for passing additional data to hook executor
@@ -217,7 +243,8 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   endSource?: SessionEndSource; // Session end source (SessionEnd only)
   compactInstructions?: string; // Custom instructions for PreCompact
   compactSummary?: string; // Summary text for PostCompact
-  activeBackgroundSubagents?: number; // Count of active/initializing background subagents (Stop only)
+  backgroundTasks?: BackgroundTaskInfo[]; // Running background tasks snapshot (Stop only)
+  sessionCrons?: SessionCronInfo[]; // Session-scoped cron jobs snapshot (Stop only)
 }
 
 // Environment variables injected into hook processes

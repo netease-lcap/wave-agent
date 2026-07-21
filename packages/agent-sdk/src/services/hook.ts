@@ -113,12 +113,11 @@ async function buildHookJsonInput(
     }
   }
 
-  // Add active_background_subagents for Stop events only (not SubagentStop)
-  if (
-    context.event === "Stop" &&
-    context.activeBackgroundSubagents !== undefined
-  ) {
-    jsonInput.active_background_subagents = context.activeBackgroundSubagents;
+  // Add background_tasks and session_crons for Stop events only (not SubagentStop).
+  // Fields are always present for Stop (empty arrays when nothing in flight).
+  if (context.event === "Stop") {
+    jsonInput.background_tasks = context.backgroundTasks ?? [];
+    jsonInput.session_crons = context.sessionCrons ?? [];
   }
 
   return jsonInput;

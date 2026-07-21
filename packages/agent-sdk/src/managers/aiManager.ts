@@ -26,8 +26,10 @@ import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
+import type { BackgroundTaskInfo, SessionCronInfo } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
 import type { SubagentManager } from "./subagentManager.js";
+import type { CronManager } from "./cronManager.js";
 import type { SkillManager } from "./skillManager.js";
 import { buildSystemPrompt } from "../prompts/index.js";
 import {
@@ -49,6 +51,47 @@ import {
   resetTracingState,
 } from "../telemetry/sessionTracing.js";
 import { logOTelEvent } from "../telemetry/events.js";
+import type { BackgroundTask } from "../types/processes.js";
+
+// Truncate text to `max` chars and append a "… [+N chars]" marker when exceeded.
+// Used for background_tasks description/command fields (≤1000 chars per spec FR-063).
+function truncateWithMarker(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max) + `… [+${text.length - max} chars]`;
+}
+
+// Map a BackgroundTask (from BackgroundTaskManager) to the Stop hook's
+// background_tasks array element shape (aligned with Claude Code v2.1.145+).
+// Conditional fields are populated based on task type:
+//   - shell:    `command`
+//   - subagent: `agent_type` (looked up via SubagentManager by subagentId)
+//   - workflow: `name` (extracted from "Workflow: <name>" description)
+function mapBackgroundTask(
+  task: BackgroundTask,
+  subagentManager: SubagentManager | undefined,
+): BackgroundTaskInfo {
+  const base: BackgroundTaskInfo = {
+    id: task.id,
+    type: task.type,
+    status: task.status,
+    description: truncateWithMarker(task.description ?? "", 1000),
+  };
+  if (task.type === "shell") {
+    return { ...base, command: truncateWithMarker(task.command ?? "", 1000) };
+  }
+  if (task.type === "subagent") {
+    const instance = subagentManager
+      ?.getActiveInstances()
+      .find((i) => i.subagentId === task.subagentId);
+    return { ...base, agent_type: instance?.subagentType ?? "" };
+  }
+  // workflow
+  const prefix = "Workflow: ";
+  const name = task.description?.startsWith(prefix)
+    ? task.description.slice(prefix.length)
+    : (task.description ?? "");
+  return { ...base, name };
+}
 
 export interface AIManagerCallbacks {
   onCompactionStateChange?: (isCompacting: boolean) => void;
@@ -732,6 +775,10 @@ export class AIManager {
 
   private get subagentManager(): SubagentManager | undefined {
     return this.container.get<SubagentManager>("SubagentManager");
+  }
+
+  private get cronManager(): CronManager | undefined {
+    return this.container.get<CronManager>("CronManager");
   }
 
   private get skillManager(): SkillManager | undefined {
@@ -1435,14 +1482,24 @@ export class AIManager {
       // Use "SubagentStop" hook name when triggered by a subagent, otherwise use "Stop"
       const hookName = this.subagentType ? "SubagentStop" : "Stop";
 
-      // For main-agent Stop events, snapshot the count of active/initializing
-      // background subagents so the hook can decide whether to block stopping.
-      // SubagentStop does not include this field (per spec FR-064).
-      const activeBackgroundSubagents =
+      // For main-agent Stop events, snapshot running background tasks and
+      // session cron jobs so the hook can decide whether to block stopping.
+      // SubagentStop does not include these fields (per spec FR-065).
+      const backgroundTasks: BackgroundTaskInfo[] | undefined =
         hookName === "Stop"
-          ? (this.subagentManager
-              ?.getActiveInstances()
-              .filter((instance) => instance.backgroundTaskId).length ?? 0)
+          ? (this.backgroundTaskManager?.getAllTasks() ?? [])
+              .filter((t) => t.status === "running")
+              .map((t) => mapBackgroundTask(t, this.subagentManager))
+          : undefined;
+
+      const sessionCrons: SessionCronInfo[] | undefined =
+        hookName === "Stop"
+          ? (this.cronManager?.listJobs() ?? []).map((j) => ({
+              id: j.id,
+              schedule: j.cron,
+              recurring: j.recurring,
+              prompt: j.prompt,
+            }))
           : undefined;
 
       const context: ExtendedHookExecutionContext = {
@@ -1453,7 +1510,8 @@ export class AIManager {
         transcriptPath: this.messageManager.getTranscriptPath(),
         cwd: this.getWorkdir(),
         subagentType: this.subagentType, // Include subagent type in hook context
-        activeBackgroundSubagents, // Stop-only: background subagent count snapshot
+        backgroundTasks, // Stop-only: running background tasks snapshot
+        sessionCrons, // Stop-only: session cron jobs snapshot
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
         env: Object.fromEntries(
           Object.entries(process.env).filter((e) => e[1] !== undefined),

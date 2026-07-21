@@ -1213,8 +1213,8 @@ describe("AIManager", () => {
     });
   });
 
-  describe("Stop hook active_background_subagents (User Story 17)", () => {
-    it("should inject active_background_subagents count from SubagentManager into Stop hook context", async () => {
+  describe("Stop hook background_tasks and session_crons (User Story 17)", () => {
+    it("should inject background_tasks from BackgroundTaskManager and session_crons from CronManager into Stop hook context", async () => {
       const taskManager = {
         on: vi.fn(),
         listTasks: vi.fn().mockResolvedValue([]),
@@ -1259,13 +1259,56 @@ describe("AIManager", () => {
         setNeedsPlanModeExitAttachment: vi.fn(),
         getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
-      // SubagentManager with 2 background + 1 foreground instance
+      // BackgroundTaskManager: 3 running tasks (shell+subagent+workflow) + 1 completed (filtered out)
+      container.register("BackgroundTaskManager", {
+        getAllTasks: vi.fn().mockReturnValue([
+          {
+            id: "task-shell-1",
+            type: "shell",
+            status: "running",
+            command: "tail -f /var/log/syslog",
+            description: undefined,
+          },
+          {
+            id: "task-sub-1",
+            type: "subagent",
+            status: "running",
+            subagentId: "sub-1",
+            description: "refactor module",
+          },
+          {
+            id: "task-wf-1",
+            type: "workflow",
+            status: "running",
+            description: "Workflow: audit",
+            runId: "run-1",
+          },
+          {
+            id: "task-done-1",
+            type: "shell",
+            status: "completed",
+            command: "echo done",
+          },
+        ]),
+      });
+      // SubagentManager: one active instance matching task-sub-1's subagentId
       container.register("SubagentManager", {
         getConfigurations: vi.fn().mockReturnValue([]),
-        getActiveInstances: vi.fn().mockReturnValue([
-          { backgroundTaskId: "task-1" }, // background subagent
-          { backgroundTaskId: undefined }, // foreground subagent (not counted)
-          { backgroundTaskId: "task-2" }, // background subagent
+        getActiveInstances: vi
+          .fn()
+          .mockReturnValue([
+            { subagentId: "sub-1", subagentType: "general-purpose" },
+          ]),
+      });
+      // CronManager: one job
+      container.register("CronManager", {
+        listJobs: vi.fn().mockReturnValue([
+          {
+            id: "cron-001",
+            cron: "0 9 * * 1-5",
+            recurring: true,
+            prompt: "check the build",
+          },
         ]),
       });
       container.register("SkillManager", {
@@ -1282,18 +1325,49 @@ describe("AIManager", () => {
 
       await testAIManager.sendAIMessage();
 
-      // Stop hook should have been called with active_background_subagents = 2
-      // (only instances with backgroundTaskId count)
+      // Stop hook should receive background_tasks with 3 running tasks
+      // (completed task filtered out), with per-type conditional fields,
+      // and session_crons with 1 cron job.
       expect(mockHookManager.executeHooks).toHaveBeenCalledWith(
         "Stop",
         expect.objectContaining({
           event: "Stop",
-          activeBackgroundSubagents: 2,
+          backgroundTasks: [
+            {
+              id: "task-shell-1",
+              type: "shell",
+              status: "running",
+              description: "",
+              command: "tail -f /var/log/syslog",
+            },
+            {
+              id: "task-sub-1",
+              type: "subagent",
+              status: "running",
+              description: "refactor module",
+              agent_type: "general-purpose",
+            },
+            {
+              id: "task-wf-1",
+              type: "workflow",
+              status: "running",
+              description: "Workflow: audit",
+              name: "audit",
+            },
+          ],
+          sessionCrons: [
+            {
+              id: "cron-001",
+              schedule: "0 9 * * 1-5",
+              recurring: true,
+              prompt: "check the build",
+            },
+          ],
         }),
       );
     });
 
-    it("should inject active_background_subagents: 0 when no background subagents running", async () => {
+    it("should inject empty background_tasks and session_crons when nothing in flight", async () => {
       const taskManager = {
         on: vi.fn(),
         listTasks: vi.fn().mockResolvedValue([]),
@@ -1338,7 +1412,97 @@ describe("AIManager", () => {
         setNeedsPlanModeExitAttachment: vi.fn(),
         getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
-      // No active subagents at all
+      // No background tasks
+      container.register("BackgroundTaskManager", {
+        getAllTasks: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        getActiveInstances: vi.fn().mockReturnValue([]),
+      });
+      // No CronManager registered → cronManager getter returns undefined
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+      });
+      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("HookManager", mockHookManager);
+      container.register("AgentOptions", { callbacks: {} });
+
+      const testAIManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      await testAIManager.sendAIMessage();
+
+      expect(mockHookManager.executeHooks).toHaveBeenCalledWith(
+        "Stop",
+        expect.objectContaining({
+          event: "Stop",
+          backgroundTasks: [],
+          sessionCrons: [],
+        }),
+      );
+    });
+
+    it("should truncate shell command exceeding 1000 chars with marker", async () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      const mockNotificationQueue = {
+        hasPending: vi.fn().mockReturnValue(false),
+      };
+
+      const mockHookManager = {
+        executeHooks: vi.fn().mockResolvedValue([]),
+        processHookResults: vi.fn().mockReturnValue({
+          shouldBlock: false,
+          errorMessage: "",
+        }),
+        hasHooks: vi.fn().mockReturnValue(true),
+      };
+
+      const longCommand = "a".repeat(1500);
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
+        resolveLanguage: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
+      } as unknown as Record<string, unknown>);
+      container.register("BackgroundTaskManager", {
+        getAllTasks: vi.fn().mockReturnValue([
+          {
+            id: "task-long",
+            type: "shell",
+            status: "running",
+            command: longCommand,
+            description: undefined,
+          },
+        ]),
+      });
       container.register("SubagentManager", {
         getConfigurations: vi.fn().mockReturnValue([]),
         getActiveInstances: vi.fn().mockReturnValue([]),
@@ -1357,13 +1521,10 @@ describe("AIManager", () => {
 
       await testAIManager.sendAIMessage();
 
-      expect(mockHookManager.executeHooks).toHaveBeenCalledWith(
-        "Stop",
-        expect.objectContaining({
-          event: "Stop",
-          activeBackgroundSubagents: 0,
-        }),
-      );
+      const callArgs = vi.mocked(mockHookManager.executeHooks).mock.calls[0][1];
+      const task = callArgs.backgroundTasks?.[0];
+      expect(task?.command).toBe("a".repeat(1000) + "… [+500 chars]");
+      expect(task?.command?.length).toBe(1000 + "… [+500 chars]".length);
     });
   });
 
