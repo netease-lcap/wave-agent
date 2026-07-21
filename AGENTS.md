@@ -50,6 +50,11 @@ Always use `pnpm` as the package manager.
     - Explicitly instruct the subagent to ONLY perform the tasks delegated to them.
     - Instruct them to update their assigned tasks frequently using the task management tools.
 
+## 📋 Spec-First Workflow
+
+- **需求增加或变更时，优先更新 spec**：任何功能需求的新增或变更，必须先更新对应的 `specs/` 下的规格说明（新增用户故事、验收场景、功能需求 FR 等），**待用户确认 spec 后再进行代码实现**。spec 是功能设计的权威来源，不是实现的 changelog。
+- **不确定是否算需求变更时也先动 spec**：边界模糊时宁可先写 spec 草稿请用户确认，不要直接改代码。
+
 ## 🐛 Debugging
 
 - **Prefer temporary console.log/console.trace**: When diagnosing bugs, especially race conditions or complex flows, add temporary `console.log` or `console.trace` statements to trace execution rather than overthinking through static analysis. Run the code/tests, observe the actual output, then remove the logs once the issue is identified.

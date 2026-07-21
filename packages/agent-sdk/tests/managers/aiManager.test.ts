@@ -1213,6 +1213,160 @@ describe("AIManager", () => {
     });
   });
 
+  describe("Stop hook active_background_subagents (User Story 17)", () => {
+    it("should inject active_background_subagents count from SubagentManager into Stop hook context", async () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      const mockNotificationQueue = {
+        hasPending: vi.fn().mockReturnValue(false),
+      };
+
+      const mockHookManager = {
+        executeHooks: vi.fn().mockResolvedValue([]),
+        processHookResults: vi.fn().mockReturnValue({
+          shouldBlock: false,
+          errorMessage: "",
+        }),
+        hasHooks: vi.fn().mockReturnValue(true),
+      };
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
+        resolveLanguage: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
+      } as unknown as Record<string, unknown>);
+      // SubagentManager with 2 background + 1 foreground instance
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        getActiveInstances: vi.fn().mockReturnValue([
+          { backgroundTaskId: "task-1" }, // background subagent
+          { backgroundTaskId: undefined }, // foreground subagent (not counted)
+          { backgroundTaskId: "task-2" }, // background subagent
+        ]),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+      });
+      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("HookManager", mockHookManager);
+      container.register("AgentOptions", { callbacks: {} });
+
+      const testAIManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      await testAIManager.sendAIMessage();
+
+      // Stop hook should have been called with active_background_subagents = 2
+      // (only instances with backgroundTaskId count)
+      expect(mockHookManager.executeHooks).toHaveBeenCalledWith(
+        "Stop",
+        expect.objectContaining({
+          event: "Stop",
+          activeBackgroundSubagents: 2,
+        }),
+      );
+    });
+
+    it("should inject active_background_subagents: 0 when no background subagents running", async () => {
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
+      const mockNotificationQueue = {
+        hasPending: vi.fn().mockReturnValue(false),
+      };
+
+      const mockHookManager = {
+        executeHooks: vi.fn().mockResolvedValue([]),
+        processHookResults: vi.fn().mockReturnValue({
+          shouldBlock: false,
+          errorMessage: "",
+        }),
+        hasHooks: vi.fn().mockReturnValue(true),
+      };
+
+      const container = new Container();
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+        resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
+        resolveLanguage: vi.fn().mockReturnValue(undefined),
+      });
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+        getPlanFilePath: vi.fn().mockReturnValue(undefined),
+        setHasExitedPlanMode: vi.fn(),
+        hasExitedPlanModeInSession: vi.fn(() => false),
+        setNeedsPlanModeExitAttachment: vi.fn(),
+        getNeedsPlanModeExitAttachment: vi.fn(() => false),
+      } as unknown as Record<string, unknown>);
+      // No active subagents at all
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        getActiveInstances: vi.fn().mockReturnValue([]),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+      });
+      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("HookManager", mockHookManager);
+      container.register("AgentOptions", { callbacks: {} });
+
+      const testAIManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+      });
+
+      await testAIManager.sendAIMessage();
+
+      expect(mockHookManager.executeHooks).toHaveBeenCalledWith(
+        "Stop",
+        expect.objectContaining({
+          event: "Stop",
+          activeBackgroundSubagents: 0,
+        }),
+      );
+    });
+  });
+
   describe("Tool Call Partitioning and Serialization", () => {
     it("should run concurrency-safe tools in parallel and non-safe tools serially", async () => {
       const aiServiceMod = await import("../../src/services/aiService.js");

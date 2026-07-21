@@ -838,4 +838,170 @@ describe("Hook Services", () => {
       expect(parsedInput.end_source).toBe("stop");
     });
   });
+
+  describe("Stop hook active_background_subagents", () => {
+    it("should include active_background_subagents for Stop event when provided", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const stopContext: ExtendedHookExecutionContext = {
+        event: "Stop",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        activeBackgroundSubagents: 2,
+      };
+
+      const resultPromise = executeCommand("echo test", stopContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(stdinData).toBeTruthy();
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("Stop");
+      expect(parsedInput.active_background_subagents).toBe(2);
+    });
+
+    it("should include active_background_subagents: 0 for Stop event when no background subagents", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const stopContext: ExtendedHookExecutionContext = {
+        event: "Stop",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        activeBackgroundSubagents: 0,
+      };
+
+      const resultPromise = executeCommand("echo test", stopContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.active_background_subagents).toBe(0);
+    });
+
+    it("should NOT include active_background_subagents for SubagentStop event", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const subagentStopContext: ExtendedHookExecutionContext = {
+        event: "SubagentStop",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "subagent-session-456",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        subagentType: "general-purpose",
+        // Even if provided, SubagentStop must not include this field
+        activeBackgroundSubagents: 1,
+      };
+
+      const resultPromise = executeCommand("echo test", subagentStopContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("SubagentStop");
+      expect(parsedInput.active_background_subagents).toBeUndefined();
+    });
+
+    it("should NOT include active_background_subagents for other hook events", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const postToolContext: ExtendedHookExecutionContext = {
+        event: "PostToolUse",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        toolName: "Read",
+        // Even if provided, non-Stop events must not include this field
+        activeBackgroundSubagents: 3,
+      };
+
+      const resultPromise = executeCommand("echo test", postToolContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("PostToolUse");
+      expect(parsedInput.active_background_subagents).toBeUndefined();
+    });
+  });
 });
