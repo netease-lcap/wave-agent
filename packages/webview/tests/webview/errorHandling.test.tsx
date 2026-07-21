@@ -207,12 +207,9 @@ describe('Error Message Display', () => {
             sendCommand('endStreaming');
         });
 
-        // Verify abort button is not visible (display: none)
+        // Verify abort button is not rendered after streaming ends
         await waitFor(() => {
-            const abortBtn = screen.queryByTestId('abort-btn');
-            if (abortBtn) {
-                expect(abortBtn.style.display).toBe('none');
-            }
+            expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
         });
 
         // Verify interface is functional again

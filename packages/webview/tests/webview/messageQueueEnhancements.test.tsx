@@ -199,7 +199,9 @@ describe('Message Queue Features', () => {
 
         vscode.postMessage.mockClear();
         await typeEditBody('New text');
-        fireEvent.click(screen.getByTestId('send-btn'));
+        // While streaming the send button is not rendered; the edit is submitted
+        // by pressing Enter in the input.
+        fireEvent.keyDown(screen.getByTestId('message-input'), { key: 'Enter' });
 
         const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
         const updateMsg = sentMessages.find((m: Record<string, unknown>) => m.command === 'updateQueuedMessage');

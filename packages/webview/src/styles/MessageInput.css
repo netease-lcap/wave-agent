@@ -92,6 +92,52 @@
     background-color: transparent;
 }
 
+/* Figma design: red send/abort buttons, 28x28 rounded square, white glyph */
+.ai-send-btn,
+.ai-abort-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--vscode-brand-primary, #c1292e);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.ai-send-btn:hover:not(:disabled),
+.ai-abort-btn:hover {
+    background: var(--vscode-brand-primary, #c1292e);
+    filter: brightness(0.92);
+}
+
+.ai-send-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ai-send-btn:disabled:hover {
+    filter: none;
+}
+
+.ai-send-icon,
+.ai-send-btn svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+.abort-glyph {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: #fff;
+}
+
 /* New two-tier button layout */
 .input-buttons-row {
     display: flex;
@@ -118,17 +164,24 @@
 .permission-mode-select {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
     background-color: transparent;
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: 6px;
     font-size: 12px;
     color: var(--vscode-descriptionForeground);
     cursor: pointer;
-    padding: 2px 4px;
+    padding: 4px 6px;
     outline: none;
     font-family: inherit;
     transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.permission-mode-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    flex-shrink: 0;
 }
 
 .permission-mode-caret {
@@ -143,16 +196,20 @@
     border-color: var(--vscode-focusBorder);
 }
 
+.permission-mode-select.mode-default {
+    color: var(--vscode-testing-iconPassed, #73c991);
+}
+
 .permission-mode-select.mode-acceptEdits {
-    color: var(--vscode-gitDecoration-addedResourceForeground);
+    color: var(--vscode-list-warningForeground, #e5ba7d);
 }
 
 .permission-mode-select.mode-plan {
-    color: var(--vscode-gitDecoration-submoduleResourceForeground);
+    color: var(--vscode-textLink-foreground, #48a0c7);
 }
 
 .permission-mode-select.mode-bypassPermissions {
-    color: var(--vscode-errorForeground);
+    color: var(--vscode-errorForeground, #f48771);
     font-weight: bold;
 }
 

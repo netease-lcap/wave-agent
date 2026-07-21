@@ -37,13 +37,17 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
             permissionMode: 'default'
         });
 
-        // 1. Show "Add to Queue" button in input (send button turns into queue during streaming)
+        // 1. During streaming the bottom bar shows the abort (停止) button; the
+        //    send/queue button is not rendered. Typing while streaming still
+        //    queues the message (handled by the extension).
         await webviewPage.focus('[data-testid="message-input"]');
         await webviewPage.keyboard.type('顺便帮乐观锁中间件补一组单元测试，覆盖并发写入时的版本号冲突场景');
 
-        const sendBtn = webviewPage.getByTestId('send-btn');
-        await expect(sendBtn).toHaveAttribute('aria-label', '加入队列');
-        await sendBtn.focus();
+        await expect(webviewPage.getByTestId('send-btn')).toHaveCount(0);
+        const abortBtn = webviewPage.getByTestId('abort-btn');
+        await expect(abortBtn).toBeVisible();
+        await expect(abortBtn).toHaveAttribute('aria-label', '停止');
+        await expect(abortBtn.locator('.abort-glyph')).toBeVisible();
 
         await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-queue-button.png' });
 

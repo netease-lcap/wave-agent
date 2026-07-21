@@ -21,14 +21,15 @@ describe('Streaming Button States', () => {
         const clearChatBtn = screen.getByTestId('clear-chat-btn');
         expect(clearChatBtn).not.toBeDisabled();
         expect(screen.getByTestId('send-btn')).toBeInTheDocument();
-        expect(screen.getByTestId('abort-btn')).not.toBeVisible();
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
 
         // Start streaming
         sendCommand('startStreaming');
 
         // Verify buttons are disabled during streaming
         expect(clearChatBtn).toBeDisabled();
-        expect(screen.getByTestId('abort-btn')).toBeVisible();
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
+        expect(screen.queryByTestId('send-btn')).not.toBeInTheDocument();
 
         // Verify input is enabled during streaming (allows multiple messages)
         const input = screen.getByTestId('message-input');
@@ -58,7 +59,8 @@ describe('Streaming Button States', () => {
 
         // Verify buttons are re-enabled
         expect(clearChatBtn).not.toBeDisabled();
-        expect(screen.getByTestId('abort-btn')).not.toBeVisible();
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
+        expect(screen.getByTestId('send-btn')).toBeInTheDocument();
 
         // Empty and enabled
         const input = screen.getByTestId('message-input');
@@ -95,7 +97,7 @@ describe('Streaming Button States', () => {
                 blocks: [{ type: 'text', content: "I'm currently streaming..." }]
             }]
         });
-        expect(screen.getByTestId('abort-btn')).toBeVisible();
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Clear message log to track new commands
         vscode.postMessage.mockClear();
@@ -129,7 +131,7 @@ describe('Streaming Button States', () => {
         // Verify buttons are in streaming state
         const clearChatBtn = screen.getByTestId('clear-chat-btn');
         expect(clearChatBtn).toBeDisabled();
-        expect(screen.getByTestId('abort-btn')).toBeVisible();
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Abort the message
         fireEvent.click(screen.getByTestId('abort-btn'));
@@ -139,7 +141,7 @@ describe('Streaming Button States', () => {
 
         // Verify buttons are restored after abort
         expect(clearChatBtn).not.toBeDisabled();
-        expect(screen.getByTestId('abort-btn')).not.toBeVisible();
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
 
         // Empty and enabled
         const input = screen.getByTestId('message-input');

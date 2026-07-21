@@ -79,13 +79,11 @@ describe('Clear Chat Functionality', () => {
         // Input text should be preserved (clearing messages doesn't clear input)
         expect(input.textContent).toBe('This text should be preserved');
 
-        // Send button should be visible and enabled, abort button should not be visible
+        // Send button should be present (not streaming); abort button should not be rendered
         const sendBtn = screen.getByTestId('send-btn');
         expect(sendBtn).toBeInTheDocument();
 
-        const abortBtn = screen.getByTestId('abort-btn');
-        expect(abortBtn).toBeInTheDocument();
-        expect(abortBtn).toHaveStyle({ display: 'none' });
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
     });
 
     it('should prevent user from clearing during streaming but allow extension clear', () => {
@@ -106,7 +104,7 @@ describe('Clear Chat Functionality', () => {
 
         // Verify abort button is visible (streaming active)
         const abortBtn = screen.getByTestId('abort-btn');
-        expect(abortBtn).toHaveStyle({ display: 'block' });
+        expect(abortBtn).toBeInTheDocument();
 
         // Verify clear button is disabled
         const clearBtn = screen.getByTestId('clear-chat-btn');
@@ -131,14 +129,14 @@ describe('Clear Chat Functionality', () => {
         // Verify chat is cleared (welcome view shown) but streaming state is preserved
         expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
 
-        // Streaming state should still be active (abort button still visible)
-        expect(abortBtn).toHaveStyle({ display: 'block' });
+        // Streaming state should still be active (abort button still present)
+        expect(abortBtn).toBeInTheDocument();
 
         // End streaming separately
         act(() => {
             sendCommand('endStreaming');
         });
-        expect(abortBtn).toHaveStyle({ display: 'none' });
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
     });
 
     it('should clear error messages', () => {

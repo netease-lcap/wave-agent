@@ -31,18 +31,27 @@ describe('Message Queuing', () => {
         const input = screen.getByTestId('message-input');
         input.focus();
 
+        // 0. Before streaming the send button is rendered with an SVG icon
+        //    (no codicon), and the abort button is absent.
+        const initialSendBtn = screen.getByTestId('send-btn');
+        expect(initialSendBtn).toHaveClass('send-button', 'ai-send-btn');
+        expect(initialSendBtn).toHaveAttribute('aria-label', '发送');
+        expect(initialSendBtn.querySelector('svg')).toBeInTheDocument();
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
+
         // 1. Start streaming
         sendCommand('startStreaming');
 
-        // 2. Verify send button shows "加入队列" and has list-ordered icon
-        const sendBtn = screen.getByTestId('send-btn');
-        expect(sendBtn).toHaveAttribute('aria-label', '加入队列');
-        const icon = sendBtn.querySelector('i');
-        expect(icon?.className).toMatch(/codicon-list-ordered/);
+        // 2. While streaming the send button is not rendered; only the abort
+        //    button is present (conditional render, not display toggle).
+        expect(screen.queryByTestId('send-btn')).not.toBeInTheDocument();
+        const abortBtn = screen.getByTestId('abort-btn');
+        expect(abortBtn.querySelector('.abort-glyph')).toBeInTheDocument();
 
-        // 3. Type and send a message while streaming
+        // 3. Type and send a message while streaming (Enter submits; the
+        //    extension queues it since streaming is in progress)
         await typeMessage('Queued message 1');
-        fireEvent.click(sendBtn);
+        fireEvent.keyDown(input, { key: 'Enter' });
 
         // 4. Verify sendMessage was called (extension handles the queuing)
         const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
