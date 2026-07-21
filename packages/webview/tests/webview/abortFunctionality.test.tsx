@@ -2,15 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderChatApp, screen, fireEvent, sendCommand } from './test-utils';
 import { StreamingFixtures } from '../fixtures/streamingFixtures';
 
-/** The abort button is always in the DOM but toggled via style.display */
+/** The abort button is conditionally rendered: present in the DOM only while streaming */
 function expectAbortVisible(visible: boolean) {
-    const btn = screen.getByTestId('abort-btn') as HTMLElement;
-    expect(btn).toBeInTheDocument();
-    const display = btn.style.display;
     if (visible) {
-        expect(display).not.toBe('none');
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
     } else {
-        expect(display).toBe('none');
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
     }
 }
 

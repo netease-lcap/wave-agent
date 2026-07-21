@@ -29,9 +29,9 @@ describe('Streaming Messages', () => {
         // Start streaming
         sendCommand('startStreaming');
 
-        // Verify streaming indicator (abort button visible)
+        // Verify streaming indicator (abort button present)
         const abortBtn = screen.getByTestId('abort-btn');
-        expect(abortBtn).toBeVisible();
+        expect(abortBtn).toBeInTheDocument();
 
         // Simulate streaming updates using updateMessages
         const scenario = StreamingFixtures.BASIC_STREAMING;
@@ -65,7 +65,7 @@ describe('Streaming Messages', () => {
 
         // Start streaming
         sendCommand('startStreaming');
-        expect(screen.getByTestId('abort-btn')).toBeVisible();
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Use code explanation scenario
         const scenario = StreamingFixtures.CODE_EXPLANATION;
@@ -101,7 +101,7 @@ describe('Streaming Messages', () => {
 
         // Start streaming
         sendCommand('startStreaming');
-        expect(screen.getByTestId('abort-btn')).toBeVisible();
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Send empty update
         sendCommand('updateMessages', {
@@ -160,14 +160,14 @@ describe('Streaming Messages', () => {
 
         expect(getMessages()).toHaveLength(2); // Welcome (hardcoded) + completed message
         // No abort button visible (not streaming)
-        expect(screen.getByTestId('abort-btn')).not.toBeVisible();
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
 
         // Now start streaming
         sendCommand('startStreaming');
 
         // Should still have 2 messages (streaming doesn't add a message until content arrives)
         expect(getMessages()).toHaveLength(2); // Welcome + completed (no streaming message yet)
-        expect(screen.getByTestId('abort-btn')).toBeVisible();
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Update streaming content by sending new message set
         sendCommand('updateMessages', {
@@ -186,7 +186,7 @@ describe('Streaming Messages', () => {
 
         // Verify we now have all three types
         expect(getMessages()).toHaveLength(3); // welcome + completed + streaming
-        expect(screen.getByTestId('abort-btn')).toBeVisible();
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
         expect(getMessages()[1]).toHaveTextContent('This is a completed message'); // Completed message (index 1, after welcome)
         expect(getLastMessage()).toHaveTextContent('This is streaming content'); // Streaming message
 

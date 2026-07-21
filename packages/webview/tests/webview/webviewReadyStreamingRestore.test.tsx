@@ -31,11 +31,11 @@ describe('Webview Ready Streaming State Restoration', () => {
             sendCommand('startStreaming');
         });
 
-        // Verify abort button is visible (streaming active)
+        // Verify abort button is present (streaming active); send button gone
         await waitFor(() => {
-            const abortBtn = screen.getByTestId('abort-btn');
-            expect(abortBtn.style.display).not.toBe('none');
+            expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
         });
+        expect(screen.queryByTestId('send-btn')).not.toBeInTheDocument();
 
         // Simulate streaming content update
         act(() => {
@@ -56,7 +56,7 @@ describe('Webview Ready Streaming State Restoration', () => {
         // However, in the e2e test, sendWebviewReady simulates the extension re-responding.
         // In RTL, we just verify streaming state persists — no special action needed since state is in React.
         // We verify streaming is still active.
-        expect(screen.getByTestId('abort-btn').style.display).not.toBe('none');
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Continue streaming with more content
         act(() => {
@@ -79,8 +79,7 @@ describe('Webview Ready Streaming State Restoration', () => {
 
         // Verify streaming state is properly ended
         await waitFor(() => {
-            const abortBtn = screen.getByTestId('abort-btn');
-            expect(abortBtn.style.display).toBe('none');
+            expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
         });
 
         // Messages should remain the same
@@ -105,14 +104,13 @@ describe('Webview Ready Streaming State Restoration', () => {
         });
 
         // Verify no streaming state
-        const abortBtn = screen.getByTestId('abort-btn');
-        expect(abortBtn.style.display).toBe('none');
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
 
         // Simulate webview becoming ready again — no state change expected
         // (In RTL, webviewReady is sent to extension; streaming state stays as-is in React)
 
         // Verify that no streaming state is activated
-        expect(abortBtn.style.display).toBe('none');
+        expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
         expect(screen.getByText('Complete response')).toBeInTheDocument();
     });
 
@@ -149,14 +147,14 @@ describe('Webview Ready Streaming State Restoration', () => {
 
         // Verify streaming
         await waitFor(() => {
-            expect(screen.getByTestId('abort-btn').style.display).not.toBe('none');
+            expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
         });
 
         // Multiple webview ready events (simulating user switching views rapidly)
         // In RTL, streaming state persists in React; no external event disrupts it.
-        expect(screen.getByTestId('abort-btn').style.display).not.toBe('none');
-        expect(screen.getByTestId('abort-btn').style.display).not.toBe('none');
-        expect(screen.getByTestId('abort-btn').style.display).not.toBe('none');
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
+        expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Continue with streaming updates
         act(() => {
@@ -178,7 +176,7 @@ describe('Webview Ready Streaming State Restoration', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId('abort-btn').style.display).toBe('none');
+            expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
         });
     });
 });

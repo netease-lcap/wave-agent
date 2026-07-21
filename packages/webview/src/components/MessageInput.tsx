@@ -7,7 +7,15 @@ import type { MessageInputProps, FileItem, SlashCommand, AttachedImage, Permissi
 import { FileSuggestionDropdown } from './FileSuggestionDropdown';
 import { SlashCommandsPopup } from './SlashCommandsPopup';
 import { HistorySearchPopup } from './HistorySearchPopup';
-import { PlusIcon, SlashBoxIcon } from './HeaderIcons';
+import {
+  PlusIcon,
+  SlashBoxIcon,
+  QueueSendIcon,
+  PermModeAskIcon,
+  PermModeAcceptIcon,
+  PermModeBypassIcon,
+  PermModePlanIcon,
+} from './HeaderIcons';
 import '../styles/MessageInput.css';
 import '../styles/HistorySearchPopup.css';
 
@@ -37,6 +45,19 @@ const PERMISSION_MODES: { value: PermissionMode; label: string }[] = [
 ];
 const permissionModeLabel = (m?: PermissionMode): string =>
   PERMISSION_MODES.find(x => x.value === m)?.label ?? '修改前询问';
+
+const permissionModeIcon = (m?: PermissionMode): React.ReactNode => {
+  switch (m) {
+    case 'acceptEdits':
+      return <PermModeAcceptIcon className="permission-mode-icon" />;
+    case 'bypassPermissions':
+      return <PermModeBypassIcon className="permission-mode-icon" />;
+    case 'plan':
+      return <PermModePlanIcon className="permission-mode-icon" />;
+    default:
+      return <PermModeAskIcon className="permission-mode-icon" />;
+  }
+};
 
 export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>((props, ref) => {
   const {
@@ -1252,6 +1273,8 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
           </div>
 
           {/* Left side - Permission Mode Select (custom dropdown, expands upward) */}
+          <div className="button-spacer" />
+
           <div className="permission-mode-container" ref={permMenuRef}>
             <button
               type="button"
@@ -1260,6 +1283,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
               aria-expanded={permMenuOpen}
               onClick={() => setPermMenuOpen(o => !o)}
             >
+              {permissionModeIcon(permissionMode)}
               {permissionModeLabel(permissionMode)}
               <i className="codicon codicon-chevron-down permission-mode-caret" />
             </button>
@@ -1281,33 +1305,32 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
             )}
           </div>
 
-          <div className="button-spacer" />
-
-          <Tooltip text="停止" position="left">
-            <button
-              className="abort-button"
-              id="abortButton"
-              onClick={onAbortMessage}
-              style={{ display: isStreaming ? 'block' : 'none' }}
-              data-testid="abort-btn"
-              aria-label="停止"
-            >
-              <i className="codicon codicon-stop-circle"></i>
-            </button>
-          </Tooltip>
-
-          <Tooltip text={isStreaming ? "加入队列" : "发送"} position="left">
-            <button
-              id="sendButton"
-              className="send-button"
-              onClick={handleSend}
-              disabled={!message.trim() && attachedImages.length === 0}
-              data-testid="send-btn"
-              aria-label={isStreaming ? "加入队列" : "发送"}
-            >
-              <i className={`codicon ${isStreaming ? 'codicon-list-ordered' : 'codicon-arrow-up'}`}></i>
-            </button>
-          </Tooltip>
+          {isStreaming ? (
+            <Tooltip text="停止" position="left">
+              <button
+                className="abort-button ai-abort-btn"
+                id="abortButton"
+                onClick={onAbortMessage}
+                data-testid="abort-btn"
+                aria-label="停止"
+              >
+                <span className="abort-glyph" />
+              </button>
+            </Tooltip>
+          ) : (
+            <Tooltip text="发送" position="left">
+              <button
+                id="sendButton"
+                className="send-button ai-send-btn"
+                onClick={handleSend}
+                disabled={!message.trim() && attachedImages.length === 0}
+                data-testid="send-btn"
+                aria-label="发送"
+              >
+                <QueueSendIcon className="ai-send-icon" />
+              </button>
+            </Tooltip>
+          )}
         </div>
 
         {/* File Suggestion Dropdown */}
