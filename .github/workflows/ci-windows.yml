@@ -1,14 +1,14 @@
 name: CI (Windows)
 
 # Non-blocking Windows compatibility check.
-# Runs in parallel with the main Linux CI but is NOT a required check —
-# failures surface in the PR checks list (visible) but do not block merge.
-# Configure in repo Settings → Branches → main protection rule:
-# keep only the Linux `check` job as required; do NOT add `check-windows`.
+# Manually triggered only (workflow_dispatch) — does NOT run on every PR to
+# avoid burning Windows runner minutes on routine changes. Run it manually
+# from the Actions tab when a change touches platform-specific code paths
+# (subprocess spawning, fs, .cmd/.exe resolution).
+# NOT a required check: configure in repo Settings → Branches → main
+# protection rule to keep only the Linux `check` job as required.
 
 on:
-  pull_request:
-    branches: [main, develop]
   workflow_dispatch:
 
 concurrency:
