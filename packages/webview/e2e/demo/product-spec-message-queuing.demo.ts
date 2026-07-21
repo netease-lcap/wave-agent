@@ -2,6 +2,17 @@ import { test, expect } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
 
+// Realistic Chinese dev-task queue messages (varying length; at least one long enough to ellipsize)
+const QUEUE = [
+    { id: 'mq-0', content: '顺便帮乐观锁中间件补一组单元测试，覆盖并发写入时的版本号冲突场景' },
+    { id: 'mq-1', content: '把 PaymentService 里的重复重试逻辑抽成一个通用的指数退避工具函数' },
+    { id: 'mq-2', content: '给订单状态机加上非法状态流转的日志告警，方便线上排查' },
+    { id: 'mq-3', content: '梳理一下这次改动涉及的数据库迁移，确认回滚脚本是否完整，并在 CI 里加一个迁移演练的 job，避免上线时才发现字段不兼容导致回滚困难的问题' },
+    { id: 'mq-4', content: '更新 README 里的本地启动说明，补上新增的环境变量' },
+    { id: 'mq-5', content: '排查一下压测时偶发的连接池耗尽，看看是不是慢查询没释放连接' },
+    { id: 'mq-6', content: '把这次分析结论整理成一份简短的技术方案文档' }
+];
+
 test.describe('Product Specification Screenshots - Message Queuing', () => {
     test('capture message queuing features', async ({ webviewPage }) => {
         const injector = new MessageInjector(webviewPage);
@@ -9,7 +20,7 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         // Set viewport size for better screenshots (simulating VS Code sidebar)
         await webviewPage.setViewportSize({ width: 400, height: 800 });
 
-        // Provide initial state
+        // Provide initial state (AI is streaming a response)
         await injector.simulateExtensionMessage('setInitialState', {
             messages: [
                 MockDataGenerator.createUserMessage('帮我分析 PaymentService 的分布式事务实现，看看有没有竞态条件'),
@@ -26,38 +37,53 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
             permissionMode: 'default'
         });
 
-        // 1. Show "Add to Queue" button in input
+        // 1. Show "Add to Queue" button in input (send button turns into queue during streaming)
         await webviewPage.focus('[data-testid="message-input"]');
-        await webviewPage.keyboard.type('顺便帮我写一个乐观锁中间件的单元测试，参考 [file:src/services/payment/PaymentService.ts] 和 [image1]');
-        
-        // Wait for the button to update and focus it for screenshot
+        await webviewPage.keyboard.type('顺便帮乐观锁中间件补一组单元测试，覆盖并发写入时的版本号冲突场景');
+
         const sendBtn = webviewPage.getByTestId('send-btn');
         await expect(sendBtn).toHaveAttribute('aria-label', '加入队列');
         await sendBtn.focus();
-        
-        // Take screenshot of the input area with "Add to Queue" button
-        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-queue-button.png' });
 
-        // 2. Show queued message in the list with tags
-        await injector.simulateExtensionMessage('updateQueue', {
-            queue: [
-                { 
-                    content: '顺便帮我写一个乐观锁中间件的单元测试，参考 [file:src/services/payment/PaymentService.ts] 和 [image1]',
-                    images: [{ path: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', mimeType: 'image/png' }]
-                }
-            ]
-        });
+        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-queue-button.png' });
 
         // Clear input to simulate real behavior (input cleared after message queued)
         await webviewPage.fill('[data-testid="message-input"]', '');
-        
-        // Wait for the queued message to appear in the queue panel
+
+        // Inject a multi-item queue
+        await injector.updateQueue(QUEUE);
+
         const queuePanel = webviewPage.getByTestId('queued-message-list');
         await expect(queuePanel).toBeVisible();
-        await expect(queuePanel).toContainText('PaymentService.ts');
-        await expect(queuePanel).toContainText('图片 1');
-        
-        // Take screenshot of the message list showing the queued message with tags
+        await expect(queuePanel).toContainText(`消息队列 (${QUEUE.length})`);
+
+        // 2. Collapsed state (default): only the first item is visible
+        await expect(webviewPage.getByTestId('queued-item-mq-0')).toBeVisible();
+        await expect(webviewPage.getByTestId('queued-item-mq-1')).toHaveCount(0);
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-queue-collapsed.png' });
+
+        // 3. Expanded state: click header to expand, multiple single-line items visible
+        await queuePanel.locator('.queued-message-list-header').click();
+        await expect(webviewPage.getByTestId('queued-item-mq-1')).toBeVisible();
+        await expect(webviewPage.getByTestId('queued-item-mq-6')).toBeVisible();
+
+        // Each item exposes the inline edit / ↑立即发送 / delete SVG action buttons
+        await expect(webviewPage.getByTestId('queued-edit-mq-1')).toBeVisible();
+        const sendNowBtn = webviewPage.getByTestId('queued-send-mq-1');
+        await expect(sendNowBtn).toBeVisible();
+        await expect(sendNowBtn).toHaveAttribute('aria-label', '立即发送');
+        await expect(sendNowBtn.locator('svg')).toBeVisible();
+        await expect(webviewPage.getByTestId('queued-delete-mq-1')).toBeVisible();
+
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-queued-message.png' });
+
+        // 4. Editing state: click a message's edit button -> the read-only inline
+        //    chip "编辑队列消息" appears inside the input, and the item is marked editing
+        await webviewPage.getByTestId('queued-edit-mq-1').click({ force: true });
+        const editChip = webviewPage.getByTestId('message-input').locator('.queued-edit-chip');
+        await expect(editChip).toBeVisible();
+        await expect(editChip).toContainText('编辑队列消息');
+        await expect(webviewPage.getByTestId('queued-item-mq-1')).toHaveClass(/editing/);
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-queue-editing.png' });
     });
 });

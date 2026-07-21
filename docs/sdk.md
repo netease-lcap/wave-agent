@@ -187,6 +187,7 @@ Agent 内置消息队列管理并发消息：
 - 支持通过 `queuedMessages` 属性查看队列
 - `removeQueuedMessage(index)` — 按索引移除队列中的消息
 - `removeQueuedMessageById(id)` — 按 ID 移除队列中的消息
+- `updateQueuedMessageById(id, patch)` — 按 ID 更新队列中某条消息的内容（`content` / `images` / `type`），不改变队列顺序；消息存在返回 `true`，否则返回 `false`
 - `recallQueuedMessage()` — 召回最近移除的消息（用于 UP 箭头回忆）
 
 ### 消息类型 {#message-types}

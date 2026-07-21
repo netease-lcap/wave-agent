@@ -236,6 +236,30 @@ export class StdioAgent {
         );
     }
 
+    async updateQueuedMessageById(
+        id: string,
+        patch: {
+            content?: string;
+            images?: Array<{ path: string; mimeType: string }>;
+            type?: 'message' | 'bang';
+        },
+    ): Promise<boolean> {
+        const result = (await this.client.request(
+            'updateQueuedMessage',
+            { id, text: patch.content, images: patch.images },
+            this.sessionId,
+        )) as { ok: boolean };
+        return result?.ok ?? false;
+    }
+
+    async removeQueuedMessageById(id: string): Promise<void> {
+        await this.client.request(
+            'deleteQueuedMessageById',
+            { id },
+            this.sessionId,
+        );
+    }
+
     async getFullMessageThread(): Promise<{
         messages: Message[];
         sessionIds: string[];

@@ -90,6 +90,19 @@ class MessageHandler(
                 val index = msg["index"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
                 session.agent?.deleteQueuedMessage(index)
             }
+            "updateQueuedMessage" -> {
+                val id = msg["id"]?.jsonPrimitive?.content ?: return
+                val text = msg["text"]?.jsonPrimitive?.content ?: ""
+                val images = msg["images"]
+                val ok = session.agent?.updateQueuedMessage(id, text, images) ?: false
+                if (!ok) {
+                    postMessage("updateQueuedMessageMissing", buildJsonObject { put("id", id) })
+                }
+            }
+            "deleteQueuedMessageById" -> {
+                val id = msg["id"]?.jsonPrimitive?.content ?: return
+                session.agent?.deleteQueuedMessageById(id)
+            }
             "restoreSession" -> {
                 val sid = msg["sessionId"]?.jsonPrimitive?.content ?: return
                 session.agent?.restoreSession(sid)

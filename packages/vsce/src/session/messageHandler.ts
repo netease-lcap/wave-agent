@@ -96,6 +96,18 @@ export class MessageHandler {
             case 'deleteQueuedMessage':
                 await this.handleDeleteQueuedMessage(msg.index as number, viewType, windowId);
                 break;
+            case 'updateQueuedMessage':
+                await this.handleUpdateQueuedMessage(
+                    msg.id as string,
+                    msg.text as string,
+                    msg.images as Array<{ path: string; mimeType: string }> | undefined,
+                    viewType,
+                    windowId,
+                );
+                break;
+            case 'deleteQueuedMessageById':
+                await this.handleDeleteQueuedMessageById(msg.id as string, viewType, windowId);
+                break;
             case 'listPlugins':
                 await this.handleListPlugins(viewType, windowId);
                 break;
@@ -396,6 +408,28 @@ export class MessageHandler {
     private async handleDeleteQueuedMessage(index: number, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         const session = this.context.getChatSession(viewType || 'tab', windowId);
         session.deleteQueuedMessage(index);
+    }
+
+    private async handleUpdateQueuedMessage(
+        id: string,
+        text: string,
+        images: Array<{ path: string; mimeType: string }> | undefined,
+        viewType?: 'sidebar' | 'tab' | 'window',
+        windowId?: string,
+    ) {
+        const session = this.context.getChatSession(viewType || 'tab', windowId);
+        const ok = await session.updateQueuedMessage(id, text, images);
+        if (!ok) {
+            this.context.postMessage({
+                command: 'updateQueuedMessageMissing',
+                id,
+            }, viewType, windowId);
+        }
+    }
+
+    private async handleDeleteQueuedMessageById(id: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        const session = this.context.getChatSession(viewType || 'tab', windowId);
+        await session.deleteQueuedMessageById(id);
     }
 
     private handleUpdateInputContent(content: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {

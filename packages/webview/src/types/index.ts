@@ -134,8 +134,6 @@ export interface MessageListProps {
   queuedMessages?: QueuedMessage[];
   streamingMessageIndex?: number;
   vscode: VsCodeApi;
-  onDeleteQueuedMessage?: (index: number) => void;
-  onSendQueuedMessage?: (index: number) => void;
   onRewindToMessage?: (messageId: string) => void;
 }
 
@@ -144,8 +142,6 @@ export interface MessageProps {
   isStreaming?: boolean;
   isQueued?: boolean;
   vscode: VsCodeApi;
-  onDeleteQueuedMessage?: () => void;
-  onSendQueuedMessage?: () => void;
   onRewindToMessage?: (messageId: string) => void;
 }
 
@@ -167,7 +163,9 @@ export interface MessageInputProps {
   onSendMessage: (text: string, images?: Array<{ data: string; mediaType: string; }>) => void;
   isStreaming: boolean;
   onAbortMessage: () => void;
-  onSendQueuedMessage?: () => void;
+  onSubmitQueuedEdit?: (id: string, text: string, images?: Array<{ data: string; mediaType: string; }>) => void;
+  editingQueuedId?: string | null;
+  onCancelQueuedEdit?: () => void;
   shouldClearInput?: boolean;
   onInputCleared?: () => void;
   vscode: VsCodeApi;
@@ -217,12 +215,24 @@ export interface ChatHeaderProps {
 
 // Matches wave-agent-sdk's QueuedMessage type
 export interface QueuedMessage {
+  id?: string;
   type?: 'message' | 'bang';
   content: string;
   images?: Array<{ path: string; mimeType: string }>;
   longTextMap?: Record<string, string>;
   // Legacy alias for backward compat
   text?: string;
+}
+
+export interface QueuedMessageListProps {
+  queuedMessages: QueuedMessage[];
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  onEdit: (id: string) => void;
+  onSend: (id: string) => void;
+  onDelete: (id: string) => void;
+  editingQueuedId: string | null;
+  vscode: VsCodeApi;
 }
 
 // Chat state management
@@ -232,6 +242,7 @@ export interface ChatState {
   isTaskListVisible: boolean;
   isTaskListCollapsed: boolean;
   isQueueCollapsed: boolean;
+  editingQueuedId: string | null;
   isStreaming: boolean;
   isCommandRunning: boolean;
   shouldClearInput: boolean;
@@ -389,6 +400,7 @@ export type ChatAction =
   | { type: 'SET_PERMISSION_MODE'; payload: PermissionMode }
   | { type: 'SET_COMMAND_RUNNING'; payload: boolean }
   | { type: 'SET_QUEUED_MESSAGES'; payload: QueuedMessage[] }
+  | { type: 'SET_EDITING_QUEUED_ID'; payload: string | null }
   | { type: 'SET_INITIAL_STATE'; payload: {
       messages: Message[];
       tasks?: Task[];

@@ -5,7 +5,8 @@ export const initialState: ChatState = {
   tasks: [],
   isTaskListVisible: false,
   isTaskListCollapsed: false,
-  isQueueCollapsed: false,
+  isQueueCollapsed: true,
+  editingQueuedId: null,
   isStreaming: false,
   isCommandRunning: false,
   shouldClearInput: false,
@@ -166,6 +167,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         queuedMessages: action.payload
+      };
+    case 'SET_EDITING_QUEUED_ID':
+      return {
+        ...state,
+        editingQueuedId: action.payload
       };
     case 'SET_COMMAND_RUNNING':
       return {

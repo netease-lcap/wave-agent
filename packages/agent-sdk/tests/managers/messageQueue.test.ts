@@ -335,6 +335,91 @@ describe("MessageQueue", () => {
     });
   });
 
+  describe("updateById", () => {
+    it("should return true and update content of an existing message without changing order or other messages", () => {
+      const queue = new MessageQueue();
+      queue.enqueue({ content: "a", id: "x1" });
+      queue.enqueue({ content: "b", id: "x2" });
+
+      const result = queue.updateById("x1", { content: "a-updated" });
+
+      expect(result).toBe(true);
+      const msgs = queue.getQueue();
+      expect(msgs.map((m) => m.id)).toEqual(["x1", "x2"]);
+      expect(msgs[0].content).toBe("a-updated");
+      expect(msgs[1].content).toBe("b");
+    });
+
+    it("should return false and not change the queue when id does not exist", () => {
+      const queue = new MessageQueue();
+      queue.enqueue({ content: "a", id: "x1" });
+      queue.enqueue({ content: "b", id: "x2" });
+
+      const result = queue.updateById("nonexistent", { content: "nope" });
+
+      expect(result).toBe(false);
+      const msgs = queue.getQueue();
+      expect(msgs.map((m) => m.content)).toEqual(["a", "b"]);
+      expect(msgs.map((m) => m.id)).toEqual(["x1", "x2"]);
+    });
+
+    it("should not clear existing images when patch only contains content", () => {
+      const queue = new MessageQueue();
+      const images = [{ path: "/tmp/a.png", mimeType: "image/png" }];
+      queue.enqueue({ content: "a", id: "x1", images });
+
+      const result = queue.updateById("x1", { content: "a-updated" });
+
+      expect(result).toBe(true);
+      const msg = queue.getQueue()[0];
+      expect(msg.content).toBe("a-updated");
+      expect(msg.images).toEqual(images);
+    });
+
+    it("should update images when patch contains images", () => {
+      const queue = new MessageQueue();
+      queue.enqueue({ content: "a", id: "x1" });
+      const newImages = [{ path: "/tmp/b.png", mimeType: "image/png" }];
+
+      const result = queue.updateById("x1", { images: newImages });
+
+      expect(result).toBe(true);
+      expect(queue.getQueue()[0].images).toEqual(newImages);
+    });
+
+    it("should update type when patch contains type", () => {
+      const queue = new MessageQueue();
+      queue.enqueue({ content: "ls", id: "x1", type: "message" });
+
+      const result = queue.updateById("x1", { type: "bang" });
+
+      expect(result).toBe(true);
+      expect(queue.getQueue()[0].type).toBe("bang");
+    });
+
+    it("should call onMessageEnqueued after a successful update", () => {
+      const queue = new MessageQueue();
+      queue.enqueue({ content: "a", id: "x1" });
+      const callback = vi.fn();
+      queue.onMessageEnqueued = callback;
+
+      queue.updateById("x1", { content: "a-updated" });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not call onMessageEnqueued when id not found", () => {
+      const queue = new MessageQueue();
+      queue.enqueue({ content: "a", id: "x1" });
+      const callback = vi.fn();
+      queue.onMessageEnqueued = callback;
+
+      queue.updateById("nonexistent", { content: "nope" });
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+  });
+
   describe("state machine (transitionTo)", () => {
     it("should transition idle → dispatching", () => {
       const queue = new MessageQueue();

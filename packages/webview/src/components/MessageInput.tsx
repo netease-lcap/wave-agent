@@ -43,7 +43,9 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     onSendMessage,
     isStreaming,
     onAbortMessage,
-    onSendQueuedMessage,
+    onSubmitQueuedEdit,
+    editingQueuedId,
+    onCancelQueuedEdit,
     shouldClearInput,
     onInputCleared,
     vscode,
@@ -213,6 +215,48 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     
     closeHistorySearch();
   }, [vscode, closeHistorySearch]);
+
+  // Load content for editing a queued message.
+  // Per design (Figma 2196:1055): the input starts with a read-only inline chip
+  // "编辑队列消息" (contentEditable=false, blue-teal text) followed by a space and
+  // the editable message body. Deleting the chip exits edit mode; convertToMarkdown
+  // skips the chip so the sent markdown is just the body.
+  const loadQueuedEditContent = useCallback((text: string) => {
+    if (!textareaRef.current) return;
+
+    // Reset the editor content, then build chip + space + body.
+    textareaRef.current.innerHTML = '';
+
+    const chip = document.createElement('span');
+    chip.className = 'queued-edit-chip';
+    chip.contentEditable = 'false';
+    chip.setAttribute('data-queued-edit-chip', 'true');
+    chip.innerText = '编辑队列消息';
+    textareaRef.current.appendChild(chip);
+
+    // Space between chip and body.
+    textareaRef.current.appendChild(document.createTextNode(' '));
+
+    // Editable body.
+    const bodyNode = document.createTextNode(text);
+    textareaRef.current.appendChild(bodyNode);
+
+    setMessage(textareaRef.current.innerText);
+
+    vscode.postMessage({
+      command: 'updateInputContent',
+      content: textareaRef.current.innerText
+    });
+
+    // Focus and move cursor to end of the body.
+    textareaRef.current.focus();
+    const range = document.createRange();
+    const selection = window.getSelection();
+    range.selectNodeContents(textareaRef.current);
+    range.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, [vscode]);
 
   // Detect 指令 in text
   const detectSlashCommand = useCallback((text: string, cursorPos: number): SlashCommandState => {
@@ -505,12 +549,14 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
         // Could show an error notification here if needed
       } else if (data.command === 'addSelectionToInput') {
         insertSelectionTag(data.selection);
+      } else if (data.command === 'loadQueuedEditContent') {
+        loadQueuedEditContent(typeof data.text === 'string' ? data.text : '');
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [insertUploadedFilePaths, insertSelectionTag, closeDropdown]);
+  }, [insertUploadedFilePaths, insertSelectionTag, closeDropdown, loadQueuedEditContent]);
 
   // Handle image preview
   const handleImagePreview = useCallback((url: string, name: string) => {
@@ -770,8 +816,13 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
         data: img.data, // This is already base64 data URL
         mediaType: img.mimeType
       }));
-      
-      onSendMessage(markdown, images.length > 0 ? images : undefined);
+
+      if (editingQueuedId) {
+        // Editing a queued message: update the queue entry instead of sending to AI
+        onSubmitQueuedEdit?.(editingQueuedId, markdown, images.length > 0 ? images : undefined);
+      } else {
+        onSendMessage(markdown, images.length > 0 ? images : undefined);
+      }
       
       // Clear contenteditable
       textareaRef.current.innerHTML = '';
@@ -784,7 +835,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       setAttachedImages([]);
       closeDropdown();
     }
-  }, [attachedImages, onSendMessage, closeDropdown, vscode]);
+  }, [attachedImages, onSendMessage, closeDropdown, vscode, editingQueuedId, onSubmitQueuedEdit]);
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     // Handle Shift+Tab to cycle permission mode
@@ -884,16 +935,9 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     // Normal behavior for Enter key
     if (event.key === 'Enter' && !event.shiftKey && !isComposing) {
       event.preventDefault();
-      
-      // Check if input is empty
-      const { markdown, images } = convertToMarkdown(textareaRef.current!);
-      if (!markdown.trim() && images.length === 0 && onSendQueuedMessage) {
-        onSendQueuedMessage();
-      } else {
-        handleSend();
-      }
+      handleSend();
     }
-  }, [slashCommand.isActive, slashCommands, selectedSlashIndex, handleSlashCommandSelect, closeSlashCommandPopup, atMention.isActive, suggestions, selectedIndex, handleFileSelect, closeDropdown, handleSend, isComposing, permissionMode, vscode, onSendQueuedMessage, onToggleTaskList, calculateDropdownPosition, isStreaming, onAbortMessage]);
+  }, [slashCommand.isActive, slashCommands, selectedSlashIndex, handleSlashCommandSelect, closeSlashCommandPopup, atMention.isActive, suggestions, selectedIndex, handleFileSelect, closeDropdown, handleSend, isComposing, permissionMode, vscode, onToggleTaskList, calculateDropdownPosition, isStreaming, onAbortMessage]);
 
   // Handle cursor position changes - debounced to wait for user to stop moving cursor
   const handleSelectionChange = useCallback(() => {
@@ -964,6 +1008,12 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
 
     setMessage(newValue);
 
+    // If we're editing a queued message and the read-only chip has been deleted
+    // (e.g. via backspace), exit edit mode. The remaining body text is kept.
+    if (editingQueuedId && !target.querySelector('.queued-edit-chip')) {
+      onCancelQueuedEdit?.();
+    }
+
     // Debounce sending updated content to extension for persistence
     if (inputContentTimerRef.current) {
       clearTimeout(inputContentTimerRef.current);
@@ -978,7 +1028,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
 
     // Debounced selection change detection (for @mention and /command)
     handleSelectionChange();
-  }, [handleSelectionChange, vscode]);
+  }, [handleSelectionChange, vscode, editingQueuedId, onCancelQueuedEdit]);
 
   // Handle IME composition events
   const handleCompositionStart = useCallback(() => {

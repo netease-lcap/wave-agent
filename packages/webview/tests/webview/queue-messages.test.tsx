@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { renderChatApp, screen, fireEvent, sendCommand, fireInput } from './test-utils';
+import { renderChatApp, screen, fireEvent, sendCommand, fireInput, within } from './test-utils';
 
 /**
  * Helper: set contenteditable text and fire input event
@@ -8,6 +8,16 @@ async function typeMessage(text: string) {
     const input = screen.getByTestId('message-input');
     input.textContent = text;
     await fireInput(input, { inputType: 'insertText' });
+}
+
+/**
+ * Read the visible (non-tooltip) text of a queued item. The Tooltip wrapper
+ * always renders a hidden copy of the text in a `.tooltip-box`, so we scope to
+ * the `.queued-item-text` span to get the single visible copy.
+ */
+function itemText(id: string): string {
+    const item = screen.getByTestId(`queued-item-${id}`);
+    return item.querySelector('.queued-item-text')?.textContent ?? '';
 }
 
 describe('Message Queuing', () => {
@@ -34,24 +44,22 @@ describe('Message Queuing', () => {
         await typeMessage('Queued message 1');
         fireEvent.click(sendBtn);
 
-        // 4. Verify sendMessage was called (it should be called even when streaming,
-        // but the extension will handle the queuing)
+        // 4. Verify sendMessage was called (extension handles the queuing)
         const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
         const sendMessageCalled = sentMessages.some((m: Record<string, unknown>) => m.command === 'sendMessage' && m.text === 'Queued message 1');
         expect(sendMessageCalled).toBe(true);
 
         // 5. Simulate queue update from extension
-        sendCommand('updateQueue', { queue: [{ content: 'Queued message 1' }] });
+        sendCommand('updateQueue', { queue: [{ id: 'q1', content: 'Queued message 1' }] });
 
         // 6. Verify message is in the queue (visual check)
         const queuePanel = screen.getByTestId('queued-message-list');
         expect(queuePanel).toBeInTheDocument();
-        expect(queuePanel).toHaveTextContent('Queued message 1');
-        expect(queuePanel).toHaveTextContent('消息队列');
+        expect(itemText('q1')).toBe('Queued message 1');
+        expect(queuePanel).toHaveTextContent('消息队列 (1)');
 
-        // 7. End streaming
+        // 7. End streaming and clear the queue as the extension would
         sendCommand('endStreaming');
-        // Also clear the queue as the extension would do when processing
         sendCommand('updateQueue', { queue: [] });
 
         // 8. Verify queue is empty in UI
@@ -64,24 +72,21 @@ describe('Message Queuing', () => {
         const input = screen.getByTestId('message-input');
         input.focus();
 
-        // 1. Start streaming and queue a message
         sendCommand('startStreaming');
-        sendCommand('updateQueue', { queue: [{ content: 'Queued message 1' }] });
+        sendCommand('updateQueue', { queue: [{ id: 'q1', content: 'Queued message 1' }] });
 
         const queuePanel = screen.getByTestId('queued-message-list');
         expect(queuePanel).toBeInTheDocument();
 
-        // 2. Click abort button
         fireEvent.click(screen.getByTestId('abort-btn'));
 
-        // 3. Verify abortMessage was sent
         const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
         const abortMessageSent = sentMessages.some((m: Record<string, unknown>) => m.command === 'abortMessage');
         expect(abortMessageSent).toBe(true);
 
-        // 4. Verify queue is STILL there in UI (new logic: abort doesn't clear queue)
+        // Queue is STILL there (abort doesn't clear queue)
         expect(queuePanel).toBeInTheDocument();
-        expect(queuePanel).toHaveTextContent('Queued message 1');
+        expect(itemText('q1')).toBe('Queued message 1');
     });
 
     it('should NOT clear queue when pressing Escape', () => {
@@ -90,138 +95,120 @@ describe('Message Queuing', () => {
         const input = screen.getByTestId('message-input');
         input.focus();
 
-        // 1. Start streaming and queue a message
         sendCommand('startStreaming');
-        sendCommand('updateQueue', { queue: [{ content: 'Queued message 1' }] });
+        sendCommand('updateQueue', { queue: [{ id: 'q1', content: 'Queued message 1' }] });
 
         const queuePanel = screen.getByTestId('queued-message-list');
         expect(queuePanel).toBeInTheDocument();
 
-        // 2. Press Escape
         fireEvent.keyDown(input, { key: 'Escape' });
 
-        // 3. Verify abortMessage was sent
         const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
         const abortMessageSent = sentMessages.some((m: Record<string, unknown>) => m.command === 'abortMessage');
         expect(abortMessageSent).toBe(true);
 
-        // 4. Verify queue is STILL there in UI
         expect(queuePanel).toBeInTheDocument();
-        expect(queuePanel).toHaveTextContent('Queued message 1');
+        expect(itemText('q1')).toBe('Queued message 1');
     });
 
-    it('should delete a specific queued message when clicking the delete icon', () => {
+    it('should delete a specific queued message by id when clicking the delete icon', () => {
         const { vscode } = renderChatApp();
 
-        // 1. Start streaming and queue two messages
         sendCommand('startStreaming');
         sendCommand('updateQueue', {
             queue: [
-                { content: 'Queued message 1' },
-                { content: 'Queued message 2' }
+                { id: 'q1', content: 'Queued message 1' },
+                { id: 'q2', content: 'Queued message 2' }
             ]
         });
 
-        const queuePanel = screen.getByTestId('queued-message-list');
-        expect(queuePanel).toBeInTheDocument();
-        expect(queuePanel).toHaveTextContent('Queued message 1');
-        expect(queuePanel).toHaveTextContent('Queued message 2');
+        // Expand to see both items (default collapsed shows only the first).
+        fireEvent.click(screen.getByTestId('queued-message-list').querySelector('.queued-message-list-header') as HTMLElement);
 
-        // 2. Find and click the delete button for the first queued message
-        const deleteButtons = queuePanel.querySelectorAll('.action-button.delete-queued');
-        expect(deleteButtons).toHaveLength(2);
-        fireEvent.click(deleteButtons[0]);
+        expect(itemText('q1')).toBe('Queued message 1');
+        expect(itemText('q2')).toBe('Queued message 2');
 
-        // 3. Verify deleteQueuedMessage was sent to extension with correct index
+        // Click the delete button for the first queued message
+        fireEvent.click(screen.getByTestId('queued-delete-q1'));
+
+        // deleteQueuedMessageById sent with the correct id
         const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
-        const deleteMessageSent = sentMessages.some((m: Record<string, unknown>) => m.command === 'deleteQueuedMessage' && m.index === 0);
+        const deleteMessageSent = sentMessages.some((m: Record<string, unknown>) => m.command === 'deleteQueuedMessageById' && m.id === 'q1');
         expect(deleteMessageSent).toBe(true);
 
-        // 4. Verify local state update (the message should be gone from UI immediately)
-        expect(queuePanel).not.toHaveTextContent('Queued message 1');
-        expect(queuePanel).toHaveTextContent('Queued message 2');
-        const remainingDeleteButtons = queuePanel.querySelectorAll('.action-button.delete-queued');
-        expect(remainingDeleteButtons).toHaveLength(1);
+        // Optimistic local removal
+        expect(screen.queryByTestId('queued-item-q1')).not.toBeInTheDocument();
+        expect(itemText('q2')).toBe('Queued message 2');
     });
 
-    it('should render mention tags and image tags in queued messages', () => {
-        renderChatApp();
+    it('should force-send a specific queued message by id when clicking the ↑ send icon', () => {
+        const { vscode } = renderChatApp();
 
-        // 1. Start streaming to enable queuing
         sendCommand('startStreaming');
-
-        // 2. Simulate queue update with a message containing a mention tag and an image tag
         sendCommand('updateQueue', {
             queue: [
-                {
-                    content: 'Check this file [@file:src/main.ts] and this image [image1]',
-                    images: [{ path: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', mimeType: 'image/png' }]
-                }
+                { id: 'q1', content: 'Queued message 1' },
+                { id: 'q2', content: 'Queued message 2' }
             ]
         });
 
-        // 3. Verify the queue panel is visible
-        const queuePanel = screen.getByTestId('queued-message-list');
-        expect(queuePanel).toBeInTheDocument();
+        // Expand to see both items (default collapsed shows only the first).
+        fireEvent.click(screen.getByTestId('queued-message-list').querySelector('.queued-message-list-header') as HTMLElement);
 
-        // 4. Verify the mention tag is rendered as a ContextTag
-        const contextTags = queuePanel.querySelectorAll('.context-tag');
-        const mentionTag = Array.from(contextTags).find(el => el.textContent?.includes('main.ts'));
-        expect(mentionTag).toBeDefined();
+        // Click the ↑ send-now button for the second queued message
+        fireEvent.click(screen.getByTestId('queued-send-q2'));
 
-        // 5. Verify the image tag is rendered as a ContextTag
-        const imageTag = Array.from(contextTags).find(el => el.textContent?.includes('图片 1'));
-        expect(imageTag).toBeDefined();
+        const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
 
-        // 6. Verify the text around tags is also rendered
-        expect(queuePanel).toHaveTextContent('Check this file');
-        expect(queuePanel).toHaveTextContent('and this image');
-    });
+        // force-send: sendMessage with the item's text and force:true
+        const sendMessageSent = sentMessages.some(
+            (m: Record<string, unknown>) => m.command === 'sendMessage' && m.text === 'Queued message 2' && m.force === true
+        );
+        expect(sendMessageSent).toBe(true);
 
-    it('should render selection tags in queued messages', () => {
-        renderChatApp();
+        // followed by removal from the queue by id
+        const deleteMessageSent = sentMessages.some(
+            (m: Record<string, unknown>) => m.command === 'deleteQueuedMessageById' && m.id === 'q2'
+        );
+        expect(deleteMessageSent).toBe(true);
 
-        // 1. Start streaming
-        sendCommand('startStreaming');
-
-        // 2. Simulate queue update with a selection tag
-        sendCommand('updateQueue', {
-            queue: [
-                {
-                    content: 'Look at this selection: [Selection: src/utils.ts|utils.ts#10-20]',
-                }
-            ]
-        });
-
-        // 3. Verify the selection tag is rendered as a ContextTag
-        const queuePanel = screen.getByTestId('queued-message-list');
-        const contextTags = queuePanel.querySelectorAll('.context-tag');
-        const selectionTag = Array.from(contextTags).find(el => el.textContent?.includes('utils.ts#10-20'));
-        expect(selectionTag).toBeDefined();
+        // Optimistic local removal of the sent item; the other remains
+        expect(screen.queryByTestId('queued-item-q2')).not.toBeInTheDocument();
+        expect(itemText('q1')).toBe('Queued message 1');
     });
 
     it('should display bang commands with ! prefix in the queue', () => {
         renderChatApp();
 
-        // 1. Start streaming to enable queuing
         sendCommand('startStreaming');
-
-        // 2. Simulate queue update with a bang command and a normal message
         sendCommand('updateQueue', {
             queue: [
-                { type: 'bang', content: 'ls -la' },
-                { type: 'message', content: 'normal message' }
+                { id: 'q1', type: 'bang', content: 'ls -la' },
+                { id: 'q2', type: 'message', content: 'normal message' }
             ]
         });
 
-        // 3. Verify the queue panel is visible
-        const queuePanel = screen.getByTestId('queued-message-list');
-        expect(queuePanel).toBeInTheDocument();
+        expect(screen.getByTestId('queued-message-list')).toBeInTheDocument();
 
-        // 4. Bang command should display with ! prefix
-        expect(queuePanel).toHaveTextContent('!ls -la');
-        // 5. Normal message should not have ! prefix
-        expect(queuePanel).toHaveTextContent('normal message');
-        expect(queuePanel).not.toHaveTextContent('!normal message');
+        // Expand to render all items
+        fireEvent.click(screen.getByTestId('queued-message-list').querySelector('.queued-message-list-header') as HTMLElement);
+
+        // Bang command displays with ! prefix; normal message without
+        expect(itemText('q1')).toBe('!ls -la');
+        expect(itemText('q2')).toBe('normal message');
+    });
+
+    it('should wrap each item in a Tooltip showing the full text', () => {
+        renderChatApp();
+
+        sendCommand('startStreaming');
+        sendCommand('updateQueue', { queue: [{ id: 'q1', content: 'A very long queued message that needs a tooltip' }] });
+
+        // The Tooltip wrapper (.tooltip-container) contains the item and a
+        // role="tooltip" box carrying the full text.
+        const item = screen.getByTestId('queued-item-q1');
+        const container = item.closest('.tooltip-container') as HTMLElement;
+        const tooltip = within(container).getByRole('tooltip');
+        expect(tooltip).toHaveTextContent('A very long queued message that needs a tooltip');
     });
 });

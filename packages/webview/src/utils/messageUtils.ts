@@ -15,7 +15,13 @@ export const convertToMarkdown = (container: HTMLElement): { markdown: string, i
       markdown += node.textContent;
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const element = node as HTMLElement;
-      
+
+      // Skip the read-only "编辑队列消息" chip: it's only a state marker and must
+      // not be included in the produced markdown.
+      if (element.classList.contains('queued-edit-chip')) {
+        return;
+      }
+
       // Check if it's a context tag container
       if (element.classList.contains('context-tag-container')) {
         const path = element.getAttribute('data-path') || '';

@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer, useCallback, useRef } from 'react';
+import React, { useEffect, useReducer, useCallback, useRef, useState } from 'react';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { ChatHeader } from './ChatHeader';
@@ -21,6 +21,7 @@ import '../styles/ChatApp.css';
 
 export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
+  const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
   const messageInputRef = useRef<{ focus: () => void }>(null);
   const messageListRef = useRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }>(null);
   const stateRef = useRef(state);
@@ -29,6 +30,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Auto-dismiss the queue-edit warning banner
+  useEffect(() => {
+    if (!queueEditWarning) return;
+    const timer = setTimeout(() => setQueueEditWarning(null), 4000);
+    return () => clearTimeout(timer);
+  }, [queueEditWarning]);
 
   // Handle messages from VS Code extension
   useEffect(() => {
@@ -53,6 +61,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           break;
         case 'updateQueue':
           dispatch({ type: 'SET_QUEUED_MESSAGES', payload: message.queue });
+          break;
+        case 'updateQueuedMessageMissing':
+          // The edited queue message no longer exists. Keep input content, exit editing.
+          dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
+          setQueueEditWarning('编辑的队列消息已不存在！');
           break;
         case 'updateCommandRunning':
           dispatch({ type: 'SET_COMMAND_RUNNING', payload: message.running });
@@ -271,30 +284,62 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
     });
   }, [state.isStreaming, vscode]);
 
-  const handleDeleteQueuedMessage = useCallback((index: number) => {
-    // Optimistically update local state
-    const newQueue = [...state.queuedMessages];
-    newQueue.splice(index, 1);
+  const handleDeleteQueuedMessage = useCallback((id: string) => {
+    // Optimistically update local state (filter by id)
+    const newQueue = state.queuedMessages.filter(qm => qm.id !== id);
     dispatch({ type: 'SET_QUEUED_MESSAGES', payload: newQueue });
 
-    // Notify extension to delete from SDK's queue
-    vscode.postMessage({
-      command: 'deleteQueuedMessage',
-      index: index
-    });
-  }, [state.queuedMessages, vscode]);
+    // If the deleted one is being edited, exit editing mode
+    if (state.editingQueuedId === id) {
+      dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
+    }
 
-  const handleSendQueuedMessage = useCallback((index: number) => {
-    const qm = state.queuedMessages[index];
+    // Notify extension to delete from SDK's queue by id
+    vscode.postMessage({
+      command: 'deleteQueuedMessageById',
+      id
+    });
+  }, [state.queuedMessages, state.editingQueuedId, vscode]);
+
+  const handleEditQueuedMessage = useCallback((id: string) => {
+    const qm = state.queuedMessages.find(m => m.id === id);
     if (!qm) return;
 
-    // Send the queued message immediately
+    const text = qm.content || qm.text || '';
     const images = qm.images?.map(img => ({ data: img.path || '', mediaType: img.mimeType || '' }));
-    handleSendMessage(qm.content || qm.text || '', images, true);
 
-    // Remove from queue
-    handleDeleteQueuedMessage(index);
+    // Load content into the input (reuse the window-message insertion mechanism)
+    window.postMessage({ command: 'loadQueuedEditContent', text, images }, '*');
+    dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: id });
+  }, [state.queuedMessages]);
+
+  const handleSendQueuedMessage = useCallback((id: string) => {
+    const qm = state.queuedMessages.find(m => m.id === id);
+    if (!qm) return;
+
+    const text = qm.content || qm.text || '';
+    const images = qm.images?.map(img => ({ data: img.path || '', mediaType: img.mimeType || '' }));
+
+    // force=true: terminate current conversation and send this message immediately
+    handleSendMessage(text, images, true);
+
+    // Optimistically remove from queue + notify backend (and exit editing if applicable)
+    handleDeleteQueuedMessage(id);
   }, [state.queuedMessages, handleSendMessage, handleDeleteQueuedMessage]);
+
+  const handleSubmitQueuedEdit = useCallback((id: string, text: string, images?: Array<{ data: string; mediaType: string; }>) => {
+    vscode.postMessage({
+      command: 'updateQueuedMessage',
+      id,
+      text,
+      images
+    });
+    dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
+  }, [vscode]);
+
+  const handleCancelQueuedEdit = useCallback(() => {
+    dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
+  }, []);
 
   // Configuration handlers
   const handleConfigurationSave = useCallback((configData: ConfigurationData) => {
@@ -405,6 +450,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
 
   return (
     <div className="chat-container" data-testid="chat-container">
+      {queueEditWarning && (
+        <div className="queue-edit-warning-banner" role="alert" data-testid="queue-edit-warning">
+          <span className="queue-edit-warning-text">{queueEditWarning}</span>
+          <button
+            className="queue-edit-warning-close"
+            onClick={() => setQueueEditWarning(null)}
+            aria-label="关闭"
+          >
+            <i className="codicon codicon-close"></i>
+          </button>
+        </div>
+      )}
       <ChatHeader
         onClearChat={handleClearChat}
         onAbortMessage={handleAbortMessage}
@@ -427,8 +484,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           queuedMessages={state.queuedMessages}
           streamingMessageIndex={streamingMessageIndex}
           vscode={vscode}
-          onDeleteQueuedMessage={handleDeleteQueuedMessage}
-          onSendQueuedMessage={handleSendQueuedMessage}
           onRewindToMessage={handleRewindToMessage}
         />
       )}
@@ -445,8 +500,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           queuedMessages={state.queuedMessages}
           isCollapsed={state.isQueueCollapsed}
           onToggleCollapse={() => dispatch({ type: 'TOGGLE_QUEUE_COLLAPSE' })}
-          onDelete={handleDeleteQueuedMessage}
+          onEdit={handleEditQueuedMessage}
           onSend={handleSendQueuedMessage}
+          onDelete={handleDeleteQueuedMessage}
+          editingQueuedId={state.editingQueuedId}
           vscode={vscode}
         />
         
@@ -456,7 +513,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
             onSendMessage={handleSendMessage}
             isStreaming={state.isStreaming}
             onAbortMessage={handleAbortMessage}
-            onSendQueuedMessage={state.queuedMessages.length > 0 ? () => handleSendQueuedMessage(0) : undefined}
+            onSubmitQueuedEdit={handleSubmitQueuedEdit}
+            editingQueuedId={state.editingQueuedId}
+            onCancelQueuedEdit={handleCancelQueuedEdit}
             shouldClearInput={state.shouldClearInput}
             onInputCleared={handleInputCleared}
             vscode={vscode}
