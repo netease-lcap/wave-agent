@@ -196,6 +196,7 @@ export interface HookJsonInput {
   end_source?: SessionEndSource; // Present for SessionEnd events
   compact_instructions?: string; // Present for PreCompact events
   compact_summary?: string; // Present for PostCompact events
+  active_background_subagents?: number; // Present for Stop events: count of active/initializing background subagents at trigger instant
 }
 
 // Extended context interface for passing additional data to hook executor
@@ -216,6 +217,7 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   endSource?: SessionEndSource; // Session end source (SessionEnd only)
   compactInstructions?: string; // Custom instructions for PreCompact
   compactSummary?: string; // Summary text for PostCompact
+  activeBackgroundSubagents?: number; // Count of active/initializing background subagents (Stop only)
 }
 
 // Environment variables injected into hook processes

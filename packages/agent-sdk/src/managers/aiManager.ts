@@ -1435,6 +1435,16 @@ export class AIManager {
       // Use "SubagentStop" hook name when triggered by a subagent, otherwise use "Stop"
       const hookName = this.subagentType ? "SubagentStop" : "Stop";
 
+      // For main-agent Stop events, snapshot the count of active/initializing
+      // background subagents so the hook can decide whether to block stopping.
+      // SubagentStop does not include this field (per spec FR-064).
+      const activeBackgroundSubagents =
+        hookName === "Stop"
+          ? (this.subagentManager
+              ?.getActiveInstances()
+              .filter((instance) => instance.backgroundTaskId).length ?? 0)
+          : undefined;
+
       const context: ExtendedHookExecutionContext = {
         event: hookName,
         projectDir: this.getWorkdir(),
@@ -1443,6 +1453,7 @@ export class AIManager {
         transcriptPath: this.messageManager.getTranscriptPath(),
         cwd: this.getWorkdir(),
         subagentType: this.subagentType, // Include subagent type in hook context
+        activeBackgroundSubagents, // Stop-only: background subagent count snapshot
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
         env: Object.fromEntries(
           Object.entries(process.env).filter((e) => e[1] !== undefined),

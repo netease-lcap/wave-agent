@@ -281,6 +281,24 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 2. **假设**PostCompact hook 失败，**当**压缩运行时，**则**失败被记录但不影响压缩结果
 3. **假设**压缩失败，**当**错误被处理时，**则**PostCompact hook 不会执行
 
+---
+
+### 用户故事 17 - Stop Hook 后台工作感知（优先级：P3）
+
+作为开发者，我希望 Stop hook 触发时能通过 JSON 输入得知有多少后台 subagent 仍在运行，以便决定是否通过退出码 2 阻止停止以等待后台 subagent 完成，或执行相应的清理、通知、日志逻辑。字段值同时隐含"是否有"（0 即无）信息。
+
+**为什么是这个优先级**：Stop hook 默认在主代理回合结束的瞬间触发，不等待异步后台 subagent。没有该字段时，hook 无法区分"所有工作已结束"与"仍有后台 subagent 在跑"两种情况，无法实现"等后台完成再收尾"的工作流。注：Claude Code 的 Stop hook 输入不包含任何后台状态字段，本字段为 Wave 的增量能力。
+
+**独立测试**：可以通过配置 Stop hook 输出 `jq -r '.active_background_subagents'`、启动一个后台 subagent、再让主代理结束回合，验证字段值随后台 subagent 状态变化来完整测试。
+
+**验收场景**：
+
+1. **假设**主代理回合结束时没有后台 subagent 运行，**当** Stop hook 触发时，**则** JSON 输入包含 `active_background_subagents: 0`
+2. **假设**主代理回合结束时有 2 个后台 subagent 处于 active/initializing 状态，**当** Stop hook 触发时，**则** JSON 输入包含 `active_background_subagents: 2`
+3. **假设** Stop hook 检测到 `active_background_subagents > 0` 并返回退出码 2，**当** hook 完成时，**则**停止被阻止（stderr 作为用户消息注入，AI 继续对话）；后台 subagent 完成后产生的通知将重启响应周期，Stop hook 在下一轮再次触发并看到更新后的字段值
+4. **假设**后台 subagent 在 Stop hook 构造输入与 hook 进程读取输入之间完成，**当** hook 读取字段时，**则**字段值反映触发瞬间的快照状态（不要求与 hook 执行期间实时一致）
+5. **假设** SubagentStop hook（子代理自身回合结束）触发，**当**其 JSON 输入被构造时，**则**不包含 `active_background_subagents` 字段（该字段仅主 Stop 事件提供）
+
 ## 边界情况
 
 - 当 hook 命令失败或超时会发生什么？
@@ -356,6 +374,8 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - **FR-060**：系统必须在 PostCompact 事件的 JSON 数据中包含包含 AI 生成摘要的 `compact_summary` 字段
 - **FR-061**：系统在压缩失败时不得执行 PostCompact hook
 - **FR-062**：系统不得要求 PreCompact 或 PostCompact hook 配置使用 matcher
+- **FR-063**：系统必须在 Stop 事件的 JSON 数据中包含 `active_background_subagents` 整数字段，指示触发瞬间处于 active/initializing 状态的后台 subagent 数量；无后台 subagent 时为 0
+- **FR-064**：系统必须在除 Stop 以外的其他 hook 事件（PreToolUse、PostToolUse、UserPromptSubmit、PermissionRequest、SubagentStop、WorktreeCreate、PreCompact、PostCompact）的 JSON 数据中**不**包含 `active_background_subagents` 字段
 
 ### 测试验证需求
 
@@ -386,6 +406,7 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - **PreCompact Hook**：在对话压缩之前触发的生命周期 hook，通过 stdin JSON 接收自定义指令并通过 stdout 返回额外指令
 - **PostCompact Hook**：在成功压缩之后触发的生命周期 hook，通过 stdin JSON 接收压缩摘要
 - **压缩指令**：引导 AI 在压缩期间进行摘要的自定义文本，从用户输入和 PreCompact hook stdout 合并
+- **后台工作状态**：Stop 事件 JSON 输入中的 `active_background_subagents` 整数字段，反映触发瞬间当前 Agent 的后台 subagent（active/initializing 状态）数量快照，供 hook 决定是否通过退出码 2 阻止停止以等待后台 subagent 完成
 
 ## 成功标准 *（必填）*
 

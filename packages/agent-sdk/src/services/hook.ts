@@ -113,6 +113,14 @@ async function buildHookJsonInput(
     }
   }
 
+  // Add active_background_subagents for Stop events only (not SubagentStop)
+  if (
+    context.event === "Stop" &&
+    context.activeBackgroundSubagents !== undefined
+  ) {
+    jsonInput.active_background_subagents = context.activeBackgroundSubagents;
+  }
+
   return jsonInput;
 }
 
