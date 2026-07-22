@@ -1,5 +1,6 @@
 import React from 'react';
 import { ExternalLinkIcon } from './HeaderIcons';
+import { FileToolHeader } from './FileToolHeader';
 import type { ToolBlock } from '../types';
 
 interface WriteToolPreviewProps {
@@ -8,14 +9,6 @@ interface WriteToolPreviewProps {
 }
 
 export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({ toolBlock, vscode }) => {
-  const toolStatusColor = toolBlock.stage === 'running' || toolBlock.stage === 'streaming'
-    ? 'var(--vscode-editorWarning-foreground, #cca700)'
-    : toolBlock.success === true
-      ? 'var(--vscode-testing-iconPassed, #73c991)'
-      : (toolBlock.error || toolBlock.success === false)
-        ? 'var(--vscode-testing-iconFailed, #f14c4c)'
-        : 'var(--vscode-descriptionForeground, #888)';
-
   let filePath = '';
   let content: string | null = null;
   try {
@@ -34,15 +27,7 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({ toolBlock, v
     }
   };
 
-  const header = (
-    <div className="write-tool-header">
-      <span className="tool-status-dot" style={{ color: toolStatusColor }}>●</span>
-      <span className="write-tool-label">{toolBlock.name || 'Tool'}</span>
-      {filePath && (
-        <span className="write-tool-path" onClick={openFile}>{filePath}</span>
-      )}
-    </div>
-  );
+  const header = <FileToolHeader toolBlock={toolBlock} filePath={filePath} onOpenFile={openFile} />;
 
   if (content === null) {
     return <div className="write-tool-preview">{header}</div>;

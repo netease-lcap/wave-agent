@@ -20,6 +20,7 @@ import { DiffViewer } from './DiffViewer';
 import { MermaidRenderer } from './MermaidRenderer';
 import { ReasoningBlockView } from './ReasoningBlockView';
 import { WriteToolPreview } from './WriteToolPreview';
+import { FileToolHeader } from './FileToolHeader';
 import '../styles/Message.css';
 
 // Configure marked for VS Code webview context
@@ -295,10 +296,23 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
         </div>
       );
     }
-    if (toolBlock.name && [WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(toolBlock.name)) {
+    if (toolBlock.name === EDIT_TOOL_NAME) {
+      let editFilePath = '';
+      try {
+        if (toolBlock.parameters) {
+          editFilePath = JSON.parse(toolBlock.parameters).file_path || '';
+        }
+      } catch {
+        editFilePath = '';
+      }
+      const openEditFile = () => {
+        if (editFilePath) {
+          props.vscode.postMessage({ command: 'openFile', path: editFilePath });
+        }
+      };
       return (
         <div key={index} className="tool-container">
-          {toolHeader}
+          <FileToolHeader toolBlock={toolBlock} filePath={editFilePath} onOpenFile={openEditFile} />
           {!errorContent && <DiffViewer toolBlock={toolBlock} />}
           {errorContent}
         </div>
