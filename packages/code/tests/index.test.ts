@@ -82,6 +82,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -97,6 +98,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -112,6 +114,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -127,6 +130,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -142,6 +146,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -159,6 +164,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -176,6 +182,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -193,6 +200,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -210,6 +218,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -225,6 +234,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -240,6 +250,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -255,6 +266,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -280,6 +292,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -295,6 +308,7 @@ describe("main", () => {
       tools: ["Bash", "Read"],
       worktreeSession: undefined,
       workdir: process.cwd(),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
   });
@@ -311,6 +325,7 @@ describe("main", () => {
       tools: undefined,
       worktreeSession: expect.objectContaining({ name: "test-worktree" }),
       workdir: expect.stringContaining("test-worktree"),
+      originalCwd: process.cwd(),
       version: expect.any(String),
     });
     expect(chdirSpy).toHaveBeenCalledWith(
@@ -467,6 +482,7 @@ describe("main", () => {
         tools: undefined,
         worktreeSession: undefined,
         workdir: process.cwd(),
+        originalCwd: process.cwd(),
         version: expect.any(String),
       });
     });

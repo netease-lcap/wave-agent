@@ -1,12 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import {
-  Scope,
-  generateRandomName,
-  type PermissionMode,
-  setCurrentWorktreeSession,
-} from "wave-agent-sdk";
+import { Scope, generateRandomName, type PermissionMode } from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
 import { readFileSync } from "fs";
@@ -327,15 +322,9 @@ export async function main() {
       }
       worktreeSession = createWorktree(name, originalCwd);
 
-      // Register worktree session so system prompt includes worktree warnings
-      setCurrentWorktreeSession({
-        originalCwd,
-        worktreePath: worktreeSession.path,
-        worktreeBranch: worktreeSession.branch,
-        worktreeName: worktreeSession.name,
-        isNew: worktreeSession.isNew,
-        repoRoot: worktreeSession.repoRoot,
-      });
+      // Note: the full worktree session (originalCwd etc.) is injected into the
+      // agent's DI container after the agent is created in useChat.tsx. This keeps
+      // worktree state per-session instead of process-global.
     }
 
     const workdir = worktreeSession?.path || originalCwd;
@@ -369,6 +358,7 @@ export async function main() {
         disallowedTools,
         worktreeSession,
         workdir,
+        originalCwd,
         version,
         model: argv.model as string | undefined,
         mcpServers,
@@ -393,6 +383,7 @@ export async function main() {
         disallowedTools,
         worktreeSession,
         workdir,
+        originalCwd,
         version,
         model: argv.model as string | undefined,
         mcpServers,
@@ -416,6 +407,7 @@ export async function main() {
       disallowedTools,
       worktreeSession,
       workdir,
+      originalCwd,
       version,
       model: argv.model as string | undefined,
       mcpServers,

@@ -35,7 +35,7 @@ import {
 } from "../constants/tools.js";
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
-import { getCurrentWorktreeSession } from "../utils/worktreeSession.js";
+import type { WorktreeSession } from "../utils/worktreeSession.js";
 
 const SAFE_COMMANDS = [
   "cd",
@@ -452,8 +452,11 @@ export class PermissionManager {
     }
 
     // 1.0 Check worktree safety for Write and Edit tools
-    // Support both CLI -w sessions (container-registered) and EnterWorktree mid-session (module-level)
-    const worktreeSession = getCurrentWorktreeSession();
+    // Support both CLI -w sessions (container-registered) and EnterWorktree mid-session
+    // (per-agent WorktreeSession stored in this session's container)
+    const worktreeSession = this.container.get<WorktreeSession | null>(
+      "WorktreeSession",
+    );
     const effectiveWorktreeName =
       this.worktreeName || worktreeSession?.worktreeName;
     const effectiveWorkdir = this.workdir || worktreeSession?.worktreePath;

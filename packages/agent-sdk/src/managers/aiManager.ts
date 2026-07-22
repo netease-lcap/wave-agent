@@ -38,6 +38,7 @@ import {
   buildExitedPlanModeReminder,
 } from "../prompts/planModeReminders.js";
 import { Container } from "../utils/container.js";
+import type { WorktreeSession } from "../utils/worktreeSession.js";
 import { recoverTruncatedJson } from "../utils/stringUtils.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import type { NotificationQueue } from "./notificationQueue.js";
@@ -260,11 +261,27 @@ export class AIManager {
 
   /**
    * Update the working directory mid-session (e.g., when entering/exiting a worktree).
-   * Also updates process.chdir() so bash commands use the new directory.
+   * Only updates this session's DI container; it does NOT change the process-level
+   * process.cwd(), so concurrent sessions in the same stdio process are unaffected.
    */
   public setWorkdir(newWorkdir: string): void {
     this.container.register("Workdir", newWorkdir);
-    process.chdir(newWorkdir);
+  }
+
+  /**
+   * Get this session's worktree session state (null if not in a worktree).
+   */
+  public getWorktreeSession(): WorktreeSession | null {
+    return (
+      this.container.get<WorktreeSession | null>("WorktreeSession") ?? null
+    );
+  }
+
+  /**
+   * Set this session's worktree session state.
+   */
+  public setWorktreeSession(session: WorktreeSession | null): void {
+    this.container.register("WorktreeSession", session);
   }
 
   public setOnCwdChange(callback: (newCwd: string) => void): void {
@@ -942,6 +959,7 @@ export class AIManager {
                 originalWorkdir: this.getOriginalWorkdir(),
                 language: this.getLanguage(),
                 isSubagent: !!this.subagentType,
+                worktreeSession: this.getWorktreeSession(),
                 autoMemory: autoMemoryOptions,
               },
             ), // Pass custom system prompt

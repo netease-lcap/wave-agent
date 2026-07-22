@@ -5,10 +5,6 @@
 
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import {
-  getCurrentWorktreeSession,
-  setCurrentWorktreeSession,
-} from "../utils/worktreeSession.js";
-import {
   removeWorktree,
   countWorktreeChanges,
 } from "../utils/worktreeUtils.js";
@@ -89,8 +85,8 @@ export const exitWorktreeTool: ToolPlugin = {
       };
     }
 
-    // Validate: must be in an active worktree session
-    const session = getCurrentWorktreeSession();
+    // Validate: must be in an active worktree session (for this session)
+    const session = context.aiManager?.getWorktreeSession();
     if (!session) {
       return {
         success: false,
@@ -139,11 +135,9 @@ export const exitWorktreeTool: ToolPlugin = {
 
     if (action === "keep") {
       // Clear session state
-      setCurrentWorktreeSession(null);
-
-      // Restore CWD
       const aiManager = context.aiManager;
       if (aiManager) {
+        aiManager.setWorktreeSession(null);
         aiManager.setWorkdir(originalCwd);
       }
 
@@ -170,12 +164,10 @@ export const exitWorktreeTool: ToolPlugin = {
 
     removeWorktree(worktreeInfo);
 
-    // Clear session state
-    setCurrentWorktreeSession(null);
-
-    // Restore CWD
+    // Clear session state and restore CWD
     const aiManager = context.aiManager;
     if (aiManager) {
+      aiManager.setWorktreeSession(null);
       aiManager.setWorkdir(originalCwd);
     }
 

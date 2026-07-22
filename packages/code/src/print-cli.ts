@@ -4,6 +4,7 @@ import {
   hasUncommittedChanges,
   hasNewCommits,
   getDefaultRemoteBranch,
+  type WorktreeSession,
 } from "wave-agent-sdk";
 import { displayUsageSummary } from "./utils/usageSummary.js";
 import { removeWorktree } from "./utils/worktree.js";
@@ -47,6 +48,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     disallowedTools,
     worktreeSession,
     workdir,
+    originalCwd,
     model,
     mcpServers,
   } = options;
@@ -126,10 +128,25 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       allowedTools,
       disallowedTools,
       workdir,
+      worktreeName: worktreeSession?.name,
+      isNewWorktree: worktreeSession?.isNew,
       model,
       mcpServers,
       // 保持流式模式以获得更好的命令行用户体验
     });
+
+    // Inject worktree session into this agent's container (per-session, not global)
+    if (worktreeSession) {
+      const session: WorktreeSession = {
+        originalCwd: originalCwd ?? worktreeSession.repoRoot,
+        worktreePath: worktreeSession.path,
+        worktreeBranch: worktreeSession.branch,
+        worktreeName: worktreeSession.name,
+        isNew: worktreeSession.isNew,
+        repoRoot: worktreeSession.repoRoot,
+      };
+      agent.setWorktreeSession(session);
+    }
 
     // Send message if provided and not empty
     if (typeof message === "string" && message.trim() !== "") {

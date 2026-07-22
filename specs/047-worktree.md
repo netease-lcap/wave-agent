@@ -117,6 +117,23 @@
 
 ---
 
+### 用户故事 8 - stdio 多 Agent 并发下的 Worktree 会话隔离（优先级：P1）
+
+作为通过 stdio 后端同时运行多个会话的用户（例如 VS Code 侧边栏 + 多个编辑器标签页 / 多个窗口，或 JetBrains 插件），我希望一个会话进入 worktree 不会影响其它并发会话的工作目录、worktree 状态或工具执行，以便每个会话彼此隔离、互不干扰。
+
+**为什么是这个优先级**：stdio 后端为多个前端会话（各自持有独立的 Agent）多路复用同一个进程。当前 worktree 状态使用进程级全局状态（`process.chdir()` 与模块级单例），会导致跨会话污染甚至数据破坏（一个会话可能误删另一个会话的 worktree 分支），破坏多租户隔离这一核心约束。
+
+**独立测试**：在同一个 stdio 进程内启动两个会话 A 和 B。让 A 调用 `EnterWorktree`，验证 B 的工作目录、`EnterWorktree` 可用性、以及 B 的工具（bash/read/write/glob/grep）解析相对路径的基准目录均不受影响；再让 B 也调用 `EnterWorktree`，验证 B 能独立进入自己的 worktree（不被 A 的状态误拒）；最后让 B 调用 `ExitWorktree`，验证它只操作 B 自己的 worktree，绝不影响 A 的目录或分支。
+
+**验收场景**：
+
+1. **假设** stdio 进程内有并发会话 A 和 B，**当** A 调用 `EnterWorktree` 时，**则** B 的工作目录保持不变，B 的工具仍以 B 自己的工作目录为基准解析路径。
+2. **假设** A 已进入 worktree 会话，**当** B 调用 `EnterWorktree` 时，**则** B 能成功进入自己的 worktree，不会因 A 的 worktree 会话状态而被误拒。
+3. **假设** A 和 B 各自处于自己的 worktree 会话中，**当** B 调用 `ExitWorktree` 时，**则**只有 B 的工作目录被恢复、只有 B 的 worktree 被处理（keep/remove），A 的工作目录、worktree 目录和分支完全不受影响。
+4. **假设** 只有 A 处于 worktree 会话中，**当** B（从未进入 worktree）调用 `ExitWorktree` 时，**则** B 得到无操作结果，A 的 worktree 会话状态不受影响。
+
+---
+
 ### 边界情况
 
 - **当 worktree 目录已存在时会发生什么？** 系统应该报错或询问是否重用。
@@ -138,7 +155,7 @@
 - **FR-002**：如果未提供 `<feat-name>`，系统必须生成唯一的功能名称（例如 `adjective-adjective-noun`）。
 - **FR-003**：系统必须在 `.wave/worktrees/<feat-name>`（绝对路径）创建 git worktree，相对于**主仓库根目录**（即使从 worktree 内运行），从默认远程分支分支。默认分支必须使用文件系统读取（`.git/refs/remotes/origin/HEAD`）而非子进程调用来解析。如果 `origin/HEAD` 指向不再存在的分支（陈旧引用），系统必须回退到从 origin 获取 `refs/heads/HEAD` 并解析结果 SHA。
 - **FR-004**：系统必须将 worktree 分支命名为 `worktree-<feat-name>`。
-- **FR-005**：系统必须调用 `process.chdir()` 到 worktree 路径，以确保进程的工作目录与 worktree 匹配，便于 tmux 和其他窗口复制功能。
+- **FR-005**：CLI 启动时若通过 `-w` 进入 worktree，允许在启动阶段调用一次 `process.chdir()` 到 worktree 路径（便于 tmux 和其他窗口复制功能）。但会话中途通过 `EnterWorktree`/`ExitWorktree` 切换工作目录时，系统不得调用 `process.chdir()`；工作目录的切换必须只作用于当前会话的 DI 容器（见 FR-041）。`AIManager.setWorkdir()` 不得改变进程级 `process.cwd()`。
 - **FR-006**：系统必须在退出时检测 worktree 中的未提交更改（已暂存或未暂存，通过 `git status --porcelain` 识别）。
 - **FR-007**：系统必须在退出时检测 worktree 中不在默认远程分支中的提交（通过 `git log @{u}..HEAD` 识别）。
 - **FR-008**：如果退出时存在未提交的更改或新提交，系统必须显示交互式提示。
@@ -163,9 +180,9 @@
 - **FR-027**：系统必须提供 `EnterWorktree` 工具，创建 git worktree 并将会话的工作目录切换到该处。
 - **FR-028**：`EnterWorktree` 工具必须接受可选的 `name` 参数。如果未提供，必须生成随机名称。
 - **FR-029**：`EnterWorktree` 工具必须验证 worktree 名称以防止路径遍历和无效字符（最多 64 个字符，仅允许字母、数字、点、下划线、短横线和 `/` 用于嵌套）。
-- **FR-030**：如果已在活动 worktree 会话中（模块级状态），`EnterWorktree` 工具必须失败。
+- **FR-030**：如果**当前会话**已在活动 worktree 会话中，`EnterWorktree` 工具必须失败。worktree 会话状态必须按会话（per-Agent）隔离，不得使用进程级模块单例，以免影响同一进程内的其它并发会话（见 FR-042）。
 - **FR-031**：如果不在 git 仓库中，`EnterWorktree` 工具必须失败，并显示建议使用 WorktreeCreate/WorktreeRemove 钩子的错误消息。
-- **FR-032**：`EnterWorktree` 工具必须通过 `AIManager.setWorkdir()` 更新会话的工作目录（更新 DI 容器并调用 `process.chdir()`）。
+- **FR-032**：`EnterWorktree` 工具必须通过 `AIManager.setWorkdir()` 更新**当前会话**的工作目录（仅更新该会话独立的 DI 容器，不调用 `process.chdir()`）。工作目录的更新必须限定在当前会话范围内，不得影响同一 stdio 进程中其它并发会话的工作目录或进程级 `process.cwd()`（见 FR-041）。
 - **FR-033**：系统必须提供 `ExitWorktree` 工具，退出 worktree 会话并恢复原始工作目录。
 - **FR-034**：`ExitWorktree` 工具必须接受必需的 `action` 参数：`"keep"`（保留 worktree）或 `"remove"`（删除 worktree）。
 - **FR-035**：`ExitWorktree` 工具必须接受可选的 `discard_changes` 参数（默认 `false`）。当 `action` 为 `"remove"` 且 worktree 有未提交文件或新提交时，工具必须拒绝，除非 `discard_changes: true`。
@@ -174,6 +191,13 @@
 - **FR-038**：当 `action` 为 `"remove"` 时，系统必须使用 `git worktree remove --force` 删除 worktree 目录，并使用 `git branch -D` 删除关联分支。
 - **FR-039**：`EnterWorktree` 工具不得触发 `WorktreeCreate` 钩子事件（钩子支持不在会话中工具的范围内）。
 - **FR-040**：系统必须验证从 `origin/HEAD` 解析的分支存在于 `refs/remotes/origin/` 中。如果分支不存在（陈旧的 `origin/HEAD`），系统必须尝试 `git fetch origin HEAD` 来解析正确的默认分支。
+
+#### 多会话隔离需求
+
+- **FR-041**：会话的工作目录必须按会话（per-Agent）独立存储与解析。在 stdio 多会话模式下，一个会话通过 `EnterWorktree`/`ExitWorktree` 改变工作目录，不得改变同一进程中其它并发会话的工作目录，也不得改变进程级 `process.cwd()` 以致污染依赖它的其它逻辑（例如 cron、skill 加载、文件搜索、插件核心）。
+- **FR-042**：worktree 会话状态（当前是否处于 worktree、其路径/原始 CWD/分支名）必须按会话隔离存储，不得使用进程级模块单例。一个会话进入 worktree 后，其它会话调用 `EnterWorktree` 不得被误拒，调用 `ExitWorktree` 不得读取到其它会话的 worktree 会话状态。
+- **FR-043**：`ExitWorktree` 工具必须只作用于**发起调用的会话自身**的 worktree 会话。当 `action` 为 `"remove"` 时，只能删除本会话的 worktree 目录与分支，绝不能删除或修改其它会话的 worktree 目录、分支或工作目录。
+- **FR-044**：`ExitWorktree` 的无操作判定（FR-036）必须基于**当前会话**是否处于活动 worktree 会话；当前会话未进入 worktree 时必须返回无操作，即使同一进程中的其它会话正处于 worktree 会话中。
 
 ### 关键实体
 

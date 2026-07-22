@@ -1,18 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { exitWorktreeTool } from "@/tools/exitWorktreeTool.js";
 import type { ToolContext } from "@/tools/types.js";
+import type { WorktreeSession } from "@/utils/worktreeSession.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { Container } from "@/utils/container.js";
-import * as worktreeSession from "@/utils/worktreeSession.js";
 import * as worktreeUtils from "@/utils/worktreeUtils.js";
 
 vi.mock("@/utils/worktreeUtils.js");
-vi.mock("@/utils/worktreeSession.js");
 
 describe("exitWorktreeTool", () => {
   let mockContext: ToolContext;
   let mockSetWorkdir: ReturnType<typeof vi.fn>;
-  const mockSession = {
+  let mockGetWorktreeSession: ReturnType<typeof vi.fn>;
+  let mockSetWorktreeSession: ReturnType<typeof vi.fn>;
+  const mockSession: WorktreeSession = {
     originalCwd: "/original/dir",
     worktreePath: "/repo/.wave/worktrees/test",
     worktreeBranch: "worktree-test",
@@ -26,6 +27,8 @@ describe("exitWorktreeTool", () => {
     vi.resetAllMocks();
 
     mockSetWorkdir = vi.fn();
+    mockGetWorktreeSession = vi.fn().mockReturnValue(null);
+    mockSetWorktreeSession = vi.fn();
 
     mockContext = {
       workdir: "/repo/.wave/worktrees/test",
@@ -33,11 +36,13 @@ describe("exitWorktreeTool", () => {
       aiManager: {
         setWorkdir: mockSetWorkdir,
         getWorkdir: () => "/repo/.wave/worktrees/test",
+        getWorktreeSession: mockGetWorktreeSession,
+        setWorktreeSession: mockSetWorktreeSession,
       } as never,
     };
 
     // Default: no active session (override in specific tests)
-    vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(null);
+    mockGetWorktreeSession.mockReturnValue(null);
   });
 
   it("should have correct tool configuration", () => {
@@ -51,7 +56,7 @@ describe("exitWorktreeTool", () => {
   });
 
   it("should return no-op when no active worktree session", async () => {
-    vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(null);
+    mockGetWorktreeSession.mockReturnValue(null);
 
     const result = await exitWorktreeTool.execute(
       { action: "keep" },
@@ -64,9 +69,7 @@ describe("exitWorktreeTool", () => {
   });
 
   it("should reject if action parameter is missing", async () => {
-    vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
-      mockSession,
-    );
+    mockGetWorktreeSession.mockReturnValue(mockSession);
 
     const result = await exitWorktreeTool.execute({}, mockContext);
 
@@ -76,9 +79,7 @@ describe("exitWorktreeTool", () => {
 
   describe("action: keep", () => {
     beforeEach(() => {
-      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
-        mockSession,
-      );
+      mockGetWorktreeSession.mockReturnValue(mockSession);
     });
 
     it("should restore CWD and preserve worktree", async () => {
@@ -91,18 +92,14 @@ describe("exitWorktreeTool", () => {
       expect(result.content).toContain("Exited worktree");
       expect(result.content).toContain("preserved");
       expect(mockSetWorkdir).toHaveBeenCalledWith("/original/dir");
-      expect(worktreeSession.setCurrentWorktreeSession).toHaveBeenCalledWith(
-        null,
-      );
+      expect(mockSetWorktreeSession).toHaveBeenCalledWith(null);
       expect(worktreeUtils.removeWorktree).not.toHaveBeenCalled();
     });
   });
 
   describe("action: remove", () => {
     beforeEach(() => {
-      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
-        mockSession,
-      );
+      mockGetWorktreeSession.mockReturnValue(mockSession);
     });
 
     it("should refuse removal without discard_changes when worktree is dirty", async () => {
@@ -152,9 +149,7 @@ describe("exitWorktreeTool", () => {
       );
       expect(worktreeUtils.removeWorktree).toHaveBeenCalled();
       expect(mockSetWorkdir).toHaveBeenCalledWith("/original/dir");
-      expect(worktreeSession.setCurrentWorktreeSession).toHaveBeenCalledWith(
-        null,
-      );
+      expect(mockSetWorktreeSession).toHaveBeenCalledWith(null);
     });
 
     it("should proceed with removal when worktree is clean", async () => {
@@ -291,9 +286,12 @@ describe("exitWorktreeTool", () => {
         messageManager: {} as never,
       };
 
-      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
-        mockSession,
-      );
+      vi.mocked(worktreeUtils.countWorktreeChanges).mockReturnValue({
+        changedFiles: 0,
+        commits: 0,
+      });
+
+      mockGetWorktreeSession.mockReturnValue(mockSession);
 
       const result = await exitWorktreeTool.execute(
         { action: "keep" },

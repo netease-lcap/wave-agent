@@ -24,6 +24,7 @@ import {
   Agent,
   AgentCallbacks,
   type ToolPermissionContext,
+  type WorktreeSession,
   OPERATION_CANCELLED_BY_USER,
   extractLatestTotalTokens,
 } from "wave-agent-sdk";
@@ -161,6 +162,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   disallowedTools,
   workdir,
   worktreeSession,
+  originalCwd,
   version,
   model,
   mcpServers,
@@ -478,6 +480,21 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
         agentRef.current = agent;
 
+        // Inject worktree session into this agent's own DI container so system
+        // prompts and permission checks reflect the CLI -w worktree. This state is
+        // per-session, not process-global (see specs/047-worktree.md FR-042).
+        if (worktreeSession) {
+          const session: WorktreeSession = {
+            originalCwd: originalCwd ?? worktreeSession.repoRoot,
+            worktreePath: worktreeSession.path,
+            worktreeBranch: worktreeSession.branch,
+            worktreeName: worktreeSession.name,
+            isNew: worktreeSession.isNew,
+            repoRoot: worktreeSession.repoRoot,
+          };
+          agent.setWorktreeSession(session);
+        }
+
         // Get initial state
         setSessionId(agent.sessionId);
         setMessages(agent.messages);
@@ -513,6 +530,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       disallowedTools,
       workdir,
       worktreeSession,
+      originalCwd,
       model,
       initialPermissionMode,
       throttledSetMessages,

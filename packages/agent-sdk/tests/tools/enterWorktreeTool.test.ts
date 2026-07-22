@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { enterWorktreeTool } from "@/tools/enterWorktreeTool.js";
 import type { ToolContext } from "@/tools/types.js";
+import type { WorktreeSession } from "@/utils/worktreeSession.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { Container } from "@/utils/container.js";
-import * as worktreeSession from "@/utils/worktreeSession.js";
 import * as worktreeUtils from "@/utils/worktreeUtils.js";
 import * as gitUtils from "@/utils/gitUtils.js";
 
@@ -20,16 +20,19 @@ vi.mock("@/utils/worktreeUtils.js", async (importOriginal) => {
     countWorktreeChanges: vi.fn(),
   };
 });
-vi.mock("@/utils/worktreeSession.js");
 
 describe("enterWorktreeTool", () => {
   let mockContext: ToolContext;
   let mockSetWorkdir: ReturnType<typeof vi.fn>;
+  let mockGetWorktreeSession: ReturnType<typeof vi.fn>;
+  let mockSetWorktreeSession: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.resetAllMocks();
 
     mockSetWorkdir = vi.fn();
+    mockGetWorktreeSession = vi.fn().mockReturnValue(null);
+    mockSetWorktreeSession = vi.fn();
 
     mockContext = {
       workdir: "/test/workdir",
@@ -37,12 +40,13 @@ describe("enterWorktreeTool", () => {
       aiManager: {
         setWorkdir: mockSetWorkdir,
         getWorkdir: () => "/test/workdir",
+        getWorktreeSession: mockGetWorktreeSession,
+        setWorktreeSession: mockSetWorktreeSession,
       } as never,
     };
 
     vi.mocked(gitUtils.getGitMainRepoRoot).mockReturnValue("/test/repo");
     vi.mocked(worktreeUtils.getHeadCommit).mockReturnValue("abc123");
-    vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(null);
   });
 
   it("should have correct tool configuration", () => {
@@ -54,14 +58,14 @@ describe("enterWorktreeTool", () => {
   });
 
   it("should reject when already in a worktree session", async () => {
-    vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue({
+    mockGetWorktreeSession.mockReturnValue({
       originalCwd: "/original",
       worktreePath: "/repo/.wave/worktrees/other",
       worktreeBranch: "worktree-other",
       worktreeName: "other",
       isNew: true,
       repoRoot: "/repo",
-    });
+    } satisfies WorktreeSession);
 
     const result = await enterWorktreeTool.execute({}, mockContext);
 
@@ -104,7 +108,13 @@ describe("enterWorktreeTool", () => {
     expect(mockSetWorkdir).toHaveBeenCalledWith(
       "/test/repo/.wave/worktrees/auto-name-123",
     );
-    expect(worktreeSession.setCurrentWorktreeSession).toHaveBeenCalled();
+    expect(mockSetWorktreeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        worktreePath: "/test/repo/.wave/worktrees/auto-name-123",
+        worktreeName: "auto-name-123",
+        worktreeBranch: "worktree-auto-name-123",
+      }),
+    );
   });
 
   it("should create worktree with user-provided name", async () => {
