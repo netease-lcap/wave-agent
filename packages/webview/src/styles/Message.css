@@ -16,10 +16,6 @@
     padding-top: 10px;
 }
 
-.timeline-row:first-child {
-    padding-top: 0;
-}
-
 .timeline-row::before {
     content: "";
     position: absolute;
@@ -30,10 +26,6 @@
     border-radius: 50%;
     background: var(--dot-color, #CCCCCC);
     z-index: 1;
-}
-
-.timeline-row:first-child::before {
-    top: 6px;
 }
 
 /* Continuous timeline line running through every dot of an assistant group
@@ -64,23 +56,14 @@
 }
 
 /* First row of the whole group: line starts at its dot center
-   (dot top 6px + radius 3px = 9px). The group's very first message's first row
-   renders that block as :first-child, so its dot sits at top:6px. */
+   (dot top 15px + radius 3px = 18px). */
 .assistant-group > .message:first-child .timeline-row:first-child::after {
-    top: 9px;
+    top: 18px;
 }
 
 /* Last row of the whole group: line ends at its dot center. */
 .assistant-group > .message:last-child .timeline-row:last-child::after {
     bottom: auto;
-}
-
-/* Cap the last dot: a first-child row's dot sits at top:6px (center 9px);
-   any other row's dot sits at top:15px (center 18px). */
-.assistant-group > .message:last-child .timeline-row:last-child:first-child::after {
-    height: 9px;
-}
-.assistant-group > .message:last-child .timeline-row:last-child:not(:first-child)::after {
     height: 18px;
 }
 
@@ -97,7 +80,6 @@
 
 .message.user {
     color: var(--vscode-foreground);
-    margin-bottom: 8px;
     overflow-wrap: break-word; /* 长词自动换行 */
 }
 
@@ -119,7 +101,6 @@
 .message.user.queued {
     background-color: transparent;
     padding: 0;
-    margin-bottom: 0;
     border-radius: 0;
 }
 
@@ -289,7 +270,6 @@
 
 /* Reasoning blocks */
 .reasoning-block {
-    margin: 8px 0;
     color: var(--vscode-descriptionForeground);
     font-size: 0.9em;
 }
