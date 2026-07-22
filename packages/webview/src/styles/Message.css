@@ -320,10 +320,6 @@
 }
 
 /* Write tool preview */
-.write-tool-preview {
-    margin: 4px 0;
-}
-
 .write-tool-header {
     display: flex;
     align-items: flex-start;
