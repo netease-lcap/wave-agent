@@ -125,9 +125,9 @@ test.describe('Timeline connector geometry demo', () => {
         // Segments abut seamlessly: row1's end ≈ row2's start (tolerance 1px).
         expect(Math.abs(geo.segments[0].segEnd - geo.segments[1].segStart)).toBeLessThanOrEqual(1);
 
-        // First segment starts at the first dot center (dot top 6 + radius 3 = 9px).
+        // First segment starts at the first dot center (dot top 15 + radius 3 = 18px).
         expect(Math.abs(geo.segments[0].segStart - geo.firstDotCenter)).toBeLessThanOrEqual(1);
-        expect(Math.abs(geo.segments[0].segStart - 9)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geo.segments[0].segStart - 18)).toBeLessThanOrEqual(1);
 
         // Last segment ends at the last dot center.
         expect(Math.abs(geo.segments[geo.segments.length - 1].segEnd - geo.lastDotCenter)).toBeLessThanOrEqual(1);
