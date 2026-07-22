@@ -94,6 +94,7 @@ describe("AIManager Plan Mode Prompt", () => {
         mockMessages = [...msgs];
       }),
       finalizeStreamingBlocks: vi.fn(),
+      finalizeAbortedToolBlocks: vi.fn(),
       mergeAssistantAdditionalFields: vi.fn(),
       compactMessagesAndUpdateSession: vi.fn(),
     } as unknown as Mocked<MessageManager>;

@@ -108,6 +108,7 @@ describe("AIManager", () => {
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
       triggerFileRead: vi.fn(),
       finalizeStreamingBlocks: vi.fn(),
+      finalizeAbortedToolBlocks: vi.fn(),
     } as unknown as MessageManager;
 
     // Create mock ToolManager
@@ -445,6 +446,34 @@ describe("AIManager", () => {
       expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
         "AI service error",
       );
+    });
+
+    it("finalizes streaming blocks when AI call fails (abort stops reasoning timer)", async () => {
+      const aiService = await import("../../src/services/aiService.js");
+      vi.spyOn(aiService, "callAgent").mockRejectedValue(
+        new Error("Request was aborted"),
+      );
+
+      await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+      // Streaming blocks must be finalized so the UI stops its in-progress timer.
+      expect(mockMessageManager.finalizeStreamingBlocks).toHaveBeenCalled();
+      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+        "Request was aborted",
+      );
+    });
+
+    it("finalizes aborted tool blocks when AI call fails (abort stops tool spinner)", async () => {
+      const aiService = await import("../../src/services/aiService.js");
+      vi.spyOn(aiService, "callAgent").mockRejectedValue(
+        new Error("Request was aborted"),
+      );
+
+      await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+      // Tool blocks stuck in start/streaming/running must be finalized so the
+      // UI stops showing the yellow "running" spinner.
+      expect(mockMessageManager.finalizeAbortedToolBlocks).toHaveBeenCalled();
     });
 
     it("should log warning and recurse when finish reason is length", async () => {

@@ -72,6 +72,7 @@ function mockMsgManager(overrides = {}) {
     getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
     triggerFileRead: vi.fn(),
     finalizeStreamingBlocks: vi.fn(),
+    finalizeAbortedToolBlocks: vi.fn(),
     addFileHistoryBlock: vi.fn(),
     updateCurrentMessageReasoning: vi.fn(),
     ...overrides,

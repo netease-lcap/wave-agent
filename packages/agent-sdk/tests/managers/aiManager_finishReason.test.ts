@@ -66,6 +66,7 @@ describe("AIManager finish reason", () => {
       compactMessagesAndUpdateSession: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
       finalizeStreamingBlocks: vi.fn(),
+      finalizeAbortedToolBlocks: vi.fn(),
     } as unknown as MessageManager;
 
     // Create mock ToolManager

@@ -1344,6 +1344,16 @@ export class AIManager {
             message: error instanceof Error ? error.message : String(error),
           }).catch(() => {}); // Non-blocking
 
+          // Finalize any streaming text/reasoning blocks so the UI stops ticking
+          // its in-progress timer (e.g. when the request is aborted mid-thought).
+          this.messageManager.finalizeStreamingBlocks();
+
+          // Finalize any tool blocks stuck in start/streaming/running so the UI
+          // stops showing the yellow "running" spinner (e.g. abort mid-tool-stream).
+          this.messageManager.finalizeAbortedToolBlocks(
+            error instanceof Error ? error.message : undefined,
+          );
+
           this.messageManager.addErrorBlock(
             error instanceof Error ? error.message : "Unknown error occurred",
           );
