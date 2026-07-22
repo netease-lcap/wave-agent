@@ -21,11 +21,35 @@ export const ReasoningBlockView: React.FC<ReasoningBlockViewProps> = ({ block, r
     prevStageRef.current = block.stage;
   }, [block.stage]);
 
+  const inProgress = block.stage !== 'end' && typeof block.startTime === 'number';
+  const [now, setNow] = useState(() => Date.now());
+
+  // While reasoning is in progress, tick every second to grow the elapsed counter.
+  useEffect(() => {
+    if (!inProgress) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [inProgress]);
+
+  let title = '思考';
+  if (inProgress) {
+    const seconds = Math.max(0, Math.floor((now - (block.startTime as number)) / 1000));
+    title = `思考中 ${seconds}s`;
+  } else if (
+    block.stage === 'end' &&
+    typeof block.startTime === 'number' &&
+    typeof block.endTime === 'number' &&
+    block.endTime >= block.startTime
+  ) {
+    const seconds = Math.round((block.endTime - block.startTime) / 1000);
+    title = `思考 (用时 ${seconds}s)`;
+  }
+
   return (
     <div className="reasoning-block">
       <div className="reasoning-header" onClick={() => setCollapsed(c => !c)}>
         <span className="reasoning-dot" />
-        <span className="reasoning-title">思考</span>
+        <span className="reasoning-title">{title}</span>
         <QueueChevronIcon className={`reasoning-chevron${collapsed ? '' : ' expanded'}`} />
       </div>
       {!collapsed && (

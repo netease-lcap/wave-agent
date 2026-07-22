@@ -95,6 +95,8 @@ export interface ReasoningBlock {
   type: "reasoning";
   content: string;
   stage?: "streaming" | "end";
+  startTime?: number; // Unix ms, set when the first reasoning content arrives
+  endTime?: number; // Unix ms, set when stage transitions to "end"
 }
 
 export interface FileHistoryBlock {

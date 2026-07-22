@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -73,5 +73,72 @@ describe('ReasoningBlockView', () => {
             await user.click(container.querySelector('.reasoning-header') as HTMLElement);
         });
         expect(container.querySelector('.reasoning-content')).toHaveTextContent('details');
+    });
+
+    describe('elapsed time', () => {
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('shows final elapsed time when finished with start/end times', () => {
+            const block = {
+                type: 'reasoning',
+                content: 'done',
+                stage: 'end',
+                startTime: 1000,
+                endTime: 16000,
+            } as ReasoningBlock;
+            const { container } = render(<ReasoningBlockView block={block} renderContent={renderContent} />);
+
+            expect(container.querySelector('.reasoning-title')).toHaveTextContent('思考 (用时 15s)');
+        });
+
+        it('shows only 思考 when startTime is missing', () => {
+            const block = {
+                type: 'reasoning',
+                content: 'done',
+                stage: 'end',
+                endTime: 16000,
+            } as ReasoningBlock;
+            const { container } = render(<ReasoningBlockView block={block} renderContent={renderContent} />);
+
+            const title = container.querySelector('.reasoning-title') as HTMLElement;
+            expect(title).toHaveTextContent('思考');
+            expect(title.textContent).not.toContain('用时');
+        });
+
+        it('shows only 思考 when endTime is earlier than startTime', () => {
+            const block = {
+                type: 'reasoning',
+                content: 'done',
+                stage: 'end',
+                startTime: 16000,
+                endTime: 1000,
+            } as ReasoningBlock;
+            const { container } = render(<ReasoningBlockView block={block} renderContent={renderContent} />);
+
+            const title = container.querySelector('.reasoning-title') as HTMLElement;
+            expect(title).toHaveTextContent('思考');
+            expect(title.textContent).not.toContain('用时');
+        });
+
+        it('shows a growing 思考中 counter while in progress', () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(1000);
+            const block = {
+                type: 'reasoning',
+                content: 'live',
+                stage: 'streaming',
+                startTime: 1000,
+            } as ReasoningBlock;
+            const { container } = render(<ReasoningBlockView block={block} renderContent={renderContent} />);
+
+            expect(container.querySelector('.reasoning-title')).toHaveTextContent('思考中 0s');
+
+            act(() => {
+                vi.advanceTimersByTime(3000);
+            });
+            expect(container.querySelector('.reasoning-title')).toHaveTextContent('思考中 3s');
+        });
     });
 });
