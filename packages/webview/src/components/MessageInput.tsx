@@ -5,7 +5,7 @@ import { Tooltip } from './Tooltip';
 import ReactDOM from 'react-dom/client';
 import type { MessageInputProps, FileItem, SlashCommand, AttachedImage, PermissionMode } from '../types';
 import { FileSuggestionDropdown } from './FileSuggestionDropdown';
-import { SlashCommandsPopup } from './SlashCommandsPopup';
+import { SlashCommandsPopup, orderSlashCommands } from './SlashCommandsPopup';
 import { HistorySearchPopup } from './HistorySearchPopup';
 import {
   PlusIcon,
@@ -883,8 +883,11 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       return;
     }
 
-    // Handle 指令 navigation
+    // Handle 指令 navigation. Navigate over the display-ordered list so the
+    // highlighted item, up/down movement, and Enter selection all match the
+    // grouped order shown in the popup.
     if (slashCommand.isActive && slashCommands.length > 0) {
+      const orderedCommands = orderSlashCommands(slashCommands);
       switch (event.key) {
         case 'ArrowUp':
           event.preventDefault();
@@ -892,13 +895,13 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
           return;
         case 'ArrowDown':
           event.preventDefault();
-          setSelectedSlashIndex((prev: number) => Math.min(slashCommands.length - 1, prev + 1));
+          setSelectedSlashIndex((prev: number) => Math.min(orderedCommands.length - 1, prev + 1));
           return;
         case 'Tab':
         case 'Enter':
           event.preventDefault();
-          if (slashCommands[selectedSlashIndex]) {
-            handleSlashCommandSelect(slashCommands[selectedSlashIndex]);
+          if (orderedCommands[selectedSlashIndex]) {
+            handleSlashCommandSelect(orderedCommands[selectedSlashIndex]);
           }
           return;
         case 'Escape':

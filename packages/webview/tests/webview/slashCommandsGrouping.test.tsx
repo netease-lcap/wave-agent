@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { SlashCommandsPopup } from '../../src/components/SlashCommandsPopup';
+import { SlashCommandsPopup, orderSlashCommands } from '../../src/components/SlashCommandsPopup';
 
 // Component imports its CSS directly; stub it so jsdom doesn't need to parse styles.
 vi.mock('../../src/styles/SlashCommandsPopup.css', () => ({}));
@@ -101,6 +101,23 @@ describe('SlashCommandsPopup grouping', () => {
         expect(screen.getByText('技能', { selector: '.slash-group-title' })).toBeInTheDocument();
     });
 
+    it('selectedIndex follows display (grouped) order, not the raw backend array order', () => {
+        // Backend array is NOT in group order: a skill sits at raw index 0.
+        // Display order is: 0 plugin(插件管理), 1 config(系统指令), 2 code-review(技能),
+        //                   3 loop(技能). selectedIndex must index into THAT order.
+        const commands: Command[] = [
+            { id: 'code-review', name: 'code-review', description: '代码审查' },
+            { id: 'config', name: 'config', description: '配置' },
+            { id: 'plugin', name: 'plugin', description: '插件管理' },
+            { id: 'loop', name: 'loop', description: '循环技能' }
+        ];
+
+        // selectedIndex 0 = first display item = plugin (插件管理), NOT code-review.
+        renderPopup(commands, 0);
+        expect(screen.getByTestId('slash-command-plugin')).toHaveClass('selected');
+        expect(screen.getByTestId('slash-command-code-review')).not.toHaveClass('selected');
+    });
+
     it('applies .selected to the item at the flat selectedIndex, including across groups', () => {
         // Flat order: 0 plugin(插件管理), 1 config(系统指令), 2 mcp(系统指令),
         //             3 settings(技能), 4 loop(技能)
@@ -115,7 +132,7 @@ describe('SlashCommandsPopup grouping', () => {
         const { container } = renderPopup(commands, 3);
 
         const selected = container.querySelectorAll('.slash-command-item.selected');
-        // Exactly one selected item, and it is the 4th command (settings) in the flat array.
+        // Exactly one selected item, and it is the 4th command (settings) in display order.
         expect(selected).toHaveLength(1);
         expect(selected[0]).toBe(screen.getByTestId('slash-command-settings'));
     });
@@ -144,5 +161,23 @@ describe('SlashCommandsPopup grouping', () => {
         const item = screen.getByTestId('slash-command-settings');
         expect(within(item).getByText('/settings', { selector: '.slash-command-name' })).toBeInTheDocument();
         expect(within(item).getByText('打开设置', { selector: '.slash-command-description' })).toBeInTheDocument();
+    });
+});
+
+describe('orderSlashCommands', () => {
+    it('reorders a raw backend list into 插件管理 -> 系统指令 -> 技能 display order', () => {
+        const commands: Command[] = [
+            { id: 'code-review', name: 'code-review', description: '代码审查' },
+            { id: 'config', name: 'config', description: '配置' },
+            { id: 'plugin', name: 'plugin', description: '插件管理' },
+            { id: 'loop', name: 'loop', description: '循环技能' }
+        ];
+
+        expect(orderSlashCommands(commands).map((c) => c.id)).toEqual([
+            'plugin',
+            'config',
+            'code-review',
+            'loop'
+        ]);
     });
 });
