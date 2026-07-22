@@ -40,7 +40,9 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({ toolBlock, v
         <div className="write-tool-stats">{toolBlock.shortResult}</div>
       )}
       <div className="write-preview-box">
-        <pre className="write-preview-content">{content}</pre>
+        <div className="write-preview-scroll">
+          <pre className="write-preview-content">{content}</pre>
+        </div>
         <div className="write-preview-scrim" />
         <button
           className="write-preview-open"
