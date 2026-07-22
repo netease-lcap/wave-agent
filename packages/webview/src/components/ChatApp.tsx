@@ -2,7 +2,6 @@ import React, { useEffect, useReducer, useCallback, useRef, useState } from 'rea
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { ChatHeader } from './ChatHeader';
-import { TaskList } from './TaskList';
 import { QueuedMessageList } from './QueuedMessageList';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import ConfigDialog from './ConfigDialog';
@@ -354,23 +353,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
     dispatch({ type: 'HIDE_DIALOG' });
   }, []);
 
-  const handleToggleTaskList = useCallback(() => {
-    dispatch({ type: 'TOGGLE_TASK_LIST_COLLAPSE' });
-  }, []);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 't') {
-        e.preventDefault();
-        e.stopPropagation();
-        handleToggleTaskList();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleTaskList]);
-
   // Simple streaming message detection
   const streamingMessageIndex = state.isStreaming && state.messages.length > 0 
     ? state.messages.length - 1 
@@ -485,17 +467,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           streamingMessageIndex={streamingMessageIndex}
           vscode={vscode}
           onRewindToMessage={handleRewindToMessage}
+          tasks={state.tasks}
+          isTaskListCollapsed={state.isTaskListCollapsed}
+          onToggleTaskListCollapse={() => dispatch({ type: 'TOGGLE_TASK_LIST_COLLAPSE' })}
         />
       )}
 
       <div className="input-area-container">
-        <TaskList
-          tasks={state.tasks}
-          isVisible={state.isTaskListVisible}
-          isCollapsed={state.isTaskListCollapsed}
-          onToggleCollapse={() => dispatch({ type: 'TOGGLE_TASK_LIST_COLLAPSE' })}
-        />
-
         <QueuedMessageList
           queuedMessages={state.queuedMessages}
           isCollapsed={state.isQueueCollapsed}
@@ -523,8 +501,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
             inputContent={state.inputContent}
             permissionMode={state.permissionMode}
             initialAttachedImages={state.attachedImages}
-            isTaskListVisible={state.isTaskListVisible && state.tasks.length > 0}
-            onToggleTaskList={handleToggleTaskList}
           />
         </div>
 

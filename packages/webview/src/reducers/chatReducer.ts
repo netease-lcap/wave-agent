@@ -3,7 +3,6 @@ import type { ChatState, ChatAction, MessageBlock, TextBlock, ToolBlock, ErrorBl
 export const initialState: ChatState = {
   messages: [],
   tasks: [],
-  isTaskListVisible: false,
   isTaskListCollapsed: false,
   isQueueCollapsed: true,
   editingQueuedId: null,
@@ -39,8 +38,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         tasks: action.payload,
-        // Show task list if there are tasks
-        isTaskListVisible: action.payload.length > 0,
         // Auto-expand task list when tasks are first created
         isTaskListCollapsed: state.tasks.length === 0 && action.payload.length > 0 ? false : state.isTaskListCollapsed
       };
@@ -141,7 +138,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         messages: action.payload.messages,
         tasks: action.payload.tasks || [],
-        isTaskListVisible: (action.payload.tasks && action.payload.tasks.length > 0) ? true : false,
         isTaskListCollapsed: action.payload.isTaskListCollapsed !== undefined ? action.payload.isTaskListCollapsed : state.isTaskListCollapsed,
         isStreaming: action.payload.isStreaming !== undefined ? action.payload.isStreaming : state.isStreaming,
         isCommandRunning: action.payload.isCommandRunning !== undefined ? action.payload.isCommandRunning : state.isCommandRunning,
