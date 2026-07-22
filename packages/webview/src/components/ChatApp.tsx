@@ -451,6 +451,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         onClearChat={handleClearChat}
         onAbortMessage={handleAbortMessage}
         isStreaming={state.isStreaming}
+        messages={state.messages}
         sessions={state.sessions}
         currentSession={state.currentSession}
         onSessionSelect={handleSessionSelect}

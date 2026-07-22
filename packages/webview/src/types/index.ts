@@ -209,6 +209,7 @@ export interface ChatHeaderProps {
   onClearChat: () => void;
   onAbortMessage: () => void;
   isStreaming: boolean;
+  messages: Message[];
   sessions: SessionMetadata[];
   currentSession?: SessionMetadata;
   onSessionSelect: (sessionId: string) => void;
