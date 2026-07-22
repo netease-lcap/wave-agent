@@ -10,6 +10,8 @@ export interface BaseAppProps {
   disallowedTools?: string[];
   worktreeSession?: WorktreeSession;
   workdir?: string;
+  /** The working directory before entering a worktree (CLI -w); injected into the agent's container. */
+  originalCwd?: string;
   version?: string;
   model?: string;
   /** Optional MCP server configs to pass to Agent.create() */

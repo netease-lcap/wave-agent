@@ -22,6 +22,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     disallowedTools,
     worktreeSession,
     workdir,
+    originalCwd,
     version,
     model,
     mcpServers,
@@ -48,6 +49,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       disallowedTools={disallowedTools}
       worktreeSession={worktreeSession}
       workdir={workdir}
+      originalCwd={originalCwd}
       version={version}
       model={model}
       mcpServers={mcpServers}

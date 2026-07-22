@@ -1,9 +1,11 @@
 /**
- * Module-level worktree session state tracking.
- * Analogous to Claude Code's currentWorktreeSession in worktree.ts.
+ * Worktree session state tracking.
  *
- * Tracks whether the current session entered a worktree via EnterWorktree tool,
- * so ExitWorktree can validate scope and restore the original CWD.
+ * The session state is stored per-agent in each session's DI container (see the
+ * "WorktreeSession" container slot registered in containerSetup.ts and accessed via
+ * AIManager.getWorktreeSession()/setWorktreeSession()). This keeps worktree state
+ * isolated per session in stdio multi-agent mode — a process-level singleton would
+ * leak state across concurrent sessions (see specs/047-worktree.md FR-042).
  */
 
 export interface WorktreeSession {
@@ -21,16 +23,4 @@ export interface WorktreeSession {
   repoRoot: string;
   /** The HEAD commit of the original branch at worktree creation time */
   originalHeadCommit?: string;
-}
-
-let currentWorktreeSession: WorktreeSession | null = null;
-
-export function getCurrentWorktreeSession(): WorktreeSession | null {
-  return currentWorktreeSession;
-}
-
-export function setCurrentWorktreeSession(
-  session: WorktreeSession | null,
-): void {
-  currentWorktreeSession = session;
 }

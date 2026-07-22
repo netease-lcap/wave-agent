@@ -88,6 +88,10 @@ export function setupAgentContainer(
     container.register("MainRepoRoot", getGitMainRepoRoot(workdir));
   }
 
+  // Per-agent worktree session state (EnterWorktree/ExitWorktree). Stored in the
+  // container so it is isolated per session, not shared process-wide.
+  container.register("WorktreeSession", null);
+
   const notificationQueue = new NotificationQueue();
   container.register("NotificationQueue", notificationQueue);
 

@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import { ToolPlugin } from "../tools/types.js";
 import { isGitRepository } from "../utils/gitUtils.js";
-import { getCurrentWorktreeSession } from "../utils/worktreeSession.js";
+import type { WorktreeSession } from "../utils/worktreeSession.js";
 import { buildAutoMemoryPrompt } from "./autoMemory.js";
 import {
   EXPLORE_SUBAGENT_TYPE,
@@ -252,6 +252,7 @@ export function buildSystemPrompt(
     originalWorkdir?: string;
     language?: string;
     isSubagent?: boolean;
+    worktreeSession?: WorktreeSession | null;
     autoMemory?: {
       directory: string;
       content: string;
@@ -292,7 +293,7 @@ export function buildSystemPrompt(
         ? "bash"
         : shell;
 
-    const worktreeSession = getCurrentWorktreeSession();
+    const worktreeSession = options.worktreeSession;
 
     dynamicText += `
 
@@ -326,6 +327,7 @@ export function enhanceSystemPromptWithEnvDetails(
   existingSystemPrompt: string,
   workdir: string,
   originalWorkdir?: string,
+  worktreeSession?: WorktreeSession | null,
 ): string {
   const isGitRepo = isGitRepository(workdir);
   const platform = os.platform();
@@ -337,8 +339,6 @@ export function enhanceSystemPromptWithEnvDetails(
     : shell.includes("bash")
       ? "bash"
       : shell;
-
-  const worktreeSession = getCurrentWorktreeSession();
 
   const notes = `Notes:
 - Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.${worktreeSession ? `\n- You are in a git worktree at ${worktreeSession.worktreePath} (branch: ${worktreeSession.worktreeBranch}). Absolute paths from prior context may refer to the original repo at ${worktreeSession.originalCwd}; translate them to your worktree. Do NOT edit files outside this worktree.` : ""}

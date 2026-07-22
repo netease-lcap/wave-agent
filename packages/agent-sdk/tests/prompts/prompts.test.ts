@@ -7,16 +7,24 @@ import {
 } from "../../src/prompts/index.js";
 import * as os from "node:os";
 import { isGitRepository } from "../../src/utils/gitUtils.js";
-import * as worktreeSession from "../../src/utils/worktreeSession.js";
+import type { WorktreeSession } from "../../src/utils/worktreeSession.js";
 
 vi.mock("node:os");
 vi.mock("../../src/utils/gitUtils.js");
-vi.mock("../../src/utils/worktreeSession.js");
 
 /** Flatten SystemPromptBlock[] into a single string for string-based assertions */
 function flattenBlocks(blocks: SystemPromptBlock[]): string {
   return blocks.map((b) => b.text).join("\n\n");
 }
+
+const worktreeSessionActive: WorktreeSession = {
+  originalCwd: "/original/repo",
+  worktreePath: "/original/repo/.wave/worktrees/test-feature",
+  worktreeBranch: "wave-test-feature",
+  worktreeName: "test-feature",
+  isNew: true,
+  repoRoot: "/original/repo",
+};
 
 describe("prompts", () => {
   afterEach(() => {
@@ -216,18 +224,10 @@ describe("prompts", () => {
     });
 
     it("should include worktree warning when worktree session is active", () => {
-      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue({
-        originalCwd: "/original/repo",
-        worktreePath: "/original/repo/.wave/worktrees/test-feature",
-        worktreeBranch: "wave-test-feature",
-        worktreeName: "test-feature",
-        isNew: true,
-        repoRoot: "/original/repo",
-      });
-
       const result = flattenBlocks(
         buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
           workdir: "/original/repo/.wave/worktrees/test-feature",
+          worktreeSession: worktreeSessionActive,
         }),
       );
 
@@ -238,10 +238,6 @@ describe("prompts", () => {
     });
 
     it("should not include worktree warning when no worktree session", () => {
-      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
-        null,
-      );
-
       const result = flattenBlocks(
         buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
           workdir: "/some/path",
@@ -325,18 +321,18 @@ describe("prompts", () => {
 
   describe("enhanceSystemPromptWithEnvDetails worktree", () => {
     it("should include worktree warning in enhanceSystemPromptWithEnvDetails", () => {
-      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue({
-        originalCwd: "/original/repo",
-        worktreePath: "/original/repo/.wave/worktrees/fix-bug",
-        worktreeBranch: "wave-fix-bug",
-        worktreeName: "fix-bug",
-        isNew: true,
-        repoRoot: "/original/repo",
-      });
-
       const result = enhanceSystemPromptWithEnvDetails(
         "Existing Prompt",
         "/original/repo/.wave/worktrees/fix-bug",
+        undefined,
+        {
+          originalCwd: "/original/repo",
+          worktreePath: "/original/repo/.wave/worktrees/fix-bug",
+          worktreeBranch: "wave-fix-bug",
+          worktreeName: "fix-bug",
+          isNew: true,
+          repoRoot: "/original/repo",
+        },
       );
 
       expect(result).toContain("This is a git worktree");
@@ -350,10 +346,6 @@ describe("prompts", () => {
     });
 
     it("should not include worktree warning when no session in enhanceSystemPromptWithEnvDetails", () => {
-      vi.mocked(worktreeSession.getCurrentWorktreeSession).mockReturnValue(
-        null,
-      );
-
       const result = enhanceSystemPromptWithEnvDetails(
         "Existing Prompt",
         "/some/path",

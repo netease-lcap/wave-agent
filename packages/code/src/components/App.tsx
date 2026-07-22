@@ -98,6 +98,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   disallowedTools,
   worktreeSession,
   workdir,
+  originalCwd,
   version,
   model,
   mcpServers,
@@ -123,6 +124,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
         disallowedTools={disallowedTools}
         workdir={workdir}
         worktreeSession={worktreeSession}
+        originalCwd={originalCwd}
         version={version}
         model={model}
         mcpServers={mcpServers}
@@ -142,6 +144,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       disallowedTools={disallowedTools}
       workdir={workdir}
       worktreeSession={worktreeSession}
+      originalCwd={originalCwd}
       version={version}
       model={model}
       mcpServers={mcpServers}
@@ -162,6 +165,7 @@ export const App: React.FC<AppProps> = ({
   disallowedTools,
   worktreeSession,
   workdir,
+  originalCwd,
   version,
   model,
   mcpServers,
@@ -181,6 +185,7 @@ export const App: React.FC<AppProps> = ({
         disallowedTools={disallowedTools}
         worktreeSession={worktreeSession}
         workdir={workdir}
+        originalCwd={originalCwd}
         version={version}
         model={model}
         mcpServers={mcpServers}

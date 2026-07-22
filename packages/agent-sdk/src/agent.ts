@@ -42,6 +42,7 @@ import { TaskManager } from "./services/taskManager.js";
 import { btw } from "./services/aiService.js";
 import { convertMessagesForAPI } from "./utils/convertMessagesForAPI.js";
 import { supportsVision } from "./utils/modelCapabilities.js";
+import type { WorktreeSession } from "./utils/worktreeSession.js";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { InitializationService } from "./services/initializationService.js";
 import { InteractionService } from "./services/interactionService.js";
@@ -296,6 +297,15 @@ export class Agent {
     this.workdir = newCwd;
     this.container.register("Workdir", newCwd);
     this.options.callbacks?.onWorkdirChange?.(newCwd);
+  }
+
+  /**
+   * Set this session's worktree session state (used by CLI -w startup to inject the
+   * session created before the agent existed). Delegates to AIManager so the state is
+   * stored in this agent's own DI container.
+   */
+  public setWorktreeSession(session: WorktreeSession | null): void {
+    this.aiManager.setWorktreeSession(session);
   }
 
   /** Get project memory content */

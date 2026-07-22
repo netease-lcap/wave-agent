@@ -4,11 +4,7 @@
  */
 
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
-import {
-  getCurrentWorktreeSession,
-  setCurrentWorktreeSession,
-  type WorktreeSession,
-} from "../utils/worktreeSession.js";
+import { type WorktreeSession } from "../utils/worktreeSession.js";
 import {
   createWorktree,
   validateWorktreeName,
@@ -72,7 +68,7 @@ export const enterWorktreeTool: ToolPlugin = {
     context: ToolContext,
   ): Promise<ToolResult> {
     // Validate not already in a worktree created by this session
-    if (getCurrentWorktreeSession()) {
+    if (context.aiManager?.getWorktreeSession()) {
       return {
         success: false,
         content:
@@ -119,18 +115,12 @@ export const enterWorktreeTool: ToolPlugin = {
       originalHeadCommit: worktreeInfo.originalHeadCommit,
     };
 
-    // Set module-level session state
-    setCurrentWorktreeSession(session);
-
-    // Update CWD via AIManager
+    // Set per-session worktree state and update CWD via AIManager
     const aiManager = context.aiManager;
     if (aiManager) {
+      aiManager.setWorktreeSession(session);
       aiManager.setWorkdir(worktreeInfo.path);
     }
-
-    // Also update the container's Workdir entry
-    // (Container is not directly accessible from ToolContext, but AIManager.setWorkdir
-    // handles both its internal field and process.chdir)
 
     // Trigger WorktreeCreate hook if worktree is new
     let hookTriggered = false;
