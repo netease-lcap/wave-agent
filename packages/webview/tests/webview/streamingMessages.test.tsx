@@ -158,15 +158,15 @@ describe('Streaming Messages', () => {
             }]
         });
 
-        expect(getMessages()).toHaveLength(2); // Welcome (hardcoded) + completed message
+        expect(getMessages()).toHaveLength(1); // completed message
         // No abort button visible (not streaming)
         expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
 
         // Now start streaming
         sendCommand('startStreaming');
 
-        // Should still have 2 messages (streaming doesn't add a message until content arrives)
-        expect(getMessages()).toHaveLength(2); // Welcome + completed (no streaming message yet)
+        // Should still have 1 message (streaming doesn't add a message until content arrives)
+        expect(getMessages()).toHaveLength(1); // completed (no streaming message yet)
         expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Update streaming content by sending new message set
@@ -184,10 +184,10 @@ describe('Streaming Messages', () => {
             }]
         });
 
-        // Verify we now have all three types
-        expect(getMessages()).toHaveLength(3); // welcome + completed + streaming
+        // Verify we now have both messages
+        expect(getMessages()).toHaveLength(2); // completed + streaming
         expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
-        expect(getMessages()[1]).toHaveTextContent('This is a completed message'); // Completed message (index 1, after welcome)
+        expect(getMessages()[0]).toHaveTextContent('This is a completed message'); // Completed message
         expect(getLastMessage()).toHaveTextContent('This is streaming content'); // Streaming message
 
         // End streaming

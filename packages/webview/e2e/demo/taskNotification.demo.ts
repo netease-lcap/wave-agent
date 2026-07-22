@@ -8,6 +8,14 @@ test.describe('Task Notification Demo', () => {
 
     const mockMessages: Message[] = [
       {
+        id: 'msg_user_notify',
+        role: 'user' as const,
+        timestamp: '2025-07-09T10:29:00.000Z',
+        blocks: [
+          { type: 'text' as const, content: '帮我在后台构建 Docker 镜像、跑代码审查子代理，并部署到 K8s' }
+        ]
+      },
+      {
         id: 'msg_notify_completed',
         role: 'assistant' as const,
         timestamp: '2025-07-09T10:30:00.000Z',
@@ -52,6 +60,20 @@ test.describe('Task Notification Demo', () => {
         ]
       }
     ];
+
+    await injector.simulateExtensionMessage('setInitialState', {
+      isAuthenticated: true,
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      configurationData: {
+        apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+        baseURL: 'https://api.anthropic.com/v1',
+        model: 'claude-sonnet-4-20250514',
+        fastModel: 'claude-haiku-4-20250514'
+      },
+      permissionMode: 'default'
+    });
 
     await injector.updateMessages(mockMessages);
 

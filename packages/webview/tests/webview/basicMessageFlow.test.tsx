@@ -66,14 +66,14 @@ describe('Basic Message Flow', () => {
 
         // Verify both messages are displayed
         await waitFor(() => {
-            expect(getMessages()).toHaveLength(3); // Welcome + user + assistant
+            expect(getMessages()).toHaveLength(2); // user + assistant
         });
-        expect(getMessages()[1]).toHaveTextContent('Hello, can you help me?');
-        expect(getMessages()[2]).toHaveTextContent(/Yes, I can help you/);
+        expect(getMessages()[0]).toHaveTextContent('Hello, can you help me?');
+        expect(getMessages()[1]).toHaveTextContent(/Yes, I can help you/);
 
         // Verify message roles
-        expect(getMessages()[1].classList.contains('user')).toBe(true);
-        expect(getMessages()[2].classList.contains('user')).toBe(false);
+        expect(getMessages()[0].classList.contains('user')).toBe(true);
+        expect(getMessages()[1].classList.contains('user')).toBe(false);
 
         // After response, input should be re-enabled
         expect(input.textContent).toBe('');
@@ -87,13 +87,13 @@ describe('Basic Message Flow', () => {
         sendCommand('updateMessages', { messages: conversation });
 
         // Verify all messages are displayed
-        expect(getMessages()).toHaveLength(5); // Welcome + 4 conversation messages
+        expect(getMessages()).toHaveLength(4); // 4 conversation messages
 
         // Verify the conversation flow
-        expect(getMessages()[1]).toHaveTextContent(/Hello, can you help me/);
-        expect(getMessages()[2]).toHaveTextContent(/I'd be happy to help/);
-        expect(getMessages()[3]).toHaveTextContent(/Can you read the package.json/);
-        expect(getMessages()[4]).toHaveTextContent(/I'll read the package.json/);
+        expect(getMessages()[0]).toHaveTextContent(/Hello, can you help me/);
+        expect(getMessages()[1]).toHaveTextContent(/I'd be happy to help/);
+        expect(getMessages()[2]).toHaveTextContent(/Can you read the package.json/);
+        expect(getMessages()[3]).toHaveTextContent(/I'll read the package.json/);
     });
 
     it('should maintain input functionality after messages', async () => {

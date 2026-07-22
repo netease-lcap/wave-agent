@@ -213,7 +213,7 @@ describe('Session Management', () => {
         expect(screen.getByTestId('chat-header')).toHaveTextContent('Original session');
 
         const messages = document.querySelectorAll('.messages-container .message');
-        expect(messages.length).toBe(3); // Welcome + 2 conversation messages
+        expect(messages.length).toBe(2); // 2 conversation messages
 
         // Clear message log to track clear chat command
         vscode.postMessage.mockClear();

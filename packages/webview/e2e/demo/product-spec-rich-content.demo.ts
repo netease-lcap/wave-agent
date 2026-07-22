@@ -198,6 +198,7 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
         await injector.simulateExtensionMessage('setInitialState', {
             isAuthenticated: true,
             messages: [
+                MockDataGenerator.createUserMessage('帮我分析 PaymentService 在高并发下的性能问题，给个重构方案', 'msg_user_reasoning'),
                 {
                     id: 'msg_demo_reasoning',
                     role: 'assistant',

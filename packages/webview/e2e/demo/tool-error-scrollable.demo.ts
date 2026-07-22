@@ -9,6 +9,7 @@ test.describe('Tool Error Scrollable Demo', () => {
         await webviewPage.setViewportSize({ width: 400, height: 800 });
 
         await injector.simulateExtensionMessage('setInitialState', {
+            isAuthenticated: true,
             messages: [],
             isStreaming: false,
             sessions: [],
@@ -38,7 +39,16 @@ test.describe('Tool Error Scrollable Demo', () => {
             ]
         };
 
-        await injector.updateMessages([messageWithLongError as unknown as Message]);
+        const userMessage = {
+            id: 'msg_user_tool_error',
+            role: 'user',
+            timestamp: '2025-07-09T10:29:00.000Z',
+            blocks: [
+                { type: 'text', content: '帮我构建一下 payment-service 这个包' }
+            ]
+        };
+
+        await injector.updateMessages([userMessage as unknown as Message, messageWithLongError as unknown as Message]);
         await webviewPage.waitForSelector('.tool-error');
         
         // Check if the error is displayed and has max-height
@@ -61,6 +71,7 @@ test.describe('Tool Error Scrollable Demo', () => {
         await webviewPage.setViewportSize({ width: 400, height: 800 });
 
         await injector.simulateExtensionMessage('setInitialState', {
+            isAuthenticated: true,
             messages: [],
             isStreaming: false,
             sessions: [],
@@ -85,7 +96,16 @@ test.describe('Tool Error Scrollable Demo', () => {
             ]
         };
 
-        await injector.updateMessages([messageWithLongError as unknown as Message]);
+        const userMessage = {
+            id: 'msg_user_error_block',
+            role: 'user',
+            timestamp: '2025-07-09T10:29:00.000Z',
+            blocks: [
+                { type: 'text', content: '运行下打包命令看看' }
+            ]
+        };
+
+        await injector.updateMessages([userMessage as unknown as Message, messageWithLongError as unknown as Message]);
         await webviewPage.waitForSelector('.message-content.error');
         
         // Check if the error is displayed and has max-height

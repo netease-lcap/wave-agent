@@ -54,7 +54,8 @@ test.describe('Product Specification Screenshots - Tools', () => {
                 }
             ]
         };
-        await injector.updateMessages([diffMessage]);
+        const diffUserMessage = MockDataGenerator.createUserMessage('把 PaymentService 里的 SQL 查询改成参数化写法，防止注入', 'msg_user_diff');
+        await injector.updateMessages([diffUserMessage, diffMessage]);
         await webviewPage.waitForSelector('.tool-container');
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-diff-viewer.png' });
 
@@ -108,7 +109,8 @@ test.describe('Product Specification Screenshots - Tools', () => {
                 }
             ]
         };
-        await injector.updateMessages([subagentMessage]);
+        const subagentUserMessage = MockDataGenerator.createUserMessage('帮我查一下项目里所有支付相关的 API 定义在哪', 'msg_user_subagent');
+        await injector.updateMessages([subagentUserMessage, subagentMessage]);
         
         await webviewPage.waitForSelector('.tool-container');
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-subagent.png' });
@@ -129,7 +131,8 @@ test.describe('Product Specification Screenshots - Tools', () => {
                 }
             ]
         };
-        await injector.updateMessages([bashMessage]);
+        const bashUserMessage = MockDataGenerator.createUserMessage('跑一下测试套件，顺便生成覆盖率报告', 'msg_user_bash');
+        await injector.updateMessages([bashUserMessage, bashMessage]);
         await webviewPage.waitForSelector('.bash-command-unified');
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-bash.png' });
 
@@ -179,7 +182,8 @@ test.describe('Product Specification Screenshots - Tools', () => {
                 ]
             }
         ];
-        await injector.updateMessages(explorationMessages as unknown as Message[]);
+        const explorationUserMessage = MockDataGenerator.createUserMessage('梳理一下 src/services 下的支付服务代码结构和接口定义', 'msg_user_exploration');
+        await injector.updateMessages([explorationUserMessage, ...explorationMessages] as unknown as Message[]);
         await webviewPage.waitForSelector('.tool-container');
         await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-exploration.png' });
 
@@ -229,13 +233,15 @@ export const withOptimisticLock = async <T>(
                 ]
             }
         ];
-        await injector.updateMessages(fileOpMessages);
+        const fileOpUserMessage = MockDataGenerator.createUserMessage('新建一个乐观锁中间件，并给 processPayment 补上类型签名', 'msg_user_file_ops');
+        await injector.updateMessages([fileOpUserMessage, ...fileOpMessages]);
         await webviewPage.waitForSelector('.write-preview-box');
         await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-file-ops.png' });
 
         // 24. LSP
         await injector.simulateExtensionMessage('setInitialState', {
             messages: [
+                MockDataGenerator.createUserMessage('分析 PaymentService 里 findById 的定义、引用和调用方', 'msg_user_lsp'),
                 {
                     id: 'msg_demo_lsp',
                     role: 'assistant',
@@ -281,6 +287,7 @@ export const withOptimisticLock = async <T>(
         // 25. Skill
         await injector.simulateExtensionMessage('setInitialState', {
             messages: [
+                MockDataGenerator.createUserMessage('帮我调研一下主流支付网关的方案对比', 'msg_user_skill'),
                 {
                     id: 'msg_demo_skill',
                     role: 'assistant',
@@ -303,6 +310,7 @@ export const withOptimisticLock = async <T>(
         // 26. MCP
         await injector.simulateExtensionMessage('setInitialState', {
             messages: [
+                MockDataGenerator.createUserMessage('帮我在 Jira 里查一下进行中的支付相关需求', 'msg_user_mcp'),
                 MockDataGenerator.createAssistantMessageWithTool(
                     '正在通过 MCP 服务器查询 Jira 中的支付相关需求...',
                     'mcp__jira__search_issues',

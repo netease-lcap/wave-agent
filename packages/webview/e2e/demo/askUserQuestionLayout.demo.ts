@@ -25,7 +25,30 @@ test.describe('AskUserQuestion Layout Demo', () => {
       ]
     };
 
-    await injector.updateMessages([mockMessage]);
+    const userMessage: Message = {
+      id: 'msg_user_ask',
+      role: 'user' as const,
+      timestamp: '2025-07-09T10:29:00.000Z',
+      blocks: [
+        { type: 'text' as const, content: '支付服务重构前，先帮我确认缓存策略和优先重构的模块' }
+      ]
+    };
+
+    await injector.simulateExtensionMessage('setInitialState', {
+      isAuthenticated: true,
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      configurationData: {
+        apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+        baseURL: 'https://api.anthropic.com/v1',
+        model: 'claude-sonnet-4-20250514',
+        fastModel: 'claude-haiku-4-20250514'
+      },
+      permissionMode: 'default'
+    });
+
+    await injector.updateMessages([userMessage, mockMessage]);
 
     // Wait for rendering
     await webviewPage.waitForSelector('.ask-user-result-item');

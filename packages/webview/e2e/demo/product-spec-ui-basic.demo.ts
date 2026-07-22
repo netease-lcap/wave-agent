@@ -113,7 +113,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         ];
         await injector.updateMessages(basicChat);
         await injector.endStreaming();
-        await ui.verifyMessageCount(3); // Welcome + user + assistant
+        await ui.verifyMessageCount(2); // user + assistant
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-basic-chat.png' });
 
         // 3. Slash Commands
@@ -189,6 +189,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
 
         // 5. Mermaid Diagrams
         const mermaidChat = [
+            MockDataGenerator.createUserMessage('帮我画一张这套微服务的架构图', 'msg_user_mermaid'),
             MockDataGenerator.createAssistantMessage('这是一个微服务架构图：\n\n```mermaid\ngraph TD\n    Client[Client App] --> Gateway[API Gateway]\n    Gateway --> AuthSvc[Auth Service]\n    Gateway --> PaySvc[Payment Service]\n    Gateway --> OrderSvc[Order Service]\n    PaySvc --> DB[(Payment DB)]\n    OrderSvc --> DB2[(Order DB)]\n    PaySvc --> MQ[[Message Queue]]\n    MQ --> NotifySvc[Notification Service]\n```')
         ];
         await injector.updateMessages(mermaidChat);
