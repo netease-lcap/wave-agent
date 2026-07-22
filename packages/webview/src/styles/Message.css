@@ -326,7 +326,7 @@
 
 .write-tool-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
 }
 
@@ -337,11 +337,15 @@
 }
 
 .write-tool-path {
+    min-width: 0;
+    flex: 1 1 auto;
     font-family: Menlo, monospace;
     font-size: 12px;
     color: var(--vscode-textLink-foreground, #48a0c7);
     text-decoration: underline dotted;
     cursor: pointer;
+    overflow-wrap: anywhere;
+    line-height: 16px;
 }
 
 .write-tool-stats {
