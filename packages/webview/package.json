@@ -12,6 +12,8 @@
   ],
   "scripts": {
     "build": "pnpm run compile",
+    "postbuild": "node scripts/syncTargets.mjs",
+    "sync:targets": "node scripts/syncTargets.mjs",
     "clean": "node -e \"import('fs').then(fs => {try{fs.rmSync('dist', {recursive:true, force:true})}catch(e){}})\"",
     "compile": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
