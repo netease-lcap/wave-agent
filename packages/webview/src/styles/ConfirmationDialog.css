@@ -6,51 +6,63 @@
 }
 
 .confirmation-dialog-inner {
-  max-width: 800px;
+  max-width: 640px;
   margin: 0 auto;
   width: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  background-color: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  padding: 8px 12px 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
 }
 
 .confirmation-header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 4px;
+  gap: 6px;
 }
 
 .confirmation-header-top {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.confirmation-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--vscode-editor-foreground);
 }
 
 .confirmation-close-btn {
-  background: none;
-  border: none;
-  color: var(--vscode-icon-foreground);
-  cursor: pointer;
-  padding: 2px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
   border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
 }
 
 .confirmation-close-btn:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
 }
 
 .confirmation-close-btn .codicon {
   font-size: 16px;
-}
-
-.confirmation-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--vscode-editor-foreground);
 }
 
 .confirmation-command {
@@ -60,7 +72,6 @@
   font-family: var(--vscode-editor-font-family);
   font-size: 12px;
   color: var(--vscode-editor-foreground);
-  margin: 4px 0;
   border: 1px solid var(--vscode-panel-border);
   white-space: pre-wrap;
   word-break: break-all;
@@ -73,7 +84,6 @@
   font-family: var(--vscode-editor-font-family);
   font-size: 12px;
   color: var(--vscode-editor-foreground);
-  margin: 4px 0;
   border: 1px solid var(--vscode-panel-border);
   white-space: pre-wrap;
   word-break: break-all;
@@ -85,14 +95,32 @@
   margin: 0;
 }
 
-.confirmation-details {
-  font-size: 11px;
+/* Meta rows: 工具 / 文件 */
+.confirmation-details,
+.confirmation-file-path {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.confirmation-details strong,
+.confirmation-file-path strong {
+  flex-shrink: 0;
+  width: 40px;
+  font-weight: 400;
   color: var(--vscode-descriptionForeground);
 }
 
+.confirmation-details {
+  color: var(--vscode-foreground);
+  font-weight: 500;
+}
+
 .confirmation-file-path {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  color: var(--vscode-textLink-foreground);
+  font-family: var(--vscode-editor-font-family);
   word-break: break-all;
 }
 
@@ -100,8 +128,7 @@
 .ask-user-questions {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin: 8px 0;
+  gap: 8px;
 }
 
 .question-item {
@@ -112,27 +139,27 @@
 
 .question-header-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  min-height: 24px;
 }
 
 .question-header-chip {
-  background-color: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  white-space: nowrap;
-  margin-top: 2px;
+  line-height: 18px;
+  color: var(--vscode-foreground);
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .question-text {
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
+  font-weight: 600;
+  line-height: 18px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: normal;
@@ -143,32 +170,30 @@
 .options-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-left: 4px;
+  gap: 8px;
 }
 
 .option-item {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
   padding: 8px 12px;
-  border-radius: 4px;
-  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  border: 1px solid var(--vscode-widget-border);
   cursor: pointer;
-  transition: all 0.1s ease;
-  background-color: var(--vscode-editor-background);
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+  background-color: transparent;
 }
 
 .option-item:focus {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
-  border-color: var(--vscode-focusBorder);
 }
 
 .option-item.selected {
   background-color: var(--vscode-list-activeSelectionBackground);
-  color: var(--vscode-list-activeSelectionForeground);
-  border-color: var(--vscode-focusBorder);
+  border-color: transparent;
 }
 
 .option-input-hidden {
@@ -178,36 +203,37 @@
   height: 0;
 }
 
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .option-indicator {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 18px;
-  width: 18px;
-  margin-top: 1px;
+  height: 16px;
+  width: 16px;
+  flex-shrink: 0;
 }
 
-.option-indicator .codicon {
-  font-size: 16px;
-}
-
-.option-item.selected .option-indicator .codicon {
-  color: inherit;
-}
-
-.option-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.option-indicator-icon {
+  display: block;
 }
 
 .option-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
+  line-height: 16px;
+  color: var(--vscode-foreground);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: normal;
+}
+
+.option-item.selected .option-label {
+  color: var(--vscode-list-activeSelectionForeground);
 }
 
 .recommended-tag {
@@ -218,16 +244,26 @@
 }
 
 .option-description {
+  padding-left: 24px;
   font-size: 12px;
-  opacity: 0.8;
-  line-height: 1.3;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--vscode-descriptionForeground);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: normal;
 }
 
+.option-item.selected .option-description {
+  color: var(--vscode-foreground);
+}
+
+.option-other-body {
+  padding-left: 24px;
+}
+
 .other-option {
-  margin-top: 4px;
+  align-items: stretch;
 }
 
 .other-text-input {
@@ -236,38 +272,76 @@
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border);
   padding: 4px 8px;
-  border-radius: 2px;
+  border-radius: 4px;
   font-size: 12px;
+  line-height: 16px;
   margin-top: 4px;
   box-sizing: border-box;
   font-family: inherit;
   min-height: 26px;
+  max-height: 160px;
   height: auto;
-  resize: vertical;
+  overflow-y: auto;
+  resize: none;
 }
 
+.other-text-input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* Pagination in question header (multi-question) */
 .question-progress {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.question-progress-text {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--vscode-editor-foreground);
+}
+
+.question-progress-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--vscode-icon-foreground);
+  cursor: pointer;
+}
+
+.question-progress-nav:hover:not(:disabled) {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.question-progress-nav:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.question-progress-nav .codicon {
+  font-size: 16px;
 }
 
 .question-navigation {
   display: flex;
   flex-direction: row;
   gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--vscode-panel-border);
+  margin-top: 4px;
 }
 
-.confirmation-btn-secondary {
-  background-color: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-
-.confirmation-btn-secondary:hover {
-  background-color: var(--vscode-button-secondaryHoverBackground);
+.question-navigation .confirmation-btn {
+  flex: 1;
 }
 
 /* Plan Content Preview */
@@ -293,7 +367,7 @@
 }
 
 .confirmation-diff-viewer {
-  margin: 8px 0;
+  width: 100%;
 }
 
 /* Feedback Input */
@@ -308,7 +382,7 @@
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border);
   padding: 6px 8px;
-  border-radius: 2px;
+  border-radius: 4px;
   font-family: inherit;
   font-size: 13px;
   resize: none;
@@ -326,7 +400,6 @@
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  margin-top: 8px;
 }
 
 .feedback-flow {
@@ -346,13 +419,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 12px;
+  height: 32px;
+  min-width: 64px;
+  padding: 7px 12px;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: 6px;
   font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
   cursor: pointer;
-  transition: all 0.1s ease;
-  flex: 1;
+  transition: background-color 0.1s ease, opacity 0.1s ease;
+  box-sizing: border-box;
 }
 
 .confirmation-btn-apply {
@@ -365,21 +442,35 @@
 }
 
 .confirmation-btn-apply:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .confirmation-btn-auto,
-.confirmation-btn-feedback,
-.confirmation-btn-reject {
+.confirmation-btn-reject,
+.confirmation-btn-secondary {
   background-color: var(--vscode-button-secondaryBackground);
   color: var(--vscode-button-secondaryForeground);
+  border-color: var(--vscode-input-border);
 }
 
 .confirmation-btn-auto:hover,
-.confirmation-btn-feedback:hover,
-.confirmation-btn-reject:hover {
+.confirmation-btn-reject:hover,
+.confirmation-btn-secondary:hover {
   background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Feedback is a text button: no background, no border, shorter height */
+.confirmation-btn-feedback {
+  height: 24px;
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--vscode-descriptionForeground);
+}
+
+.confirmation-btn-feedback:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
 }
 
 .confirmation-btn:focus {

@@ -83,6 +83,78 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await webviewPage.keyboard.press('Escape');
         await webviewPage.waitForSelector('.confirmation-dialog', { state: 'hidden' });
 
+        // 10.1 Ask User Question - 多个问题（带分页导航）
+        await injector.simulateExtensionMessage('showConfirmation', {
+            confirmationId: 'ask-user-multi',
+            toolName: ASK_USER_QUESTION_TOOL_NAME,
+            confirmationType: '问题待回答',
+            toolInput: {
+                questions: [
+                    {
+                        header: '缓存方案',
+                        question: '支付服务应该采用哪种缓存策略？',
+                        options: [
+                            { label: 'Redis Cluster', description: '分布式缓存，高可用，支持自动故障转移' },
+                            { label: 'Redis Sentinel', description: '主从架构，自动故障转移，适合中等规模' }
+                        ]
+                    },
+                    {
+                        header: '数据库',
+                        question: '账务数据使用哪种存储？',
+                        options: [
+                            { label: 'PostgreSQL', description: '强一致性，支持复杂事务与外键约束' },
+                            { label: 'TiDB', description: '分布式 NewSQL，水平扩展能力强' }
+                        ]
+                    },
+                    {
+                        header: '部署方式',
+                        question: '服务以何种方式部署？',
+                        options: [
+                            { label: 'Kubernetes', description: '容器编排，弹性伸缩' },
+                            { label: '虚拟机', description: '传统部署，运维成熟' }
+                        ]
+                    }
+                ]
+            }
+        });
+        const multiQuestionDialog = webviewPage.locator('.confirmation-dialog');
+        await multiQuestionDialog.waitFor({ state: 'visible' });
+        // 选中当前问题的一个选项，展示分页启用态
+        await webviewPage.locator('.option-item').first().click();
+        await multiQuestionDialog.screenshot({ path: '../../docs/public/screenshots/spec-ask-user-multi.png' });
+        await webviewPage.keyboard.press('Escape');
+        await webviewPage.waitForSelector('.confirmation-dialog', { state: 'hidden' });
+
+        // 10.2 Ask User Question - 多选（可勾选多个选项）
+        await injector.simulateExtensionMessage('showConfirmation', {
+            confirmationId: 'ask-user-multiselect',
+            toolName: ASK_USER_QUESTION_TOOL_NAME,
+            confirmationType: '问题待回答',
+            toolInput: {
+                questions: [
+                    {
+                        header: '重构范围',
+                        question: '哪些模块需要优先重构？',
+                        multiSelect: true,
+                        options: [
+                            { label: 'PaymentService', description: '核心支付逻辑，存在并发隐患' },
+                            { label: 'TransactionLogger', description: '审计日志写入，可异步化' },
+                            { label: 'RefundHandler', description: '退款流程，与支付强耦合' }
+                        ]
+                    }
+                ]
+            }
+        });
+        const multiSelectDialog = webviewPage.locator('.confirmation-dialog');
+        await multiSelectDialog.waitFor({ state: 'visible' });
+        // 勾选多个选项，展示多选态
+        await webviewPage.locator('.option-item').nth(0).click();
+        await webviewPage.locator('.option-item').nth(1).click();
+        await multiSelectDialog.screenshot({ path: '../../docs/public/screenshots/spec-ask-user-multiselect.png' });
+        await webviewPage.keyboard.press('Escape');
+        await webviewPage.waitForSelector('.confirmation-dialog', { state: 'hidden' });
+
+
         // 11. Configuration Dialog (opened via /config or showConfiguration message)
         await injector.simulateExtensionMessage('showConfiguration', {
             configurationData: {
@@ -159,7 +231,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await planConfirmDialog.screenshot({ path: '../../docs/public/screenshots/spec-plan-confirm.png' });
 
         // 关闭当前确认对话框
-        await webviewPage.click('.confirmation-close-btn');
+        await webviewPage.keyboard.press('Escape');
         await planConfirmDialog.waitFor({ state: 'detached' });
 
         // 15.1 EnterPlanMode 确认对话框 - 简洁选项（仅批准/拒绝）
@@ -175,7 +247,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await enterPlanDialog.screenshot({ path: '../../docs/public/screenshots/spec-enter-plan-mode.png' });
 
         // 关闭当前确认对话框
-        await webviewPage.click('.confirmation-close-btn');
+        await webviewPage.keyboard.press('Escape');
         await enterPlanDialog.waitFor({ state: 'detached' });
 
         // 16. 代码修改确认对话框 - 只显示确认对话框组件
@@ -194,7 +266,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await editConfirmDialog.screenshot({ path: '../../docs/public/screenshots/spec-edit-confirm.png' });
 
         // 关闭当前确认对话框
-        await webviewPage.click('.confirmation-close-btn');
+        await webviewPage.keyboard.press('Escape');
         await editConfirmDialog.waitFor({ state: 'detached' });
 
         // 17. MCP 工具确认对话框
@@ -214,7 +286,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await mcpConfirmDialog.screenshot({ path: '../../docs/public/screenshots/spec-mcp-tool-confirm.png' });
 
         // 关闭当前确认对话框
-        await webviewPage.click('.confirmation-close-btn');
+        await webviewPage.keyboard.press('Escape');
         await mcpConfirmDialog.waitFor({ state: 'detached' });
 
         // 18. Bash运行确认对话框 - 只显示确认对话框组件
