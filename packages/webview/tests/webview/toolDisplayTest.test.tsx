@@ -71,8 +71,8 @@ describe('Tool Display Visual Test', () => {
 
         // Verify messages don't have borders/backgrounds
         const messageElements = document.querySelectorAll('.message');
-        // welcome + user + 4 assistant messages
-        expect(messageElements.length).toBeGreaterThanOrEqual(6);
+        // user + 4 assistant messages
+        expect(messageElements.length).toBeGreaterThanOrEqual(5);
     });
 
     it('should show unified message flow without visual separators', () => {

@@ -11,9 +11,9 @@ describe('Clear Chat Functionality', () => {
             sendCommand('updateMessages', { messages: conversation });
         });
 
-        // Verify messages are present (welcome + 4 conversation)
+        // Verify messages are present (4 conversation)
         const messages = document.querySelectorAll('.messages-container .message');
-        expect(messages.length).toBe(5);
+        expect(messages.length).toBe(4);
 
         // Clear chat
         act(() => {
@@ -153,7 +153,7 @@ describe('Clear Chat Functionality', () => {
 
         // Verify messages and error are present
         const messages = document.querySelectorAll('.messages-container .message');
-        expect(messages.length).toBe(3); // welcome + user + error
+        expect(messages.length).toBe(2); // user + error
 
         const messagesContainer = screen.getByTestId('messages-container');
         expect(messagesContainer).toHaveTextContent('Something went wrong');
@@ -226,7 +226,7 @@ describe('Clear Chat Functionality', () => {
 
         // Verify new conversation
         const messages = document.querySelectorAll('.messages-container .message');
-        expect(messages.length).toBe(3); // welcome + new user + new assistant
+        expect(messages.length).toBe(2); // new user + new assistant
 
         const messagesContainer = screen.getByTestId('messages-container');
         expect(messagesContainer).toHaveTextContent('New conversation after clear');

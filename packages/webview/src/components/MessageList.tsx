@@ -4,16 +4,6 @@ import type { MessageListProps } from '../types';
 import type { Message as MessageType } from 'wave-agent-sdk';
 import '../styles/MessageList.css';
 
-const welcomeMessage = {
-  id: 'welcome-message',
-  role: 'assistant' as const,
-  timestamp: new Date().toISOString(),
-  blocks: [{ 
-    type: 'text' as const, 
-    content: '您好！我是您的 AI 助手。我可以帮助您处理当前项目、编写代码和修改文件。今天我能为您做些什么吗？'
-  }]
-};
-
 export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, streamingMessageIndex, vscode, onRewindToMessage }, ref) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -98,13 +88,6 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       className="messages-container" 
       data-testid="messages-container"
     >
-      {/* Welcome message - always show */}
-      <Message
-        message={welcomeMessage}
-        isStreaming={false}
-        vscode={vscode}
-      />
-      
       {/* Chat messages - filter out user meta messages */}
       {useMemo(() => {
         // Filter out user messages with isMeta, and build index mapping for streaming detection

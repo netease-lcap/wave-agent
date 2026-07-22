@@ -188,12 +188,10 @@ export class UIStateVerifier {
     }
 
     /**
-     * Verify chat is cleared (only welcome message remains)
+     * Verify chat is cleared (no messages remain; welcome view is shown)
      */
     async verifyChatCleared() {
-        // Should have only the initial welcome message
-        await this.verifyMessageCount(1);
-        await this.verifyMessageContent(0, "您好！我是您的 AI 助手");
+        await this.verifyMessageCount(0);
     }
 
     /**

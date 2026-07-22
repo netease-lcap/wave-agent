@@ -79,7 +79,7 @@ describe('Streaming Button States', () => {
                 blocks: [{ type: 'text', content: 'This is a test message' }]
             }]
         });
-        expect(getMessages()).toHaveLength(2); // Welcome + test message
+        expect(getMessages()).toHaveLength(1); // test message
 
         // Start streaming
         sendCommand('startStreaming');
@@ -111,7 +111,7 @@ describe('Streaming Button States', () => {
         expect(sentMessages.filter((msg: Record<string, unknown>) => msg.command === 'clearChat')).toHaveLength(0);
 
         // Messages should still be there
-        expect(getMessages()).toHaveLength(3); // Welcome + test message + streaming message
+        expect(getMessages()).toHaveLength(2); // test message + streaming message
     });
 
     it('should handle abort and restore button states', () => {
