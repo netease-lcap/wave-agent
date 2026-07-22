@@ -1312,7 +1312,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
               </button>
             </Tooltip>
           ) : (
-            <Tooltip text="发送" position="left">
+            <Tooltip text="发送" position="top-left">
               <button
                 id="sendButton"
                 className="send-button ai-send-btn"
