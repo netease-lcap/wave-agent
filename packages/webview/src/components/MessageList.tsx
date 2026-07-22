@@ -177,12 +177,15 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       data-testid="messages-container"
     >
       {stickyMessage && (
-        <div
-          className="sticky-user-message"
-          data-testid="sticky-user-message"
-          onClick={() => scrollToMessage(stickyMessage.id)}
-        >
-          <div className="sticky-user-content">{stickyMessage.text}</div>
+        <div className="sticky-user-wrapper">
+          <div className="sticky-user-cap" />
+          <div
+            className="sticky-user-message"
+            data-testid="sticky-user-message"
+            onClick={() => scrollToMessage(stickyMessage.id)}
+          >
+            <div className="sticky-user-content">{stickyMessage.text}</div>
+          </div>
           <div className="sticky-user-scrim" />
         </div>
       )}
