@@ -83,7 +83,7 @@ describe('sticky user message', () => {
     });
   });
 
-  it('clicking the sticky header scrolls to the original message', async () => {
+  it('clicking the sticky header scrolls the original message to the viewport center', async () => {
     renderChatApp();
     act(() => {
       sendCommand('updateMessages', {
@@ -99,7 +99,7 @@ describe('sticky user message', () => {
     act(() => {
       fireEvent.click(screen.getByTestId('sticky-user-message'));
     });
-    expect(spy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    expect(spy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
   });
 
   it('renders sticky content with the 3-line clamp class', async () => {
