@@ -86,7 +86,7 @@
 .user-text-block {
     background-color: var(--vscode-chat-requestBubbleBackground);
     border-radius: 8px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     transition: background-color 0.2s ease;
 }
 
