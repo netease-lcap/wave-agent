@@ -29,7 +29,6 @@
        match the normal user message bubble color. */
     background-color: var(--vscode-panel-background);
     background-image: linear-gradient(var(--vscode-chat-requestBubbleBackground), var(--vscode-chat-requestBubbleBackground));
-    border: 1px solid var(--vscode-panel-border);
     border-radius: 6px;
     padding: 6px 10px;
     cursor: pointer;
@@ -54,10 +53,7 @@
 }
 
 .sticky-user-content {
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 18px;
-    color: var(--vscode-editor-foreground);
+    color: var(--vscode-foreground);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
