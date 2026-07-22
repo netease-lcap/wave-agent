@@ -8,7 +8,9 @@ interface ReasoningBlockViewProps {
 }
 
 export const ReasoningBlockView: React.FC<ReasoningBlockViewProps> = ({ block, renderContent }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  // Reasoning that is already finished on mount (e.g. loaded from history) starts
+  // collapsed; an in-progress block starts expanded and auto-collapses on finish.
+  const [collapsed, setCollapsed] = useState(block.stage === 'end');
   const prevStageRef = useRef(block.stage);
 
   // Auto-collapse once when reasoning finishes (stage transitions from non-'end' to 'end').

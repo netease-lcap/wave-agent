@@ -36,6 +36,14 @@ describe('ReasoningBlockView', () => {
         expect(container.querySelector('.reasoning-content')).toHaveTextContent('some thoughts');
     });
 
+    it('starts collapsed when mounted already finished (e.g. loaded from history)', () => {
+        const block = { type: 'reasoning', content: 'past thoughts', stage: 'end' } as ReasoningBlock;
+        const { container } = render(<ReasoningBlockView block={block} renderContent={renderContent} />);
+
+        expect(container.querySelector('.reasoning-content')).not.toBeInTheDocument();
+        expect(container.querySelector('.reasoning-chevron')).not.toHaveClass('expanded');
+    });
+
     it('auto-collapses once when stage transitions to end', () => {
         const streaming = { type: 'reasoning', content: 'live', stage: 'streaming' } as ReasoningBlock;
         const { container, rerender } = render(
