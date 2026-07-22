@@ -5,6 +5,28 @@ import type { Message as MessageType, ToolBlock } from 'wave-agent-sdk';
 import { TASK_UPDATE_TOOL_NAME } from 'wave-agent-sdk/dist/constants/tools.js';
 import '../styles/MessageList.css';
 
+// Count the blocks in an assistant message that Message.tsx wraps in a `.timeline-row`
+// (i.e. that carry a timeline dot): non-empty text/compact, tool, and reasoning blocks.
+// Mirrors the `wrap` logic in Message.renderBlock so the group can decide whether it has
+// a single lone dot (no connecting line) or multiple dots (draw the line).
+function countTimelineBlocks(message: MessageType): number {
+  if (!message.blocks) return 0;
+  let count = 0;
+  for (const block of message.blocks) {
+    switch (block.type) {
+      case 'text':
+      case 'compact':
+        if (block.content && block.content.trim()) count++;
+        break;
+      case 'tool':
+      case 'reasoning':
+        count++;
+        break;
+    }
+  }
+  return count;
+}
+
 export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, streamingMessageIndex, vscode, onRewindToMessage, tasks, isTaskListCollapsed, onToggleTaskListCollapse }, ref) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -176,9 +198,8 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
           originalIndexMap.push(i);
         }
 
-        return visibleMessages.map((message, idx) => {
+        const renderMessage = (message: MessageType, idx: number) => {
           const isStreaming = streamingMessageIndex !== undefined && originalIndexMap[idx] === streamingMessageIndex;
-
           return (
             <Message
               key={message.id}
@@ -192,7 +213,40 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
               onToggleTaskListCollapse={onToggleTaskListCollapse}
             />
           );
+        };
+
+        // Group consecutive assistant messages into a single .assistant-group wrapper so
+        // the timeline vertical line runs continuously through all their dots. User
+        // messages break the timeline (rendered as bare bubbles outside any group).
+        const rendered: React.ReactNode[] = [];
+        let group: { message: MessageType; idx: number }[] = [];
+
+        const flushGroup = () => {
+          if (group.length === 0) return;
+          const dotCount = group.reduce((sum, g) => sum + countTimelineBlocks(g.message), 0);
+          const single = dotCount <= 1;
+          rendered.push(
+            <div
+              key={group[0].message.id}
+              className={`assistant-group${single ? ' assistant-group--single' : ''}`}
+            >
+              {group.map(g => renderMessage(g.message, g.idx))}
+            </div>
+          );
+          group = [];
+        };
+
+        visibleMessages.forEach((message, idx) => {
+          if (message.role === 'assistant') {
+            group.push({ message, idx });
+          } else {
+            flushGroup();
+            rendered.push(renderMessage(message, idx));
+          }
         });
+        flushGroup();
+
+        return rendered;
       }, [messages, streamingMessageIndex, vscode, onRewindToMessage, tasks, taskListTarget, isTaskListCollapsed, onToggleTaskListCollapse])}
       
       {/* Invisible div to scroll to */}

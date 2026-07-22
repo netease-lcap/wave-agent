@@ -36,7 +36,23 @@
     top: 6px;
 }
 
-.timeline-row::after {
+/* Continuous timeline line running through every dot of an assistant group
+   (see MessageList grouping). The line is drawn as per-row segments so its ends
+   anchor exactly to the first/last dot regardless of each row's dot offset. The
+   group wrapper (gap:0) keeps consecutive rows flush so segments abut into one
+   continuous line. */
+.assistant-group {
+    position: relative;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+}
+
+/* Full-height segment for interior rows: spans the whole row so it joins the
+   rows above and below into a continuous line. */
+.assistant-group .timeline-row::after {
     content: "";
     position: absolute;
     left: 3px;
@@ -44,20 +60,33 @@
     bottom: 0;
     width: 1px;
     background: var(--vscode-widget-border);
+    z-index: 0;
 }
 
-.timeline-row:first-child::after {
+/* First row of the whole group: line starts at its dot center
+   (dot top 6px + radius 3px = 9px). The group's very first message's first row
+   renders that block as :first-child, so its dot sits at top:6px. */
+.assistant-group > .message:first-child .timeline-row:first-child::after {
     top: 9px;
 }
 
-/* Last block: line only connects up to its own dot, no trailing line below */
-.timeline-row:last-child::after {
+/* Last row of the whole group: line ends at its dot center. */
+.assistant-group > .message:last-child .timeline-row:last-child::after {
     bottom: auto;
+}
+
+/* Cap the last dot: a first-child row's dot sits at top:6px (center 9px);
+   any other row's dot sits at top:15px (center 18px). */
+.assistant-group > .message:last-child .timeline-row:last-child:first-child::after {
+    height: 9px;
+}
+.assistant-group > .message:last-child .timeline-row:last-child:not(:first-child)::after {
     height: 18px;
 }
 
-/* Only block in the message: isolated dot, no line at all */
-.timeline-row:first-child:last-child::after {
+/* A group whose messages contribute only a single dot shows an isolated dot,
+   no connecting line. */
+.assistant-group--single .timeline-row::after {
     display: none;
 }
 
