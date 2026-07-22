@@ -353,16 +353,20 @@
 .write-preview-box {
     position: relative;
     margin: 6px 0 0 0;
-    max-height: 120px;
-    padding: 10px;
     background: var(--vscode-editor-background);
     border: 1px solid var(--vscode-panel-border);
     border-radius: 6px;
+    overflow: hidden;
+}
+
+.write-preview-scroll {
+    max-height: 120px;
     overflow-y: auto;
 }
 
 .write-preview-content {
     margin: 0;
+    padding: 10px;
     font-family: Menlo, monospace;
     font-size: 12px;
     line-height: 16px;
