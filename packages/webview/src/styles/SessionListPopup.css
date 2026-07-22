@@ -80,6 +80,7 @@
 
 .session-list-highlight {
   color: var(--vscode-textLink-foreground);
+  font-weight: 500;
 }
 
 .session-list-item-time {
