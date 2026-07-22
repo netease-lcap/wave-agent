@@ -718,12 +718,23 @@ export class MessageManager {
       type: "text" | "reasoning";
       content: string;
       stage?: string;
+      startTime?: number;
     };
-    lastMessage.blocks[index] = {
-      type: block.type,
-      content: block.content,
-      stage: "end" as const,
-    };
+    if (block.type === "reasoning") {
+      lastMessage.blocks[index] = {
+        type: "reasoning",
+        content: block.content,
+        stage: "end" as const,
+        startTime: block.startTime,
+        endTime: Date.now(),
+      };
+    } else {
+      lastMessage.blocks[index] = {
+        type: block.type,
+        content: block.content,
+        stage: "end" as const,
+      };
+    }
 
     // Fire incremental callback to signal finalization
     const callbackParams = {
@@ -832,10 +843,16 @@ export class MessageManager {
 
     if (reasoningBlockIndex >= 0) {
       // Update existing reasoning block
+      const existingStartTime = (
+        lastMessage.blocks[reasoningBlockIndex] as {
+          startTime?: number;
+        }
+      ).startTime;
       lastMessage.blocks[reasoningBlockIndex] = {
         type: "reasoning",
         content: newAccumulatedReasoning,
         stage: "streaming",
+        startTime: existingStartTime,
       };
     } else {
       // Add new reasoning block if none exists
@@ -843,6 +860,7 @@ export class MessageManager {
         type: "reasoning",
         content: newAccumulatedReasoning,
         stage: "streaming",
+        startTime: Date.now(),
       });
     }
 

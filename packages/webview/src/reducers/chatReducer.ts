@@ -234,18 +234,29 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
       let newBlocks: MessageBlock[];
       if (reasoningBlockIndex === -1) {
-        // No reasoning block yet, append one
+        // No reasoning block yet, append one. Record startTime so the UI can show
+        // elapsed thinking time during streaming (SET_MESSAGES later overrides it
+        // with the SDK's persisted value).
         const newReasoningBlock = {
           type: 'reasoning' as const,
           content: accumulated,
-          stage
+          stage,
+          startTime: Date.now(),
+          ...(stage === 'end' ? { endTime: Date.now() } : {})
         };
         newBlocks = [...message.blocks, newReasoningBlock];
       } else {
-        // Update existing reasoning block
+        // Update existing reasoning block, preserving startTime and stamping
+        // endTime when the reasoning finishes.
         newBlocks = message.blocks.map((block, idx) => {
           if (idx === reasoningBlockIndex && block.type === 'reasoning') {
-            return { ...block, content: accumulated, stage };
+            return {
+              ...block,
+              content: accumulated,
+              stage,
+              startTime: block.startTime ?? Date.now(),
+              ...(stage === 'end' ? { endTime: block.endTime ?? Date.now() } : {})
+            };
           }
           return block;
         });

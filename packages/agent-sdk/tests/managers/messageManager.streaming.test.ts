@@ -316,4 +316,73 @@ describe("MessageManager - Streaming Functionality", () => {
       });
     });
   });
+
+  describe("reasoning block startTime/endTime (FR-023/FR-024)", () => {
+    it("sets startTime when the first reasoning content arrives", () => {
+      const messageManager = new MessageManager(container, {
+        callbacks: {},
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      messageManager.updateCurrentMessageReasoning("Let me think...");
+
+      const block = messageManager
+        .getMessages()
+        .slice(-1)[0]
+        .blocks.find((b) => b.type === "reasoning") as {
+        startTime?: number;
+      };
+      expect(block.startTime).toBeTypeOf("number");
+    });
+
+    it("preserves startTime across subsequent reasoning updates", () => {
+      const messageManager = new MessageManager(container, {
+        callbacks: {},
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      messageManager.updateCurrentMessageReasoning("Step 1");
+
+      const getReasoning = () =>
+        messageManager
+          .getMessages()
+          .slice(-1)[0]
+          .blocks.find((b) => b.type === "reasoning") as {
+          startTime?: number;
+        };
+
+      const startTime = getReasoning().startTime;
+      messageManager.updateCurrentMessageReasoning("Step 1 Step 2");
+
+      expect(getReasoning().startTime).toBe(startTime);
+    });
+
+    it("sets endTime >= startTime after finalization", () => {
+      const messageManager = new MessageManager(container, {
+        callbacks: {},
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      messageManager.updateCurrentMessageReasoning("Thinking...");
+      // Text content arrival finalizes the streaming reasoning block
+      messageManager.updateCurrentMessageContent("Answer");
+
+      const block = messageManager
+        .getMessages()
+        .slice(-1)[0]
+        .blocks.find((b) => b.type === "reasoning") as {
+        stage?: string;
+        startTime?: number;
+        endTime?: number;
+      };
+
+      expect(block.stage).toBe("end");
+      expect(block.endTime).toBeTypeOf("number");
+      expect(block.startTime).toBeTypeOf("number");
+      expect(block.endTime).toBeGreaterThanOrEqual(block.startTime as number);
+    });
+  });
 });

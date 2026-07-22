@@ -182,6 +182,51 @@ describe('chatReducer', () => {
 
       expect(newState).toBe(state);
     });
+
+    it('should stamp startTime when appending a streaming reasoning block', () => {
+      const message: Message = {
+        id: 'msg-1',
+        role: 'assistant',
+        timestamp: '0',
+        blocks: []
+      };
+      const state = { ...initialState, messages: [message] };
+
+      const newState = chatReducer(state, {
+        type: 'UPDATE_STREAMING_REASONING',
+        payload: { messageId: 'msg-1', accumulated: 'Thinking...', stage: 'streaming' }
+      });
+
+      const newBlock = newState.messages[0].blocks[0] as ReasoningBlock;
+      expect(typeof newBlock.startTime).toBe('number');
+      expect(newBlock.endTime).toBeUndefined();
+    });
+
+    it('should preserve startTime and stamp endTime when reasoning finishes', () => {
+      const reasoningBlock: ReasoningBlock = {
+        type: 'reasoning',
+        content: 'Thinking...',
+        stage: 'streaming',
+        startTime: 1000
+      };
+      const message: Message = {
+        id: 'msg-1',
+        role: 'assistant',
+        timestamp: '0',
+        blocks: [reasoningBlock]
+      };
+      const state = { ...initialState, messages: [message] };
+
+      const newState = chatReducer(state, {
+        type: 'UPDATE_STREAMING_REASONING',
+        payload: { messageId: 'msg-1', accumulated: 'Thinking... done', stage: 'end' }
+      });
+
+      const updatedBlock = newState.messages[0].blocks[0] as ReasoningBlock;
+      expect(updatedBlock.stage).toBe('end');
+      expect(updatedBlock.startTime).toBe(1000);
+      expect(typeof updatedBlock.endTime).toBe('number');
+    });
   });
 
   describe('UPDATE_TOOL_BLOCK', () => {
