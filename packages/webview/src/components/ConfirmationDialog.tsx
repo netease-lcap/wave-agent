@@ -13,6 +13,50 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { DiffViewer } from './DiffViewer';
 
+/**
+ * Radio / Checkbox indicator that matches the Figma design (16×16).
+ * - Radio unchecked: hollow ring; checked: accent ring + center dot.
+ * - Checkbox unchecked: rounded square; checked: same square with a check mark.
+ * Colors use VS Code theme variables so it adapts to light/dark themes.
+ */
+const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({ multiSelect, checked }) => {
+  if (multiSelect) {
+    return (
+      <svg className="option-indicator-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <rect
+          x="0.5"
+          y="0.5"
+          width="15"
+          height="15"
+          rx="2.5"
+          fill="var(--vscode-checkbox-background)"
+          stroke="var(--vscode-checkbox-border)"
+        />
+        {checked && (
+          <path
+            d="M4.25 8.1L6.35 9.55L11.25 4.35"
+            stroke="var(--vscode-checkbox-foreground)"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+      </svg>
+    );
+  }
+  return (
+    <svg className="option-indicator-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle
+        cx="8"
+        cy="8"
+        r="7.5"
+        stroke={checked ? 'var(--vscode-focusBorder)' : 'var(--vscode-checkbox-border)'}
+      />
+      {checked && <circle cx="8" cy="8" r="3" fill="var(--vscode-focusBorder)" />}
+    </svg>
+  );
+};
+
 export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   confirmation,
   onConfirm,
@@ -62,6 +106,17 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   const handleOtherInputChange = useCallback((questionText: string, value: string) => {
     setOtherInputs(prev => ({ ...prev, [questionText]: value }));
   }, []);
+
+  // Auto-grow the "other" textarea to fit its content (capped by CSS max-height).
+  const autoGrow = useCallback((el: HTMLTextAreaElement) => {
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  // Size the textarea once when it mounts (e.g. when reopening with prior content).
+  const autoGrowTextarea = useCallback((el: HTMLTextAreaElement | null) => {
+    if (el) autoGrow(el);
+  }, [autoGrow]);
 
   const confirmationRef = useRef(confirmation);
 
@@ -257,12 +312,33 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       <div className="ask-user-questions">
         <div className="question-item">
           <div className="question-header-row">
-            <span className="question-header-chip">{q.header}</span>
-            <div className="question-progress">
-              问题 {currentQuestionIndex + 1} / {questions.length}
-            </div>
+            <span className="question-header-chip">{q.question}</span>
+            {questions.length > 1 && (
+              <div className="question-progress">
+                <button
+                  type="button"
+                  className="question-progress-nav"
+                  aria-label="上一题"
+                  disabled={currentQuestionIndex === 0}
+                  onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                >
+                  <i className="codicon codicon-chevron-left"></i>
+                </button>
+                <span className="question-progress-text">
+                  {currentQuestionIndex + 1} / {questions.length}
+                </span>
+                <button
+                  type="button"
+                  className="question-progress-nav"
+                  aria-label="下一题"
+                  disabled={isLastQuestion || !isCurrentQuestionAnswered()}
+                  onClick={() => setCurrentQuestionIndex(prev => Math.min(questions.length - 1, prev + 1))}
+                >
+                  <i className="codicon codicon-chevron-right"></i>
+                </button>
+              </div>
+            )}
           </div>
-          <div className="question-text">{q.question}</div>
           <div className="options-list">
             {q.options.map((opt, oIndex) => (
               <label 
@@ -294,18 +370,20 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   }
                   onChange={(e) => handleOptionChange(q.question, opt.label, !!q.multiSelect, e.target.checked)}
                 />
-                <div className="option-indicator">
-                  <i className={`codicon ${q.multiSelect 
-                    ? ((answers[q.question] as string[] || []).includes(opt.label) ? 'codicon-check' : '')
-                    : (answers[q.question] === opt.label ? 'codicon-circle-filled' : 'codicon-circle-outline')
-                  }`}></i>
-                </div>
-                <div className="option-content">
+                <div className="option-row">
+                  <div className="option-indicator">
+                    <OptionIndicator
+                      multiSelect={!!q.multiSelect}
+                      checked={q.multiSelect
+                        ? (answers[q.question] as string[] || []).includes(opt.label)
+                        : answers[q.question] === opt.label}
+                    />
+                  </div>
                   <div className="option-label">
                     {opt.label}
                   </div>
-                  {opt.description && <div className="option-description">{opt.description}</div>}
                 </div>
+                {opt.description && <div className="option-description">{opt.description}</div>}
               </label>
             ))}
             <label 
@@ -347,24 +425,30 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   }
                 }}
               />
-              <div className="option-indicator">
-                <i className={`codicon ${q.multiSelect 
-                  ? (otherInputs[q.question] ? 'codicon-check' : '')
-                  : (answers[q.question] === '__other__' ? 'codicon-circle-filled' : 'codicon-circle-outline')
-                }`}></i>
+              <div className="option-row">
+                <div className="option-indicator">
+                  <OptionIndicator
+                    multiSelect={!!q.multiSelect}
+                    checked={q.multiSelect
+                      ? !!otherInputs[q.question]
+                      : answers[q.question] === '__other__'}
+                  />
+                </div>
+                <div className="option-label">其他</div>
               </div>
-              <div className="option-content">
-                <div className="option-label">其他:</div>
+              <div className="option-other-body">
                 <textarea
                   className="other-text-input"
                   placeholder="输入自定义回答..."
                   value={otherInputs[q.question] || ''}
+                  ref={autoGrowTextarea}
                   onFocus={() => {
                     if (!q.multiSelect) {
                       setAnswers(prev => ({ ...prev, [q.question]: '__other__' }));
                     }
                   }}
                   onChange={(e) => {
+                    autoGrow(e.currentTarget);
                     handleOtherInputChange(q.question, e.target.value);
                   }}
                   onCompositionStart={handleCompositionStart}
@@ -376,32 +460,23 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         </div>
         
         <div className="question-navigation">
-          {currentQuestionIndex > 0 && (
-            <button 
+          {!isLastQuestion && (
+            <button
               className="confirmation-btn confirmation-btn-secondary"
-              onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
-            >
-              上一步
-            </button>
-          )}
-          {!isLastQuestion ? (
-            <button 
-              className="confirmation-btn confirmation-btn-apply"
               disabled={!isCurrentQuestionAnswered()}
               onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
             >
-              下一步
-            </button>
-          ) : (
-            <button
-              ref={applyButtonRef}
-              className="confirmation-btn confirmation-btn-apply"
-              onClick={handleConfirm}
-              disabled={isConfirmDisabled()}
-            >
-              提交回答
+              下一个
             </button>
           )}
+          <button
+            ref={applyButtonRef}
+            className="confirmation-btn confirmation-btn-apply"
+            onClick={handleConfirm}
+            disabled={isConfirmDisabled()}
+          >
+            提交回答
+          </button>
         </div>
       </div>
     );
@@ -448,11 +523,12 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             <div className="confirmation-title">
               {confirmation.confirmationType}
             </div>
-            <button 
-              className="confirmation-close-btn" 
+            <button
+              type="button"
+              className="confirmation-close-btn"
               onClick={handleReject}
-              title="关闭 (Esc)"
               aria-label="关闭"
+              title="关闭"
             >
               <i className="codicon codicon-close"></i>
             </button>

@@ -136,7 +136,7 @@ describe('Confirmation Dialog', () => {
         });
     });
 
-    it('should send rejection response when clicking close button', async () => {
+    it('should send rejection response when pressing Escape', async () => {
         const { vscode } = renderChatApp();
         vscode.postMessage.mockClear();
 
@@ -150,9 +150,9 @@ describe('Confirmation Dialog', () => {
             });
         });
 
-        // Click close button
+        // Press Escape to reject
         await act(async () => {
-            fireEvent.click(document.querySelector('.confirmation-close-btn') as HTMLElement);
+            fireEvent.keyDown(window, { key: 'Escape' });
         });
 
         // Verify confirmation dialog is hidden
@@ -167,6 +167,34 @@ describe('Confirmation Dialog', () => {
         expect(sentMessages[0]).toEqual({
             command: 'confirmationResponse',
             confirmationId: 'test_confirmation_reject',
+            approved: false
+        });
+    });
+
+    it('should send rejection response when clicking the close button', async () => {
+        const { vscode } = renderChatApp();
+        vscode.postMessage.mockClear();
+
+        await act(async () => {
+            sendCommand('showConfirmation', {
+                confirmationId: 'test_confirmation_close_btn',
+                toolName: 'SomeOtherTool',
+                confirmationType: '操作待确认',
+                toolInput: {}
+            });
+        });
+
+        await act(async () => {
+            fireEvent.click(document.querySelector('.confirmation-close-btn')!);
+        });
+
+        expect(document.querySelector('.confirmation-dialog')).not.toBeInTheDocument();
+
+        const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
+        expect(sentMessages).toHaveLength(1);
+        expect(sentMessages[0]).toEqual({
+            command: 'confirmationResponse',
+            confirmationId: 'test_confirmation_close_btn',
             approved: false
         });
     });
