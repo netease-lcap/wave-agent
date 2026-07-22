@@ -4,10 +4,6 @@
     background-color: var(--vscode-panel-background);
 }
 
-.input-container.with-task-list {
-    padding-top: 0;
-}
-
 .input-wrapper {
     max-width: 800px;
     margin: 0 auto;
@@ -21,19 +17,34 @@
     align-items: flex-end;
 }
 
+/* Single bordered box wrapping the text area + toolbar (设计稿 2237-5088). */
+.input-content {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 6px;
+    max-height: 176px;
+    overflow: hidden;
+}
+
+/* Focus state: the whole box border turns brand red (设计稿 Focus state). */
+.input-content:focus-within {
+    border-color: var(--vscode-brand-primary, #c1292e);
+}
+
 .message-input {
     width: 100%;
     box-sizing: border-box;
-    background-color: var(--vscode-input-background);
+    background-color: transparent;
     color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border);
-    padding: 8px 12px;
-    border-radius: 4px;
+    border: none;
+    padding: 12px;
     font-family: var(--vscode-font-family);
-    font-size: 13px;
-    line-height: 1.4;
+    font-size: 12px;
+    line-height: 16px;
     min-height: 40px;
-    max-height: 200px;
+    max-height: 112px;
     overflow-y: auto;
     word-break: break-word;
     white-space: pre-wrap;
@@ -49,7 +60,6 @@
 
 .message-input:focus {
     outline: none;
-    border-color: var(--vscode-focusBorder);
 }
 
 /* Buttons */
@@ -138,12 +148,13 @@
     background: #fff;
 }
 
-/* New two-tier button layout */
+/* Toolbar row inside the bordered box: 40px tall, 12px horizontal padding (设计稿) */
 .input-buttons-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 8px;
+    height: 40px;
+    padding: 0 12px;
 }
 
 .button-spacer {
