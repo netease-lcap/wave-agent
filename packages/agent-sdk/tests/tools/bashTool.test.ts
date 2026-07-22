@@ -160,6 +160,45 @@ describe("bashTool", () => {
       );
     });
 
+    it("should run background command in context.workdir, not the BTM stale workdir (worktree cwd)", async () => {
+      // Simulate a worktree session: BTM was constructed with the base repo
+      // workdir, but the session's context.workdir now points at the worktree.
+      const container = new Container();
+      const staleBtm = new BackgroundTaskManager(container, {
+        workdir: "/base/repo/root",
+      });
+      const worktreeContext: ToolContext = {
+        backgroundTaskManager: staleBtm,
+        workdir: "/base/repo/root/.wave/worktrees/feat-x",
+        taskManager: createMockTaskManager(),
+      };
+
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      await bashTool.execute(
+        { command: "pwd", run_in_background: true },
+        worktreeContext,
+      );
+
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+      const spawnCallArgs = mockSpawn.mock.calls[0];
+      // Background shell must inherit the session current workdir (worktree),
+      // NOT fall back to the BTM construction-time workdir (base repo root).
+      expect(spawnCallArgs[1]).toMatchObject({
+        cwd: "/base/repo/root/.wave/worktrees/feat-x",
+      });
+
+      staleBtm.cleanup();
+    });
+
     it("should validate command parameter", async () => {
       const result = await bashTool.execute({}, context);
 

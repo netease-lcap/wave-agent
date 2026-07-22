@@ -65,6 +65,7 @@ export class BackgroundTaskManager {
   public startShell(
     command: string,
     timeout?: number,
+    cwd?: string,
   ): { id: string; child: ChildProcess; detach: () => void } {
     const id = this.generateId();
     const startTime = Date.now();
@@ -73,7 +74,7 @@ export class BackgroundTaskManager {
       shell: resolveShellPath() ?? true,
       stdio: "pipe",
       detached: true,
-      cwd: this.workdir,
+      cwd: cwd ?? this.workdir,
       env: {
         ...process.env,
       },

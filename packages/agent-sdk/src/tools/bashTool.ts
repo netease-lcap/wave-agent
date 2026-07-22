@@ -244,7 +244,11 @@ The working directory persists between commands. Try to maintain your current wo
         };
       }
 
-      const { id: taskId } = backgroundTaskManager.startShell(command);
+      const { id: taskId } = backgroundTaskManager.startShell(
+        command,
+        undefined,
+        context.workdir,
+      );
       const task = backgroundTaskManager.getTask(taskId);
       const outputPath = task?.outputPath;
       const backgroundMsg = [
