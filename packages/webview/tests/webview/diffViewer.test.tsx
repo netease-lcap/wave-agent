@@ -35,7 +35,7 @@ describe('Diff Viewer', () => {
         sendCommand('updateMessages', { messages: [mockEditMessage] });
 
         // Check that tool block is present
-        const toolBlock = document.querySelector('.tool-block');
+        const toolBlock = document.querySelector('.write-tool-header');
         expect(toolBlock).toBeInTheDocument();
 
         // Check that diff viewer container is present within the tool block
@@ -151,7 +151,7 @@ describe('Diff Viewer', () => {
         sendCommand('updateMessages', { messages: [mockRunningEditMessage] });
 
         // Tool block should be visible
-        const toolBlock = document.querySelector('.tool-block');
+        const toolBlock = document.querySelector('.write-tool-header');
         expect(toolBlock).toBeInTheDocument();
 
         // Diff viewer should NOT be present for running stage
@@ -182,7 +182,7 @@ describe('Diff Viewer', () => {
         sendCommand('updateMessages', { messages: [mockMalformedMessage] });
 
         // Tool block should still be visible
-        const toolBlock = document.querySelector('.tool-block');
+        const toolBlock = document.querySelector('.write-tool-header');
         expect(toolBlock).toBeInTheDocument();
 
         // Diff viewer should not be present due to malformed parameters
@@ -228,7 +228,7 @@ describe('Diff Viewer', () => {
         const messageContent = lastAssistant.querySelector('.message-content');
         expect(messageContent).toHaveTextContent(/I will make these changes/);
 
-        const toolBlock = lastAssistant.querySelector('.tool-block');
+        const toolBlock = lastAssistant.querySelector('.write-tool-header');
         expect(toolBlock).toBeInTheDocument();
 
         const diffContainer = lastAssistant.querySelector('.diff-viewer-container');
