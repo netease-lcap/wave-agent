@@ -356,4 +356,33 @@ describe('Session Management', () => {
         expect(header).toHaveTextContent('新会话');
         expect(header).not.toHaveTextContent('2026');
     });
+
+    it('should derive the title from the first user message once one is sent', () => {
+        renderChatApp();
+
+        // Fresh session pushed without a firstMessage.
+        act(() => {
+            sendCommand('updateCurrentSession', {
+                session: {
+                    id: 'fresh-session',
+                    sessionType: 'main',
+                    workdir: '/test/project',
+                    lastActiveAt: new Date('2026-07-22T13:46:00Z'),
+                    latestTotalTokens: 0
+                }
+            });
+        });
+        expect(screen.getByTestId('chat-header')).toHaveTextContent('新会话');
+
+        // User sends "hi" — the title should now reflect it.
+        act(() => {
+            sendCommand('updateMessages', {
+                messages: [MockDataGenerator.createUserMessage('hi')]
+            });
+        });
+
+        const header = screen.getByTestId('chat-header');
+        expect(header).toHaveTextContent('hi');
+        expect(header).not.toHaveTextContent('新会话');
+    });
 });

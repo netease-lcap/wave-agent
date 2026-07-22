@@ -3,13 +3,14 @@ import { Tooltip } from './Tooltip';
 import { NewSessionIcon, HistoryIcon, MoreIcon } from './HeaderIcons';
 import { SessionListPopup } from './SessionListPopup';
 import { MoreMenu } from './MoreMenu';
-import { formatSessionLabel } from '../utils/session';
+import { getSessionTitle } from '../utils/session';
 import type { ChatHeaderProps } from '../types';
 import '../styles/ChatHeader.css';
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onClearChat,
   isStreaming,
+  messages,
   sessions,
   currentSession,
   onSessionSelect,
@@ -21,7 +22,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  const title = currentSession ? formatSessionLabel(currentSession) : '新会话';
+  const title = getSessionTitle(currentSession, messages);
 
   return (
     <div className="chat-header" data-testid="chat-header">
