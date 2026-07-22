@@ -1,4 +1,5 @@
 import React from 'react';
+import { QueueChevronIcon } from './HeaderIcons';
 import type { Task, TaskStatus } from '../types';
 import '../styles/TaskList.css';
 
@@ -48,16 +49,34 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, isCollapsed, onToggle
 
   const total = visibleTasks.length;
   const completed = visibleTasks.filter((t) => t.status === 'completed').length;
+  const inProgress = visibleTasks.filter((t) => t.status === 'in_progress').length;
+  const pending = visibleTasks.filter((t) => t.status === 'pending').length;
+
+  const stats = [
+    { count: completed, label: '已完成', color: 'var(--vscode-testing-iconPassed, #73c991)' },
+    { count: inProgress, label: '进行中', color: 'var(--wave-blue, #75beff)' },
+    { count: pending, label: '待执行', color: 'var(--vscode-icon-foreground, #cccccc)' }
+  ];
 
   return (
     <div className="task-list-inline" data-testid="task-list">
       <div
         className="task-list-plan-row"
         onClick={onToggleCollapse}
-        title={isCollapsed ? '展开任务列表' : '折叠任务列表'}
+        aria-label={isCollapsed ? '展开任务列表' : '折叠任务列表'}
       >
-        <span className="task-list-progress">任务 {completed} / {total}</span>
-        <span className={`codicon codicon-chevron-${isCollapsed ? 'right' : 'down'} task-list-chevron`}></span>
+        <div className="task-list-plan-left">
+          <QueueChevronIcon className={`task-list-chevron${isCollapsed ? '' : ' expanded'}`} />
+          <span className="task-list-title">任务列表 ({total})</span>
+        </div>
+        <div className="task-list-stats">
+          {stats.map((s) => (
+            <div key={s.label} className="task-list-stat">
+              <span className="task-list-stat-dot" style={{ backgroundColor: s.color }} />
+              <span className="task-list-stat-text">{s.label} {s.count}</span>
+            </div>
+          ))}
+        </div>
       </div>
       {!isCollapsed && (
         <div className="task-list-items">

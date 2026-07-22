@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback, useState } from 'react';
 import { Message } from './Message';
 import type { MessageListProps } from '../types';
-import type { Message as MessageType, ToolBlock } from 'wave-agent-sdk';
-import { TASK_UPDATE_TOOL_NAME } from 'wave-agent-sdk/dist/constants/tools.js';
+import type { Message as MessageType } from 'wave-agent-sdk';
 import '../styles/MessageList.css';
 
 // Count the blocks in an assistant message that Message.tsx wraps in a `.timeline-row`
@@ -27,7 +26,7 @@ function countTimelineBlocks(message: MessageType): number {
   return count;
 }
 
-export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, streamingMessageIndex, vscode, onRewindToMessage, tasks, isTaskListCollapsed, onToggleTaskListCollapse }, ref) {
+export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, streamingMessageIndex, vscode, onRewindToMessage }, ref) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -147,28 +146,6 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     };
   }, [messages, queuedMessages, streamingMessageIndex, scrollToBottom, computeSticky]);
 
-  // Find the globally-last TaskUpdate(status=completed) tool block; the task list
-  // card is rendered at that block's position.
-  const taskListTarget = useMemo<{ messageId: string; blockIndex: number } | null>(() => {
-    let target: { messageId: string; blockIndex: number } | null = null;
-    for (const msg of messages) {
-      if (!msg.blocks) continue;
-      msg.blocks.forEach((block, blockIndex) => {
-        if (block.type !== 'tool') return;
-        const toolBlock = block as ToolBlock;
-        if (toolBlock.name !== TASK_UPDATE_TOOL_NAME || !toolBlock.parameters) return;
-        try {
-          if (JSON.parse(toolBlock.parameters).status === 'completed') {
-            target = { messageId: msg.id, blockIndex };
-          }
-        } catch {
-          // ignore malformed parameters
-        }
-      });
-    }
-    return target;
-  }, [messages]);
-
   return (
     <div 
       ref={containerRef}
@@ -210,10 +187,6 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
               isStreaming={isStreaming}
               vscode={vscode}
               onRewindToMessage={onRewindToMessage}
-              tasks={tasks}
-              taskListTargetBlockIndex={taskListTarget?.messageId === message.id ? taskListTarget.blockIndex : undefined}
-              isTaskListCollapsed={isTaskListCollapsed}
-              onToggleTaskListCollapse={onToggleTaskListCollapse}
             />
           );
         };
@@ -250,7 +223,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
         flushGroup();
 
         return rendered;
-      }, [messages, streamingMessageIndex, vscode, onRewindToMessage, tasks, taskListTarget, isTaskListCollapsed, onToggleTaskListCollapse])}
+      }, [messages, streamingMessageIndex, vscode, onRewindToMessage])}
       
       {/* Invisible div to scroll to */}
       <div ref={messagesEndRef} />
