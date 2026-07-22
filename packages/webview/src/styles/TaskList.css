@@ -29,7 +29,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-left: 12px;
 }
 
 .task-row {
@@ -40,25 +39,24 @@
 
 .task-status {
   flex-shrink: 0;
-  font-size: 16px;
-  line-height: 18px;
+  position: relative;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
 }
 
-.task-status.completed {
-  color: var(--vscode-testing-iconPassed, #89d185);
+.task-status-svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
 }
 
-.task-status.in_progress {
-  color: var(--vscode-editorWarning-foreground, #cca700);
+.task-status-spin {
   animation: spin 2s linear infinite;
-}
-
-.task-status.pending {
-  color: var(--vscode-descriptionForeground);
-}
-
-.task-status.deleted {
-  color: var(--vscode-errorForeground);
 }
 
 .task-content {

@@ -336,7 +336,6 @@
 }
 
 .write-tool-stats {
-    padding-left: 12px;
     margin-top: 2px;
     font-size: 11px;
     color: var(--vscode-descriptionForeground);
@@ -344,7 +343,7 @@
 
 .write-preview-box {
     position: relative;
-    margin: 6px 0 0 12px;
+    margin: 6px 0 0 0;
     height: 120px;
     padding: 10px;
     background: var(--vscode-editor-background);
