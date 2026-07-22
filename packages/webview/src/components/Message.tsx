@@ -648,7 +648,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
   };
 
   return (
-    <div className={getMessageClassName()}>
+    <div className={getMessageClassName()} data-message-id={message.id} data-role={message.role}>
       {message.blocks?.map((block, index) => renderBlock(block, index))}
       {message.role === 'user' && !isQueued && message.id && !message.blocks?.some(b => b.type === 'bang') && (
         <div className="message-actions">

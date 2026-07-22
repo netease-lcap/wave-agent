@@ -320,5 +320,42 @@ export const withOptimisticLock = async <T>(
             ]
         });
         await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-mcp.png' });
+
+        // 27. Sticky user message (吸顶) — pin the most recent user message scrolled above the viewport top
+        await injector.simulateExtensionMessage('setInitialState', {
+            messages: [
+                MockDataGenerator.createUserMessage('帮我分析 PaymentService 的分布式事务实现，看看有没有竞态条件，并给出一个可落地的乐观锁改造方案，覆盖并发退款与重复回调的场景。', 'msg_user_sticky'),
+                MockDataGenerator.createAssistantMessage(
+                    '好的，我已通读 `PaymentService`。核心问题在于扣款与状态更新未在同一事务内串行化：\n\n1. 并发退款可能读到同一条 `payment` 行的旧版本，导致重复退款。\n2. 支付网关的重复回调没有幂等键，会触发二次状态跃迁。\n3. 事务隔离级别为 READ COMMITTED，缺少行级版本校验。\n\n建议引入版本号乐观锁：给 `payments` 表增加 `version` 列，更新时带 `WHERE id = ? AND version = ?`，冲突则重试。回调侧以 `gateway_event_id` 建唯一索引实现幂等。',
+                    'msg_assistant_sticky_1'
+                ),
+                MockDataGenerator.createUserMessage('乐观锁重试次数怎么设置？会不会在高并发下一直失败？', 'msg_user_sticky_2'),
+                MockDataGenerator.createAssistantMessage(
+                    '建议采用有上限的指数退避重试：初始 20ms，最多重试 3 次，每次翻倍并叠加随机抖动，避免惊群。若 3 次仍冲突则返回 409 让上游决定是否重试。\n\n在实测的 200 QPS 退款压力下，单行冲突率约 4%，三次重试后失败率降到 0.01% 以下，尾延迟 P99 增加约 8ms，属于可接受范围。同时给 `payments(id)` 加覆盖索引减少回表。',
+                    'msg_assistant_sticky_2'
+                ),
+                MockDataGenerator.createUserMessage('那重复回调的幂等键具体怎么设计？', 'msg_user_sticky_3'),
+                MockDataGenerator.createAssistantMessage(
+                    '以网关事件 ID 作为幂等键：新增 `payment_events(gateway_event_id UNIQUE, payment_id, status, created_at)`。回调进来先尝试插入该事件，唯一冲突即视为重复回调直接忽略；插入成功再执行状态跃迁。这样即使网关重发，也只会处理一次。整个流程放进同一事务，配合前面的版本号乐观锁，即可同时防住并发退款与重复回调两类竞态。',
+                    'msg_assistant_sticky_3'
+                )
+            ],
+            isAuthenticated: true,
+            configurationData: {
+                apiKey: 'sk-ant-api03-CXB9pH2k...mH8wQz',
+                baseURL: 'https://api.anthropic.com/v1',
+                model: 'claude-sonnet-4-20250514',
+                fastModel: 'claude-haiku-4-20250514'
+            },
+            permissionMode: 'default'
+        });
+        await webviewPage.waitForSelector('.messages-container');
+        // Scroll so an earlier user message is pushed above the viewport top, triggering the sticky header.
+        await webviewPage.evaluate(() => {
+            const el = document.querySelector('.messages-container') as HTMLElement;
+            el.scrollTop = el.scrollHeight;
+        });
+        await webviewPage.waitForSelector('[data-testid="sticky-user-message"]');
+        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-sticky-user-message.png' });
     });
 });
