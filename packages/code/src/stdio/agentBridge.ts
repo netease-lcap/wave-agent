@@ -44,6 +44,7 @@ import {
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { logger } from "../utils/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_VERSION: string = (() => {
@@ -331,6 +332,7 @@ export class AgentBridge {
 
     const options: AgentOptions = {
       callbacks,
+      logger,
       workdir: params.workdir,
       restoreSessionId: params.restoreSessionId,
       apiKey: params.apiKey,
