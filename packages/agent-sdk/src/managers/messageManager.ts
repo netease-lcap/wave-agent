@@ -16,7 +16,7 @@ import {
   type AddNotificationMessageParams,
   generateMessageId,
 } from "../utils/messageOperations.js";
-import type { Message, Usage } from "../types/index.js";
+import type { Message, Usage, ToolBlock } from "../types/index.js";
 import { getLastApiRounds } from "../utils/groupMessagesByApiRound.js";
 import { join, isAbsolute, relative } from "path";
 import {
@@ -893,6 +893,54 @@ export class MessageManager {
 
     if (textFinalized || reasoningFinalized) {
       this.callbacks.onMessagesChange?.([...this.messages]);
+    }
+  }
+
+  /**
+   * Finalize any tool blocks still in a non-terminal stage (start/streaming/running)
+   * by marking them as ended with an error. Called when the AI call is aborted or
+   * fails mid-tool-stream so the UI stops showing the "running" spinner.
+   * Fires onToolBlockUpdated for each finalized tool block.
+   */
+  public finalizeAbortedToolBlocks(error?: string): void {
+    if (this.messages.length === 0) return;
+    const lastMessage = this.messages[this.messages.length - 1];
+    if (lastMessage.role !== "assistant") return;
+
+    const errorMessage = error ?? "Tool execution was aborted";
+    let finalized = false;
+
+    for (let i = 0; i < lastMessage.blocks.length; i++) {
+      const block = lastMessage.blocks[i] as ToolBlock;
+      if (block.type !== "tool" || block.stage === "end") continue;
+
+      const timestamp = Date.now();
+      lastMessage.blocks[i] = {
+        ...block,
+        stage: "end",
+        success: false,
+        error: errorMessage,
+        timestamp,
+      };
+      finalized = true;
+
+      this.callbacks.onToolBlockUpdated?.({
+        id: block.id ?? "",
+        messageId: lastMessage.id ?? "",
+        name: block.name,
+        parameters: block.parameters,
+        parametersChunk: block.parametersChunk,
+        compactParams: block.compactParams,
+        stage: "end",
+        success: false,
+        error: errorMessage,
+        isManuallyBackgrounded: block.isManuallyBackgrounded,
+        timestamp,
+      });
+    }
+
+    if (finalized) {
+      this.setMessages([...this.messages]);
     }
   }
 

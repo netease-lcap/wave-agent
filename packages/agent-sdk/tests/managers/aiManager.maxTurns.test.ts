@@ -139,6 +139,7 @@ describe("AIManager maxTurns", () => {
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
       triggerFileRead: vi.fn(),
       finalizeStreamingBlocks: vi.fn(),
+      finalizeAbortedToolBlocks: vi.fn(),
     } as unknown as MessageManager;
 
     mockToolManager = {

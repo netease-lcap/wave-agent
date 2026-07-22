@@ -385,4 +385,119 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(block.endTime).toBeGreaterThanOrEqual(block.startTime as number);
     });
   });
+
+  describe("finalizeAbortedToolBlocks (abort/error mid-tool)", () => {
+    it("finalizes tool blocks still in start/streaming/running stage with success=false", () => {
+      const mockToolBlockUpdated = vi.fn();
+
+      const callbacks: MessageManagerCallbacks = {
+        onToolBlockUpdated: mockToolBlockUpdated,
+      };
+
+      const messageManager = new MessageManager(container, {
+        callbacks,
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      const messageId = messageManager.getMessages().slice(-1)[0].id;
+
+      // Add a tool block stuck in the "streaming" stage (params still arriving)
+      const toolBlockId = messageManager.addToolBlockToMessage(messageId, {
+        name: "Write",
+        parameters: '{"path": "/tmp/a',
+        stage: "streaming",
+      });
+
+      mockToolBlockUpdated.mockClear();
+
+      // Simulate abort/error: finalize aborted tool blocks
+      messageManager.finalizeAbortedToolBlocks();
+
+      const block = messageManager
+        .getMessages()
+        .slice(-1)[0]
+        .blocks.find((b) => b.type === "tool") as {
+        stage?: string;
+        success?: boolean;
+        error?: string;
+        timestamp?: number;
+      };
+
+      expect(block.stage).toBe("end");
+      expect(block.success).toBe(false);
+      expect(block.error).toBeTypeOf("string");
+      expect(block.timestamp).toBeTypeOf("number");
+
+      expect(mockToolBlockUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: toolBlockId,
+          messageId,
+          stage: "end",
+          success: false,
+        }),
+      );
+    });
+
+    it("does not touch tool blocks already in end stage", () => {
+      const mockToolBlockUpdated = vi.fn();
+
+      const callbacks: MessageManagerCallbacks = {
+        onToolBlockUpdated: mockToolBlockUpdated,
+      };
+
+      const messageManager = new MessageManager(container, {
+        callbacks,
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      const messageId = messageManager.getMessages().slice(-1)[0].id;
+
+      // Add a tool block already completed
+      messageManager.addToolBlockToMessage(messageId, {
+        name: "Read",
+        parameters: '{"path": "/tmp/a"}',
+        result: "done",
+        success: true,
+        stage: "end",
+      });
+
+      mockToolBlockUpdated.mockClear();
+      messageManager.finalizeAbortedToolBlocks();
+
+      const block = messageManager
+        .getMessages()
+        .slice(-1)[0]
+        .blocks.find((b) => b.type === "tool") as {
+        stage?: string;
+        success?: boolean;
+      };
+
+      // Unchanged
+      expect(block.stage).toBe("end");
+      expect(block.success).toBe(true);
+      expect(mockToolBlockUpdated).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when there are no tool blocks to finalize", () => {
+      const mockToolBlockUpdated = vi.fn();
+
+      const callbacks: MessageManagerCallbacks = {
+        onToolBlockUpdated: mockToolBlockUpdated,
+      };
+
+      const messageManager = new MessageManager(container, {
+        callbacks,
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      messageManager.updateCurrentMessageContent("Just text");
+
+      messageManager.finalizeAbortedToolBlocks();
+
+      expect(mockToolBlockUpdated).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -47,6 +47,7 @@ describe("AIManager - Duplicate Tool Call Reminder", () => {
       setlatestTotalTokens: vi.fn(),
       addErrorBlock: vi.fn(),
       finalizeStreamingBlocks: vi.fn(),
+      finalizeAbortedToolBlocks: vi.fn(),
       mergeAssistantAdditionalFields: vi.fn(),
     } as unknown as MessageManager;
 
