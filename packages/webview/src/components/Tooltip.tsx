@@ -51,19 +51,19 @@ export const Tooltip: React.FC<TooltipProps> = ({
         top = containerRect.top + containerRect.height / 2 - tooltipRect.height / 2;
         break;
       case 'top-left':
-        left = containerRect.left;
+        left = containerRect.right - tooltipRect.width;
         top = containerRect.top - tooltipRect.height - offset;
         break;
       case 'top-right':
-        left = containerRect.right - tooltipRect.width;
+        left = containerRect.left;
         top = containerRect.top - tooltipRect.height - offset;
         break;
       case 'bottom-left':
-        left = containerRect.left;
+        left = containerRect.right - tooltipRect.width;
         top = containerRect.bottom + offset;
         break;
       case 'bottom-right':
-        left = containerRect.right - tooltipRect.width;
+        left = containerRect.left;
         top = containerRect.bottom + offset;
         break;
     }
