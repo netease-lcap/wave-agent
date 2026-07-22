@@ -73,8 +73,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     selection: _selection,
     inputContent,
     permissionMode,
-    initialAttachedImages,
-    onToggleTaskList
+    initialAttachedImages
   } = props;
   const [message, setMessage] = useState('');
   const _lastSelectionRef = useRef<Selection | null>(null);
@@ -884,14 +883,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       return;
     }
 
-    // Handle Ctrl+T to toggle task list
-    if (event.key === 't' && (event.ctrlKey || event.metaKey) && !isComposing) {
-      event.preventDefault();
-      event.stopPropagation();
-      onToggleTaskList?.();
-      return;
-    }
-
     // Handle 指令 navigation
     if (slashCommand.isActive && slashCommands.length > 0) {
       switch (event.key) {
@@ -958,7 +949,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       event.preventDefault();
       handleSend();
     }
-  }, [slashCommand.isActive, slashCommands, selectedSlashIndex, handleSlashCommandSelect, closeSlashCommandPopup, atMention.isActive, suggestions, selectedIndex, handleFileSelect, closeDropdown, handleSend, isComposing, permissionMode, vscode, onToggleTaskList, calculateDropdownPosition, isStreaming, onAbortMessage]);
+  }, [slashCommand.isActive, slashCommands, selectedSlashIndex, handleSlashCommandSelect, closeSlashCommandPopup, atMention.isActive, suggestions, selectedIndex, handleFileSelect, closeDropdown, handleSend, isComposing, permissionMode, vscode, calculateDropdownPosition, isStreaming, onAbortMessage]);
 
   // Handle cursor position changes - debounced to wait for user to stop moving cursor
   const handleSelectionChange = useCallback(() => {

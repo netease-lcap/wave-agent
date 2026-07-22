@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback } from 'react';
 import { Message } from './Message';
 import type { MessageListProps } from '../types';
-import type { Message as MessageType } from 'wave-agent-sdk';
+import type { Message as MessageType, ToolBlock } from 'wave-agent-sdk';
+import { TASK_UPDATE_TOOL_NAME } from 'wave-agent-sdk/dist/constants/tools.js';
 import '../styles/MessageList.css';
 
-export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, streamingMessageIndex, vscode, onRewindToMessage }, ref) {
+export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, streamingMessageIndex, vscode, onRewindToMessage, tasks, isTaskListCollapsed, onToggleTaskListCollapse }, ref) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -81,6 +82,28 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     };
   }, [messages, queuedMessages, streamingMessageIndex, scrollToBottom]);
 
+  // Find the globally-last TaskUpdate(status=completed) tool block; the task list
+  // card is rendered at that block's position.
+  const taskListTarget = useMemo<{ messageId: string; blockIndex: number } | null>(() => {
+    let target: { messageId: string; blockIndex: number } | null = null;
+    for (const msg of messages) {
+      if (!msg.blocks) continue;
+      msg.blocks.forEach((block, blockIndex) => {
+        if (block.type !== 'tool') return;
+        const toolBlock = block as ToolBlock;
+        if (toolBlock.name !== TASK_UPDATE_TOOL_NAME || !toolBlock.parameters) return;
+        try {
+          if (JSON.parse(toolBlock.parameters).status === 'completed') {
+            target = { messageId: msg.id, blockIndex };
+          }
+        } catch {
+          // ignore malformed parameters
+        }
+      });
+    }
+    return target;
+  }, [messages]);
+
   return (
     <div 
       ref={containerRef}
@@ -110,10 +133,14 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
               isStreaming={isStreaming}
               vscode={vscode}
               onRewindToMessage={onRewindToMessage}
+              tasks={tasks}
+              taskListTargetBlockIndex={taskListTarget?.messageId === message.id ? taskListTarget.blockIndex : undefined}
+              isTaskListCollapsed={isTaskListCollapsed}
+              onToggleTaskListCollapse={onToggleTaskListCollapse}
             />
           );
         });
-      }, [messages, streamingMessageIndex, vscode, onRewindToMessage])}
+      }, [messages, streamingMessageIndex, vscode, onRewindToMessage, tasks, taskListTarget, isTaskListCollapsed, onToggleTaskListCollapse])}
       
       {/* Invisible div to scroll to */}
       <div ref={messagesEndRef} />

@@ -59,39 +59,39 @@ test.describe('Product Specification Screenshots - Tools', () => {
         await webviewPage.waitForSelector('.tool-container');
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-diff-viewer.png' });
 
-        // 7. Task List
-        await injector.simulateExtensionMessage('updateTasks', {
-            tasks: [
-                { id: '1', subject: '分析现有支付服务架构', description: '审查 PaymentService 的分布式事务实现，识别竞态条件和性能瓶颈', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
-                { id: '2', subject: '实现乐观锁机制', description: '为支付服务引入版本号控制，防止并发更新冲突', status: 'in_progress', activeForm: '编写乐观锁中间件', blocks: ['3'], blockedBy: [], metadata: {} },
-                { id: '3', subject: '编写集成测试', description: '覆盖并发支付场景，验证乐观锁和事务回滚的正确性', status: 'pending', blocks: [], blockedBy: ['2'], metadata: {} }
-            ],
-            isTaskListCollapsed: false
-        });
-        await webviewPage.waitForSelector('.task-list-container');
+        // 7. Task List — rendered inline in the message stream at a TaskUpdate(completed) block
+        const taskTasks = [
+            { id: '1', subject: '分析现有支付服务架构', description: '审查 PaymentService 的分布式事务实现，识别竞态条件和性能瓶颈', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
+            { id: '2', subject: '实现乐观锁机制', description: '为支付服务引入版本号控制，防止并发更新冲突', status: 'in_progress', activeForm: '编写乐观锁中间件', blocks: ['3'], blockedBy: [], metadata: {} },
+            { id: '3', subject: '编写集成测试', description: '覆盖并发支付场景，验证乐观锁和事务回滚的正确性', status: 'pending', blocks: [], blockedBy: ['2'], metadata: {} }
+        ];
+        const taskListMessage: Message = {
+            id: 'msg_demo_tasklist',
+            role: 'assistant',
+            timestamp: '2025-07-09T10:30:00.000Z',
+            blocks: [
+                {
+                    type: 'tool',
+                    name: 'TaskUpdate',
+                    stage: 'end',
+                    parameters: JSON.stringify({ taskId: '1', status: 'completed' }),
+                    result: 'Updated task #1'
+                }
+            ]
+        };
+        const taskUserMessage = MockDataGenerator.createUserMessage('把支付服务的并发问题彻底修一下', 'msg_user_tasklist');
+        await injector.simulateExtensionMessage('updateTasks', { tasks: taskTasks, isTaskListCollapsed: false });
+        await injector.updateMessages([taskUserMessage, taskListMessage]);
+        await webviewPage.waitForSelector('.task-list-inline');
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-task-list.png' });
 
         // 7.1 Task List Collapsed
-        await injector.simulateExtensionMessage('updateTasks', {
-            tasks: [
-                { id: '1', subject: '分析现有支付服务架构', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
-                { id: '2', subject: '实现乐观锁机制', status: 'in_progress', blocks: ['3'], blockedBy: [], metadata: {} },
-                { id: '3', subject: '编写集成测试', status: 'pending', blocks: [], blockedBy: ['2'], metadata: {} }
-            ],
-            isTaskListCollapsed: true
-        });
-        // Wait for the class to be applied
+        await injector.simulateExtensionMessage('updateTasks', { tasks: taskTasks, isTaskListCollapsed: true });
         await webviewPage.waitForFunction(() => {
-            const el = document.querySelector('.task-list-container');
-            return el && el.classList.contains('collapsed');
+            const el = document.querySelector('.task-list-chevron');
+            return el && el.classList.contains('codicon-chevron-right');
         });
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-task-list-collapsed.png' });
-        
-        // Restore expanded state for subsequent screenshots if needed
-        await injector.simulateExtensionMessage('updateTasks', {
-            tasks: [],
-            isTaskListCollapsed: false
-        });
 
         // 8. Subagent Display (Task Explore)
         const subagentMessage: Message = {

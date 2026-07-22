@@ -135,6 +135,9 @@ export interface MessageListProps {
   streamingMessageIndex?: number;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
+  tasks: Task[];
+  isTaskListCollapsed: boolean;
+  onToggleTaskListCollapse: () => void;
 }
 
 export interface MessageProps {
@@ -143,6 +146,10 @@ export interface MessageProps {
   isQueued?: boolean;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
+  tasks?: Task[];
+  taskListTargetBlockIndex?: number;
+  isTaskListCollapsed?: boolean;
+  onToggleTaskListCollapse?: () => void;
 }
 
 // Image attachment types (uses base64 data directly)
@@ -174,8 +181,6 @@ export interface MessageInputProps {
   inputContent?: string;
   permissionMode?: PermissionMode;
   initialAttachedImages?: AttachedImage[];
-  isTaskListVisible?: boolean;
-  onToggleTaskList?: () => void;
 }
 
 /**
@@ -239,7 +244,6 @@ export interface QueuedMessageListProps {
 export interface ChatState {
   messages: Message[];
   tasks: Task[];
-  isTaskListVisible: boolean;
   isTaskListCollapsed: boolean;
   isQueueCollapsed: boolean;
   editingQueuedId: string | null;
