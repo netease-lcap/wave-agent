@@ -246,6 +246,12 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
           ? 'var(--vscode-testing-iconFailed, #f14c4c)'
           : 'var(--vscode-descriptionForeground, #888)';
 
+  // Dot color for text/reasoning blocks: yellow while streaming, green once done.
+  const getStageColor = (stage?: 'streaming' | 'end') =>
+    stage === 'streaming'
+      ? 'var(--vscode-editorWarning-foreground, #cca700)'
+      : 'var(--vscode-testing-iconPassed, #73c991)';
+
   const renderToolBlock = (toolBlock: ToolBlock, index: number) => {
     // Task management tools are hidden in the message stream, except the globally-last
     // TaskUpdate(status=completed) block, which renders the task list card.
@@ -600,6 +606,9 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
 
         rendered = renderMarkdownContent(content, index);
         wrap = true;
+        if (block.type === 'text') {
+          dotColor = getStageColor(block.stage);
+        }
         break;
       }
       case 'error':
@@ -625,6 +634,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       case 'reasoning':
         rendered = renderReasoningBlock(block, index);
         wrap = true;
+        dotColor = getStageColor(block.stage);
         break;
       case 'task_notification':
         return renderTaskNotification(block as TaskNotificationBlock, index);
