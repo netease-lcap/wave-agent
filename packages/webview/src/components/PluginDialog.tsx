@@ -99,10 +99,15 @@ const PluginDialog: React.FC<PluginDialogProps & { vscode: { postMessage: (msg: 
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    // Defer registration to the next tick so the click that opened this dialog
+    // (still bubbling to document) doesn't immediately trigger the outside-close.
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 0);
     document.addEventListener('keydown', handleEscapeKey);
 
     return () => {
+      clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscapeKey);
     };
