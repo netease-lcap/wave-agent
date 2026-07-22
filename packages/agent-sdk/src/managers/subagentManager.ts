@@ -7,7 +7,13 @@ import type { Message, Usage } from "../types/index.js";
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
-import { AGENT_TOOL_NAME } from "../constants/tools.js";
+import {
+  AGENT_TOOL_NAME,
+  TASK_CREATE_TOOL_NAME,
+  TASK_GET_TOOL_NAME,
+  TASK_LIST_TOOL_NAME,
+  TASK_UPDATE_TOOL_NAME,
+} from "../constants/tools.js";
 import {
   addConsolidatedAbortListener,
   createAbortPromise,
@@ -321,6 +327,12 @@ export class SubagentManager {
       instanceDeniedRules: [
         ...(parentPermissionManager?.getInstanceDeniedRules?.() || []),
         AGENT_TOOL_NAME, // Always deny Agent tool in subagents to prevent recursion
+        // Deny Task tools in subagents — they share the parent's TaskManager
+        // and could mutate the main agent's task list
+        TASK_CREATE_TOOL_NAME,
+        TASK_GET_TOOL_NAME,
+        TASK_UPDATE_TOOL_NAME,
+        TASK_LIST_TOOL_NAME,
       ],
       additionalDirectories:
         parentPermissionManager?.getAdditionalDirectories(),
