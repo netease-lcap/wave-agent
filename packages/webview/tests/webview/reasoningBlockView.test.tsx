@@ -122,6 +122,21 @@ describe('ReasoningBlockView', () => {
             expect(title.textContent).not.toContain('用时');
         });
 
+        it('shows only 思考 when elapsed time rounds to 0s', () => {
+            const block = {
+                type: 'reasoning',
+                content: 'done',
+                stage: 'end',
+                startTime: 1000,
+                endTime: 1000,
+            } as ReasoningBlock;
+            const { container } = render(<ReasoningBlockView block={block} renderContent={renderContent} />);
+
+            const title = container.querySelector('.reasoning-title') as HTMLElement;
+            expect(title).toHaveTextContent('思考');
+            expect(title.textContent).not.toContain('用时');
+        });
+
         it('shows a growing 思考中 counter while in progress', () => {
             vi.useFakeTimers();
             vi.setSystemTime(1000);

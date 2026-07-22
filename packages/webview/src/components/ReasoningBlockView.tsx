@@ -42,7 +42,9 @@ export const ReasoningBlockView: React.FC<ReasoningBlockViewProps> = ({ block, r
     block.endTime >= block.startTime
   ) {
     const seconds = Math.round((block.endTime - block.startTime) / 1000);
-    title = `思考 (用时 ${seconds}s)`;
+    if (seconds > 0) {
+      title = `思考 (用时 ${seconds}s)`;
+    }
   }
 
   return (
