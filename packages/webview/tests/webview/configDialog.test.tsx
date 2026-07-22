@@ -135,4 +135,27 @@ describe('ConfigDialog', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+
+  it('does not close on the same-tick mousedown that opened it, but closes on a later outside mousedown', () => {
+    vi.useFakeTimers();
+    try {
+      const { onCancel } = renderDialog();
+
+      // A mousedown outside the dialog dispatched on the same tick as mount
+      // (the click that opened the dialog is still bubbling). It must NOT close.
+      const outside = document.createElement('div');
+      document.body.appendChild(outside);
+      fireEvent.mouseDown(outside);
+      expect(onCancel).not.toHaveBeenCalled();
+
+      // After the deferred listener registers, an outside mousedown closes it.
+      vi.advanceTimersByTime(0);
+      fireEvent.mouseDown(outside);
+      expect(onCancel).toHaveBeenCalledTimes(1);
+
+      document.body.removeChild(outside);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

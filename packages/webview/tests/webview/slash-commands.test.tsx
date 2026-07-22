@@ -208,6 +208,59 @@ describe('Slash Commands', () => {
         expect(input.textContent).toBe('/init ');
     });
 
+    it('should open the local command dialog when clicked even if selection is on the div', async () => {
+        const { vscode } = renderChatApp();
+
+        const input = screen.getByTestId('message-input');
+        input.focus();
+
+        await typeInInput('/plugin');
+
+        await waitFor(() => {
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'requestSlashCommands' })
+            );
+        }, { timeout: 3000 });
+
+        sendCommand('slashCommandsResponse', {
+            commands: [
+                { id: 'plugin', name: 'plugin', description: '插件管理' }
+            ]
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('slash-commands-popup')).toBeInTheDocument();
+        });
+
+        // Simulate a mouse click: the selection is no longer inside the input's
+        // text node (it collapses onto the contenteditable div, nodeType 1),
+        // which used to make handleSlashCommandSelect silently no-op.
+        const range = document.createRange();
+        range.selectNodeContents(input);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+
+        const cmdItem = screen.getByTestId('slash-command-plugin');
+        await act(async () => {
+            fireEvent.mouseDown(cmdItem);
+        });
+
+        // The plugin dialog opens (it fetches plugins on mount).
+        await waitFor(() => {
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'listPlugins' })
+            );
+        });
+
+        // Popup closed and input cleared.
+        await waitFor(() => {
+            expect(screen.queryByTestId('slash-commands-popup')).not.toBeInTheDocument();
+        });
+        expect(input.textContent).toBe('');
+    });
+
     it('should filter slash commands as user types', async () => {
         const { vscode } = renderChatApp();
 

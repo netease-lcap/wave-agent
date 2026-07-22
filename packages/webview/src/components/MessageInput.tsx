@@ -770,6 +770,21 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
   const handleSlashCommandSelect = useCallback((command: SlashCommand) => {
     if (!textareaRef.current) return;
 
+    // Local commands (config/plugin/mcp/status/clear) just open a dialog; their
+    // behavior does not depend on the cursor position. Handle them first so a
+    // mouse click on the popup works even when the browser selection is no
+    // longer inside the input's text node (which made getSelection()-based
+    // logic below silently no-op on click).
+    const localCommands = ['config', 'plugin', 'mcp', 'status', 'clear'];
+    if (localCommands.includes(command.name)) {
+      textareaRef.current.innerHTML = '';
+      setMessage('');
+      vscode.postMessage({ command: 'updateInputContent', content: '' });
+      closeSlashCommandPopup();
+      onSendMessage(`/${command.name}`);
+      return;
+    }
+
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
 
@@ -791,17 +806,6 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
           range.setStart(textNode, lastSlashIndex);
           range.deleteContents();
 
-          // Local commands (config/plugin/mcp) open dialog directly without inserting text
-          const localCommands = ['config', 'plugin', 'mcp', 'status', 'clear'];
-          if (localCommands.includes(command.name)) {
-            // Restore cursor after removing the slash
-            selection.removeAllRanges();
-            selection.addRange(range);
-            closeSlashCommandPopup();
-            onSendMessage(`/${command.name}`);
-            return;
-          }
-
           // Insert the command text
           const commandText = `/${command.name} `;
           const newNode = document.createTextNode(commandText);
@@ -821,7 +825,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     }
 
     closeSlashCommandPopup();
-  }, [closeSlashCommandPopup, onSendMessage]);
+  }, [closeSlashCommandPopup, onSendMessage, vscode]);
 
   const handleSend = useCallback(() => {
     if (!textareaRef.current) return;
