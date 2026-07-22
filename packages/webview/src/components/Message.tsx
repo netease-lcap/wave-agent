@@ -424,11 +424,17 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
 
     // For other tools, show result or shortResult if present
     if ((toolBlock.result || toolBlock.shortResult) && !errorContent) {
+      const rawText = (toolBlock.shortResult || toolBlock.result || '').trim();
+      const lines = rawText.split('\n');
       return (
         <div key={index} className="tool-container">
           {toolHeader}
           <div className="tool-result-block">
-            <div className="result-raw">{(toolBlock.shortResult || toolBlock.result || '').trim()}</div>
+            <div className="result-raw">
+              {lines.map((line, i) => (
+                <div key={i} className="result-raw-line">{line}</div>
+              ))}
+            </div>
           </div>
         </div>
       );

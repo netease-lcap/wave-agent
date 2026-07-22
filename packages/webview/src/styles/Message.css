@@ -582,10 +582,12 @@
 .result-raw {
     color: var(--vscode-descriptionForeground);
     font-size: 11px;
-    max-height: 100px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
+}
+
+.result-raw-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .ask-user-result-item {
