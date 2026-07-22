@@ -12,22 +12,25 @@
     position: relative;
 }
 
-/* Sticky user message pinned at the top of the viewport (设计稿 2236-3792) */
+/* Sticky user message pinned at the top of the viewport (设计稿 2248-9471) */
 .sticky-user-message {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    right: 10px;
+    position: sticky;
+    top: 0;
+    align-self: stretch;
+    margin-bottom: -10px;
     z-index: 20;
-    background-color: var(--vscode-chat-requestBubbleBackground);
-    border-radius: 8px;
-    padding: 8px 12px;
+    background-color: var(--vscode-menu-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    padding: 6px 10px;
     cursor: pointer;
     transition: background-color 0.2s ease;
 }
 
 .sticky-user-message:hover {
-    background-color: var(--vscode-chat-requestBubbleHoverBackground);
+    /* Keep the opaque menu-background base and layer the (often translucent)
+       list hover tint on top, so the card never becomes see-through. */
+    background-image: linear-gradient(var(--vscode-list-hoverBackground), var(--vscode-list-hoverBackground));
 }
 
 .sticky-user-content {
@@ -46,13 +49,8 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: -10px;
     height: 10px;
-    border-radius: 0 0 8px 8px;
-    background: linear-gradient(to bottom, transparent, var(--vscode-chat-requestBubbleBackground));
+    background: linear-gradient(to bottom, var(--vscode-menu-background), transparent);
     pointer-events: none;
-}
-
-.sticky-user-message:hover .sticky-user-scrim {
-    background: linear-gradient(to bottom, transparent, var(--vscode-chat-requestBubbleHoverBackground));
 }

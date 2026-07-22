@@ -72,7 +72,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
   const scrollToMessage = useCallback((id: string) => {
     const container = containerRef.current;
     const node = container?.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
-    node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth', force = false) => {
