@@ -113,7 +113,7 @@ $lafOverrides
         val inputBorder = laf("TextField.borderColor", JBColor.border(), Color(0x3c3c3c))
         val buttonBg = laf("Button.background", JBColor(0x0e639c, 0x0e639c), Color(0x0e639c))
         val buttonFg = laf("Button.foreground", Color.WHITE, Color.WHITE)
-        val linkFg = laf("Link.foreground", JBColor(0x589df6, 0x589df6), Color(0x589df6))
+        val linkFg = laf("Link.activeForeground", JBColor(0x589df6, 0x589df6), Color(0x589df6))
         val border = laf("Border.color", JBColor.border(), Color(0x3c3c3c))
         val hoverBg = laf("ActionButton.hoverBackground", Color(90, 93, 94, 80), Color(90, 93, 94, 80))
         val activeBg = laf("ActionButton.pressedBackground", Color(99, 102, 103, 80), Color(99, 102, 103, 80))
