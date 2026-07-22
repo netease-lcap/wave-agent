@@ -233,6 +233,51 @@ describe("Subagent Permission Integration", () => {
     );
   });
 
+  it("should deny Task management tools in subagents to prevent shared tasklist mutation", async () => {
+    const parentPermissionManager = new PermissionManager(container, {});
+    container.register("PermissionManager", parentPermissionManager);
+
+    // general-purpose-style config: no tools field → would inherit all tools
+    const mockConfig: SubagentConfiguration = {
+      name: "test-agent",
+      description: "test",
+      systemPrompt: "test",
+      model: "inherit",
+      filePath: "/tmp/test.md",
+      scope: "project",
+      priority: 1,
+    };
+
+    const instance = await subagentManager.createInstance(mockConfig, {
+      description: "test task",
+      prompt: "test prompt",
+      subagent_type: "test-agent",
+    });
+
+    const subagentContainer = (
+      instance.aiManager as unknown as { container: Container }
+    ).container;
+    const subagentPermissionManager =
+      subagentContainer.get<PermissionManager>("PermissionManager")!;
+
+    // Task tools must be in instanceDeniedRules
+    const denied = subagentPermissionManager.getInstanceDeniedRules();
+    expect(denied).toContain("Agent");
+    expect(denied).toContain("TaskCreate");
+    expect(denied).toContain("TaskGet");
+    expect(denied).toContain("TaskUpdate");
+    expect(denied).toContain("TaskList");
+
+    // Task tools must NOT be registered in the subagent's ToolManager
+    const subagentToolManager =
+      subagentContainer.get<ToolManager>("ToolManager")!;
+    const registeredNames = subagentToolManager.getTools().map((t) => t.name);
+    expect(registeredNames).not.toContain("TaskCreate");
+    expect(registeredNames).not.toContain("TaskGet");
+    expect(registeredNames).not.toContain("TaskUpdate");
+    expect(registeredNames).not.toContain("TaskList");
+  });
+
   it("should verify that skillTool passes allowedTools to subagentManager.createInstance", async () => {
     const { skillTool } = await import("../../src/tools/skillTool.js");
     const mockSkillManager = {
