@@ -321,8 +321,7 @@ describe('Session Management', () => {
             }
         ];
 
-        // currentSession has no firstMessage -> label falls back to date/time,
-        // but with no currentSession set the title shows the default 新会话
+        // With no currentSession set, the header shows the default title
         act(() => {
             sendCommand('updateSessions', { sessions });
         });
@@ -333,5 +332,28 @@ describe('Session Management', () => {
         // The existing session is still listed in the popup
         openSessionListPopup();
         expect(screen.getByTestId('session-list-item-session-in-list')).toBeInTheDocument();
+    });
+
+    it('should show 新会话 title for a current session that has no first message yet', () => {
+        renderChatApp();
+
+        // A freshly created session is pushed as currentSession before any
+        // message is sent, so it has no firstMessage.
+        act(() => {
+            sendCommand('updateCurrentSession', {
+                session: {
+                    id: 'fresh-session',
+                    sessionType: 'main',
+                    workdir: '/test/project',
+                    lastActiveAt: new Date('2026-07-22T13:46:00Z'),
+                    latestTotalTokens: 0
+                }
+            });
+        });
+
+        // Must show the friendly default, not a formatted timestamp
+        const header = screen.getByTestId('chat-header');
+        expect(header).toHaveTextContent('新会话');
+        expect(header).not.toHaveTextContent('2026');
     });
 });

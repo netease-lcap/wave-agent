@@ -7,8 +7,7 @@ export const formatSessionLabel = (session: SessionMetadata): string => {
     return content.length > 30 ? content.substring(0, 30) + '...' : content;
   }
 
-  // Fallback to date/time format
-  const date = new Date(session.lastActiveAt).toLocaleDateString();
-  const time = new Date(session.lastActiveAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return `${date} ${time}`;
+  // No first message yet (e.g. a freshly created session): show a friendly
+  // default rather than a bare timestamp.
+  return '新会话';
 };
