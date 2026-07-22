@@ -6,8 +6,64 @@
 
 .message.assistant {
     display: flex;
-    gap: 10px;
+    gap: 0;
     flex-direction: column;
+}
+
+.timeline-row {
+    position: relative;
+    padding-left: 12px;
+    padding-top: 10px;
+}
+
+.timeline-row:first-child {
+    padding-top: 0;
+}
+
+.timeline-row::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 15px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--dot-color, #CCCCCC);
+    z-index: 1;
+}
+
+.timeline-row:first-child::before {
+    top: 6px;
+}
+
+.timeline-row::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--vscode-widget-border);
+}
+
+.timeline-row:first-child::after {
+    top: 9px;
+}
+
+/* Last block: line only connects up to its own dot, no trailing line below */
+.timeline-row:last-child::after {
+    bottom: auto;
+    height: 18px;
+}
+
+/* Only block in the message: isolated dot, no line at all */
+.timeline-row:first-child:last-child::after {
+    display: none;
+}
+
+.timeline-row .tool-status-dot,
+.timeline-row .reasoning-dot {
+    display: none;
 }
 
 .message.user {

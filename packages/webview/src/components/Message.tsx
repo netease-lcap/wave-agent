@@ -232,18 +232,21 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
     return null;
   };
 
-  const renderToolBlock = (toolBlock: ToolBlock, index: number) => {
-    // Default tool rendering for all tools (including Bash)
-    const compactInfo = toolBlock.stage === 'streaming'
-      ? (toolBlock.parameters ? String(toolBlock.parameters).slice(-30) : '')
-      : (toolBlock.compactParams || '');
-    const toolStatusColor = toolBlock.stage === 'running' || toolBlock.stage === 'streaming'
+  const getToolStatusColor = (toolBlock: ToolBlock) =>
+    toolBlock.stage === 'running' || toolBlock.stage === 'streaming'
       ? 'var(--vscode-editorWarning-foreground, #cca700)'
       : toolBlock.success === true
         ? 'var(--vscode-testing-iconPassed, #73c991)'
         : (toolBlock.error || toolBlock.success === false)
           ? 'var(--vscode-testing-iconFailed, #f14c4c)'
           : 'var(--vscode-descriptionForeground, #888)';
+
+  const renderToolBlock = (toolBlock: ToolBlock, index: number) => {
+    // Default tool rendering for all tools (including Bash)
+    const compactInfo = toolBlock.stage === 'streaming'
+      ? (toolBlock.parameters ? String(toolBlock.parameters).slice(-30) : '')
+      : (toolBlock.compactParams || '');
+    const toolStatusColor = getToolStatusColor(toolBlock);
     const toolHeader = (
       <div key={index} className="tool-block">
         <span className="tool-status-dot" style={{ color: toolStatusColor }}>●</span> {toolBlock.name || 'Tool'}{compactInfo ? <span className="compact-params"> {compactInfo}</span> : ''}
@@ -509,6 +512,10 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
   };
 
   const renderBlock = (block: MessageBlock, index: number) => {
+    let rendered: React.ReactNode = null;
+    let wrap = false;
+    let dotColor: string | undefined;
+
     switch (block.type) {
       case 'text':
       case 'compact': {
@@ -571,7 +578,9 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
           );
         }
 
-        return renderMarkdownContent(content, index);
+        rendered = renderMarkdownContent(content, index);
+        wrap = true;
+        break;
       }
       case 'error':
         return (
@@ -580,18 +589,35 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
           </div>
         );
       case 'tool':
-        return renderToolBlock(block as ToolBlock, index);
+        rendered = renderToolBlock(block as ToolBlock, index);
+        wrap = true;
+        dotColor = getToolStatusColor(block as ToolBlock);
+        break;
       case 'bang':
         return <BangBlock key={index} block={block} />;
       case 'image':
         return renderImageBlock(block as ImageBlock, index);
       case 'reasoning':
-        return renderReasoningBlock(block, index);
+        rendered = renderReasoningBlock(block, index);
+        wrap = true;
+        break;
       case 'task_notification':
         return renderTaskNotification(block as TaskNotificationBlock, index);
       default:
         return null;
     }
+
+    if (!wrap || rendered === null) return rendered;
+
+    return (
+      <div
+        key={index}
+        className="timeline-row"
+        style={dotColor ? ({ ['--dot-color']: dotColor } as React.CSSProperties) : undefined}
+      >
+        {rendered}
+      </div>
+    );
   };
 
   return (
