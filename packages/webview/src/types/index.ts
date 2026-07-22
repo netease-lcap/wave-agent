@@ -135,9 +135,6 @@ export interface MessageListProps {
   streamingMessageIndex?: number;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
-  tasks: Task[];
-  isTaskListCollapsed: boolean;
-  onToggleTaskListCollapse: () => void;
 }
 
 export interface MessageProps {
@@ -146,10 +143,6 @@ export interface MessageProps {
   isQueued?: boolean;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
-  tasks?: Task[];
-  taskListTargetBlockIndex?: number;
-  isTaskListCollapsed?: boolean;
-  onToggleTaskListCollapse?: () => void;
 }
 
 // Image attachment types (uses base64 data directly)

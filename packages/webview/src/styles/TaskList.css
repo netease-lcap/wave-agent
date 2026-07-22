@@ -1,28 +1,75 @@
-/* Inline task list card rendered in the message stream (design 2230:1141) */
+/* Task list card pinned above the input area (design 2230:1141) */
 .task-list-inline {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: 8px 12px 12px;
+  background-color: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  box-sizing: border-box;
 }
 
 .task-list-plan-row {
+  height: 24px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
   cursor: pointer;
   user-select: none;
 }
 
-.task-list-progress {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
+.task-list-plan-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-list-title {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+}
+
+.task-list-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-list-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-list-stat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.task-list-stat-text {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
   color: var(--vscode-editor-foreground);
+  white-space: nowrap;
 }
 
 .task-list-chevron {
-  font-size: 16px;
-  color: var(--vscode-descriptionForeground);
+  width: 16px;
+  height: 16px;
+  color: var(--vscode-foreground);
+  transition: transform 0.15s ease;
+}
+
+.task-list-chevron.expanded {
+  transform: rotate(90deg);
 }
 
 .task-list-items {
@@ -68,19 +115,20 @@
 }
 
 .task-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
   word-break: break-word;
-  color: var(--vscode-foreground);
+  color: var(--vscode-editor-foreground);
 }
 
-.task-title.pending,
+.task-title.completed {
+  color: var(--vscode-descriptionForeground);
+  text-decoration: line-through;
+}
+
 .task-title.deleted {
   color: var(--vscode-descriptionForeground);
-}
-
-.task-title.deleted {
   text-decoration: line-through;
 }
 

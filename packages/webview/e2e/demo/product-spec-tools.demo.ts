@@ -59,29 +59,15 @@ test.describe('Product Specification Screenshots - Tools', () => {
         await webviewPage.waitForSelector('.tool-container');
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-diff-viewer.png' });
 
-        // 7. Task List — rendered inline in the message stream at a TaskUpdate(completed) block
+        // 7. Task List — pinned above the input area, driven by updateTasks
         const taskTasks = [
             { id: '1', subject: '分析现有支付服务架构', description: '审查 PaymentService 的分布式事务实现，识别竞态条件和性能瓶颈', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
             { id: '2', subject: '实现乐观锁机制', description: '为支付服务引入版本号控制，防止并发更新冲突', status: 'in_progress', activeForm: '编写乐观锁中间件', blocks: ['3'], blockedBy: [], metadata: {} },
             { id: '3', subject: '编写集成测试', description: '覆盖并发支付场景，验证乐观锁和事务回滚的正确性', status: 'pending', blocks: [], blockedBy: ['2'], metadata: {} }
         ];
-        const taskListMessage: Message = {
-            id: 'msg_demo_tasklist',
-            role: 'assistant',
-            timestamp: '2025-07-09T10:30:00.000Z',
-            blocks: [
-                {
-                    type: 'tool',
-                    name: 'TaskUpdate',
-                    stage: 'end',
-                    parameters: JSON.stringify({ taskId: '1', status: 'completed' }),
-                    result: 'Updated task #1'
-                }
-            ]
-        };
         const taskUserMessage = MockDataGenerator.createUserMessage('把支付服务的并发问题彻底修一下', 'msg_user_tasklist');
+        await injector.updateMessages([taskUserMessage]);
         await injector.simulateExtensionMessage('updateTasks', { tasks: taskTasks, isTaskListCollapsed: false });
-        await injector.updateMessages([taskUserMessage, taskListMessage]);
         await webviewPage.waitForSelector('.task-list-inline');
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-task-list.png' });
 
@@ -89,7 +75,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         await injector.simulateExtensionMessage('updateTasks', { tasks: taskTasks, isTaskListCollapsed: true });
         await webviewPage.waitForFunction(() => {
             const el = document.querySelector('.task-list-chevron');
-            return el && el.classList.contains('codicon-chevron-right');
+            return el && !el.classList.contains('expanded');
         });
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-task-list-collapsed.png' });
 

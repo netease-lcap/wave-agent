@@ -7,17 +7,13 @@ import { Tooltip } from './Tooltip';
 
 // ... (existing imports)
 import DOMPurify from 'dompurify';
-import { 
-  BASH_TOOL_NAME, 
-  LSP_TOOL_NAME, 
-  WRITE_TOOL_NAME, 
-  EDIT_TOOL_NAME, 
-  ASK_USER_QUESTION_TOOL_NAME, 
-  EXIT_PLAN_MODE_TOOL_NAME,
-  TASK_CREATE_TOOL_NAME,
-  TASK_UPDATE_TOOL_NAME,
-  TASK_GET_TOOL_NAME,
-  TASK_LIST_TOOL_NAME
+import {
+  BASH_TOOL_NAME,
+  LSP_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  ASK_USER_QUESTION_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME
 } from 'wave-agent-sdk/dist/constants/tools.js';
 import type { MessageProps, ToolBlock, ImageBlock, TaskNotificationBlock, ReasoningBlock, MessageBlock } from '../types';
 import { DiffViewer } from './DiffViewer';
@@ -25,10 +21,7 @@ import { MermaidRenderer } from './MermaidRenderer';
 import { ReasoningBlockView } from './ReasoningBlockView';
 import { WriteToolPreview } from './WriteToolPreview';
 import { FileToolHeader } from './FileToolHeader';
-import { TaskList } from './TaskList';
 import '../styles/Message.css';
-
-const TASK_TOOL_NAMES = [TASK_CREATE_TOOL_NAME, TASK_UPDATE_TOOL_NAME, TASK_GET_TOOL_NAME, TASK_LIST_TOOL_NAME];
 
 // Configure marked for VS Code webview context
 marked.use({
@@ -253,21 +246,6 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       : 'var(--vscode-testing-iconPassed, #73c991)';
 
   const renderToolBlock = (toolBlock: ToolBlock, index: number) => {
-    // Task management tools are hidden in the message stream, except the globally-last
-    // TaskUpdate(status=completed) block, which renders the task list card.
-    if (toolBlock.name && TASK_TOOL_NAMES.includes(toolBlock.name)) {
-      if (index === props.taskListTargetBlockIndex && props.tasks) {
-        return (
-          <TaskList
-            tasks={props.tasks}
-            isCollapsed={props.isTaskListCollapsed ?? false}
-            onToggleCollapse={props.onToggleTaskListCollapse ?? (() => {})}
-          />
-        );
-      }
-      return null;
-    }
-
     // Default tool rendering for all tools (including Bash)
     const compactInfo = toolBlock.stage === 'streaming'
       ? (toolBlock.parameters ? String(toolBlock.parameters).slice(-30) : '')
@@ -621,10 +599,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
         const toolBlock = block as ToolBlock;
         rendered = renderToolBlock(toolBlock, index);
         wrap = true;
-        // Task list card uses the neutral timeline dot; other tools use status color.
-        dotColor = toolBlock.name && TASK_TOOL_NAMES.includes(toolBlock.name)
-          ? undefined
-          : getToolStatusColor(toolBlock);
+        dotColor = getToolStatusColor(block as ToolBlock);
         break;
       }
       case 'bang':
@@ -677,9 +652,5 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
   return prev.message === next.message &&
     prev.isStreaming === next.isStreaming &&
     prev.isQueued === next.isQueued &&
-    prev.onRewindToMessage === next.onRewindToMessage &&
-    prev.tasks === next.tasks &&
-    prev.taskListTargetBlockIndex === next.taskListTargetBlockIndex &&
-    prev.isTaskListCollapsed === next.isTaskListCollapsed &&
-    prev.onToggleTaskListCollapse === next.onToggleTaskListCollapse;
+    prev.onRewindToMessage === next.onRewindToMessage;
 });

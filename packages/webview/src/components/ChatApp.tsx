@@ -2,6 +2,7 @@ import React, { useEffect, useReducer, useCallback, useRef, useState } from 'rea
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { ChatHeader } from './ChatHeader';
+import { TaskList } from './TaskList';
 import { QueuedMessageList } from './QueuedMessageList';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import ConfigDialog from './ConfigDialog';
@@ -475,13 +476,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           streamingMessageIndex={streamingMessageIndex}
           vscode={vscode}
           onRewindToMessage={handleRewindToMessage}
-          tasks={state.tasks}
-          isTaskListCollapsed={state.isTaskListCollapsed}
-          onToggleTaskListCollapse={() => dispatch({ type: 'TOGGLE_TASK_LIST_COLLAPSE' })}
         />
       )}
 
       <div className="input-area-container">
+        <TaskList
+          tasks={state.tasks}
+          isCollapsed={state.isTaskListCollapsed}
+          onToggleCollapse={() => dispatch({ type: 'TOGGLE_TASK_LIST_COLLAPSE' })}
+        />
         <QueuedMessageList
           queuedMessages={state.queuedMessages}
           isCollapsed={state.isQueueCollapsed}
