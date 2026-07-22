@@ -55,3 +55,38 @@ describe('collapse via updateTasks', () => {
     expect(document.querySelector('.task-list-items')).not.toBeInTheDocument();
   });
 });
+
+describe('scroll updated task into view', () => {
+  it('scrolls the status-changed task to center on updateTasks', async () => {
+    const scrollIntoView = vi.fn();
+    // jsdom doesn't implement Element.scrollIntoView
+    window.Element.prototype.scrollIntoView = scrollIntoView;
+
+    renderChatApp();
+    act(() => {
+      sendCommand('updateTasks', { tasks });
+    });
+    await waitFor(() => expect(screen.getByTestId('task-list')).toBeInTheDocument());
+    // 初始渲染也算"新增"，会触发一次滚动
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'center', behavior: 'smooth' }),
+    );
+    scrollIntoView.mockClear();
+
+    // task #3 从 pending → in_progress
+    const updated = tasks.map((t) =>
+      t.id === '3' ? { ...t, status: 'in_progress' as const } : t,
+    );
+    act(() => {
+      sendCommand('updateTasks', { tasks: updated });
+    });
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith(
+        expect.objectContaining({ block: 'center', behavior: 'smooth' }),
+      );
+    });
+    // 滚动的是 #3 这一行
+    const scrolledEl = (scrollIntoView.mock.instances[0] as Element) || document.querySelector('[data-task-id="3"]');
+    expect(scrolledEl?.getAttribute('data-task-id')).toBe('3');
+  });
+});

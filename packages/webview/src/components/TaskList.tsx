@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { QueueChevronIcon } from './HeaderIcons';
 import type { Task, TaskStatus } from '../types';
 import '../styles/TaskList.css';
@@ -43,6 +43,28 @@ const getStatusIcon = (status: TaskStatus) => {
 
 export const TaskList: React.FC<TaskListProps> = ({ tasks, isCollapsed, onToggleCollapse }) => {
   const visibleTasks = tasks.filter((t) => t.status !== 'deleted');
+  const itemsRef = useRef<HTMLDivElement>(null);
+  const prevTasksRef = useRef<Task[]>(tasks);
+
+  useEffect(() => {
+    const prev = prevTasksRef.current;
+    // 找到第一个状态变化或新增的 task
+    let changedId: string | null = null;
+    for (const t of tasks) {
+      if (t.status === 'deleted') continue;
+      const old = prev.find((p) => p.id === t.id);
+      if (!old || old.status !== t.status) {
+        changedId = t.id;
+        break;
+      }
+    }
+    prevTasksRef.current = tasks;
+    if (changedId && !isCollapsed && itemsRef.current) {
+      const el = itemsRef.current.querySelector(`[data-task-id="${changedId}"]`);
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, [tasks, isCollapsed]);
+
   if (visibleTasks.length === 0) {
     return null;
   }
@@ -79,9 +101,9 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, isCollapsed, onToggle
         </div>
       </div>
       {!isCollapsed && (
-        <div className="task-list-items">
+        <div className="task-list-items" ref={itemsRef}>
           {visibleTasks.map((task) => (
-            <div key={task.id} className="task-row">
+            <div key={task.id} className="task-row" data-task-id={task.id}>
               {getStatusIcon(task.status)}
               <div className="task-content">
                 <div className={`task-title ${task.status}`}>#{task.id} {task.subject}</div>
