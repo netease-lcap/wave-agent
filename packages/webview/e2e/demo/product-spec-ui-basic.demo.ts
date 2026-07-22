@@ -106,6 +106,22 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         await webviewPage.keyboard.press('Control+A');
         await webviewPage.keyboard.press('Backspace');
 
+        // 1.4 Input box states (设计稿 2237-5088): 空态 placeholder / 聚焦态红框 / 多行
+        await webviewPage.locator('body').click({ position: { x: 5, y: 5 } });
+        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-input-empty.png' });
+
+        await webviewPage.focus('[data-testid="message-input"]');
+        await webviewPage.keyboard.type('帮我检查当前文件中的权限处理逻辑');
+        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-input-focus.png' });
+
+        await webviewPage.keyboard.type('，找出可能遗漏的边界情况，并给出修改建议。同时保留现有接口行为，不要改动公共类型。请帮我检查当前文件中的权限处理逻辑，找出可能遗漏的边界情况，并给出修改建议。');
+        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-input-multiline.png' });
+
+        // Clear input again for next steps
+        await webviewPage.focus('[data-testid="message-input"]');
+        await webviewPage.keyboard.press('Control+A');
+        await webviewPage.keyboard.press('Backspace');
+
         // 2. Basic Chat (Markdown & Code)
         const basicChat = [
             MockDataGenerator.createUserMessage('如何在 TypeScript 中实现一个类型安全的 EventBus？'),

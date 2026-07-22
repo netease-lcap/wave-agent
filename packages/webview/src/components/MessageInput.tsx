@@ -1205,24 +1205,27 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
   return (
     <div className="input-container" data-testid="input-container">
       <div className="input-wrapper">
-        {/* ContentEditable - full width */}
-        <div
-          ref={textareaRef}
-          id="messageInput"
-          className="message-input content-editable-input"
-          contentEditable={true}
-          onInput={handleInput}
-          onKeyDown={handleKeyDown}
-          onSelect={handleSelectionChange}
-          onClick={handleSelectionChange}
-          onCompositionStart={handleCompositionStart}
-          onCompositionEnd={handleCompositionEnd}
-          data-testid="message-input"
-          data-placeholder="输入 / 发送指令，输入 @ 添加上下文，或粘贴图片..."
-        />
+        {/* Single bordered box wrapping the text area and toolbar (设计稿 2237-5088).
+            Focus turns the whole box's border red via :focus-within. */}
+        <div className="input-content">
+          {/* ContentEditable - full width */}
+          <div
+            ref={textareaRef}
+            id="messageInput"
+            className="message-input content-editable-input"
+            contentEditable={true}
+            onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            onSelect={handleSelectionChange}
+            onClick={handleSelectionChange}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
+            data-testid="message-input"
+            data-placeholder="/快捷指令，@添加上下文，粘贴图片，Enter发送..."
+          />
 
-        {/* Buttons row */}
-        <div className="input-buttons-row">
+          {/* Buttons row */}
+          <div className="input-buttons-row">
           {/* Context actions ("+" add menu + "/" slash command), 4px gap per design */}
           <div className="context-actions">
             {/* "+" add menu (custom dropdown, expands upward) */}
@@ -1322,6 +1325,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
               </button>
             </Tooltip>
           )}
+        </div>
         </div>
 
         {/* File Suggestion Dropdown */}

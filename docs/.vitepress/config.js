@@ -45,6 +45,7 @@ export default {
             { text: '2.4 指令系统', link: '/vsce#slash-commands' },
             { text: '2.5 文件建议与预览', link: '/vsce#file-suggestions' },
             { text: '2.6 快捷终端命令', link: '/vsce#bang-shell-command' },
+            { text: '2.7 输入框外观与状态', link: '/vsce#input-box' },
           ],
         },
         {
