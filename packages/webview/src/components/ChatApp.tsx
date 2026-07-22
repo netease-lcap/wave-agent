@@ -358,7 +358,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
     ? state.messages.length - 1 
     : undefined;
 
-  const showWelcome = !state.isAuthenticated || state.messages.length === 0;
+  // Welcome page shows only when there are no messages yet. Login is optional:
+  // a direct-connect config (baseURL/apiKey) works without authentication, so an
+  // unauthenticated user who sends a message must still see the chat, not the welcome page.
+  const showWelcome = state.messages.length === 0;
 
   // Initialize webview and load sessions on component mount
   useEffect(() => {
@@ -458,7 +461,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       />
       
       {showWelcome ? (
-        <WelcomeView isAuthenticated={state.isAuthenticated} onLogin={handleLogin} />
+        <WelcomeView
+          isAuthenticated={state.isAuthenticated}
+          hasDirectConnectConfig={!!(state.configurationData?.apiKey && state.configurationData?.baseURL)}
+          onLogin={handleLogin}
+        />
       ) : (
         <MessageList
           ref={messageListRef}

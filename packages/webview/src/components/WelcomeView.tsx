@@ -1,9 +1,10 @@
 /**
  * WelcomeView - Centered welcome page for unauthenticated / empty-chat state.
  *
- * Shown in place of MessageList when the user is not logged in, or when logged
- * in but there are no messages yet. The login button + second description line
- * are only rendered when not authenticated.
+ * Shown in place of MessageList when there are no messages yet. The login
+ * button + "登录后即可开始使用" line are only rendered when the user is neither
+ * authenticated nor has a direct-connect config (baseURL + apiKey), since a
+ * direct-connect config works without logging in.
  *
  * Design ref: Figma 2171:1482.
  */
@@ -12,6 +13,7 @@ import React from 'react';
 
 export interface WelcomeViewProps {
   isAuthenticated: boolean;
+  hasDirectConnectConfig: boolean;
   onLogin: () => void;
 }
 
@@ -34,7 +36,10 @@ const WaveLogo: React.FC<{ size?: number }> = ({ size = 20 }) => (
 
 const FONT_FAMILY = '"PingFang SC", var(--vscode-font-family, sans-serif)';
 
-const WelcomeView: React.FC<WelcomeViewProps> = ({ isAuthenticated, onLogin }) => {
+const WelcomeView: React.FC<WelcomeViewProps> = ({ isAuthenticated, hasDirectConnectConfig, onLogin }) => {
+  // Login UI is only relevant when the user can neither use a direct-connect
+  // config nor is already authenticated.
+  const showLogin = !isAuthenticated && !hasDirectConnectConfig;
   return (
     <div
       style={{
@@ -109,7 +114,7 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({ isAuthenticated, onLogin }) =
           >
             我是您的AI助手，可以帮您处理项目、编写代码或修改文件。
           </div>
-          {!isAuthenticated && (
+          {showLogin && (
             <div
               style={{
                 fontSize: '13px',
@@ -124,8 +129,8 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({ isAuthenticated, onLogin }) =
           )}
         </div>
 
-        {/* Login button (unauthenticated only) — full-width, label centered */}
-        {!isAuthenticated && (
+        {/* Login button (only when login is required) — full-width, label centered */}
+        {showLogin && (
           <button
             type="button"
             onClick={onLogin}
