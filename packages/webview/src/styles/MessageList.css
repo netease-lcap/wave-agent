@@ -9,4 +9,50 @@
     align-items: flex-start;
     gap: 10px;
     background-color: var(--vscode-panel-background);
+    position: relative;
+}
+
+/* Sticky user message pinned at the top of the viewport (设计稿 2236-3792) */
+.sticky-user-message {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    z-index: 20;
+    background-color: var(--vscode-chat-requestBubbleBackground);
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.sticky-user-message:hover {
+    background-color: var(--vscode-chat-requestBubbleHoverBackground);
+}
+
+.sticky-user-content {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+    color: var(--vscode-editor-foreground);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: break-word;
+}
+
+.sticky-user-scrim {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 10px;
+    border-radius: 0 0 8px 8px;
+    background: linear-gradient(to bottom, transparent, var(--vscode-chat-requestBubbleBackground));
+    pointer-events: none;
+}
+
+.sticky-user-message:hover .sticky-user-scrim {
+    background: linear-gradient(to bottom, transparent, var(--vscode-chat-requestBubbleHoverBackground));
 }

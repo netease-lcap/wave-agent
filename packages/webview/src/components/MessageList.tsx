@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useImperativeHandle, forwardRef, useMemo, useCallback, useState } from 'react';
 import { Message } from './Message';
 import type { MessageListProps } from '../types';
 import type { Message as MessageType, ToolBlock } from 'wave-agent-sdk';
@@ -12,6 +12,46 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
   const prevMessagesLengthRef = useRef(messages.length);
   const prevQueuedLengthRef = useRef(queuedMessages?.length || 0);
   const userScrolledUpRef = useRef(false);
+
+  // The most-recent user message that has scrolled above the viewport top; pinned
+  // at the top of the list as a context hint (设计稿 2236-3792).
+  const [stickyMessage, setStickyMessage] = useState<{ id: string; text: string } | null>(null);
+
+  const computeSticky = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) {
+      setStickyMessage(null);
+      return;
+    }
+    const scrollTop = container.scrollTop;
+    const nodes = container.querySelectorAll<HTMLElement>('[data-role="user"][data-message-id]');
+    let candidate: HTMLElement | null = null;
+    // Find the last user message whose top edge has scrolled above the viewport top.
+    for (const node of nodes) {
+      if (node.offsetTop < scrollTop) {
+        candidate = node;
+      } else {
+        break;
+      }
+    }
+    if (!candidate) {
+      setStickyMessage(null);
+      return;
+    }
+    const id = candidate.getAttribute('data-message-id') || '';
+    const text = candidate.querySelector('.user-content')?.textContent?.trim() || '';
+    if (!id || !text) {
+      setStickyMessage(null);
+      return;
+    }
+    setStickyMessage(prev => (prev && prev.id === id && prev.text === text ? prev : { id, text }));
+  }, []);
+
+  const scrollToMessage = useCallback((id: string) => {
+    const container = containerRef.current;
+    const node = container?.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
+    node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth', force = false) => {
     const container = containerRef.current;
@@ -60,6 +100,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       } else {
         userScrolledUpRef.current = true;
       }
+      computeSticky();
     };
 
     container.addEventListener('scroll', handleScroll);
@@ -68,6 +109,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     const resizeObserver = new ResizeObserver(() => {
       // Use 'auto' for resize events to keep up with content growth without jitter
       scrollToBottom(streamingMessageIndex !== undefined ? 'auto' : 'smooth');
+      computeSticky();
     });
 
     resizeObserver.observe(container);
@@ -75,12 +117,13 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     // Initial scroll for the dependency change
     // If it's a new message, we force the scroll
     scrollToBottom(streamingMessageIndex !== undefined ? 'auto' : 'smooth', isNewMessage);
+    computeSticky();
 
     return () => {
       resizeObserver.disconnect();
       container.removeEventListener('scroll', handleScroll);
     };
-  }, [messages, queuedMessages, streamingMessageIndex, scrollToBottom]);
+  }, [messages, queuedMessages, streamingMessageIndex, scrollToBottom, computeSticky]);
 
   // Find the globally-last TaskUpdate(status=completed) tool block; the task list
   // card is rendered at that block's position.
@@ -111,6 +154,16 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       className="messages-container" 
       data-testid="messages-container"
     >
+      {stickyMessage && (
+        <div
+          className="sticky-user-message"
+          data-testid="sticky-user-message"
+          onClick={() => scrollToMessage(stickyMessage.id)}
+        >
+          <div className="sticky-user-content">{stickyMessage.text}</div>
+          <div className="sticky-user-scrim" />
+        </div>
+      )}
       {/* Chat messages - filter out user meta messages */}
       {useMemo(() => {
         // Filter out user messages with isMeta, and build index mapping for streaming detection
