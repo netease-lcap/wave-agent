@@ -222,7 +222,7 @@
     border: none;         /* Remove border */
     white-space: pre-wrap; /* Preserve whitespace and line breaks */
     overflow-wrap: anywhere;
-    display: inline-block;
+    display: block;
     width: 100%;
     max-height: 200px;
     overflow-y: auto;
