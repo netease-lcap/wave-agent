@@ -216,7 +216,6 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
         return (
           <div className="bash-command-unified">
             <div className="bash-command-input">
-              <span className="bash-prompt">$</span>
               <span className="bash-command">{command}</span>
             </div>
             <div className="bash-command-output">
@@ -228,7 +227,6 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
         // Show only input if no result yet
         return (
           <div className="bash-command-input">
-            <span className="bash-prompt">$</span>
             <span className="bash-command">{command}</span>
           </div>
         );

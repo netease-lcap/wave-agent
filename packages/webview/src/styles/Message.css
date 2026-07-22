@@ -489,13 +489,6 @@
     font-family: var(--vscode-editor-font-family);
 }
 
-.bash-prompt {
-    color: var(--vscode-terminal-ansiGreen, #00ff00);
-    font-weight: bold;
-    margin-right: 4px;
-    flex-shrink: 0;
-}
-
 .bash-command {
     color: var(--vscode-textPreformat-foreground);
     font-family: inherit;

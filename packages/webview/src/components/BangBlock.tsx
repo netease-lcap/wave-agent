@@ -12,7 +12,6 @@ export const BangBlock: React.FC<BangBlockProps> = ({ block }) => {
   return (
     <div className="bash-command-unified">
       <div className="bash-command-input">
-        <span className="bash-prompt">$</span>
         <span className="bash-command">{command}</span>
         {isRunning && <i className="codicon codicon-loading codicon-modifier-spin" style={{ marginLeft: '8px', fontSize: '12px' }}></i>}
       </div>
