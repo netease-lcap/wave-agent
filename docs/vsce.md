@@ -13,18 +13,12 @@ Wave 代码智聊是一款集成在 VS Code 中的 AI 辅助编程扩展，旨�
 ![基础对话](/screenshots/spec-basic-chat.png)
 _基础对话_
 
-### 1.2 工具提示 (Tooltips) {#tooltips}
+### 1.2 AI 思考过程 {#ai-reasoning}
 
-为了提供一致且可靠的用户体验，Wave 实现了自定义的工具提示组件。当用户将鼠标悬停在图标或特定元素上时，会显示功能说明文案。
+对于支持推理的模型（如 DeepSeek R1, OpenAI o1），Wave 可以展示 AI 的思考过程，让用户了解 AI 是如何得出结论的。思考过程在生成时默认展开、实时呈现，思考结束后会自动收起以保持界面整洁；用户可随时点击“思考”标题展开或收起，查看完整的推理内容。
 
-**主要特性：**
-
-- **智能定位**：工具提示会根据元素在屏幕上的位置自动选择最佳显示方向（如 `top-left`, `bottom-left` 等），确保文案始终在 Webview 边界内显示，避免被遮挡。
-- **视觉一致性**：使用 VS Code 官方主题变量，完美适配深色和浅色模式。
-- **覆盖全面**：涵盖了发送、停止、新建会话、权限模式切换、设置以及文件标签等所有核心交互元素。
-
-![发送按钮工具提示](/screenshots/tooltip-send.png)
-_发送按钮工具提示_
+![AI 思考过程](/screenshots/spec-reasoning.png)
+_AI 思考过程_
 
 ### 1.3 用户消息吸顶 (Sticky User Message) {#sticky-user-message}
 
@@ -38,8 +32,6 @@ _发送按钮工具提示_
 
 ![用户消息吸顶](/screenshots/spec-sticky-user-message.png)
 _用户消息吸顶_
-
-
 
 ---
 
@@ -343,7 +335,28 @@ _计划执行确认_
 ![进入计划模式确认](/screenshots/spec-enter-plan-mode.png)
 _进入计划模式确认_
 
-### 4.7 错误消息展示 {#error-message-display}
+### 4.7 交互式提问 (Ask User) {#ask-user}
+
+当 AI 需要更多信息或需要用户做出决策时，会通过交互式表单向用户提问。用户回答后，问题与答案将以垂直布局展示，确保在窄屏下也能清晰阅读。
+
+**主要特性：**
+- **单选与多选**：支持单选（Radio）和多选（Checkbox）两种模式，选中项以高亮背景标识。
+- **多个问题分页**：当一次提出多个问题时，标题右侧提供 `< N / M >` 分页导航，逐题作答；底部提供"下一个"与"提交回答"按钮。
+- **自定义回答**：每个问题均附带"其他"选项，可输入自定义内容，输入框随内容自动撑高（超出上限后内部滚动）。
+
+![交互式提问表单](/screenshots/spec-ask-user.png)
+_交互式提问表单（单选）_
+
+![交互式提问（多个问题分页）](/screenshots/spec-ask-user-multi.png)
+_交互式提问（多个问题，支持分页导航）_
+
+![交互式提问（多选）](/screenshots/spec-ask-user-multiselect.png)
+_交互式提问（多选，可勾选多个选项）_
+
+![交互式提问结果（垂直布局）](/screenshots/ask-user-question-vertical.png)
+_交互式提问结果（垂直布局）_
+
+### 4.8 错误消息展示 {#error-message-display}
 
 当工具执行出错或 AI 返回错误信息时，Wave 会以醒目的方式展示错误内容。为了防止过长的错误消息占据过多屏幕空间，错误消息区域设置了最大高度，并支持内部滚动。
 
@@ -454,51 +467,9 @@ _MCP 服务器管理（通过 `/mcp` 命令唤起）_
 
 ---
 
-## 7. AI 表达与交互 {#ai-expression-interaction}
+## 7. 会话与持久化 {#session-persistence}
 
-### 7.1 Mermaid 图表渲染 {#mermaid-rendering}
-
-支持在聊天中直接渲染 Mermaid 流程图、时序图等。提供预览和源码切换，并支持全屏查看、缩放平移以及下载为 SVG 或 PNG 格式。
-
-![Mermaid 图表](/screenshots/spec-mermaid.png)
-_Mermaid 图表_
-
-![Mermaid 全屏](/screenshots/spec-mermaid-fullscreen.png)
-_Mermaid 全屏_
-
-### 7.2 交互式提问 (Ask User) {#ask-user}
-
-当 AI 需要更多信息或需要用户做出决策时，会通过交互式表单向用户提问。用户回答后，问题与答案将以垂直布局展示，确保在窄屏下也能清晰阅读。
-
-**主要特性：**
-- **单选与多选**：支持单选（Radio）和多选（Checkbox）两种模式，选中项以高亮背景标识。
-- **多个问题分页**：当一次提出多个问题时，标题右侧提供 `< N / M >` 分页导航，逐题作答；底部提供"下一个"与"提交回答"按钮。
-- **自定义回答**：每个问题均附带"其他"选项，可输入自定义内容，输入框随内容自动撑高（超出上限后内部滚动）。
-
-![交互式提问表单](/screenshots/spec-ask-user.png)
-_交互式提问表单（单选）_
-
-![交互式提问（多个问题分页）](/screenshots/spec-ask-user-multi.png)
-_交互式提问（多个问题，支持分页导航）_
-
-![交互式提问（多选）](/screenshots/spec-ask-user-multiselect.png)
-_交互式提问（多选，可勾选多个选项）_
-
-![交互式提问结果（垂直布局）](/screenshots/ask-user-question-vertical.png)
-_交互式提问结果（垂直布局）_
-
-### 7.3 AI 思考过程 {#ai-reasoning}
-
-对于支持推理的模型（如 DeepSeek R1, OpenAI o1），Wave 可以展示 AI 的思考过程，让用户了解 AI 是如何得出结论的。思考过程在生成时默认展开、实时呈现，思考结束后会自动收起以保持界面整洁；用户可随时点击“思考”标题展开或收起，查看完整的推理内容。
-
-![AI 思考过程](/screenshots/spec-reasoning.png)
-_AI 思考过程_
-
----
-
-## 8. 会话与持久化 {#session-persistence}
-
-### 8.1 对话回滚 (Rewind) {#rewind-feature}
+### 7.1 对话回滚 (Rewind) {#rewind-feature}
 
 Wave 支持将对话回滚到之前的任意用户消息状态。这不仅会删除该消息及其之后的所有对话记录，还会自动撤销 AI 在这些回合中所做的所有文件更改，并将被回滚的消息内容重新填充到输入框中，方便用户修改后重新发送。
 
@@ -512,7 +483,7 @@ Wave 支持将对话回滚到之前的任意用户消息状态。这不仅会删
 ![用户消息上的回滚按钮](/screenshots/spec-rewind-button.png)
 _用户消息上的回滚按钮_
 
-### 8.2 会话管理 {#session-management}
+### 7.2 会话管理 {#session-management}
 
 扩展提供完整的会话管理功能，支持多个对话会话的创建、切换和管理。聊天面板顶部的标题栏左侧显示当前会话标题，右侧提供**新建会话**、**历史对话**、**更多**三个工具栏图标。
 
@@ -546,9 +517,9 @@ _更多菜单：设置 / 企业控制台 / 退出登录_
 
 ---
 
-## 10. 配置管理 {#config-management}
+## 8. 配置管理 {#config-management}
 
-### 10.1 配置设置 {#configuration-settings}
+### 8.1 配置设置 {#configuration-settings}
 
 用户可以自定义 API Key、Base URL 等关键参数，以适配不同的 AI 服务提供商。通过 `/config`、`/status`、`/plugin`、`/mcp` 四个斜杠命令分别唤起独立的弹窗进行管理。配置界面中的表单字段仅显示用户手动输入的值，不会被环境变量填充；但如果设置了相应的环境变量（如 `WAVE_BASE_URL`），其值会作为 placeholder 提示显示在输入框中。服务端链接字段默认 placeholder 为"请联系管理员获取"。
 
@@ -575,7 +546,7 @@ _状态信息弹窗_
 ![配置设置](/screenshots/spec-configuration.png)
 _配置设置_
 
-### 10.2 语言设置 {#language-settings}
+### 8.2 语言设置 {#language-settings}
 
 用户可以在常规设置弹窗（通过 `/config` 命令唤起）中选择偏好的语言（中文或英文），AI 代理将根据该设置使用相应的语言进行回复。
 
@@ -584,9 +555,9 @@ _语言设置_
 
 ---
 
-## 11. 插件系统 {#plugin-system}
+## 9. 插件系统 {#plugin-system}
 
-### 11.1 概述 {#plugin-overview}
+### 9.1 概述 {#plugin-overview}
 
 Wave 通过插件系统扩展 AI 能力，用户可以通过 `/plugin` 命令唤起的插件管理弹窗管理插件的安装、更新和卸载。
 
@@ -598,7 +569,7 @@ Wave 通过插件系统扩展 AI 能力，用户可以通过 `/plugin` 命令唤
 - **插件更新**：支持对已安装的插件进行更新，确保使用最新版本的功能。
 - **插件市场管理**：添加、更新和移除插件市场源（支持 GitHub 仓库、本地路径等）。
 
-### 11.2 探索新插件 {#explore-plugins}
+### 9.2 探索新插件 {#explore-plugins}
 
 在插件管理弹窗的"探索新插件"选项卡中，用户可以通过顶部的搜索框按关键词过滤插件列表。搜索支持对插件名称和描述进行不区分大小写的匹配。对于尚未在当前环境激活的插件，用户可以选择安装作用域后点击"安装"按钮。已安装但未在当前作用域激活的插件也会在此列出，并带有"已安装"标识。
 
@@ -608,7 +579,7 @@ _探索新插件（支持关键词搜索）_
 ![关键词过滤效果](/screenshots/plugin-search-filtered.png)
 _关键词过滤效果_
 
-### 11.3 已激活插件 {#installed-plugins}
+### 9.3 已激活插件 {#installed-plugins}
 
 在插件管理弹窗的"已激活插件"选项卡中，用户可以查看当前作用域下所有已激活的插件。用户可以对这些插件进行"更新"或"卸载"操作。每个插件会显示其激活的作用域（User、Project 或 Local）。
 
