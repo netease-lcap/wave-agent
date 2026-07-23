@@ -618,6 +618,20 @@ class MessageHandler(
             put("isStreaming", session.isStreaming)
             put("isCommandRunning", session.isCommandRunning)
             put("sessions", JsonArray(emptyList()))
+            // Mirrors VSCE chatProvider.ts:650-656: push currentSession so the webview can
+            // derive the header title (getSessionTitle guards on currentSession !== undefined)
+            // and track the active session from the very first render. Without this the title
+            // stays stuck on "新会话" even after the user sends a message.
+            val sid = session.sessionId
+            val agent = session.agent
+            if (sid != null && agent != null) {
+                put("session", buildJsonObject {
+                    put("id", sid)
+                    put("sessionType", "main")
+                    put("workdir", agent.workingDirectory ?: "")
+                    put("latestTotalTokens", agent.latestTotalTokens ?: 0)
+                })
+            }
             put("configurationData", buildJsonObject {
                 put("apiKey", config.apiKey)
                 put("headers", config.headers)
