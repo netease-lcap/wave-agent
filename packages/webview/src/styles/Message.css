@@ -679,7 +679,7 @@
 .markdown-content code {
     background-color: var(--vscode-textCodeBlock-background);
     color: var(--vscode-textPreformat-foreground);
-    padding: 2px 4px;
+    padding: 0 4px;
     border-radius: 3px;
     font-family: var(--vscode-editor-font-family);
     font-size: 0.9em;
