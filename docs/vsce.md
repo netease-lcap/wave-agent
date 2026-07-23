@@ -1,6 +1,6 @@
-# VS Code 扩展使用文档
+# VS Code 扩展 / JetBrains 插件使用文档
 
-Wave 代码智聊是一款集成在 VS Code 中的 AI 辅助编程扩展，旨在通过强大的 AI 能力提升开发者的编码效率。本文档详细介绍了该产品的所有核心功能。
+Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ IDEA 等）中的 AI 辅助编程插件，两者共享同一聊天界面。本文档详细介绍了产品的所有核心功能，适用于 VS Code 扩展与 JetBrains 插件。
 
 ---
 
