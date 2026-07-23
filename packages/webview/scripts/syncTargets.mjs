@@ -38,4 +38,5 @@ for (const file of ['chat.js', 'chat.css']) {
     fs.copyFileSync(path.join(distDir, file), path.join(jbDest, file));
 }
 fs.copyFileSync(path.join(utilsDir, 'vscode-styles.css'), path.join(jbDest, 'theme-base.css'));
-console.log('[sync-targets] jetbrains: copied chat.js, chat.css, theme-base.css');
+fs.copyFileSync(path.join(utilsDir, 'theme-base-light.css'), path.join(jbDest, 'theme-base-light.css'));
+console.log('[sync-targets] jetbrains: copied chat.js, chat.css, theme-base.css, theme-base-light.css');
