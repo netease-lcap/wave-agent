@@ -19,7 +19,7 @@ test.describe('Language Configuration Demo', () => {
         });
 
         // Check if the configuration dialog is visible
-        await expect(webviewPage.getByText('配置设置', { exact: true })).toBeVisible();
+        await expect(webviewPage.getByRole('heading', { name: '设置' })).toBeVisible();
 
         // Scroll to the language field in the scrollable area
         const languageField = webviewPage.locator('label[for="language"]');
