@@ -160,7 +160,6 @@ test.describe('Product Specification Screenshots - Tools', () => {
                         type: 'tool',
                         name: READ_TOOL_NAME,
                         stage: 'end',
-                        compactParams: 'src/services/payment/PaymentService.ts 1:2000',
                         parameters: JSON.stringify({ file_path: 'src/services/payment/PaymentService.ts' }),
                         result: 'import { Injectable } from "@nestjs/common";\nimport { PaymentRepository } from "./PaymentRepository";\n\n@Injectable()\nexport class PaymentService {\n  constructor(private readonly repo: PaymentRepository) {}',
                         shortResult: 'Read 156 lines'

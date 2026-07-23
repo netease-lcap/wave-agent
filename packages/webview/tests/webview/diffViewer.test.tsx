@@ -116,9 +116,9 @@ describe('Diff Viewer', () => {
 
         sendCommand('updateMessages', { messages: [mockReadMessage] });
 
-        // Check that tool block is present
-        const toolBlock = document.querySelector('.tool-block');
-        expect(toolBlock).toBeInTheDocument();
+        // Check that the Read tool container is present
+        const toolContainer = document.querySelector('.tool-container');
+        expect(toolContainer).toBeInTheDocument();
 
         // Check that NO diff viewer is rendered for Read tool
         const diffContainer = document.querySelector('.diff-viewer-container');
