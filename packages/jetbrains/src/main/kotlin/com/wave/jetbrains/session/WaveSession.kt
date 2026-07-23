@@ -26,7 +26,9 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -50,6 +52,7 @@ data class PendingConfirmation(
 class WaveSession(
     private val project: Project,
     private val postMessageFn: (command: String, JsonObject) -> Unit,
+    private val tabTitleFn: ((title: String) -> Unit)? = null,
 ) : AgentCallbacks {
 
     private val LOG = logger<WaveSession>()
@@ -162,6 +165,35 @@ class WaveSession(
     override fun onUserMessageAdded(message: JsonElement?) {
         // VSCE maps both userMessageAdded and assistantMessageAdded to appendMessage
         if (message != null) postMessage("appendMessage", buildJsonObject { put("message", message) })
+        // Derive the tab title from the first user message, mirroring webview getSessionTitle
+        // (utils/session.ts firstUserMessageText → truncate 30 chars). The header title is derived
+        // client-side the same way; push it onto the tool-window tab so the two stay in sync.
+        updateTabTitleFromMessages()
+    }
+
+    /**
+     * Derives a tab title from the first non-meta user message in [messages] and pushes it to the
+     * tool-window tab via [tabTitleFn]. Mirrors `firstUserMessageText` + `truncate` in
+     * webview utils/session.ts:11-23,5-8 (join text/compact block contents, 30-char cap + "...").
+     */
+    private fun updateTabTitleFromMessages() {
+        val fn = tabTitleFn ?: return
+        val arr = messages as? JsonArray ?: return
+        for (msg in arr) {
+            val obj = msg as? JsonObject ?: continue
+            if (obj["role"]?.jsonPrimitive?.contentOrNull != "user") continue
+            if (obj["isMeta"]?.jsonPrimitive?.booleanOrNull == true) continue
+            val blocks = obj["blocks"] as? JsonArray ?: continue
+            val text = blocks.joinToString("") { b ->
+                val bo = b as? JsonObject ?: return@joinToString ""
+                val type = bo["type"]?.jsonPrimitive?.contentOrNull
+                if (type == "text" || type == "compact") bo["content"]?.jsonPrimitive?.contentOrNull.orEmpty() else ""
+            }.trim()
+            if (text.isNotEmpty()) {
+                fn(if (text.length > 30) text.substring(0, 30) + "..." else text)
+                return
+            }
+        }
     }
 
     override fun onAssistantMessageAdded(message: JsonElement?) {
