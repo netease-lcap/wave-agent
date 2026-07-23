@@ -593,6 +593,8 @@
 .result-raw {
     color: var(--vscode-descriptionForeground);
     font-size: 11px;
+    max-height: 100px;
+    overflow-y: auto;
 }
 
 .result-raw-line {
