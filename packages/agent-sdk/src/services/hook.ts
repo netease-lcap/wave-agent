@@ -120,6 +120,15 @@ async function buildHookJsonInput(
     jsonInput.session_crons = context.sessionCrons ?? [];
   }
 
+  // Add last_assistant_message for Stop and SubagentStop events.
+  // Omitted when undefined (no text content in last assistant message).
+  if (
+    (context.event === "Stop" || context.event === "SubagentStop") &&
+    context.lastAssistantMessage !== undefined
+  ) {
+    jsonInput.last_assistant_message = context.lastAssistantMessage;
+  }
+
   return jsonInput;
 }
 

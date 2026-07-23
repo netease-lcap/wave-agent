@@ -1089,5 +1089,174 @@ describe("Hook Services", () => {
       expect(parsedInput.background_tasks).toBeUndefined();
       expect(parsedInput.session_crons).toBeUndefined();
     });
+
+    it("should include last_assistant_message for Stop event when provided", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const stopContext: ExtendedHookExecutionContext = {
+        event: "Stop",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        backgroundTasks: [],
+        sessionCrons: [],
+        lastAssistantMessage: "The task is complete.",
+      };
+
+      const resultPromise = executeCommand("echo test", stopContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("Stop");
+      expect(parsedInput.last_assistant_message).toBe("The task is complete.");
+    });
+
+    it("should include last_assistant_message for SubagentStop event when provided", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const subagentStopContext: ExtendedHookExecutionContext = {
+        event: "SubagentStop",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "subagent-session-456",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        subagentType: "general-purpose",
+        lastAssistantMessage: "Subagent finished refactoring.",
+      };
+
+      const resultPromise = executeCommand("echo test", subagentStopContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("SubagentStop");
+      expect(parsedInput.last_assistant_message).toBe(
+        "Subagent finished refactoring.",
+      );
+    });
+
+    it("should NOT include last_assistant_message when undefined", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const stopContext: ExtendedHookExecutionContext = {
+        event: "Stop",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        backgroundTasks: [],
+        sessionCrons: [],
+        // lastAssistantMessage intentionally omitted
+      };
+
+      const resultPromise = executeCommand("echo test", stopContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("Stop");
+      expect(parsedInput.last_assistant_message).toBeUndefined();
+    });
+
+    it("should NOT include last_assistant_message for non-Stop events", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const postToolContext: ExtendedHookExecutionContext = {
+        event: "PostToolUse",
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+        toolName: "Read",
+        // Even if provided, non-Stop events must not include this field
+        lastAssistantMessage: "should not appear",
+      };
+
+      const resultPromise = executeCommand("echo test", postToolContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.hook_event_name).toBe("PostToolUse");
+      expect(parsedInput.last_assistant_message).toBeUndefined();
+    });
   });
 });

@@ -198,6 +198,7 @@ export interface HookJsonInput {
   compact_summary?: string; // Present for PostCompact events
   background_tasks?: BackgroundTaskInfo[]; // Present for Stop events: running background tasks snapshot
   session_crons?: SessionCronInfo[]; // Present for Stop events: session-scoped cron jobs snapshot
+  last_assistant_message?: string; // Present for Stop and SubagentStop events: text content of the last assistant message
 }
 
 // Describes one in-flight background task in the Stop hook input.
@@ -245,6 +246,7 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   compactSummary?: string; // Summary text for PostCompact
   backgroundTasks?: BackgroundTaskInfo[]; // Running background tasks snapshot (Stop only)
   sessionCrons?: SessionCronInfo[]; // Session-scoped cron jobs snapshot (Stop only)
+  lastAssistantMessage?: string; // Text content of last assistant message (Stop and SubagentStop only)
 }
 
 // Environment variables injected into hook processes

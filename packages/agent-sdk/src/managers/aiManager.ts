@@ -1502,6 +1502,20 @@ export class AIManager {
             }))
           : undefined;
 
+      // Extract text content from the last assistant message so hooks can
+      // inspect the final response without reading the transcript file.
+      const allMessages = this.messageManager.getMessages();
+      const lastAssistant = [...allMessages]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      const lastAssistantText = lastAssistant
+        ? lastAssistant.blocks
+            .filter((b) => b.type === "text")
+            .map((b) => b.content)
+            .join("\n")
+            .trim() || undefined
+        : undefined;
+
       const context: ExtendedHookExecutionContext = {
         event: hookName,
         projectDir: this.getWorkdir(),
@@ -1512,6 +1526,7 @@ export class AIManager {
         subagentType: this.subagentType, // Include subagent type in hook context
         backgroundTasks, // Stop-only: running background tasks snapshot
         sessionCrons, // Stop-only: session cron jobs snapshot
+        lastAssistantMessage: lastAssistantText, // Stop/SubagentStop: last assistant message text
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
         env: Object.fromEntries(
           Object.entries(process.env).filter((e) => e[1] !== undefined),
