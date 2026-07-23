@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { QueueChevronIcon } from './HeaderIcons';
 import type { Task, TaskStatus } from '../types';
 import '../styles/TaskList.css';
@@ -43,6 +43,8 @@ const getStatusIcon = (status: TaskStatus) => {
 
 export const TaskList: React.FC<TaskListProps> = ({ tasks, isCollapsed, onToggleCollapse }) => {
   const visibleTasks = tasks.filter((t) => t.status !== 'deleted');
+  const allCompleted = visibleTasks.length > 0 && visibleTasks.every((t) => t.status === 'completed');
+  const [autoHidden, setAutoHidden] = useState(false);
   const itemsRef = useRef<HTMLDivElement>(null);
   const prevTasksRef = useRef<Task[]>(tasks);
 
@@ -65,7 +67,16 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, isCollapsed, onToggle
     }
   }, [tasks, isCollapsed]);
 
-  if (visibleTasks.length === 0) {
+  // FR-020: 所有活动任务完成后 5 秒自动隐藏；有非完成任务时重新出现
+  useEffect(() => {
+    if (allCompleted) {
+      const timer = setTimeout(() => setAutoHidden(true), 5000);
+      return () => clearTimeout(timer);
+    }
+    setAutoHidden(false);
+  }, [allCompleted]);
+
+  if (visibleTasks.length === 0 || autoHidden) {
     return null;
   }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderChatApp, screen, waitFor, act, sendCommand } from './test-utils';
 
 const tasks = [
@@ -88,5 +88,61 @@ describe('scroll updated task into view', () => {
     // 滚动的是 #3 这一行
     const scrolledEl = (scrollIntoView.mock.instances[0] as Element) || document.querySelector('[data-task-id="3"]');
     expect(scrolledEl?.getAttribute('data-task-id')).toBe('3');
+  });
+});
+
+describe('auto-hide when all tasks completed (FR-020)', () => {
+  const allCompleted = [
+    { id: '1', subject: '任务一', description: '', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
+    { id: '2', subject: '任务二', description: '', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('stays visible before 5s and hides after 5s', async () => {
+    renderChatApp();
+    act(() => {
+      sendCommand('updateTasks', { tasks: allCompleted });
+    });
+    // 全部完成后立即仍可见
+    expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4999);
+    });
+    expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+  });
+
+  it('reappears when a new non-completed task arrives after auto-hide', async () => {
+    renderChatApp();
+    act(() => {
+      sendCommand('updateTasks', { tasks: allCompleted });
+    });
+    expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+
+    const withPending = [
+      ...allCompleted,
+      { id: '3', subject: '任务三', description: '', status: 'pending' as const, blocks: [], blockedBy: [], metadata: {} },
+    ];
+    act(() => {
+      sendCommand('updateTasks', { tasks: withPending });
+    });
+    expect(screen.getByTestId('task-list')).toBeInTheDocument();
   });
 });
