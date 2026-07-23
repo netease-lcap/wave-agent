@@ -24,7 +24,8 @@ export const initialState: ChatState = {
   // Attached images state
   attachedImages: [],
   // Auth state
-  isAuthenticated: false
+  isAuthenticated: false,
+  workdir: undefined
 };
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
@@ -152,7 +153,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         attachedImages: action.payload.attachedImages || [],
         sessionsLoading: false,
         configurationLoading: false,
-        isAuthenticated: action.payload.isAuthenticated !== undefined ? action.payload.isAuthenticated : state.isAuthenticated
+        isAuthenticated: action.payload.isAuthenticated !== undefined ? action.payload.isAuthenticated : state.isAuthenticated,
+        workdir: action.payload.workdir !== undefined ? action.payload.workdir : state.workdir
       };
     case 'UPDATE_SELECTION':
       return {

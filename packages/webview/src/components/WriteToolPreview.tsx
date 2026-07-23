@@ -2,13 +2,15 @@ import React from 'react';
 import { ExternalLinkIcon } from './HeaderIcons';
 import { FileToolHeader } from './FileToolHeader';
 import type { ToolBlock } from '../types';
+import { toRelativePath } from '../utils/messageUtils';
 
 interface WriteToolPreviewProps {
   toolBlock: ToolBlock;
   vscode: { postMessage: (message: unknown) => void };
+  workdir?: string;
 }
 
-export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({ toolBlock, vscode }) => {
+export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({ toolBlock, vscode, workdir }) => {
   let filePath = '';
   let content: string | null = null;
   try {
@@ -27,7 +29,7 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({ toolBlock, v
     }
   };
 
-  const header = <FileToolHeader toolBlock={toolBlock} filePath={filePath} onOpenFile={openFile} />;
+  const header = <FileToolHeader toolBlock={toolBlock} filePath={toRelativePath(filePath, workdir)} onOpenFile={openFile} />;
 
   if (content === null) {
     return <div className="write-tool-preview">{header}</div>;

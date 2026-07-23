@@ -127,3 +127,21 @@ export const parseMentions = (text: string, attachedImages?: Array<{ data: strin
 
   return parts;
 };
+
+/**
+ * Render a tool file path relative to the agent workdir for compact display,
+ * e.g. /home/user/repo/src/index.ts → src/index.ts. Falls back to the original
+ * absolute path when no workdir is known or the path is outside it. The
+ * original (absolute) path is always used for open-file jumps.
+ */
+export const toRelativePath = (filePath: string, workdir?: string): string => {
+  if (!filePath || !workdir) return filePath;
+  // Normalize trailing separators on the workdir prefix.
+  const base = workdir.endsWith('/') || workdir.endsWith('\\') ? workdir : workdir + '/';
+  if (filePath.startsWith(base)) {
+    return filePath.slice(base.length);
+  }
+  // Path equals the workdir exactly, or isn't under it — show as-is.
+  return filePath;
+};
+

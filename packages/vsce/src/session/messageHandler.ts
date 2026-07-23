@@ -658,7 +658,8 @@ export class MessageHandler {
             pendingConfirmations,
             permissionMode: session.agent?.getPermissionMode(),
             queuedMessages: session.messageQueue,
-            isAuthenticated
+            isAuthenticated,
+            workdir: session.agent?.workingDirectory
         }, viewType, windowId);
     }
 
