@@ -59,7 +59,12 @@ const permissionModeIcon = (m?: PermissionMode): React.ReactNode => {
   }
 };
 
-export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>((props, ref) => {
+export interface MessageInputHandle {
+  focus: () => void;
+  triggerShortcut: (name: string) => void;
+}
+
+export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((props, ref) => {
   const {
     onSendMessage,
     isStreaming,
@@ -153,6 +158,11 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     focus: () => {
       if (textareaRef.current) {
         textareaRef.current.focus();
+      }
+    },
+    triggerShortcut: (name: string) => {
+      if (name === 'history-search') {
+        openHistorySearch();
       }
     }
   }));
@@ -861,6 +871,14 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     }
   }, [attachedImages, onSendMessage, closeDropdown, vscode, editingQueuedId, onSubmitQueuedEdit]);
 
+  // Open the history-search popup. Shared by the in-DOM Ctrl/Cmd+R handler and the
+  // JetBrains bridge (which forwards the key after swallowing the IDE action — see
+  // issue #1429). Kept as a plain function so the host can invoke it without a KeyEvent.
+  const openHistorySearch = useCallback(() => {
+    setHistoryPopupPosition(calculateDropdownPosition());
+    setIsHistorySearchVisible(true);
+  }, [calculateDropdownPosition]);
+
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     // Handle Shift+Tab to cycle permission mode
     if (event.key === 'Tab' && event.shiftKey && !isComposing) {
@@ -870,7 +888,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       const currentIndex = modes.indexOf(currentMode);
       const nextIndex = (currentIndex + 1) % modes.length;
       const nextMode = modes[nextIndex];
-      
+
       vscode.postMessage({
         command: 'setPermissionMode',
         mode: nextMode
@@ -882,8 +900,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
     if (event.key === 'r' && (event.ctrlKey || event.metaKey) && !isComposing) {
       event.preventDefault();
       event.stopPropagation();
-      setHistoryPopupPosition(calculateDropdownPosition());
-      setIsHistorySearchVisible(true);
+      openHistorySearch();
       return;
     }
 
@@ -956,7 +973,7 @@ export const MessageInput = forwardRef<{ focus: () => void }, MessageInputProps>
       event.preventDefault();
       handleSend();
     }
-  }, [slashCommand.isActive, slashCommands, selectedSlashIndex, handleSlashCommandSelect, closeSlashCommandPopup, atMention.isActive, suggestions, selectedIndex, handleFileSelect, closeDropdown, handleSend, isComposing, permissionMode, vscode, calculateDropdownPosition, isStreaming, onAbortMessage]);
+  }, [slashCommand.isActive, slashCommands, selectedSlashIndex, handleSlashCommandSelect, closeSlashCommandPopup, atMention.isActive, suggestions, selectedIndex, handleFileSelect, closeDropdown, handleSend, isComposing, permissionMode, vscode, openHistorySearch, isStreaming, onAbortMessage]);
 
   // Handle cursor position changes - debounced to wait for user to stop moving cursor
   const handleSelectionChange = useCallback(() => {
