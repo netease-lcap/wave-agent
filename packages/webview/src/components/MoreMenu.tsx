@@ -7,13 +7,15 @@ interface MoreMenuProps {
   onOpenEnterpriseConsole: () => void;
   onLogout: () => void;
   onClose: () => void;
+  isAuthenticated: boolean;
 }
 
 export const MoreMenu: React.FC<MoreMenuProps> = ({
   onOpenSettings,
   onOpenEnterpriseConsole,
   onLogout,
-  onClose
+  onClose,
+  isAuthenticated
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -65,9 +67,11 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
         <span>企业控制台</span>
         <ExternalLinkIcon className="more-menu-item-icon" />
       </div>
-      <div className="more-menu-item" onClick={handleLogout} data-testid="more-menu-logout">
-        退出登录
-      </div>
+      {isAuthenticated && (
+        <div className="more-menu-item" onClick={handleLogout} data-testid="more-menu-logout">
+          退出登录
+        </div>
+      )}
     </div>
   );
 };

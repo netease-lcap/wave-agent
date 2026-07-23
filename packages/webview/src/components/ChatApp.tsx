@@ -460,6 +460,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         onOpenSettings={handleOpenSettings}
         onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
         onLogout={handleLogout}
+        isAuthenticated={state.isAuthenticated}
       />
       
       {showWelcome ? (

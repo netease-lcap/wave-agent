@@ -13,7 +13,7 @@ function openMoreMenu() {
 }
 
 describe('More Menu', () => {
-    it('should render the three menu items when opened', () => {
+    it('should render the menu items when opened', () => {
         renderChatApp();
 
         openMoreMenu();
@@ -21,6 +21,19 @@ describe('More Menu', () => {
         expect(screen.getByTestId('more-menu-settings')).toHaveTextContent('设置');
         expect(screen.getByTestId('more-menu-enterprise')).toHaveTextContent('企业控制台');
         expect(screen.getByTestId('more-menu-logout')).toHaveTextContent('退出登录');
+    });
+
+    it('should not show 退出登录 when unauthenticated', () => {
+        renderChatApp();
+
+        // Switch to unauthenticated
+        sendCommand('authStatusResponse', { isAuthenticated: false });
+
+        openMoreMenu();
+
+        expect(screen.getByTestId('more-menu-settings')).toBeInTheDocument();
+        expect(screen.getByTestId('more-menu-enterprise')).toBeInTheDocument();
+        expect(screen.queryByTestId('more-menu-logout')).not.toBeInTheDocument();
     });
 
     it('should open settings dialog and request configuration when 设置 is clicked', () => {

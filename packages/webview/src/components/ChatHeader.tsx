@@ -17,7 +17,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   sessionsLoading,
   onOpenSettings,
   onOpenEnterpriseConsole,
-  onLogout
+  onLogout,
+  isAuthenticated
 }) => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -74,6 +75,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onOpenSettings={onOpenSettings}
           onOpenEnterpriseConsole={onOpenEnterpriseConsole}
           onLogout={onLogout}
+          isAuthenticated={isAuthenticated}
           onClose={() => setShowMoreMenu(false)}
         />
       )}
