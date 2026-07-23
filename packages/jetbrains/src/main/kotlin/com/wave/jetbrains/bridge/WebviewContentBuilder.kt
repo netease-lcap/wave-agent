@@ -25,20 +25,32 @@ object WebviewContentBuilder {
     private val LOG = logger<WebviewContentBuilder>()
 
     private const val RESOURCE_DIR = "/webview"
-    private val ASSETS = listOf("chat.js", "chat.css", "vscode-shim.js", "theme-base.css")
+    private val ASSETS = listOf("chat.js", "chat.css", "vscode-shim.js")
 
     /** id of the <style> element holding the LaF-derived `--vscode-*` overrides. */
     const val LAF_STYLE_ID = "wave-laf-overrides"
 
+    /** id of the <style> element holding the VS Code theme base (light or dark `--vscode-*` vars). */
+    const val THEME_BASE_STYLE_ID = "wave-theme-base"
+
+    private fun isLightTheme(): Boolean = try { JBColor.isBright() } catch (_: Exception) { false }
+
+    private fun themeBaseText(): String {
+        val name = if (isLightTheme()) "theme-base-light.css" else "theme-base.css"
+        return javaClass.getResourceAsStream("$RESOURCE_DIR/$name")?.use { it.bufferedReader().readText() } ?: ""
+    }
+
     /**
      * JS that rewrites the [LAF_STYLE_ID] style element with freshly computed LaF overrides.
      * Called by the panel when the IDE Look and Feel changes so the live webview re-themes
-     * without a full reload.
+     * without a full reload. Also rewrites [THEME_BASE_STYLE_ID] because a LaF switch may
+     * flip light/dark, and the theme base must follow.
      */
     fun buildLafRefreshScript(): String {
-        val css = ":root {\n${buildLafOverrides()}\n}"
-        val escaped = css.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-        return "(function(){var s=document.getElementById('$LAF_STYLE_ID');if(s){s.textContent=`$escaped`;}})();"
+        val baseCss = themeBaseText()
+        val lafCss = ":root {\n${buildLafOverrides()}\n}"
+        fun esc(s: String) = s.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+        return "(function(){var b=document.getElementById('$THEME_BASE_STYLE_ID');if(b){b.textContent=`${esc(baseCss)}`;}var s=document.getElementById('$LAF_STYLE_ID');if(s){s.textContent=`${esc(lafCss)}`;}})();"
     }
 
     /** Extracted temp dir + the file:// URL of index.html to load. */
@@ -62,7 +74,7 @@ object WebviewContentBuilder {
         val chatJs = paths["chat.js"]?.name ?: "chat.js"
         val chatCss = paths["chat.css"]?.name ?: "chat.css"
         val shimJs = paths["vscode-shim.js"]?.name ?: "vscode-shim.js"
-        val themeBase = paths["theme-base.css"]?.readText() ?: ""
+        val themeBase = themeBaseText()
         val lafOverrides = buildLafOverrides()
 
         val html = """<!DOCTYPE html>
@@ -72,9 +84,11 @@ object WebviewContentBuilder {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wave AI Chat</title>
     <style>
-        $themeBase
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
         #root { height: 100%; width: 100%; }
+    </style>
+    <style id="$THEME_BASE_STYLE_ID">
+        $themeBase
     </style>
     <style id="$LAF_STYLE_ID">
         :root {
