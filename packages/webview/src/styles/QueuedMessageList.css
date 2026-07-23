@@ -5,11 +5,8 @@
   gap: 6px;
   padding: 8px 12px 12px;
   background-color: var(--vscode-menu-background);
-  border-left: 1px solid var(--vscode-widget-border);
-  border-right: 1px solid var(--vscode-widget-border);
-  border-top: 1px solid var(--vscode-widget-border);
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
   box-sizing: border-box;
   max-width: 800px;
   margin: 0 auto;
