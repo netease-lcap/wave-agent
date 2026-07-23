@@ -17,7 +17,7 @@ test.describe('Configuration Popup Demo', () => {
         });
 
         // Check if the configuration dialog is visible
-        await expect(webviewPage.getByText('配置设置', { exact: true })).toBeVisible();
+        await expect(webviewPage.getByTestId('config-dialog')).toBeVisible();
         
         // Take screenshot to manually verify UI
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/config-popup-updated-ui.png' });
@@ -27,7 +27,7 @@ test.describe('Configuration Popup Demo', () => {
         // The extension wouldn't send showConfiguration when config is valid
         // We just verify the normal chat interface is there
         await expect(webviewPage.getByTestId('chat-container')).toBeVisible();
-        await expect(webviewPage.getByText('配置设置', { exact: true })).not.toBeVisible(); // The dialog title
+        await expect(webviewPage.getByTestId('config-dialog')).not.toBeVisible();
         
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/config-not-needed.png' });
     });

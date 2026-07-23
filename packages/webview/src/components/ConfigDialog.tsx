@@ -79,6 +79,7 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
       <div
         ref={dialogRef}
         className="configuration-dialog config-dialog"
+        data-testid="config-dialog"
       >
         <div className="configuration-dialog-header config-dialog-header">
           <h3>设置</h3>
