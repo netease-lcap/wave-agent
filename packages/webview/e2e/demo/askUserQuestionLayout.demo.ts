@@ -17,8 +17,8 @@ test.describe('AskUserQuestion Layout Demo', () => {
           stage: 'end' as const,
           result: JSON.stringify({
             answers: {
-              "支付服务应该采用哪种缓存策略？": "Redis Cluster",
-              "哪些模块需要优先重构？": "PaymentService, TransactionLogger, RefundHandler"
+              "客户管理系统有什么具体要求？": "需要支持客户分级、跟进记录、合同关联与数据看板，并对接现有的支付与工单系统。",
+              "首期交付优先实现哪些模块？": "客户档案、跟进记录、合同管理"
             }
           })
         }

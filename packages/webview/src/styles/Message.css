@@ -603,35 +603,46 @@
     text-overflow: ellipsis;
 }
 
+/* AskUserQuestion Q&A cards (Figma 2261:9773):
+   indented under the tool header, question line above an answer "DiffHeader"
+   box. */
 .ask-user-result-item {
-    margin-top: 8px;
-}
-
-.ask-user-result-text {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
-    font-size: 11px;
-    line-height: 1.4;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.ask-user-result-item:first-child {
+    margin-top: 0;
 }
 
 .ask-user-result-q {
-    color: var(--vscode-descriptionForeground);
-    font-weight: 600;
-    flex-shrink: 0;
+    color: var(--vscode-foreground);
+    font-weight: 500;
+    font-size: 12px;
+    line-height: 16px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     word-break: normal;
 }
 
 .ask-user-result-a {
-    color: var(--vscode-descriptionForeground);
+    color: var(--vscode-foreground);
+    font-weight: 500;
+    font-size: 12px;
+    line-height: 16px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     word-break: normal;
-    min-width: 0;
-    flex: 1;
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    padding: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    display: block;
 }
 
 .tool-result-inline {
