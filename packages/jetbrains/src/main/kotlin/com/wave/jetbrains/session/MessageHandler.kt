@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.config.WavePluginService
 import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.StdioClientException
@@ -127,7 +128,7 @@ class MessageHandler(
                     serverUrl = data["serverUrl"]?.jsonPrimitive?.content ?: this.serverUrl
                 }
                 WavePluginService.getInstance().saveConfiguration(config)
-                session.agent?.updateConfig(buildConfigParams(config))
+                reloadAgentConfig()
                 postMessage("configurationUpdated", JsonObject(emptyMap()))
                 postMessage("focusInput", JsonObject(emptyMap()))
                 postMessage("scrollToBottom", JsonObject(emptyMap()))
@@ -544,7 +545,7 @@ class MessageHandler(
      */
     private suspend fun reloadAgentConfig() {
         val config = WavePluginService.getInstance().loadConfiguration()
-        session.agent?.updateConfig(buildConfigParams(config))
+        WaveBackendService.getInstance(project).updateAllSessionsConfig(buildConfigParams(config))
     }
 
     private fun currentWorkdir(): String =
@@ -592,7 +593,7 @@ class MessageHandler(
 
     private suspend fun handleWebviewReady() {
         if (session.agent == null) {
-            session.initialize()
+            WaveBackendService.getInstance(project).initializeSession(session, null)
         }
         // Pull the real session list now that the agent is up. VSCE relies on
         // sessionIdChange to trigger listSessions, but a freshly-created session

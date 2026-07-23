@@ -30,7 +30,7 @@ import javax.swing.SwingUtilities
  * Root panel hosting the JCEF browser that renders the shared webview bundle.
  * Wires: webview ←→ [JcefBrowserBridge] ←→ [MessageHandler] ←→ [WaveSession] ←→ stdio.
  */
-class WavePanel(private val project: Project) : Disposable {
+class WavePanel(private val project: Project, val tabId: String) : Disposable {
     private val LOG = logger<WavePanel>()
 
     private val browser: JBCefBrowser = JBCefBrowser()
@@ -50,7 +50,7 @@ class WavePanel(private val project: Project) : Disposable {
 
     init {
         bridge.onMessage = { msg -> handler.handle(msg) }
-        WavePanelHolder.getInstance(project).panel = this
+        WavePanelHolder.getInstance(project).register(tabId, this)
         loadWebview()
         subscribeToLafChanges()
         registerWebviewShortcuts()
@@ -127,11 +127,6 @@ class WavePanel(private val project: Project) : Disposable {
         session.dispose()
         bridge.dispose()
         browser.dispose()
-        try {
-            if (WavePanelHolder.getInstance(project).panel === this) {
-                WavePanelHolder.getInstance(project).panel = null
-            }
-        } catch (_: Exception) {
-        }
+        runCatching { WavePanelHolder.getInstance(project).unregister(tabId, this) }
     }
 }

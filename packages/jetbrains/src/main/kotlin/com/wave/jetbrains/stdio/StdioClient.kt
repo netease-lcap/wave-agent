@@ -28,7 +28,7 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
-typealias NotificationHandler = (JsonElement?) -> Unit
+typealias NotificationHandler = (JsonElement?, String?) -> Unit
 
 class StdioClientException(message: String) : RuntimeException(message)
 
@@ -170,7 +170,8 @@ class StdioClient(
         if ("method" in parsed && "id" !in parsed) {
             val method = (parsed["method"] as? JsonPrimitive)?.content ?: return
             val params = parsed["params"]
-            handlers[method]?.forEach { runCatching { it(params) } }
+            val sessionId = (parsed["sessionId"] as? JsonPrimitive)?.content
+            handlers[method]?.forEach { runCatching { it(params, sessionId) } }
         }
     }
 
