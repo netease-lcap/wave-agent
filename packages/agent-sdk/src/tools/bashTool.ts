@@ -173,14 +173,16 @@ The working directory persists between commands. Try to maintain your current wo
       };
     }
 
-    // Resolve shell path: on Windows, use Git Bash; on other platforms, use default
+    // Resolve shell path: on Windows, use Git Bash; on macOS/Linux, use bash or zsh
     const shellPath = resolveShellPath();
-    if (process.platform === "win32" && !shellPath) {
+    if (!shellPath) {
       return {
         success: false,
         content: "",
         error:
-          "Git Bash not found. Please install Git for Windows or set GIT_BASH_PATH environment variable.",
+          process.platform === "win32"
+            ? "Git Bash not found. Please install Git for Windows or set GIT_BASH_PATH environment variable."
+            : "No suitable shell found. Please ensure bash or zsh is installed, or set WAVE_SHELL environment variable.",
       };
     }
 
@@ -273,7 +275,7 @@ The working directory persists between commands. Try to maintain your current wo
       );
 
       const child: ChildProcess = spawn(wrappedCommand, {
-        shell: shellPath || true,
+        shell: shellPath,
         stdio: "pipe",
         detached: true,
         cwd: context.workdir,

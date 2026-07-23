@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import type { MessageManager } from "./messageManager.js";
 import { Container } from "../utils/container.js";
+import { resolveShellPath } from "../utils/shellResolver.js";
 
 export interface BangManagerOptions {
   workdir: string;
@@ -45,7 +46,7 @@ export class BangManager {
 
     return new Promise<number>((resolve) => {
       const child = spawn(command, {
-        shell: true,
+        shell: resolveShellPath() ?? true,
         stdio: "pipe",
         cwd: this.workdir,
         env: {
