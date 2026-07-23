@@ -129,4 +129,26 @@ describe("worktree multi-session isolation (User Story 8)", () => {
     expect(a.getWorkdir()).toBe("/repo/.wave/worktrees/feat-a");
     expect(process.cwd()).toBe(before);
   });
+
+  it("FR-042: setWorkdir triggers the onCwdChange callback (so worktree switches notify the host)", () => {
+    const a = createManager("/repo");
+    const calls: string[] = [];
+    a.setOnCwdChange((cwd) => calls.push(cwd));
+
+    a.setWorkdir("/repo/.wave/worktrees/feat-a");
+
+    // Agent wires AIManager._onCwdChange → onWorkdirChange; without this
+    // trigger the webview never learns that EnterWorktree/ExitWorktree moved
+    // the working directory, so tool header paths stay stale.
+    expect(calls).toEqual(["/repo/.wave/worktrees/feat-a"]);
+    // Still no process.cwd() mutation.
+    expect(process.cwd()).not.toBe("/repo/.wave/worktrees/feat-a");
+  });
+
+  it("FR-042: setWorkdir is safe without a registered onCwdChange callback", () => {
+    const a = createManager("/repo");
+    // No setOnCwdChange — _onCwdChange is undefined; must not throw.
+    expect(() => a.setWorkdir("/repo/.wave/worktrees/feat-a")).not.toThrow();
+    expect(a.getWorkdir()).toBe("/repo/.wave/worktrees/feat-a");
+  });
 });

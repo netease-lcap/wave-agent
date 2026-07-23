@@ -37,6 +37,7 @@ const ALL_NOTIFICATION_METHODS = [
     'sessionIdChange',
     'permissionModeChange',
     'mcpServersChange',
+    'workdirChange',
     'bangMessageAdded',
     'bangMessageUpdated',
     'bangMessageCompleted',

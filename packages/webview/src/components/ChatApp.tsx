@@ -59,6 +59,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         case 'updatePermissionMode':
           dispatch({ type: 'SET_PERMISSION_MODE', payload: message.mode });
           break;
+        case 'updateWorkdir':
+          dispatch({ type: 'SET_WORKDIR', payload: message.workdir });
+          break;
         case 'updateQueue':
           dispatch({ type: 'SET_QUEUED_MESSAGES', payload: message.queue });
           break;

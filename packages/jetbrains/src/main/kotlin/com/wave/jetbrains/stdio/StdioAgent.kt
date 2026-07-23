@@ -30,6 +30,7 @@ interface AgentCallbacks {
     fun onSessionIdChange(sessionId: String) {}
     fun onPermissionModeChange(mode: String) {}
     fun onMcpServersChange(servers: JsonElement?) {}
+    fun onWorkdirChange(workdir: String) {}
     fun onPermissionRequest(requestId: String, context: JsonElement?) {}
     fun onBangMessageAdded() {}
     fun onBangMessageUpdated() {}
@@ -115,6 +116,11 @@ class StdioAgent(
             val mode = p?.jsonObject?.get("mode")?.jsonPrimitive?.content ?: ""
             permissionMode = mode
             callbacks.onPermissionModeChange(mode)
+        }
+        client.onNotification("workdirChange") { p ->
+            val workdir = p?.jsonObject?.get("workdir")?.jsonPrimitive?.content ?: ""
+            workingDirectory = workdir
+            callbacks.onWorkdirChange(workdir)
         }
         client.onNotification("mcpServersChange") { p -> callbacks.onMcpServersChange(p?.jsonObject?.get("servers")) }
         client.onNotification("permissionRequest") { p ->

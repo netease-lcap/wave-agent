@@ -13,6 +13,7 @@ export interface ChatSessionCallbacks {
     onQueueChange: (queue: QueuedMessage[]) => void;
     onCommandRunningChange: (running: boolean) => void;
     onPermissionModeChange: (mode: PermissionMode) => void;
+    onWorkdirChange: (workdir: string) => void;
     onToolPermissionRequest: (context: ToolPermissionContext) => Promise<PermissionDecision>;
     onError: (error: unknown) => void;
     onMcpServersChange?: (servers: McpServerStatus[]) => void;
@@ -122,6 +123,9 @@ export class ChatSession {
                 },
                 onPermissionModeChange: (mode: PermissionMode) => {
                     this.callbacks.onPermissionModeChange(mode);
+                },
+                onWorkdirChange: (workdir: string) => {
+                    this.callbacks.onWorkdirChange(workdir);
                 },
                 onLoadingChange: (loading: boolean) => {
                     this.isStreaming = loading;

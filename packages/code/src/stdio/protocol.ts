@@ -109,6 +109,7 @@ export type ServerNotificationMethod =
   | "sessionIdChange"
   | "permissionModeChange"
   | "mcpServersChange"
+  | "workdirChange"
   | "bangMessageAdded"
   | "bangMessageUpdated"
   | "bangMessageCompleted"
