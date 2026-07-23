@@ -210,6 +210,7 @@ export interface ChatHeaderProps {
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
   onLogout: () => void;
+  isAuthenticated: boolean;
 }
 
 // Matches wave-agent-sdk's QueuedMessage type
