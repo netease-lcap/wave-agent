@@ -404,7 +404,7 @@ class MessageHandler(
                 postMessage("statusResponse", buildJsonObject {
                     put("version", pluginVersion())
                     put("sessionId", session.sessionId ?: "")
-                    put("workdir", session.agent?.workingDirectory ?: project.basePath ?: "")
+                    put("workdir", currentWorkdir())
                     put("configurationData", buildJsonObject {
                         put("apiKey", config.apiKey)
                         put("headers", config.headers)
