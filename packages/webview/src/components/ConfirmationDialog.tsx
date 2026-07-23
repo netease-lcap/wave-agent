@@ -69,10 +69,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
 
-  const applyButtonRef = useRef<HTMLButtonElement>(null);
-  const autoButtonRef = useRef<HTMLButtonElement>(null);
-  const planContentRef = useRef<HTMLDivElement>(null);
-
   const handleReject = useCallback(() => {
     if (confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME) {
       onConfirm(confirmation.confirmationId, {
@@ -123,21 +119,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   useEffect(() => {
     confirmationRef.current = confirmation;
   }, [confirmation]);
-
-  useEffect(() => {
-    if (confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME && (confirmation.planContent || confirmation.toolInput?.plan_content)) {
-      planContentRef.current?.focus();
-    } else {
-      // Focus on the first available button
-      const initialButtons = [applyButtonRef, autoButtonRef];
-      for (const ref of initialButtons) {
-        if (ref.current && !ref.current.disabled) {
-          ref.current.focus();
-          break;
-        }
-      }
-    }
-  }, [confirmation.confirmationId, currentQuestionIndex, confirmation.toolName, confirmation.planContent, confirmation.toolInput?.plan_content]);
 
   const handleCompositionStart = useCallback(() => {
     setIsComposing(true);
@@ -290,7 +271,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
     const html = DOMPurify.sanitize(marked.parse(String(planContent)) as string);
     return (
-      <div className="plan-content-preview" ref={planContentRef} tabIndex={0}>
+      <div className="plan-content-preview" tabIndex={0}>
         <h3>计划内容：</h3>
         <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
       </div>
@@ -470,7 +451,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             </button>
           )}
           <button
-            ref={applyButtonRef}
             className="confirmation-btn confirmation-btn-apply"
             onClick={handleConfirm}
             disabled={isConfirmDisabled()}
@@ -571,7 +551,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             {!showFeedbackInput ? (
               <>
                 <button
-                  ref={applyButtonRef}
                   className="confirmation-btn confirmation-btn-apply"
                   onClick={handleConfirm}
                   disabled={isConfirmDisabled()}
@@ -603,7 +582,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
                 {confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME && confirmation.toolName !== EXIT_PLAN_MODE_TOOL_NAME && confirmation.toolName !== ENTER_PLAN_MODE_TOOL_NAME && !showFeedbackInput && !confirmation.hidePersistentOption && (
                   <button
-                    ref={autoButtonRef}
                     className="confirmation-btn confirmation-btn-auto"
                     onClick={handleAutoConfirm}
                   >
