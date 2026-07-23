@@ -361,8 +361,9 @@ export class AgentBridge {
     });
 
     if (params.clientVersion) {
-      console.debug(
-        `[agentBridge] clientVersion=${params.clientVersion} serverVersion=${CLI_VERSION}`,
+      // stdout 是 JSON-RPC 协议通道，诊断日志必须走 stderr 以免污染协议
+      process.stderr.write(
+        `[agentBridge] clientVersion=${params.clientVersion} serverVersion=${CLI_VERSION}\n`,
       );
     }
 
