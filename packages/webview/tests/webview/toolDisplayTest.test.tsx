@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderChatApp, sendCommand } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
-import { READ_TOOL_NAME, WRITE_TOOL_NAME, BASH_TOOL_NAME } from 'wave-agent-sdk';
+import { READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME, BASH_TOOL_NAME } from 'wave-agent-sdk';
 
 describe('Tool Display Visual Test', () => {
     beforeEach(() => {
@@ -139,6 +139,46 @@ describe('Tool Display Visual Test', () => {
         const compactParam = document.querySelector('.compact-params');
         expect(compactParam).toBeInTheDocument();
         expect(compactParam).toHaveTextContent(expected);
+    });
+
+    it('should show last 30 chars of parameters when Read/Edit/Write stage is streaming', () => {
+        renderChatApp();
+
+        // Streaming parameters are an incomplete JSON fragment; JSON.parse fails
+        // so the file-tool header must fall back to the default tool header
+        // showing the last 30 chars of the raw parameters.
+        const longParams = '{"file_path": "/home/user/project/src/components/Message.tsx", "offset": 50, "limit":';
+
+        const messages = [
+            MockDataGenerator.createUserMessage("Reading and editing"),
+            MockDataGenerator.createAssistantMessageWithTool("read", READ_TOOL_NAME, longParams),
+            MockDataGenerator.createAssistantMessageWithTool("edit", EDIT_TOOL_NAME, longParams),
+            MockDataGenerator.createAssistantMessageWithTool("write", WRITE_TOOL_NAME, longParams),
+        ];
+
+        // Force streaming stage and strip compactParams so the slice(-30) path is exercised
+        for (const msg of messages) {
+            if (msg.blocks && msg.blocks.length > 1) {
+                const toolBlock = msg.blocks[1] as unknown as Record<string, unknown>;
+                toolBlock.stage = 'streaming';
+                delete toolBlock.compactParams;
+            }
+        }
+
+        sendCommand('updateMessages', { messages });
+
+        // All three render as generic tool blocks (not file-tool headers) while streaming
+        const toolBlocks = document.querySelectorAll('.tool-block');
+        expect(toolBlocks).toHaveLength(3);
+        expect(document.querySelector('.write-tool-header')).not.toBeInTheDocument();
+        expect(document.querySelector('.write-tool-preview')).not.toBeInTheDocument();
+
+        const expected = longParams.slice(-30);
+        const compactParams = document.querySelectorAll('.compact-params');
+        expect(compactParams).toHaveLength(3);
+        for (const cp of compactParams) {
+            expect(cp).toHaveTextContent(expected);
+        }
     });
 
 });
