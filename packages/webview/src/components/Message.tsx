@@ -16,10 +16,11 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME
 } from 'wave-agent-sdk/dist/constants/tools.js';
-import type { MessageProps, ToolBlock, ImageBlock, TaskNotificationBlock, ReasoningBlock, MessageBlock } from '../types';
+import type { MessageProps, ToolBlock, ImageBlock, TaskNotificationBlock, ReasoningBlock, CompactBlock, MessageBlock } from '../types';
 import { DiffViewer } from './DiffViewer';
 import { MermaidRenderer } from './MermaidRenderer';
 import { ReasoningBlockView } from './ReasoningBlockView';
+import { CompactBlockView } from './CompactBlockView';
 import { WriteToolPreview } from './WriteToolPreview';
 import { FileToolHeader } from './FileToolHeader';
 import '../styles/Message.css';
@@ -556,6 +557,16 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
     );
   };
 
+  const renderCompactBlock = (compactBlock: CompactBlock, index: number) => {
+    return (
+      <CompactBlockView
+        key={`compact-${index}`}
+        block={compactBlock}
+        renderContent={(content) => renderMarkdownContent(content, index)}
+      />
+    );
+  };
+
   const renderTaskNotification = (block: TaskNotificationBlock, index: number) => {
     const statusIcon = block.status === 'completed' ? 'check' : block.status === 'failed' ? 'error' : 'circle-slash';
     const statusLabel = block.status === 'completed' ? '已完成' : block.status === 'failed' ? '失败' : '已终止';
@@ -582,8 +593,9 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
     let dotColor: string | undefined;
 
     switch (block.type) {
-      case 'text':
-      case 'compact': {
+      case 'compact':
+        return renderCompactBlock(block, index);
+      case 'text': {
         const content = block.content || '';
         if (!content.trim()) return null;
         
@@ -645,9 +657,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
 
         rendered = renderMarkdownContent(content, index);
         wrap = true;
-        if (block.type === 'text') {
-          dotColor = getStageColor(block.stage);
-        }
+        dotColor = getStageColor(block.stage);
         break;
       }
       case 'error':
