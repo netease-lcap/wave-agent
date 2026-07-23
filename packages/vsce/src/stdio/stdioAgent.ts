@@ -85,6 +85,7 @@ export interface StdioAgentCallbacks {
     }) => void;
     onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
     onErrorBlockAdded?: (error: string) => void;
+    onCompactBlockAdded?: (content: string) => void;
     onLoadingChange?: (loading: boolean) => void;
     onCommandRunningChange?: (running: boolean) => void;
     onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
@@ -384,6 +385,11 @@ export class StdioAgent {
             case 'errorBlockAdded': {
                 const p = params as { error: string };
                 this.callbacks.onErrorBlockAdded?.(p.error);
+                break;
+            }
+            case 'compactBlockAdded': {
+                const p = params as { content: string };
+                this.callbacks.onCompactBlockAdded?.(p.content);
                 break;
             }
             case 'loadingChange': {

@@ -177,6 +177,23 @@ test("onMessagesChange emits messagesChange notification", async () => {
   });
 });
 
+test("onCompactBlockAdded emits compactBlockAdded notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onCompactBlockAdded!("summary content");
+
+  expect(notifications).toContainEqual({
+    method: "compactBlockAdded",
+    params: { content: "summary content" },
+    sessionId: "test-session-id",
+  });
+});
+
 test("onUserMessageAdded finds last user message and emits notification", async () => {
   const { bridge, notifications } = createBridge();
   const userMessage = {

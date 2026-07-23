@@ -79,6 +79,7 @@ describe('StdioAgent', () => {
         expect(registeredMethods).toContain('notificationMessageAdded');
         expect(registeredMethods).toContain('permissionRequest');
         expect(registeredMethods).toContain('authUrl');
+        expect(registeredMethods).toContain('compactBlockAdded');
     });
 
     // ── initialize ─────────────────────────────────────────────
@@ -575,6 +576,15 @@ describe('StdioAgent', () => {
         agent.handleNotification('errorBlockAdded', { error: 'Something went wrong' });
 
         expect(onErrorBlockAdded).toHaveBeenCalledWith('Something went wrong');
+    });
+
+    it('compactBlockAdded forwards content to callback', () => {
+        const onCompactBlockAdded = vi.fn();
+        const { agent } = createAgent({ onCompactBlockAdded });
+
+        agent.handleNotification('compactBlockAdded', { content: 'compacted summary' });
+
+        expect(onCompactBlockAdded).toHaveBeenCalledWith('compacted summary');
     });
 
     it('loadingChange updates latestTotalTokens and calls callback', () => {

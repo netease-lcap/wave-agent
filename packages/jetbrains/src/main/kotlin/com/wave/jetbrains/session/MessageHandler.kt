@@ -106,6 +106,7 @@ class MessageHandler(
             "restoreSession" -> {
                 val sid = msg["sessionId"]?.jsonPrimitive?.content ?: return
                 session.agent?.restoreSession(sid)
+                session.immediateMessagesUpdate()
             }
             "confirmationResponse" -> {
                 val confirmationId = msg["confirmationId"]?.jsonPrimitive?.content ?: return

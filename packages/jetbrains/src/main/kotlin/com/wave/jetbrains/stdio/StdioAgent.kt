@@ -22,6 +22,7 @@ interface AgentCallbacks {
     fun onAssistantReasoningUpdated(messageId: String, accumulated: String, stage: String) {}
     fun onToolBlockUpdated(params: JsonElement?) {}
     fun onErrorBlockAdded(error: String) {}
+    fun onCompactBlockAdded(content: String) {}
     fun onLoadingChange(loading: Boolean) {}
     fun onCommandRunningChange(running: Boolean) {}
     fun onQueuedMessagesChange(messages: JsonElement?) {}
@@ -131,6 +132,11 @@ class StdioAgent(
         }
         client.onNotification("authUrl") { p ->
             callbacks.onAuthUrl(p?.jsonObject?.get("url")?.jsonPrimitive?.content ?: "")
+        }
+        client.onNotification("compactBlockAdded") { p ->
+            callbacks.onCompactBlockAdded(
+                p?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+            )
         }
     }
 

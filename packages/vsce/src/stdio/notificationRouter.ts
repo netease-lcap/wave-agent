@@ -43,6 +43,7 @@ const ALL_NOTIFICATION_METHODS = [
     'notificationMessageAdded',
     'permissionRequest',
     'authUrl',
+    'compactBlockAdded',
 ] as const;
 
 export class NotificationRouter {
