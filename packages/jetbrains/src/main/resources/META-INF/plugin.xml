@@ -16,7 +16,6 @@
             serviceImplementation="com.wave.jetbrains.WavePanelHolder"/>
         <toolWindow
             id="Wave"
-            title="Wave 代码智聊"
             anchor="right"
             factoryClass="com.wave.jetbrains.WaveToolWindowFactory"
             icon="com.wave.jetbrains.icons.WaveIcons.Wave"/>
