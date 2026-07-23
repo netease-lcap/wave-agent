@@ -8,6 +8,11 @@ vi.mock("child_process");
 // Mock bashHistory utility
 vi.mock("@/utils/bashHistory");
 
+// Mock shellResolver so spawn shell option is deterministic
+vi.mock("@/utils/shellResolver", () => ({
+  resolveShellPath: vi.fn(() => "/bin/bash"),
+}));
+
 import { BangManager } from "@/managers/bangManager.js";
 import type { MessageManager } from "@/managers/messageManager.js";
 import { Container } from "@/utils/container.js";
@@ -105,7 +110,7 @@ describe("BangManager", () => {
 
       // Verify spawn was called with correct arguments
       expect(mockSpawn).toHaveBeenCalledWith(command, {
-        shell: true,
+        shell: "/bin/bash",
         stdio: "pipe",
         cwd: testWorkdir,
         env: expect.any(Object),

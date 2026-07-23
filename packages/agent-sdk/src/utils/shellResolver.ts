@@ -1,9 +1,16 @@
 import fs from "fs";
 import path from "path";
+import { execFileSync } from "child_process";
 
 export const WINDOWS_GIT_BASH_PATHS = [
   "C:\\Program Files\\Git\\bin\\bash.exe",
   "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+];
+
+// Common git.exe locations (checked before falling back to `where.exe`).
+const WINDOWS_GIT_EXE_PATHS = [
+  "C:\\Program Files\\Git\\cmd\\git.exe",
+  "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
 ];
 
 // Common directories where bash/zsh may live, used as fallback after PATH lookup.
@@ -39,6 +46,49 @@ function which(command: string): string | undefined {
 
 function isSupportedShell(shellPath: string): boolean {
   return shellPath.includes("bash") || shellPath.includes("zsh");
+}
+
+/**
+ * Locate the `git` executable on Windows, then infer bash.exe from it.
+ * Checks common Git for Windows install locations first, then falls back
+ * to `where.exe git` (aligned with Claude Code's findExecutable('git')).
+ * Returns the inferred bash.exe path, or undefined if not found.
+ */
+function inferGitBashFromGit(): string | undefined {
+  // 1. Common git.exe locations
+  let gitExe: string | undefined;
+  for (const candidate of WINDOWS_GIT_EXE_PATHS) {
+    if (fs.existsSync(candidate)) {
+      gitExe = candidate;
+      break;
+    }
+  }
+
+  // 2. Fallback: where.exe git
+  if (!gitExe) {
+    try {
+      const result = execFileSync("where", ["git"], {
+        stdio: "pipe",
+        encoding: "utf8",
+        timeout: 3000,
+      }).trim();
+      // where.exe may return multiple lines; take the first non-empty one.
+      gitExe = result.split(/\r?\n/).find((line) => line.trim()) || undefined;
+    } catch {
+      gitExe = undefined;
+    }
+  }
+
+  if (!gitExe) return undefined;
+
+  // git.exe is at <install>/cmd/git.exe → bash.exe is at <install>/bin/bash.exe
+  // join treats git.exe as a segment, so ".." cancels it (→ cmd dir),
+  // the second ".." cancels cmd (→ <install>), then bin/bash.exe.
+  const bashPath = path.win32.join(gitExe, "..", "..", "bin", "bash.exe");
+  if (fs.existsSync(bashPath)) {
+    return bashPath;
+  }
+  return undefined;
 }
 
 /**
@@ -94,26 +144,46 @@ function resolveUnixShell(): string | undefined {
   return candidates.find((candidate) => isExecutable(candidate));
 }
 
+/**
+ * Resolve the Git Bash path on Windows.
+ *
+ * Priority (aligned with Claude Code's findGitBashPath):
+ *   1. WAVE_GIT_BASH_PATH env var
+ *   2. Infer from `git` executable location (<git dir>/../../bin/bash.exe)
+ *   3. Common install paths (C:\Program Files\Git\bin\bash.exe, etc.)
+ */
+function resolveWindowsShell(): string | undefined {
+  // 1. Env var override
+  if (process.env.WAVE_GIT_BASH_PATH) {
+    return process.env.WAVE_GIT_BASH_PATH;
+  }
+
+  // 2. Infer from git executable location
+  const inferred = inferGitBashFromGit();
+  if (inferred) {
+    return inferred;
+  }
+
+  // 4. Common install paths
+  const paths = [
+    ...WINDOWS_GIT_BASH_PATHS,
+    process.env.LOCALAPPDATA
+      ? `${process.env.LOCALAPPDATA}\\Programs\\Git\\bin\\bash.exe`
+      : null,
+  ].filter(Boolean) as string[];
+
+  for (const p of paths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+
+  return undefined;
+}
+
 export function resolveShellPath(): string | undefined {
   if (process.platform === "win32") {
-    if (process.env.GIT_BASH_PATH) {
-      return process.env.GIT_BASH_PATH;
-    }
-
-    const paths = [
-      ...WINDOWS_GIT_BASH_PATHS,
-      process.env.LOCALAPPDATA
-        ? `${process.env.LOCALAPPDATA}\\Programs\\Git\\bin\\bash.exe`
-        : null,
-    ].filter(Boolean) as string[];
-
-    for (const p of paths) {
-      if (fs.existsSync(p)) {
-        return p;
-      }
-    }
-
-    return undefined;
+    return resolveWindowsShell();
   }
 
   return resolveUnixShell();
