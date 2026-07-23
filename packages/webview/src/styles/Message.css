@@ -238,6 +238,9 @@
     color: var(--vscode-editor-foreground);
     font-weight: 600;
     font-size: 13px;
+    /* 固定单行行高，吸收 streaming 时中英混排导致的字体度量差异（行框抖动） */
+    line-height: 18px;
+    height: 18px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -469,6 +472,9 @@
     color: var(--vscode-descriptionForeground);
     font-weight: normal;
     font-size: 11px;
+    /* 与父行 .tool-block 一致的固定行高，保证 inline 混排时基线/行框稳定 */
+    line-height: 18px;
+    vertical-align: baseline;
 }
 
 /* Tool Styles */
