@@ -706,7 +706,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       {message.blocks?.map((block, index) => renderBlock(block, index))}
       {message.role === 'user' && !isQueued && message.id && !message.blocks?.some(b => b.type === 'bang') && (
         <div className="message-actions">
-          <Tooltip text="回滚到此消息" position="left">
+          <Tooltip text="回滚到此消息" position="bottom-left">
             <button 
               className="message-action-btn" 
               onClick={() => onRewindToMessage?.(message.id!)}

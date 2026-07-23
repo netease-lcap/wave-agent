@@ -124,6 +124,7 @@
 .ai-send-btn:hover:not(:disabled),
 .ai-abort-btn:hover {
     background: var(--vscode-brand-primary, #c1292e);
+    background-color: var(--vscode-brand-primary, #c1292e);
     filter: brightness(0.92);
 }
 
@@ -133,6 +134,7 @@
 }
 
 .ai-send-btn:disabled:hover {
+    background-color: var(--vscode-brand-primary, #c1292e);
     filter: none;
 }
 

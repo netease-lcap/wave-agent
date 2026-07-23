@@ -21,7 +21,7 @@
   box-sizing: border-box;
   padding: 0 12px;
   font-size: 12px;
-  background-color: var(--vscode-statusBar-background);
+  background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-widget-border);
   border-radius: 4px;
