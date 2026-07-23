@@ -78,11 +78,25 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         sessions: action.payload,
         sessionsLoading: false
       };
-    case 'SET_CURRENT_SESSION':
-      return {
-        ...state,
-        currentSession: action.payload
-      };
+    case 'SET_CURRENT_SESSION': {
+      const session = action.payload;
+      if (!session) {
+        return { ...state, currentSession: undefined };
+      }
+      // The backend pushes a currentSession without firstMessage on session
+      // switch, but the sessions list carries the authoritative firstMessage
+      // (from JSONL). Backfill it so the header title stays consistent with the
+      // session list. New sessions (not yet in the list) keep an empty
+      // firstMessage so getSessionTitle falls back to deriving from messages.
+      let currentSession = session;
+      if (!session.firstMessage) {
+        const existing = state.sessions.find(s => s.id === session.id);
+        if (existing?.firstMessage) {
+          currentSession = { ...session, firstMessage: existing.firstMessage };
+        }
+      }
+      return { ...state, currentSession };
+    }
     case 'SET_SESSIONS_LOADING':
       return {
         ...state,

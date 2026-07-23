@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { chatReducer, initialState } from '../../src/reducers/chatReducer';
-import type { Message, TextBlock, ToolBlock, ReasoningBlock, ErrorBlock } from '../../src/types';
+import type { Message, TextBlock, ToolBlock, ReasoningBlock, ErrorBlock, SessionMetadata } from '../../src/types';
 
 describe('chatReducer', () => {
   describe('APPEND_MESSAGE', () => {
@@ -488,6 +488,97 @@ describe('chatReducer', () => {
       expect(newState.messages).toHaveLength(2);
       expect(newState.messages[1].blocks).toHaveLength(1);
       expect((newState.messages[1].blocks[0] as TextBlock).content).toBe('Hi there');
+    });
+  });
+
+  describe('SET_CURRENT_SESSION', () => {
+    it('should backfill firstMessage from sessions list when payload lacks it', () => {
+      const sessionInList: SessionMetadata = {
+        id: 's1',
+        sessionType: 'main',
+        firstMessage: '压缩块摘要内容',
+        workdir: '/w',
+        createdAt: new Date(0),
+        lastActiveAt: new Date(0),
+        latestTotalTokens: 0
+      };
+      const state = { ...initialState, sessions: [sessionInList] };
+
+      const newState = chatReducer(state, {
+        type: 'SET_CURRENT_SESSION',
+        payload: {
+          id: 's1',
+          sessionType: 'main',
+          workdir: '/w',
+          createdAt: new Date(0),
+          lastActiveAt: new Date(0),
+          latestTotalTokens: 0
+        }
+      });
+
+      expect(newState.currentSession?.firstMessage).toBe('压缩块摘要内容');
+    });
+
+    it('should not override firstMessage when payload already has one', () => {
+      const sessionInList: SessionMetadata = {
+        id: 's1',
+        sessionType: 'main',
+        firstMessage: '列表里的摘要',
+        workdir: '/w',
+        createdAt: new Date(0),
+        lastActiveAt: new Date(0),
+        latestTotalTokens: 0
+      };
+      const state = { ...initialState, sessions: [sessionInList] };
+
+      const newState = chatReducer(state, {
+        type: 'SET_CURRENT_SESSION',
+        payload: {
+          id: 's1',
+          sessionType: 'main',
+          firstMessage: 'payload自带的',
+          workdir: '/w',
+          createdAt: new Date(0),
+          lastActiveAt: new Date(0),
+          latestTotalTokens: 0
+        }
+      });
+
+      expect(newState.currentSession?.firstMessage).toBe('payload自带的');
+    });
+
+    it('should not backfill firstMessage when session is not in sessions list', () => {
+      const state = { ...initialState, sessions: [] };
+
+      const newState = chatReducer(state, {
+        type: 'SET_CURRENT_SESSION',
+        payload: {
+          id: 'new-session',
+          sessionType: 'main',
+          workdir: '/w',
+          createdAt: new Date(0),
+          lastActiveAt: new Date(0),
+          latestTotalTokens: 0
+        }
+      });
+
+      expect(newState.currentSession?.firstMessage).toBeUndefined();
+    });
+
+    it('should clear currentSession when payload is undefined without error', () => {
+      const currentSession: SessionMetadata = {
+        id: 's1',
+        sessionType: 'main',
+        workdir: '/w',
+        createdAt: new Date(0),
+        lastActiveAt: new Date(0),
+        latestTotalTokens: 0
+      };
+      const state = { ...initialState, currentSession };
+
+      const newState = chatReducer(state, { type: 'SET_CURRENT_SESSION', payload: undefined });
+
+      expect(newState.currentSession).toBeUndefined();
     });
   });
 });
