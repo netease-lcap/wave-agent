@@ -130,7 +130,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
               permissionMode: message.permissionMode,
               attachedImages: message.attachedImages,
               queuedMessages: message.queuedMessages,
-              isAuthenticated: message.isAuthenticated
+              isAuthenticated: message.isAuthenticated,
+              workdir: message.workdir
             }
           });
           break;
@@ -477,6 +478,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           streamingMessageIndex={streamingMessageIndex}
           vscode={vscode}
           onRewindToMessage={handleRewindToMessage}
+          workdir={state.workdir}
         />
       )}
 

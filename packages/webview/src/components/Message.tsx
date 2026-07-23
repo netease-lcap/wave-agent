@@ -1,6 +1,6 @@
 import React from 'react';
 import { ContextTag } from './ContextTag';
-import { parseMentions } from '../utils/messageUtils';
+import { parseMentions, toRelativePath } from '../utils/messageUtils';
 import { marked } from 'marked';
 import { BangBlock } from './BangBlock';
 import { Tooltip } from './Tooltip';
@@ -100,7 +100,7 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
 
 
 export const Message: React.FC<MessageProps> = React.memo((props) => {
-  const { message, isStreaming = false, isQueued = false, onRewindToMessage } = props;
+  const { message, isStreaming = false, isQueued = false, onRewindToMessage, workdir } = props;
   const getMessageClassName = () => {
     const classes = ['message'];
     
@@ -303,7 +303,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       }
       return (
         <div key={index} className="tool-container">
-          {!errorContent && <WriteToolPreview toolBlock={toolBlock} vscode={props.vscode} />}
+          {!errorContent && <WriteToolPreview toolBlock={toolBlock} vscode={props.vscode} workdir={workdir} />}
           {errorContent && toolHeader}
           {errorContent}
         </div>
@@ -328,7 +328,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       };
       return (
         <div key={index} className="tool-container">
-          <FileToolHeader toolBlock={toolBlock} filePath={editFilePath} onOpenFile={openEditFile} />
+          <FileToolHeader toolBlock={toolBlock} filePath={toRelativePath(editFilePath, workdir)} onOpenFile={openEditFile} />
           {!errorContent && <DiffViewer toolBlock={toolBlock} />}
           {errorContent}
         </div>
@@ -348,9 +348,10 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
           filePath = params.file_path || '';
           const offset = typeof params.offset === 'number' ? params.offset : undefined;
           const limit = typeof params.limit === 'number' ? params.limit : undefined;
-          displayPath = filePath && (offset !== undefined || limit !== undefined)
-            ? `${filePath}:${offset !== undefined ? offset : 1}:${limit !== undefined ? limit : 2000}`
-            : filePath;
+          const relPath = toRelativePath(filePath, workdir);
+          displayPath = relPath && (offset !== undefined || limit !== undefined)
+            ? `${relPath}:${offset !== undefined ? offset : 1}:${limit !== undefined ? limit : 2000}`
+            : relPath;
         }
       } catch {
         filePath = '';

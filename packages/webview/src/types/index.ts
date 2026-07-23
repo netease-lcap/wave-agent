@@ -135,6 +135,7 @@ export interface MessageListProps {
   streamingMessageIndex?: number;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
+  workdir?: string;
 }
 
 export interface MessageProps {
@@ -143,6 +144,7 @@ export interface MessageProps {
   isQueued?: boolean;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
+  workdir?: string;
 }
 
 // Image attachment types (uses base64 data directly)
@@ -252,6 +254,8 @@ export interface ChatState {
   queuedMessages: QueuedMessage[];
   // Auth state
   isAuthenticated: boolean;
+  // Agent working directory, used to render tool file paths as relative.
+  workdir?: string;
   // Dialog state
   activeDialog: 'config' | 'plugin' | 'mcp' | 'status' | null;
   configurationData?: ConfigurationData;
@@ -416,6 +420,7 @@ export type ChatAction =
       attachedImages?: AttachedImage[];
       queuedMessages?: QueuedMessage[];
       isAuthenticated?: boolean;
+      workdir?: string;
     } }
   // Incremental update actions for streaming optimization
   | { type: 'APPEND_MESSAGE'; payload: Message }
