@@ -342,12 +342,14 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       }
       let filePath = '';
       let displayPath = '';
+      let offset: number | undefined;
+      let limit: number | undefined;
       try {
         if (toolBlock.parameters) {
           const params = JSON.parse(toolBlock.parameters);
           filePath = params.file_path || '';
-          const offset = typeof params.offset === 'number' ? params.offset : undefined;
-          const limit = typeof params.limit === 'number' ? params.limit : undefined;
+          offset = typeof params.offset === 'number' ? params.offset : undefined;
+          limit = typeof params.limit === 'number' ? params.limit : undefined;
           const relPath = toRelativePath(filePath, workdir);
           displayPath = relPath && (offset !== undefined || limit !== undefined)
             ? `${relPath}:${offset !== undefined ? offset : 1}:${limit !== undefined ? limit : 2000}`
@@ -358,7 +360,14 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       }
       const openReadFile = () => {
         if (filePath) {
-          props.vscode.postMessage({ command: 'openFile', path: filePath });
+          props.vscode.postMessage({
+            command: 'openFile',
+            path: filePath,
+            // offset/limit describe the read slice (1-based); jump to it so the
+            // editor lands on the same lines the tool actually read.
+            startLine: offset,
+            endLine: offset && limit ? offset + limit - 1 : undefined
+          });
         }
       };
       return (
