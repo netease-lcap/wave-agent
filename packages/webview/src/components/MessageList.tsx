@@ -32,7 +32,20 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
 
   const prevMessagesLengthRef = useRef(messages.length);
   const prevQueuedLengthRef = useRef(queuedMessages?.length || 0);
+  // True when the user has scrolled up away from the bottom. While set,
+  // auto-scroll-to-bottom is suspended so the user can read history undisturbed
+  // during streaming. Set by ANY upward scroll (even a few px) — detected by
+  // comparing scrollTop direction in the scroll handler — so a light upward
+  // nudge is respected instead of being overridden because the user is still
+  // "within the bottom threshold". Cleared only when the user scrolls back down
+  // to the bottom region.
   const userScrolledUpRef = useRef(false);
+  // Briefly true around our own scrollIntoView calls so the scroll handler can
+  // ignore those as user intent. Streaming uses 'auto' (instant, single fire),
+  // so a one-frame reset via requestAnimationFrame is sufficient.
+  const isProgrammaticScrollRef = useRef(false);
+  // Last seen scrollTop, used to detect scroll direction (up vs down).
+  const prevScrollTopRef = useRef(0);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
   // at the top of the list as a context hint (设计稿 2236-3792).
@@ -74,13 +87,27 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
 
+  // Perform a programmatic scroll-to-bottom, guarding it with the
+  // isProgrammaticScroll flag so the scroll handler treats the resulting
+  // 'scroll' event as ours (not the user's) and leaves userScrolledUp alone.
+  const doScrollToBottom = useCallback((behavior: ScrollBehavior) => {
+    const messagesEnd = messagesEndRef.current;
+    if (!messagesEnd) return;
+    isProgrammaticScrollRef.current = true;
+    messagesEnd.scrollIntoView({ behavior });
+    // 'auto' is instant (single 'scroll' fire); reset on the next frame.
+    requestAnimationFrame(() => {
+      isProgrammaticScrollRef.current = false;
+    });
+  }, []);
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth', force = false) => {
     const container = containerRef.current;
     const messagesEnd = messagesEndRef.current;
     if (!container || !messagesEnd) return;
 
     const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 300;
-    
+
     const isUserMessage = messages.length > 0 && messages[messages.length - 1].role === 'user';
     // Force scroll if it's a new message AND (it's from user OR user is already at bottom)
     const shouldForce = force && (isUserMessage || !userScrolledUpRef.current);
@@ -90,17 +117,19 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     // 2. We are currently streaming content AND user hasn't scrolled up
     // 3. The user is already near the bottom AND hasn't scrolled up
     if (shouldForce || ((streamingMessageIndex !== undefined || isNearBottom) && !userScrolledUpRef.current)) {
-      messagesEnd.scrollIntoView({ behavior });
+      // A new user message means the user wants to follow the upcoming reply:
+      // clear any prior opt-out so streaming auto-scrolls into view.
+      if (shouldForce && isUserMessage) {
+        userScrolledUpRef.current = false;
+      }
+      doScrollToBottom(behavior);
     }
-  }, [messages, streamingMessageIndex]);
+  }, [messages, streamingMessageIndex, doScrollToBottom]);
 
   // Expose scrollToBottom method to parent component
   useImperativeHandle(ref, () => ({
     scrollToBottom: (behavior: ScrollBehavior = 'smooth') => {
-      const messagesEnd = messagesEndRef.current;
-      if (messagesEnd) {
-        messagesEnd.scrollIntoView({ behavior });
-      }
+      doScrollToBottom(behavior);
     }
   }));
 
@@ -113,30 +142,45 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     prevMessagesLengthRef.current = messages.length;
     prevQueuedLengthRef.current = queuedMessages?.length || 0;
 
+    // The scroll event fires for user scrolling (wheel, trackpad, keyboard,
+    // scrollbar drag) AND our own programmatic scrollIntoView. We distinguish
+    // them with isProgrammaticScroll: ignore 'scroll' events we caused, so they
+    // can't reset userScrolledUp and yank the user back to the bottom. For real
+    // user scrolling, we use DIRECTION to decide intent — any upward scroll
+    // (even a few px) suspends following, so a light nudge up is respected
+    // instead of being overridden by the bottom-threshold check. Only scrolling
+    // back down to the bottom region resumes following.
     const handleScroll = () => {
-      const threshold = 300;
-      const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - threshold;
-      if (isNearBottom) {
-        userScrolledUpRef.current = false;
-      } else {
-        userScrolledUpRef.current = true;
+      if (!isProgrammaticScrollRef.current) {
+        const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 300;
+        const scrolledUp = container.scrollTop < prevScrollTopRef.current;
+        // An upward gesture always opts out of following (covers the "slight
+        // nudge up then stop" case that the distance threshold alone missed).
+        // A downward gesture to the bottom region opts back in.
+        if (scrolledUp) {
+          userScrolledUpRef.current = true;
+        } else if (isNearBottom) {
+          userScrolledUpRef.current = false;
+        }
       }
+      prevScrollTopRef.current = container.scrollTop;
       computeSticky();
     };
 
     container.addEventListener('scroll', handleScroll);
 
-    // Use ResizeObserver to handle content height changes (images, diffs, etc.)
+    // Use ResizeObserver to recompute sticky state on content height changes
+    // (images, diffs, etc.). Auto-scroll itself is driven by the messages
+    // dependency below, not by the observer.
     const resizeObserver = new ResizeObserver(() => {
-      // Use 'auto' for resize events to keep up with content growth without jitter
-      scrollToBottom(streamingMessageIndex !== undefined ? 'auto' : 'smooth');
       computeSticky();
     });
 
     resizeObserver.observe(container);
-    
-    // Initial scroll for the dependency change
-    // If it's a new message, we force the scroll
+
+    // Follow new content: scroll on every messages change (incl. streaming text
+    // chunks so streamed text stays visible), gated by userScrolledUp inside
+    // scrollToBottom. A brand-new message forces the scroll.
     scrollToBottom(streamingMessageIndex !== undefined ? 'auto' : 'smooth', isNewMessage);
     computeSticky();
 
