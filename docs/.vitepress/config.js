@@ -1,7 +1,7 @@
 const nav = [
   { text: '首页', link: '/' },
   { text: '企业管控台', link: '/guide' },
-  { text: 'VS Code 扩展', link: '/vsce' },
+  { text: 'VS Code 扩展 / JetBrains 插件', link: '/vsce' },
   { text: 'CLI', link: '/cli' },
   { text: 'SDK', link: '/sdk' },
 ];
@@ -9,7 +9,7 @@ const nav = [
 export default {
   base: '/wave-agent/',
   title: 'CodeChat',
-  description: 'AI 辅助编程工具链 — SDK、CLI 与 VS Code 扩展',
+  description: 'AI 辅助编程工具链 — SDK、CLI、VS Code 扩展与 JetBrains 插件',
   themeConfig: {
     nav,
     sidebar: {

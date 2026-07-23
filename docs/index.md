@@ -5,15 +5,19 @@ title: CodeChat
 
 # CodeChat AI辅助编程工具
 
-AI 辅助编程工具链，提供 SDK、CLI 终端界面与 VS Code 扩展三种使用方式。
+AI 辅助编程工具链，提供 SDK、CLI 终端界面、VS Code 扩展与 JetBrains 插件四种使用方式。
 
-[企业管控台](/guide) · [VS Code 扩展](/vsce) · [CLI](/cli) · [SDK](/sdk)
+[企业管控台](/guide) · [VS Code 扩展 / JetBrains 插件](/vsce) · [CLI](/cli) · [SDK](/sdk)
 
 ## 快速开始
 
 ### VS Code 扩展
 
-下载 `.vsix` 文件安装，在对话中输入 `/login` 完成 SSO 登录。
+从企业控制台「产品下载」页面下载 `.vsix` 文件，在 VS Code 中通过「扩展 → ⋯ → 从 VSIX 安装」安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
+
+### JetBrains 插件
+
+从企业控制台「产品下载」页面下载 JetBrains 插件包，在 IDE（WebStorm、IntelliJ IDEA 等）中通过「设置 → 插件 → ⚙ → 从磁盘安装插件」安装。打开聊天面板点击欢迎页的「登录」按钮完成 SSO 登录。
 
 ### CLI 终端
 
