@@ -292,6 +292,7 @@ class WaveSession(
                 put("id", sessionId)
                 put("sessionType", "main")
                 put("workdir", workdir)
+                put("lastActiveAt", java.time.Instant.now().toString())
                 put("latestTotalTokens", agent?.latestTotalTokens ?: 0)
             })
         })
