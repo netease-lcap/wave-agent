@@ -14,9 +14,12 @@
             serviceImplementation="com.wave.jetbrains.config.WavePluginService"/>
         <projectService
             serviceImplementation="com.wave.jetbrains.WavePanelHolder"/>
+        <projectService
+            serviceImplementation="com.wave.jetbrains.WaveBackendService"/>
         <toolWindow
             id="Wave"
             anchor="right"
+            canCloseContents="true"
             factoryClass="com.wave.jetbrains.WaveToolWindowFactory"
             icon="com.wave.jetbrains.icons.WaveIcons.Wave"/>
         <notificationGroup id="Wave" displayType="BALLOON"/>

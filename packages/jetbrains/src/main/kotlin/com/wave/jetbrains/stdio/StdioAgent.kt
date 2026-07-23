@@ -36,7 +36,6 @@ interface AgentCallbacks {
     fun onBangMessageUpdated() {}
     fun onBangMessageCompleted() {}
     fun onNotificationMessageAdded(message: JsonObject) {}
-    fun onAuthUrl(url: String) {}
     fun onError(message: String) {}
 }
 
@@ -46,6 +45,7 @@ interface AgentCallbacks {
  */
 class StdioAgent(
     private val client: StdioClient,
+    private val router: NotificationRouter,
     private val callbacks: AgentCallbacks,
 ) {
     @Volatile var sessionId: String? = null
@@ -59,90 +59,68 @@ class StdioAgent(
     @Volatile var serverVersion: String? = null
         private set
 
-    val isDisposed get() = client.disposed
-
-    init { registerNotifications() }
-
-    private fun registerNotifications() {
-        client.onNotification("messagesChange") { p ->
-            callbacks.onMessagesChange(p?.jsonObject?.get("messages"))
-        }
-        client.onNotification("userMessageAdded") { p ->
-            callbacks.onUserMessageAdded(p?.jsonObject?.get("message"))
-        }
-        client.onNotification("assistantMessageAdded") { p ->
-            callbacks.onAssistantMessageAdded(p?.jsonObject?.get("message"))
-        }
-        client.onNotification("assistantContentUpdated") { p ->
-            val o = p?.jsonObject
-            callbacks.onAssistantContentUpdated(
-                o?.get("messageId")?.jsonPrimitive?.content ?: "",
-                o?.get("accumulated")?.jsonPrimitive?.content ?: "",
-                o?.get("stage")?.jsonPrimitive?.content ?: "",
+    fun handleNotification(method: String, params: JsonElement?) {
+        when (method) {
+            "messagesChange" -> callbacks.onMessagesChange(params?.jsonObject?.get("messages"))
+            "userMessageAdded" -> callbacks.onUserMessageAdded(params?.jsonObject?.get("message"))
+            "assistantMessageAdded" -> callbacks.onAssistantMessageAdded(params?.jsonObject?.get("message"))
+            "assistantContentUpdated" -> {
+                val o = params?.jsonObject
+                callbacks.onAssistantContentUpdated(
+                    o?.get("messageId")?.jsonPrimitive?.content ?: "",
+                    o?.get("accumulated")?.jsonPrimitive?.content ?: "",
+                    o?.get("stage")?.jsonPrimitive?.content ?: "",
+                )
+            }
+            "assistantReasoningUpdated" -> {
+                val o = params?.jsonObject
+                callbacks.onAssistantReasoningUpdated(
+                    o?.get("messageId")?.jsonPrimitive?.content ?: "",
+                    o?.get("accumulated")?.jsonPrimitive?.content ?: "",
+                    o?.get("stage")?.jsonPrimitive?.content ?: "",
+                )
+            }
+            "toolBlockUpdated" -> callbacks.onToolBlockUpdated(params)
+            "errorBlockAdded" -> callbacks.onErrorBlockAdded(params?.jsonObject?.get("error")?.jsonPrimitive?.content ?: "")
+            "loadingChange" -> {
+                val o = params?.jsonObject
+                o?.get("latestTotalTokens")?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }
+                callbacks.onLoadingChange(o?.get("loading")?.jsonPrimitive?.content?.toBoolean() ?: false)
+            }
+            "commandRunningChange" -> callbacks.onCommandRunningChange(
+                params?.jsonObject?.get("running")?.jsonPrimitive?.content?.toBoolean() ?: false
             )
-        }
-        client.onNotification("assistantReasoningUpdated") { p ->
-            val o = p?.jsonObject
-            callbacks.onAssistantReasoningUpdated(
-                o?.get("messageId")?.jsonPrimitive?.content ?: "",
-                o?.get("accumulated")?.jsonPrimitive?.content ?: "",
-                o?.get("stage")?.jsonPrimitive?.content ?: "",
-            )
-        }
-        client.onNotification("toolBlockUpdated") { p -> callbacks.onToolBlockUpdated(p) }
-        client.onNotification("errorBlockAdded") { p ->
-            callbacks.onErrorBlockAdded(p?.jsonObject?.get("error")?.jsonPrimitive?.content ?: "")
-        }
-        client.onNotification("loadingChange") { p ->
-            val o = p?.jsonObject
-            o?.get("latestTotalTokens")?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }
-            callbacks.onLoadingChange(o?.get("loading")?.jsonPrimitive?.content?.toBoolean() ?: false)
-        }
-        client.onNotification("commandRunningChange") { p ->
-            callbacks.onCommandRunningChange(
-                p?.jsonObject?.get("running")?.jsonPrimitive?.content?.toBoolean() ?: false
-            )
-        }
-        client.onNotification("queuedMessagesChange") { p ->
-            callbacks.onQueuedMessagesChange(p?.jsonObject?.get("messages"))
-        }
-        client.onNotification("tasksChange") { p -> callbacks.onTasksChange(p?.jsonObject?.get("tasks")) }
-        client.onNotification("sessionIdChange") { p ->
-            val id = p?.jsonObject?.get("sessionId")?.jsonPrimitive?.content ?: ""
-            sessionId = id
-            callbacks.onSessionIdChange(id)
-        }
-        client.onNotification("permissionModeChange") { p ->
-            val mode = p?.jsonObject?.get("mode")?.jsonPrimitive?.content ?: ""
-            permissionMode = mode
-            callbacks.onPermissionModeChange(mode)
-        }
-        client.onNotification("workdirChange") { p ->
-            val workdir = p?.jsonObject?.get("workdir")?.jsonPrimitive?.content ?: ""
-            workingDirectory = workdir
-            callbacks.onWorkdirChange(workdir)
-        }
-        client.onNotification("mcpServersChange") { p -> callbacks.onMcpServersChange(p?.jsonObject?.get("servers")) }
-        client.onNotification("permissionRequest") { p ->
-            val o = p?.jsonObject
-            callbacks.onPermissionRequest(
-                o?.get("requestId")?.jsonPrimitive?.content ?: "",
-                o?.get("context"),
-            )
-        }
-        client.onNotification("bangMessageAdded") { callbacks.onBangMessageAdded() }
-        client.onNotification("bangMessageUpdated") { callbacks.onBangMessageUpdated() }
-        client.onNotification("bangMessageCompleted") { callbacks.onBangMessageCompleted() }
-        client.onNotification("notificationMessageAdded") { p ->
-            callbacks.onNotificationMessageAdded(p?.jsonObject ?: JsonObject(emptyMap()))
-        }
-        client.onNotification("authUrl") { p ->
-            callbacks.onAuthUrl(p?.jsonObject?.get("url")?.jsonPrimitive?.content ?: "")
-        }
-        client.onNotification("compactBlockAdded") { p ->
-            callbacks.onCompactBlockAdded(
-                p?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
-            )
+            "queuedMessagesChange" -> callbacks.onQueuedMessagesChange(params?.jsonObject?.get("messages"))
+            "tasksChange" -> callbacks.onTasksChange(params?.jsonObject?.get("tasks"))
+            "sessionIdChange" -> {
+                val id = params?.jsonObject?.get("sessionId")?.jsonPrimitive?.content ?: ""
+                sessionId = id
+                callbacks.onSessionIdChange(id)
+            }
+            "permissionModeChange" -> {
+                val mode = params?.jsonObject?.get("mode")?.jsonPrimitive?.content ?: ""
+                permissionMode = mode
+                callbacks.onPermissionModeChange(mode)
+            }
+            "mcpServersChange" -> callbacks.onMcpServersChange(params?.jsonObject?.get("servers"))
+            "workdirChange" -> {
+                val workdir = params?.jsonObject?.get("workdir")?.jsonPrimitive?.content ?: ""
+                workingDirectory = workdir
+                callbacks.onWorkdirChange(workdir)
+            }
+            "permissionRequest" -> {
+                val o = params?.jsonObject
+                callbacks.onPermissionRequest(
+                    o?.get("requestId")?.jsonPrimitive?.content ?: "",
+                    o?.get("context"),
+                )
+            }
+            "bangMessageAdded" -> callbacks.onBangMessageAdded()
+            "bangMessageUpdated" -> callbacks.onBangMessageUpdated()
+            "bangMessageCompleted" -> callbacks.onBangMessageCompleted()
+            "notificationMessageAdded" -> callbacks.onNotificationMessageAdded(params?.jsonObject ?: JsonObject(emptyMap()))
+            "compactBlockAdded" -> callbacks.onCompactBlockAdded(params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "")
+            else -> {}
         }
     }
 
@@ -156,6 +134,7 @@ class StdioAgent(
         permissionMode = res["permissionMode"]?.jsonPrimitive?.content
         res["latestTotalTokens"]?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }
         res["serverVersion"]?.jsonPrimitive?.content?.let { serverVersion = it }
+        sessionId?.let { router.register(it, this) }
         return InitializeResult(
             sessionId = sessionId,
             workingDirectory = workingDirectory,
@@ -163,6 +142,11 @@ class StdioAgent(
             latestTotalTokens = latestTotalTokens,
             serverVersion = serverVersion,
         )
+    }
+
+    suspend fun destroy() {
+        sessionId?.let { router.unregister(it) }
+        runCatching { client.request("destroy", sessionId = sessionId) }
     }
 
     suspend fun sendMessage(text: String, images: JsonElement? = null, force: Boolean = false) {
@@ -208,7 +192,14 @@ class StdioAgent(
     suspend fun getSlashCommands(): JsonElement? = client.request("getSlashCommands", sessionId = sessionId)
 
     suspend fun updateConfig(params: JsonObject) {
-        client.request("updateConfig", params, sessionId)
+        val oldSessionId = sessionId
+        val result = client.request("updateConfig", params, sessionId)?.jsonObject
+        val newSessionId = result?.get("sessionId")?.jsonPrimitive?.content
+        if (oldSessionId != null && newSessionId != null && newSessionId != oldSessionId) {
+            router.unregister(oldSessionId)
+            sessionId = newSessionId
+            router.register(newSessionId, this)
+        }
     }
 
     suspend fun rewindToMessage(messageId: String): String {
@@ -321,8 +312,6 @@ class StdioAgent(
 
     suspend fun logout(): JsonElement =
         client.request("logout") ?: JsonObject(emptyMap())
-
-    fun close() { client.close() }
 }
 
 data class InitializeResult(

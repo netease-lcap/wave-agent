@@ -47,7 +47,7 @@ class AddSelectionToWaveAction : AnAction() {
             put("isEmpty", false)
         }
 
-        val panel = WavePanelHolder.getInstance(project).panel
+        val panel = WavePanelHolder.getInstance(project).activePanel
         if (panel == null) {
             LOG.warn("Wave panel not available; selection not sent")
             return

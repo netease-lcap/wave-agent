@@ -1,19 +1,17 @@
 package com.wave.jetbrains.session
 
-import com.intellij.ide.BrowserUtil
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
+import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.config.WavePluginService
-import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.AgentCallbacks
-import com.wave.jetbrains.stdio.BinaryResolver
+import com.wave.jetbrains.stdio.NotificationRouter
 import com.wave.jetbrains.stdio.StdioAgent
 import com.wave.jetbrains.stdio.StdioClient
 import com.wave.jetbrains.stdio.StdioClientException
 import com.wave.jetbrains.update.UpdateChecker
-import com.wave.jetbrains.util.Edt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
@@ -100,10 +99,11 @@ class WaveSession(
         if (isInitializing || agent != null) return agent != null
         isInitializing = true
         return try {
-            val binary = BinaryResolver.resolveWaveBinary()
-            val client = StdioClient(binary, listOf("--stdio"), BinaryResolver.resolveEnv())
-            val a = StdioAgent(client, this)
+            val backend = WaveBackendService.getInstance(project)
+            val (client, router) = backend.ensureClient()
+            val a = StdioAgent(client, router, this)
             agent = a
+            backend.registerSession(this)
             val config = WavePluginService.getInstance().loadConfiguration()
             val params = buildJsonObject {
                 put("workdir", project.basePath ?: System.getProperty("user.dir"))
@@ -132,28 +132,7 @@ class WaveSession(
                 sessionId = a.sessionId
             }
             permissionMode = a.permissionMode
-            // Version negotiation: if the CLI is older than the plugin, silently upgrade once per activation.
-            val pluginVer = pluginVersion()
-            if (!cliUpgradeAttempted && pluginVer.isNotEmpty() && !a.serverVersion.isNullOrEmpty()) {
-                val cmp = try {
-                    BinaryResolver.compareVersions(a.serverVersion!!, pluginVer)
-                } catch (_: Exception) { 0 }
-                if (cmp < 0) {
-                    cliUpgradeAttempted = true
-                    try {
-                        LOG.info("CLI ${a.serverVersion} < plugin $pluginVer; upgrading wave-code to $pluginVer")
-                        BinaryResolver.upgradeWaveBinary(pluginVer)
-                        // Restart on the new binary: destroy current agent and re-initialize once.
-                        try { a.close() } catch (_: Exception) {}
-                        agent = null
-                        isInitializing = false
-                        return initialize(null)
-                    } catch (e: Exception) {
-                        LOG.error("CLI auto-upgrade failed", e)
-                        IdeService.showError(project, "Wave CLI 升级失败，请手动执行: npm install -g wave-code --registry=https://registry.npmmirror.com")
-                    }
-                }
-            }
+            // CLI 升级由 WaveBackendService.initializeSession 在 initialize 返回后统一处理
             // Plugin self-update check: once per activation, 24h cooldown (mirrors VSCE updateService).
             if (!UpdateChecker.autoCheckTriggered) {
                 UpdateChecker.autoCheckTriggered = true
@@ -351,12 +330,6 @@ class WaveSession(
         if (msg != null) postMessage("appendMessage", buildJsonObject { put("message", msg) })
     }
 
-    // VSCE chatProvider.ts:142-147: open the auth URL in the system browser (on EDT).
-    override fun onAuthUrl(url: String) {
-        if (url.isEmpty()) return
-        Edt.invokeLater { BrowserUtil.browse(url) }
-    }
-
     override fun onPermissionRequest(requestId: String, context: JsonElement?) {
         scope.launch {
             PermissionFlow.handle(this@WaveSession, requestId, context)
@@ -400,15 +373,34 @@ class WaveSession(
         }
     }
 
+    /**
+     * Push updated config to this session's agent, mirroring VSCE ChatSession.updateConfig
+     * (chatSession.ts:286-311): reset streaming state and clear the queue before the backend
+     * rebuilds the agent. sessionId rekey (if it changes) is handled in [StdioAgent.updateConfig].
+     */
+    suspend fun updateConfig(params: JsonObject) {
+        if (isStreaming) {
+            isStreaming = false
+            postMessage("endStreaming", JsonObject(emptyMap()))
+        }
+        agent?.updateConfig(params)
+        messageQueue = null
+        postMessage("updateQueue", buildJsonObject { put("queue", JsonArray(emptyList())) })
+    }
+
+    suspend fun destroyAgent() {
+        agent?.let { runCatching { it.destroy() } }
+        agent = null
+    }
+
     fun dispose() {
-        agent?.close()
+        WaveBackendService.getInstance(project).unregisterSession(this)
+        runCatching { runBlocking { agent?.destroy() } }
+        agent = null
         scope.cancel()
     }
 
     companion object {
-        @Volatile
-        private var cliUpgradeAttempted = false
-
         fun pluginVersion(): String =
             PluginManagerCore.getPlugin(PluginId.getId("com.wave.jetbrains"))?.version ?: ""
 
