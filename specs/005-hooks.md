@@ -303,6 +303,24 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 8. **假设** SubagentStop hook（子代理自身回合结束）触发，**当**其 JSON 输入被构造时，**则**不包含 `background_tasks` 和 `session_crons` 字段（这两个字段仅主 Stop 事件提供；子代理作用域内无独立后台/cron 概念）
 9. **假设**某个后台任务的 `description` 或 `command` 超过 1000 字符，**当**构造 `background_tasks` 数组时，**则**该字段被截断至 1000 字符并以 `… [+N chars]` 标记被裁剪的字符数
 
+---
+
+### 用户故事 18 - Stop/SubagentStop Hook 末条助手消息（优先级：P3）
+
+作为开发者，我希望 Stop 和 SubagentStop hook 触发时能通过 JSON 输入直接获取停止前最后一条助手消息的文本内容（`last_assistant_message` 字段），而无需读取并解析 transcript 文件，以便在 hook 脚本中快速检查最终回复内容（如日志记录、内容校验、格式验证、触发后续流程）。字段对齐 Claude Code 的 Stop/SubagentStop hook 输入格式。
+
+**为什么是这个优先级**：Stop hook 默认只能拿到 session_id 和 transcript_path，要查看最终回复必须读取并解析 JSONL transcript 文件。对于只需要最终回复文本的简单 hook（如记录日志、校验回复是否包含特定内容），这个开销不必要。Claude Code 在 Stop 和 SubagentStop hook 输入中提供 `last_assistant_message` 字段，本特性对齐该设计。
+
+**独立测试**：可以通过配置 Stop hook 输出 `jq -r '.last_assistant_message'`、让主代理产生一条文本回复后结束回合，验证输出内容与最终回复文本一致来测试。
+
+**验收场景**：
+
+1. **假设**主代理回合结束且最后一条助手消息包含文本内容，**当** Stop hook 触发时，**则** JSON 输入包含 `last_assistant_message` 字段，其值为该助手消息所有文本块的文本内容以换行符拼接并去除首尾空白后的结果
+2. **假设**子代理回合结束且最后一条助手消息包含文本内容，**当** SubagentStop hook 触发时，**则** JSON 输入包含 `last_assistant_message` 字段，其值同场景 1 的提取规则
+3. **假设**最后一条助手消息仅包含工具调用块（无文本块），**当** Stop hook 触发时，**则** JSON 输入不包含 `last_assistant_message` 字段（提取结果为空字符串时视为无内容，字段省略）
+4. **假设**最后一条助手消息同时包含文本块和工具调用块，**当** Stop hook 触发时，**则** `last_assistant_message` 字段值为文本块内容拼接（工具调用块不参与拼接）
+5. **假设**某条非 Stop/SubagentStop 事件（如 PreToolUse、PostToolUse、UserPromptSubmit）的 hook 触发，**当**其 JSON 输入被构造时，**则**不包含 `last_assistant_message` 字段（该字段仅 Stop 和 SubagentStop 事件提供）
+
 ## 边界情况
 
 - 当 hook 命令失败或超时会发生什么？
@@ -381,6 +399,7 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - **FR-063**：系统必须在 Stop 事件的 JSON 数据中包含 `background_tasks` 数组字段，对齐 Claude Code（v2.1.145+）的 Stop hook 输入格式。数组数据源为 `BackgroundTaskManager` 中所有 `status === "running"` 的任务（涵盖三种后台任务：bash 工具 `run_in_background`/超时自动后台产生的 `shell`、后台 subagent 产生的 `subagent`、后台 workflow 产生的 `workflow`）。每个元素包含公共字段 `id`、`type`（`"shell"` | `"subagent"` | `"workflow"`）、`status`（`"running"`）、`description`（≤1000 字符，超出以 `… [+N chars]` 标记）；并按 `type` 附带条件字段：`shell` 附带 `command`（≤1000 字符，同截断规则）、`subagent` 附带 `agent_type`（通过 `subagentId` 在 `SubagentManager` 中查到的 subagent 类型）、`workflow` 附带 `name`（从 description 中提取的 workflow 名称）。无运行中后台任务时为空数组 `[]`。字段始终存在（非 undefined）
 - **FR-064**：系统必须在 Stop 事件的 JSON 数据中包含 `session_crons` 数组字段，对齐 Claude Code（v2.1.145+）的 Stop hook 输入格式。数组数据源为 `CronManager.listJobs()`，每个元素描述一个会话级 cron 任务，包含以下字段：`id`、`schedule`（cron 表达式）、`recurring`（布尔）、`prompt`（触发时注入的提示文本）。无 cron 任务时为空数组 `[]`。字段始终存在（非 undefined）
 - **FR-065**：系统必须在除 Stop 以外的其他 hook 事件（PreToolUse、PostToolUse、UserPromptSubmit、PermissionRequest、SubagentStop、WorktreeCreate、PreCompact、PostCompact）的 JSON 数据中**不**包含 `background_tasks` 和 `session_crons` 字段
+- **FR-066**：系统必须在 Stop 和 SubagentStop 事件的 JSON 数据中包含 `last_assistant_message` 字段（可选字符串），对齐 Claude Code 的 Stop/SubagentStop hook 输入格式。字段数据源为停止前最后一条 `role === "assistant"` 的消息：提取其所有 `type === "text"` 块的 `content`，以换行符拼接，去除首尾空白；若结果为空字符串则字段省略（不包含在 JSON 中）。该字段仅出现在 Stop 和 SubagentStop 事件中，其他事件不包含
 
 ### 测试验证需求
 
@@ -413,6 +432,7 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - **压缩指令**：引导 AI 在压缩期间进行摘要的自定义文本，从用户输入和 PreCompact hook stdout 合并
 - **后台工作状态**：Stop 事件 JSON 输入中的 `background_tasks` 数组字段，对齐 Claude Code（v2.1.145+）。数据源为 `BackgroundTaskManager` 中所有 `status === "running"` 的任务，涵盖三种后台任务类型：`shell`（bash 工具后台运行，含 `command`）、`subagent`（后台子代理，含 `agent_type`）、`workflow`（后台工作流，含 `name`）。每个元素含公共字段 `id`/`type`/`status`/`description`，供 hook 决定是否通过退出码 2 阻止停止以等待后台任务完成
 - **会话定时任务状态**：Stop 事件 JSON 输入中的 `session_crons` 数组字段，对齐 Claude Code（v2.1.145+）。每个元素描述一个会话级 cron 任务（含 `id`/`schedule`/`recurring`/`prompt`），让 hook 区分"session 真结束了"与"session 暂停等待定时唤醒"
+- **末条助手消息**：Stop 和 SubagentStop 事件 JSON 输入中的 `last_assistant_message` 可选字符串字段，对齐 Claude Code。值为停止前最后一条助手消息的文本块内容拼接（换行分隔、去首尾空白），让 hook 无需读取 transcript 文件即可检查最终回复内容；为空时字段省略
 
 ## 成功标准 *（必填）*
 
