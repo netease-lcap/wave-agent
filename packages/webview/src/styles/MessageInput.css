@@ -1,6 +1,6 @@
 /* Input Area */
 .input-container {
-    padding: 10px;
+    padding: 10px 0;
     background-color: var(--vscode-panel-background);
 }
 

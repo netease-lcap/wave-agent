@@ -9,6 +9,9 @@
   border: 1px solid var(--vscode-widget-border);
   border-radius: 8px;
   box-sizing: border-box;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .task-list-plan-row {

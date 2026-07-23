@@ -11,6 +11,9 @@
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
   box-sizing: border-box;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .queued-message-list-header {
@@ -130,4 +133,19 @@
     rgba(0, 0, 0, 0),
     var(--vscode-menu-background)
   );
+}
+
+/* When the task list sits directly above the queue, merge them into one
+   continuous card: drop the touching border + corner radii so the shared
+   menu-background reads as a single surface. */
+.task-list-inline:has(+ .queued-message-list-container) {
+  border-bottom: none;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.task-list-inline + .queued-message-list-container {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }
