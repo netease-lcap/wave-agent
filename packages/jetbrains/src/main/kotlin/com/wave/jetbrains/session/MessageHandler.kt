@@ -598,11 +598,15 @@ class MessageHandler(
         // sessionIdChange to trigger listSessions, but a freshly-created session
         // may not emit that notification, so refresh explicitly here.
         session.refreshSessions()
-        // Refresh serverUrl from auth status before sending initial state; otherwise the
-        // webview's configurationData carries a stale/empty serverUrl and the "enterprise
-        // console" action silently does nothing. Mirrors VSCE handleWebviewReady.
+        // Refresh serverUrl + isAuthenticated from auth status before sending initial state.
+        // Mirrors VSCE messageHandler.ts:622-633: without isAuthenticated the webview's
+        // WelcomeView wrongly shows the login CTA to already-logged-in users (it never
+        // re-requests auth status on its own), and MoreMenu hides "退出登录".
+        var isAuthenticated = false
         try {
-            val url = (session.agent?.getAuthStatus()?.jsonObject?.get("serverUrl") as? JsonPrimitive)?.contentOrNull ?: ""
+            val auth = session.agent?.getAuthStatus()?.jsonObject
+            val url = (auth?.get("serverUrl") as? JsonPrimitive)?.contentOrNull ?: ""
+            isAuthenticated = (auth?.get("isAuthenticated") as? JsonPrimitive)?.contentOrNull?.toBoolean() ?: false
             if (url.isNotEmpty()) {
                 val merged = WavePluginService.getInstance().loadConfiguration().apply { serverUrl = url }
                 WavePluginService.getInstance().saveConfiguration(merged)
@@ -629,9 +633,11 @@ class MessageHandler(
                     put("id", sid)
                     put("sessionType", "main")
                     put("workdir", agent.workingDirectory ?: "")
+                    put("lastActiveAt", java.time.Instant.now().toString())
                     put("latestTotalTokens", agent.latestTotalTokens ?: 0)
                 })
             }
+            put("isAuthenticated", isAuthenticated)
             put("configurationData", buildJsonObject {
                 put("apiKey", config.apiKey)
                 put("headers", config.headers)
