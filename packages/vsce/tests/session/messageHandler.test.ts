@@ -37,6 +37,7 @@ function createHandler(session: ChatSession) {
         listSessions: vi.fn(),
         updateAllSessionsConfig: vi.fn(),
         checkForUpdates: vi.fn(),
+        getVersion: vi.fn().mockReturnValue('1.2.3'),
     };
     const handler = new MessageHandler(
         {} as unknown as ConfigurationService,
@@ -81,6 +82,7 @@ function createReadyHandler(session: ChatSession) {
         listSessions: vi.fn(),
         updateAllSessionsConfig: vi.fn(),
         checkForUpdates: vi.fn(),
+        getVersion: vi.fn().mockReturnValue('1.2.3'),
     } as unknown as MessageHandlerContext;
     const handler = new MessageHandler(
         configService as unknown as ConfigurationService,
@@ -200,5 +202,22 @@ describe('MessageHandler MCP handlers', () => {
         expect(posted).toBeDefined();
         expect(posted.configurationData.serverUrl).toBe('https://console.example.com');
         expect(posted.isAuthenticated).toBe(true);
+    });
+
+    // Regression: /status showed empty version in VSCE because handleGetStatus
+    // looked up the extension by a wrong, hardcoded id ('wave-code.wave-vsce-chat')
+    // instead of the real id ('wave-code.wave-vsce'), so getExtension() returned
+    // undefined. Version is now sourced from context.getVersion() (backed by the
+    // extension's own packageJSON), consistent with chatProvider/updateService.
+    test('getStatus posts version from context.getVersion', async () => {
+        const session = createReadySession();
+        const { handler, context } = createReadyHandler(session);
+
+        await handler.handleMessage({ command: 'getStatus' }, 'tab');
+
+        expect(context.getVersion).toHaveBeenCalled();
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as { command: string; version: string };
+        expect(posted.command).toBe('statusResponse');
+        expect(posted.version).toBe('1.2.3');
     });
 });

@@ -15,6 +15,7 @@ export interface MessageHandlerContext {
     listSessions: (viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) => Promise<void>;
     updateAllSessionsConfig: (config: unknown) => void;
     checkForUpdates: () => Promise<void>;
+    getVersion: () => string;
 }
 
 export class MessageHandler {
@@ -785,7 +786,7 @@ export class MessageHandler {
     private async handleGetStatus(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         const session = this.context.getChatSession(viewType || 'tab', windowId);
         const config = await this.configService.loadConfiguration();
-        const version = vscode.extensions.getExtension('wave-code.wave-vscode-chat')?.packageJSON?.version || '';
+        const version = this.context.getVersion();
 
         this.context.postMessage({
             command: 'statusResponse',
