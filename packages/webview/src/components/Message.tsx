@@ -434,16 +434,14 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
               {isParsed ? (
                 Object.entries(answers).map(([question, answer], aIndex) => (
                   <div key={aIndex} className="ask-user-result-item">
-                    <div className="ask-user-result-text">
-                      <span className="ask-user-result-q" style={{ whiteSpace: 'pre-wrap' }}>{question}</span>
-                      <span className="ask-user-result-a" style={{ whiteSpace: 'pre-wrap' }}>
-                        {Array.isArray(answer) 
-                          ? answer.join(', ') 
-                          : (typeof answer === 'object' && answer !== null 
-                              ? JSON.stringify(answer) 
-                              : String(answer))}
-                      </span>
-                    </div>
+                    <span className="ask-user-result-q" style={{ whiteSpace: 'pre-wrap' }}>{question}</span>
+                    <span className="ask-user-result-a" style={{ whiteSpace: 'pre-wrap' }}>
+                      {Array.isArray(answer)
+                        ? answer.join(', ')
+                        : (typeof answer === 'object' && answer !== null
+                            ? JSON.stringify(answer)
+                            : String(answer))}
+                    </span>
                   </div>
                 ))
               ) : (
