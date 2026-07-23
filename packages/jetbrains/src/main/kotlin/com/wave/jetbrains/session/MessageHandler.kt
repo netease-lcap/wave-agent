@@ -638,6 +638,7 @@ class MessageHandler(
                 })
             }
             put("isAuthenticated", isAuthenticated)
+            put("workdir", currentWorkdir())
             put("configurationData", buildJsonObject {
                 put("apiKey", config.apiKey)
                 put("headers", config.headers)
