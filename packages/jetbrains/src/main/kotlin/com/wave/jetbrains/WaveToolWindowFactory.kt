@@ -22,6 +22,16 @@ class WaveToolWindowFactory : ToolWindowFactory {
             override fun selectionChanged(e: ContentManagerEvent) {
                 holder.setActiveByContent(e.content)
             }
+            override fun contentRemoved(e: ContentManagerEvent) {
+                // Keep at least one chat tab: closing the last tab would leave the tool window
+                // blank (only the "+" header button remains), which reads as a bug. Re-create a
+                // fresh session so the window always has a chat — mirrors VSCE, where the sidebar
+                // session is always present. Skip during IDE shutdown (project disposed).
+                if (project.isDisposed) return
+                if (toolWindow.contentManager.contentCount == 0) {
+                    holder.addChatTab()
+                }
+            }
         })
         holder.addChatTab()
     }
