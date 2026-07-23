@@ -1,6 +1,7 @@
 import React, { useEffect, useReducer, useCallback, useRef, useState } from 'react';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
+import type { MessageInputHandle } from './MessageInput';
 import { ChatHeader } from './ChatHeader';
 import { TaskList } from './TaskList';
 import { QueuedMessageList } from './QueuedMessageList';
@@ -22,7 +23,7 @@ import '../styles/ChatApp.css';
 export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
-  const messageInputRef = useRef<{ focus: () => void }>(null);
+  const messageInputRef = useRef<MessageInputHandle>(null);
   const messageListRef = useRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }>(null);
   const stateRef = useRef(state);
 
@@ -166,6 +167,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           // Focus the message input
           if (messageInputRef.current && typeof messageInputRef.current.focus === 'function') {
             messageInputRef.current.focus();
+          }
+          break;
+        case 'triggerShortcut':
+          // Forwarded IDE keymap shortcut (JetBrains): the component-scoped AnAction
+          // intercepts the IDE action and forwards the intended operation here, since
+          // registerCustomShortcutSet consumes the AWT event before CEF can see it.
+          if (messageInputRef.current && typeof messageInputRef.current.triggerShortcut === 'function') {
+            messageInputRef.current.triggerShortcut(message.name);
           }
           break;
         case 'scrollToBottom':
