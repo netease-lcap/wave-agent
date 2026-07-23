@@ -6,11 +6,13 @@ import path from 'path';
 const mockExecSync = vi.hoisted(() => vi.fn());
 const mockExistsSync = vi.hoisted(() => vi.fn());
 const mockExecFile = vi.hoisted(() => vi.fn());
+const mockExecFileSync = vi.hoisted(() => vi.fn());
 
 vi.mock('child_process', () => ({
-    default: { execSync: mockExecSync, execFile: mockExecFile },
+    default: { execSync: mockExecSync, execFile: mockExecFile, execFileSync: mockExecFileSync },
     execSync: mockExecSync,
     execFile: mockExecFile,
+    execFileSync: mockExecFileSync,
 }));
 
 vi.mock('fs', () => ({
@@ -35,7 +37,7 @@ const globalWave = path.join(globalBin, waveName);
 
 // ── Import after mocks ─────────────────────────────────────────
 
-import { resolveWaveBinary, _resetCacheForTesting, upgradeWaveBinary, resetCache, NPM_REGISTRY } from '../../src/stdio/binaryResolver';
+import { resolveWaveBinary, _resetCacheForTesting, upgradeWaveBinary, resetCache, getCliVersion, ensureCliUpToDate, NPM_REGISTRY } from '../../src/stdio/binaryResolver';
 
 describe('binaryResolver', () => {
     beforeEach(() => {
@@ -324,5 +326,95 @@ describe('binaryResolver', () => {
             expect(callArgs[0]).toBe(npmCmd);
             expect((callArgs[2] as { shell?: boolean }).shell).toBe(true);
         });
+    });
+
+    // ── getCliVersion ────────────────────────────────────────────
+
+    it('getCliVersion returns the bare version from wave -v', () => {
+        mockExecFileSync.mockReturnValue('0.18.7\n');
+        expect(getCliVersion(globalWave)).toBe('0.18.7');
+        expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+        const args = mockExecFileSync.mock.calls[0];
+        expect(args[0]).toBe(globalWave);
+        expect(args[1]).toEqual(['-v']);
+    });
+
+    it('getCliVersion strips a leading v prefix', () => {
+        mockExecFileSync.mockReturnValue('v0.19.0\n');
+        expect(getCliVersion(globalWave)).toBe('0.19.0');
+    });
+
+    it('getCliVersion returns null when wave -v throws', () => {
+        mockExecFileSync.mockImplementation(() => { throw new Error('ENOENT'); });
+        expect(getCliVersion(globalWave)).toBeNull();
+    });
+
+    it('getCliVersion returns null for empty output', () => {
+        mockExecFileSync.mockReturnValue('   \n  \n');
+        expect(getCliVersion(globalWave)).toBeNull();
+    });
+
+    // ── ensureCliUpToDate ────────────────────────────────────────
+
+    it('ensureCliUpToDate returns existing path when version is >= target', async () => {
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes(waveLookup)) return `${globalWave}\n`;
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExecFileSync.mockReturnValue('1.0.0\n');
+
+        const result = await ensureCliUpToDate('1.0.0');
+        expect(result).toBe(globalWave);
+        expect(mockExecFile).not.toHaveBeenCalled();
+    });
+
+    it('ensureCliUpToDate upgrades when version is older than target', async () => {
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes(waveLookup)) return `${globalWave}\n`;
+            if (cmd.includes(npmLookup)) return `${npmBin}\n`;
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExecFileSync.mockReturnValue('0.18.0\n');
+        mockExecFile.mockImplementation((...args: unknown[]) => {
+            const cb = args[args.length - 1] as (err: Error | null) => void;
+            cb(null);
+        });
+
+        const result = await ensureCliUpToDate('1.0.0');
+        expect(result).toBe(globalWave);
+        expect(mockExecFile).toHaveBeenCalledTimes(1);
+        expect(mockExecFile.mock.calls[0][1]).toEqual([
+            'install', '-g', 'wave-code@1.0.0', `--registry=${NPM_REGISTRY}`,
+        ]);
+    });
+
+    it('ensureCliUpToDate upgrades when getCliVersion returns null (corrupt binary)', async () => {
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes(waveLookup)) return `${globalWave}\n`;
+            if (cmd.includes(npmLookup)) return `${npmBin}\n`;
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        // corrupt binary: -v fails
+        mockExecFileSync.mockImplementation(() => { throw new Error('corrupt'); });
+        mockExecFile.mockImplementation((...args: unknown[]) => {
+            const cb = args[args.length - 1] as (err: Error | null) => void;
+            cb(null);
+        });
+
+        const result = await ensureCliUpToDate('1.0.0');
+        expect(result).toBe(globalWave);
+        expect(mockExecFile).toHaveBeenCalledTimes(1);
+    });
+
+    it('ensureCliUpToDate does not upgrade when version is newer than target', async () => {
+        mockExecSync.mockImplementation((cmd: string) => {
+            if (cmd.includes(waveLookup)) return `${globalWave}\n`;
+            throw new Error(`unexpected: ${cmd}`);
+        });
+        mockExecFileSync.mockReturnValue('2.0.0\n');
+
+        const result = await ensureCliUpToDate('1.0.0');
+        expect(result).toBe(globalWave);
+        expect(mockExecFile).not.toHaveBeenCalled();
     });
 });

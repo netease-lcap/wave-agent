@@ -121,7 +121,6 @@ class WaveSession(
                 if (config.model.isNotEmpty()) put("model", config.model)
                 if (config.fastModel.isNotEmpty()) put("fastModel", config.fastModel)
                 put("language", config.language)
-                put("clientVersion", pluginVersion())
             }
             try {
                 a.initialize(params)
@@ -138,7 +137,7 @@ class WaveSession(
                 sessionId = a.sessionId
             }
             permissionMode = a.permissionMode
-            // CLI 升级由 WaveBackendService.initializeSession 在 initialize 返回后统一处理
+            // CLI 升级由 WaveBackendService.ensureClient 在进程启动前统一处理（pre-spawn upgrade）
             // Plugin self-update check: once per activation, 24h cooldown (mirrors VSCE updateService).
             if (!UpdateChecker.autoCheckTriggered) {
                 UpdateChecker.autoCheckTriggered = true

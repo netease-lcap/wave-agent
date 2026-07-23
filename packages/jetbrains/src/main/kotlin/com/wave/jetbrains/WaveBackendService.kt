@@ -3,9 +3,7 @@ package com.wave.jetbrains
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
-import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
-import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.session.WaveSession
 import com.wave.jetbrains.stdio.BinaryResolver
 import com.wave.jetbrains.stdio.NotificationRouter
@@ -23,12 +21,11 @@ import kotlinx.serialization.json.jsonPrimitive
  * in this project, mirroring the VSCE ChatProvider's shared-client architecture.
  *
  * Session-scoped notifications are demuxed by sessionId via the router; the shared client
- * is never per-session. CLI auto-upgrade (version negotiation) is centralized here so it
- * can reinitialize every active session after killing the shared process.
+ * is never per-session. CLI version upgrade happens pre-spawn in [ensureClient] via
+ * BinaryResolver.ensureCliUpToDate, so no post-init reinit is needed.
  */
 @Service(Service.Level.PROJECT)
 class WaveBackendService(private val project: Project) : Disposable {
-    private val LOG = logger<WaveBackendService>()
 
     @Volatile
     private var sharedClient: StdioClient? = null
@@ -36,9 +33,6 @@ class WaveBackendService(private val project: Project) : Disposable {
     private var router: NotificationRouter? = null
 
     private val initMutex = Mutex()
-    private val upgradeMutex = Mutex()
-    @Volatile
-    private var cliUpgradeAttempted = false
 
     private val sessions = java.util.Collections.synchronizedSet(mutableSetOf<WaveSession>())
 
@@ -58,7 +52,12 @@ class WaveBackendService(private val project: Project) : Disposable {
     suspend fun ensureClient(): Pair<StdioClient, NotificationRouter> {
         initMutex.withLock {
             if (sharedClient == null) {
-                val binary = BinaryResolver.resolveWaveBinary()
+                val pluginVer = WaveSession.pluginVersion()
+                val binary = if (pluginVer.isNotEmpty()) {
+                    BinaryResolver.ensureCliUpToDate(pluginVer)
+                } else {
+                    BinaryResolver.resolveWaveBinary()
+                }
                 val c = StdioClient(binary, listOf("--stdio"), BinaryResolver.resolveEnv())
                 val r = NotificationRouter(c)
                 r.attach()
@@ -76,53 +75,12 @@ class WaveBackendService(private val project: Project) : Disposable {
     }
 
     /**
-     * Initialize a session on the shared client, then run the CLI version-negotiation
-     * upgrade check (once per activation). Mirrors VSCE chatProvider.ts:264-321.
+     * Initialize a session on the shared client. The CLI is upgraded pre-spawn
+     * in [ensureClient], so no post-init version negotiation is needed here.
+     * Mirrors VSCE chatProvider.ts initializeAgent (post-refactor).
      */
     suspend fun initializeSession(session: WaveSession, restoreSessionId: String?): Boolean {
-        val upgradedThisCall = cliUpgradeAttempted
-        val ok = session.initialize(restoreSessionId)
-        if (!ok) return false
-        val pluginVer = WaveSession.pluginVersion()
-        if (!upgradedThisCall && pluginVer.isNotEmpty()) {
-            val srv = session.agent?.serverVersion
-            if (!srv.isNullOrEmpty()) {
-                val cmp = try { BinaryResolver.compareVersions(srv, pluginVer) } catch (_: Exception) { 0 }
-                if (cmp < 0) {
-                    upgradeMutex.withLock {
-                        if (!cliUpgradeAttempted) {
-                            cliUpgradeAttempted = true
-                            try {
-                                LOG.info("CLI $srv < plugin $pluginVer; upgrading wave-code")
-                                reinitAllAfterUpgrade()
-                            } catch (e: Exception) {
-                                LOG.error("CLI auto-upgrade failed", e)
-                                IdeService.showError(project, "Wave CLI 升级失败，请手动执行: npm install -g wave-code --registry=https://registry.npmmirror.com")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return true
-    }
-
-    /**
-     * Kill the shared process, upgrade the CLI binary, rebuild the shared client + router,
-     * and re-initialize every previously-active session with its restoreSessionId.
-     * Mirrors VSCE chatProvider.ts:332-380.
-     */
-    private suspend fun reinitAllAfterUpgrade() {
-        val active = synchronized(sessions) { sessions.toList() }
-            .filter { it.agent != null }
-            .map { it to it.sessionId }
-        active.forEach { (s, _) -> runCatching { s.destroyAgent() } }
-        sharedClient?.close()
-        sharedClient = null
-        router = null
-        BinaryResolver.upgradeWaveBinary(WaveSession.pluginVersion())
-        ensureClient()
-        active.forEach { (s, rid) -> runCatching { s.initialize(rid) } }
+        return session.initialize(restoreSessionId)
     }
 
     override fun dispose() {

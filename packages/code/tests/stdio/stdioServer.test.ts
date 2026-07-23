@@ -1,14 +1,6 @@
 import { test, expect, vi, beforeEach, afterEach } from "vitest";
 import { PassThrough } from "stream";
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import path from "path";
 import { Agent } from "wave-agent-sdk";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CLI_PACKAGE_VERSION = JSON.parse(
-  readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8"),
-).version as string;
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
@@ -108,7 +100,6 @@ test("initialize request returns response with sessionId", async () => {
     workingDirectory: "/test/workdir",
     permissionMode: "default",
     latestTotalTokens: 0,
-    serverVersion: CLI_PACKAGE_VERSION,
   });
 
   server.stop();

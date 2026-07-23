@@ -67,7 +67,6 @@ export class ChatSession {
     public async initialize(
         config: ConfigurationData,
         restoreSessionId: string | undefined,
-        clientVersion: string | undefined,
         sharedClient: StdioClient,
         router: NotificationRouter,
     ) {
@@ -174,7 +173,6 @@ export class ChatSession {
                 model: config.model,
                 fastModel: config.fastModel,
                 language: config.language,
-                clientVersion,
             };
 
             try {

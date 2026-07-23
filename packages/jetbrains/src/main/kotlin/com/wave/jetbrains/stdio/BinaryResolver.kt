@@ -68,6 +68,48 @@ object BinaryResolver {
     }
 
     /**
+     * Runs `<binaryPath> -v` and returns the bare version string (e.g. "0.18.7"),
+     * stripping a leading "v" if present. Returns null if the binary is
+     * missing/corrupt or `-v` fails (callers treat null as "needs upgrade").
+     * Uses a separate timed process rather than [runCommand] (which has no
+     * timeout): if the process hangs it is destroyed and null is returned.
+     */
+    fun getCliVersion(binaryPath: String): String? {
+        return try {
+            val proc = ProcessBuilder(listOf(binaryPath, "-v")).apply {
+                redirectErrorStream(true)
+                environment().putAll(resolveEnv())
+            }.start()
+            val out = proc.inputStream.bufferedReader().readText()
+            if (!proc.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                proc.destroyForcibly()
+                return null
+            }
+            val line = out.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
+                ?: return null
+            line.trimStart('v')
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Ensure the wave CLI exists and its version is >= [targetVersion]. Returns the
+     * (possibly upgraded) binary path. Mirrors packages/vsce/src/stdio/binaryResolver.ts
+     * ensureCliUpToDate.
+     */
+    fun ensureCliUpToDate(targetVersion: String): String {
+        val binaryPath = resolveWaveBinary()
+        val current = getCliVersion(binaryPath)
+        if (current != null) {
+            val cmp = try { compareVersions(current, targetVersion) } catch (_: Exception) { 0 }
+            if (cmp >= 0) return binaryPath
+        }
+        // current is null (corrupt) or older than target → upgrade.
+        return upgradeWaveBinary(targetVersion)
+    }
+
+    /**
      * Environment variables to inject into spawned `wave`/`npm` processes.
      *
      * GUI-launched IDEs inherit a minimal launchd PATH and never source the
