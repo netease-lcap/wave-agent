@@ -950,6 +950,9 @@ export class AgentBridge {
           ctx.registeredSessionId,
         );
       },
+      onCompactBlockAdded: (content: string) => {
+        this.emit("compactBlockAdded", { content }, ctx.registeredSessionId);
+      },
     };
   }
 

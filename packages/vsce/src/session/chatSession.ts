@@ -89,6 +89,11 @@ export class ChatSession {
                 onMessagesChange: (messages: Message[]) => {
                     this.messages = messages;
                 },
+                onCompactBlockAdded: () => {
+                    // messagesChange（截断列表）已先于此到达并更新 this.messages
+                    this.forceNextUpdateImmediate = true;
+                    this.throttledUpdateChatMessages(this.messages);
+                },
                 onUserMessageAdded: (message: Message) => {
                     this.callbacks.onAssistantMessageAdded?.(message);
                 },

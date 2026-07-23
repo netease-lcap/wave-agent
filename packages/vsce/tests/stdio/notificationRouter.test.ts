@@ -74,6 +74,7 @@ describe('NotificationRouter', () => {
         expect(methods).toContain('notificationMessageAdded');
         expect(methods).toContain('permissionRequest');
         expect(methods).toContain('authUrl');
+        expect(methods).toContain('compactBlockAdded');
     });
 
     it('attach is idempotent — does not register handlers twice', () => {

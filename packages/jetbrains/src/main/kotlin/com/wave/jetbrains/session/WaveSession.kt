@@ -173,7 +173,11 @@ class WaveSession(
 
     override fun onMessagesChange(messages: JsonElement?) {
         this.messages = messages
-        scope.launch { throttledMessagesUpdate(messages) }
+    }
+
+    override fun onCompactBlockAdded(content: String) {
+        // onMessagesChange（截断列表）已先于此到达并更新 this.messages；即时推一次
+        scope.launch { immediateMessagesUpdate() }
     }
 
     override fun onUserMessageAdded(message: JsonElement?) {
@@ -359,6 +363,18 @@ class WaveSession(
     }
 
     // ── Throttle implementations ──────────────────────────────────
+
+    /** Push the current message list immediately, bypassing the throttle. */
+    suspend fun immediateMessagesUpdate() {
+        msgMutex.withLock {
+            msgTimer?.cancel()
+            msgTimer = null
+            msgPending = false
+        }
+        postMessage("updateMessages", buildJsonObject {
+            put("messages", messages ?: JsonArray(emptyList()))
+        })
+    }
 
     private suspend fun throttledMessagesUpdate(messages: JsonElement?) {
         msgMutex.withLock {

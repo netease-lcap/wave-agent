@@ -114,7 +114,8 @@ export type ServerNotificationMethod =
   | "bangMessageCompleted"
   | "notificationMessageAdded"
   | "permissionRequest"
-  | "authUrl";
+  | "authUrl"
+  | "compactBlockAdded";
 
 // ── Helper: is this a request (has id)? ─────────────────────────
 
