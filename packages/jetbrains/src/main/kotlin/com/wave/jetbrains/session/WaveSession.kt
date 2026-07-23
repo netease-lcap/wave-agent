@@ -66,6 +66,9 @@ class WaveSession(
         private set
     @Volatile var sessionId: String? = null
         private set
+    /** Cached main-session list (from listSessions); used to resolve the tab title via firstMessage. */
+    @Volatile var sessions: JsonArray? = null
+        private set
     @Volatile var isStreaming = false
         private set
     @Volatile var isCommandRunning = false
@@ -165,9 +168,35 @@ class WaveSession(
     override fun onUserMessageAdded(message: JsonElement?) {
         // VSCE maps both userMessageAdded and assistantMessageAdded to appendMessage
         if (message != null) postMessage("appendMessage", buildJsonObject { put("message", message) })
-        // Derive the tab title from the first user message, mirroring webview getSessionTitle
-        // (utils/session.ts firstUserMessageText → truncate 30 chars). The header title is derived
-        // client-side the same way; push it onto the tool-window tab so the two stay in sync.
+        // Keep the tab title in sync with the header: prefer the authoritative firstMessage
+        // (mirrors webview SET_CURRENT_SESSION backfill + formatSessionLabel), fall back to
+        // deriving from the message list for a brand-new session not yet in the list.
+        updateTabTitle()
+    }
+
+    /**
+     * Resolves the tab title for the current session and pushes it via [tabTitleFn]. Prefers the
+     * authoritative `firstMessage` from the cached session list (same source as the session list UI
+     * and webview header after the SET_CURRENT_SESSION backfill), so compressed sessions keep the
+     * compact-block title instead of being overwritten by the first post-compact user message.
+     * Falls back to [updateTabTitleFromMessages] for new sessions not yet in the list.
+     */
+    private fun updateTabTitle() {
+        val fn = tabTitleFn ?: return
+        val sid = sessionId ?: return
+        val list = sessions
+        if (list != null) {
+            for (s in list) {
+                val o = s as? JsonObject ?: continue
+                if (o["id"]?.jsonPrimitive?.contentOrNull != sid) continue
+                val first = o["firstMessage"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                if (first.isNotEmpty()) {
+                    fn(if (first.length > 30) first.substring(0, 30) + "..." else first)
+                    return
+                }
+                break
+            }
+        }
         updateTabTitleFromMessages()
     }
 
@@ -317,15 +346,17 @@ class WaveSession(
     fun refreshSessions() {
         val workdir = agent?.workingDirectory ?: project.basePath ?: return
         scope.launch {
-            val sessions = try {
+            val list: List<JsonElement> = try {
                 val res = agent?.listSessions(workdir)?.jsonObject
                 val all = res?.get("sessions")?.jsonArray ?: JsonArray(emptyList())
                 all.filter { it.jsonObject["sessionType"]?.jsonPrimitive?.content == "main" }.take(10)
             } catch (e: StdioClientException) {
                 LOG.warn("refreshSessions failed: ${e.message}")
-                JsonArray(emptyList())
+                JsonArray(emptyList()).toList()
             }
-            postMessage("updateSessions", buildJsonObject { put("sessions", JsonArray(sessions)) })
+            sessions = JsonArray(list)
+            postMessage("updateSessions", buildJsonObject { put("sessions", JsonArray(list)) })
+            updateTabTitle()
         }
     }
 
