@@ -12,6 +12,7 @@ import {
   LSP_TOOL_NAME,
   WRITE_TOOL_NAME,
   EDIT_TOOL_NAME,
+  READ_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME
 } from 'wave-agent-sdk/dist/constants/tools.js';
@@ -321,6 +322,39 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
         <div key={index} className="tool-container">
           <FileToolHeader toolBlock={toolBlock} filePath={editFilePath} onOpenFile={openEditFile} />
           {!errorContent && <DiffViewer toolBlock={toolBlock} />}
+          {errorContent}
+        </div>
+      );
+    }
+
+    // For Read tools, show clickable path with offset/limit suffix (aligned with Write header style)
+    if (toolBlock.name === READ_TOOL_NAME) {
+      let filePath = '';
+      let displayPath = '';
+      try {
+        if (toolBlock.parameters) {
+          const params = JSON.parse(toolBlock.parameters);
+          filePath = params.file_path || '';
+          const offset = typeof params.offset === 'number' ? params.offset : undefined;
+          const limit = typeof params.limit === 'number' ? params.limit : undefined;
+          displayPath = filePath && (offset !== undefined || limit !== undefined)
+            ? `${filePath}:${offset !== undefined ? offset : 1}:${limit !== undefined ? limit : 2000}`
+            : filePath;
+        }
+      } catch {
+        filePath = '';
+      }
+      const openReadFile = () => {
+        if (filePath) {
+          props.vscode.postMessage({ command: 'openFile', path: filePath });
+        }
+      };
+      return (
+        <div key={index} className="tool-container">
+          <FileToolHeader toolBlock={toolBlock} filePath={displayPath} onOpenFile={openReadFile} />
+          {!errorContent && toolBlock.shortResult && (
+            <div className="write-tool-stats">{toolBlock.shortResult}</div>
+          )}
           {errorContent}
         </div>
       );

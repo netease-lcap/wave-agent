@@ -47,22 +47,22 @@ describe('Tool Display Visual Test', () => {
         // Update all messages at once
         sendCommand('updateMessages', { messages });
 
-        // Read and Bash still render as generic tool blocks; Write now uses WriteToolPreview
-        const toolBlocks = document.querySelectorAll('.tool-block');
-        expect(toolBlocks).toHaveLength(2);
-
-        // Check first tool (Read with compactParams)
-        const readTool = toolBlocks[0] as HTMLElement;
-        expect(readTool).toHaveTextContent(`● ${READ_TOOL_NAME}`);
-        expect(readTool).toHaveTextContent(/file\.ts/);
+        // Read now renders as a file-tool header (aligned with Write) with path + offset:limit suffix
+        const readHeader = document.querySelectorAll('.write-tool-header')[0] as HTMLElement;
+        expect(readHeader).toHaveTextContent(READ_TOOL_NAME);
+        expect(readHeader).toHaveTextContent(/Message\.tsx:1:50/);
 
         // Write tool renders a dedicated content preview instead of a generic tool block
         const writePreview = document.querySelector('.write-tool-preview') as HTMLElement;
         expect(writePreview).toBeInTheDocument();
         expect(writePreview).toHaveTextContent(/config\.json/);
 
-        // Check second generic tool block (Bash without compactParams - fallback)
-        const bashTool = toolBlocks[1] as HTMLElement;
+        // Only Bash remains as a generic tool block
+        const toolBlocks = document.querySelectorAll('.tool-block');
+        expect(toolBlocks).toHaveLength(1);
+
+        // Check the generic tool block (Bash without compactParams - fallback)
+        const bashTool = toolBlocks[0] as HTMLElement;
         expect(bashTool).toHaveTextContent(`● ${BASH_TOOL_NAME}`);
 
         // Verify no <pre> elements exist in generic tool blocks

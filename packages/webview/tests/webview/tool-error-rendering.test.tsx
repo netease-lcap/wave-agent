@@ -29,10 +29,10 @@ describe('Tool Block Error Rendering', () => {
         // Inject the message
         sendCommand('updateMessages', { messages: [messageWithToolError] });
 
-        // Verify tool block exists
-        const toolBlock = document.querySelector('.tool-block');
-        expect(toolBlock).toBeInTheDocument();
-        expect(toolBlock).toHaveTextContent(`● ${READ_TOOL_NAME}`);
+        // Verify read tool header exists
+        const toolHeader = document.querySelector('.write-tool-header');
+        expect(toolHeader).toBeInTheDocument();
+        expect(toolHeader).toHaveTextContent(READ_TOOL_NAME);
 
         // Verify tool error exists
         const toolError = document.querySelector('.tool-error');
@@ -100,9 +100,9 @@ describe('Tool Block Error Rendering', () => {
         // Inject the message
         sendCommand('updateMessages', { messages: [normalTool] });
 
-        // Verify tool block exists but no error
-        const toolBlock = document.querySelector('.tool-block');
-        expect(toolBlock).toBeInTheDocument();
+        // Verify read tool header exists but no error
+        const toolHeader = document.querySelector('.write-tool-header');
+        expect(toolHeader).toBeInTheDocument();
         expect(document.querySelector('.tool-error')).not.toBeInTheDocument();
     });
 });
