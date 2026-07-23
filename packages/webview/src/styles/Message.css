@@ -322,6 +322,11 @@
     transform: rotate(90deg);
 }
 
+/* Compact block reuses reasoning layout; only the dot color differs (brand accent). */
+.compact-dot {
+    background-color: var(--vscode-textLink-foreground, var(--vscode-descriptionForeground));
+}
+
 /* Write tool preview */
 .write-tool-header {
     display: flex;
