@@ -107,9 +107,6 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, isCollapsed, onToggle
               {getStatusIcon(task.status)}
               <div className="task-content">
                 <div className={`task-title ${task.status}`}>#{task.id} {task.subject}</div>
-                {task.description && (
-                  <div className="task-desc">{task.description}</div>
-                )}
                 {task.blockedBy && task.blockedBy.length > 0 && (
                   <div className="task-dep">依赖 {task.blockedBy.map((id) => `#${id}`).join('、')}</div>
                 )}

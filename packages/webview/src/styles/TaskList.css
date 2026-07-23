@@ -134,14 +134,6 @@
   text-decoration: line-through;
 }
 
-.task-desc {
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 16px;
-  color: var(--vscode-descriptionForeground);
-  word-break: break-word;
-}
-
 .task-dep {
   font-size: 11px;
   font-weight: 600;
