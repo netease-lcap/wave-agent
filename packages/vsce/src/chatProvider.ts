@@ -110,7 +110,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                 checkForUpdates: async () => {
                     const cfg = await this.configService.loadConfiguration();
                     return checkAndNotify(this.context, true, cfg.serverUrl);
-                }
+                },
+                getVersion: () => this.context.extension.packageJSON?.version || ''
             }
         );
 
