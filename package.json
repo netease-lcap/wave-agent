@@ -1,6 +1,6 @@
 {
   "name": "wave-workspace",
-  "version": "0.19.5",
+  "version": "0.19.6",
   "private": true,
   "description": "Monorepo for Wave Code CLI and Agent SDK",
   "type": "module",
