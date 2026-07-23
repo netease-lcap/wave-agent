@@ -26,6 +26,7 @@ class WavePanelHolder(private val project: Project) {
     var toolWindow: ToolWindow? = null
 
     private val panels = ConcurrentHashMap<String, WavePanel>()
+    private val contents = ConcurrentHashMap<String, Content>()
 
     fun register(tabId: String, panel: WavePanel) {
         panels[tabId] = panel
@@ -38,9 +39,25 @@ class WavePanelHolder(private val project: Project) {
         if (panels.remove(tabId, panel) && activePanel === panel) {
             activePanel = panels.values.firstOrNull()
         }
+        contents.remove(tabId)
     }
 
     fun allPanels(): Collection<WavePanel> = panels.values.toList()
+
+    /**
+     * Updates the tool-window tab display name for [tabId]. Mirrors VSCE deriving panel.title from
+     * the first user message (webview getSessionTitle); here the JB backend pushes the derived title
+     * onto the Content so the tab label tracks the chat header. Must run on the EDT.
+     */
+    fun setTabTitle(tabId: String, title: String) {
+        val content = contents[tabId] ?: return
+        val safe = if (title.isBlank()) "新会话" else title
+        if (SwingUtilities.isEventDispatchThread()) {
+            content.displayName = safe
+        } else {
+            Edt.invokeLater { content.displayName = safe }
+        }
+    }
 
     /**
      * Creates and registers a new chat tab in the tool window. Swing content (Content +
@@ -57,6 +74,7 @@ class WavePanelHolder(private val project: Project) {
             val content = ContentFactory.getInstance().createContent(panel.component, "新会话", false)
             content.putUserData(TAB_KEY, id)
             content.setDisposer(panel)
+            contents[id] = content
             tw.contentManager.addContent(content)
             tw.contentManager.setSelectedContent(content)
             activePanel = panel

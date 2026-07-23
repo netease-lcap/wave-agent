@@ -36,9 +36,10 @@ class WavePanel(private val project: Project, val tabId: String) : Disposable {
     private val browser: JBCefBrowser = JBCefBrowser()
     private val bridge: JcefBrowserBridge = JcefBrowserBridge(browser)
 
-    private val session: WaveSession = WaveSession(project) { command, payload ->
-        postToWebview(command, payload)
-    }
+    private val session: WaveSession = WaveSession(project,
+        postMessageFn = { command, payload -> postToWebview(command, payload) },
+        tabTitleFn = { title -> WavePanelHolder.getInstance(project).setTabTitle(tabId, title) },
+    )
     private val handler: MessageHandler = MessageHandler(project, session) { command, payload ->
         postToWebview(command, payload)
     }
