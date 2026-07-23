@@ -8,9 +8,10 @@
  * Result is cached for the extension lifetime.
  */
 
-import { execSync, execFile } from 'child_process';
+import { execSync, execFile, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseVersion, compareVersions } from '../services/updateService';
 
 /** npm registry mirror for China users (faster than the default registry). */
 export const NPM_REGISTRY = 'https://registry.npmmirror.com';
@@ -122,6 +123,53 @@ export function resolveWaveBinary(): string {
     throw new Error(
         'wave binary not found after installation. Please install manually: npm install -g wave-code --registry=https://registry.npmmirror.com',
     );
+}
+
+/**
+ * Run `<binaryPath> -v` and return the CLI's version (e.g. "0.18.7").
+ * Returns null if the binary is missing, corrupt, or `-v` fails/times out —
+ * callers treat null as "needs upgrade" rather than crashing.
+ */
+export function getCliVersion(binaryPath: string): string | null {
+    try {
+        const output = execFileSync(binaryPath, ['-v'], {
+            encoding: 'utf-8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+            timeout: 5000,
+            // `wave` is `wave.cmd` on Windows; Node refuses to execFileSync a
+            // `.cmd` without a shell.
+            shell: process.platform === 'win32',
+        });
+        const line = output.trim().split('\n')[0]?.trim();
+        if (!line) return null;
+        // `wave -v` prints the bare version; tolerate a leading "v" just in case.
+        return line.replace(/^v/, '');
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Ensure the `wave` CLI exists and its version is >= targetVersion.
+ * Returns the (possibly upgraded) binary path.
+ *
+ * 1. resolveWaveBinary() — auto-installs via npm if missing.
+ * 2. getCliVersion(path) — read the installed CLI version via `wave -v`.
+ * 3. If null (binary corrupt/unreadable) or older than target → upgrade to
+ *    targetVersion (which resets the cache and re-resolves).
+ */
+export async function ensureCliUpToDate(targetVersion: string): Promise<string> {
+    const binaryPath = resolveWaveBinary();
+    const current = getCliVersion(binaryPath);
+    if (current !== null) {
+        const cur = parseVersion(current);
+        const target = parseVersion(targetVersion);
+        if (cur && target && compareVersions(cur, target) >= 0) {
+            return binaryPath;
+        }
+    }
+    // current is null (corrupt) or older than target → upgrade.
+    return upgradeWaveBinary(targetVersion);
 }
 
 /** Reset cached binary path. Public so callers can force re-resolve after an upgrade. */

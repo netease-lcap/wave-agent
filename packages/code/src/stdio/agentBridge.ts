@@ -41,22 +41,7 @@ import {
   INTERNAL_ERROR as PROTOCOL_INTERNAL_ERROR,
   METHOD_NOT_FOUND as PROTOCOL_METHOD_NOT_FOUND,
 } from "./protocol.js";
-import { readFileSync } from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { logger } from "../utils/logger.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CLI_VERSION: string = (() => {
-  try {
-    const pkg = JSON.parse(
-      readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8"),
-    );
-    return pkg.version ?? "";
-  } catch {
-    return "";
-  }
-})();
 
 export type NotificationEmitter = (
   method: string,
@@ -84,7 +69,6 @@ interface InitializeParams {
   disallowedTools?: string[];
   pluginDirs?: string[];
   mcpServers?: Record<string, McpServerConfig>;
-  clientVersion?: string;
 }
 
 interface UpdateConfigParams {
@@ -325,7 +309,6 @@ export class AgentBridge {
     workingDirectory: string;
     permissionMode: PermissionMode;
     latestTotalTokens: number;
-    serverVersion: string;
   }> {
     const ctx: SessionContext = {};
     const callbacks = this.createCallbacks(ctx);
@@ -360,19 +343,11 @@ export class AgentBridge {
       storedConfig: { ...params },
     });
 
-    if (params.clientVersion) {
-      // stdout 是 JSON-RPC 协议通道，诊断日志必须走 stderr 以免污染协议
-      process.stderr.write(
-        `[agentBridge] clientVersion=${params.clientVersion} serverVersion=${CLI_VERSION}\n`,
-      );
-    }
-
     return {
       sessionId: agent.sessionId,
       workingDirectory: agent.workingDirectory,
       permissionMode: agent.getPermissionMode(),
       latestTotalTokens: agent.latestTotalTokens,
-      serverVersion: CLI_VERSION,
     };
   }
 
