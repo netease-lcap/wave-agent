@@ -117,6 +117,7 @@ $lafOverrides
         val border = laf("Border.color", JBColor.border(), Color(0x3c3c3c))
         val hoverBg = laf("ActionButton.hoverBackground", Color(90, 93, 94, 80), Color(90, 93, 94, 80))
         val activeBg = laf("ActionButton.pressedBackground", Color(99, 102, 103, 80), Color(99, 102, 103, 80))
+        val menuBg = laf("PopupMenu.background", bg, Color(0x1f1f1f))
         val font = lafFont("Label.font")
 
         val vars = linkedMapOf(
@@ -140,6 +141,7 @@ $lafOverrides
             "--vscode-widget-border" to border,
             "--vscode-toolbar-hoverBackground" to hoverBg,
             "--vscode-toolbar-activeBackground" to activeBg,
+            "--vscode-menu-background" to menuBg,
         )
         return buildString {
             for ((key, color) in vars) {
