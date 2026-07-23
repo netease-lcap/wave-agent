@@ -55,6 +55,15 @@
   width: 100%;
 }
 
+/* Show the full queued-message text on hover instead of truncating. */
+.queued-item-tooltip .tooltip-box {
+  max-width: 500px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .queued-item {
   height: 24px;
   display: flex;
