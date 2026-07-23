@@ -135,11 +135,9 @@
   );
 }
 
-/* When the task list sits directly above the queue, merge them into one
-   continuous card: drop the touching border + corner radii so the shared
-   menu-background reads as a single surface. */
+/* When the task list sits directly above the queue, keep them flush (no double
+   border, no corner gap) but retain a single divider line between them. */
 .task-list-inline:has(+ .queued-message-list-container) {
-  border-bottom: none;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
