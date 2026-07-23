@@ -264,7 +264,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       return;
     }
     if (trimmedText === '/status') {
-      dispatch({ type: 'SHOW_DIALOG', payload: { type: 'status', data: stateRef.current.configurationData || {} } });
+      dispatch({ type: 'SHOW_DIALOG', payload: { type: 'status' } });
       return;
     }
 
@@ -547,7 +547,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       )}
       {state.activeDialog === 'status' && (
         <StatusDialog
-          configurationData={state.configurationData || {}}
           onClose={handleDialogClose}
           vscode={vscode}
         />

@@ -375,7 +375,6 @@ export interface McpDialogProps {
  * Props for the status info dialog component
  */
 export interface StatusDialogProps {
-  configurationData: ConfigurationData;
   onClose: () => void;
 }
 

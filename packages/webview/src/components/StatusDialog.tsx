@@ -2,7 +2,7 @@
  * StatusDialog - Status info dialog
  *
  * Opened via the /status slash command. Shows read-only status:
- * version, session ID, working directory, server URL, model, fast model, auth status.
+ * version, session ID, working directory.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -10,20 +10,16 @@ import { StatusDialogProps } from '../types';
 import '../styles/ConfigurationDialog.css';
 
 const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: unknown) => void } }> = ({
-  configurationData,
   onClose,
   vscode
 }) => {
   const [version, setVersion] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [workdir, setWorkdir] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authUser, setAuthUser] = useState<{ id: string; email?: string } | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     vscode?.postMessage({ command: 'getStatus' });
-    vscode?.postMessage({ command: 'getAuthStatus' });
   }, [vscode]);
 
   useEffect(() => {
@@ -34,10 +30,6 @@ const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: 
           setVersion(message.version || '');
           setSessionId(message.sessionId || '');
           setWorkdir(message.workdir || '');
-          break;
-        case 'authStatusResponse':
-          setIsAuthenticated(message.isAuthenticated || false);
-          setAuthUser(message.user || null);
           break;
       }
     };
@@ -68,11 +60,6 @@ const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: 
       document.removeEventListener('keydown', handleEscapeKey);
     };
   }, [onClose]);
-
-  const baseURL = configurationData?.baseURL;
-  const model = configurationData?.model;
-  const fastModel = configurationData?.fastModel;
-  const serverUrl = configurationData?.serverUrl;
 
   const StatusRow = ({ label, value }: { label: string; value?: string }) => (
     <div className="configuration-field">
@@ -118,25 +105,6 @@ const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: 
             </div>
             <StatusRow label="Session ID" value={sessionId} />
             <StatusRow label="工作目录" value={workdir} />
-            <StatusRow label="Base URL" value={baseURL} />
-            <StatusRow label="Server URL" value={serverUrl} />
-            <StatusRow label="Model" value={model} />
-            <StatusRow label="Fast Model" value={fastModel} />
-
-            <div className="configuration-field sso-auth-section">
-              <label>认证状态:</label>
-              {isAuthenticated ? (
-                <div className="sso-authenticated">
-                  <div className="sso-user-info">
-                    {authUser?.email && <span className="sso-email">{authUser.email}</span>}
-                    <span className="sso-user-id">ID: {authUser?.id}</span>
-                  </div>
-                  <span style={{ color: 'var(--vscode-testing-iconPassed)', fontSize: '12px' }}>已登录</span>
-                </div>
-              ) : (
-                <span style={{ color: 'var(--vscode-descriptionForeground)', fontSize: '12px' }}>未登录</span>
-              )}
-            </div>
           </div>
 
           <div className="configuration-actions">
