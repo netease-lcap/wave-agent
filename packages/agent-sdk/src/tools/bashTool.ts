@@ -181,7 +181,7 @@ The working directory persists between commands. Try to maintain your current wo
         content: "",
         error:
           process.platform === "win32"
-            ? "Git Bash not found. Please install Git for Windows or set GIT_BASH_PATH environment variable."
+            ? "Git Bash not found. Please install Git for Windows or set WAVE_GIT_BASH_PATH environment variable."
             : "No suitable shell found. Please ensure bash or zsh is installed, or set WAVE_SHELL environment variable.",
       };
     }

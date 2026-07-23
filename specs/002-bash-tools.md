@@ -68,6 +68,8 @@
 2. **假设** 运行在 Windows 系统上，**当** Git Bash 未安装时，**则** 系统必须返回清晰的错误消息，提示用户安装 Git for Windows。
 3. **假设** 运行在 Windows 系统上，**当** 执行包含 POSIX 语法的命令（如 `pwd -P >| file`）时，**则** 命令必须正常执行并返回正确结果。
 4. **假设** 运行在 Windows 系统上，**当** 命令执行后检测 CWD 时，**则** CWD 追踪机制必须正常工作——临时文件路径需转换为正斜杠格式以兼容 Git Bash，且临时文件在命令结束后必须被清理，不得残留在项目目录中。
+5. **假设** Git 安装在非标准路径但 `git` 在 PATH 中，**当** 调用 Bash 工具时，**则** 系统必须通过从 `git` 可执行文件位置反推（`<git 目录>/../../bin/bash.exe`）定位 Git Bash，而非仅依赖常见安装路径。
+6. **假设** 设置了 `WAVE_GIT_BASH_PATH` 环境变量指向 bash.exe，**当** 调用 Bash 工具时，**则** 必须优先使用该路径。
 
 ---
 
@@ -122,8 +124,8 @@
 - **FR-016**：`Read` 工具必须能够读取后台进程的 `outputPath`。
 - **FR-017**：系统必须在 Bash 执行后通过检查 shell 的最终工作目录来检测 CWD 更改。如果 CWD 发生更改（例如通过 `cd`），系统必须更新代理的 `workdir` 上下文以供后续工具调用使用。
 - **FR-018**：Bash 工具提示必须告知代理"工作目录在命令之间持久化"（当使用 `cd` 时），与实际行为一致。
-- **FR-020**：在 Windows 系统上，系统必须检测并使用 Git Bash 作为 shell，而非 cmd.exe。检测顺序：`$GIT_BASH_PATH` 环境变量 → 常见安装路径（`C:\Program Files\Git\bin\bash.exe` 等）。
-- **FR-021**：在 Windows 系统上，如果未检测到 Git Bash，系统必须返回错误消息，提示用户安装 Git for Windows 或设置 `GIT_BASH_PATH` 环境变量。
+- **FR-020**：在 Windows 系统上，系统必须检测并使用 Git Bash 作为 shell，而非 cmd.exe。检测顺序：`$WAVE_GIT_BASH_PATH` 环境变量 → 从 `git` 可执行文件位置反推（`<git 目录>/../../bin/bash.exe`，即使 Git Bash 不在 PATH 或常见目录，只要 `git` 可被定位即可）→ 常见安装路径（`C:\Program Files\Git\bin\bash.exe` 等）。
+- **FR-021**：在 Windows 系统上，如果未检测到 Git Bash，系统必须返回错误消息，提示用户安装 Git for Windows 或设置 `WAVE_GIT_BASH_PATH` 环境变量。
 - **FR-022**：在 Windows 系统上使用 Git Bash 时，`spawn` 调用必须将 shell 参数设置为检测到的 Git Bash 可执行文件路径，而非 `true`。
 - **FR-023**：在 Windows 系统上，CWD 追踪命令（`pwd -P >| tempfile`）必须使用 Git Bash 执行，确保输出为 POSIX 路径格式。
 - **FR-024**：在 Windows 系统上，传递给 Git Bash 的临时文件路径必须将反斜杠转换为正斜杠（`C:\Users\...` → `C:/Users/...`），因为 Bash 将反斜杠视为转义字符，会导致路径损坏并在项目目录中创建临时文件。
