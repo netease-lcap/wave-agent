@@ -78,7 +78,7 @@ const StatusDialog: React.FC<StatusDialogProps & { vscode: { postMessage: (msg: 
 
   return (
     <div className="configuration-dialog-overlay">
-      <div ref={dialogRef} className="configuration-dialog" style={{ height: 'auto', maxHeight: '500px' }}>
+      <div ref={dialogRef} className="configuration-dialog" data-testid="status-dialog" style={{ height: 'auto', maxHeight: '500px' }}>
         <div className="configuration-dialog-header">
           <h3>状态信息</h3>
         </div>

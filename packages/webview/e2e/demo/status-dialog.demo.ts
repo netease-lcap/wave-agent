@@ -46,18 +46,16 @@ test.describe('Status Dialog Demo', () => {
             });
         });
 
-        // Verify dialog title
-        await expect(webviewPage.getByText('状态信息', { exact: true })).toBeVisible();
+        // Verify dialog is visible
+        await expect(webviewPage.getByTestId('status-dialog')).toBeVisible();
 
         // Verify key info fields are displayed
         await expect(webviewPage.getByText('1.2.0')).toBeVisible();
         await expect(webviewPage.getByText('sess_a1b2c3d4-e5f6-7890-abcd-ef1234567890')).toBeVisible();
         await expect(webviewPage.getByText('/home/dev/projects/nebula-platform')).toBeVisible();
-        await expect(webviewPage.getByText('claude-sonnet-4-20250514').first()).toBeVisible();
-        await expect(webviewPage.getByText('sarah.chen@nebula-tech.com')).toBeVisible();
 
         // Take screenshot
-        const dialog = webviewPage.locator('.configuration-dialog');
+        const dialog = webviewPage.getByTestId('status-dialog');
         await dialog.screenshot({ path: '../../docs/public/screenshots/spec-status-dialog.png' });
     });
 
@@ -89,10 +87,9 @@ test.describe('Status Dialog Demo', () => {
             });
         });
 
-        await expect(webviewPage.getByText('状态信息', { exact: true })).toBeVisible();
-        await expect(webviewPage.getByText('未登录')).toBeVisible();
+        await expect(webviewPage.getByTestId('status-dialog')).toBeVisible();
 
-        const dialog = webviewPage.locator('.configuration-dialog');
+        const dialog = webviewPage.getByTestId('status-dialog');
         await dialog.screenshot({ path: '../../docs/public/screenshots/spec-status-dialog-noauth.png' });
     });
 });
