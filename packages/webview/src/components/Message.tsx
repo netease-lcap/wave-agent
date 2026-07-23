@@ -296,6 +296,11 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
     
     // For file editing tools, show diff below the header only when stage is 'end'
     if (toolBlock.name === WRITE_TOOL_NAME) {
+      // During streaming the parameters JSON is incomplete; fall back to the
+      // default header which shows the last 30 chars of the raw parameters.
+      if (toolBlock.stage === 'streaming') {
+        return toolHeader;
+      }
       return (
         <div key={index} className="tool-container">
           {!errorContent && <WriteToolPreview toolBlock={toolBlock} vscode={props.vscode} />}
@@ -305,6 +310,9 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       );
     }
     if (toolBlock.name === EDIT_TOOL_NAME) {
+      if (toolBlock.stage === 'streaming') {
+        return toolHeader;
+      }
       let editFilePath = '';
       try {
         if (toolBlock.parameters) {
@@ -329,6 +337,9 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
 
     // For Read tools, show clickable path with offset/limit suffix (aligned with Write header style)
     if (toolBlock.name === READ_TOOL_NAME) {
+      if (toolBlock.stage === 'streaming') {
+        return toolHeader;
+      }
       let filePath = '';
       let displayPath = '';
       try {
