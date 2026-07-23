@@ -7,6 +7,7 @@ import { stripAnsiColors } from "../utils/stringUtils.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
 import { NotificationQueue } from "./notificationQueue.js";
+import { resolveShellPath } from "../utils/shellResolver.js";
 
 export interface BackgroundTaskManagerCallbacks {
   onBackgroundTasksChange?: (tasks: BackgroundTask[]) => void;
@@ -69,7 +70,7 @@ export class BackgroundTaskManager {
     const startTime = Date.now();
 
     const child = spawn(command, {
-      shell: true,
+      shell: resolveShellPath() ?? true,
       stdio: "pipe",
       detached: true,
       cwd: this.workdir,

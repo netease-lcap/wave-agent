@@ -15,6 +15,9 @@ describe("shellResolver", () => {
     vi.clearAllMocks();
     delete process.env.GIT_BASH_PATH;
     delete process.env.LOCALAPPDATA;
+    delete process.env.WAVE_SHELL;
+    delete process.env.SHELL;
+    delete process.env.PATH;
   });
 
   afterEach(() => {
@@ -23,13 +26,116 @@ describe("shellResolver", () => {
   });
 
   describe("non-Windows platform", () => {
-    it("returns undefined on linux", () => {
+    it("returns WAVE_SHELL override when it points to an executable bash", () => {
       Object.defineProperty(process, "platform", { value: "linux" });
+      process.env.WAVE_SHELL = "/custom/bash";
+      vi.mocked(fs.accessSync).mockImplementation(() => undefined);
+      expect(resolveShellPath()).toBe("/custom/bash");
+    });
+
+    it("returns WAVE_SHELL override when it points to an executable zsh", () => {
+      Object.defineProperty(process, "platform", { value: "darwin" });
+      process.env.WAVE_SHELL = "/opt/homebrew/bin/zsh";
+      vi.mocked(fs.accessSync).mockImplementation(() => undefined);
+      expect(resolveShellPath()).toBe("/opt/homebrew/bin/zsh");
+    });
+
+    it("ignores WAVE_SHELL when it is not bash/zsh", () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      process.env.WAVE_SHELL = "/bin/sh";
+      vi.mocked(fs.accessSync).mockImplementation(() => undefined);
+      const result = resolveShellPath();
+      expect(result).not.toBe("/bin/sh");
+      // falls through to fixed-path resolution
+      expect(result).toBeDefined();
+    });
+
+    it("ignores WAVE_SHELL when not executable", () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      process.env.WAVE_SHELL = "/nonexistent/bash";
+      vi.mocked(fs.accessSync).mockImplementation(() => {
+        throw new Error("ENOENT");
+      });
       expect(resolveShellPath()).toBeUndefined();
     });
 
-    it("returns undefined on darwin", () => {
+    it("returns $SHELL when it is bash", () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      process.env.SHELL = "/bin/bash";
+      vi.mocked(fs.accessSync).mockImplementation(() => undefined);
+      expect(resolveShellPath()).toBe("/bin/bash");
+    });
+
+    it("returns $SHELL when it is zsh", () => {
       Object.defineProperty(process, "platform", { value: "darwin" });
+      process.env.SHELL = "/bin/zsh";
+      vi.mocked(fs.accessSync).mockImplementation(() => undefined);
+      expect(resolveShellPath()).toBe("/bin/zsh");
+    });
+
+    it("prefers WAVE_SHELL over $SHELL", () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      process.env.WAVE_SHELL = "/custom/bash";
+      process.env.SHELL = "/bin/bash";
+      vi.mocked(fs.accessSync).mockImplementation(() => undefined);
+      expect(resolveShellPath()).toBe("/custom/bash");
+    });
+
+    it("prefers zsh when $SHELL is zsh, even if bash is available via fixed path", () => {
+      Object.defineProperty(process, "platform", { value: "darwin" });
+      process.env.SHELL = "/bin/zsh";
+      vi.mocked(fs.accessSync).mockImplementation((p) => {
+        // only /bin/zsh exists
+        return p === "/bin/zsh"
+          ? undefined
+          : (() => {
+              throw new Error("ENOENT");
+            })();
+      });
+      expect(resolveShellPath()).toBe("/bin/zsh");
+    });
+
+    it("prefers bash when $SHELL is bash, even if zsh is also available", () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      process.env.SHELL = "/bin/bash";
+      vi.mocked(fs.accessSync).mockImplementation(() => undefined);
+      // bash candidates come first when $SHELL is bash
+      expect(resolveShellPath()).toBe("/bin/bash");
+    });
+
+    it("finds bash via fixed path when $SHELL unset", () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      vi.mocked(fs.accessSync).mockImplementation((p) => {
+        if (p === "/bin/bash") return undefined;
+        throw new Error("ENOENT");
+      });
+      expect(resolveShellPath()).toBe("/bin/bash");
+    });
+
+    it("finds zsh via fixed path when $SHELL unset and bash unavailable", () => {
+      Object.defineProperty(process, "platform", { value: "darwin" });
+      vi.mocked(fs.accessSync).mockImplementation((p) => {
+        if (p === "/bin/zsh") return undefined;
+        throw new Error("ENOENT");
+      });
+      expect(resolveShellPath()).toBe("/bin/zsh");
+    });
+
+    it("resolves bash via $PATH when no fixed path exists", () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      process.env.PATH = "/usr/local/bin";
+      vi.mocked(fs.accessSync).mockImplementation((p) => {
+        if (p === "/usr/local/bin/bash") return undefined;
+        throw new Error("ENOENT");
+      });
+      expect(resolveShellPath()).toBe("/usr/local/bin/bash");
+    });
+
+    it("returns undefined when no bash/zsh found", () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      vi.mocked(fs.accessSync).mockImplementation(() => {
+        throw new Error("ENOENT");
+      });
       expect(resolveShellPath()).toBeUndefined();
     });
   });

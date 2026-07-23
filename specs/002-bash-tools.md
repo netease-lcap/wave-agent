@@ -71,6 +71,23 @@
 
 ---
 
+### 用户故事 5 - 跨平台显式 shell 解析（优先级：P1）
+
+作为 AI 代理，我希望 Bash 工具在所有平台上都显式使用 bash 或 zsh 执行命令（而非系统默认 `/bin/sh`），以便 bash 特有语法（进程替换 `<()`、`[[ ]]`、数组等）在 macOS、Linux 上正常工作。
+
+**优先级原因**：`/bin/sh` 在 Debian/Ubuntu 是 dash，不兼容 bashism；即使 macOS 上 `/bin/sh` 是 bash，也会以 POSIX 模式运行，导致 `eval '<()...'` 多行命令解析失败（报 `syntax error near unexpected token '('`）。这是命令执行的基本正确性需求。
+
+**独立测试**：在 macOS/Linux 上运行 `comm -23 <(echo a) <(echo b)`，验证进程替换正常工作，无 syntax error。
+
+**验收场景**：
+
+1. **假设** 运行在 macOS/Linux，**当** 执行含进程替换的命令（如 `comm -23 <(echo a) <(echo b)`）时，**则** 命令必须正常执行，不得报 syntax error。
+2. **假设** 设置了 `WAVE_SHELL` 环境变量指向可执行的 bash/zsh，**当** 调用 Bash 工具时，**则** 必须使用该 shell 执行命令。
+3. **假设** 系统未安装 bash 和 zsh，**当** 调用 Bash 工具时，**则** 必须返回清晰错误消息而非静默回退到 `/bin/sh`。
+4. **假设** `$SHELL` 指向 zsh，**当** 调用 Bash 工具时，**则** 必须优先使用 zsh。
+
+---
+
 ### 边界情况
 
 - **输出截断**：如果命令产生大量输出（例如 > 30,000 个字符），系统必须截断以防止 LLM 过载。多余输出被持久化到临时文件。
@@ -111,6 +128,11 @@
 - **FR-023**：在 Windows 系统上，CWD 追踪命令（`pwd -P >| tempfile`）必须使用 Git Bash 执行，确保输出为 POSIX 路径格式。
 - **FR-024**：在 Windows 系统上，传递给 Git Bash 的临时文件路径必须将反斜杠转换为正斜杠（`C:\Users\...` → `C:/Users/...`），因为 Bash 将反斜杠视为转义字符，会导致路径损坏并在项目目录中创建临时文件。
 - **FR-025**：CWD 追踪临时文件必须在所有退出路径上被清理，包括正常退出（exit）、中止（abort）、执行错误（error）和转为后台（background）。
+- **FR-026**：在所有平台上，Bash 工具必须显式解析一个 bash 或 zsh 二进制作为执行 shell，不得依赖 `spawn({shell: true})` 回退到 `/bin/sh`。
+- **FR-027**：在 macOS/Linux 上，shell 解析优先级为：`WAVE_SHELL` 环境变量（仅当指向可执行的 bash/zsh）→ `$SHELL`（仅当为 bash/zsh）→ `which('bash')` / `which('zsh')` → 常见固定路径（`/bin/bash`、`/usr/bin/bash`、`/usr/local/bin/bash`、`/bin/zsh`、`/opt/homebrew/bin/zsh` 等）。当 `$SHELL` 为 bash 时优先 bash，否则优先 zsh。
+- **FR-028**：当 `$SHELL` 指向 zsh 时，系统必须优先使用 zsh，以尊重用户交互式 shell 选择。
+- **FR-029**：在 macOS/Linux 上，若未找到任何可执行的 bash 或 zsh，系统必须返回清晰错误消息（提示安装 bash/zsh 或设置 `WAVE_SHELL` 环境变量），不得静默回退到 `/bin/sh`。
+- **FR-030**：`resolveShellPath()` 的返回值必须传入 `spawn()` 的 `shell` 选项（而非 `true`），确保 Node.js 使用解析到的 bash/zsh 而非默认 `/bin/sh`。
 
 ### 关键实体
 
@@ -121,7 +143,7 @@
 ## 假设
 
 - 代理具有在目标环境中执行 bash 命令所需的权限。
-- 在 Linux/macOS 上，系统默认 shell（`/bin/sh` 或 `$SHELL`）与 Bash 语法兼容。
+- 在 Linux/macOS 上，系统必须显式解析 bash 或 zsh 作为执行 shell；`/bin/sh` 可能是 dash 或 POSIX 模式 bash，不保证兼容 bashism。
 - 在 Windows 上，用户已安装 Git for Windows（提供 Git Bash）。
 - `PermissionManager` 将在任何命令实际执行之前处理安全检查。
 - 代理被指示在适当时优先使用专用工具（Read、Write 等）而非通用 bash 命令。
