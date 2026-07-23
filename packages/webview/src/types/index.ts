@@ -401,6 +401,7 @@ export type ChatAction =
   | { type: 'UPDATE_SELECTION'; payload: SelectionInfo | undefined }
   | { type: 'SET_PERMISSION_MODE'; payload: PermissionMode }
   | { type: 'SET_COMMAND_RUNNING'; payload: boolean }
+  | { type: 'SET_WORKDIR'; payload: string }
   | { type: 'SET_QUEUED_MESSAGES'; payload: QueuedMessage[] }
   | { type: 'SET_EDITING_QUEUED_ID'; payload: string | null }
   | { type: 'SET_INITIAL_STATE'; payload: {

@@ -93,6 +93,7 @@ export interface StdioAgentCallbacks {
     onSessionIdChange?: (sessionId: string) => void;
     onPermissionModeChange?: (mode: PermissionMode) => void;
     onMcpServersChange?: (servers: McpServerStatus[]) => void;
+    onWorkdirChange?: (workdir: string) => void;
     onBangMessageAdded?: () => void;
     onBangMessageUpdated?: () => void;
     onBangMessageCompleted?: () => void;
@@ -435,6 +436,12 @@ export class StdioAgent {
             case 'mcpServersChange': {
                 const p = params as { servers: McpServerStatus[] };
                 this.callbacks.onMcpServersChange?.(p.servers);
+                break;
+            }
+            case 'workdirChange': {
+                const p = params as { workdir: string };
+                this.workingDirectory = p.workdir;
+                this.callbacks.onWorkdirChange?.(p.workdir);
                 break;
             }
             case 'bangMessageAdded':

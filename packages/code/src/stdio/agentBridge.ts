@@ -922,6 +922,13 @@ export class AgentBridge {
       onPermissionModeChange: (mode: PermissionMode) => {
         this.emit("permissionModeChange", { mode }, ctx.registeredSessionId);
       },
+      onWorkdirChange: (newCwd: string) => {
+        this.emit(
+          "workdirChange",
+          { workdir: newCwd },
+          ctx.registeredSessionId,
+        );
+      },
       onMcpServersChange: (servers: McpServerStatus[]) => {
         this.emit("mcpServersChange", { servers }, ctx.registeredSessionId);
       },

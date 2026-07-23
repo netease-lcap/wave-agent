@@ -73,6 +73,7 @@ describe('StdioAgent', () => {
         expect(registeredMethods).toContain('sessionIdChange');
         expect(registeredMethods).toContain('permissionModeChange');
         expect(registeredMethods).toContain('mcpServersChange');
+        expect(registeredMethods).toContain('workdirChange');
         expect(registeredMethods).toContain('bangMessageAdded');
         expect(registeredMethods).toContain('bangMessageUpdated');
         expect(registeredMethods).toContain('bangMessageCompleted');
@@ -667,6 +668,16 @@ describe('StdioAgent', () => {
         agent.handleNotification('mcpServersChange', { servers });
 
         expect(onMcpServersChange).toHaveBeenCalledWith(servers);
+    });
+
+    it('workdirChange updates cached workingDirectory and calls callback', () => {
+        const onWorkdirChange = vi.fn();
+        const { agent } = createAgent({ onWorkdirChange });
+
+        agent.handleNotification('workdirChange', { workdir: '/repo/.wave/worktrees/feat-a' });
+
+        expect(agent.workingDirectory).toBe('/repo/.wave/worktrees/feat-a');
+        expect(onWorkdirChange).toHaveBeenCalledWith('/repo/.wave/worktrees/feat-a');
     });
 
     it('bangMessageAdded/Updated/Completed call respective callbacks', () => {

@@ -181,6 +181,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         permissionMode: action.payload
       };
+    case 'SET_WORKDIR':
+      return {
+        ...state,
+        workdir: action.payload
+      };
     // Incremental update actions for streaming optimization
     case 'APPEND_MESSAGE':
       return {

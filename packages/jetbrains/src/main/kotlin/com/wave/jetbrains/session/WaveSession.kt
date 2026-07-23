@@ -323,6 +323,10 @@ class WaveSession(
         postMessage("updatePermissionMode", buildJsonObject { put("mode", mode) })
     }
 
+    override fun onWorkdirChange(workdir: String) {
+        postMessage("updateWorkdir", buildJsonObject { put("workdir", workdir) })
+    }
+
     override fun onMcpServersChange(servers: JsonElement?) {
         postMessage("mcpServersUpdate", buildJsonObject { put("servers", servers ?: JsonArray(emptyList())) })
     }

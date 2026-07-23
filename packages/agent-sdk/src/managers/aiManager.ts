@@ -263,9 +263,13 @@ export class AIManager {
    * Update the working directory mid-session (e.g., when entering/exiting a worktree).
    * Only updates this session's DI container; it does NOT change the process-level
    * process.cwd(), so concurrent sessions in the same stdio process are unaffected.
+   * Triggers `_onCwdChange` (wired by Agent to `onWorkdirChange`) so the host is
+   * notified of worktree switches. Unlike bash `cd`, this does NOT run CwdChanged
+   * hooks (worktree has its own WorktreeCreate/WorktreeRemove hooks).
    */
   public setWorkdir(newWorkdir: string): void {
     this.container.register("Workdir", newWorkdir);
+    this._onCwdChange?.(newWorkdir);
   }
 
   /**

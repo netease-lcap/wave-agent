@@ -208,6 +208,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             onPermissionModeChange: (mode) => {
                 this.webviewManager.postMessage({ command: 'updatePermissionMode', mode }, viewType, windowId);
             },
+            onWorkdirChange: (workdir) => {
+                this.webviewManager.postMessage({ command: 'updateWorkdir', workdir }, viewType, windowId);
+            },
             onToolPermissionRequest: (context) => {
                 return this.handleToolPermissionRequest(context, viewType, windowId);
             },
