@@ -118,6 +118,14 @@ $lafOverrides
         val hoverBg = laf("ActionButton.hoverBackground", Color(90, 93, 94, 80), Color(90, 93, 94, 80))
         val activeBg = laf("ActionButton.pressedBackground", Color(99, 102, 103, 80), Color(99, 102, 103, 80))
         val menuBg = laf("PopupMenu.background", bg, Color(0x1f1f1f))
+        val listSelBg = laf("List.selectionBackground", buttonBg, Color(0x04395e))
+        val listSelFg = laf("List.selectionForeground", buttonFg, Color(0xffffff))
+        val listHoverBg = laf("List.selectionInactiveBackground", hoverBg, Color(0x2a2d2e))
+        // Inline/block code background: light = light grey chip, dark = the VS Code dark value.
+        val codeBlockBg = JBColor(Color(0xf2f2f2), Color(0x2b2b2b))
+        // Secondary button background (rewind btn, dialog secondary buttons): light=light grey, dark=#313131.
+        val buttonSecondaryBg = JBColor(Color(0xe0e0e0), Color(0x313131))
+        val buttonSecondaryHoverBg = JBColor(Color(0xc7c7c7), Color(0x3c3c3c))
         val font = lafFont("Label.font")
 
         val vars = linkedMapOf(
@@ -135,6 +143,9 @@ $lafOverrides
             "--vscode-dropdown-border" to inputBorder,
             "--vscode-button-background" to buttonBg,
             "--vscode-button-foreground" to buttonFg,
+            "--vscode-button-secondaryBackground" to buttonSecondaryBg,
+            "--vscode-button-secondaryForeground" to JBColor(Color(0x3b3b3b), Color(0xcccccc)),
+            "--vscode-button-secondaryHoverBackground" to buttonSecondaryHoverBg,
             "--vscode-icon-foreground" to fg,
             "--vscode-textLink-foreground" to linkFg,
             "--vscode-textLink-activeForeground" to linkFg,
@@ -142,6 +153,14 @@ $lafOverrides
             "--vscode-toolbar-hoverBackground" to hoverBg,
             "--vscode-toolbar-activeBackground" to activeBg,
             "--vscode-menu-background" to menuBg,
+            "--vscode-editorWidget-background" to menuBg,
+            "--vscode-editorWidget-foreground" to fg,
+            "--vscode-editorWidget-border" to border,
+            "--vscode-list-activeSelectionBackground" to listSelBg,
+            "--vscode-list-activeSelectionForeground" to listSelFg,
+            "--vscode-list-hoverBackground" to listHoverBg,
+            "--vscode-textCodeBlock-background" to codeBlockBg,
+            "--vscode-textPreformat-foreground" to fg,
         )
         return buildString {
             for ((key, color) in vars) {

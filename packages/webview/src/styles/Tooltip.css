@@ -14,7 +14,7 @@
   white-space: nowrap;
   z-index: 10000;
   pointer-events: none;
-  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   border: 1px solid var(--vscode-editorWidget-border);
   
   /* 初始隐藏状态 */
