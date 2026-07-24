@@ -1,4 +1,4 @@
-import type { ChatState, ChatAction, MessageBlock, TextBlock, ToolBlock, ErrorBlock } from '../types';
+import type { ChatState, ChatAction, Message, MessageBlock, TextBlock, ToolBlock, ErrorBlock } from '../types';
 
 export const initialState: ChatState = {
   messages: [],
@@ -341,6 +341,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     }
     case 'APPEND_ERROR_BLOCK': {
       const { error } = action.payload;
+      const newErrorBlock: ErrorBlock = { type: 'error', content: error };
+
       // Find the last assistant message
       let targetIndex = -1;
       for (let i = state.messages.length - 1; i >= 0; i--) {
@@ -349,10 +351,23 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           break;
         }
       }
-      if (targetIndex === -1) return state;
+
+      // No assistant message yet (e.g. API error before any streaming chunk).
+      // Create one to carry the error block instead of silently dropping it.
+      if (targetIndex === -1) {
+        const errorMessage: Message = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          role: 'assistant',
+          timestamp: new Date().toISOString(),
+          blocks: [newErrorBlock],
+        };
+        return {
+          ...state,
+          messages: [...state.messages, errorMessage],
+        };
+      }
 
       const message = state.messages[targetIndex];
-      const newErrorBlock: ErrorBlock = { type: 'error', content: error };
       const newBlocks = [...message.blocks, newErrorBlock];
 
       const newMessages = state.messages.map((m, idx) => {
