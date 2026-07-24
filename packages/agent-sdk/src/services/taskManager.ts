@@ -7,6 +7,13 @@ import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
 import type { MessageManager } from "../managers/messageManager.js";
 
+function byIdAsc(a: Task, b: Task) {
+  const aNum = parseInt(a.id, 10);
+  const bNum = parseInt(b.id, 10);
+  if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+  return a.id.localeCompare(b.id);
+}
+
 export class TaskManager extends EventEmitter {
   private readonly baseDir: string;
   private taskListId: string;
@@ -234,7 +241,7 @@ export class TaskManager extends EventEmitter {
         }),
       );
 
-      return tasks.filter((t): t is Task => t !== null);
+      return tasks.filter((t): t is Task => t !== null).sort(byIdAsc);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return [];
