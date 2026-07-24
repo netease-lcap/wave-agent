@@ -34,13 +34,13 @@ function createMockProc(): MockProc {
     return proc;
 }
 
-function createClient(args?: string[], env?: Record<string, string>) {
+function createClient(args?: string[], env?: Record<string, string>, onStderr?: (data: string) => void) {
     const proc = createMockProc();
     const rl = new EventEmitter();
     mockSpawn.mockReturnValue(proc);
     mockCreateInterface.mockReturnValue(rl);
 
-    const client = new StdioClient('/fake/wave', args, env);
+    const client = new StdioClient('/fake/wave', args, env, onStderr);
     return { client, proc, rl };
 }
 
@@ -421,7 +421,7 @@ describe('StdioClient', () => {
 
         const error = await expectReject(client.request('test'));
         expect(error).toBeInstanceOf(Error);
-        expect(error.message).toBe('StdioClient is disposed');
+        expect(error.message).toBe('连接已断开。wave 进程已退出，请重启编辑器或检查 CLI 安装。');
     });
 
     it('notify is silent after dispose', () => {
@@ -458,6 +458,49 @@ describe('StdioClient', () => {
 
         const error = await expectReject(client.request('test'));
         expect(error).toBeInstanceOf(Error);
-        expect(error.message).toBe('StdioClient is disposed');
+        expect(error.message).toBe('连接已断开。wave 进程已退出，请重启编辑器或检查 CLI 安装。');
+    });
+
+    // ── stderr forwarding (FR-029) ─────────────────────────────
+
+    it('forwards stderr to onStderr callback', () => {
+        const onStderr = vi.fn();
+        const { proc } = createClient([], undefined, onStderr);
+
+        proc.stderr.emit('data', Buffer.from('some warning\n'));
+
+        expect(onStderr).toHaveBeenCalledWith('some warning');
+    });
+
+    it('does not call onStderr for empty stderr lines', () => {
+        const onStderr = vi.fn();
+        const { proc } = createClient([], undefined, onStderr);
+
+        proc.stderr.emit('data', Buffer.from('  \n'));
+
+        expect(onStderr).not.toHaveBeenCalled();
+    });
+
+    it('works without onStderr callback (backward compat)', () => {
+        const { proc } = createClient();
+
+        expect(() => {
+            proc.stderr.emit('data', Buffer.from('some output\n'));
+        }).not.toThrow();
+    });
+
+    // ── stderr buffer in exit error (FR-017) ───────────────────
+
+    it('includes stderr in exit error message when process exits', async () => {
+        const { client, proc } = createClient();
+
+        proc.stderr.emit('data', Buffer.from('FATAL: cannot find module\n'));
+
+        const p = expectReject(client.request('method1'));
+        proc.emit('exit', 1, null);
+
+        const err = await p;
+        expect(err.message).toContain('wave --stdio process exited');
+        expect(err.message).toContain('FATAL: cannot find module');
     });
 });

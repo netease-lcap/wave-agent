@@ -1,6 +1,8 @@
 package com.wave.jetbrains
 
 import com.intellij.ide.BrowserUtil
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
@@ -52,12 +54,21 @@ class WaveBackendService(private val project: Project) : Disposable {
     suspend fun ensureClient(): Pair<StdioClient, NotificationRouter> {
         initMutex.withLock {
             if (sharedClient == null) {
+                BinaryResolver.onInstall = { message ->
+                    Edt.invokeLater {
+                        NotificationGroupManager.getInstance()
+                            .getNotificationGroup("Wave")
+                            .createNotification("Wave", message, NotificationType.INFORMATION)
+                            .notify(project)
+                    }
+                }
                 val pluginVer = WaveSession.pluginVersion()
                 val binary = if (pluginVer.isNotEmpty()) {
                     BinaryResolver.ensureCliUpToDate(pluginVer)
                 } else {
                     BinaryResolver.resolveWaveBinary()
                 }
+                BinaryResolver.onInstall = null
                 val c = StdioClient(binary, listOf("--stdio"), BinaryResolver.resolveEnv())
                 val r = NotificationRouter(c)
                 r.attach()

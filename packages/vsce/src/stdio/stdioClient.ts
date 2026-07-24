@@ -9,6 +9,7 @@ import { type ChildProcess, spawn } from 'child_process';
 import { createInterface } from 'readline';
 
 export type NotificationHandler = (params: unknown, sessionId?: string) => void;
+export type StderrHandler = (data: string) => void;
 
 interface PendingRequest {
     resolve: (value: unknown) => void;
@@ -21,12 +22,16 @@ export class StdioClient {
     private pending = new Map<number, PendingRequest>();
     private handlers = new Map<string, Set<NotificationHandler>>();
     private disposed = false;
+    private stderrBuffer = '';
+    private onStderr?: StderrHandler;
 
     constructor(
         binaryPath: string,
         args: string[] = [],
         env?: Record<string, string>,
+        onStderr?: StderrHandler,
     ) {
+        this.onStderr = onStderr;
         // On Windows, binaryPath may be a `wave.cmd` shim. Node (since the
         // CVE-2024-27980 patch) refuses to spawn `.cmd`/`.bat` files without a
         // shell, throwing ERR_CHILD_PROCESS_INVALID_COMMAND_FILE. `args` is a
@@ -42,13 +47,20 @@ export class StdioClient {
         rl.on('line', (line) => this.handleLine(line));
 
         this.proc.stderr!.on('data', (data: Buffer) => {
-            console.error('[wave-stdio]', data.toString().trimEnd());
+            const text = data.toString();
+            // Keep a rolling tail for inclusion in the exit error message.
+            this.stderrBuffer = (this.stderrBuffer + text).slice(-4096);
+            const trimmed = text.trimEnd();
+            if (trimmed) this.onStderr?.(trimmed);
         });
 
         this.proc.on('exit', (code, signal) => {
-            const error = new Error(
+            const stderr = this.stderrBuffer.trim();
+            const parts = [
                 `wave --stdio process exited (code: ${code}, signal: ${signal})`,
-            );
+            ];
+            if (stderr) parts.push(`stderr:\n${stderr}`);
+            const error = new Error(parts.join('\n'));
             for (const p of this.pending.values()) {
                 p.reject(error);
             }
@@ -69,7 +81,7 @@ export class StdioClient {
         sessionId?: string,
     ): Promise<unknown> {
         if (this.disposed) {
-            throw new Error('StdioClient is disposed');
+            throw new Error('连接已断开。wave 进程已退出，请重启编辑器或检查 CLI 安装。');
         }
         const id = this.nextId++;
         const envelope: Record<string, unknown> = { id, method, params };

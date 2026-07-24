@@ -3,6 +3,9 @@ package com.wave.jetbrains.stdio
 import com.intellij.openapi.diagnostic.logger
 import java.io.File
 
+/** Minimum Node.js major version required by `wave --stdio`. */
+private const val MIN_NODE_MAJOR = 20
+
 /**
  * Resolves the `wave` binary at runtime: PATH → npm global bin → auto-install.
  * Mirrors packages/vsce/src/stdio/binaryResolver.ts.
@@ -23,10 +26,16 @@ object BinaryResolver {
     private val waveName = if (isWindows) "wave.cmd" else "wave"
     private val lookupCmd = if (isWindows) "where" else "which"
 
+    /** Optional callback invoked when an npm install/upgrade starts. */
+    var onInstall: ((String) -> Unit)? = null
+
     fun resolveWaveBinary(): String {
         cachedPath?.let { return it }
 
-        // 0. nvm-installed binary (GUI-launched IDEs don't inherit shell PATH, so an
+        // 0. Verify Node.js >= 20 — wave --stdio requires it.
+        checkNodeVersion()
+
+        // 0a. nvm-installed binary (GUI-launched IDEs don't inherit shell PATH, so an
         // nvm-managed npm/wave install is invisible to `which` — probe nvm first).
         findInNvm(waveName)?.let { return cache(it) }
 
@@ -43,6 +52,7 @@ object BinaryResolver {
         // 4. auto-install
         val npm = findNpm()
         LOG.info("wave not found; running: \"$npm\" install -g $PACKAGE --registry=$NPM_REGISTRY")
+        onInstall?.invoke("正在安装 wave-code，请稍候…")
         runCommand(npm, "install", "-g", PACKAGE, "--registry=$NPM_REGISTRY")
 
         // 5. recheck global bin
@@ -62,6 +72,7 @@ object BinaryResolver {
     fun upgradeWaveBinary(targetVersion: String): String {
         val npm = findNpm()
         LOG.info("Upgrading $PACKAGE to $targetVersion via: \"$npm\" install -g $PACKAGE@$targetVersion --registry=$NPM_REGISTRY")
+        onInstall?.invoke("正在升级 wave-code 到 v$targetVersion，请稍候…")
         runCommand(npm, "install", "-g", "$PACKAGE@$targetVersion", "--registry=$NPM_REGISTRY")
         resetCache()
         return resolveWaveBinary()
@@ -196,6 +207,61 @@ object BinaryResolver {
         }
     }
 
+    /**
+     * Find `node` executable: PATH first, then nvm, then java.home parent
+     * (the JBR Node that ships with some IDEs).
+     */
+    private fun findNode(): String {
+        try {
+            val out = runCommand(lookupCmd, "node")
+            out.lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        } catch (_: Exception) {}
+        findInNvm("node")?.let { return it }
+        // JBR-shipped node lives in jbr/bin/node relative to the IDE install.
+        val javaHome = System.getProperty("java.home") ?: throw StdioClientException(
+            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
+        )
+        val nodeDir = File(javaHome).parent ?: throw StdioClientException(
+            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
+        )
+        val candidates: List<File> = if (isWindows) {
+            listOf(File(nodeDir, "node.exe"), File(nodeDir, "node"))
+        } else {
+            listOf(File(nodeDir, "node"), File(File(nodeDir, ".."), "bin").let { File(it, "node") })
+        }
+        candidates.firstOrNull { it.exists() }?.path?.let { return it }
+        throw StdioClientException(
+            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
+        )
+    }
+
+    /**
+     * Check that the system Node.js is >= [MIN_NODE_MAJOR].
+     * @throws StdioClientException if the version is below the minimum or cannot be determined.
+     */
+    private fun checkNodeVersion() {
+        val node = findNode()
+        val output = try {
+            runCommandRaw(node, "-v").trim()
+        } catch (e: Exception) {
+            throw StdioClientException(
+                "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
+            )
+        }
+        val match = Regex("^v?(\\d+)").find(output)
+        val major = match?.groupValues?.get(1)?.toIntOrNull()
+        if (major == null) {
+            throw StdioClientException(
+                "无法确定 Node.js 版本（输出: $output）。请安装 Node.js >= $MIN_NODE_MAJOR (https://nodejs.org)，然后重启编辑器。"
+            )
+        }
+        if (major < MIN_NODE_MAJOR) {
+            throw StdioClientException(
+                "Node.js 版本过低（当前 v$major，需要 >= $MIN_NODE_MAJOR）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"
+            )
+        }
+    }
+
     private fun findNpm(): String {
         // which/where npm
         try {
@@ -205,15 +271,21 @@ object BinaryResolver {
         // nvm-installed npm (GUI-launched IDEs don't inherit shell PATH)
         findInNvm("npm")?.let { return it }
         // fallback: node dir
-        val javaHome = System.getProperty("java.home") ?: return "npm"
-        val nodeDir = File(javaHome).parent ?: return "npm"
+        val javaHome = System.getProperty("java.home") ?: throw StdioClientException(
+            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
+        )
+        val nodeDir = File(javaHome).parent ?: throw StdioClientException(
+            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
+        )
         val candidates: List<File> = if (isWindows) {
             listOf(File(nodeDir, "npm.cmd"), File(nodeDir, "npm"))
         } else {
             listOf(File(nodeDir, "npm"), File(File(nodeDir, ".."), "bin").let { File(it, "npm") })
         }
         candidates.firstOrNull { it.exists() }?.path?.let { return it }
-        return "npm"
+        throw StdioClientException(
+            "未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
+        )
     }
 
     private fun getNpmGlobalBin(): String {
