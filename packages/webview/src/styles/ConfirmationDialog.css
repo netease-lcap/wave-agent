@@ -432,6 +432,13 @@
   box-sizing: border-box;
 }
 
+.confirmation-btn .btn-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .confirmation-btn-apply {
   background-color: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
