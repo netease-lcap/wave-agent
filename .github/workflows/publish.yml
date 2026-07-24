@@ -127,8 +127,12 @@ jobs:
 
       # copyWebviewAssets (build.gradle.kts) copies chat.js/chat.css from
       # packages/webview/dist into the plugin resources, so build the webview next.
+      # Use `compile -- --production` (not `build`) so the bundle is minified and
+      # source maps are omitted — `build` would also trigger postbuild syncTargets,
+      # which is unnecessary here and ships the unminified dev bundle (~9.4MB vs
+      # ~3.6MB), bloating the .zip.
       - name: Build webview dist
-        run: pnpm -F wave-webview run build
+        run: pnpm -F wave-webview run compile -- --production
 
       - name: Run Gradle tests
         run: ./packages/jetbrains/gradlew -p packages/jetbrains test --no-daemon
