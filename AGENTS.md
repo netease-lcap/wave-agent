@@ -40,6 +40,7 @@ Always use `pnpm` as the package manager.
 ## 🔍 Code Navigation & Exploration
 
 - **Worktree Isolation**: If the current working directory is within a worktree (e.g., `.wave/worktrees/`), do NOT read or edit files in the base repository. Always stay within the current worktree.
+- **Prefer worktree for edits**: If the working directory is the base repository (not a worktree), prefer creating a worktree before making code/doc changes. Pure research, reading, or running commands may stay in the base repo.
 - **Code Exploration**: This is a large codebase. NEVER read too many code files at once. You MUST ALWAYS use the `LSP` tool (goToDefinition, findReferences, etc.) as your primary method to understand code relationships and navigate the codebase. Only fallback to `Grep` or `Read` when `LSP` is insufficient.
 - **Grep in node_modules**: When using the `Grep` tool to search within `node_modules`, you MUST explicitly set the `path` parameter to include `node_modules` (e.g., `path: "node_modules"` or `path: "packages/code/node_modules"`), as it may be excluded by default. Note that `path: "."` will NOT work because `node_modules` is typically ignored by `.gitignore`.
 
