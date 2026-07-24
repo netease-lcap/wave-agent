@@ -5,6 +5,7 @@ import '../styles/MoreMenu.css';
 interface MoreMenuProps {
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
+  onLogin: () => void;
   onLogout: () => void;
   onClose: () => void;
   isAuthenticated: boolean;
@@ -13,6 +14,7 @@ interface MoreMenuProps {
 export const MoreMenu: React.FC<MoreMenuProps> = ({
   onOpenSettings,
   onOpenEnterpriseConsole,
+  onLogin,
   onLogout,
   onClose,
   isAuthenticated
@@ -54,6 +56,11 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
     onClose();
   };
 
+  const handleLogin = () => {
+    onLogin();
+    onClose();
+  };
+
   return (
     <div ref={menuRef} className="more-menu" data-testid="more-menu">
       <div className="more-menu-item" onClick={handleSettings} data-testid="more-menu-settings">
@@ -67,9 +74,13 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
         <span>企业控制台</span>
         <ExternalLinkIcon className="more-menu-item-icon" />
       </div>
-      {isAuthenticated && (
+      {isAuthenticated ? (
         <div className="more-menu-item" onClick={handleLogout} data-testid="more-menu-logout">
           退出登录
+        </div>
+      ) : (
+        <div className="more-menu-item" onClick={handleLogin} data-testid="more-menu-login">
+          登录
         </div>
       )}
     </div>

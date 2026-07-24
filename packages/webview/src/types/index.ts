@@ -211,6 +211,7 @@ export interface ChatHeaderProps {
   sessionsLoading: boolean;
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
+  onLogin: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
 }
