@@ -132,7 +132,7 @@ export interface ChatAppProps {
 export interface MessageListProps {
   messages: Message[];
   queuedMessages?: QueuedMessage[];
-  streamingMessageIndex?: number;
+  isStreaming?: boolean;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
   workdir?: string;
@@ -140,7 +140,6 @@ export interface MessageListProps {
 
 export interface MessageProps {
   message: Message;
-  isStreaming?: boolean;
   isQueued?: boolean;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;

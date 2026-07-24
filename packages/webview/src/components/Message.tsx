@@ -101,7 +101,7 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
 
 
 export const Message: React.FC<MessageProps> = React.memo((props) => {
-  const { message, isStreaming = false, isQueued = false, onRewindToMessage, workdir } = props;
+  const { message, isQueued = false, onRewindToMessage, workdir } = props;
   const getMessageClassName = () => {
     const classes = ['message'];
     
@@ -116,9 +116,6 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       }
     } else if (message.role === 'assistant') {
       classes.push('assistant');
-      if (isStreaming) {
-        classes.push('streaming');
-      }
     }
     
     return classes.join(' ');
@@ -719,7 +716,6 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
 }, (prev, next) => {
   // Custom comparison for React.memo
   return prev.message === next.message &&
-    prev.isStreaming === next.isStreaming &&
     prev.isQueued === next.isQueued &&
     prev.onRewindToMessage === next.onRewindToMessage;
 });
