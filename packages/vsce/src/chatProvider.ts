@@ -18,7 +18,7 @@ import { WebviewManager } from './session/webviewManager';
 import { MessageHandler } from './session/messageHandler';
 import { StdioClient } from './stdio/stdioClient';
 import { NotificationRouter } from './stdio/notificationRouter';
-import { resolveWaveBinary, ensureCliUpToDate } from './stdio/binaryResolver';
+import { resolveWaveBinary, ensureCliUpToDate, NodeJsNotFoundError, NodeJsVersionError } from './stdio/binaryResolver';
 import { checkAndNotify } from './services/updateService';
 
 export class ChatProvider implements vscode.WebviewViewProvider {
@@ -49,6 +49,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     private messageHandler!: MessageHandler;
     private sharedClient: StdioClient | undefined;
     private notificationRouter: NotificationRouter | undefined;
+    private outputChannel: vscode.OutputChannel;
     private initPromise: Promise<void>;
     private updateCheckTriggered = false;
 
@@ -56,6 +57,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         this.context = context;
         this.configService = new ConfigurationService(context);
         this.selectionService = new SelectionService(context);
+        this.outputChannel = vscode.window.createOutputChannel('Wave');
 
         this.webviewManager = new WebviewManager(context, {
             onMessage: async (message, viewType, windowId) => {
@@ -132,11 +134,26 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     private async init(): Promise<void> {
         try {
             const clientVersion: string | undefined = this.context.extension.packageJSON?.version;
-            const binaryPath = clientVersion
-                ? await ensureCliUpToDate(clientVersion)
-                : resolveWaveBinary();
+            const binaryPath = await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Wave',
+                    cancellable: false,
+                },
+                (progress) => {
+                    const onInstall = (message: string) => progress.report({ message });
+                    return clientVersion
+                        ? ensureCliUpToDate(clientVersion, onInstall)
+                        : Promise.resolve(resolveWaveBinary(onInstall));
+                },
+            );
 
-            this.sharedClient = new StdioClient(binaryPath, ['--stdio']);
+            this.sharedClient = new StdioClient(
+                binaryPath,
+                ['--stdio'],
+                undefined,
+                (data) => this.outputChannel.appendLine(`[wave-stdio] ${data}`),
+            );
             this.notificationRouter = new NotificationRouter(this.sharedClient);
             this.notificationRouter.attach();
             // Open browser when auth URL is received (global — no sessionId).
@@ -178,9 +195,18 @@ export class ChatProvider implements vscode.WebviewViewProvider {
             );
         } catch (err) {
             console.error('[Wave] Failed to initialize shared client:', err);
-            vscode.window.showErrorMessage(
-                '无法启动 wave 二进制文件。请手动安装: npm install -g wave-code',
+            this.outputChannel.appendLine(
+                `[Wave] Failed to initialize shared client: ${err instanceof Error ? err.stack ?? err.message : String(err)}`,
             );
+            if (err instanceof NodeJsNotFoundError) {
+                vscode.window.showErrorMessage(err.message);
+            } else if (err instanceof NodeJsVersionError) {
+                vscode.window.showErrorMessage(err.message);
+            } else {
+                vscode.window.showErrorMessage(
+                    '无法启动 wave 二进制文件。请手动安装: npm install -g wave-code',
+                );
+            }
         }
     }
 

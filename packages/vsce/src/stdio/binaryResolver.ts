@@ -18,9 +18,72 @@ export const NPM_REGISTRY = 'https://registry.npmmirror.com';
 
 let cachedPath: string | undefined;
 
+/** Minimum Node.js major version required by `wave --stdio`. */
+const MIN_NODE_MAJOR = 20;
+
+/**
+ * Error thrown when Node.js/npm cannot be found on the system.
+ * Callers catch this to show a user-friendly "install Node.js" message
+ * instead of a cryptic npm failure.
+ */
+export class NodeJsNotFoundError extends Error {
+    constructor() {
+        super(
+            '未检测到 Node.js/npm。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。',
+        );
+        this.name = 'NodeJsNotFoundError';
+    }
+}
+
+/**
+ * Error thrown when the system Node.js version is below the minimum required.
+ * Callers catch this to show a user-friendly "upgrade Node.js" message.
+ */
+export class NodeJsVersionError extends Error {
+    constructor(currentVersion: string) {
+        super(
+            `Node.js 版本过低（当前 ${currentVersion}，需要 >= ${MIN_NODE_MAJOR}）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。`,
+        );
+        this.name = 'NodeJsVersionError';
+    }
+}
+
+/**
+ * Find `node` executable: PATH first, then `process.execPath` (the Node
+ * running the extension host, which is always a valid node binary).
+ */
+function findNode(): string {
+    const cmd = process.platform === 'win32' ? 'where node' : 'which node';
+    try {
+        const result = execSync(cmd, { encoding: 'utf-8', stdio: 'pipe' }).trim();
+        if (result) return result.split('\n')[0].trim();
+    } catch {
+        // not on PATH
+    }
+    // process.execPath is always a Node binary (the extension host runtime).
+    return process.execPath;
+}
+
+/**
+ * Check that the system Node.js is >= MIN_NODE_MAJOR.
+ * @throws {NodeJsVersionError} if the version is below the minimum.
+ */
+function checkNodeVersion(): void {
+    const node = findNode();
+    const output = execFileSync(node, ['-v'], {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    const match = output.match(/^v?(\d+)/);
+    if (!match) throw new NodeJsVersionError(output);
+    const major = parseInt(match[1], 10);
+    if (major < MIN_NODE_MAJOR) throw new NodeJsVersionError(`v${major}`);
+}
+
 /**
  * Find `npm` CLI executable.
  * Checks PATH first, then falls back to the directory of the running Node binary.
+ * @throws {NodeJsNotFoundError} if npm cannot be located anywhere.
  */
 function findNpm(): string {
     const cmd = process.platform === 'win32' ? 'where npm' : 'which npm';
@@ -41,7 +104,7 @@ function findNpm(): string {
         if (fs.existsSync(c)) return c;
     }
 
-    return 'npm';
+    throw new NodeJsNotFoundError();
 }
 
 /** Resolve the npm global bin directory. */
@@ -63,8 +126,14 @@ function fileExists(p: string): boolean {
     }
 }
 
-export function resolveWaveBinary(): string {
+/** Optional callback invoked when an npm install/upgrade starts. */
+export type InstallProgressCallback = (message: string) => void;
+
+export function resolveWaveBinary(onInstall?: InstallProgressCallback): string {
     if (cachedPath) return cachedPath;
+
+    // 0. Verify Node.js >= 20 — wave --stdio requires it.
+    checkNodeVersion();
 
     // 1. Try PATH
     const whichCmd = process.platform === 'win32' ? 'where wave' : 'which wave';
@@ -82,7 +151,9 @@ export function resolveWaveBinary(): string {
     let globalBin: string;
     try {
         globalBin = getNpmGlobalBin();
-    } catch {
+    } catch (e) {
+        // NodeJsNotFoundError / NodeJsVersionError have user-friendly messages — propagate.
+        if (e instanceof NodeJsNotFoundError || e instanceof NodeJsVersionError) throw e;
         throw new Error(
             'Failed to determine npm global directory. Please install wave-code manually: npm install -g wave-code --registry=https://registry.npmmirror.com',
         );
@@ -97,6 +168,7 @@ export function resolveWaveBinary(): string {
 
     // 3. Install globally
     console.log('[Wave] wave binary not found, installing wave-code globally...');
+    onInstall?.('正在安装 wave-code，请稍候…');
     const npm = findNpm();
     execSync(`"${npm}" install -g wave-code --registry=${NPM_REGISTRY}`, {
         encoding: 'utf-8',
@@ -158,8 +230,8 @@ export function getCliVersion(binaryPath: string): string | null {
  * 3. If null (binary corrupt/unreadable) or older than target → upgrade to
  *    targetVersion (which resets the cache and re-resolves).
  */
-export async function ensureCliUpToDate(targetVersion: string): Promise<string> {
-    const binaryPath = resolveWaveBinary();
+export async function ensureCliUpToDate(targetVersion: string, onInstall?: InstallProgressCallback): Promise<string> {
+    const binaryPath = resolveWaveBinary(onInstall);
     const current = getCliVersion(binaryPath);
     if (current !== null) {
         const cur = parseVersion(current);
@@ -169,7 +241,7 @@ export async function ensureCliUpToDate(targetVersion: string): Promise<string> 
         }
     }
     // current is null (corrupt) or older than target → upgrade.
-    return upgradeWaveBinary(targetVersion);
+    return upgradeWaveBinary(targetVersion, onInstall);
 }
 
 /** Reset cached binary path. Public so callers can force re-resolve after an upgrade. */
@@ -182,7 +254,7 @@ export function resetCache(): void {
  * Uses `execFile` (not a shell string) to avoid shell injection of the version arg.
  * Resets the cached path on success and returns the freshly-resolved binary path.
  */
-export async function upgradeWaveBinary(targetVersion: string): Promise<string> {
+export async function upgradeWaveBinary(targetVersion: string, onInstall?: InstallProgressCallback): Promise<string> {
     // Validate the version before it touches a shell. targetVersion originates
     // from the extension's package.json (trusted), but on Windows execFile runs
     // through cmd.exe (see shell option below); a strict semver check preserves
@@ -193,6 +265,7 @@ export async function upgradeWaveBinary(targetVersion: string): Promise<string> 
         throw new Error(`Invalid version: ${targetVersion}`);
     }
 
+    onInstall?.(`正在升级 wave-code 到 v${targetVersion}，请稍候…`);
     const npm = findNpm();
     await new Promise<void>((resolve, reject) => {
         execFile(

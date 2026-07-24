@@ -54,6 +54,8 @@ class StdioClient(
     var disposed = false
         private set
 
+    private val stderrBuffer = StringBuilder()
+
     private val process: Process = ProcessBuilder(listOf(binaryPath) + args).apply {
         redirectErrorStream(false)
         environment().putAll(env)
@@ -82,13 +84,19 @@ class StdioClient(
                 if (!disposed) LOG.warn("wave stdio stdout stream closed", e)
             }
         }
-        // stderr logger
+        // stderr logger + buffer (for inclusion in exit error)
         scope.launch {
             try {
                 BufferedReader(InputStreamReader(process.errorStream, StandardCharsets.UTF_8)).use { reader ->
                     var line = reader.readLine()
                     while (line != null) {
                         LOG.warn("[wave-stdio] $line")
+                        synchronized(stderrBuffer) {
+                            stderrBuffer.append(line).append('\n')
+                            if (stderrBuffer.length > 4096) {
+                                stderrBuffer.delete(0, stderrBuffer.length - 4096)
+                            }
+                        }
                         line = reader.readLine()
                     }
                 }
@@ -98,7 +106,10 @@ class StdioClient(
         // Exit handler: reject all pending
         process.onExit().thenRun {
             val code = process.exitValue()
-            val error = StdioClientException("wave --stdio process exited (code: $code)")
+            val stderr = synchronized(stderrBuffer) { stderrBuffer.toString().trim() }
+            val parts = mutableListOf("wave --stdio process exited (code: $code)")
+            if (stderr.isNotEmpty()) parts.add("stderr:\n$stderr")
+            val error = StdioClientException(parts.joinToString("\n"))
             pending.values.forEach { it.completeExceptionally(error) }
             pending.clear()
             disposed = true
@@ -107,7 +118,7 @@ class StdioClient(
 
     /** Send a request (expects a response with matching id). */
     suspend fun request(method: String, params: JsonObject? = null, sessionId: String? = null): JsonElement? {
-        if (disposed) throw StdioClientException("StdioClient is disposed")
+        if (disposed) throw StdioClientException("连接已断开。wave 进程已退出，请重启编辑器或检查 CLI 安装。")
         val id = nextId.getAndIncrement()
         val deferred = CompletableDeferred<JsonElement?>()
         pending[id] = deferred
