@@ -499,22 +499,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       )}
 
       <div className="input-area-container">
-        <TaskList
-          tasks={state.tasks}
-          isCollapsed={state.isTaskListCollapsed}
-          onToggleCollapse={() => dispatch({ type: 'TOGGLE_TASK_LIST_COLLAPSE' })}
-        />
-        <QueuedMessageList
-          queuedMessages={state.queuedMessages}
-          isCollapsed={state.isQueueCollapsed}
-          onToggleCollapse={() => dispatch({ type: 'TOGGLE_QUEUE_COLLAPSE' })}
-          onEdit={handleEditQueuedMessage}
-          onSend={handleSendQueuedMessage}
-          onDelete={handleDeleteQueuedMessage}
-          editingQueuedId={state.editingQueuedId}
-          vscode={vscode}
-        />
-        
+        <div style={{ display: state.activeDialog ? 'none' : 'block' }}>
+          <TaskList
+            tasks={state.tasks}
+            isCollapsed={state.isTaskListCollapsed}
+            onToggleCollapse={() => dispatch({ type: 'TOGGLE_TASK_LIST_COLLAPSE' })}
+          />
+          <QueuedMessageList
+            queuedMessages={state.queuedMessages}
+            isCollapsed={state.isQueueCollapsed}
+            onToggleCollapse={() => dispatch({ type: 'TOGGLE_QUEUE_COLLAPSE' })}
+            onEdit={handleEditQueuedMessage}
+            onSend={handleSendQueuedMessage}
+            onDelete={handleDeleteQueuedMessage}
+            editingQueuedId={state.editingQueuedId}
+            vscode={vscode}
+          />
+        </div>
+
         <div style={{ display: state.pendingConfirmations.length === 0 ? 'block' : 'none' }}>
           <MessageInput
             ref={messageInputRef}
