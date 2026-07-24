@@ -138,7 +138,7 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
           ref={inputRef}
           type="text"
           className="history-search-input"
-          placeholder="搜索历史记录..."
+          placeholder="搜索历史提示词..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
