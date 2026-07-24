@@ -25,6 +25,7 @@ export const initialState: ChatState = {
   attachedImages: [],
   // Auth state
   isAuthenticated: false,
+  initialized: false,
   workdir: undefined
 };
 
@@ -129,7 +130,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SET_AUTHENTICATED':
       return {
         ...state,
-        isAuthenticated: action.payload
+        isAuthenticated: action.payload,
+        initialized: true
       };
     case 'SET_CONFIGURATION_LOADING':
       return {
@@ -167,6 +169,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         attachedImages: action.payload.attachedImages || [],
         sessionsLoading: false,
         configurationLoading: false,
+        initialized: true,
         isAuthenticated: action.payload.isAuthenticated !== undefined ? action.payload.isAuthenticated : state.isAuthenticated,
         workdir: action.payload.workdir !== undefined ? action.payload.workdir : state.workdir
       };
