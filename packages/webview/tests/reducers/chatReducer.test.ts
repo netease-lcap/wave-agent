@@ -417,7 +417,7 @@ describe('chatReducer', () => {
       expect(newState.messages[0].blocks).toHaveLength(1);
     });
 
-    it('should return original state if no assistant message exists', () => {
+    it('should create a new assistant message with error block if no assistant message exists', () => {
       const userMessage: Message = {
         id: 'msg-1',
         role: 'user',
@@ -428,10 +428,17 @@ describe('chatReducer', () => {
 
       const newState = chatReducer(state, {
         type: 'APPEND_ERROR_BLOCK',
-        payload: { error: 'Error' }
+        payload: { error: '402 Payment Required' }
       });
 
-      expect(newState).toBe(state);
+      expect(newState.messages).toHaveLength(2);
+      expect(newState.messages[0]).toBe(userMessage);
+      const errorMessage = newState.messages[1];
+      expect(errorMessage.role).toBe('assistant');
+      expect(errorMessage.blocks).toHaveLength(1);
+      const errorBlock = errorMessage.blocks[0] as ErrorBlock;
+      expect(errorBlock.type).toBe('error');
+      expect(errorBlock.content).toBe('402 Payment Required');
     });
 
     it('should not mutate original state', () => {
