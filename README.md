@@ -21,6 +21,24 @@ Core Node.js SDK used by the CLI frontend. Similar to **Claude Agent SDK**.
 
 - **Technology**: Node.js, TypeScript
 
+#### [`packages/vsce`](./packages/vsce)
+
+VS Code extension with a React webview chat UI. Uses esbuild for bundling (backend CJS + frontend IIFE).
+
+- **Technology**: Node.js, TypeScript, React 18, esbuild
+
+#### [`packages/jetbrains`](./packages/jetbrains)
+
+JetBrains IDE plugin built on the IntelliJ Platform, providing the same Wave chat experience inside IntelliJ-based IDEs.
+
+- **Technology**: Kotlin, Gradle, IntelliJ Platform
+
+#### [`packages/webview`](./packages/webview)
+
+Shared webview layer (React IIFE bundle) consumed by both the VS Code and JetBrains plugins.
+
+- **Technology**: Node.js, TypeScript, React 18, esbuild
+
 ### 📄 Specifications
 
 Detailed feature specifications and design documents can be found in the [`specs/`](./specs) directory.
@@ -49,7 +67,9 @@ pnpm build
 ### Package Dependencies
 
 - `packages/code` depends on `packages/agent-sdk`
-- After modifying `agent-sdk`, run `pnpm build` in that package before testing changes in `code`
+- `packages/vsce` and `packages/webview` depend on `packages/agent-sdk`
+- `packages/vsce` depends on `packages/webview` (synced at build time)
+- After modifying `agent-sdk`, run `pnpm build` in that package before testing changes in dependent packages
 
 ## Contributing
 
