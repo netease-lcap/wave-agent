@@ -1275,6 +1275,16 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
                   >
                     上传文件
                   </li>
+                  <li
+                    role="menuitem"
+                    className="plus-menu-item"
+                    onClick={() => {
+                      openHistorySearch();
+                      setPlusMenuOpen(false);
+                    }}
+                  >
+                    历史提示词
+                  </li>
                 </ul>
               )}
             </div>
