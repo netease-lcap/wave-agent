@@ -444,7 +444,7 @@ test("canUseTool emits permissionRequest and resolves when permissionResponse re
   expect(decision.behavior).toBe("allow");
 });
 
-test("canUseTool resolves with deny on timeout", async () => {
+test("canUseTool stays pending without auto-deny (no timeout)", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
 
@@ -457,16 +457,18 @@ test("canUseTool resolves with deny on timeout", async () => {
     permissionMode: "default",
   };
 
-  // Use fake timers to test timeout
   vi.useFakeTimers();
   const permissionPromise = canUseTool(context);
 
-  // Advance past 5-minute timeout
-  vi.advanceTimersByTime(5 * 60 * 1000 + 100);
+  // Advance well past any former timeout — promise must NOT resolve
+  let resolved = false;
+  permissionPromise.then(() => {
+    resolved = true;
+  });
+  vi.advanceTimersByTime(10 * 60 * 1000);
+  expect(resolved).toBe(false);
 
-  const decision = await permissionPromise;
-  expect(decision.behavior).toBe("deny");
-  expect(decision.message).toBe("Permission request timed out");
+  // Cleanup: resolve via permissionResponse so the promise doesn't hang
   vi.useRealTimers();
 });
 
@@ -1385,88 +1387,6 @@ test("onUserMessageAdded before initialize does not crash", async () => {
   expect(
     notifications.filter((n) => n.method === "userMessageAdded"),
   ).toHaveLength(0);
-});
-
-// ── Branch coverage: canUseTool timeout ─────────────────────────
-
-test("canUseTool auto-denies after 5-minute timeout", async () => {
-  vi.useFakeTimers();
-  const { bridge, notifications } = createBridge();
-  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-
-  await bridge.handleRequest("initialize", {});
-  const options = vi.mocked(Agent.create).mock.calls[0][0];
-  const canUseTool = options.canUseTool!;
-
-  const context: ToolPermissionContext = {
-    toolName: "Bash",
-    permissionMode: "default",
-    toolInput: { command: "ls" },
-  };
-
-  const permissionPromise = canUseTool(context);
-
-  // Wait for notification
-  await vi.waitFor(() => {
-    expect(notifications.some((n) => n.method === "permissionRequest")).toBe(
-      true,
-    );
-  });
-
-  // Advance time past 5-minute timeout
-  vi.advanceTimersByTime(5 * 60 * 1000 + 1000);
-
-  const decision = await permissionPromise;
-  expect(decision).toEqual({
-    behavior: "deny",
-    message: "Permission request timed out",
-  });
-
-  vi.useRealTimers();
-});
-
-test("canUseTool timeout is no-op when permission already resolved", async () => {
-  vi.useFakeTimers();
-  const { bridge, notifications } = createBridge();
-  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-
-  await bridge.handleRequest("initialize", {});
-  const options = vi.mocked(Agent.create).mock.calls[0][0];
-  const canUseTool = options.canUseTool!;
-
-  const context: ToolPermissionContext = {
-    toolName: "Bash",
-    permissionMode: "default",
-    toolInput: { command: "ls" },
-  };
-
-  const permissionPromise = canUseTool(context);
-
-  await vi.waitFor(() => {
-    expect(notifications.some((n) => n.method === "permissionRequest")).toBe(
-      true,
-    );
-  });
-
-  const permNotification = notifications.find(
-    (n) => n.method === "permissionRequest",
-  )!;
-  const requestId = (permNotification.params as { requestId: string })
-    .requestId;
-
-  // Resolve via permissionResponse before timeout
-  bridge.handleNotification("permissionResponse", {
-    requestId,
-    decision: { behavior: "allow" },
-  });
-
-  const decision = await permissionPromise;
-  expect(decision).toEqual({ behavior: "allow" });
-
-  // Advance past timeout — should be a no-op (false branch of the if)
-  vi.advanceTimersByTime(5 * 60 * 1000 + 1000);
-
-  vi.useRealTimers();
 });
 
 // ── Multi-session (multi-tenant) ─────────────────────────────────
