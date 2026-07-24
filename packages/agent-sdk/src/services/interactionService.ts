@@ -71,6 +71,13 @@ export class InteractionService {
         })),
       });
 
+      // Reserve loading state synchronously before any async work (hooks).
+      // This closes the race window where a concurrent notification/message
+      // could see isLoading=false during the await below and start a second
+      // sendAIMessage. sendAIMessage's generation guard is the backstop, but
+      // reserving here prevents the race at its source.
+      aiManager.setIsLoading(true);
+
       // Execute UserPromptSubmit hooks after adding the user message
       if (hookManager) {
         try {
@@ -104,6 +111,8 @@ export class InteractionService {
               "UserPromptSubmit hook blocked prompt processing with error:",
               processResult.errorMessage,
             );
+            // Release the loading state we reserved above
+            aiManager.setIsLoading(false);
             return; // Don't send to AI
           }
         } catch (error) {
@@ -116,6 +125,8 @@ export class InteractionService {
       await aiManager.sendAIMessage();
     } catch (error) {
       console.error("Failed to add user message:", error);
+      // Ensure loading state is released on error
+      aiManager.setIsLoading(false);
       // Loading state will be automatically updated by the useEffect that watches messages
     }
   }

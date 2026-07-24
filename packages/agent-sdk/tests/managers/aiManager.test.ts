@@ -171,9 +171,10 @@ describe("AIManager", () => {
       getAvailableSkills: vi.fn().mockReturnValue([]),
     });
 
-    // Mock NotificationQueue with no pending notifications
-    container.register("NotificationQueue", {
-      hasPending: vi.fn().mockReturnValue(false),
+    // Mock MessageQueue with no pending notifications
+    container.register("MessageQueue", {
+      hasNotifications: vi.fn().mockReturnValue(false),
+      drainNotifications: vi.fn().mockReturnValue([]),
     });
 
     // Create AIManager instance
@@ -231,8 +232,9 @@ describe("AIManager", () => {
         setNeedsPlanModeExitAttachment: vi.fn(),
         getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
-      container.register("NotificationQueue", {
-        hasPending: vi.fn().mockReturnValue(false),
+      container.register("MessageQueue", {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       });
 
       const aiManagerWithLanguage = new AIManager(container, {
@@ -334,8 +336,9 @@ describe("AIManager", () => {
         setNeedsPlanModeExitAttachment: vi.fn(),
         getNeedsPlanModeExitAttachment: vi.fn(() => false),
       } as unknown as Record<string, unknown>);
-      container.register("NotificationQueue", {
-        hasPending: vi.fn().mockReturnValue(false),
+      container.register("MessageQueue", {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       });
 
       const aiManagerWithLanguage = new AIManager(container, {
@@ -590,8 +593,9 @@ describe("AIManager", () => {
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
       );
-      container.register("NotificationQueue", {
-        hasPending: vi.fn().mockReturnValue(false),
+      container.register("MessageQueue", {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       });
 
       const aiManagerWithPermissions = new AIManager(container, {
@@ -656,8 +660,9 @@ describe("AIManager", () => {
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
       );
-      container.register("NotificationQueue", {
-        hasPending: vi.fn().mockReturnValue(false),
+      container.register("MessageQueue", {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       });
 
       const aiManagerWithPermissions = new AIManager(container, {
@@ -720,8 +725,9 @@ describe("AIManager", () => {
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
       );
-      container.register("NotificationQueue", {
-        hasPending: vi.fn().mockReturnValue(false),
+      container.register("MessageQueue", {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       });
 
       const aiManagerWithPermissions = new AIManager(container, {
@@ -775,8 +781,9 @@ describe("AIManager", () => {
         setNeedsPlanModeExitAttachment: vi.fn(),
         getNeedsPlanModeExitAttachment: vi.fn(() => false),
       });
-      container.register("NotificationQueue", {
-        hasPending: vi.fn().mockReturnValue(false),
+      container.register("MessageQueue", {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       });
 
       const aiManagerWithAutoMemory = new AIManager(container, {
@@ -823,8 +830,9 @@ describe("AIManager", () => {
         setNeedsPlanModeExitAttachment: vi.fn(),
         getNeedsPlanModeExitAttachment: vi.fn(() => false),
       });
-      container.register("NotificationQueue", {
-        hasPending: vi.fn().mockReturnValue(false),
+      container.register("MessageQueue", {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       });
 
       const aiManagerDisabledAutoMemory = new AIManager(container, {
@@ -1037,12 +1045,12 @@ describe("AIManager", () => {
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager;
 
-      const mockNotificationQueue = {
-        hasPending: vi
+      const mockMessageQueue = {
+        hasNotifications: vi
           .fn()
           .mockReturnValueOnce(false)
           .mockReturnValueOnce(false),
-        dequeueAll: vi
+        drainNotifications: vi
           .fn()
           .mockReturnValue([
             "<task-notification><task-id>test</task-id></task-notification>",
@@ -1081,7 +1089,7 @@ describe("AIManager", () => {
       container.register("SkillManager", {
         getAvailableSkills: vi.fn().mockReturnValue([]),
       });
-      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("MessageQueue", mockMessageQueue);
       container.register("AgentOptions", {
         callbacks: {},
       });
@@ -1092,7 +1100,7 @@ describe("AIManager", () => {
       });
 
       await testAIManager.sendAIMessage();
-      expect(mockNotificationQueue.hasPending).toHaveBeenCalled();
+      expect(mockMessageQueue.hasNotifications).toHaveBeenCalled();
     });
 
     it("should inject and process pending notifications in finally block", async () => {
@@ -1102,13 +1110,13 @@ describe("AIManager", () => {
       } as unknown as TaskManager;
 
       // First call returns true (pending), second call returns false (after dequeue)
-      const mockNotificationQueue = {
-        hasPending: vi
+      const mockMessageQueue = {
+        hasNotifications: vi
           .fn()
           .mockReturnValueOnce(true)
           .mockReturnValueOnce(false)
           .mockReturnValueOnce(false),
-        dequeueAll: vi
+        drainNotifications: vi
           .fn()
           .mockReturnValue([
             "<task-notification><task-id>test</task-id></task-notification>",
@@ -1147,7 +1155,7 @@ describe("AIManager", () => {
       container.register("SkillManager", {
         getAvailableSkills: vi.fn().mockReturnValue([]),
       });
-      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("MessageQueue", mockMessageQueue);
       container.register("AgentOptions", {
         callbacks: {},
       });
@@ -1158,7 +1166,7 @@ describe("AIManager", () => {
       });
 
       await testAIManager.sendAIMessage();
-      expect(mockNotificationQueue.dequeueAll).toHaveBeenCalled();
+      expect(mockMessageQueue.drainNotifications).toHaveBeenCalled();
     });
 
     it("should execute Stop hooks even when notifications are pending", async () => {
@@ -1168,13 +1176,13 @@ describe("AIManager", () => {
       } as unknown as TaskManager;
 
       // First call returns true (pending), second call returns false (after dequeue)
-      const mockNotificationQueue = {
-        hasPending: vi
+      const mockMessageQueue = {
+        hasNotifications: vi
           .fn()
           .mockReturnValueOnce(true)
           .mockReturnValueOnce(false)
           .mockReturnValueOnce(false),
-        dequeueAll: vi
+        drainNotifications: vi
           .fn()
           .mockReturnValue([
             "<task-notification><task-id>test</task-id></task-notification>",
@@ -1213,7 +1221,7 @@ describe("AIManager", () => {
       container.register("SkillManager", {
         getAvailableSkills: vi.fn().mockReturnValue([]),
       });
-      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("MessageQueue", mockMessageQueue);
       container.register("AgentOptions", {
         callbacks: {},
       });
@@ -1238,7 +1246,7 @@ describe("AIManager", () => {
       // Stop hooks should have been called despite pending notifications
       expect(stopHookSpy).toHaveBeenCalled();
       // Notifications should also have been dequeued
-      expect(mockNotificationQueue.dequeueAll).toHaveBeenCalled();
+      expect(mockMessageQueue.drainNotifications).toHaveBeenCalled();
     });
   });
 
@@ -1249,8 +1257,9 @@ describe("AIManager", () => {
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager;
 
-      const mockNotificationQueue = {
-        hasPending: vi.fn().mockReturnValue(false),
+      const mockMessageQueue = {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       };
 
       const mockHookManager = {
@@ -1343,7 +1352,7 @@ describe("AIManager", () => {
       container.register("SkillManager", {
         getAvailableSkills: vi.fn().mockReturnValue([]),
       });
-      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("MessageQueue", mockMessageQueue);
       container.register("HookManager", mockHookManager);
       container.register("AgentOptions", { callbacks: {} });
 
@@ -1402,8 +1411,9 @@ describe("AIManager", () => {
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager;
 
-      const mockNotificationQueue = {
-        hasPending: vi.fn().mockReturnValue(false),
+      const mockMessageQueue = {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       };
 
       const mockHookManager = {
@@ -1453,7 +1463,7 @@ describe("AIManager", () => {
       container.register("SkillManager", {
         getAvailableSkills: vi.fn().mockReturnValue([]),
       });
-      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("MessageQueue", mockMessageQueue);
       container.register("HookManager", mockHookManager);
       container.register("AgentOptions", { callbacks: {} });
 
@@ -1480,8 +1490,9 @@ describe("AIManager", () => {
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager;
 
-      const mockNotificationQueue = {
-        hasPending: vi.fn().mockReturnValue(false),
+      const mockMessageQueue = {
+        hasNotifications: vi.fn().mockReturnValue(false),
+        drainNotifications: vi.fn().mockReturnValue([]),
       };
 
       const mockHookManager = {
@@ -1539,7 +1550,7 @@ describe("AIManager", () => {
       container.register("SkillManager", {
         getAvailableSkills: vi.fn().mockReturnValue([]),
       });
-      container.register("NotificationQueue", mockNotificationQueue);
+      container.register("MessageQueue", mockMessageQueue);
       container.register("HookManager", mockHookManager);
       container.register("AgentOptions", { callbacks: {} });
 

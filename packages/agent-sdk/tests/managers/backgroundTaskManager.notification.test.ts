@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Container } from "../../src/utils/container.js";
-import { NotificationQueue } from "../../src/managers/notificationQueue.js";
 
 const handlers = new Map<string, (arg?: number | Error) => void>();
 
@@ -30,17 +29,18 @@ vi.mock("fs", () => ({
 }));
 
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
+import { MessageQueue } from "../../src/managers/messageQueue.js";
 
-describe("BackgroundTaskManager - Notification Queue", () => {
+describe("BackgroundTaskManager - Message Queue", () => {
   let container: Container;
-  let notificationQueue: NotificationQueue;
+  let messageQueue: MessageQueue;
   let manager: BackgroundTaskManager;
 
   beforeEach(() => {
     handlers.clear();
     container = new Container();
-    notificationQueue = new NotificationQueue();
-    container.register("NotificationQueue", notificationQueue);
+    messageQueue = new MessageQueue();
+    container.register("MessageQueue", messageQueue);
 
     manager = new BackgroundTaskManager(container, {
       workdir: "/test/workdir",
@@ -53,8 +53,8 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     const exitHandler = handlers.get("exit");
     exitHandler?.(0);
 
-    expect(notificationQueue.hasPending()).toBe(true);
-    const notifications = notificationQueue.dequeueAll();
+    expect(messageQueue.hasNotifications()).toBe(true);
+    const notifications = messageQueue.drainNotifications();
     expect(notifications.length).toBe(1);
     expect(notifications[0]).toContain("<task-id>");
     expect(notifications[0]).toContain("<status>completed</status>");
@@ -67,8 +67,8 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     const exitHandler = handlers.get("exit");
     exitHandler?.(1);
 
-    expect(notificationQueue.hasPending()).toBe(true);
-    const notifications = notificationQueue.dequeueAll();
+    expect(messageQueue.hasNotifications()).toBe(true);
+    const notifications = messageQueue.drainNotifications();
     expect(notifications[0]).toContain("<status>failed</status>");
   });
 
@@ -78,8 +78,8 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     const errorHandler = handlers.get("error");
     errorHandler?.(new Error("spawn error"));
 
-    expect(notificationQueue.hasPending()).toBe(true);
-    const notifications = notificationQueue.dequeueAll();
+    expect(messageQueue.hasNotifications()).toBe(true);
+    const notifications = messageQueue.drainNotifications();
     expect(notifications[0]).toContain("<status>failed</status>");
     expect(notifications[0]).toContain("spawn error");
   });
@@ -91,10 +91,10 @@ describe("BackgroundTaskManager - Notification Queue", () => {
 
     manager.stopTask(taskId);
 
-    expect(notificationQueue.hasPending()).toBe(false);
+    expect(messageQueue.hasNotifications()).toBe(false);
   });
 
-  it("should not enqueue notification when NotificationQueue is not available", () => {
+  it("should not enqueue notification when MessageQueue is not available", () => {
     const noNotifyContainer = new Container();
     const noNotifyManager = new BackgroundTaskManager(noNotifyContainer, {
       workdir: "/test/workdir",
@@ -104,7 +104,7 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     noNotifyManager.startShell("echo test");
   });
 
-  it("should handle task completion without NotificationQueue", () => {
+  it("should handle task completion without MessageQueue", () => {
     const noNotifyContainer = new Container();
     const noNotifyManager = new BackgroundTaskManager(noNotifyContainer, {
       workdir: "/test/workdir",
@@ -120,7 +120,7 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     expect(tasks[0].status).toBe("completed");
   });
 
-  it("should handle task error without NotificationQueue", () => {
+  it("should handle task error without MessageQueue", () => {
     const noNotifyContainer = new Container();
     const noNotifyManager = new BackgroundTaskManager(noNotifyContainer, {
       workdir: "/test/workdir",
@@ -136,7 +136,7 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     expect(tasks[0].status).toBe("failed");
   });
 
-  it("should handle task kill without NotificationQueue", () => {
+  it("should handle task kill without MessageQueue", () => {
     const noNotifyContainer = new Container();
     const noNotifyManager = new BackgroundTaskManager(noNotifyContainer, {
       workdir: "/test/workdir",
@@ -163,7 +163,7 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     // Stop the task (sets status to "killed", sends SIGTERM via onStop)
     manager.stopTask(taskId);
 
-    expect(notificationQueue.hasPending()).toBe(false);
+    expect(messageQueue.hasNotifications()).toBe(false);
 
     // Simulate onExit firing after SIGTERM — this should NOT enqueue a notification
     const exitHandler = handlers.get("exit");
@@ -172,7 +172,7 @@ describe("BackgroundTaskManager - Notification Queue", () => {
     // Status should remain "killed", not be overwritten to "failed"
     expect(tasks[0].status).toBe("killed");
     // No notification should be enqueued
-    expect(notificationQueue.hasPending()).toBe(false);
+    expect(messageQueue.hasNotifications()).toBe(false);
   });
 
   it("should preserve killed status when onExit fires after stopTask", () => {
@@ -189,6 +189,6 @@ describe("BackgroundTaskManager - Notification Queue", () => {
 
     // Status must remain "killed", not overwritten to "completed"
     expect(tasks[0].status).toBe("killed");
-    expect(notificationQueue.hasPending()).toBe(false);
+    expect(messageQueue.hasNotifications()).toBe(false);
   });
 });

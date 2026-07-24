@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Container } from "../utils/container.js";
 import { BackgroundTaskManager } from "./backgroundTaskManager.js";
-import { NotificationQueue } from "./notificationQueue.js";
+import { MessageQueue } from "./messageQueue.js";
 import { SubagentManager } from "./subagentManager.js";
 import { taskNotificationToXml } from "../utils/notificationXml.js";
 import { ConcurrencyLimiter } from "../workflow/concurrencyLimiter.js";
@@ -49,8 +49,8 @@ export class WorkflowManager {
     return this.container.get<BackgroundTaskManager>("BackgroundTaskManager")!;
   }
 
-  private get notificationQueue(): NotificationQueue {
-    return this.container.get<NotificationQueue>("NotificationQueue")!;
+  private get messageQueue(): MessageQueue {
+    return this.container.get<MessageQueue>("MessageQueue")!;
   }
 
   private get subagentManager(): SubagentManager {
@@ -295,7 +295,7 @@ export class WorkflowManager {
 
         // Enqueue completion notification
         const journalPath = journal.filePath;
-        this.notificationQueue.enqueue(
+        this.messageQueue.enqueueNotification(
           taskNotificationToXml({
             type: "task_notification",
             taskId: runId,
@@ -337,7 +337,7 @@ export class WorkflowManager {
           task.endTime = Date.now();
         }
 
-        this.notificationQueue.enqueue(
+        this.messageQueue.enqueueNotification(
           taskNotificationToXml({
             type: "task_notification",
             taskId: runId,

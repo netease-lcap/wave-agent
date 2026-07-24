@@ -19,7 +19,7 @@ import {
   createAbortPromise,
 } from "../utils/abortUtils.js";
 import { BackgroundTaskManager } from "./backgroundTaskManager.js";
-import { NotificationQueue } from "./notificationQueue.js";
+import { MessageQueue } from "./messageQueue.js";
 import { logger } from "../utils/globalLogger.js";
 import {
   UserMessageParams,
@@ -81,7 +81,6 @@ export interface SubagentInstance {
   toolManager: ToolManager;
   permissionManager: PermissionManager;
   backgroundTaskManager: BackgroundTaskManager;
-  notificationQueue: NotificationQueue;
   status: "initializing" | "active" | "completed" | "error" | "aborted";
   messages: Message[];
   usedTools: {
@@ -393,10 +392,6 @@ export class SubagentManager {
     });
     subagentContainer.register("AIManager", aiManager);
 
-    // Create isolated NotificationQueue for the subagent/forked agent
-    const subagentNotificationQueue = new NotificationQueue();
-    subagentContainer.register("NotificationQueue", subagentNotificationQueue);
-
     // Create isolated BackgroundTaskManager for the subagent/forked agent
     const subagentBackgroundTaskManager = new BackgroundTaskManager(
       subagentContainer,
@@ -417,7 +412,6 @@ export class SubagentManager {
       toolManager,
       permissionManager: subagentPermissionManager,
       backgroundTaskManager: subagentBackgroundTaskManager,
-      notificationQueue: subagentNotificationQueue,
       status: "initializing",
       messages: [],
       usedTools: [], // Initialize usedTools
@@ -657,12 +651,12 @@ export class SubagentManager {
           }
           // Skip notification if task was already stopped (e.g. by main agent shutdown)
           if (!wasAlreadyKilled) {
-            const notificationQueue = this.container.has("NotificationQueue")
-              ? this.container.get<NotificationQueue>("NotificationQueue")
+            const messageQueue = this.container.has("MessageQueue")
+              ? this.container.get<MessageQueue>("MessageQueue")
               : undefined;
-            if (notificationQueue) {
+            if (messageQueue) {
               const summary = `Agent task "${instance.description}" completed`;
-              notificationQueue.enqueue(
+              messageQueue.enqueueNotification(
                 `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>completed</status>\n<summary>${summary}</summary>\n</task-notification>`,
               );
             }
@@ -694,14 +688,14 @@ export class SubagentManager {
           }
           // Skip notification if task was already stopped (e.g. by main agent shutdown)
           if (!wasAlreadyKilled) {
-            const notificationQueue = this.container.has("NotificationQueue")
-              ? this.container.get<NotificationQueue>("NotificationQueue")
+            const messageQueue = this.container.has("MessageQueue")
+              ? this.container.get<MessageQueue>("MessageQueue")
               : undefined;
-            if (notificationQueue) {
+            if (messageQueue) {
               const errorMsg =
                 error instanceof Error ? error.message : String(error);
               const summary = `Agent task "${instance.description}" failed: ${errorMsg}`;
-              notificationQueue.enqueue(
+              messageQueue.enqueueNotification(
                 `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
               );
             }

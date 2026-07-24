@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Container } from "../../src/utils/container.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
-import { NotificationQueue } from "../../src/managers/notificationQueue.js";
+import { MessageQueue } from "../../src/managers/messageQueue.js";
 import type { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import type { BackgroundTask } from "../../src/types/processes.js";
 import type { SubagentInstance } from "../../src/managers/subagentManager.js";
@@ -77,7 +77,7 @@ vi.mock("../../src/managers/aiManager.js", () => {
 
 describe("SubagentManager background notification deduplication", () => {
   let container: Container;
-  let notificationQueue: NotificationQueue;
+  let messageQueue: MessageQueue;
   let subagentManager: SubagentManager;
   let tasks: Map<string, BackgroundTask>;
   let stopTaskFn: (id: string) => boolean;
@@ -87,8 +87,8 @@ describe("SubagentManager background notification deduplication", () => {
     vi.clearAllMocks();
 
     container = new Container();
-    notificationQueue = new NotificationQueue();
-    container.register("NotificationQueue", notificationQueue);
+    messageQueue = new MessageQueue();
+    container.register("MessageQueue", messageQueue);
 
     tasks = new Map();
 
@@ -99,7 +99,7 @@ describe("SubagentManager background notification deduplication", () => {
         task.status = "killed";
         task.endTime = Date.now();
         task.runtime = task.endTime - (task.startTime ?? 0);
-        notificationQueue.enqueue(
+        messageQueue.enqueueNotification(
           `<task-notification>\n<task-id>${id}</task-id>\n<task-type>subagent</task-type>\n<status>killed</status>\n<summary>Agent task "${task.description}" was stopped</summary>\n</task-notification>`,
         );
         return true;
@@ -167,7 +167,7 @@ describe("SubagentManager background notification deduplication", () => {
     await vi.advanceTimersByTimeAsync(200);
 
     // Should only have killed notification, not completed
-    const notifications = notificationQueue.dequeueAll();
+    const notifications = messageQueue.drainNotifications();
     const completedNotifications = notifications.filter((n) =>
       n.includes("status>completed"),
     );
@@ -204,7 +204,7 @@ describe("SubagentManager background notification deduplication", () => {
     await vi.advanceTimersByTimeAsync(100);
 
     // Should have completion notification
-    const notifications = notificationQueue.dequeueAll();
+    const notifications = messageQueue.drainNotifications();
     const completedNotifications = notifications.filter((n) =>
       n.includes("status>completed"),
     );

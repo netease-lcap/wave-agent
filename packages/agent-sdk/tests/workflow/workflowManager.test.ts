@@ -20,8 +20,8 @@ function createMockContainer(sessionDir?: string) {
     notifyTasksChange: vi.fn(),
   };
 
-  const mockNotificationQueue = {
-    enqueue: vi.fn(),
+  const mockMessageQueue = {
+    enqueueNotification: vi.fn(),
   };
 
   const mockSubagentManager = {
@@ -44,7 +44,7 @@ function createMockContainer(sessionDir?: string) {
   };
 
   container.register("BackgroundTaskManager", mockBackgroundTaskManager);
-  container.register("NotificationQueue", mockNotificationQueue);
+  container.register("MessageQueue", mockMessageQueue);
   container.register("SubagentManager", mockSubagentManager);
   container.register("MessageManager", mockMessageManager);
   container.register("workdir", "/tmp/wave-test");
@@ -52,7 +52,7 @@ function createMockContainer(sessionDir?: string) {
   return {
     container,
     mockBackgroundTaskManager,
-    mockNotificationQueue,
+    mockMessageQueue,
     mockSubagentManager,
     mockMessageManager,
   };
@@ -192,7 +192,7 @@ describe("WorkflowManager", () => {
       expect(run.status).toBe("completed");
       expect(run.result).toBe(42);
       expect(run.endTime).toBeDefined();
-      expect(mocks.mockNotificationQueue.enqueue).toHaveBeenCalled();
+      expect(mocks.mockMessageQueue.enqueueNotification).toHaveBeenCalled();
       expect(mocks.mockBackgroundTaskManager.addTask).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "workflow",
@@ -225,7 +225,7 @@ describe("WorkflowManager", () => {
 
       expect(run.status).toBe("failed");
       expect(run.error).toBe("script error");
-      expect(mocks.mockNotificationQueue.enqueue).toHaveBeenCalled();
+      expect(mocks.mockMessageQueue.enqueueNotification).toHaveBeenCalled();
 
       // Cleanup
       await fs.promises.rm(tmpDir, { recursive: true });
@@ -409,7 +409,7 @@ describe("WorkflowManager", () => {
           .mockReturnValue({ id: "task-progress", status: "running" }),
         notifyTasksChange,
       });
-      container.register("NotificationQueue", { enqueue: vi.fn() });
+      container.register("MessageQueue", { enqueueNotification: vi.fn() });
       container.register("SubagentManager", {
         findSubagent: vi.fn().mockResolvedValue({ id: "general-purpose" }),
         createInstance: vi.fn().mockResolvedValue({

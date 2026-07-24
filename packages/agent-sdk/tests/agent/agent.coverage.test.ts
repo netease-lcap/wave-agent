@@ -102,47 +102,44 @@ describe("Agent - Branch Coverage", () => {
       expect(agent.getBackgroundTaskOutput("non-existent")).toBeNull();
     });
 
-    it("should have notification queue wired up", async () => {
-      // Verify the notification queue exists and has the expected interface
-      const notificationQueue = (
+    it("should have message queue wired up with notification API", async () => {
+      // Verify the message queue exists and has the notification interface
+      const messageQueue = (
         agent as unknown as {
-          notificationQueue: {
-            enqueue: (n: string) => void;
-            dequeueAll: () => string[];
-            hasPending: () => boolean;
-            onNotificationsEnqueued?: () => void;
+          messageQueue: {
+            enqueueNotification: (xml: string) => void;
+            drainNotifications: () => string[];
+            hasNotifications: () => boolean;
+            onMessageEnqueued?: () => void;
           };
         }
-      ).notificationQueue;
+      ).messageQueue;
 
-      expect(notificationQueue).toBeDefined();
-      expect(typeof notificationQueue.enqueue).toBe("function");
-      expect(typeof notificationQueue.dequeueAll).toBe("function");
-      expect(typeof notificationQueue.hasPending).toBe("function");
-      expect(typeof notificationQueue.onNotificationsEnqueued).toBe("function");
+      expect(messageQueue).toBeDefined();
+      expect(typeof messageQueue.enqueueNotification).toBe("function");
+      expect(typeof messageQueue.drainNotifications).toBe("function");
+      expect(typeof messageQueue.hasNotifications).toBe("function");
+      expect(typeof messageQueue.onMessageEnqueued).toBe("function");
     });
 
-    it("should trigger notification callback when agent is idle", async () => {
-      // Enqueue a notification - this should trigger the onNotificationsEnqueued
-      // callback, which calls processPendingNotifications since agent is idle
-      const notificationQueue = (
+    it("should trigger dispatch callback when agent is idle", async () => {
+      // Enqueue triggers onMessageEnqueued, which calls tryDispatch since agent is idle
+      const messageQueue = (
         agent as unknown as {
-          notificationQueue: {
-            enqueue: (n: string) => void;
-            hasPending: () => boolean;
-            onNotificationsEnqueued?: () => void;
+          messageQueue: {
+            hasNotifications: () => boolean;
+            onMessageEnqueued?: () => void;
           };
         }
-      ).notificationQueue;
+      ).messageQueue;
 
-      // Manually call the callback to exercise the branches
-      notificationQueue.onNotificationsEnqueued!();
+      // Manually call the callback to exercise the dispatch path
+      messageQueue.onMessageEnqueued!();
 
-      // Give time for the async processPendingNotifications to run
+      // Give time for the async dispatch to run (nothing was enqueued, so no-op)
       await new Promise((r) => setTimeout(r, 10));
 
-      // The notification should have been processed (queue is empty since no items)
-      expect(notificationQueue.hasPending()).toBe(false);
+      expect(messageQueue.hasNotifications()).toBe(false);
     });
 
     it("should skip notification processing when agent is loading", async () => {
@@ -152,56 +149,49 @@ describe("Agent - Branch Coverage", () => {
       ).aiManager;
       aiManager.isLoading = true;
 
-      const notificationQueue = (
+      const messageQueue = (
         agent as unknown as {
-          notificationQueue: {
-            enqueue: (n: string) => void;
-            dequeueAll: () => string[];
-            onNotificationsEnqueued?: () => void;
+          messageQueue: {
+            enqueueNotification: (xml: string) => void;
+            drainNotifications: () => string[];
+            onMessageEnqueued?: () => void;
           };
         }
-      ).notificationQueue;
+      ).messageQueue;
 
-      // Enqueue a notification first
-      notificationQueue.enqueue("test-notification");
+      // Enqueue a notification - tryDispatch returns early because isLoading is true
+      messageQueue.enqueueNotification("test-notification");
 
-      // Manually call the callback - should NOT trigger processPendingNotifications
-      // because agent is loading
-      notificationQueue.onNotificationsEnqueued!();
-
-      // Queue should still have the notification (not processed)
-      expect(notificationQueue.dequeueAll()).toEqual(["test-notification"]);
+      // Notification should still be in the queue (not processed)
+      expect(messageQueue.drainNotifications()).toEqual(["test-notification"]);
 
       // Reset loading state
       aiManager.isLoading = false;
     });
 
-    it("should process pending notification promises on destroy", async () => {
+    it("should process pending notifications and clear queue", async () => {
       const agent2 = await Agent.create({
         apiKey: "test-key",
         workdir: "/tmp/test-coverage-2",
       });
 
-      const notificationQueue = (
+      const messageQueue = (
         agent2 as unknown as {
-          notificationQueue: {
-            enqueue: (n: string) => void;
-            hasPending: () => boolean;
-            onNotificationsEnqueued?: () => void;
+          messageQueue: {
+            enqueueNotification: (xml: string) => void;
+            hasNotifications: () => boolean;
+            onMessageEnqueued?: () => void;
           };
         }
-      ).notificationQueue;
+      ).messageQueue;
 
-      // Enqueue a notification
-      notificationQueue.enqueue("test-notification");
-
-      // Manually call the callback (agent is idle)
-      notificationQueue.onNotificationsEnqueued!();
+      // Enqueue a notification - this triggers tryDispatch → processQueuedMessage
+      messageQueue.enqueueNotification("test-notification");
 
       // Use vi.waitFor to properly wait for the async processing
       await vi.waitFor(
         () => {
-          expect(notificationQueue.hasPending()).toBe(false);
+          expect(messageQueue.hasNotifications()).toBe(false);
         },
         { timeout: 5000 },
       );

@@ -1,7 +1,6 @@
 import { Container } from "./container.js";
 import { ForegroundTaskManager } from "../managers/foregroundTaskManager.js";
 import { BackgroundTaskManager } from "../managers/backgroundTaskManager.js";
-import { NotificationQueue } from "../managers/notificationQueue.js";
 import { MessageQueue } from "../managers/messageQueue.js";
 import { TaskManager } from "../services/taskManager.js";
 import { MessageManager } from "../managers/messageManager.js";
@@ -91,9 +90,6 @@ export function setupAgentContainer(
   // Per-agent worktree session state (EnterWorktree/ExitWorktree). Stored in the
   // container so it is isolated per session, not shared process-wide.
   container.register("WorktreeSession", null);
-
-  const notificationQueue = new NotificationQueue();
-  container.register("NotificationQueue", notificationQueue);
 
   const messageQueue = new MessageQueue();
   container.register("MessageQueue", messageQueue);

@@ -4,7 +4,7 @@ import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
-import { NotificationQueue } from "../../src/managers/notificationQueue.js";
+import { MessageQueue } from "../../src/managers/messageQueue.js";
 import { Container } from "../../src/utils/container.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
@@ -36,7 +36,7 @@ describe("SubagentManager - Notification Deduplication", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
   let mockBackgroundTaskManager: BackgroundTaskManager;
-  let notificationQueue: NotificationQueue;
+  let messageQueue: MessageQueue;
   let container: Container;
 
   const testConfig: SubagentConfiguration = {
@@ -64,7 +64,7 @@ describe("SubagentManager - Notification Deduplication", () => {
       getTask: vi.fn(),
     } as unknown as BackgroundTaskManager;
 
-    notificationQueue = new NotificationQueue();
+    messageQueue = new MessageQueue();
 
     const taskManager = {
       on: vi.fn(),
@@ -76,7 +76,7 @@ describe("SubagentManager - Notification Deduplication", () => {
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", taskManager);
     container.register("BackgroundTaskManager", mockBackgroundTaskManager);
-    container.register("NotificationQueue", notificationQueue);
+    container.register("MessageQueue", messageQueue);
 
     container.register("ConfigurationService", {
       resolveGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
@@ -96,7 +96,7 @@ describe("SubagentManager - Notification Deduplication", () => {
   });
 
   it("should enqueue exactly ONE completion notification for backgroundInstance path", async () => {
-    const enqueueSpy = vi.spyOn(notificationQueue, "enqueue");
+    const enqueueSpy = vi.spyOn(messageQueue, "enqueueNotification");
 
     const instance = await subagentManager.createInstance(testConfig, {
       description: "Test background task",
@@ -140,7 +140,7 @@ describe("SubagentManager - Notification Deduplication", () => {
   });
 
   it("should enqueue exactly ONE error notification for backgroundInstance path", async () => {
-    const enqueueSpy = vi.spyOn(notificationQueue, "enqueue");
+    const enqueueSpy = vi.spyOn(messageQueue, "enqueueNotification");
 
     const instance = await subagentManager.createInstance(testConfig, {
       description: "Failing background task",
@@ -189,7 +189,7 @@ describe("SubagentManager - Notification Deduplication", () => {
   });
 
   it("should enqueue exactly ONE completion notification for executeAgent with runInBackground", async () => {
-    const enqueueSpy = vi.spyOn(notificationQueue, "enqueue");
+    const enqueueSpy = vi.spyOn(messageQueue, "enqueueNotification");
 
     const instance = await subagentManager.createInstance(testConfig, {
       description: "Test background task",
@@ -234,7 +234,7 @@ describe("SubagentManager - Notification Deduplication", () => {
   });
 
   it("should enqueue exactly ONE error notification for executeAgent with runInBackground", async () => {
-    const enqueueSpy = vi.spyOn(notificationQueue, "enqueue");
+    const enqueueSpy = vi.spyOn(messageQueue, "enqueueNotification");
 
     const instance = await subagentManager.createInstance(testConfig, {
       description: "Failing background task",

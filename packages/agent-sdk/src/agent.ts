@@ -10,7 +10,6 @@ import { BangManager } from "./managers/bangManager.js";
 import { CronManager } from "./managers/cronManager.js";
 import { GoalManager } from "./managers/goalManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
-import { NotificationQueue } from "./managers/notificationQueue.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
@@ -77,9 +76,8 @@ export class Agent {
   private goalManager: GoalManager; // Add goal manager instance
   private hookManager: HookManager; // Add hooks manager instance
   private reversionManager: ReversionManager;
-  private notificationQueue: NotificationQueue; // Add notification queue instance
-  private messageQueue: MessageQueue; // Add message queue instance
-  private pendingNotificationPromises: Promise<void>[] = []; // Track pending notification processing
+  private messageQueue: MessageQueue; // Unified queue for messages, bang commands, and notifications
+  private dispatchPromise: Promise<void> | null = null; // Track current dispatch for teardown
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private taskManager: TaskManager;
@@ -207,24 +205,7 @@ export class Agent {
     this.bangManager = this.container.get("BangManager")!;
     this.cronManager = this.container.get("CronManager")!;
     this.goalManager = this.container.get("GoalManager")!;
-    this.notificationQueue = this.container.get("NotificationQueue")!;
     this.messageQueue = this.container.get("MessageQueue")!;
-
-    // Wire up notification queue to trigger AI when notifications arrive while idle
-    this.notificationQueue.onNotificationsEnqueued = () => {
-      // If the AI is NOT loading (idle), trigger a new AI cycle to process notifications
-      if (!this.aiManager.isLoading) {
-        const pendingPromise = this.processPendingNotifications().catch(
-          (error) => {
-            this.logger?.error(
-              "Failed to process pending notifications:",
-              error,
-            );
-          },
-        );
-        this.pendingNotificationPromises.push(pendingPromise);
-      }
-    };
 
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {
@@ -233,18 +214,20 @@ export class Agent {
       this.options.callbacks?.onWorkdirChange?.(newCwd);
     });
 
-    // Wire up message queue to process when agent becomes idle
-    this.messageQueue.onMessageEnqueued = () => this.tryDequeue();
+    // Wire up message queue to process when agent becomes idle.
+    // Both user messages and background task notifications enqueue here,
+    // unified through a single dispatch path (tryDispatch).
+    this.messageQueue.onMessageEnqueued = () => this.tryDispatch();
 
     // Wire up AI loading changes to process queue when AI becomes idle
     this.aiManager.onLoadingChange = (loading: boolean) => {
-      if (!loading) this.tryDequeue();
+      if (!loading) this.tryDispatch();
     };
 
     // Wire up bang manager callback for command running changes
     this.bangManager.onCommandRunningChange = (running: boolean) => {
       this.options.callbacks?.onCommandRunningChange?.(running);
-      if (!running) this.tryDequeue();
+      if (!running) this.tryDispatch();
     };
 
     // Set initial permission mode if provided
@@ -346,9 +329,11 @@ export class Agent {
     return this.bangManager?.isCommandRunning ?? false;
   }
 
-  /** Get queued messages */
+  /** Get queued user-facing messages (excludes background notifications) */
   public get queuedMessages(): QueuedMessage[] {
-    return this.messageQueue.getQueue();
+    return this.messageQueue
+      .getQueue()
+      .filter((m) => m.type !== "notification");
   }
 
   /** Get goal status string */
@@ -421,28 +406,31 @@ export class Agent {
   }
 
   /**
-   * Unified dequeue trigger — checks state machine before processing.
-   * Called from onMessageEnqueued, onLoadingChange(false), and
-   * onCommandRunningChange(false).
+   * Unified dispatch trigger — checks state machine before processing.
+   * Handles user messages, bang commands, and background task notifications
+   * through a single serialized path. Called from onMessageEnqueued,
+   * onLoadingChange(false), and onCommandRunningChange(false).
    */
-  private tryDequeue(): void {
+  private tryDispatch(): void {
     if (this.messageQueue.state !== "idle") return;
     if (!this.messageQueue.hasPending()) return;
     if (this.aiManager.isLoading || this.isCommandRunning) return;
 
     this.messageQueue.transitionTo("dispatching");
-    this.processQueuedMessage()
+    this.dispatchPromise = this.processQueuedMessage()
       .catch((error) => {
         this.logger?.error("Failed to process queued message:", error);
       })
       .finally(() => {
         this.messageQueue.transitionTo("idle");
-        this.tryDequeue(); // Re-check after processing
+        this.dispatchPromise = null;
+        this.tryDispatch(); // Re-check after processing
       });
   }
 
   /**
-   * Process the next queued message when the agent becomes idle.
+   * Process the next queued item when the agent becomes idle.
+   * Handles three item types: user messages, bang commands, and notifications.
    */
   private async processQueuedMessage(): Promise<void> {
     const next = this.messageQueue.dequeue();
@@ -454,6 +442,25 @@ export class Agent {
     if (next.type === "bang") {
       await this.bangManager?.executeCommand(next.content);
       await this.messageManager.saveSession();
+    } else if (next.type === "notification") {
+      // Drain all pending notifications and batch them into a single AI turn
+      const allNotifications = [
+        next.content,
+        ...this.messageQueue.drainNotifications(),
+      ];
+      for (const xml of allNotifications) {
+        const block = parseTaskNotificationXml(xml);
+        if (block) {
+          this.messageManager.addNotificationMessage({
+            taskId: block.taskId,
+            taskType: block.taskType,
+            status: block.status,
+            summary: block.summary,
+            outputFile: block.outputFile,
+          });
+        }
+      }
+      await this.aiManager.sendAIMessage({ recursionDepth: 0 });
     } else {
       await this.sendMessage(next.content, next.images);
     }
@@ -681,31 +688,6 @@ export class Agent {
     this.aiManager.abortAIMessage();
   }
 
-  /**
-   * Process pending background task notifications by injecting them as user messages
-   * and triggering a new AI response cycle.
-   */
-  private async processPendingNotifications(): Promise<void> {
-    const notifications = this.notificationQueue.dequeueAll();
-    if (notifications.length === 0) return;
-
-    for (const notification of notifications) {
-      const block = parseTaskNotificationXml(notification);
-      if (block) {
-        this.messageManager.addNotificationMessage({
-          taskId: block.taskId,
-          taskType: block.taskType,
-          status: block.status,
-          summary: block.summary,
-          outputFile: block.outputFile,
-        });
-      }
-    }
-
-    // Trigger AI to process the notifications
-    await this.aiManager.sendAIMessage({ recursionDepth: 0 });
-  }
-
   /** Execute bash command (bang command) */
   public async bang(command: string): Promise<void> {
     // If the agent is busy, enqueue the bang command
@@ -866,8 +848,9 @@ export class Agent {
   /** Unified interrupt method, interrupts both AI messages and command execution */
   public abortMessage(): void {
     if (this.aiManager.isLoading || this.isCommandRunning) {
-      // Clear queue first to prevent processQueuedMessage from dequeuing
-      // when abortAIMessage triggers onLoadingChange(false)
+      // Clear user-facing queue items first to prevent processQueuedMessage
+      // from dequeuing when abortAIMessage triggers onLoadingChange(false).
+      // Notifications are preserved so background task results aren't lost.
       this.messageQueue.clear();
       this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
     }
@@ -957,15 +940,14 @@ export class Agent {
     }).catch(() => {});
     await shutdownTelemetry();
 
-    // Clear notification callback first to prevent any late triggers from
+    // Clear message queue callback first to prevent any late triggers from
     // starting async work during teardown
-    this.notificationQueue.onNotificationsEnqueued = undefined;
+    this.messageQueue.onMessageEnqueued = undefined;
 
-    // Await any pending notification processing to prevent race conditions
+    // Await any pending dispatch to prevent race conditions
     // with test teardown (e.g., V8 coverage stream cleanup)
-    if (this.pendingNotificationPromises.length > 0) {
-      await Promise.allSettled(this.pendingNotificationPromises);
-      this.pendingNotificationPromises = [];
+    if (this.dispatchPromise) {
+      await this.dispatchPromise.catch(() => {});
     }
 
     // Fire SessionEnd hooks (fire-and-forget, don't block shutdown)

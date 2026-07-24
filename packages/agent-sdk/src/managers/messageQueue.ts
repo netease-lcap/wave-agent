@@ -2,7 +2,7 @@ export type QueueState = "idle" | "dispatching" | "running";
 
 export interface QueuedMessage {
   id?: string;
-  type?: "message" | "bang";
+  type?: "message" | "bang" | "notification";
   content: string;
   images?: Array<{ path: string; mimeType: string }>;
   longTextMap?: Record<string, string>;
@@ -44,8 +44,12 @@ export class MessageQueue {
     return this.queue.shift() ?? null;
   }
 
+  /**
+   * Clear user-facing items (messages, bang commands) but preserve pending
+   * notifications so background task results are not lost on abort.
+   */
   clear(): void {
-    this.queue = [];
+    this.queue = this.queue.filter((m) => m.type === "notification");
     this._state = "idle";
   }
 
@@ -112,5 +116,42 @@ export class MessageQueue {
     }
     this.queue = remaining;
     return editable;
+  }
+
+  /**
+   * Enqueue a background task notification (XML string). Notifications are
+   * not user-editable and not surfaced in the queued-messages UI.
+   */
+  enqueueNotification(xml: string): void {
+    this.queue.push({
+      id: `mq-${this.nextId++}`,
+      type: "notification",
+      content: xml,
+      editable: false,
+    });
+    this.onMessageEnqueued?.();
+  }
+
+  /** Whether any notification items are pending. */
+  hasNotifications(): boolean {
+    return this.queue.some((m) => m.type === "notification");
+  }
+
+  /**
+   * Drain all notification items, returning their XML content. Non-notification
+   * items (messages, bang commands) are preserved in the queue.
+   */
+  drainNotifications(): string[] {
+    const notifications: string[] = [];
+    const remaining: QueuedMessage[] = [];
+    for (const msg of this.queue) {
+      if (msg.type === "notification") {
+        notifications.push(msg.content);
+      } else {
+        remaining.push(msg);
+      }
+    }
+    this.queue = remaining;
+    return notifications;
   }
 }

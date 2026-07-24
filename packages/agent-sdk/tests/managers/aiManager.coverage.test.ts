@@ -125,9 +125,9 @@ function makeContainer(overrides: Record<string, unknown> = {}) {
   c.register("SkillManager", {
     getAvailableSkills: vi.fn().mockReturnValue([]),
   });
-  c.register("NotificationQueue", {
-    hasPending: vi.fn().mockReturnValue(false),
-    dequeueAll: vi.fn().mockReturnValue([]),
+  c.register("MessageQueue", {
+    hasNotifications: vi.fn().mockReturnValue(false),
+    drainNotifications: vi.fn().mockReturnValue([]),
   });
   c.register("ReversionManager", null);
   c.register("HookManager", null);

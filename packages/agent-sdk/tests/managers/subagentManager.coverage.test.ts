@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
-import { NotificationQueue } from "../../src/managers/notificationQueue.js";
 import { Container } from "../../src/utils/container.js";
 import type { SubagentManagerCallbacks } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
@@ -345,12 +344,10 @@ describe("SubagentManager - Recent Changes Coverage", () => {
     );
   });
 
-  it("should create isolated NotificationQueue and BackgroundTaskManager in child container", async () => {
-    const parentNotificationQueue = new NotificationQueue();
+  it("should create isolated BackgroundTaskManager in child container", async () => {
     const parentBackgroundTaskManager = new BackgroundTaskManager(container, {
       workdir: "/tmp/test",
     });
-    container.register("NotificationQueue", parentNotificationQueue);
     container.register("BackgroundTaskManager", parentBackgroundTaskManager);
 
     const mockConfig: SubagentConfiguration = {
@@ -377,12 +374,8 @@ describe("SubagentManager - Recent Changes Coverage", () => {
     const subBgManager = subContainer.get<BackgroundTaskManager>(
       "BackgroundTaskManager",
     );
-    const subNotificationQueue =
-      subContainer.get<NotificationQueue>("NotificationQueue");
 
     expect(subBgManager).not.toBe(parentBackgroundTaskManager);
-    expect(subNotificationQueue).not.toBe(parentNotificationQueue);
     expect(subBgManager).toBeInstanceOf(BackgroundTaskManager);
-    expect(subNotificationQueue).toBeInstanceOf(NotificationQueue);
   });
 });

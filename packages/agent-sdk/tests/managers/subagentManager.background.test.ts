@@ -414,8 +414,8 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     }
   });
 
-  it("should handle background completion without NotificationQueue", async () => {
-    // Create a container without NotificationQueue
+  it("should handle background completion without MessageQueue", async () => {
+    // Create a container without MessageQueue
     const noNotifyContainer = new Container();
 
     const noNotifyToolManager = {
@@ -475,11 +475,11 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       { role: "assistant", blocks: [{ type: "text", content: "Done" }] },
     ] as unknown as ReturnType<typeof instance.messageManager.getMessages>);
 
-    // Should not throw even without NotificationQueue
+    // Should not throw even without MessageQueue
     await manager.executeAgent(instance, "test prompt");
   });
 
-  it("should handle background error without NotificationQueue", async () => {
+  it("should handle background error without MessageQueue", async () => {
     const noNotifyContainer = new Container();
 
     const noNotifyToolManager = {
