@@ -92,7 +92,7 @@
     "compile:backend": "node esbuild.config.mjs",
     "watch:backend": "node esbuild.config.mjs --watch",
     "sync:webview": "node scripts/syncWebview.mjs",
-    "esbuild:prod": "node esbuild.config.mjs --production && node scripts/syncWebview.mjs",
+    "esbuild:prod": "node esbuild.config.mjs --production && node scripts/syncWebview.mjs --production",
     "package": "node scripts/package.mjs",
     "type-check": "tsc --noEmit && tsc -p tests --noEmit",
     "test": "vitest run",
