@@ -140,6 +140,22 @@ describe("TaskManager", () => {
       expect(tasks[0].id).toBe("1");
       expect(tasks[1].id).toBe("2");
     });
+
+    it("should list tasks sorted by id ascending", async () => {
+      vi.mocked(fs.readdir).mockResolvedValue([
+        "3.json",
+        "1.json",
+        "2.json",
+      ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
+      vi.mocked(fs.readFile)
+        .mockResolvedValueOnce(JSON.stringify({ ...mockTask, id: "3" }))
+        .mockResolvedValueOnce(JSON.stringify({ ...mockTask, id: "1" }))
+        .mockResolvedValueOnce(JSON.stringify({ ...mockTask, id: "2" }));
+
+      const tasks = await taskManager.listTasks();
+
+      expect(tasks.map((t) => t.id)).toEqual(["1", "2", "3"]);
+    });
   });
 
   describe("Validation Logic", () => {
