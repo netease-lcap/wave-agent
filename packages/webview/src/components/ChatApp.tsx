@@ -11,6 +11,7 @@ import PluginDialog from './PluginDialog';
 import McpDialog from './McpDialog';
 import StatusDialog from './StatusDialog';
 import WelcomeView from './WelcomeView';
+import LoadingLogo from './LoadingLogo';
 import type {
   ChatAppProps,
   ConfigurationData,
@@ -483,9 +484,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           onLogin={handleLogin}
         />
       ) : showWelcome ? (
-        // Initial placeholder: keep the flex slot occupied (flex:1) so the input
-        // area doesn't jump up before the welcome page is ready to show.
-        <div style={{ flex: 1, minHeight: 0 }} />
+        <LoadingLogo />
       ) : (
         <MessageList
           ref={messageListRef}

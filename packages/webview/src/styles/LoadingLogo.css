@@ -1,0 +1,78 @@
+/* Loading logo with light-sweep animation.
+   Two stacked copies of the standalone W mark; the top copy has a
+   clip-path light band that sweeps across, using brightness + screen blend. */
+
+.loading-logo-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.loading-logo {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  opacity: 0;
+  animation: loading-logo-fade-in 110ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.loading-logo-base,
+.loading-logo-light {
+  position: absolute;
+  inset: 0;
+}
+
+.loading-logo-base path {
+  fill: var(--vscode-foreground, #cccccc);
+  opacity: 0.25;
+}
+
+.loading-logo-light path {
+  fill: var(--vscode-foreground, #cccccc);
+}
+
+.loading-logo-light {
+  opacity: 0;
+  clip-path: polygon(-42% 0, -12% 0, 10% 100%, -20% 100%);
+  filter: brightness(3);
+  mix-blend-mode: screen;
+  will-change: opacity, clip-path;
+  animation: loading-logo-sweep 1.2s 30ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes loading-logo-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes loading-logo-sweep {
+  0% {
+    opacity: 0;
+    clip-path: polygon(-42% 0, -12% 0, 10% 100%, -20% 100%);
+  }
+  10% {
+    opacity: 0.58;
+  }
+  45% {
+    opacity: 0.58;
+  }
+  55% {
+    opacity: 0;
+    clip-path: polygon(112% 0, 142% 0, 164% 100%, 134% 100%);
+  }
+  100% {
+    opacity: 0;
+    clip-path: polygon(112% 0, 142% 0, 164% 100%, 134% 100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-logo {
+    animation-duration: 0.01ms;
+  }
+  .loading-logo-light {
+    display: none;
+  }
+}
