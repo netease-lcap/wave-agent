@@ -3,7 +3,7 @@
     align-items: center;
     padding: 2px 8px;
     border-radius: 4px;
-    font-size: 13px;
+    font-size: 12px;
     background-color: var(--vscode-editor-inactiveSelectionBackground);
     color: var(--vscode-foreground);
     margin: 2px;
@@ -16,7 +16,7 @@
 
 .context-tag .tag-at {
     font-weight: bold;
-    font-size: 14px;
+    font-size: 12px;
     opacity: 0.9;
     margin-right: 4px;
 }
