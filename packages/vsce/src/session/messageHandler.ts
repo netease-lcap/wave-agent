@@ -240,21 +240,27 @@ export class MessageHandler {
 
     private async handleOpenFile(filePath: string, startLine?: number, endLine?: number) {
         if (!filePath) return;
-        
+
+        const uri = vscode.Uri.file(filePath);
         try {
-            const uri = vscode.Uri.file(filePath);
             const document = await vscode.workspace.openTextDocument(uri);
             const editor = await vscode.window.showTextDocument(document);
-            
+
             if (startLine !== undefined) {
                 const start = new vscode.Position(Math.max(0, startLine - 1), 0);
                 const end = new vscode.Position(Math.max(0, (endLine || startLine) - 1), 0);
                 editor.selection = new vscode.Selection(start, end);
                 editor.revealRange(new vscode.Range(start, end), vscode.TextEditorRevealType.InCenter);
             }
-        } catch (error) {
-            console.error('打开文件失败:', error);
-            vscode.window.showErrorMessage('打开文件失败: ' + error);
+        } catch {
+            // Binary files (images, PDFs, etc.) cannot be opened as text —
+            // fall back to VS Code's built-in viewer.
+            try {
+                await vscode.commands.executeCommand('vscode.open', uri);
+            } catch (fallbackError) {
+                console.error('打开文件失败:', fallbackError);
+                vscode.window.showErrorMessage('打开文件失败: ' + fallbackError);
+            }
         }
     }
 
