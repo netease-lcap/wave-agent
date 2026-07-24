@@ -476,6 +476,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         sessionsLoading={state.sessionsLoading}
         onOpenSettings={handleOpenSettings}
         onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+        onLogin={handleLogin}
         onLogout={handleLogout}
         isAuthenticated={state.isAuthenticated}
       />

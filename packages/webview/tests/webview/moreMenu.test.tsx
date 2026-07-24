@@ -34,6 +34,8 @@ describe('More Menu', () => {
         expect(screen.getByTestId('more-menu-settings')).toBeInTheDocument();
         expect(screen.getByTestId('more-menu-enterprise')).toBeInTheDocument();
         expect(screen.queryByTestId('more-menu-logout')).not.toBeInTheDocument();
+        // Unauthenticated users get a 登录 entry instead
+        expect(screen.getByTestId('more-menu-login')).toHaveTextContent('登录');
     });
 
     it('should open settings dialog and request configuration when 设置 is clicked', () => {
@@ -106,6 +108,25 @@ describe('More Menu', () => {
 
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ command: 'logout' })
+        );
+        expect(screen.queryByTestId('more-menu')).not.toBeInTheDocument();
+    });
+
+    it('should post login when 登录 is clicked while unauthenticated', () => {
+        const { vscode } = renderChatApp();
+
+        // Switch to unauthenticated
+        sendCommand('authStatusResponse', { isAuthenticated: false });
+
+        vscode.postMessage.mockClear();
+        openMoreMenu();
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('more-menu-login'));
+        });
+
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'login' })
         );
         expect(screen.queryByTestId('more-menu')).not.toBeInTheDocument();
     });

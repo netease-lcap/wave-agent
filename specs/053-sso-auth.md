@@ -56,7 +56,28 @@
 
 ---
 
+---
+
+### 用户故事 4 - IDE 插件更多菜单的登录/退出登录入口（优先级：P2）
+
+作为在 VS Code 或 JetBrains 插件中使用 Wave 的开发者，我希望在聊天头部"更多"菜单中按当前认证状态切换显示"登录"或"退出登录"入口，并在已有对话时退出登录不跳转到欢迎页，这样在 GUI 环境下也能便捷地完成认证状态切换且不丢失当前对话上下文。
+
+**为什么是这个优先级**：IDE 插件（VS Code 扩展 + JetBrains 插件，共用同一 webview）没有 CLI 的 `/login`、`/logout` 斜杠命令入口的便利性，需要在 GUI 菜单中提供等价入口；已有对话时退出登录跳欢迎页会丢失上下文，违背用户预期。
+
+**独立测试**：在 VS Code 扩展或 JetBrains 插件中打开已有对话，点击头部"更多"按钮，验证认证态显示"退出登录"、未认证态显示"登录"；点击"退出登录"后对话消息保留且不跳欢迎页、菜单切换为"登录"。
+
+**验收场景**：
+
+1. **假设**用户已通过 SSO 认证且当前会话已有消息，**当**用户点击头部"更多"按钮打开菜单时，**则**菜单显示"退出登录"项（不显示"登录"项）。
+2. **假设**用户已认证且当前会话已有消息，**当**用户点击"退出登录"时，**则**系统清除 SSO token、菜单关闭、认证状态切换为未认证，且当前对话消息保留、不跳转到欢迎页。
+3. **假设**用户未认证（已退出或从未登录），**当**用户打开"更多"菜单时，**则**菜单显示"登录"项（不显示"退出登录"项）。
+4. **假设**用户未认证，**当**用户点击"登录"时，**则**系统发起 SSO 登录流程（浏览器/手动 token 输入），登录成功后认证状态切换为已认证、菜单切换回"退出登录"项。
+5. **假设**用户在欢迎页（无消息）且未认证，**当**欢迎页显示"登录"按钮时，**则**该按钮与"更多"菜单中的"登录"项触发同一登录流程，二者行为一致。
+
+---
+
 ### 边界情况
+
 
 - **如果 SSO 回调服务器端口已被占用会怎样？** 服务器使用 `localhost:0`（系统分配的随机端口），避免端口冲突。
 - **如果 Wave AI 上没有配置 SSO 提供程序会怎样？** 登录失败并显示清晰的错误消息（"No SSO providers available"）。
@@ -99,6 +120,13 @@
 - **FR-026**：即使 `resolveGatewayConfig()` 在没有显式 `fetch` 参数的情况下被调用，当 SSO 模式活跃时系统必须始终创建 `authAwareFetch` 包装器。
 - **FR-027**：`AuthService.login()` 必须接受可选的 `serverUrl` 参数，优先级为：`login({serverUrl})` → `authService._serverUrl` → `WAVE_SERVER_URL` 环境变量。
 
+#### IDE 插件侧（VS Code 扩展 + JetBrains 插件，共用 webview）
+
+- **FR-028**：IDE 插件聊天头部"更多"菜单必须根据当前认证状态互斥显示单一认证入口——已认证时显示"退出登录"、未认证时显示"登录"，二者不共存。此处"已认证"特指 SSO 登录（`isAuthenticated` 来源于 `AuthService.isSSOAuthenticated()`，即 `~/.wave/auth.json` 中存在未过期的 `SSO_TOKEN`），不含仅配置 Base URL + API Key 的直接连接场景；因此仅配置直接连接（无 SSO）的用户在"更多"菜单中仍显示"登录"入口，与欢迎页对这类用户隐藏登录按钮的行为有意区分。
+- **FR-029**：在"更多"菜单点击"退出登录"时，系统必须清除 SSO token（`logoutResponse { success: true }`）并将认证状态置为未认证，但不得清空当前会话消息——前端通过 `restoreSessionId` 重建 agent 时从磁盘恢复并回推消息，欢迎页门控仅依据 `messages.length === 0`，故已有对话退出登录后保留在对话视图、不跳欢迎页。
+- **FR-030**：在"更多"菜单点击"登录"时，系统必须发起与 CLI `/login` 相同的 SSO 登录流程，登录成功后（`loginResponse { success: true }`）将认证状态置为已认证，菜单认证入口随之切换为"退出登录"。
+- **FR-031**：欢迎页的"登录"按钮与"更多"菜单的"登录"项必须复用同一 `handleLogin` 处理逻辑（`vscode.postMessage({ command: 'login' })`），行为一致。
+
 ### 关键实体
 
 - **AuthService**：管理 SSO 认证生命周期的单例服务（登录、注销、token 存储、token 刷新、认证感知 fetch）。在 `login()` 中接受可选的 `serverUrl` 参数并带有优先级链。
@@ -106,3 +134,4 @@
 - **LoginCommand**：`/login` 斜杠命令的 Ink UI 组件，处理浏览器和手动输入流程。
 - **GatewayConfig（SSO 模式）**：解析的配置，其中 `apiKey` 是 SSO token，`baseURL` 是 `${WAVE_SERVER_URL}/api/v1`，`fetch` 使用 `createAuthAwareFetch` 包装。
 - **TokenResponse**：来自 `POST /api/auth/token` 的响应，包含 `token`、`refreshToken?`、`expiresIn?` 和 `user`。
+- **MoreMenu（IDE 插件侧）**：VS Code 扩展与 JetBrains 插件共用 webview 中聊天头部"更多"菜单，按认证状态互斥渲染"登录"/"退出登录"入口，分别派发 `login`/`logout` 命令；欢迎页门控 `showWelcome = messages.length === 0` 与认证状态解耦，保证退出登录不跳欢迎页。
