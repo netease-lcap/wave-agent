@@ -656,20 +656,6 @@ export class AgentBridge {
         { requestId, context },
         ctx.registeredSessionId,
       );
-
-      // 5-minute timeout → auto-deny
-      setTimeout(
-        () => {
-          if (this.pendingPermissions.has(requestId)) {
-            this.pendingPermissions.delete(requestId);
-            resolve({
-              behavior: "deny",
-              message: "Permission request timed out",
-            });
-          }
-        },
-        5 * 60 * 1000,
-      );
     });
   }
 
