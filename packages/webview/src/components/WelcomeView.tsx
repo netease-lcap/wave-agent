@@ -97,7 +97,7 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({ isAuthenticated, hasDirectCon
               fontSize: '13px',
               fontFamily: FONT_FAMILY,
               fontWeight: 600,
-              color: 'var(--vscode-button-foreground, white)',
+              color: 'var(--vscode-foreground, white)',
               lineHeight: '18px',
             }}
           >
