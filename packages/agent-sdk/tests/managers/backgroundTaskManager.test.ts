@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Container } from "../../src/utils/container.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
-import { NotificationQueue } from "../../src/managers/notificationQueue.js";
+import { MessageQueue } from "../../src/managers/messageQueue.js";
 import type { BackgroundSubagent } from "../../src/types/processes.js";
 import type { ChildProcess } from "child_process";
 
@@ -22,7 +22,7 @@ import { logger } from "../../src/utils/globalLogger.js";
 
 describe("BackgroundTaskManager notification deduplication", () => {
   let container: Container;
-  let notificationQueue: NotificationQueue;
+  let messageQueue: MessageQueue;
   let manager: BackgroundTaskManager;
 
   beforeEach(() => {
@@ -30,8 +30,8 @@ describe("BackgroundTaskManager notification deduplication", () => {
     vi.clearAllMocks();
 
     container = new Container();
-    notificationQueue = new NotificationQueue();
-    container.register("NotificationQueue", notificationQueue);
+    messageQueue = new MessageQueue();
+    container.register("MessageQueue", messageQueue);
 
     manager = new BackgroundTaskManager(container, {
       workdir: "/tmp/test",
@@ -59,7 +59,7 @@ describe("BackgroundTaskManager notification deduplication", () => {
 
       expect(result).toBe(true);
       expect(task.status).toBe("killed");
-      const notifications = notificationQueue.dequeueAll();
+      const notifications = messageQueue.drainNotifications();
       expect(notifications.length).toBe(0);
     });
 
@@ -79,7 +79,7 @@ describe("BackgroundTaskManager notification deduplication", () => {
       const result = manager.stopTask("task_1");
 
       expect(result).toBe(false);
-      const notifications = notificationQueue.dequeueAll();
+      const notifications = messageQueue.drainNotifications();
       expect(notifications.length).toBe(0);
     });
 
@@ -99,7 +99,7 @@ describe("BackgroundTaskManager notification deduplication", () => {
       const result = manager.stopTask("task_1");
 
       expect(result).toBe(false);
-      const notifications = notificationQueue.dequeueAll();
+      const notifications = messageQueue.drainNotifications();
       expect(notifications.length).toBe(0);
     });
 
@@ -161,7 +161,7 @@ describe("BackgroundTaskManager notification deduplication", () => {
       expect(task1.status).toBe("killed");
       expect(task2.status).toBe("killed");
       expect(completedTask.status).toBe("completed");
-      const notifications = notificationQueue.dequeueAll();
+      const notifications = messageQueue.drainNotifications();
       expect(notifications.length).toBe(0);
     });
   });

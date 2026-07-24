@@ -14,7 +14,7 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { HookMatcher } from "../../src/utils/hookMatcher.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
-import { NotificationQueue } from "../../src/managers/notificationQueue.js";
+import { MessageQueue } from "../../src/managers/messageQueue.js";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { Container } from "../../src/utils/container.js";
@@ -52,7 +52,7 @@ async function verify() {
     getAllTasks: () => [],
   } as unknown as BackgroundTaskManager;
   const taskManager = new TaskManager(container, "test-task-list");
-  const notificationQueue = new NotificationQueue();
+  const messageQueue = new MessageQueue();
 
   container.register("MessageManager", messageManager);
   container.register("AIManager", aiManager);
@@ -63,7 +63,7 @@ async function verify() {
   container.register("LspManager", lspManager);
   container.register("McpManager", mcpManager);
   container.register("SubagentManager", subagentManager);
-  container.register("NotificationQueue", notificationQueue);
+  container.register("MessageQueue", messageQueue);
 
   const slashCommandManager = new SlashCommandManager(container, {
     workdir,

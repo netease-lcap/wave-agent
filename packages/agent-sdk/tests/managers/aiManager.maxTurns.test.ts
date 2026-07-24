@@ -110,8 +110,9 @@ describe("AIManager maxTurns", () => {
     container.register("SkillManager", {
       getAvailableSkills: vi.fn().mockReturnValue([]),
     });
-    container.register("NotificationQueue", {
-      hasPending: vi.fn().mockReturnValue(false),
+    container.register("MessageQueue", {
+      hasNotifications: vi.fn().mockReturnValue(false),
+      drainNotifications: vi.fn().mockReturnValue([]),
     });
     return container;
   }

@@ -6,7 +6,7 @@ import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
-import { NotificationQueue } from "./notificationQueue.js";
+import { MessageQueue } from "./messageQueue.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
 
 export interface BackgroundTaskManagerCallbacks {
@@ -30,10 +30,6 @@ export class BackgroundTaskManager {
   ) {
     this.callbacks = options.callbacks || {};
     this.workdir = options.workdir;
-  }
-
-  private get notificationQueue(): NotificationQueue {
-    return this.container.get<NotificationQueue>("NotificationQueue")!;
   }
 
   /**
@@ -178,13 +174,13 @@ export class BackgroundTaskManager {
 
       // Skip notification if task was manually killed (user/agent-initiated stop)
       if (!wasKilled) {
-        const notificationQueue = this.container.has("NotificationQueue")
-          ? this.container.get<NotificationQueue>("NotificationQueue")
+        const messageQueue = this.container.has("MessageQueue")
+          ? this.container.get<MessageQueue>("MessageQueue")
           : undefined;
-        if (notificationQueue) {
+        if (messageQueue) {
           const statusStr = shell.status;
           const summary = `Command "${command}" ${statusStr} with exit code ${code ?? 0}`;
-          notificationQueue.enqueue(
+          messageQueue.enqueueNotification(
             `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>${statusStr}</status>\n<summary>${summary}</summary>\n</task-notification>`,
           );
         }
@@ -208,12 +204,12 @@ export class BackgroundTaskManager {
       this.notifyTasksChange();
 
       // Enqueue error notification
-      const notificationQueue = this.container.has("NotificationQueue")
-        ? this.container.get<NotificationQueue>("NotificationQueue")
+      const messageQueue = this.container.has("MessageQueue")
+        ? this.container.get<MessageQueue>("MessageQueue")
         : undefined;
-      if (notificationQueue) {
+      if (messageQueue) {
         const summary = `Command "${command}" failed with error: ${stripAnsiColors(error.message)}`;
-        notificationQueue.enqueue(
+        messageQueue.enqueueNotification(
           `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
         );
       }
@@ -337,13 +333,13 @@ export class BackgroundTaskManager {
 
       // Skip notification if task was manually killed (user/agent-initiated stop)
       if (!wasKilled) {
-        const notificationQueue = this.container.has("NotificationQueue")
-          ? this.container.get<NotificationQueue>("NotificationQueue")
+        const messageQueue = this.container.has("MessageQueue")
+          ? this.container.get<MessageQueue>("MessageQueue")
           : undefined;
-        if (notificationQueue) {
+        if (messageQueue) {
           const statusStr = shell.status;
           const summary = `Command "${command}" ${statusStr} with exit code ${code ?? 0}`;
-          notificationQueue.enqueue(
+          messageQueue.enqueueNotification(
             `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>${statusStr}</status>\n<summary>${summary}</summary>\n</task-notification>`,
           );
         }
@@ -364,12 +360,12 @@ export class BackgroundTaskManager {
       this.notifyTasksChange();
 
       // Enqueue error notification
-      const notificationQueue = this.container.has("NotificationQueue")
-        ? this.container.get<NotificationQueue>("NotificationQueue")
+      const messageQueue = this.container.has("MessageQueue")
+        ? this.container.get<MessageQueue>("MessageQueue")
         : undefined;
-      if (notificationQueue) {
+      if (messageQueue) {
         const summary = `Command "${command}" failed with error: ${stripAnsiColors(error.message)}`;
-        notificationQueue.enqueue(
+        messageQueue.enqueueNotification(
           `<task-notification>\n<task-id>${id}</task-id>\n<task-type>shell</task-type>\n<output-file>${logPath}</output-file>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
         );
       }

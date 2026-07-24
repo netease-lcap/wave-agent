@@ -41,7 +41,7 @@ import { Container } from "../utils/container.js";
 import type { WorktreeSession } from "../utils/worktreeSession.js";
 import { recoverTruncatedJson } from "../utils/stringUtils.js";
 import { ConfigurationService } from "../services/configurationService.js";
-import type { NotificationQueue } from "./notificationQueue.js";
+import type { MessageQueue } from "./messageQueue.js";
 
 import { logger } from "../utils/globalLogger.js";
 import {
@@ -115,6 +115,7 @@ export interface AIManagerOptions {
 
 export class AIManager {
   public isLoading: boolean = false;
+  private turnGeneration = 0; // Guards against concurrent sendAIMessage turns
   private abortController: AbortController | null = null;
   onLoadingChange?: (loading: boolean) => void;
   private toolAbortController: AbortController | null = null;
@@ -397,6 +398,10 @@ export class AIManager {
   }
 
   public abortAIMessage(): void {
+    // Bump generation so the in-flight turn's end-of-turn setIsLoading(false)
+    // is skipped (generation mismatch), preventing it from racing with this abort.
+    this.turnGeneration++;
+
     // Interrupt AI service
     if (this.abortController) {
       try {
@@ -818,6 +823,15 @@ export class AIManager {
     const { recursionDepth = 0, model, allowedRules, maxTokens } = options;
     let turnOffset = recursionDepth;
 
+    // Reserve this turn synchronously before any async work. Bumping the
+    // generation invalidates any in-flight turn's end-of-turn cleanup, and
+    // recording myGeneration lets us skip cleanup if a newer turn (or abort)
+    // has superseded us. setIsLoading(true) here also closes the "idle but
+    // previous turn not finished" race window by marking us busy immediately.
+    this.turnGeneration++;
+    const myGeneration = this.turnGeneration;
+    this.setIsLoading(true);
+
     outer: while (true) {
       let shouldRestart = false;
 
@@ -839,9 +853,8 @@ export class AIManager {
         }).catch(() => {}); // Non-blocking
       }
 
-      // Set loading state early for the initial call, before any async work
+      // Apply allowed rules for the initial call
       if (turnOffset === 0) {
-        this.setIsLoading(true);
         if (allowedRules && allowedRules.length > 0) {
           this.permissionManager?.addTemporaryRules(allowedRules);
         }
@@ -1375,8 +1388,6 @@ export class AIManager {
 
         // Save session in each iteration to ensure message persistence
         await this.messageManager.saveSession();
-        // Set loading to false first
-        this.setIsLoading(false);
 
         // Clear temporary rules
         this.permissionManager?.clearTemporaryRules();
@@ -1475,11 +1486,11 @@ export class AIManager {
 
         // Inject pending notifications from background tasks (after Stop hooks,
         // aligned with Claude Code which fires Stop hooks unconditionally)
-        const notificationQueue = this.container.has("NotificationQueue")
-          ? this.container.get<NotificationQueue>("NotificationQueue")
+        const messageQueue = this.container.has("MessageQueue")
+          ? this.container.get<MessageQueue>("MessageQueue")
           : undefined;
-        if (notificationQueue && notificationQueue.hasPending()) {
-          const notifications = notificationQueue.dequeueAll();
+        if (messageQueue && messageQueue.hasNotifications()) {
+          const notifications = messageQueue.drainNotifications();
           for (const notification of notifications) {
             const block = parseTaskNotificationXml(notification);
             if (block) {
@@ -1498,7 +1509,16 @@ export class AIManager {
         }
       }
 
-      if (!shouldRestart) break outer;
+      if (!shouldRestart) {
+        // Release loading state only after ALL cleanup is done (session save,
+        // Stop hooks, notification injection). Generation check ensures a
+        // superseded (aborted or newer) turn doesn't clobber the current
+        // loading state.
+        if (myGeneration === this.turnGeneration) {
+          this.setIsLoading(false);
+        }
+        break outer;
+      }
     }
   }
 
