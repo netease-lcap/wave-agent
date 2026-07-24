@@ -376,6 +376,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
   // a direct-connect config (baseURL/apiKey) works without authentication, so an
   // unauthenticated user who sends a message must still see the chat, not the welcome page.
   const showWelcome = state.messages.length === 0;
+  // Withhold the welcome page until the initial state (incl. auth status) has
+  // arrived, otherwise logged-in users see the login CTA flash before
+  // setInitialState updates isAuthenticated to true.
+  const showWelcomeReady = showWelcome && state.initialized;
 
   // Initialize webview and load sessions on component mount
   useEffect(() => {
@@ -476,12 +480,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         isAuthenticated={state.isAuthenticated}
       />
       
-      {showWelcome ? (
+      {showWelcomeReady ? (
         <WelcomeView
           isAuthenticated={state.isAuthenticated}
           hasDirectConnectConfig={!!(state.configurationData?.apiKey && state.configurationData?.baseURL)}
           onLogin={handleLogin}
         />
+      ) : showWelcome ? (
+        // Initial placeholder: keep the flex slot occupied (flex:1) so the input
+        // area doesn't jump up before the welcome page is ready to show.
+        <div style={{ flex: 1, minHeight: 0 }} />
       ) : (
         <MessageList
           ref={messageListRef}

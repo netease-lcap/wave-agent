@@ -254,6 +254,10 @@ export interface ChatState {
   queuedMessages: QueuedMessage[];
   // Auth state
   isAuthenticated: boolean;
+  // Whether the initial state (incl. auth status) has been received from the
+  // backend. The welcome page is withheld until this is true so the login CTA
+  // doesn't flash for logged-in users before setInitialState arrives.
+  initialized: boolean;
   // Agent working directory, used to render tool file paths as relative.
   workdir?: string;
   // Dialog state
