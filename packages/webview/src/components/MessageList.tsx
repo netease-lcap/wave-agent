@@ -26,7 +26,7 @@ function countTimelineBlocks(message: MessageType): number {
   return count;
 }
 
-export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, streamingMessageIndex, vscode, onRewindToMessage, workdir }, ref) {
+export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, isStreaming, vscode, onRewindToMessage, workdir }, ref) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -116,7 +116,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     // 1. It's a brand new message that should be forced
     // 2. We are currently streaming content AND user hasn't scrolled up
     // 3. The user is already near the bottom AND hasn't scrolled up
-    if (shouldForce || ((streamingMessageIndex !== undefined || isNearBottom) && !userScrolledUpRef.current)) {
+    if (shouldForce || ((isStreaming || isNearBottom) && !userScrolledUpRef.current)) {
       // A new user message means the user wants to follow the upcoming reply:
       // clear any prior opt-out so streaming auto-scrolls into view.
       if (shouldForce && isUserMessage) {
@@ -124,7 +124,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       }
       doScrollToBottom(behavior);
     }
-  }, [messages, streamingMessageIndex, doScrollToBottom]);
+  }, [messages, isStreaming, doScrollToBottom]);
 
   // Expose scrollToBottom method to parent component
   useImperativeHandle(ref, () => ({
@@ -181,20 +181,20 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     // Follow new content: scroll on every messages change (incl. streaming text
     // chunks so streamed text stays visible), gated by userScrolledUp inside
     // scrollToBottom. A brand-new message forces the scroll.
-    scrollToBottom(streamingMessageIndex !== undefined ? 'auto' : 'smooth', isNewMessage);
+    scrollToBottom(isStreaming ? 'auto' : 'smooth', isNewMessage);
     computeSticky();
 
     return () => {
       resizeObserver.disconnect();
       container.removeEventListener('scroll', handleScroll);
     };
-  }, [messages, queuedMessages, streamingMessageIndex, scrollToBottom, computeSticky]);
+  }, [messages, queuedMessages, isStreaming, scrollToBottom, computeSticky]);
 
   return (
     <div 
       ref={containerRef}
       id="messagesContainer" 
-      className="messages-container" 
+      className={`messages-container${isStreaming ? ' streaming' : ''}`}
       data-testid="messages-container"
     >
       {stickyMessage && (
@@ -212,23 +212,18 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       )}
       {/* Chat messages - filter out user meta messages */}
       {useMemo(() => {
-        // Filter out user messages with isMeta, and build index mapping for streaming detection
+        // Filter out user messages with isMeta (hidden from the list)
         const visibleMessages: MessageType[] = [];
-        const originalIndexMap: number[] = [];
-        for (let i = 0; i < messages.length; i++) {
-          const msg = messages[i];
+        for (const msg of messages) {
           if (msg.role === 'user' && msg.isMeta) continue;
           visibleMessages.push(msg);
-          originalIndexMap.push(i);
         }
 
-        const renderMessage = (message: MessageType, idx: number) => {
-          const isStreaming = streamingMessageIndex !== undefined && originalIndexMap[idx] === streamingMessageIndex;
+        const renderMessage = (message: MessageType) => {
           return (
             <Message
               key={message.id}
               message={message}
-              isStreaming={isStreaming}
               vscode={vscode}
               onRewindToMessage={onRewindToMessage}
               workdir={workdir}
@@ -240,7 +235,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
         // the timeline vertical line runs continuously through all their dots. User
         // messages break the timeline (rendered as bare bubbles outside any group).
         const rendered: React.ReactNode[] = [];
-        let group: { message: MessageType; idx: number }[] = [];
+        let group: { message: MessageType }[] = [];
 
         const flushGroup = () => {
           if (group.length === 0) return;
@@ -251,24 +246,24 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
               key={group[0].message.id}
               className={`assistant-group${single ? ' assistant-group--single' : ''}`}
             >
-              {group.map(g => renderMessage(g.message, g.idx))}
+              {group.map(g => renderMessage(g.message))}
             </div>
           );
           group = [];
         };
 
-        visibleMessages.forEach((message, idx) => {
+        visibleMessages.forEach((message) => {
           if (message.role === 'assistant') {
-            group.push({ message, idx });
+            group.push({ message });
           } else {
             flushGroup();
-            rendered.push(renderMessage(message, idx));
+            rendered.push(renderMessage(message));
           }
         });
         flushGroup();
 
         return rendered;
-      }, [messages, streamingMessageIndex, vscode, onRewindToMessage])}
+      }, [messages, vscode, onRewindToMessage])}
       
       {/* Invisible div to scroll to */}
       <div ref={messagesEndRef} />

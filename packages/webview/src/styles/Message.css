@@ -174,9 +174,12 @@
     word-break: break-word;
 }
 
-.message.streaming::after {
+.messages-container.streaming::after {
     content: "▋";
     animation: blink 1s ease-in-out infinite;
+    align-self: flex-start;
+    padding-left: 2px;
+    line-height: 1;
 }
 
 /* Content Container for Mixed HTML/Mermaid Content */

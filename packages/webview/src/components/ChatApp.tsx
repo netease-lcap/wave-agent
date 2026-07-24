@@ -367,11 +367,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
     dispatch({ type: 'HIDE_DIALOG' });
   }, []);
 
-  // Simple streaming message detection
-  const streamingMessageIndex = state.isStreaming && state.messages.length > 0 
-    ? state.messages.length - 1 
-    : undefined;
-
   // Welcome page shows only when there are no messages yet. Login is optional:
   // a direct-connect config (baseURL/apiKey) works without authentication, so an
   // unauthenticated user who sends a message must still see the chat, not the welcome page.
@@ -496,7 +491,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           ref={messageListRef}
           messages={state.messages}
           queuedMessages={state.queuedMessages}
-          streamingMessageIndex={streamingMessageIndex}
+          isStreaming={state.isStreaming}
           vscode={vscode}
           onRewindToMessage={handleRewindToMessage}
           workdir={state.workdir}
