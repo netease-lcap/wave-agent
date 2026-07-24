@@ -46,6 +46,12 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
   const isProgrammaticScrollRef = useRef(false);
   // Last seen scrollTop, used to detect scroll direction (up vs down).
   const prevScrollTopRef = useRef(0);
+  // Last seen scrollHeight, used to tell a content-shrink clamp apart from a
+  // genuine user scroll-up. When content above the viewport shrinks (reasoning
+  // auto-collapse, streaming-end reflow, image load, etc.) the browser clamps
+  // scrollTop downward to keep it within bounds, which otherwise looks identical
+  // to an upward user gesture and would wrongly suspend auto-follow.
+  const prevScrollHeightRef = useRef(0);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
   // at the top of the list as a context hint (设计稿 2236-3792).
@@ -154,16 +160,21 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       if (!isProgrammaticScrollRef.current) {
         const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 300;
         const scrolledUp = container.scrollTop < prevScrollTopRef.current;
+        // A clamp from a content-shrink reflow (scrollHeight decreased) moves
+        // scrollTop downward but is NOT user intent — ignore it so auto-follow
+        // survives reasoning collapse / streaming-end reflow / image load.
+        const contentShrank = container.scrollHeight < prevScrollHeightRef.current;
         // An upward gesture always opts out of following (covers the "slight
         // nudge up then stop" case that the distance threshold alone missed).
         // A downward gesture to the bottom region opts back in.
-        if (scrolledUp) {
+        if (scrolledUp && !contentShrank) {
           userScrolledUpRef.current = true;
         } else if (isNearBottom) {
           userScrolledUpRef.current = false;
         }
       }
       prevScrollTopRef.current = container.scrollTop;
+      prevScrollHeightRef.current = container.scrollHeight;
       computeSticky();
     };
 
