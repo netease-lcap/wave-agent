@@ -9,8 +9,8 @@ This is a pnpm monorepo focused on AI-powered development tools.
 - **`packages/agent-sdk`**: Core Node.js SDK. Handles AI model integration, tool systems, and memory management.
 - **`packages/code`**: CLI frontend built with React Ink. Provides the interactive terminal interface.
 - **`packages/vsce`**: VS Code extension with React webview chat UI. Uses esbuild for bundling (not tsc).
-- **`specs/`**: Contains numbered feature specifications (e.g., `specs/008-slash-commands/`). These are the source of truth for feature design and implementation tasks.
 - **`docs/`**: VitePress documentation site (primarily for the VS Code extension product spec).
+- **`docs/specs/`**: Contains feature specifications grouped by topic (e.g., `docs/specs/ui/slash-commands.md`). These are the source of truth for feature design and implementation tasks, and are rendered into the docs site.
 - **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
 
 ### Key Dependencies
@@ -53,7 +53,7 @@ Always use `pnpm` as the package manager.
 
 ## 📋 Spec-First Workflow
 
-- **需求增加或变更时，优先更新 spec**：任何功能需求的新增或变更，必须先更新对应的 `specs/` 下的规格说明（新增用户故事、验收场景、功能需求 FR 等），**待用户确认 spec 后再进行代码实现**。spec 是功能设计的权威来源，不是实现的 changelog。
+- **需求增加或变更时，优先更新 spec**：任何功能需求的新增或变更，必须先更新对应的 `docs/specs/` 下的规格说明（新增用户故事、验收场景、功能需求 FR 等），**待用户确认 spec 后再进行代码实现**。spec 是功能设计的权威来源，不是实现的 changelog。
 - **不确定是否算需求变更时也先动 spec**：边界模糊时宁可先写 spec 草稿请用户确认，不要直接改代码。
 
 ## 🐛 Debugging

@@ -5,14 +5,17 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const specsDir = path.join(__dirname, "..", "specs");
+const specsDir = path.join(__dirname, "..", "docs", "specs");
 
-// Scan specs/*.md files (excluding README.md)
-const specFiles = fs
-  .readdirSync(specsDir, { withFileTypes: true })
-  .filter((d) => d.isFile() && d.name.endsWith(".md") && d.name !== "README.md")
-  .map((d) => d.name)
-  .sort();
+// Section heading -> subdirectory mapping (physical grouping)
+const sectionToDir = {
+  "Agent 核心": "core",
+  "交互与 UI": "ui",
+  "多 Agent 与并发": "multi-agent",
+  "扩展与生态": "ecosystem",
+  自动化: "automation",
+  企业管控: "enterprise",
+};
 
 function walkDir(dir, callback) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -22,12 +25,22 @@ function walkDir(dir, callback) {
   }
 }
 
+// Scan docs/specs/<group>/*.md files recursively; keys are posix relative paths
+const specFiles = [];
+walkDir(specsDir, (filePath) => {
+  const name = path.basename(filePath);
+  if (name.endsWith(".md") && name !== "README.md") {
+    specFiles.push(path.relative(specsDir, filePath).split(path.sep).join("/"));
+  }
+});
+specFiles.sort();
+
 let totalSpecs = 0;
 let totalUS = 0;
 let totalFR = 0;
 
 // Count US/FR per spec file
-const counts = new Map(); // filename -> { usCount, frCount }
+const counts = new Map(); // relative path -> { usCount, frCount }
 
 let hasWarnings = false;
 
@@ -89,7 +102,7 @@ for (const pkg of pkgDirs) {
 
 console.log(`测试文件: ${totalTestFiles}  测试用例: ${totalTestCases.toLocaleString()}`);
 
-// Update specs/README.md
+// Update docs/specs/README.md
 const readmePath = path.join(specsDir, "README.md");
 let readme = fs.readFileSync(readmePath, "utf-8");
 
@@ -113,11 +126,26 @@ readme = readme.replace(
 
 // Update Specs table: preserve existing Feature/Description, update US/FR/Links
 const lines = readme.split("\n");
+
+// Pre-collect all spec files already linked anywhere in the README, so that
+// appendix rows are only added for specs missing from every group table.
+const existingFiles = new Set(
+  lines
+    .map((l) => l.match(/\[(?:规格|spec)\]\(([^)]+\.md)\)/))
+    .filter(Boolean)
+    .map((m) => m[1]),
+);
+
 const newLines = [];
 let inSpecsTable = false;
 let headerDone = false;
+let currentDir = null;
 
 for (const line of lines) {
+  const sectionMatch = line.match(/^###\s+(.+?)\s*$/);
+  if (sectionMatch && sectionToDir[sectionMatch[1]]) {
+    currentDir = sectionToDir[sectionMatch[1]];
+  }
   if (line.startsWith("| 功能 |")) {
     inSpecsTable = true;
     headerDone = false;
@@ -135,19 +163,11 @@ for (const line of lines) {
       const feature = cells[0].trim();
       const description = cells[1].trim();
       const linksCell = cells[cells.length - 1].trim();
-      // Match link format: [规格](NNN-name.md) or [spec](NNN-name.md)
-      let fileMatch = linksCell.match(/\[(?:规格|spec)\]\((\d{3}-[^)]+\.md)\)/);
+      // Match link format: [规格](group/name.md)
+      let fileMatch = linksCell.match(/\[(?:规格|spec)\]\(([^)]+\.md)\)/);
       if (fileMatch) {
         const specFileName = fileMatch[1];
-        let c = counts.get(specFileName);
-        // Fallback: match by numeric prefix
-        if (!c) {
-          const prefix = specFileName.match(/^\d+/)?.[0];
-          if (prefix) {
-            const match = [...counts.keys()].find((f) => f.startsWith(prefix));
-            if (match) c = counts.get(match);
-          }
-        }
+        const c = counts.get(specFileName);
         if (c) {
           newLines.push(`| ${feature} | ${description} | ${c.usCount} | ${c.frCount} | [规格](${specFileName}) |`);
           continue;
@@ -159,19 +179,11 @@ for (const line of lines) {
   }
   if (inSpecsTable && !line.startsWith("|")) {
     inSpecsTable = false;
-    // Append any spec files not already in the table
-    const existingPrefixes = new Set(
-      newLines
-        .filter((l) => l.startsWith("|"))
-        .map((l) => {
-          const m = l.match(/\[(?:规格|spec)\]\((\d{3}-[^)]+\.md)\)/);
-          return m ? m[1].match(/^\d+/)?.[0] : null;
-        })
-        .filter(Boolean),
-    );
+    // Append specs in this section's directory not already in the README
     for (const file of specFiles) {
-      const prefix = file.match(/^\d+/)?.[0];
-      if (prefix && existingPrefixes.has(prefix)) continue;
+      const dir = file.includes("/") ? file.split("/")[0] : "";
+      if (dir !== currentDir) continue;
+      if (existingFiles.has(file)) continue;
       const c = counts.get(file);
       if (!c) continue;
       const content = fs.readFileSync(path.join(specsDir, file), "utf-8");
@@ -186,4 +198,4 @@ for (const line of lines) {
 readme = newLines.join("\n");
 
 fs.writeFileSync(readmePath, readme);
-console.log("已更新 specs/README.md");
+console.log("已更新 docs/specs/README.md");

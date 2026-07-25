@@ -15,9 +15,9 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 * **退出码 2**：阻止性错误。`stderr` 反馈给 Wave 进行自动处理。参见下方各 hook 事件的行为。
 * **其他退出码**：非阻止性错误。`stderr` 显示给用户，执行继续。
 
-<Warning>
-  提醒：如果退出码为 0，Wave Agent 不会看到 stdout，除了 `UserPromptSubmit` hook 的 stdout 会作为上下文注入。
-</Warning>
+::: warning
+提醒：如果退出码为 0，Wave Agent 不会看到 stdout，除了 `UserPromptSubmit` hook 的 stdout 会作为上下文注入。
+:::
 
 #### 退出码 2 行为
 

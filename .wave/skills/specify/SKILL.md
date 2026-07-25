@@ -1,6 +1,6 @@
 ---
 name: specify
-description: 根据自然语言描述创建或更新功能规格说明。生成 specs/NNN-name.md，包含用户故事、验收标准和功能需求。
+description: 根据自然语言描述创建或更新功能规格说明。生成 docs/specs/<group>/name.md，包含用户故事、验收标准和功能需求。
 ---
 
 ## 用户输入
@@ -18,10 +18,16 @@ $ARGUMENTS
 根据功能描述，执行以下步骤：
 
 1. **确定规格文件路径**：
-   - 扫描 `specs/` 目录下已有的 `NNN-*.md` 文件，找到最大编号
-   - 下一个编号为最大值 + 1，零填充到 3 位（如 `060`）
-   - 根据功能描述生成 2-4 个词的 slug（小写、连字符、保留缩写词）
-   - 规格文件路径：`specs/NNN-slug.md`
+   - 根据功能描述选择分组目录（`docs/specs/` 下）：
+     - `core/` — Agent 核心机制（工具、权限、记忆、压缩、prompt）
+     - `ui/` — 交互与 UI（命令、渲染、输入组件）
+     - `multi-agent/` — 多 Agent 与并发（子代理、任务、工作流）
+     - `ecosystem/` — 扩展与生态（技能、插件、MCP）
+     - `automation/` — 自动化（钩子、循环、目标）
+     - `enterprise/` — 企业管控（SSO、遥测、托管配置）
+     - 边界模糊时默认 `core/`
+   - 根据功能描述生成 2-4 个词的 slug（小写、连字符、保留缩写词），与组内已有文件名不冲突
+   - 规格文件路径：`docs/specs/<group>/<slug>.md`
 
 2. **加载模板** `${WAVE_SKILL_DIR}/templates/spec-template.md`，了解必需章节。
 

@@ -41,7 +41,7 @@ Shared webview layer (React IIFE bundle) consumed by both the VS Code and JetBra
 
 ### 📄 Specifications
 
-Detailed feature specifications and design documents can be found in the [`specs/`](./specs) directory.
+Detailed feature specifications and design documents can be found in the [`docs/specs/`](./docs/specs) directory.
 
 ## Development
 

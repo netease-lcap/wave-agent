@@ -1,6 +1,6 @@
 # 功能规格说明：会话管理
 
-**规格文件**：`specs/004-session-management.md`
+**规格文件**：`docs/specs/ui/session-management.md`
 **创建日期**：2026-01-21
 
 ## 用户场景与测试 *(必填)*

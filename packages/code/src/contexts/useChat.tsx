@@ -482,7 +482,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
         // Inject worktree session into this agent's own DI container so system
         // prompts and permission checks reflect the CLI -w worktree. This state is
-        // per-session, not process-global (see specs/047-worktree.md FR-042).
+        // per-session, not process-global (see docs/specs/multi-agent/worktree.md FR-042).
         if (worktreeSession) {
           const session: WorktreeSession = {
             originalCwd: originalCwd ?? worktreeSession.repoRoot,
