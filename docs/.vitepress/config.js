@@ -41,7 +41,7 @@ export default {
           collapsed: false,
           items: [
             { text: '2.1 消息队列', link: '/vsce#message-queuing' },
-            { text: '2.2 历史记录搜索', link: '/vsce#history-search' },
+            { text: '2.2 历史提示词', link: '/vsce#history-search' },
             { text: '2.3 代码选择与引用', link: '/vsce#code-selection-reference' },
             { text: '2.4 指令系统', link: '/vsce#slash-commands' },
             { text: '2.5 文件建议与预览', link: '/vsce#file-suggestions' },
@@ -83,6 +83,8 @@ export default {
             { text: '5.1 任务列表', link: '/vsce#task-list' },
             { text: '5.2 后台任务通知', link: '/vsce#task-notification' },
             { text: '5.3 后台任务系统', link: '/vsce#mechanism-background-tasks' },
+            { text: '5.4 后台任务管理对话框', link: '/vsce#background-task-manager' },
+            { text: '5.5 工作流管理对话框', link: '/vsce#workflow-manager' },
           ],
         },
         {

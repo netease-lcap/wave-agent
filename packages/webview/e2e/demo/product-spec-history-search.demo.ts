@@ -39,4 +39,20 @@ test.describe('Product Spec: History Search', () => {
             path: '../../docs/public/screenshots/spec-history-search-context.png'
         });
     });
+
+    test('should capture plus menu with history prompt entry', async ({ webviewPage }) => {
+        // Open the "+" (添加) menu in the input toolbar
+        await webviewPage.getByRole('button', { name: '添加' }).click();
+
+        const menu = webviewPage.locator('.plus-menu');
+        await expect(menu).toBeVisible();
+        await expect(menu.getByText('上传文件')).toBeVisible();
+        await expect(menu.getByText('历史提示词')).toBeVisible();
+
+        // The menu opens upward from the "+" button, so capture the input area
+        // (toolbar + menu floating above it) rather than the menu container alone.
+        await webviewPage.locator('.input-container').screenshot({
+            path: '../../docs/public/screenshots/spec-plus-menu.png'
+        });
+    });
 });

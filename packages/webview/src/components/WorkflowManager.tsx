@@ -217,7 +217,7 @@ const WorkflowManager: React.FC<WorkflowManagerProps & {
 
   return (
     <div className="configuration-dialog-overlay">
-      <div ref={dialogRef} className="configuration-dialog" style={{ minWidth: '560px', maxWidth: '760px' }}>
+      <div ref={dialogRef} className="configuration-dialog" data-testid="workflow-manager" style={{ minWidth: '560px', maxWidth: '760px' }}>
         <div className="configuration-dialog-header">
           <h3>工作流</h3>
         </div>
