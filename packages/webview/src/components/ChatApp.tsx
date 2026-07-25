@@ -10,6 +10,7 @@ import ConfigDialog from './ConfigDialog';
 import PluginDialog from './PluginDialog';
 import McpDialog from './McpDialog';
 import StatusDialog from './StatusDialog';
+import BackgroundTaskManager from './BackgroundTaskManager';
 import WelcomeView from './WelcomeView';
 import LoadingLogo from './LoadingLogo';
 import type {
@@ -54,6 +55,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           if (message.isTaskListCollapsed !== undefined) {
             dispatch({ type: 'SET_TASK_LIST_COLLAPSED', payload: message.isTaskListCollapsed });
           }
+          break;
+        case 'updateBackgroundTasks':
+          dispatch({ type: 'SET_BACKGROUND_TASKS', payload: message.tasks });
           break;
         case 'updateSelection':
           dispatch({ type: 'UPDATE_SELECTION', payload: message.selection });
@@ -288,6 +292,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       dispatch({ type: 'SHOW_DIALOG', payload: { type: 'status' } });
       return;
     }
+    if (trimmedText === '/tasks') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'tasks' } }); return; }
 
     // Send to extension
     vscode.postMessage({
@@ -574,6 +579,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         <StatusDialog
           onClose={handleDialogClose}
           vscode={vscode}
+        />
+      )}
+      {state.activeDialog === 'tasks' && (
+        <BackgroundTaskManager
+          tasks={state.backgroundTasks}
+          vscode={vscode}
+          onClose={handleDialogClose}
         />
       )}
     </div>

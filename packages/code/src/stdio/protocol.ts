@@ -87,7 +87,9 @@ export type RequestMethod =
   | "addMarketplace"
   | "removeMarketplace"
   | "updateMarketplace"
-  | "compact";
+  | "compact"
+  | "getBackgroundTaskOutput"
+  | "stopBackgroundTask";
 
 // ── Client → Server notification methods ────────────────────────
 
@@ -118,7 +120,8 @@ export type ServerNotificationMethod =
   | "permissionRequest"
   | "authUrl"
   | "compactBlockAdded"
-  | "compactionStateChange";
+  | "compactionStateChange"
+  | "backgroundTasksChange";
 
 // ── Helper: is this a request (has id)? ─────────────────────────
 

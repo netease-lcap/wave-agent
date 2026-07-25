@@ -17,7 +17,7 @@ interface SlashCommandsPopupProps {
 }
 
 const PLUGIN_COMMAND = 'plugin';
-const SYSTEM_COMMANDS = ['config', 'mcp', 'status', 'clear', 'compact'];
+const SYSTEM_COMMANDS = ['config', 'mcp', 'status', 'tasks', 'clear', 'compact'];
 
 interface CommandGroup {
   title: string;

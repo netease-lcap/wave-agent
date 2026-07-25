@@ -67,6 +67,8 @@ class WaveSession(
         private set
     @Volatile var tasks: JsonElement? = null
         private set
+    @Volatile var backgroundTasks: JsonElement? = null
+        private set
     @Volatile var sessionId: String? = null
         private set
     /** Cached main-session list (from listSessions); used to resolve the tab title via firstMessage. */
@@ -335,6 +337,11 @@ class WaveSession(
     override fun onTasksChange(tasks: JsonElement?) {
         this.tasks = tasks
         postMessage("updateTasks", buildJsonObject { put("tasks", tasks ?: JsonArray(emptyList())) })
+    }
+
+    override fun onBackgroundTasksChange(tasks: JsonElement?) {
+        this.backgroundTasks = tasks
+        postMessage("updateBackgroundTasks", buildJsonObject { put("tasks", tasks ?: JsonArray(emptyList())) })
     }
 
     override fun onSessionIdChange(sessionId: String) {

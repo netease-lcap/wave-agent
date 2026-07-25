@@ -3,6 +3,7 @@ import type { ChatState, ChatAction, Message, MessageBlock, TextBlock, ToolBlock
 export const initialState: ChatState = {
   messages: [],
   tasks: [],
+  backgroundTasks: [],
   isTaskListCollapsed: false,
   isQueueCollapsed: true,
   editingQueuedId: null,
@@ -43,6 +44,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // Auto-expand task list when tasks are first created
         isTaskListCollapsed: state.tasks.length === 0 && action.payload.length > 0 ? false : state.isTaskListCollapsed
       };
+    case 'SET_BACKGROUND_TASKS':
+      return { ...state, backgroundTasks: action.payload };
     case 'TOGGLE_TASK_LIST_COLLAPSE':
       return {
         ...state,
@@ -163,6 +166,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         configurationData: action.payload.configurationData || state.configurationData,
         pendingConfirmations: action.payload.pendingConfirmations || [],
         queuedMessages: action.payload.queuedMessages || [],
+        backgroundTasks: action.payload.backgroundTasks ?? [],
         inputContent: action.payload.inputContent,
         selection: action.payload.selection,
         permissionMode: action.payload.permissionMode || state.permissionMode,

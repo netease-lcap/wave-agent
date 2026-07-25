@@ -439,6 +439,32 @@ class MessageHandler(
                 }
                 postMessage("mcpServersResponse", buildJsonObject { put("servers", servers) })
             }
+            "getBackgroundTaskOutput" -> {
+                val taskId = msg["taskId"]?.jsonPrimitive?.content ?: return
+                val output = try {
+                    session.agent?.getBackgroundTaskOutput(taskId)
+                } catch (e: StdioClientException) {
+                    LOG.warn("getBackgroundTaskOutput failed: ${e.message}")
+                    JsonNull
+                }
+                postMessage("backgroundTaskOutput", buildJsonObject {
+                    put("taskId", taskId)
+                    put("output", output ?: JsonNull)
+                })
+            }
+            "stopBackgroundTask" -> {
+                val taskId = msg["taskId"]?.jsonPrimitive?.content ?: return
+                val success = try {
+                    session.agent?.stopBackgroundTask(taskId) ?: false
+                } catch (e: StdioClientException) {
+                    LOG.warn("stopBackgroundTask failed: ${e.message}")
+                    false
+                }
+                postMessage("backgroundTaskStopped", buildJsonObject {
+                    put("taskId", taskId)
+                    put("success", success)
+                })
+            }
             // VSCE :158/:736 → connect; SDK onMcpServersChange pushes update
             "connectMcpServer" -> {
                 val name = msg["serverName"]?.jsonPrimitive?.content ?: return
@@ -623,6 +649,7 @@ class MessageHandler(
         postMessage("setInitialState", buildJsonObject {
             put("messages", session.messages ?: JsonArray(emptyList()))
             put("tasks", session.tasks ?: JsonArray(emptyList()))
+            put("backgroundTasks", session.backgroundTasks ?: JsonArray(emptyList()))
             put("inputContent", session.inputContent)
             put("isStreaming", session.isStreaming)
             put("isCommandRunning", session.isCommandRunning)
@@ -690,6 +717,7 @@ class MessageHandler(
             triple("plugin", "plugin", "打开插件管理"),
             triple("mcp", "mcp", "打开 MCP 服务器管理"),
             triple("status", "status", "查看当前状态"),
+            triple("tasks", "tasks", "查看后台任务"),
             triple("clear", "clear", "清除对话历史并重置会话"),
             triple("compact", "compact", "手动压缩对话历史"),
         )

@@ -16,6 +16,7 @@
 import type {
     Message,
     Task,
+    BackgroundTaskSummary,
     QueuedMessage,
     McpServerStatus,
     PermissionMode,
@@ -89,6 +90,7 @@ export interface StdioAgentCallbacks {
     onCommandRunningChange?: (running: boolean) => void;
     onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
     onTasksChange?: (tasks: Task[]) => void;
+    onBackgroundTasksChange?: (tasks: BackgroundTaskSummary[]) => void;
     onSessionIdChange?: (sessionId: string) => void;
     onPermissionModeChange?: (mode: PermissionMode) => void;
     onMcpServersChange?: (servers: McpServerStatus[]) => void;
@@ -120,6 +122,7 @@ export class StdioAgent {
     public messages: Message[] = [];
     public queuedMessages: QueuedMessage[] = [];
     public tasks: Task[] = [];
+    public backgroundTasks: BackgroundTaskSummary[] = [];
 
     private client: StdioClient;
     private router: NotificationRouter;
@@ -304,6 +307,31 @@ export class StdioAgent {
         );
     }
 
+    async getBackgroundTaskOutput(taskId: string): Promise<{
+        stdout: string;
+        stderr: string;
+        status: string;
+        outputPath?: string;
+        type: string;
+        exitCode?: number;
+    } | null> {
+        const result = (await this.client.request(
+            'getBackgroundTaskOutput',
+            { taskId },
+            this.sessionId,
+        )) as { output: { stdout: string; stderr: string; status: string; outputPath?: string; type: string; exitCode?: number } | null };
+        return result.output;
+    }
+
+    async stopBackgroundTask(taskId: string): Promise<boolean> {
+        const result = (await this.client.request(
+            'stopBackgroundTask',
+            { taskId },
+            this.sessionId,
+        )) as { success: boolean };
+        return result.success;
+    }
+
     // ── MCP ───────────────────────────────────────────────────────
 
     async getMcpServers(): Promise<McpServerStatus[]> {
@@ -429,6 +457,12 @@ export class StdioAgent {
                 const p = params as { tasks: Task[] };
                 this.tasks = p.tasks;
                 this.callbacks.onTasksChange?.(p.tasks);
+                break;
+            }
+            case 'backgroundTasksChange': {
+                const p = params as { tasks: BackgroundTaskSummary[] };
+                this.backgroundTasks = p.tasks;
+                this.callbacks.onBackgroundTasksChange?.(p.tasks);
                 break;
             }
             case 'sessionIdChange': {
