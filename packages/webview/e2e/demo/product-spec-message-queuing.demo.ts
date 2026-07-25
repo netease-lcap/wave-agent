@@ -49,8 +49,6 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         await expect(abortBtn).toHaveAttribute('aria-label', '停止');
         await expect(abortBtn.locator('.abort-glyph')).toBeVisible();
 
-        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-queue-button.png' });
-
         // Clear input to simulate real behavior (input cleared after message queued)
         await webviewPage.fill('[data-testid="message-input"]', '');
 
