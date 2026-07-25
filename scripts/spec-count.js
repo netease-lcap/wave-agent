@@ -29,7 +29,7 @@ function walkDir(dir, callback) {
 const specFiles = [];
 walkDir(specsDir, (filePath) => {
   const name = path.basename(filePath);
-  if (name.endsWith(".md") && name !== "README.md") {
+  if (name.endsWith(".md") && name !== "index.md") {
     specFiles.push(path.relative(specsDir, filePath).split(path.sep).join("/"));
   }
 });
@@ -102,8 +102,8 @@ for (const pkg of pkgDirs) {
 
 console.log(`测试文件: ${totalTestFiles}  测试用例: ${totalTestCases.toLocaleString()}`);
 
-// Update docs/specs/README.md
-const readmePath = path.join(specsDir, "README.md");
+// Update docs/specs/index.md
+const readmePath = path.join(specsDir, "index.md");
 let readme = fs.readFileSync(readmePath, "utf-8");
 
 // Update Stats table (Chinese headers)
@@ -198,4 +198,4 @@ for (const line of lines) {
 readme = newLines.join("\n");
 
 fs.writeFileSync(readmePath, readme);
-console.log("已更新 docs/specs/README.md");
+console.log("已更新 docs/specs/index.md");
