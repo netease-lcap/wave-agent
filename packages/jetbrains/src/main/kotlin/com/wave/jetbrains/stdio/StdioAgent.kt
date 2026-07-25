@@ -226,6 +226,14 @@ class StdioAgent(
         return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
     }
 
+    suspend fun getWorkflowRuns(): JsonElement? =
+        client.request("getWorkflowRuns", sessionId = sessionId)?.jsonObject?.get("runs")
+
+    suspend fun stopWorkflowRun(runId: String): Boolean {
+        val result = client.request("stopWorkflowRun", buildJsonObject { put("runId", runId) }, sessionId)
+        return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
+    }
+
     suspend fun connectMcpServer(serverName: String): Boolean {
         val result = client.request("connectMcpServer", buildJsonObject { put("serverName", serverName) }, sessionId)
         return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false

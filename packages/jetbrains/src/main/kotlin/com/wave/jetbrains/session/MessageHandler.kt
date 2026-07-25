@@ -465,6 +465,28 @@ class MessageHandler(
                     put("success", success)
                 })
             }
+            "getWorkflowRuns" -> {
+                val runs = try {
+                    session.agent?.getWorkflowRuns()
+                } catch (e: StdioClientException) {
+                    LOG.warn("getWorkflowRuns failed: ${e.message}")
+                    JsonNull
+                }
+                postMessage("workflowRunsResponse", buildJsonObject { put("runs", runs ?: JsonNull) })
+            }
+            "stopWorkflowRun" -> {
+                val runId = msg["runId"]?.jsonPrimitive?.content ?: return
+                val success = try {
+                    session.agent?.stopWorkflowRun(runId) ?: false
+                } catch (e: StdioClientException) {
+                    LOG.warn("stopWorkflowRun failed: ${e.message}")
+                    false
+                }
+                postMessage("workflowRunStopped", buildJsonObject {
+                    put("runId", runId)
+                    put("success", success)
+                })
+            }
             // VSCE :158/:736 → connect; SDK onMcpServersChange pushes update
             "connectMcpServer" -> {
                 val name = msg["serverName"]?.jsonPrimitive?.content ?: return
@@ -650,6 +672,7 @@ class MessageHandler(
             put("messages", session.messages ?: JsonArray(emptyList()))
             put("tasks", session.tasks ?: JsonArray(emptyList()))
             put("backgroundTasks", session.backgroundTasks ?: JsonArray(emptyList()))
+            put("workflowRuns", session.workflowRuns ?: JsonArray(emptyList()))
             put("inputContent", session.inputContent)
             put("isStreaming", session.isStreaming)
             put("isCommandRunning", session.isCommandRunning)
@@ -718,6 +741,7 @@ class MessageHandler(
             triple("mcp", "mcp", "打开 MCP 服务器管理"),
             triple("status", "status", "查看当前状态"),
             triple("tasks", "tasks", "查看后台任务"),
+            triple("workflows", "workflows", "查看工作流运行"),
             triple("clear", "clear", "清除对话历史并重置会话"),
             triple("compact", "compact", "手动压缩对话历史"),
         )

@@ -195,6 +195,19 @@ export class MessageHandler {
                 this.context.postMessage({ command: 'backgroundTaskStopped', taskId, success }, viewType, windowId);
                 break;
             }
+            case 'getWorkflowRuns': {
+                const session = this.context.getChatSession(viewType || 'tab', windowId);
+                const runs = await session.getWorkflowRuns();
+                this.context.postMessage({ command: 'workflowRunsResponse', runs }, viewType, windowId);
+                break;
+            }
+            case 'stopWorkflowRun': {
+                const session = this.context.getChatSession(viewType || 'tab', windowId);
+                const runId = msg.runId as string;
+                const success = await session.stopWorkflowRun(runId);
+                this.context.postMessage({ command: 'workflowRunStopped', runId, success }, viewType, windowId);
+                break;
+            }
             case 'checkForUpdates':
                 await this.context.checkForUpdates();
                 break;
@@ -678,6 +691,7 @@ export class MessageHandler {
             messages: session.messages,
             tasks: session.tasks,
             backgroundTasks: session.backgroundTasks,
+            workflowRuns: session.workflowRuns,
             inputContent: session.inputContent,
             isStreaming: session.isStreaming,
             isCommandRunning: session.isCommandRunning,
@@ -711,7 +725,8 @@ export class MessageHandler {
                 { id: 'status', name: 'status', description: '查看当前状态' },
                 { id: 'clear', name: 'clear', description: '清除对话历史并重置会话' },
                 { id: 'compact', name: 'compact', description: '手动压缩对话历史' },
-                { id: 'tasks', name: 'tasks', description: '查看后台任务' }
+                { id: 'tasks', name: 'tasks', description: '查看后台任务' },
+                { id: 'workflows', name: 'workflows', description: '查看工作流运行' }
             ];
 
             const allCommands = [...sdkCommands, ...localCommands];

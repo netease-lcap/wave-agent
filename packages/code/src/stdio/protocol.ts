@@ -89,7 +89,9 @@ export type RequestMethod =
   | "updateMarketplace"
   | "compact"
   | "getBackgroundTaskOutput"
-  | "stopBackgroundTask";
+  | "stopBackgroundTask"
+  | "getWorkflowRuns"
+  | "stopWorkflowRun";
 
 // ── Client → Server notification methods ────────────────────────
 

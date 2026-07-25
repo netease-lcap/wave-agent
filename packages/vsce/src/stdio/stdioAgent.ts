@@ -17,6 +17,7 @@ import type {
     Message,
     Task,
     BackgroundTaskSummary,
+    SerializableWorkflowRun,
     QueuedMessage,
     McpServerStatus,
     PermissionMode,
@@ -330,6 +331,24 @@ export class StdioAgent {
             this.sessionId,
         )) as { success: boolean };
         return result.success;
+    }
+
+    async getWorkflowRuns(): Promise<SerializableWorkflowRun[]> {
+        const result = (await this.client.request(
+            'getWorkflowRuns',
+            undefined,
+            this.sessionId,
+        )) as { runs: SerializableWorkflowRun[] };
+        return result?.runs ?? [];
+    }
+
+    async stopWorkflowRun(runId: string): Promise<boolean> {
+        const result = (await this.client.request(
+            'stopWorkflowRun',
+            { runId },
+            this.sessionId,
+        )) as { success: boolean };
+        return result?.success ?? false;
     }
 
     // ── MCP ───────────────────────────────────────────────────────

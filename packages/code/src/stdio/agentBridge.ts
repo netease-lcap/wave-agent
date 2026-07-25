@@ -21,6 +21,7 @@ import {
   type AgentOptions,
   type BackgroundTask,
   type BackgroundTaskSummary,
+  type SerializableWorkflowRun,
   type Message,
   type PermissionDecision,
   type PermissionMode,
@@ -291,6 +292,11 @@ export class AgentBridge {
         return this.getBackgroundTaskOutput(p.taskId as string, sessionId);
       case "stopBackgroundTask":
         return this.stopBackgroundTask(p.taskId as string, sessionId);
+
+      case "getWorkflowRuns":
+        return this.getWorkflowRuns(sessionId);
+      case "stopWorkflowRun":
+        return this.stopWorkflowRun(p.runId as string, sessionId);
 
       default:
         throw new RpcError(
@@ -594,6 +600,29 @@ export class AgentBridge {
     const entry = this.requireSession(sessionId);
     const success = entry.agent.stopBackgroundTask(taskId);
     return { success };
+  }
+
+  private async getWorkflowRuns(
+    sessionId?: string,
+  ): Promise<{ runs: SerializableWorkflowRun[] }> {
+    const entry = this.requireSession(sessionId);
+    const runs = await entry.agent.getWorkflowRuns();
+    return {
+      runs: runs.map((r) => {
+        const { completionPromise, ...rest } = r;
+        void completionPromise;
+        return rest;
+      }),
+    };
+  }
+
+  private stopWorkflowRun(
+    runId: string,
+    sessionId?: string,
+  ): { success: boolean } {
+    const entry = this.requireSession(sessionId);
+    entry.agent.stopWorkflowRun(runId);
+    return { success: true };
   }
 
   // ── Permissions ───────────────────────────────────────────────
