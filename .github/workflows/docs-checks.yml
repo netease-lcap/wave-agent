@@ -1,0 +1,38 @@
+name: Docs Checks
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs-checks.yml'
+      - 'scripts/check-docs-links.mjs'
+      - 'scripts/check-sidebar-anchors.mjs'
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs-checks.yml'
+      - 'scripts/check-docs-links.mjs'
+      - 'scripts/check-sidebar-anchors.mjs'
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check docs links
+        run: node scripts/check-docs-links.mjs
+
+      - name: Check sidebar anchors
+        run: node scripts/check-sidebar-anchors.mjs
