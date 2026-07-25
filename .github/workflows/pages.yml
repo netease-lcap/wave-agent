@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'packages/vsce/e2e/demo/**'
+      - 'packages/webview/e2e/demo/**'
       - 'packages/vsce/LOGO.png'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
@@ -58,9 +58,6 @@ jobs:
 
       - name: Build agent-sdk
         run: pnpm -F wave-agent-sdk build
-
-      - name: Generate screenshots
-        run: pnpm -F wave-webview run test:demo
 
       - name: Build VitePress
         run: pnpm run docs:build

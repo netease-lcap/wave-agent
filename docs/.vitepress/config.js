@@ -12,6 +12,7 @@ export default {
   description: 'AI 辅助编程工具链 — SDK、CLI、VS Code 扩展与 JetBrains 插件',
   themeConfig: {
     nav,
+    search: { provider: 'local' },
     sidebar: {
       '/guide': [
         {
@@ -72,6 +73,7 @@ export default {
             { text: '4.6 进入计划模式确认', link: '/vsce#enter-plan-mode' },
             { text: '4.7 交互式提问', link: '/vsce#ask-user' },
             { text: '4.8 错误消息展示', link: '/vsce#error-message-display' },
+            { text: '4.9 确认反馈机制', link: '/vsce#confirmation-feedback' },
           ],
         },
         {
