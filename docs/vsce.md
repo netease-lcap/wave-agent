@@ -6,6 +6,14 @@ Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、Intel
 
 ## 1. 核心聊天体验 {#core-chat-experience}
 
+插件启动后，聊天面板默认展示欢迎页；未登录时欢迎页居中显示登录按钮，点击即可发起 SSO 登录（详见 [第 8.1 节 配置设置](#configuration-settings)）。
+
+![欢迎页](/screenshots/spec-welcome.png)
+_欢迎页_
+
+![未登录欢迎页](/screenshots/spec-welcome-login.png)
+_未登录欢迎页_
+
 ### 1.1 基础对话 {#basic-chat}
 
 支持 Markdown 格式的文本交互，能够生成带有语法高亮的代码块，方便用户直接阅读和复制。
@@ -597,9 +605,6 @@ _更多菜单：设置 / 企业控制台 / 登录（或退出登录）_
   - **浏览器登录**：点击欢迎页的"登录"按钮后自动打开浏览器，用户在 Wave AI 登录页完成认证（支持 SSO 企业身份提供商或账号密码登录）。
   - **登录态展示**：未登录时聊天面板显示欢迎页与登录按钮，登录后进入正常聊天界面。登出后自动恢复为直接 LLM API 模式。
 
-![未登录欢迎页](/screenshots/spec-welcome-login.png)
-_未登录欢迎页_
-
 - **状态信息（`/status`）**：查看当前 Wave 的运行状态，包括版本号、Session ID 和工作目录。版本号右侧附有"检查更新"按钮，点击后可检测是否有新版本可用。
 
 ![状态信息](/screenshots/spec-status-dialog.png)
@@ -609,7 +614,10 @@ _状态信息弹窗_
 - **MCP 服务器（`/mcp`）**：查看和管理 MCP 服务器连接状态（详见 [第 6.3 节 MCP 协议集成](#mcp-integration)）。
 
 ![配置设置](/screenshots/spec-configuration.png)
-_配置设置_
+_配置设置（全局设置选项卡）_
+
+![模型设置](/screenshots/spec-config-model.png)
+_模型设置选项卡_
 
 ### 8.2 语言设置 {#language-settings}
 
