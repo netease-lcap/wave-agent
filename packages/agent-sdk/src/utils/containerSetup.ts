@@ -256,23 +256,12 @@ export function setupAgentContainer(
 
         const decision = await options.canUseTool!(context);
 
-        const planFilePath = permissionManager.getPlanFilePath();
-
         if (decision.newPermissionMode) {
           setPermissionMode(decision.newPermissionMode);
         }
 
         if (decision.newPermissionRule) {
           await addPermissionRule(decision.newPermissionRule);
-        }
-
-        if (decision.clearContext) {
-          messageManager.clearMessages();
-          if (planFilePath) {
-            messageManager.addUserMessage({
-              content: `Implement the plan at ${planFilePath}`,
-            });
-          }
         }
 
         return decision;

@@ -7,7 +7,7 @@ import {
 } from "wave-agent-sdk";
 
 export interface ConfirmationState {
-  selectedOption: "clear" | "auto" | "allow" | "alternative";
+  selectedOption: "auto" | "bypass" | "allow" | "alternative";
   alternativeText: string;
   alternativeCursorPosition: number;
   hasUserInput: boolean;
@@ -99,13 +99,7 @@ export function confirmationReducer(
 
       if (key.return) {
         let decision: PermissionDecision | null = null;
-        if (state.selectedOption === "clear") {
-          decision = {
-            behavior: "allow",
-            newPermissionMode: "acceptEdits",
-            clearContext: true,
-          };
-        } else if (state.selectedOption === "allow") {
+        if (state.selectedOption === "allow") {
           if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
             decision = { behavior: "allow", newPermissionMode: "default" };
           } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
@@ -134,6 +128,11 @@ export function confirmationReducer(
           } else {
             decision = { behavior: "allow", newPermissionMode: "acceptEdits" };
           }
+        } else if (state.selectedOption === "bypass") {
+          decision = {
+            behavior: "allow",
+            newPermissionMode: "bypassPermissions",
+          };
         } else if (state.alternativeText.trim()) {
           decision = {
             behavior: "deny",
@@ -174,9 +173,10 @@ export function confirmationReducer(
       }
 
       const availableOptions: ConfirmationState["selectedOption"][] = [];
-      if (toolName === EXIT_PLAN_MODE_TOOL_NAME) availableOptions.push("clear");
       availableOptions.push("allow");
       if (!hidePersistentOption) availableOptions.push("auto");
+      if (toolName === BASH_TOOL_NAME || toolName === EXIT_PLAN_MODE_TOOL_NAME)
+        availableOptions.push("bypass");
       availableOptions.push("alternative");
 
       if (key.upArrow) {

@@ -1266,7 +1266,7 @@ describe("Confirmation", () => {
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("My Plan");
       });
-      expect(lastFrame()).toContain("Yes, clear context and auto-accept edits");
+      expect(lastFrame()).not.toContain("clear context");
       expect(lastFrame()).toContain("Yes, auto-accept edits");
       expect(lastFrame()).toContain("Yes, manually approve edits");
     });
@@ -1285,19 +1285,23 @@ describe("Confirmation", () => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("My Plan");
       });
 
-      // Confirm default (clear context)
+      // Default selection: manually approve → default mode
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, manually approve edits",
+        );
+      });
       stdin.write("\r");
       await vi.waitFor(() => {
         expect(mockOnDecision).toHaveBeenCalledWith(
           expect.objectContaining({
             behavior: "allow",
-            newPermissionMode: "acceptEdits",
-            clearContext: true,
+            newPermissionMode: "default",
           }),
         );
       });
 
-      // Test manually approve for ExitPlanMode
+      // Down to auto-accept → acceptEdits mode
       const { stdin: stdin2, lastFrame: lastFrame2 } = render(
         <Confirmation
           toolName="ExitPlanMode"
@@ -1306,44 +1310,13 @@ describe("Confirmation", () => {
           onCancel={mockOnCancel}
         />,
       );
-      stdin2.write("\u001b[B"); // Down to manually approve
+      stdin2.write("\u001b[B"); // Down to auto-accept
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame2() || "")).toContain(
-          "> Yes, manually approve edits",
-        );
-      });
-      stdin2.write("\r");
-      await vi.waitFor(() => {
-        expect(mockOnDecision).toHaveBeenLastCalledWith(
-          expect.objectContaining({
-            behavior: "allow",
-            newPermissionMode: "default",
-          }),
-        );
-      });
-
-      // Test auto-accept for ExitPlanMode
-      const { stdin: stdin3, lastFrame: lastFrame3 } = render(
-        <Confirmation
-          toolName="ExitPlanMode"
-          planContent="My Plan"
-          onDecision={mockOnDecision}
-          onCancel={mockOnCancel}
-        />,
-      );
-      stdin3.write("\u001b[B"); // Down to manually approve
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame3() || "")).toContain(
-          "> Yes, manually approve edits",
-        );
-      });
-      stdin3.write("\u001b[B"); // Down to auto-accept
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame3() || "")).toContain(
           "> Yes, auto-accept edits",
         );
       });
-      stdin3.write("\r");
+      stdin2.write("\r");
       await vi.waitFor(() => {
         expect(mockOnDecision).toHaveBeenLastCalledWith(
           expect.objectContaining({

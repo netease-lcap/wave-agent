@@ -172,7 +172,7 @@
 - **FR-001**：Agent 必须支持 `permissionMode` 值："default"、"bypassPermissions"、"acceptEdits"、"plan"、"dontAsk"。
 - **FR-002**：Wave CLI 必须支持 `--dangerously-skip-permissions` 将模式设置为 "bypassPermissions"。
 - **FR-003**：CLI 必须为 "default" 模式下的受限工具提供确认组件。
-- **FR-004**：确认组件必须支持"是"、"是，不再询问"、"是，并自动接受编辑"（用于文件系统工具），以及通过文本输入的替代指令。
+- **FR-004**：确认组件必须支持"是"、"是，不再询问"、"是，并自动接受编辑"（用于文件系统工具）、"是，并 bypass permissions"（用于 Bash 工具，切换到 bypassPermissions 模式），以及通过文本输入的替代指令。
 - **FR-005**：系统必须支持 Agent SDK 中的 `canUseTool` 回调用于自定义权限逻辑。
 - **FR-006**：系统必须支持通过 `Shift+Tab` 切换权限模式（default -> acceptEdits -> bypassPermissions -> plan）。
 - **FR-021**：系统必须对识别为危险或越界的命令隐藏"不再询问"选项。

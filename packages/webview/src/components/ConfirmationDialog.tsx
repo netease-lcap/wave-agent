@@ -247,6 +247,13 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     onConfirm(confirmation.confirmationId, decision as ConfirmationDecision);
   }, [confirmation, onConfirm]);
 
+  const handleBypassConfirm = useCallback(() => {
+    onConfirm(confirmation.confirmationId, {
+      behavior: 'allow',
+      newPermissionMode: 'bypassPermissions',
+    });
+  }, [onConfirm, confirmation.confirmationId]);
+
   const getAutoOptionText = () => {
     if (confirmation.toolName === BASH_TOOL_NAME) {
       if (confirmation.suggestedPrefix) {
@@ -586,6 +593,15 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                     onClick={handleAutoConfirm}
                   >
                     <span className="btn-text">{getAutoOptionText()}</span>
+                  </button>
+                )}
+
+                {(confirmation.toolName === BASH_TOOL_NAME || confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME) && (
+                  <button
+                    className="confirmation-btn confirmation-btn-auto"
+                    onClick={handleBypassConfirm}
+                  >
+                    <span className="btn-text">是，并 bypass 权限</span>
                   </button>
                 )}
 

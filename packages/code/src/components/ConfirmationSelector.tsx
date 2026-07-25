@@ -39,7 +39,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   onCancel,
 }) => {
   const [state, dispatch] = useReducer(confirmationReducer, {
-    selectedOption: toolName === EXIT_PLAN_MODE_TOOL_NAME ? "clear" : "allow",
+    selectedOption: "allow",
     alternativeText: "",
     alternativeCursorPosition: 0,
     hasUserInput: false,
@@ -212,20 +212,6 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
             <Text>Do you want to proceed?</Text>
           </Box>
           <Box marginTop={1} flexDirection="column">
-            {toolName === EXIT_PLAN_MODE_TOOL_NAME && (
-              <Box key="clear-option">
-                <Text
-                  color={state.selectedOption === "clear" ? "black" : "white"}
-                  backgroundColor={
-                    state.selectedOption === "clear" ? "yellow" : undefined
-                  }
-                  bold={state.selectedOption === "clear"}
-                >
-                  {state.selectedOption === "clear" ? "> " : "  "}
-                  Yes, clear context and auto-accept edits
-                </Text>
-              </Box>
-            )}
             <Box key="allow-option">
               <Text
                 color={state.selectedOption === "allow" ? "black" : "white"}
@@ -251,6 +237,21 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                 >
                   {state.selectedOption === "auto" ? "> " : "  "}
                   {getAutoOptionText()}
+                </Text>
+              </Box>
+            )}
+            {(toolName === BASH_TOOL_NAME ||
+              toolName === EXIT_PLAN_MODE_TOOL_NAME) && (
+              <Box key="bypass-option">
+                <Text
+                  color={state.selectedOption === "bypass" ? "black" : "white"}
+                  backgroundColor={
+                    state.selectedOption === "bypass" ? "yellow" : undefined
+                  }
+                  bold={state.selectedOption === "bypass"}
+                >
+                  {state.selectedOption === "bypass" ? "> " : "  "}
+                  Yes, and bypass permissions
                 </Text>
               </Box>
             )}

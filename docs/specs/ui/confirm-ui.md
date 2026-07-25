@@ -62,8 +62,9 @@
 
 **验收场景**：
 
-1. **假设** agent 已完成规划，**当** exit_plan_mode 工具被触发时，**则**确认 UI 显示计划内容，并提供带上下文清除的批准或手动批准的选项。
-2. **假设**退出计划确认已显示，**当**用户选择"是，清除上下文并自动接受编辑"时，**则**上下文被清除，权限模式更改为 acceptEdits。
+1. **假设** agent 已完成规划，**当** exit_plan_mode 工具被触发时，**则**确认 UI 显示计划内容，并提供手动批准（切换到默认模式）、自动接受编辑（切换到 acceptEdits 模式）或 bypass permissions（切换到 bypassPermissions 模式）的选项。
+2. **假设**退出计划确认已显示，**当**用户选择自动接受编辑选项时，**则**权限模式更改为 acceptEdits，对话上下文保持不变。
+3. **假设**退出计划确认已显示，**当**用户选择 bypass permissions 选项时，**则**计划被批准执行，且权限模式更改为 bypassPermissions（CLI 与 IDE webview 均提供该选项）。
 
 ---
 
@@ -79,6 +80,22 @@
 
 1. **假设**三个工具等待确认，**当**第一个确认被解决时，**则**第二个确认立即出现。
 2. **假设**存在确认队列，**当**用户按下 ESC 取消当前确认时，**则**仅取消当前确认，队列中的下一个出现。
+
+---
+
+### 用户故事 6 - 从 Bash 确认切换到 Bypass Permissions 模式（优先级：P2）
+
+作为用户，我希望在 Bash 命令确认对话框中直接开启 bypass permissions 模式，以便在信任当前任务流程时无需先解决确认再按 Shift+Tab 切换模式。CLI 和 IDE（VS Code / JetBrains webview）都必须支持。
+
+**为什么是这个优先级**：这是便利性改进；用户已可通过 Shift+Tab（CLI）或状态栏模式切换（IDE）随时切换模式，此选项只是减少操作步骤。
+
+**独立测试**：触发一个需要确认的 Bash 命令，选择 bypass 选项，验证命令被执行且后续工具调用不再提示确认。
+
+**验收场景**：
+
+1. **假设** agent 尝试运行需要确认的 Bash 命令，**当**确认 UI 出现时，**则**CLI 显示 "Yes, and bypass permissions" 选项，IDE 显示对应的 bypass permissions 按钮。
+2. **假设**确认 UI 已显示，**当**用户选择 bypass permissions 选项时，**则**当前命令被允许执行，且权限模式切换为 bypassPermissions。
+3. **假设**权限模式已切换为 bypassPermissions，**当**后续工具调用发生时，**则**不再显示确认 UI。
 
 ---
 
@@ -108,6 +125,10 @@
 - **FR-011**：当确认 UI 超出终端高度时，系统必须切换到静态渲染模式以防止闪烁。
 - **FR-012**：当所有确认解决后退出静态模式时，系统必须触发终端重新挂载（清除屏幕并重新渲染）。
 - **FR-013**：系统必须根据工具类型建议权限规则（如 Bash 的命令前缀、MCP 工具的工具名称）。
+- **FR-014**：Bash 工具的确认 UI 必须提供 bypass permissions 选项（CLI 中为 "Yes, and bypass permissions" 列表项，IDE webview 中为独立按钮），CLI 中位于持久权限选项（"不再询问"）之后、替代输入选项之前。
+- **FR-015**：当用户选择 bypass permissions 选项时，系统必须允许当前命令并将权限模式设置为 `bypassPermissions`（通过 `PermissionDecision.newPermissionMode`，CLI 与 IDE 共用同一套决策应用管道）。
+- **FR-016**：即使持久权限选项因危险命令检测被隐藏，bypass permissions 选项仍必须显示——用户本就可以随时切换到 bypassPermissions 模式，该选项不提供超出已有能力的权限提升。
+- **FR-017**：ExitPlanMode 工具的确认 UI 必须提供 bypass permissions 选项（CLI 中为 "Yes, and bypass permissions" 列表项，位于自动接受编辑选项之后、替代输入选项之前；IDE webview 中为独立按钮），选择后批准计划执行并将权限模式设置为 `bypassPermissions`（决策载荷与 FR-015 相同）。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

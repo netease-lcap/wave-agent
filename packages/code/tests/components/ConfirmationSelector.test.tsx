@@ -247,6 +247,152 @@ describe("ConfirmationSelector Additional Coverage", () => {
     });
   });
 
+  describe("Bash bypass permissions option", () => {
+    it("should show bypass option for Bash tool", async () => {
+      const { lastFrame } = render(
+        <ConfirmationSelector
+          toolName="Bash"
+          toolInput={{ command: "ls -la" }}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Yes, and bypass permissions",
+        );
+      });
+    });
+
+    it("should not show bypass option for non-Bash tools", async () => {
+      const { lastFrame } = render(
+        <ConfirmationSelector
+          toolName="Edit"
+          toolInput={{ file_path: "test.ts" }}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Yes, proceed");
+      });
+      expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+        "bypass permissions",
+      );
+    });
+
+    it("should allow with bypassPermissions mode when bypass option selected", async () => {
+      const { stdin, lastFrame } = render(
+        <ConfirmationSelector
+          toolName="Bash"
+          toolInput={{ command: "ls -la" }}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
+      });
+      stdin.write("\u001b[B"); // Down to auto
+      stdin.write("\u001b[B"); // Down to bypass
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and bypass permissions",
+        );
+      });
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(mockOnDecision).toHaveBeenCalledWith({
+          behavior: "allow",
+          newPermissionMode: "bypassPermissions",
+        });
+      });
+    });
+
+    it("should show bypass option even when persistent option is hidden", async () => {
+      const { stdin, lastFrame } = render(
+        <ConfirmationSelector
+          toolName="Bash"
+          toolInput={{ command: "rm -rf temp/" }}
+          hidePersistentOption
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        const frame = stripAnsiColors(lastFrame() || "");
+        expect(frame).toContain("Yes, and bypass permissions");
+        expect(frame).not.toContain("don't ask again");
+      });
+
+      stdin.write("\u001b[B"); // Down from allow to bypass (auto hidden)
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and bypass permissions",
+        );
+      });
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(mockOnDecision).toHaveBeenCalledWith({
+          behavior: "allow",
+          newPermissionMode: "bypassPermissions",
+        });
+      });
+    });
+  });
+
+  describe("ExitPlanMode bypass permissions option", () => {
+    it("should show bypass option for ExitPlanMode", async () => {
+      const { lastFrame } = render(
+        <ConfirmationSelector
+          toolName="ExitPlanMode"
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Yes, and bypass permissions",
+        );
+      });
+    });
+
+    it("should allow with bypassPermissions mode when bypass option selected for ExitPlanMode", async () => {
+      const { stdin, lastFrame } = render(
+        <ConfirmationSelector
+          toolName="ExitPlanMode"
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, manually approve edits",
+        );
+      });
+      stdin.write("\u001b[B"); // Down to auto-accept
+      stdin.write("\u001b[B"); // Down to bypass
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and bypass permissions",
+        );
+      });
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(mockOnDecision).toHaveBeenCalledWith({
+          behavior: "allow",
+          newPermissionMode: "bypassPermissions",
+        });
+      });
+    });
+  });
+
   describe("isExpanded Tests", () => {
     it("should render nothing for non-AskUserQuestion tools when isExpanded is true", () => {
       const { lastFrame } = render(

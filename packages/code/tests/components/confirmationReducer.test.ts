@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { Key } from "ink";
 import {
   confirmationReducer,
   type ConfirmationAction,
@@ -199,6 +200,103 @@ describe("confirmationReducer", () => {
         decision: { behavior: "deny", message: "no" },
       });
       expect(result.decision).toEqual({ behavior: "deny", message: "no" });
+    });
+  });
+
+  describe("HANDLE_KEY bypass option", () => {
+    it("should return bypassPermissions decision when bypass selected for Bash", () => {
+      const state: ConfirmationState = {
+        ...initialState,
+        selectedOption: "bypass",
+      };
+      const result = confirmationReducer(state, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { return: true } as unknown as Key,
+        toolName: "Bash",
+        toolInput: { command: "ls -la" },
+      });
+      expect(result.decision).toEqual({
+        behavior: "allow",
+        newPermissionMode: "bypassPermissions",
+      });
+    });
+
+    it("should include bypass in navigation for Bash", () => {
+      const afterAuto = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Bash",
+        toolInput: { command: "ls -la" },
+      });
+      expect(afterAuto.selectedOption).toBe("auto");
+
+      const afterBypass = confirmationReducer(afterAuto, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Bash",
+        toolInput: { command: "ls -la" },
+      });
+      expect(afterBypass.selectedOption).toBe("bypass");
+    });
+
+    it("should include bypass even when persistent option is hidden", () => {
+      const result = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Bash",
+        toolInput: { command: "rm -rf temp/" },
+        hidePersistentOption: true,
+      });
+      expect(result.selectedOption).toBe("bypass");
+    });
+
+    it("should return bypassPermissions decision when bypass selected for ExitPlanMode", () => {
+      const state: ConfirmationState = {
+        ...initialState,
+        selectedOption: "bypass",
+      };
+      const result = confirmationReducer(state, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { return: true } as unknown as Key,
+        toolName: "ExitPlanMode",
+      });
+      expect(result.decision).toEqual({
+        behavior: "allow",
+        newPermissionMode: "bypassPermissions",
+      });
+    });
+
+    it("should include bypass in navigation for ExitPlanMode", () => {
+      const afterAuto = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "ExitPlanMode",
+      });
+      expect(afterAuto.selectedOption).toBe("auto");
+
+      const afterBypass = confirmationReducer(afterAuto, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "ExitPlanMode",
+      });
+      expect(afterBypass.selectedOption).toBe("bypass");
+    });
+
+    it("should not include bypass for tools other than Bash and ExitPlanMode", () => {
+      const result = confirmationReducer(initialState, {
+        type: "HANDLE_KEY",
+        input: "",
+        key: { downArrow: true } as unknown as Key,
+        toolName: "Edit",
+      });
+      expect(result.selectedOption).toBe("auto");
     });
   });
 

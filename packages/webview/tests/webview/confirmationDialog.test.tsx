@@ -513,4 +513,108 @@ describe('Confirmation Dialog', () => {
         expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
         expect(document.querySelector('.confirmation-file-path')).toHaveTextContent('src/components/App.tsx');
     });
+
+    it('should show bypass button for Bash tool and send bypassPermissions decision', async () => {
+        const { vscode } = renderChatApp();
+        vscode.postMessage.mockClear();
+
+        await act(async () => {
+            sendCommand('showConfirmation', {
+                confirmationId: 'test_bash_bypass',
+                toolName: BASH_TOOL_NAME,
+                confirmationType: '命令执行待确认',
+                toolInput: { command: 'ls -la' }
+            });
+        });
+
+        const bypassBtn = screen.getByText('是，并 bypass 权限').closest('button');
+        expect(bypassBtn).toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.click(bypassBtn as HTMLElement);
+        });
+
+        expect(document.querySelector('.confirmation-dialog')).not.toBeInTheDocument();
+
+        const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
+        expect(sentMessages).toHaveLength(1);
+        expect(sentMessages[0]).toEqual({
+            command: 'confirmationResponse',
+            confirmationId: 'test_bash_bypass',
+            approved: true,
+            decision: {
+                behavior: 'allow',
+                newPermissionMode: 'bypassPermissions'
+            }
+        });
+    });
+
+    it('should show bypass button for ExitPlanMode and send bypassPermissions decision', async () => {
+        const { vscode } = renderChatApp();
+        vscode.postMessage.mockClear();
+
+        await act(async () => {
+            sendCommand('showConfirmation', {
+                confirmationId: 'test_exit_plan_bypass',
+                toolName: EXIT_PLAN_MODE_TOOL_NAME,
+                confirmationType: '计划待确认',
+                planContent: '## Test Plan\n- Step 1'
+            });
+        });
+
+        const bypassBtn = screen.getByText('是，并 bypass 权限').closest('button');
+        expect(bypassBtn).toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.click(bypassBtn as HTMLElement);
+        });
+
+        expect(document.querySelector('.confirmation-dialog')).not.toBeInTheDocument();
+
+        const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
+        expect(sentMessages).toHaveLength(1);
+        expect(sentMessages[0]).toEqual({
+            command: 'confirmationResponse',
+            confirmationId: 'test_exit_plan_bypass',
+            approved: true,
+            decision: {
+                behavior: 'allow',
+                newPermissionMode: 'bypassPermissions'
+            }
+        });
+    });
+
+    it('should show bypass button even when persistent option is hidden', async () => {
+        renderChatApp();
+
+        await act(async () => {
+            sendCommand('showConfirmation', {
+                confirmationId: 'test_bash_bypass_dangerous',
+                toolName: BASH_TOOL_NAME,
+                confirmationType: '命令执行待确认',
+                toolInput: { command: 'rm -rf temp/' },
+                hidePersistentOption: true
+            });
+        });
+
+        // Auto ("don't ask again") button hidden, bypass button still visible
+        expect(screen.queryByText('是，且在此工作目录下不再询问此命令')).not.toBeInTheDocument();
+        expect(screen.getByText('是，并 bypass 权限')).toBeInTheDocument();
+    });
+
+    it('should not show bypass button for non-Bash tools', async () => {
+        renderChatApp();
+
+        await act(async () => {
+            sendCommand('showConfirmation', {
+                confirmationId: 'test_edit_no_bypass',
+                toolName: EDIT_TOOL_NAME,
+                confirmationType: '代码修改待确认',
+                toolInput: { file_path: 'test.ts', old_string: 'old', new_string: 'new' }
+            });
+        });
+
+        expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
+        expect(screen.queryByText('是，并 bypass 权限')).not.toBeInTheDocument();
+    });
 });
