@@ -174,7 +174,7 @@
 - **FR-003**：CLI 必须为 "default" 模式下的受限工具提供确认组件。
 - **FR-004**：确认组件必须支持"是"、"是，不再询问"、"是，并自动接受编辑"（用于文件系统工具），以及通过文本输入的替代指令。
 - **FR-005**：系统必须支持 Agent SDK 中的 `canUseTool` 回调用于自定义权限逻辑。
-- **FR-006**：系统必须支持通过 `Shift+Tab` 切换权限模式（default -> acceptEdits -> plan -> bypassPermissions）。
+- **FR-006**：系统必须支持通过 `Shift+Tab` 切换权限模式（default -> acceptEdits -> bypassPermissions -> plan）。
 - **FR-021**：系统必须对识别为危险或越界的命令隐藏"不再询问"选项。
 - **FR-056**：系统必须检测 bash 命令中的写入重定向（`>`、`>>` 等）并将其视为危险操作，隐藏"不再询问"选项。
 - **FR-057**：系统在检测写入重定向时必须忽略文件描述符重定向（如 `2>&1`）。
@@ -184,7 +184,7 @@
 - **FR-046**：在 `dontAsk` 模式下，系统必须自动拒绝任何不匹配 `permissions.allow` 或 `temporaryRules` 中规则的受限工具调用。
 - **FR-047**：在 `dontAsk` 模式下，系统不得对未批准的受限工具调用 `canUseToolCallback`（通常会触发用户提示）。
 - **FR-048**：`dontAsk` 模式不得包含在 "Shift+Tab" 快捷键触发的权限模式循环中。
-- **FR-049**：当 `dontAsk` 模式激活时，系统必须向 agent 的系统提示中注入一条消息，说明："工具在'用户选择的权限模式'下执行。权限可以通过 settings.json 和 settings.local.json 配置。"
+- ~~**FR-049**：当 `dontAsk` 模式激活时，系统必须向 agent 的系统提示中注入一条消息，说明："工具在'用户选择的权限模式'下执行。权限可以通过 settings.json 和 settings.local.json 配置。"~~ *已移除：代码中不存在此提示注入。*
 
 #### 安全区域与安全文件访问
 - **FR-050**：系统必须将"安全区域"识别为当前工作目录和 `permissions.additionalDirectories` 中列出的所有路径的并集。

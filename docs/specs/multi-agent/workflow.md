@@ -94,7 +94,6 @@
 - **运行中中止**：如果用户停止工作流，所有飞行中的 agent 被取消，运行状态设置为"aborted"。
 - **子 agent 中的 Workflow 工具**：Workflow 工具在子 agent 中被禁止（防止无限递归）。
 - **脚本持久化**：每次 Workflow 调用都将脚本持久化到会话目录，即使执行失败。
-- **嵌套工作流存根**：`workflow()` API 函数当前抛出"not yet implemented"——它是未来嵌套工作流支持的占位符。
 
 ## 需求 *（必填）*
 
@@ -103,7 +102,7 @@
 - **FR-001**：系统必须提供 `Workflow` 工具，AI 模型使用 JavaScript `script`、可选 `args`、可选 `scriptPath` 和可选 `resumeFromRunId` 调用。
 - **FR-002**：Workflow 工具必须仅在用户显式选择加入多 agent 编排时调用——通过直接请求、斜杠命令或命名工作流调用。
 - **FR-003**：每个工作流脚本必须以 `export const meta = {name, description, phases?}` 开头，后跟纯 JavaScript 主体。meta 必须是纯字面量。
-- **FR-004**：脚本必须在沙箱化的 async 上下文中通过 `new Function()` 执行，API 作为闭包变量注入：`agent()`、`parallel()`、`pipeline()`、`phase()`、`log()`、`args`、`budget`、`workflow()`。
+- **FR-004**：脚本必须在沙箱化的 async 上下文中通过 `new Function()` 执行，API 作为闭包变量注入：`agent()`、`parallel()`、`pipeline()`、`phase()`、`log()`、`args`、`budget`。
 - **FR-005**：运行时必须拒绝包含禁止模式的脚本：`require()`、`process.`、`eval()`、`import`、`Date.now()`、`Math.random()`、无参 `new Date()`、`fs.*`/`require('fs')`、`child_process`、`__dirname`、`__filename`、`global.`、`globalThis`。
 - **FR-006**：工作流必须在后台运行。Workflow 工具立即返回运行 ID 和脚本路径。
 - **FR-007**：并发 `agent()` 调用必须限制在 `min(16, cpu_cores - 2)`。每次运行的总 agent 数必须限制在 1000。单个 `parallel()`/`pipeline()` 调用必须最多接受 4096 项。

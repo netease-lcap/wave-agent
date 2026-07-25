@@ -19,7 +19,7 @@
 1. **假设** CLI 正在运行，**当**用户处于正常模式时，**则**状态栏显示 "Mode: [current mode] (Shift+Tab to cycle)"。
 2. **假设** CLI 正在运行，**当**用户输入 `!` 时，**则**状态栏显示 "Shell: Run shell command"。
 3. **假设** CLI 正在运行，**当**用户使用 Shift+Tab 切换模式时，**则**状态栏中的 `permissionMode` 更新并相应改变颜色。
-4. **假设** CLI 正在运行，**当**用户处于 BTW 模式时，**则**状态栏显示 "Mode: BTW (ESC to dismiss)"。
+4. **假设** CLI 正在运行，**当**用户处于 BTW 模式时，**则**输入区域显示独立的 `BtwDisplay` 组件，状态栏不显示。
 
 ### 用户故事 2 - 上下文使用百分比（优先级：P1）
 
@@ -44,8 +44,8 @@
 ### 功能需求
 
 - **FR-001**：系统必须在 `packages/code/src/components/StatusLine.tsx` 中拥有专用的 `StatusLine` 组件。
-- **FR-002**：`StatusLine` 组件必须接受 `permissionMode`（字符串）、`isShellCommand`（布尔值）和 `isBtwActive`（布尔值）作为 props。
-- **FR-003**：`StatusLine` 组件必须在 `isBtwActive` 为 true 时优先显示 BTW 模式。
+- **FR-002**：`StatusLine` 组件必须接受 `permissionMode`（字符串）、`isShellCommand`（布尔值）、`isGoalActive`（可选布尔值）和 `goalElapsed`（可选字符串）作为 props。
+- **FR-003**：BTW 模式必须由独立的 `BtwDisplay` 组件渲染；BTW 激活时 `StatusLine` 随输入区域一起隐藏，`StatusLine` 自身不负责 BTW 显示。
 - **FR-004**：`InputBox.tsx` 必须使用 `StatusLine` 组件替代内联渲染逻辑。
 - **FR-005**：`StatusLine` 组件必须接受 `latestTotalTokens`（数字）和 `maxInputTokens`（数字）作为可选 props。
 - **FR-006**：`StatusLine` 组件必须在 `latestTotalTokens > 0` 时显示右对齐的 "X% context" 文本。
