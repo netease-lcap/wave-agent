@@ -181,6 +181,20 @@ export class MessageHandler {
             case 'disconnectMcpServer':
                 await this.handleDisconnectMcpServer(msg.serverName as string, viewType, windowId);
                 break;
+            case 'getBackgroundTaskOutput': {
+                const session = this.context.getChatSession(viewType || 'tab', windowId);
+                const taskId = msg.taskId as string;
+                const output = await session.getBackgroundTaskOutput(taskId);
+                this.context.postMessage({ command: 'backgroundTaskOutput', taskId, output }, viewType, windowId);
+                break;
+            }
+            case 'stopBackgroundTask': {
+                const session = this.context.getChatSession(viewType || 'tab', windowId);
+                const taskId = msg.taskId as string;
+                const success = await session.stopBackgroundTask(taskId);
+                this.context.postMessage({ command: 'backgroundTaskStopped', taskId, success }, viewType, windowId);
+                break;
+            }
             case 'checkForUpdates':
                 await this.context.checkForUpdates();
                 break;
@@ -663,6 +677,7 @@ export class MessageHandler {
             command: 'setInitialState',
             messages: session.messages,
             tasks: session.tasks,
+            backgroundTasks: session.backgroundTasks,
             inputContent: session.inputContent,
             isStreaming: session.isStreaming,
             isCommandRunning: session.isCommandRunning,
@@ -695,7 +710,8 @@ export class MessageHandler {
                 { id: 'mcp', name: 'mcp', description: '打开 MCP 服务器管理' },
                 { id: 'status', name: 'status', description: '查看当前状态' },
                 { id: 'clear', name: 'clear', description: '清除对话历史并重置会话' },
-                { id: 'compact', name: 'compact', description: '手动压缩对话历史' }
+                { id: 'compact', name: 'compact', description: '手动压缩对话历史' },
+                { id: 'tasks', name: 'tasks', description: '查看后台任务' }
             ];
 
             const allCommands = [...sdkCommands, ...localCommands];

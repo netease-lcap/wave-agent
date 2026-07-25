@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { Message, PermissionDecision, ToolPermissionContext, PermissionMode, Task, QueuedMessage, McpServerStatus, ToolBlockUpdateCallbackParams } from 'wave-agent-sdk';
+import type { Message, PermissionDecision, ToolPermissionContext, PermissionMode, Task, BackgroundTaskSummary, QueuedMessage, McpServerStatus, ToolBlockUpdateCallbackParams } from 'wave-agent-sdk';
 import { ConfigurationData } from '../services/configurationService';
 import { StdioClient } from '../stdio/stdioClient';
 import { StdioAgent, type StdioAgentCallbacks } from '../stdio/stdioAgent';
@@ -8,6 +8,7 @@ import { NotificationRouter } from '../stdio/notificationRouter';
 export interface ChatSessionCallbacks {
     onMessagesChange: (messages: Message[]) => void;
     onTasksChange: (tasks: Task[]) => void;
+    onBackgroundTasksChange?: (tasks: BackgroundTaskSummary[]) => void;
     onSessionIdChange: (sessionId: string) => void;
     onStreamingChange: (isStreaming: boolean) => void;
     onQueueChange: (queue: QueuedMessage[]) => void;
@@ -32,6 +33,7 @@ export class ChatSession {
     public agent: StdioAgent | undefined;
     public messages: Message[] = [];
     public tasks: Task[] = [];
+    public backgroundTasks: BackgroundTaskSummary[] = [];
     public sessionId: string | undefined;
     public isStreaming: boolean = false;
     public isCommandRunning: boolean = false;
@@ -122,6 +124,10 @@ export class ChatSession {
                 onTasksChange: (tasks: Task[]) => {
                     this.tasks = tasks;
                     this.callbacks.onTasksChange(tasks);
+                },
+                onBackgroundTasksChange: (tasks: BackgroundTaskSummary[]) => {
+                    this.backgroundTasks = tasks;
+                    this.callbacks.onBackgroundTasksChange?.(tasks);
                 },
                 onSessionIdChange: (sessionId: string) => {
                     this.sessionId = sessionId;
@@ -505,6 +511,27 @@ export class ChatSession {
             return [];
         }
         return await this.agent.getMcpServers();
+    }
+
+    public async getBackgroundTaskOutput(taskId: string): Promise<{
+        stdout: string;
+        stderr: string;
+        status: string;
+        outputPath?: string;
+        type: string;
+        exitCode?: number;
+    } | null> {
+        if (!this.agent) {
+            return null;
+        }
+        return await this.agent.getBackgroundTaskOutput(taskId);
+    }
+
+    public async stopBackgroundTask(taskId: string): Promise<boolean> {
+        if (!this.agent) {
+            return false;
+        }
+        return await this.agent.stopBackgroundTask(taskId);
     }
 
     public async connectMcpServer(serverName: string): Promise<boolean> {

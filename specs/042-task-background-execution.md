@@ -99,6 +99,25 @@
 
 ---
 
+### 用户故事 7 - IDE 插件后台任务管理对话框（优先级：P2）
+
+作为 IDE 插件（VS Code 扩展与 JetBrains 插件）用户，我希望能在 IDE 中通过 `/tasks` 命令弹出对话框查看和管理后台任务（shell / 子 agent / 工作流），与 CLI 的 `/tasks` 弹窗体验一致，以便集中监控后台运行的长时间任务、查看输出、必要时终止任务。
+
+**为什么是这个优先级**：IDE 插件以 stdio 子进程方式运行 Agent，目前 `AgentCallbacks.onBackgroundTasksChange` 回调未通过 stdio 协议转发，IDE 完全无法感知后台任务（`run_in_background`、超时自动后台化的任务）。后台任务的结果当前仅在 CLI 可见；IDE 用户无法查看或管理这些任务，与 CLI 体验不一致。
+
+**独立测试**：在 IDE 插件中输入 `/tasks`，验证弹出对话框列出后台任务（id、类型、状态、描述、运行时长）；选择某任务查看详情输出；点停止按钮终止运行中任务；任务状态变化时列表实时刷新。
+
+**验收场景**：
+
+1. **假设**有后台任务运行，**当**用户在 IDE 输入 `/tasks` 时，**则**弹出对话框列出所有后台任务（运行中/已完成/失败/已终止），每项显示 id、类型、状态、描述/命令、运行时长
+2. **假设**用户在列表中选择某任务，**当**进入详情视图时，**则**显示该任务的 stdout/stderr 输出（末尾若干行）、退出码、日志文件路径
+3. **假设**某任务正在运行，**当**用户点击停止按钮时，**则**任务被终止，列表中该任务状态更新为已终止
+4. **假设**后台任务状态变化（启动/完成/失败/终止），**当**子进程发送 `backgroundTasksChange` 通知时，**则**对话框实时刷新列表
+5. **假设**无后台任务，**当**用户输入 `/tasks` 时，**则**对话框显示空状态提示
+6. **假设**IDE 与 CLI 行为需一致，**则**二者任务列表数据模型一致（基于同一 `BackgroundTask` 类型）
+
+---
+
 ### 边界情况
 
 - **无效任务 ID**：系统如何处理带有不存在 ID 的 `TaskOutput` 或 `TaskStop` 请求？（预期：显示任务未找到的错误消息）。
@@ -142,6 +161,16 @@
 - **FR-029**：`sendAIMessage` 入口必须以 generation 计数器保护的互斥守卫防止并发进入：新 turn 递增 generation 并记录自身 generation；turn 结束时仅当 generation 匹配才释放 loading 状态；`abortAIMessage` 递增 generation 使被中断的旧 turn 末尾释放失效。
 - **FR-030**：`setIsLoading(false)` 必须在 `sendAIMessage` 的所有清理逻辑（session 保存、Stop hooks、通知排空）完成后才执行，而非清理逻辑中间，消除"已 idle 但 turn 未结束"的窗口。
 - **FR-031**：用户中断（`abortMessage`）不得丢弃已入队的后台任务通知（clear 仅移除用户消息和 bang 命令，保留 notification 项），确保后台任务结果不会因中断而丢失。
+- **FR-032**：stdio 协议必须支持 `backgroundTasksChange` 服务端→客户端通知，携带后台任务摘要列表；每个摘要含 `id`、`type`、`status`、`startTime`、`endTime?`、`command?`、`description?`、`exitCode?`、`runtime?`、`outputPath?`，**不含** `stdout`/`stderr` 全文与不可序列化的 `process`/`onStop`，以控制通知体积。
+- **FR-033**：AgentBridge 必须将 `AgentCallbacks.onBackgroundTasksChange` 回调转发为 `backgroundTasksChange` 通知，并对每个任务做序列化裁剪（移除 `process`/`onStop`，剥离 `stdout`/`stderr` 全文）。
+- **FR-034**：stdio 协议必须支持 `getBackgroundTaskOutput` 请求方法，携带 `taskId` 参数，调用 `Agent.getBackgroundTaskOutput(taskId)`，返回 `{ stdout, stderr, status, outputPath?, type, exitCode? } | null`，供详情视图按需获取输出。
+- **FR-035**：stdio 协议必须支持 `stopBackgroundTask` 请求方法，携带 `taskId` 参数，调用 `Agent.stopBackgroundTask(taskId)`，返回 `{ success: boolean }`。
+- **FR-036**：当用户在 IDE 输入 `/tasks` 时，插件必须将其识别为本地命令并打开后台任务管理对话框，而非通过 `sendMessage` 将文本作为普通消息发送给模型。
+- **FR-037**：IDE 插件（VS Code 扩展与 JetBrains 插件）的 stdio 客户端必须订阅 `backgroundTasksChange` 通知，缓存任务列表，并通过 webview 消息 `updateBackgroundTasks` 推送给 webview。
+- **FR-038**：webview 必须实现 `BackgroundTaskManager` 对话框组件，包含列表视图（id/类型/状态/描述/运行时长）与详情视图（stdout/stderr/退出码/日志路径），交互与字段与 CLI `BackgroundTaskManager.tsx` 保持一致（选择→详情、停止、关闭）。
+- **FR-039**：webview 详情视图必须通过 `getBackgroundTaskOutput` 请求按需获取输出，不在列表通知中携带全文 stdout/stderr。
+- **FR-040**：webview 必须提供停止按钮，通过 `stopBackgroundTask` 请求终止选中的运行中任务。
+- **FR-041**：前台工具后台化（CLI 的 Ctrl-B）不在本迭代范围；IDE 插件仅支持查看与终止已有后台任务。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

@@ -6,11 +6,11 @@
  */
 
 // Import message structures and session types from wave-agent-sdk
-import type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, TaskNotificationBlock, McpServerStatus, McpServerConfig } from 'wave-agent-sdk/dist/types/index.js';
+import type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, TaskNotificationBlock, McpServerStatus, McpServerConfig, BackgroundTaskSummary } from 'wave-agent-sdk/dist/types/index.js';
 import type { SessionMetadata, SessionData } from 'wave-agent-sdk/dist/services/session.js';
 import type { ToolBlockUpdateCallbackParams } from 'wave-agent-sdk/dist/utils/messageOperations.js';
 
-export type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, TaskNotificationBlock, SessionData, SessionMetadata, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, McpServerStatus, McpServerConfig, ToolBlockUpdateCallbackParams };
+export type { Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, BangBlock, CompactBlock, ReasoningBlock, TaskNotificationBlock, SessionData, SessionMetadata, PermissionMode, AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption, Task, TaskStatus, McpServerStatus, McpServerConfig, BackgroundTaskSummary, ToolBlockUpdateCallbackParams };
 
 // Slash command types
 export interface SlashCommand {
@@ -241,6 +241,7 @@ export interface QueuedMessageListProps {
 export interface ChatState {
   messages: Message[];
   tasks: Task[];
+  backgroundTasks: BackgroundTaskSummary[];
   isTaskListCollapsed: boolean;
   isQueueCollapsed: boolean;
   editingQueuedId: string | null;
@@ -261,7 +262,7 @@ export interface ChatState {
   // Agent working directory, used to render tool file paths as relative.
   workdir?: string;
   // Dialog state
-  activeDialog: 'config' | 'plugin' | 'mcp' | 'status' | null;
+  activeDialog: 'config' | 'plugin' | 'mcp' | 'status' | 'tasks' | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
   configurationError?: string;
@@ -382,9 +383,14 @@ export interface StatusDialogProps {
   onClose: () => void;
 }
 
+export interface BackgroundTaskManagerProps {
+  onClose: () => void;
+}
+
 export type ChatAction =
   | { type: 'SET_MESSAGES'; payload: Message[] }
   | { type: 'SET_TASKS'; payload: Task[] }
+  | { type: 'SET_BACKGROUND_TASKS'; payload: BackgroundTaskSummary[] }
   | { type: 'TOGGLE_TASK_LIST_COLLAPSE' }
   | { type: 'SET_TASK_LIST_COLLAPSED'; payload: boolean }
   | { type: 'TOGGLE_QUEUE_COLLAPSE' }
@@ -396,7 +402,7 @@ export type ChatAction =
   | { type: 'SET_SESSIONS_LOADING'; payload: boolean }
   | { type: 'SHOW_CONFIRMATION'; payload: ConfirmationRequest }
   | { type: 'HIDE_CONFIRMATION'; payload: string }
-  | { type: 'SHOW_DIALOG'; payload: { type: 'config' | 'plugin' | 'mcp' | 'status'; data?: ConfigurationData; error?: string } }
+  | { type: 'SHOW_DIALOG'; payload: { type: 'config' | 'plugin' | 'mcp' | 'status' | 'tasks'; data?: ConfigurationData; error?: string } }
   | { type: 'HIDE_DIALOG' }
   | { type: 'SET_AUTHENTICATED'; payload: boolean }
   | { type: 'SET_CONFIGURATION_LOADING'; payload: boolean }
@@ -425,6 +431,7 @@ export type ChatAction =
       queuedMessages?: QueuedMessage[];
       isAuthenticated?: boolean;
       workdir?: string;
+      backgroundTasks?: BackgroundTaskSummary[];
     } }
   // Incremental update actions for streaming optimization
   | { type: 'APPEND_MESSAGE'; payload: Message }

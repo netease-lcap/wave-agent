@@ -19,6 +19,8 @@ import {
   Agent,
   type AgentCallbacks,
   type AgentOptions,
+  type BackgroundTask,
+  type BackgroundTaskSummary,
   type Message,
   type PermissionDecision,
   type PermissionMode,
@@ -283,6 +285,12 @@ export class AgentBridge {
           p.customInstructions as string | undefined,
           sessionId,
         );
+
+      // ── Background tasks ──
+      case "getBackgroundTaskOutput":
+        return this.getBackgroundTaskOutput(p.taskId as string, sessionId);
+      case "stopBackgroundTask":
+        return this.stopBackgroundTask(p.taskId as string, sessionId);
 
       default:
         throw new RpcError(
@@ -567,6 +575,25 @@ export class AgentBridge {
     const entry = this.requireSession(sessionId);
     await entry.agent.compact(customInstructions);
     return null;
+  }
+
+  // ── Background tasks ──
+
+  private getBackgroundTaskOutput(
+    taskId: string,
+    sessionId?: string,
+  ): { output: ReturnType<Agent["getBackgroundTaskOutput"]> } {
+    const entry = this.requireSession(sessionId);
+    return { output: entry.agent.getBackgroundTaskOutput(taskId) };
+  }
+
+  private stopBackgroundTask(
+    taskId: string,
+    sessionId?: string,
+  ): { success: boolean } {
+    const entry = this.requireSession(sessionId);
+    const success = entry.agent.stopBackgroundTask(taskId);
+    return { success };
   }
 
   // ── Permissions ───────────────────────────────────────────────
@@ -880,6 +907,25 @@ export class AgentBridge {
       },
       onTasksChange: (tasks: Task[]) => {
         this.emit("tasksChange", { tasks }, ctx.registeredSessionId);
+      },
+      onBackgroundTasksChange: (tasks: BackgroundTask[]) => {
+        const summaries: BackgroundTaskSummary[] = tasks.map((t) => ({
+          id: t.id,
+          type: t.type,
+          status: t.status,
+          startTime: t.startTime,
+          endTime: t.endTime,
+          command: t.command,
+          description: t.description,
+          exitCode: t.exitCode,
+          runtime: t.runtime,
+          outputPath: t.outputPath,
+        }));
+        this.emit(
+          "backgroundTasksChange",
+          { tasks: summaries },
+          ctx.registeredSessionId,
+        );
       },
       onSessionIdChange: (newSessionId: string) => {
         const oldSessionId = ctx.registeredSessionId;

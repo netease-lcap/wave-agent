@@ -28,6 +28,7 @@ interface AgentCallbacks {
     fun onCommandRunningChange(running: Boolean) {}
     fun onQueuedMessagesChange(messages: JsonElement?) {}
     fun onTasksChange(tasks: JsonElement?) {}
+    fun onBackgroundTasksChange(tasks: JsonElement?) {}
     fun onSessionIdChange(sessionId: String) {}
     fun onPermissionModeChange(mode: String) {}
     fun onMcpServersChange(servers: JsonElement?) {}
@@ -91,6 +92,7 @@ class StdioAgent(
             )
             "queuedMessagesChange" -> callbacks.onQueuedMessagesChange(params?.jsonObject?.get("messages"))
             "tasksChange" -> callbacks.onTasksChange(params?.jsonObject?.get("tasks"))
+            "backgroundTasksChange" -> callbacks.onBackgroundTasksChange(params?.jsonObject?.get("tasks"))
             "sessionIdChange" -> {
                 val id = params?.jsonObject?.get("sessionId")?.jsonPrimitive?.content ?: ""
                 sessionId = id
@@ -215,6 +217,14 @@ class StdioAgent(
 
     suspend fun getMcpServers(): JsonElement =
         client.request("getMcpServers", sessionId = sessionId) ?: JsonObject(emptyMap())
+
+    suspend fun getBackgroundTaskOutput(taskId: String): JsonElement? =
+        client.request("getBackgroundTaskOutput", buildJsonObject { put("taskId", taskId) }, sessionId)?.jsonObject?.get("output")
+
+    suspend fun stopBackgroundTask(taskId: String): Boolean {
+        val result = client.request("stopBackgroundTask", buildJsonObject { put("taskId", taskId) }, sessionId)
+        return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
+    }
 
     suspend fun connectMcpServer(serverName: String): Boolean {
         val result = client.request("connectMcpServer", buildJsonObject { put("serverName", serverName) }, sessionId)

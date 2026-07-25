@@ -46,6 +46,7 @@ const ALL_NOTIFICATION_METHODS = [
     'authUrl',
     'compactBlockAdded',
     'compactionStateChange',
+    'backgroundTasksChange',
 ] as const;
 
 export class NotificationRouter {

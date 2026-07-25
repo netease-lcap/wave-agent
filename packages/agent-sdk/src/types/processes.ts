@@ -59,6 +59,35 @@ export type BackgroundTask =
   | BackgroundSubagent
   | BackgroundWorkflow;
 
+/**
+ * Serializable summary of a BackgroundTask, used for notifications where the
+ * full stdout/stderr and non-serializable process/onStop fields must be
+ * stripped to control payload size. Output is fetched on demand via
+ * getBackgroundTaskOutput.
+ */
+export interface BackgroundTaskSummary {
+  id: string;
+  type: BackgroundTaskType;
+  status: BackgroundTaskStatus;
+  startTime: number;
+  endTime?: number;
+  command?: string;
+  description?: string;
+  exitCode?: number;
+  runtime?: number;
+  outputPath?: string;
+}
+
+/** Output snapshot returned by getBackgroundTaskOutput. */
+export interface BackgroundTaskOutput {
+  stdout: string;
+  stderr: string;
+  status: BackgroundTaskStatus;
+  outputPath?: string;
+  type: BackgroundTaskType;
+  exitCode?: number;
+}
+
 export interface ForegroundTask {
   id: string;
   backgroundHandler: () => Promise<void>;
