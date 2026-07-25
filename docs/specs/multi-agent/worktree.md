@@ -153,7 +153,7 @@
 
 - **FR-001**：系统必须支持 `-w` 和 `--worktree [feat-name]` 命令行参数。
 - **FR-002**：如果未提供 `<feat-name>`，系统必须生成唯一的功能名称（例如 `adjective-adjective-noun`）。
-- **FR-003**：系统必须在 `.wave/worktrees/<feat-name>`（绝对路径）创建 git worktree，相对于**主仓库根目录**（即使从 worktree 内运行），从默认远程分支分支。默认分支必须使用文件系统读取（`.git/refs/remotes/origin/HEAD`）而非子进程调用来解析。如果 `origin/HEAD` 指向不再存在的分支（陈旧引用），系统必须回退到从 origin 获取 `refs/heads/HEAD` 并解析结果 SHA。
+- **FR-003**：系统必须在 `.wave/worktrees/<feat-name>`（绝对路径）创建 git worktree，相对于**主仓库根目录**（即使从 worktree 内运行），从默认远程分支分支。默认分支必须使用文件系统读取（`.git/refs/remotes/origin/HEAD`）而非子进程调用来解析。如果 `origin/HEAD` 指向不再存在的分支（陈旧引用），系统必须依次回退到 `refs/remotes/origin/main`、`refs/remotes/origin/master`，最终回退到硬编码的 `main`。
 - **FR-004**：系统必须将 worktree 分支命名为 `worktree-<feat-name>`。
 - **FR-005**：CLI 启动时若通过 `-w` 进入 worktree，允许在启动阶段调用一次 `process.chdir()` 到 worktree 路径（便于 tmux 和其他窗口复制功能）。但会话中途通过 `EnterWorktree`/`ExitWorktree` 切换工作目录时，系统不得调用 `process.chdir()`；工作目录的切换必须只作用于当前会话的 DI 容器（见 FR-041）。`AIManager.setWorkdir()` 不得改变进程级 `process.cwd()`。
 - **FR-006**：系统必须在退出时检测 worktree 中的未提交更改（已暂存或未暂存，通过 `git status --porcelain` 识别）。
@@ -190,7 +190,7 @@
 - **FR-037**：`ExitWorktree` 工具必须通过 `AIManager.setWorkdir()` 将会话的工作目录恢复到原始 CWD。
 - **FR-038**：当 `action` 为 `"remove"` 时，系统必须使用 `git worktree remove --force` 删除 worktree 目录，并使用 `git branch -D` 删除关联分支。
 - **FR-039**：`EnterWorktree` 工具不得触发 `WorktreeCreate` 钩子事件（钩子支持不在会话中工具的范围内）。
-- **FR-040**：系统必须验证从 `origin/HEAD` 解析的分支存在于 `refs/remotes/origin/` 中。如果分支不存在（陈旧的 `origin/HEAD`），系统必须尝试 `git fetch origin HEAD` 来解析正确的默认分支。
+- **FR-040**：系统必须验证从 `origin/HEAD` 解析的分支存在于 `refs/remotes/origin/` 中。如果分支不存在（陈旧的 `origin/HEAD`），系统必须依次回退到 `origin/main`、`origin/master`，最终回退到硬编码的 `main`，全部通过文件系统读取解析，不发起网络请求。
 
 #### 多会话隔离需求
 

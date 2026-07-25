@@ -39,28 +39,28 @@
 
 - **代码库为空或没有可识别的结构怎么办？** agent 应该提供带有必需前缀的最小 `AGENTS.md`，并注明未检测到特定架构，而不是失败或臆造。
 - **系统如何处理只读文件系统？** agent 应该通知用户由于权限问题无法创建或修改 `AGENTS.md`。
-- **如果 `init-prompt.md` 在预期位置缺失怎么办？** 命令应该使用提示的硬编码版本，因为它是内置命令。
+- **如果内置 init skill 的 `SKILL.md` 在预期位置缺失怎么办？** 命令应该使用提示的硬编码版本，因为它是内置命令。
 
 ## 需求 *（必填）*
 
 ### 功能需求
 
 - **FR-001**：系统必须在 agent 界面中支持 `/init` 斜杠命令。
-- **FR-002**：系统必须使用 `init-prompt.md` 的内容（作为内置提示硬编码）作为 `/init` 调用时 agent 的基础指令。
+- **FR-002**：系统必须使用内置 init skill（`builtin/skills/init/SKILL.md`）的内容作为 `/init` 调用时 agent 的基础指令。
 - **FR-003**：系统必须分析当前仓库以识别构建/测试/lint 命令和高级架构。
 - **FR-004**：系统必须在仓库根目录中创建或更新名为 `AGENTS.md` 的文件。
-- **FR-005**：系统必须确保 `AGENTS.md` 以 `init-prompt.md` 中指定的必需前缀开头。
+- **FR-005**：系统必须确保 `AGENTS.md` 以内置 init skill 中指定的必需前缀开头。
 - **FR-006**：系统必须不包含通用开发实践、冗余指令或 `.wave/rules/` 中的规则，如提示指南中所指定。
 - **FR-007**：系统必须纳入 `.cursor/rules/`、`.cursorrules` 或 `.github/copilot-instructions.md` 中的现有规则（如果它们存在）。
 
 ### 关键实体
 
 - **AGENTS.md**：包含未来 agent 实例指导的输出文件。
-- **init-prompt.md**：定义 `/init` 命令应如何行为的模板/指令文件。
+- **init skill（`SKILL.md`）**：定义 `/init` 命令应如何行为的内置 skill 指令文件。
 - **Repository Context**：用于生成指导而分析的文件集（README、配置文件、规则文件）。
 
 ## 假设
 
-- `init-prompt.md` 文件位于相对于 agent 执行环境的稳定路径，或与 agent 捆绑。
+- 内置 init skill 的 `SKILL.md` 文件位于相对于 agent 执行环境的稳定路径，或与 agent 捆绑。
 - agent 有足够的权限读取整个仓库并写入根目录。
 - 用户意图让 `AGENTS.md` 成为任何在仓库上工作的 AI agent 的共享资源，而不仅仅是 Wave Agent。

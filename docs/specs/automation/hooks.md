@@ -30,7 +30,7 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 | `SubagentStop`     | 阻止停止（子代理继续），向 Wave 显示 stderr                            |
 | `PermissionRequest`| 阻止（拒绝）权限，仅向用户显示 stderr                                  |
 | `WorktreeCreate`   | 仅向用户显示 stderr（非阻止）                                         |
-| `PreCompact`      | 仅向用户显示 stderr（非阻止）                                         |
+| `PreCompact`      | 非阻止；stderr 不显示给用户（静默丢弃），压缩继续                   |
 | `PostCompact`     | 仅向用户显示 stderr（非阻止）                                         |
 
 ## 用户场景与测试 *（必填）*
@@ -361,7 +361,7 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - **FR-014**：系统必须在 UserPromptSubmit 事件的 JSON 数据中包含包含用户提交文本的 prompt 字段
 - **FR-028**：系统必须在 hook 由子代理执行时在 JSON 数据中包含 subagent_type 字段
 - **FR-029**：系统必须在 WorktreeCreate 事件的 JSON 数据中包含 name 字段
-- **FR-015**：系统必须将 transcript_path 设置为存储会话数据的实际文件路径（格式：~/.wave/sessions/session_[shortId].json）
+- **FR-015**：系统必须将 transcript_path 设置为存储会话数据的实际文件路径（格式：~/.wave/projects/[project-slug]/[sessionId].jsonl）
 - **FR-016**：系统必须在 hook 被调用时将 cwd 设置为当前工作目录
 - **FR-017**：系统必须确保 JSON 数据在发送到 hook 进程之前格式正确且有效
 - **FR-018**：系统必须处理 hook 进程不从 stdin 读取的情况，不阻止或导致错误

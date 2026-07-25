@@ -64,7 +64,7 @@
 
 ### 功能需求
 
-- **FR-001**：在 SSO 认证期间初始化时，系统必须从 `WAVE_SERVER_URL/api/v1/managed-settings` 下载托管设置。
+- **FR-001**：在 SSO 认证期间初始化时，系统必须从 `WAVE_SERVER_URL/api/wave/settings` 下载托管设置。
 - **FR-002**：系统必须在托管设置下载请求中包含 SSO token 作为 Bearer 认证。
 - **FR-003**：系统必须缓存最后下载设置的校验和（ETag 或响应头），以避免后续启动时的冗余下载。
 - **FR-004**：系统必须将缓存的托管设置及其校验和存储在本地（在 `~/.wave/` 目录中）。

@@ -168,9 +168,9 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 - **FR-008**：系统必须保留与测试相关的环境变量的现有行为（`NODE_ENV`、`VITEST`、`WAVE_TEST_HOOKS_EXECUTION`）
 - **FR-009**：服务必须使用已解析的配置而非直接 `process.env` 访问
 - **FR-010**：系统必须为可选配置值提供合理默认值，当构造函数和环境变量都不存在时
-- **FR-011**：`callAgent` 必须在其选项参数中接受 `maxTokens` 参数，默认为 4096
+- **FR-011**：`callAgent` 必须在其选项参数中接受 `maxTokens` 参数，默认为 32000
 - **FR-012**：系统必须读取 `WAVE_MAX_OUTPUT_TOKENS` 环境变量作为默认最大输出 token
-- **FR-013**：`maxTokens` 的优先级必须为：`callAgent` 参数 > `Agent.create` 选项 > `WAVE_MAX_OUTPUT_TOKENS` > 默认值（4096）
+- **FR-013**：`maxTokens` 的优先级必须为：`callAgent` 参数 > `Agent.create` 选项 > `WAVE_MAX_OUTPUT_TOKENS` > 默认值（32000）
 - **FR-014**：SDK 必须读取 `WAVE_CUSTOM_HEADERS` 环境变量，按换行符分割并解析为 `Key: Value` 对
 - **FR-015**：如果通过自定义请求头提供了替代认证，SDK 不得在初始化时强制要求 `apiKey`
 - **FR-016**：系统必须支持通过 `AgentOptions` 或 `settings.json` 设置 `language`

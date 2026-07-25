@@ -80,12 +80,12 @@ Plan 子 agent 识别并列出实现其提议计划最关键的 3-5 个文件，
 ### 功能需求
 
 - **FR-001**：系统必须提供内置的"Plan"子 agent，无需用户配置即可使用
-- **FR-002**：Plan 子 agent 必须限制为只读工具（Glob、Grep、Read 和只读 Bash 命令）
+- **FR-002**：Plan 子 agent 必须限制为只读工具（Glob、Grep、Read、LSP 和只读 Bash 命令）
 - **FR-003**：Plan 子 agent 不得有文件修改工具的访问权限（Write、Edit、NotebookEdit）
 - **FR-004**：Plan 子 agent 必须包含系统提示，明确说明只读限制和规划职责
 - **FR-005**：系统必须允许并行生成多个具有不同视角的 Plan 子 agent
 - **FR-006**：Plan 子 agent 必须生成包含"Critical Files for Implementation"部分的输出
-- **FR-007**：Plan 子 agent 必须按照 plan.tmp.js 中描述的方式与计划模式工作流集成
+- **FR-007**：Plan 子 agent 必须与计划模式工作流集成（见 FR-016 的计划模式提醒行为）
 - **FR-008**：当 Plan 子 agent 尝试禁止的操作时，系统必须提供清晰的错误消息
 - **FR-009**：Plan 子 agent 必须支持使用 Glob、Grep 和 Read 工具不受限制地探索代码库
 - **FR-010**：Plan 子 agent 必须能够执行只读 Bash 命令（ls、git status、git log、git diff、find、cat、head、tail）
