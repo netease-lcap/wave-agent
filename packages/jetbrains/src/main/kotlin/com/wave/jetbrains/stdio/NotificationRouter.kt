@@ -84,6 +84,7 @@ class NotificationRouter(private val client: StdioClient) {
             "permissionRequest",
             "authUrl",
             "compactBlockAdded",
+            "compactionStateChange",
         )
     }
 }

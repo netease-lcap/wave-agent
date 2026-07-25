@@ -81,6 +81,7 @@ describe('StdioAgent', () => {
         expect(registeredMethods).toContain('permissionRequest');
         expect(registeredMethods).toContain('authUrl');
         expect(registeredMethods).toContain('compactBlockAdded');
+        expect(registeredMethods).toContain('compactionStateChange');
     });
 
     // ── initialize ─────────────────────────────────────────────
@@ -246,6 +247,40 @@ describe('StdioAgent', () => {
         await agent.clearMessages();
 
         expect(client.request).toHaveBeenCalledWith('clearMessages', undefined, 'session-123');
+    });
+
+    // ── compact ────────────────────────────────────────────────
+
+    it('sends compact request with customInstructions and sessionId', async () => {
+        const { agent, client } = createAgent();
+        client.request.mockResolvedValue({
+            sessionId: 'session-123',
+            workingDirectory: '/w',
+            permissionMode: 'default',
+            latestTotalTokens: 0,
+        });
+        await agent.initialize({ workdir: '/w' });
+        client.request.mockClear();
+
+        await agent.compact('focus on tests');
+
+        expect(client.request).toHaveBeenCalledWith('compact', { customInstructions: 'focus on tests' }, 'session-123');
+    });
+
+    it('sends compact request with undefined customInstructions and sessionId', async () => {
+        const { agent, client } = createAgent();
+        client.request.mockResolvedValue({
+            sessionId: 'session-123',
+            workingDirectory: '/w',
+            permissionMode: 'default',
+            latestTotalTokens: 0,
+        });
+        await agent.initialize({ workdir: '/w' });
+        client.request.mockClear();
+
+        await agent.compact();
+
+        expect(client.request).toHaveBeenCalledWith('compact', { customInstructions: undefined }, 'session-123');
     });
 
     // ── rewindToMessage ────────────────────────────────────────
@@ -586,6 +621,15 @@ describe('StdioAgent', () => {
         agent.handleNotification('compactBlockAdded', { content: 'compacted summary' });
 
         expect(onCompactBlockAdded).toHaveBeenCalledWith('compacted summary');
+    });
+
+    it('compactionStateChange forwards isCompacting boolean to callback', () => {
+        const onCompactionStateChange = vi.fn();
+        const { agent } = createAgent({ onCompactionStateChange });
+
+        agent.handleNotification('compactionStateChange', { isCompacting: true });
+
+        expect(onCompactionStateChange).toHaveBeenCalledWith(true);
     });
 
     it('loadingChange updates latestTotalTokens and calls callback', () => {

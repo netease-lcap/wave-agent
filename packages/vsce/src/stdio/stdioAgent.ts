@@ -84,6 +84,7 @@ export interface StdioAgentCallbacks {
     onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
     onErrorBlockAdded?: (error: string) => void;
     onCompactBlockAdded?: (content: string) => void;
+    onCompactionStateChange?: (isCompacting: boolean) => void;
     onLoadingChange?: (loading: boolean) => void;
     onCommandRunningChange?: (running: boolean) => void;
     onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
@@ -214,6 +215,14 @@ export class StdioAgent {
 
     async clearMessages(): Promise<void> {
         await this.client.request('clearMessages', undefined, this.sessionId);
+    }
+
+    async compact(customInstructions?: string): Promise<void> {
+        await this.client.request(
+            'compact',
+            { customInstructions },
+            this.sessionId,
+        );
     }
 
     async rewindToMessage(
@@ -387,6 +396,11 @@ export class StdioAgent {
             case 'compactBlockAdded': {
                 const p = params as { content: string };
                 this.callbacks.onCompactBlockAdded?.(p.content);
+                break;
+            }
+            case 'compactionStateChange': {
+                const p = params as { isCompacting: boolean };
+                this.callbacks.onCompactionStateChange?.(p.isCompacting);
                 break;
             }
             case 'loadingChange': {

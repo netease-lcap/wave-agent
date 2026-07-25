@@ -86,7 +86,8 @@ export type RequestMethod =
   | "listMarketplaces"
   | "addMarketplace"
   | "removeMarketplace"
-  | "updateMarketplace";
+  | "updateMarketplace"
+  | "compact";
 
 // ── Client → Server notification methods ────────────────────────
 
@@ -116,7 +117,8 @@ export type ServerNotificationMethod =
   | "notificationMessageAdded"
   | "permissionRequest"
   | "authUrl"
-  | "compactBlockAdded";
+  | "compactBlockAdded"
+  | "compactionStateChange";
 
 // ── Helper: is this a request (has id)? ─────────────────────────
 

@@ -82,6 +82,10 @@ class MessageHandler(
                 postMessage("updateMessages", buildJsonObject { put("messages", JsonArray(emptyList())) })
                 postMessage("updateQueue", buildJsonObject { put("queue", JsonArray(emptyList())) })
             }
+            "compact" -> {
+                val customInstructions = msg["customInstructions"]?.jsonPrimitive?.content
+                session.agent?.compact(customInstructions)
+            }
             "abortMessage" -> session.agent?.abortMessage()
             "setPermissionMode" -> {
                 val mode = msg["mode"]?.jsonPrimitive?.content ?: "default"
@@ -687,6 +691,7 @@ class MessageHandler(
             triple("mcp", "mcp", "打开 MCP 服务器管理"),
             triple("status", "status", "查看当前状态"),
             triple("clear", "clear", "清除对话历史并重置会话"),
+            triple("compact", "compact", "手动压缩对话历史"),
         )
         val all = sdkCommands + local
         // VSCE messageHandler.ts:618-624: filter by id/name (case-insensitive includes)

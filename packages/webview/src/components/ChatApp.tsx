@@ -263,6 +263,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       handleClearChat();
       return;
     }
+    if (trimmedText === '/compact' || trimmedText.startsWith('/compact ')) {
+      const customInstructions = trimmedText.slice('/compact'.length).trim() || undefined;
+      vscode.postMessage({
+        command: 'compact',
+        customInstructions
+      });
+      return;
+    }
     if (trimmedText === '/config') {
       dispatch({ type: 'SHOW_DIALOG', payload: { type: 'config', data: stateRef.current.configurationData || {} } });
       vscode.postMessage({ command: 'getConfiguration' });
