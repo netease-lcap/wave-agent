@@ -1,19 +1,63 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const nav = [
   { text: '首页', link: '/' },
   { text: '企业管控台', link: '/guide' },
   { text: 'VS Code 扩展 / JetBrains 插件', link: '/vsce' },
   { text: 'CLI', link: '/cli' },
   { text: 'SDK', link: '/sdk' },
+  { text: '规格说明', link: '/specs/' },
 ];
+
+// specs sidebar: generated from docs/specs/<group>/*.md
+const specsDir = path.join(__dirname, '..', 'specs');
+
+const specGroups = [
+  { dir: 'core', text: 'Agent 核心' },
+  { dir: 'ui', text: '交互与 UI' },
+  { dir: 'multi-agent', text: '多 Agent 与并发' },
+  { dir: 'ecosystem', text: '扩展与生态' },
+  { dir: 'automation', text: '自动化' },
+  { dir: 'enterprise', text: '企业管控' },
+];
+
+function specTitle(filePath) {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const m = content.match(/^#\s+功能规格说明：(.+)$/m);
+  if (m) return m[1].trim();
+  const h1 = content.match(/^#\s+(.+)$/m);
+  return h1 ? h1[1].trim() : path.basename(filePath, '.md');
+}
+
+const specsSidebar = specGroups.map(({ dir, text }) => ({
+  text,
+  collapsed: true,
+  items: fs
+    .readdirSync(path.join(specsDir, dir))
+    .filter((f) => f.endsWith('.md'))
+    .sort()
+    .map((f) => ({
+      text: specTitle(path.join(specsDir, dir, f)),
+      link: `/specs/${dir}/${f.replace(/\.md$/, '')}`,
+    })),
+}));
 
 export default {
   base: '/wave-agent/',
   title: 'CodeChat',
   description: 'AI 辅助编程工具链 — SDK、CLI、VS Code 扩展与 JetBrains 插件',
+  rewrites: {
+    'specs/README.md': 'specs/index.md',
+  },
   themeConfig: {
     nav,
     search: { provider: 'local' },
     sidebar: {
+      '/specs/': specsSidebar,
       '/guide': [
         {
           text: '管控台使用说明',

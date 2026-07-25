@@ -61,7 +61,7 @@
 
 **验收场景**：
 
-1. **假设**我在 worktree 会话中有 1 个新提交，**当**我退出 CLI 时，**则**我看到提示："You have 1 commit on worktree-<name>. The branch will be deleted if you remove the worktree."
+1. **假设**我在 worktree 会话中有 1 个新提交，**当**我退出 CLI 时，**则**我看到提示："You have 1 commit on worktree-\<name\>. The branch will be deleted if you remove the worktree."
 2. **假设**退出提示已显示，**当**我选择"Remove worktree"时，**则** worktree 及其关联分支被删除。
 
 ---

@@ -5,7 +5,7 @@
  * "WorktreeSession" container slot registered in containerSetup.ts and accessed via
  * AIManager.getWorktreeSession()/setWorktreeSession()). This keeps worktree state
  * isolated per session in stdio multi-agent mode — a process-level singleton would
- * leak state across concurrent sessions (see specs/047-worktree.md FR-042).
+ * leak state across concurrent sessions (see docs/specs/multi-agent/worktree.md FR-042).
  */
 
 export interface WorktreeSession {

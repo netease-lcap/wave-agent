@@ -1,6 +1,6 @@
 # 功能规格说明：Bash 工具
 
-**规格文件**：`specs/002-bash-tools.md`
+**规格文件**：`docs/specs/core/bash-tools.md`
 **创建日期**：2024-12-19
 
 ## 用户场景与测试 *(必填)*
