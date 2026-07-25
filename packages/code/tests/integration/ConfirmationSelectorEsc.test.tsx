@@ -255,7 +255,7 @@ describe("ConfirmationSelector Esc Integration", () => {
 
     await vi.waitFor(() => {
       expect(stripAnsiColors(lastFrame() || "")).toContain(
-        "> Yes, clear context",
+        "> Yes, manually approve edits",
       );
     });
 

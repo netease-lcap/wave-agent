@@ -35,8 +35,6 @@ export interface PermissionDecision {
   newPermissionMode?: PermissionMode;
   /** Signal to persist a new allowed rule */
   newPermissionRule?: string;
-  /** Signal to clear the conversation context and proceed with the plan */
-  clearContext?: boolean;
 }
 
 /** Callback function for custom permission logic */
