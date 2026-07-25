@@ -23,6 +23,7 @@ interface AgentCallbacks {
     fun onToolBlockUpdated(params: JsonElement?) {}
     fun onErrorBlockAdded(error: String) {}
     fun onCompactBlockAdded(content: String) {}
+    fun onCompactionStateChange(isCompacting: Boolean) {}
     fun onLoadingChange(loading: Boolean) {}
     fun onCommandRunningChange(running: Boolean) {}
     fun onQueuedMessagesChange(messages: JsonElement?) {}
@@ -118,6 +119,9 @@ class StdioAgent(
             "bangMessageCompleted" -> callbacks.onBangMessageCompleted()
             "notificationMessageAdded" -> callbacks.onNotificationMessageAdded(params?.jsonObject ?: JsonObject(emptyMap()))
             "compactBlockAdded" -> callbacks.onCompactBlockAdded(params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "")
+            "compactionStateChange" -> callbacks.onCompactionStateChange(
+                params?.jsonObject?.get("isCompacting")?.jsonPrimitive?.content?.toBoolean() ?: false
+            )
             else -> {}
         }
     }
@@ -159,6 +163,12 @@ class StdioAgent(
 
     suspend fun abortMessage() { client.request("abortMessage", sessionId = sessionId) }
     suspend fun clearMessages() { client.request("clearMessages", sessionId = sessionId) }
+
+    suspend fun compact(customInstructions: String? = null) {
+        client.request("compact", buildJsonObject {
+            if (customInstructions != null) put("customInstructions", customInstructions)
+        }, sessionId)
+    }
 
     suspend fun restoreSession(sessionId: String) {
         client.request("restoreSession", buildJsonObject { put("sessionId", sessionId) }, this.sessionId)

@@ -278,6 +278,11 @@ export class AgentBridge {
           p.workdir as string | undefined,
           sessionId,
         );
+      case "compact":
+        return this.compact(
+          p.customInstructions as string | undefined,
+          sessionId,
+        );
 
       default:
         throw new RpcError(
@@ -553,6 +558,15 @@ export class AgentBridge {
   }> {
     const entry = this.requireSession(sessionId);
     return entry.agent.getFullMessageThread();
+  }
+
+  private async compact(
+    customInstructions: string | undefined,
+    sessionId?: string,
+  ): Promise<null> {
+    const entry = this.requireSession(sessionId);
+    await entry.agent.compact(customInstructions);
+    return null;
   }
 
   // ── Permissions ───────────────────────────────────────────────
@@ -921,6 +935,13 @@ export class AgentBridge {
       },
       onCompactBlockAdded: (content: string) => {
         this.emit("compactBlockAdded", { content }, ctx.registeredSessionId);
+      },
+      onCompactionStateChange: (isCompacting: boolean) => {
+        this.emit(
+          "compactionStateChange",
+          { isCompacting },
+          ctx.registeredSessionId,
+        );
       },
     };
   }

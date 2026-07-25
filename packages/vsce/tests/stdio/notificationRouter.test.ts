@@ -75,6 +75,7 @@ describe('NotificationRouter', () => {
         expect(methods).toContain('permissionRequest');
         expect(methods).toContain('authUrl');
         expect(methods).toContain('compactBlockAdded');
+        expect(methods).toContain('compactionStateChange');
     });
 
     it('attach is idempotent — does not register handlers twice', () => {
@@ -101,6 +102,18 @@ describe('NotificationRouter', () => {
         getHandler(client, 'messagesChange')({ messages: [] }, 's1');
 
         expect(agent.handleNotification).toHaveBeenCalledWith('messagesChange', { messages: [] });
+    });
+
+    it('dispatches compactionStateChange to registered agent by sessionId', () => {
+        const router = new NotificationRouter(client as unknown as StdioClient);
+        router.attach();
+
+        const agent = createFakeAgent();
+        router.register('s1', agent as unknown as Parameters<NotificationRouter['register']>[1]);
+
+        getHandler(client, 'compactionStateChange')({ isCompacting: true }, 's1');
+
+        expect(agent.handleNotification).toHaveBeenCalledWith('compactionStateChange', { isCompacting: true });
     });
 
     it('drops notification for unregistered sessionId without throwing', () => {

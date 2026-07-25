@@ -94,6 +94,13 @@ export class ChatSession {
                     this.forceNextUpdateImmediate = true;
                     this.throttledUpdateChatMessages(this.messages);
                 },
+                onCompactionStateChange: (isCompacting: boolean) => {
+                    if (isCompacting) {
+                        vscode.window.showInformationMessage('正在压缩对话…');
+                    } else {
+                        vscode.window.showInformationMessage('对话压缩完成');
+                    }
+                },
                 onUserMessageAdded: (message: Message) => {
                     this.callbacks.onAssistantMessageAdded?.(message);
                 },
@@ -259,6 +266,12 @@ export class ChatSession {
             this.throttledUpdateChatMessages([]);
         }
         await this.clearQueue();
+    }
+
+    public async compact(customInstructions?: string) {
+        if (this.agent) {
+            await this.agent.compact(customInstructions);
+        }
     }
 
     private async clearQueue() {

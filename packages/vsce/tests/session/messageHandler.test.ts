@@ -26,6 +26,8 @@ function createMockSession(): ChatSession {
         getMcpServers: vi.fn(),
         connectMcpServer: vi.fn(),
         disconnectMcpServer: vi.fn(),
+        compact: vi.fn(),
+        getSlashCommands: vi.fn().mockResolvedValue([]),
     } as unknown as ChatSession;
 }
 
@@ -219,5 +221,43 @@ describe('MessageHandler MCP handlers', () => {
         const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as { command: string; version: string };
         expect(posted.command).toBe('statusResponse');
         expect(posted.version).toBe('1.2.3');
+    });
+
+    // /compact command: mirrors /clear — the webview posts { command: 'compact', customInstructions }
+    // and the handler delegates to session.compact(customInstructions).
+    test('compact command calls session.compact with customInstructions', async () => {
+        const session = createMockSession();
+        (session.compact as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+        const { handler } = createHandler(session);
+        await handler.handleMessage({ command: 'compact', customInstructions: 'focus on API' }, 'tab');
+
+        expect(session.compact).toHaveBeenCalledWith('focus on API');
+    });
+
+    test('compact command calls session.compact with undefined when no instructions', async () => {
+        const session = createMockSession();
+        (session.compact as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+        const { handler } = createHandler(session);
+        await handler.handleMessage({ command: 'compact' }, 'tab');
+
+        expect(session.compact).toHaveBeenCalledWith(undefined);
+    });
+
+    test('slashCommandsRequest includes compact in localCommands', async () => {
+        const session = createMockSession();
+
+        const { handler, context } = createHandler(session);
+        await handler.handleMessage({ command: 'requestSlashCommands', filterText: '' }, 'tab');
+
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+            command: string;
+            commands: Array<{ id: string; name: string; description: string }>;
+        };
+        expect(posted.command).toBe('slashCommandsResponse');
+        const compact = posted.commands.find(c => c.id === 'compact');
+        expect(compact).toBeDefined();
+        expect(compact?.name).toBe('compact');
     });
 });

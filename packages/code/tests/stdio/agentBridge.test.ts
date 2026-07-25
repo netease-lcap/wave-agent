@@ -46,6 +46,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getFullMessageThread: vi
       .fn()
       .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
+    compact: vi.fn().mockResolvedValue(undefined),
     getPermissionMode: vi.fn().mockReturnValue("default"),
     setPermissionMode: vi.fn(),
     getMcpServers: vi.fn().mockReturnValue([]),
@@ -162,6 +163,55 @@ test("onCompactBlockAdded emits compactBlockAdded notification", async () => {
     params: { content: "summary content" },
     sessionId: "test-session-id",
   });
+});
+
+test("onCompactionStateChange emits compactionStateChange notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onCompactionStateChange!(true);
+
+  expect(notifications).toContainEqual({
+    method: "compactionStateChange",
+    params: { isCompacting: true },
+    sessionId: "test-session-id",
+  });
+});
+
+// ── compact request ───────────────────────────────────────────────
+
+test("compact request with customInstructions calls agent.compact and returns null", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "compact",
+    { customInstructions: "focus on tests" },
+    sessionId,
+  );
+
+  expect(mockAgent.compact).toHaveBeenCalledWith("focus on tests");
+  expect(r).toBeNull();
+});
+
+test("compact request without customInstructions calls agent.compact with undefined", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("compact", {}, sessionId);
+
+  expect(mockAgent.compact).toHaveBeenCalledWith(undefined);
+  expect(r).toBeNull();
 });
 
 test("onUserMessageAdded finds last user message and emits notification", async () => {

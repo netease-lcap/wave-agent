@@ -51,6 +51,9 @@ export class MessageHandler {
             case 'clearChat':
                 await this.clearChat(viewType, windowId);
                 break;
+            case 'compact':
+                await this.compactChat(msg.customInstructions as string | undefined, viewType, windowId);
+                break;
             case 'abortMessage':
                 await this.abortMessage(viewType, windowId);
                 break;
@@ -504,6 +507,16 @@ export class MessageHandler {
         }
     }
 
+    private async compactChat(customInstructions: string | undefined, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        const session = this.context.getChatSession(viewType || 'tab', windowId);
+        try {
+            await session.compact(customInstructions);
+        } catch (error) {
+            console.error(`压缩 ${viewType} 聊天会话失败:`, error);
+            vscode.window.showErrorMessage('压缩对话失败: ' + error);
+        }
+    }
+
     private async restoreSession(sessionId: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
         if (!sessionId) return;
         const session = this.context.getChatSession(viewType || 'tab', windowId);
@@ -681,7 +694,8 @@ export class MessageHandler {
                 { id: 'plugin', name: 'plugin', description: '打开插件管理' },
                 { id: 'mcp', name: 'mcp', description: '打开 MCP 服务器管理' },
                 { id: 'status', name: 'status', description: '查看当前状态' },
-                { id: 'clear', name: 'clear', description: '清除对话历史并重置会话' }
+                { id: 'clear', name: 'clear', description: '清除对话历史并重置会话' },
+                { id: 'compact', name: 'compact', description: '手动压缩对话历史' }
             ];
 
             const allCommands = [...sdkCommands, ...localCommands];
