@@ -69,6 +69,8 @@ class WaveSession(
         private set
     @Volatile var backgroundTasks: JsonElement? = null
         private set
+    @Volatile var workflowRuns: JsonElement? = null
+        private set
     @Volatile var sessionId: String? = null
         private set
     /** Cached main-session list (from listSessions); used to resolve the tab title via firstMessage. */
@@ -342,6 +344,18 @@ class WaveSession(
     override fun onBackgroundTasksChange(tasks: JsonElement?) {
         this.backgroundTasks = tasks
         postMessage("updateBackgroundTasks", buildJsonObject { put("tasks", tasks ?: JsonArray(emptyList())) })
+        scope.launch {
+            val runs = try {
+                agent?.getWorkflowRuns()
+            } catch (e: StdioClientException) {
+                LOG.warn("getWorkflowRuns failed: ${e.message}")
+                null
+            }
+            if (runs != null) {
+                this@WaveSession.workflowRuns = runs
+                postMessage("updateWorkflowRuns", buildJsonObject { put("runs", runs) })
+            }
+        }
     }
 
     override fun onSessionIdChange(sessionId: String) {

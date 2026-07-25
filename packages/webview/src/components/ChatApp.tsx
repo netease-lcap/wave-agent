@@ -11,6 +11,7 @@ import PluginDialog from './PluginDialog';
 import McpDialog from './McpDialog';
 import StatusDialog from './StatusDialog';
 import BackgroundTaskManager from './BackgroundTaskManager';
+import WorkflowManager from './WorkflowManager';
 import WelcomeView from './WelcomeView';
 import LoadingLogo from './LoadingLogo';
 import type {
@@ -58,6 +59,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           break;
         case 'updateBackgroundTasks':
           dispatch({ type: 'SET_BACKGROUND_TASKS', payload: message.tasks });
+          break;
+        case 'updateWorkflowRuns':
+          dispatch({ type: 'SET_WORKFLOW_RUNS', payload: message.runs });
           break;
         case 'updateSelection':
           dispatch({ type: 'UPDATE_SELECTION', payload: message.selection });
@@ -293,6 +297,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       return;
     }
     if (trimmedText === '/tasks') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'tasks' } }); return; }
+    if (trimmedText === '/workflows' || trimmedText === '/workflows ') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'workflows' } }); return; }
 
     // Send to extension
     vscode.postMessage({
@@ -586,6 +591,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
           tasks={state.backgroundTasks}
           vscode={vscode}
           onClose={handleDialogClose}
+        />
+      )}
+      {state.activeDialog === 'workflows' && (
+        <WorkflowManager
+          runs={state.workflowRuns}
+          vscode={vscode}
+          onCancel={handleDialogClose}
         />
       )}
     </div>

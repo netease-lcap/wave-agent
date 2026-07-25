@@ -4,6 +4,7 @@ export const initialState: ChatState = {
   messages: [],
   tasks: [],
   backgroundTasks: [],
+  workflowRuns: [],
   isTaskListCollapsed: false,
   isQueueCollapsed: true,
   editingQueuedId: null,
@@ -46,6 +47,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     case 'SET_BACKGROUND_TASKS':
       return { ...state, backgroundTasks: action.payload };
+    case 'SET_WORKFLOW_RUNS':
+      return { ...state, workflowRuns: action.payload };
     case 'TOGGLE_TASK_LIST_COLLAPSE':
       return {
         ...state,
@@ -167,6 +170,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         pendingConfirmations: action.payload.pendingConfirmations || [],
         queuedMessages: action.payload.queuedMessages || [],
         backgroundTasks: action.payload.backgroundTasks ?? [],
+        workflowRuns: action.payload.workflowRuns ?? [],
         inputContent: action.payload.inputContent,
         selection: action.payload.selection,
         permissionMode: action.payload.permissionMode || state.permissionMode,

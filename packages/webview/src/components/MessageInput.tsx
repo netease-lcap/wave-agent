@@ -785,7 +785,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
     // mouse click on the popup works even when the browser selection is no
     // longer inside the input's text node (which made getSelection()-based
     // logic below silently no-op on click).
-    const localCommands = ['config', 'plugin', 'mcp', 'status', 'tasks', 'clear', 'compact'];
+    const localCommands = ['config', 'plugin', 'mcp', 'status', 'tasks', 'workflows', 'clear', 'compact'];
     if (localCommands.includes(command.name)) {
       textareaRef.current.innerHTML = '';
       setMessage('');

@@ -42,6 +42,12 @@ export interface WorkflowRun {
   failedAgentError?: string;
 }
 
+/**
+ * Serializable workflow run for stdio transport, with the non-serializable
+ * `completionPromise` stripped. Returned by the `getWorkflowRuns` RPC.
+ */
+export type SerializableWorkflowRun = Omit<WorkflowRun, "completionPromise">;
+
 export interface JournalEntry {
   agentIndex: number;
   prompt: string;

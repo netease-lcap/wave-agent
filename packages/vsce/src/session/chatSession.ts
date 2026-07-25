@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { Message, PermissionDecision, ToolPermissionContext, PermissionMode, Task, BackgroundTaskSummary, QueuedMessage, McpServerStatus, ToolBlockUpdateCallbackParams } from 'wave-agent-sdk';
+import type { Message, PermissionDecision, ToolPermissionContext, PermissionMode, Task, BackgroundTaskSummary, SerializableWorkflowRun, QueuedMessage, McpServerStatus, ToolBlockUpdateCallbackParams } from 'wave-agent-sdk';
 import { ConfigurationData } from '../services/configurationService';
 import { StdioClient } from '../stdio/stdioClient';
 import { StdioAgent, type StdioAgentCallbacks } from '../stdio/stdioAgent';
@@ -9,6 +9,7 @@ export interface ChatSessionCallbacks {
     onMessagesChange: (messages: Message[]) => void;
     onTasksChange: (tasks: Task[]) => void;
     onBackgroundTasksChange?: (tasks: BackgroundTaskSummary[]) => void;
+    onWorkflowRunsChange?: (runs: SerializableWorkflowRun[]) => void;
     onSessionIdChange: (sessionId: string) => void;
     onStreamingChange: (isStreaming: boolean) => void;
     onQueueChange: (queue: QueuedMessage[]) => void;
@@ -34,6 +35,7 @@ export class ChatSession {
     public messages: Message[] = [];
     public tasks: Task[] = [];
     public backgroundTasks: BackgroundTaskSummary[] = [];
+    public workflowRuns: SerializableWorkflowRun[] = [];
     public sessionId: string | undefined;
     public isStreaming: boolean = false;
     public isCommandRunning: boolean = false;
@@ -128,6 +130,7 @@ export class ChatSession {
                 onBackgroundTasksChange: (tasks: BackgroundTaskSummary[]) => {
                     this.backgroundTasks = tasks;
                     this.callbacks.onBackgroundTasksChange?.(tasks);
+                    void this.refreshWorkflowRuns();
                 },
                 onSessionIdChange: (sessionId: string) => {
                     this.sessionId = sessionId;
@@ -532,6 +535,26 @@ export class ChatSession {
             return false;
         }
         return await this.agent.stopBackgroundTask(taskId);
+    }
+
+    private async refreshWorkflowRuns(): Promise<void> {
+        const runs = await this.getWorkflowRuns();
+        this.workflowRuns = runs;
+        this.callbacks.onWorkflowRunsChange?.(runs);
+    }
+
+    public async getWorkflowRuns(): Promise<SerializableWorkflowRun[]> {
+        if (!this.agent) {
+            return [];
+        }
+        return await this.agent.getWorkflowRuns();
+    }
+
+    public async stopWorkflowRun(runId: string): Promise<boolean> {
+        if (!this.agent) {
+            return false;
+        }
+        return await this.agent.stopWorkflowRun(runId);
     }
 
     public async connectMcpServer(serverName: string): Promise<boolean> {
