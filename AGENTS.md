@@ -8,15 +8,18 @@ This is a pnpm monorepo focused on AI-powered development tools.
 
 - **`packages/agent-sdk`**: Core Node.js SDK. Handles AI model integration, tool systems, and memory management.
 - **`packages/code`**: CLI frontend built with React Ink. Provides the interactive terminal interface.
-- **`packages/vsce`**: VS Code extension with React webview chat UI. Uses esbuild for bundling (not tsc).
-- **`docs/`**: VitePress documentation site (primarily for the VS Code extension product spec).
+- **`packages/webview`**: React 18 chat UI shared by the VS Code extension and JetBrains plugin.
+- **`packages/vsce`**: VS Code extension. Uses esbuild for bundling (not tsc). Its `webview/` directory is a build artifact synced from `packages/webview` — always edit the source in `packages/webview/src/`.
+- **`packages/jetbrains`**: JetBrains plugin (Gradle/Kotlin), reuses the `packages/webview` UI.
+- **`docs/`**: VitePress documentation site.
 - **`docs/specs/`**: Contains feature specifications grouped by topic (e.g., `docs/specs/ui/slash-commands.md`). These are the source of truth for feature design and implementation tasks, and are rendered into the docs site.
 - **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
 
 ### Key Dependencies
 - `packages/code` depends on `packages/agent-sdk`.
-- `packages/vsce` depends on `packages/agent-sdk`.
-- **Important**: After modifying `agent-sdk`, you MUST rebuild it (`pnpm -F wave-agent-sdk build`) before the changes are available to other packages.
+- `packages/vsce` depends on `packages/agent-sdk` and `packages/webview`.
+- `packages/jetbrains` consumes the `packages/webview` build output.
+- **Important**: After modifying `agent-sdk` or `webview`, you MUST rebuild them (`pnpm -F wave-agent-sdk build` / `pnpm -F wave-webview build`) before the changes are available to dependent packages.
 
 ## 🛠 Development Commands
 
@@ -26,6 +29,7 @@ Always use `pnpm` as the package manager.
 - **Build all**: `pnpm build`
     - **Build specific package**: `pnpm -F <package-name> build` (e.g., `pnpm -F wave-agent-sdk build` or `pnpm -F wave-code build`)
 - **Type-check all**: `pnpm run type-check`
+- **Run the CLI locally**: `pnpm run wave` (runs `packages/code` source directly via tsx, no build needed; `pnpm run wave:debug` for DEBUG logs)
 
 ### Testing
 - **Run all tests**: `pnpm test`
@@ -37,23 +41,20 @@ Always use `pnpm` as the package manager.
 - **Lint all**: `pnpm lint`
 - **Format**: `pnpm exec prettier --write .`
 
-## 🔍 Code Navigation & Exploration
+### JetBrains Plugin
+- **Run IDE with plugin**: `pnpm run jb:run`
+- **Build**: `pnpm run jb:build` (builds webview first, then the Gradle plugin)
+- **Test**: `pnpm run jb:test`
 
-- **Worktree Isolation**: If the current working directory is within a worktree (e.g., `.wave/worktrees/`), do NOT read or edit files in the base repository. Always stay within the current worktree.
-- **Code Exploration**: This is a large codebase. NEVER read too many code files at once. You MUST ALWAYS use the `LSP` tool (goToDefinition, findReferences, etc.) as your primary method to understand code relationships and navigate the codebase. Only fallback to `Grep` or `Read` when `LSP` is insufficient.
-- **Grep in node_modules**: When using the `Grep` tool to search within `node_modules`, you MUST explicitly set the `path` parameter to include `node_modules` (e.g., `path: "node_modules"` or `path: "packages/code/node_modules"`), as it may be excluded by default. Note that `path: "."` will NOT work because `node_modules` is typically ignored by `.gitignore`.
-
-## 🤖 Subagent Usage
-
-- **Subagent Usage**: You MUST delegate ALL implementation tasks to subagents to reduce the main context window. This is mandatory for implementing plans or performing focused tasks.
-- **Delegation Guidelines**:
-    - Explicitly instruct the subagent to ONLY perform the tasks delegated to them.
-    - Instruct them to update their assigned tasks frequently using the task management tools.
+### Docs Site
+- **Preview**: `pnpm run docs:dev`
+- **Build**: `pnpm run docs:build` — this first runs Playwright demo tests to regenerate screenshots into `docs/public/screenshots/` (gitignored). A bare `vitepress build docs` fails on missing screenshot imports.
 
 ## 📋 Spec-First Workflow
 
 - **需求增加或变更时，优先更新 spec**：任何功能需求的新增或变更，必须先更新对应的 `docs/specs/` 下的规格说明（新增用户故事、验收场景、功能需求 FR 等），**待用户确认 spec 后再进行代码实现**。spec 是功能设计的权威来源，不是实现的 changelog。
 - **不确定是否算需求变更时也先动 spec**：边界模糊时宁可先写 spec 草稿请用户确认，不要直接改代码。
+- **新增或修改 spec 后**：运行 `node scripts/spec-count.js` 更新 `docs/specs/README.md` 中的统计表。
 
 ## 🐛 Debugging
 
@@ -68,11 +69,11 @@ Always use `pnpm` as the package manager.
 
 ### Architecture
 - **Backend** (Extension Host): `src/extension.ts` → `ChatProvider` → `ChatSession` (wraps `wave-agent-sdk` Agent) → `MessageHandler` → services
-- **Frontend** (Webview): React 18 app in `webview/src/`, uses `useReducer` for state, communicates via `vscode.postMessage`
+- **Frontend** (Webview): React 18 app whose source lives in `packages/webview/src/` (NOT `packages/vsce/webview/`, which is synced build output), uses `useReducer` for state, communicates via `vscode.postMessage`
 - **Key constraint**: `acquireVsCodeApi()` can only be called once per webview lifecycle — call in root component and pass as prop
 
 ### Testing
 - **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vsce test`
 - **E2E tests**: Playwright in `e2e/` (requires Chromium)
-- **Demo/screenshot tests**: `pnpm -F wave-vsce run test:demo`
+- **Demo/screenshot tests**: `pnpm -F wave-webview run test:demo` (regenerates the gitignored screenshots under `docs/public/screenshots/`)
 
