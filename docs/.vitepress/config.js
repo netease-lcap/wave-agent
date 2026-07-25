@@ -50,9 +50,6 @@ export default {
   base: '/wave-agent/',
   title: 'CodeChat',
   description: 'AI 辅助编程工具链 — SDK、CLI、VS Code 扩展与 JetBrains 插件',
-  rewrites: {
-    'specs/README.md': 'specs/index.md',
-  },
   themeConfig: {
     nav,
     search: { provider: 'local' },
