@@ -15,6 +15,7 @@ import WorkflowManager from './WorkflowManager';
 import WelcomeView from './WelcomeView';
 import LoadingLogo from './LoadingLogo';
 import { DesktopSidebar } from './DesktopSidebar';
+import { DesktopWorkdirSelector } from './DesktopWorkdirSelector';
 import type {
   ChatAppProps,
   ConfigurationData,
@@ -565,6 +566,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
             inputContent={state.inputContent}
             permissionMode={state.permissionMode}
             initialAttachedImages={state.attachedImages}
+            workdirSelector={
+              host?.type === 'desktop' && state.messages.length === 0 ? (
+                <DesktopWorkdirSelector
+                  workdir={host.workdir}
+                  recentWorkdirs={host.recentWorkdirs}
+                  onSelectWorkdir={host.onSelectWorkdir}
+                  onSelectRecentWorkdir={host.onSelectRecentWorkdir}
+                  onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
+                />
+              ) : undefined
+            }
           />
         </div>
 
@@ -622,17 +634,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
     return (
       <div className="desktop-layout">
         <DesktopSidebar
-          workdir={host.workdir}
-          recentWorkdirs={host.recentWorkdirs}
-          onSelectWorkdir={host.onSelectWorkdir}
-          onSelectRecentWorkdir={host.onSelectRecentWorkdir}
-          onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
           onNewSession={handleClearChat}
           isStreaming={state.isStreaming}
-          sessions={state.sessions}
-          currentSession={state.currentSession}
-          onSessionSelect={handleSessionSelect}
-          sessionsLoading={state.sessionsLoading}
+          disabled={!host.workdir}
         />
         {chatContainer}
       </div>

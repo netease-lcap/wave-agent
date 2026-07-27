@@ -48,9 +48,8 @@ const highlightMatch = (text: string, query: string): React.ReactNode => {
 };
 
 /**
- * Session list body shared by SessionListPopup (VS Code header popup) and
- * DesktopSidebar (desktop host). Rendering only — search/filter state is
- * owned by the parent.
+ * Session list body shared by SessionListPopup (VS Code header popup).
+ * Rendering only — search/filter state is owned by the parent.
  */
 export const SessionList: React.FC<SessionListProps> = ({
   sessions,

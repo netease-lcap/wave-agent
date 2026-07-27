@@ -78,7 +78,8 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
     selection: _selection,
     inputContent,
     permissionMode,
-    initialAttachedImages
+    initialAttachedImages,
+    workdirSelector
   } = props;
   const [message, setMessage] = useState('');
   const _lastSelectionRef = useRef<Selection | null>(null);
@@ -1232,6 +1233,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
         {/* Single bordered box wrapping the text area and toolbar (设计稿 2237-5088).
             Focus turns the whole box's border red via :focus-within. */}
         <div className="input-content">
+          {/* Desktop host, new-session state: workdir selector at the top-left */}
+          {workdirSelector && (
+            <div className="input-workdir-row" data-testid="input-workdir-row">
+              {workdirSelector}
+            </div>
+          )}
           {/* ContentEditable - full width */}
           <div
             ref={textareaRef}

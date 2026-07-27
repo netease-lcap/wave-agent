@@ -35,6 +35,15 @@
     border-color: var(--vscode-brand-primary, #c1292e);
 }
 
+/* Desktop host, new-session state: workdir selector row at the top-left of
+   the input box. Sits above the text area; its dropdown expands upward. */
+.input-workdir-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px 0;
+    min-width: 0;
+}
+
 .message-input {
     width: 100%;
     box-sizing: border-box;

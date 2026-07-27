@@ -3,6 +3,7 @@ import { render, fireEvent, screen } from '@testing-library/react';
 import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
 import { createMockVscode, sendCommand } from './test-utils';
+import { MockDataGenerator } from '../fixtures/mockData';
 
 vi.mock('../../src/styles/DesktopApp.css', () => ({}));
 
@@ -20,16 +21,19 @@ describe('DesktopApp', () => {
         expect(screen.getByTestId('desktop-loading')).toBeInTheDocument();
     });
 
-    it('should render the sidebar with a placeholder workdir name when no workdir is set', () => {
+    it('should render sidebar with new-chat button only (no session list), and the workdir selector inside the input', () => {
         renderDesktopApp();
 
         sendCommand('desktopWorkdirState', { recentWorkdirs: [] });
 
-        // First launch: sidebar + chat render, no full-screen selector
         expect(screen.getByTestId('desktop-sidebar')).toBeInTheDocument();
-        expect(screen.getByTestId('chat-container')).toBeInTheDocument();
+        expect(screen.getByTestId('desktop-new-session')).toBeInTheDocument();
+        // Session list is removed from the sidebar
+        expect(screen.queryByPlaceholderText('搜索关键词')).not.toBeInTheDocument();
+        // Workdir selector lives inside the input, showing the placeholder
+        expect(screen.getByTestId('input-workdir-row')).toBeInTheDocument();
         expect(screen.getByTestId('desktop-workdir')).toHaveTextContent('选择工作目录…');
-        // New-session stays disabled until a workdir is picked
+        // New-chat stays disabled until a workdir is picked
         expect(screen.getByTestId('desktop-new-session')).toBeDisabled();
     });
 
@@ -88,6 +92,20 @@ describe('DesktopApp', () => {
         expect(vscode.postMessage).not.toHaveBeenCalledWith({ command: 'desktopSelectRecentWorkdir', path: '/home/user/project-b' });
     });
 
+    it('should hide the workdir selector once the conversation starts', () => {
+        renderDesktopApp();
+        sendCommand('desktopWorkdirState', { workdir: '/home/user/project', recentWorkdirs: [] });
+
+        // New-session state: selector visible inside the input
+        expect(screen.getByTestId('input-workdir-row')).toBeInTheDocument();
+
+        sendCommand('updateMessages', { messages: [MockDataGenerator.createUserMessage('hi')] });
+
+        // Conversation started: selector gone, session list stays out of the sidebar
+        expect(screen.queryByTestId('input-workdir-row')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('desktop-workdir')).not.toBeInTheDocument();
+    });
+
     it('should render ChatApp with sidebar and hidden header session buttons when workdir is set', () => {
         const { vscode } = renderDesktopApp();
 
@@ -103,7 +121,7 @@ describe('DesktopApp', () => {
         expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'webviewReady' });
     });
 
-    it('should post clearChat from the sidebar new-session button', () => {
+    it('should post clearChat from the sidebar new-chat button', () => {
         const { vscode } = renderDesktopApp();
         sendCommand('desktopWorkdirState', { workdir: '/home/user/project', recentWorkdirs: [] });
         vscode.postMessage.mockClear();
@@ -113,7 +131,7 @@ describe('DesktopApp', () => {
         expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'clearChat' });
     });
 
-    it('should update the workdir name and enable new-session when a new workdir state arrives', () => {
+    it('should update the workdir name and enable new-chat when a new workdir state arrives', () => {
         renderDesktopApp();
         sendCommand('desktopWorkdirState', { recentWorkdirs: [] });
         expect(screen.getByTestId('desktop-workdir')).toHaveTextContent('选择工作目录…');
