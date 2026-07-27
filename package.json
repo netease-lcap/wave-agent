@@ -32,6 +32,9 @@
     "jb:build": "pnpm -F wave-webview build && ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon",
     "jb:package": "./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon",
     "jb:test": "./packages/jetbrains/gradlew -p packages/jetbrains test --no-daemon",
+    "desktop:dev": "pnpm -F wave-webview build && pnpm -F wave-desktop run dev",
+    "desktop:build": "pnpm -F wave-webview build && pnpm -F wave-desktop run compile",
+    "desktop:package": "pnpm -F wave-webview build && pnpm -F wave-desktop run dist",
     "prepare": "husky"
   },
   "devDependencies": {

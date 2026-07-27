@@ -127,6 +127,22 @@ export interface HistorySearchState {
 // Component props
 export interface ChatAppProps {
   vscode: VsCodeApi;
+  host?: DesktopHostProps;
+}
+
+// Desktop host support — injected when running inside packages/desktop (Electron).
+// window.waveHostType === 'desktop' selects the DesktopApp root in index.tsx.
+export interface DesktopHostProps {
+  type: 'desktop';
+  workdir: string;
+  onChangeWorkdir: () => void;
+}
+
+// Pushed by the desktop main process in response to `desktopReady` and after
+// every workdir change (message command: 'desktopWorkdirState').
+export interface DesktopWorkdirState {
+  workdir?: string;
+  recentWorkdirs: string[];
 }
 
 export interface MessageListProps {
@@ -213,6 +229,8 @@ export interface ChatHeaderProps {
   onLogin: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
+  // Desktop host: session new/list buttons live in DesktopSidebar instead.
+  hideSessionButtons?: boolean;
 }
 
 // Matches wave-agent-sdk's QueuedMessage type

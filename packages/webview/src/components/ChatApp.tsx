@@ -14,6 +14,7 @@ import BackgroundTaskManager from './BackgroundTaskManager';
 import WorkflowManager from './WorkflowManager';
 import WelcomeView from './WelcomeView';
 import LoadingLogo from './LoadingLogo';
+import { DesktopSidebar } from './DesktopSidebar';
 import type {
   ChatAppProps,
   ConfigurationData,
@@ -23,7 +24,7 @@ import type {
 import { chatReducer, initialState } from '../reducers/chatReducer';
 import '../styles/ChatApp.css';
 
-export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
+export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
   const messageInputRef = useRef<MessageInputHandle>(null);
@@ -465,7 +466,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
     });
   }, [state.isStreaming, vscode]);
 
-  return (
+  const chatContainer = (
     <div className="chat-container" data-testid="chat-container">
       {queueEditWarning && (
         <div className="queue-edit-warning-banner" role="alert" data-testid="queue-edit-warning">
@@ -493,6 +494,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
         onLogin={handleLogin}
         onLogout={handleLogout}
         isAuthenticated={state.isAuthenticated}
+        hideSessionButtons={host?.type === 'desktop'}
       />
       
       {showWelcomeReady ? (
@@ -602,4 +604,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       )}
     </div>
   );
+
+  if (host?.type === 'desktop') {
+    return (
+      <div className="desktop-layout">
+        <DesktopSidebar
+          workdir={host.workdir}
+          onChangeWorkdir={host.onChangeWorkdir}
+          onNewSession={handleClearChat}
+          isStreaming={state.isStreaming}
+          sessions={state.sessions}
+          currentSession={state.currentSession}
+          onSessionSelect={handleSessionSelect}
+          sessionsLoading={state.sessionsLoading}
+        />
+        {chatContainer}
+      </div>
+    );
+  }
+
+  return chatContainer;
 };

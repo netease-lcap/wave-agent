@@ -23,6 +23,11 @@ vendor/
 *.vsix
 packages/vsce/webview/dist/
 packages/vsce/releases/
+
+# Desktop app
+packages/desktop/dist/
+packages/desktop/webview/
+packages/desktop/release/
 **/test-results/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
