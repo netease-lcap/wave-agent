@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ChatApp } from './ChatApp';
-import { WorkdirSelector } from './WorkdirSelector';
 import { VsCodeApi, DesktopWorkdirState } from '../types';
 import '../styles/DesktopApp.css';
 
@@ -9,13 +8,14 @@ interface DesktopAppProps {
 }
 
 /**
- * Root component for the desktop (Electron) host. Owns the workdir state
- * pushed by the main process and renders either the workdir selector (no
- * workdir yet / switching) or the shared ChatApp with a desktop sidebar.
+ * Root component for the desktop (Electron) host. Owns the workdir state pushed
+ * by the main process and renders the shared ChatApp with a desktop sidebar.
+ * The sidebar's workdir dropdown is the single entry point for selecting a
+ * workdir — both on first launch (no workdir yet, header shows a placeholder)
+ * and when switching (FR-005). No full-screen selector overlay.
  */
 export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   const [workdirState, setWorkdirState] = useState<DesktopWorkdirState | null>(null);
-  const [selectingWorkdir, setSelectingWorkdir] = useState(false);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -25,9 +25,6 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
           workdir: message.workdir,
           recentWorkdirs: message.recentWorkdirs ?? [],
         });
-        if (message.workdir) {
-          setSelectingWorkdir(false);
-        }
       }
     };
     window.addEventListener('message', handleMessage);
@@ -35,29 +32,17 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     return () => window.removeEventListener('message', handleMessage);
   }, [vscode]);
 
-  const handleSelect = useCallback(() => {
+  const handleSelectWorkdir = useCallback(() => {
     vscode.postMessage({ command: 'desktopSelectWorkdir' });
   }, [vscode]);
 
-  const handleSelectRecent = useCallback((path: string) => {
+  const handleSelectRecentWorkdir = useCallback((path: string) => {
     vscode.postMessage({ command: 'desktopSelectRecentWorkdir', path });
   }, [vscode]);
 
-  const handleRemoveRecent = useCallback((path: string) => {
+  const handleRemoveRecentWorkdir = useCallback((path: string) => {
     vscode.postMessage({ command: 'desktopRemoveRecentWorkdir', path });
   }, [vscode]);
-
-  const handleUseTemp = useCallback(() => {
-    vscode.postMessage({ command: 'desktopUseTempWorkdir' });
-  }, [vscode]);
-
-  const handleChangeWorkdir = useCallback(() => {
-    setSelectingWorkdir(true);
-  }, []);
-
-  const handleCancelSelect = useCallback(() => {
-    setSelectingWorkdir(false);
-  }, []);
 
   // Waiting for the main process to answer `desktopReady`.
   if (workdirState === null) {
@@ -66,35 +51,18 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
 
   const { workdir, recentWorkdirs } = workdirState;
 
-  if (!workdir) {
-    return (
-      <WorkdirSelector
-        recentWorkdirs={recentWorkdirs}
-        onSelect={handleSelect}
-        onSelectRecent={handleSelectRecent}
-        onRemoveRecent={handleRemoveRecent}
-        onUseTemp={handleUseTemp}
-      />
-    );
-  }
-
   return (
-    <>
-      <ChatApp
-        vscode={vscode}
-        host={{ type: 'desktop', workdir, onChangeWorkdir: handleChangeWorkdir }}
-      />
-      {selectingWorkdir && (
-        <WorkdirSelector
-          recentWorkdirs={recentWorkdirs}
-          onSelect={handleSelect}
-          onSelectRecent={handleSelectRecent}
-          onRemoveRecent={handleRemoveRecent}
-          onUseTemp={handleUseTemp}
-          onCancel={handleCancelSelect}
-        />
-      )}
-    </>
+    <ChatApp
+      vscode={vscode}
+      host={{
+        type: 'desktop',
+        workdir,
+        recentWorkdirs,
+        onSelectWorkdir: handleSelectWorkdir,
+        onSelectRecentWorkdir: handleSelectRecentWorkdir,
+        onRemoveRecentWorkdir: handleRemoveRecentWorkdir,
+      }}
+    />
   );
 };
 

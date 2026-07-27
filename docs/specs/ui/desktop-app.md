@@ -153,8 +153,8 @@
 - **FR-002**：主进程必须通过 stdio 连接全局安装的 `wave-code` CLI（`wave --stdio`），而不是 fork 子进程运行 Agent。
 - **FR-003**：启动时必须检测 CLI 是否存在；缺失时必须通过 `npm install -g wave-code --registry=https://registry.npmmirror.com` 自动安装；Node.js 主版本低于 20 时必须提示升级 Node.js；Node.js/npm 完全缺失时必须提示安装 Node.js。
 - **FR-004**：启动时必须比较已安装 CLI 版本与要求的最低版本，低于最低版本时必须自动升级。
-- **FR-005**：UI 必须提供常驻侧边栏，包含工作目录选择入口与会话列表；侧边栏必须基于 webview 现有的 `SessionList` 抽取复用；会话切换与新建会话均在当前窗口内完成（单窗口架构）。
-- **FR-006**：工作目录必须通过原生目录选择对话框选择；未选择时必须提供"仅临时聊天"选项，使用系统临时目录作为 cwd；必须支持从最近目录列表中移除条目（仅删除持久化记录，不删除磁盘文件）。
+- **FR-005**：UI 必须提供常驻侧边栏，包含工作目录选择入口与会话列表；侧边栏必须基于 webview 现有的 `SessionList` 抽取复用；会话切换与新建会话均在当前窗口内完成（单窗口架构）。工作目录选择入口为侧边栏顶部 workdir 区域的下拉选择器（与权限模式下拉同模式：自定义 trigger + 菜单、点外部关闭），菜单选项包含「最近工作目录」列表与「浏览…」项；无工作目录时侧边栏仍渲染，workdir 区域显示「选择工作目录…」占位并使用同一个下拉，首次启动与切换工作目录体验一致。
+- **FR-006**：工作目录通过下拉里的「浏览…」项触发原生目录选择对话框选择；必须支持从最近目录列表中移除条目（仅删除持久化记录，不删除磁盘文件）；不再提供"仅临时聊天"临时目录选项。
 - **FR-007**：webview UI 必须零修改复用现有 Chat 组件；desktop 特有布局（侧边栏、工作目录选择）必须基于现有组件抽取扩展，通过 `Window.waveHostType` 区分宿主。
 - **FR-008**：确认（Confirmation）、AskUserQuestion、`@文件` 提及、图片粘贴、PDF 附件必须复用 webview 现有实现，desktop 仅实现对应的宿主消息处理（如 `listFiles` 请求），行为与 IDE 插件一致。
 - **FR-009**：desktop 必须支持会话持久化与恢复：会话数据由 CLI 的 session store 管理（与 IDE 插件相同），desktop 通过 stdio 的 `listSessions`/`restoreSession` 访问；宿主侧仅持久化最后活跃的 `sessionId` 与工作目录于 `userData/wave-desktop.json`，重启后通过 `restoreSession` 恢复。

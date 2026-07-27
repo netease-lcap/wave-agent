@@ -502,8 +502,9 @@ export class DesktopHost {
   }
 
   private async getSessionsList(): Promise<SessionMetadata[]> {
+    if (!this.workdir) return [];
     const result = (await this.utilityClient.request('listSessions', {
-      workdir: this.workdir ?? process.cwd(),
+      workdir: this.workdir,
     })) as { sessions: SessionMetadata[] };
     return result.sessions
       .filter((session) => session.sessionType === 'main')
@@ -551,12 +552,6 @@ export class DesktopHost {
         this.configStore.removeRecentWorkdir(msg.path as string);
         this.sendWorkdirState();
         break;
-
-      case 'desktopUseTempWorkdir': {
-        const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wave-desktop-'));
-        await this.switchWorkdir(tmp);
-        break;
-      }
 
       // -- chat lifecycle ----------------------------------------------
       case 'webviewReady':
@@ -834,7 +829,12 @@ export class DesktopHost {
 
   private async handleWebviewReady(): Promise<void> {
     try {
-      if (!this.agent) {
+      if (!this.workdir) {
+        // No workdir selected yet — ensure the stdio client (so login/auth
+        // still work) but skip agent creation until the user picks a workdir
+        // from the sidebar dropdown.
+        await this.ensureClient();
+      } else if (!this.agent) {
         await this.initializeAgent(this.configStore.getSessionId());
       }
       await this.pushInitialState();

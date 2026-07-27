@@ -623,7 +623,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
       <div className="desktop-layout">
         <DesktopSidebar
           workdir={host.workdir}
-          onChangeWorkdir={host.onChangeWorkdir}
+          recentWorkdirs={host.recentWorkdirs}
+          onSelectWorkdir={host.onSelectWorkdir}
+          onSelectRecentWorkdir={host.onSelectRecentWorkdir}
+          onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
           onNewSession={handleClearChat}
           isStreaming={state.isStreaming}
           sessions={state.sessions}
