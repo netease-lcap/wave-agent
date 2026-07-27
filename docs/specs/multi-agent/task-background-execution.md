@@ -96,6 +96,9 @@
 4. **假设**多个后台任务在 agent 空闲时完成，**则**所有通知应出现在聊天中。
 5. **假设**后台任务在 agent 活跃响应时完成，**则**通知应被排队并在当前响应完成后显示。
 6. **假设**队列中已有待处理用户消息，**当**后台任务通知同时入队时，**则**系统必须串行处理二者，不会并发触发两个 AI turn，不会出现两个并行的响应 stream。
+7. **假设**主 Agent 并发启动 N（N≥3）个后台 subagent 并等待全部完成通知，**当**所有 subagent 完成时，**则**主 Agent 必须收到恰好 N 条完成通知（每个 taskId 恰好一次），且任何通知不得出现在兄弟 subagent 的会话 transcript 中、不得因此重新唤起兄弟 subagent 额外执行一轮。
+8. **假设**并发后台 subagent 完成通知入队期间，**当**某个兄弟 subagent 的 AIManager 回合结束时，**则**该 subagent 不得从主 Agent 的 MessageQueue 排空（`drainNotifications`）任何通知；subagent 的通知排空只能作用于其自身容器的独立队列。
+9. **假设**主 Agent 在 print 模式（`wave -p`）下等待后台 subagent 完成，**当**最后一个 subagent 完成且其通知已被主 Agent 消费、生成最终响应后，**则**print 模式才允许退出（exit 0）；不得因通知被错误消费者取走导致 `hasPendingMessages`/`hasRunningBackgroundWork`/`isLoading` 提前为假而提前退出。
 
 ---
 
@@ -128,6 +131,7 @@
 - **直接用户 bash 命令（`!command`）**：用户使用 `!` 前缀直接启动的命令不得受 Ctrl-B 影响。
 - **超时自动后台化**：当前台 Bash 命令超时时，进程被自动后台化而不是被终止（除非命令以 `sleep` 开头）。这保留了只需要更多时间的长时间运行工作。
 - **后台任务无超时**：显式后台化的任务（`run_in_background: true`）忽略默认和显式超时，运行直到完成或手动停止。
+- **并发后台 subagent 通知错误路由**：当多个后台 subagent 并发完成时，若 subagent 容器未持有独立 MessageQueue，其 AIManager 回合末会经由 `Container.get()` 的 parent 回退抽干主 Agent 队列，将兄弟任务完成通知注入自身会话并重新唤起自身回合（`shouldRestart`），同时主 Agent 因收不到该通知而提前退出。修复要求每个 subagent 容器注册独立 MessageQueue，且完成通知仅投递并消费于主 Agent 队列。
 
 ## 需求 *（必填）*
 
@@ -171,6 +175,10 @@
 - **FR-039**：webview 详情视图必须通过 `getBackgroundTaskOutput` 请求按需获取输出，不在列表通知中携带全文 stdout/stderr。
 - **FR-040**：webview 必须提供停止按钮，通过 `stopBackgroundTask` 请求终止选中的运行中任务。
 - **FR-041**：前台工具后台化（CLI 的 Ctrl-B）不在本迭代范围；IDE 插件仅支持查看与终止已有后台任务。
+- **FR-042**：每个 Agent 与 subagent 的 DI 容器必须注册独立、会话级的 `MessageQueue` 实例。`SubagentManager.createInstance()` 创建子容器时必须为该 subagent 注册独立的 `MessageQueue`，子容器不得通过 `Container.get()`/`has()` 的 parent 回退继承主 Agent 的 `MessageQueue`。
+- **FR-043**：subagent 的 AIManager 回合末通知排空（`drainNotifications`）必须仅作用于其自身容器的 `MessageQueue`；不得抽干主 Agent 的 `MessageQueue`，不得将兄弟 subagent 的完成通知注入自身会话、不得因此重新唤起自身回合（`shouldRestart`）。
+- **FR-044**：后台 subagent 完成通知必须投递到创建它的主 Agent 的 `MessageQueue`（由 `SubagentManager` 使用主容器入队），并仅由主 Agent 的 AIManager 回合末排空消费；兄弟 subagent 不得消费该通知。
+- **FR-045**：必须提供并发集成测试：并行启动至少 5 个后台 subagent，断言每个 `taskId` 恰好一次出现在主 Agent transcript、且不出现在任何兄弟 subagent transcript；并断言 print 模式（`wave -p`）在收齐全部通知并生成最终响应后才退出（exit 0）。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 
