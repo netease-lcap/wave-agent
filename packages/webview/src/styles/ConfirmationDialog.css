@@ -95,8 +95,7 @@
   margin: 0;
 }
 
-/* Meta rows: 工具 / 文件 */
-.confirmation-details,
+/* Meta rows: 文件 */
 .confirmation-file-path {
   display: flex;
   gap: 8px;
@@ -105,17 +104,11 @@
   line-height: 16px;
 }
 
-.confirmation-details strong,
 .confirmation-file-path strong {
   flex-shrink: 0;
   width: 40px;
   font-weight: 400;
   color: var(--vscode-descriptionForeground);
-}
-
-.confirmation-details {
-  color: var(--vscode-foreground);
-  font-weight: 500;
 }
 
 .confirmation-file-path {

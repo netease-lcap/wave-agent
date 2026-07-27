@@ -61,8 +61,6 @@ describe('Confirmation Dialog', () => {
         // Verify dialog content
         const title = document.querySelector('.confirmation-title');
         expect(title).toHaveTextContent('代码修改待确认');
-        const details = document.querySelector('.confirmation-details');
-        expect(details).toHaveTextContent(`工具: ${EDIT_TOOL_NAME}`);
 
         // Verify buttons are present
         const applyBtn = document.querySelector('.confirmation-btn-apply');
@@ -93,8 +91,6 @@ describe('Confirmation Dialog', () => {
         // Verify confirmation dialog content for bash command
         const title = document.querySelector('.confirmation-title');
         expect(title).toHaveTextContent('命令执行待确认');
-        const details = document.querySelector('.confirmation-details');
-        expect(details).toHaveTextContent(`工具: ${BASH_TOOL_NAME}`);
     });
 
     it('should send approval response when clicking apply button', async () => {
@@ -215,7 +211,7 @@ describe('Confirmation Dialog', () => {
 
         // Verify first confirmation is visible
         expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
-        expect(document.querySelector('.confirmation-details')).toHaveTextContent(`工具: ${EDIT_TOOL_NAME}`);
+        expect(document.querySelector('.confirmation-title')).toHaveTextContent('代码修改待确认');
 
         // Approve first confirmation
         await act(async () => {
@@ -237,7 +233,7 @@ describe('Confirmation Dialog', () => {
 
         // Verify second confirmation is visible with correct content
         expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
-        expect(document.querySelector('.confirmation-details')).toHaveTextContent('工具: SomeOtherTool');
+        expect(document.querySelector('.confirmation-title')).toHaveTextContent('操作待确认');
 
         // Reject second confirmation via Esc key
         await act(async () => {
@@ -279,7 +275,7 @@ describe('Confirmation Dialog', () => {
 
         // Verify first confirmation is visible
         expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
-        expect(document.querySelector('.confirmation-details')).toHaveTextContent(`工具: ${EDIT_TOOL_NAME}`);
+        expect(document.querySelector('.confirmation-title')).toHaveTextContent('代码修改待确认');
 
         // Send second confirmation request while first is still showing
         await act(async () => {
@@ -292,7 +288,7 @@ describe('Confirmation Dialog', () => {
         });
 
         // Still should show first confirmation
-        expect(document.querySelector('.confirmation-details')).toHaveTextContent(`工具: ${EDIT_TOOL_NAME}`);
+        expect(document.querySelector('.confirmation-title')).toHaveTextContent('代码修改待确认');
 
         // Approve first confirmation
         await act(async () => {
@@ -301,7 +297,7 @@ describe('Confirmation Dialog', () => {
 
         // Verify second confirmation is now visible
         expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
-        expect(document.querySelector('.confirmation-details')).toHaveTextContent(`工具: ${BASH_TOOL_NAME}`);
+        expect(document.querySelector('.confirmation-title')).toHaveTextContent('命令执行待确认');
 
         // Approve second confirmation
         await act(async () => {
@@ -358,7 +354,6 @@ describe('Confirmation Dialog', () => {
 
             // Verify correct confirmation type
             expect(document.querySelector('.confirmation-title')).toHaveTextContent(expectedType);
-            expect(document.querySelector('.confirmation-details')).toHaveTextContent('工具: ');
 
             // Dismiss the dialog
             await act(async () => {
