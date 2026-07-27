@@ -170,6 +170,7 @@
 - **FR-011**：desktop 必须支持斜杠命令，处理方式与 IDE 插件完全一致：斜杠命令不做宿主侧拦截，统一转发给 agent 处理（登录通过 webview 登录按钮/LoginDialog 触发，不经 `/login` 命令）。
 - **FR-012**：desktop 必须支持 SSO 登录/登出，复用 webview 登录按钮与 LoginDialog（零修改）：主进程必须路由 `login`/`logout`/`getAuthStatus` 请求；收到 `authUrl` 通知时必须用系统默认浏览器打开授权页面；登录/登出完成后必须向 UI 回传 `loginResponse`/`logoutResponse`；初始化时必须通过 `getAuthStatus` 查询并同步登录状态；登录成功后必须向 agent 会话推送更新后的配置（含新 token）。SSO 流程本身（本地回调服务器、授权码交换、token 持久化）由 CLI 子进程完成。
 - **FR-013**：必须提供 electron-builder 配置，支持 macOS（arm64）与 Windows 打包；native 模块跨平台打包若受阻，必须先通过 CI matrix 调研解决。
+- **FR-021**：发布流程必须与 IDE 插件一致——`publish.yml`（`v*` tag 触发）中提供 `build-desktop` matrix 任务（`macos-latest` 产出 arm64 dmg/zip，`windows-latest` 产出 nsis 安装包），构建产物作为资源附件上传到同一个 GitHub Release（与 vsix、JetBrains zip 并列）；构建使用 production 模式压缩的 webview 产物，electron-builder 以 `--publish never` 运行（仅出包，发布由 action-gh-release 统一完成）；首版不做代码签名，macOS 未签名包的 Gatekeeper 绕过方式必须写入用户文档。
 - **FR-014**：主进程必须复用从 VS Code 扩展移植的 stdio 客户端层（StdioClient、BinaryResolver、StdioAgent）。
 - **FR-015**：退出应用时必须终止 CLI 子进程。
 - **FR-016**：主题来源必须为操作系统亮色/暗色外观，不暴露独立的主题切换选项（与 IDE 插件保持一致：VSCE 跟随 VS Code 主题、JetBrains 跟随 IDE LaF）。

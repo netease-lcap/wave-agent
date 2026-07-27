@@ -4,6 +4,20 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 > 核心交互（对话、工具调用、权限确认、斜杠命令、配置等）与 IDE 插件完全一致，请参考 [VS Code 扩展 / JetBrains 插件](/vsce) 文档。本页只介绍桌面版独有的功能。
 
+## 下载与安装
+
+桌面版安装包随版本发布到 [GitHub Releases](https://github.com/netease-lcap/wave-agent/releases)（与 VS Code 扩展、JetBrains 插件同一发布页）：
+
+| 平台 | 文件 |
+| --- | --- |
+| macOS（Apple Silicon） | `Wave-*-arm64.dmg`（或 `*-arm64-mac.zip`） |
+| Windows | `Wave Setup *.exe` |
+
+注意事项：
+
+- **macOS 未签名**：首版未做 Apple 代码签名，首次打开需在「访达」中右键应用图标选择「打开」，或在「系统设置 → 隐私与安全性」中点击「仍要打开」。
+- **需要 Node.js ≥ 20**：应用通过 npm 自动安装/升级内置 CLI 后端；机器上没有 Node.js 时应用会给出安装引导。
+
 ## 与 IDE 插件的差异
 
 | 能力 | IDE 插件 | 桌面版 |

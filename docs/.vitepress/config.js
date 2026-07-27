@@ -169,8 +169,9 @@ export default {
           text: '桌面版',
           collapsed: false,
           items: [
+            { text: '下载与安装', link: '/desktop#下载与安装' },
             { text: '与 IDE 插件的差异', link: '/desktop#与-ide-插件的差异' },
-            { text: '首次启动：选择工作目录', link: '/desktop#首次启动-选择工作目录' },
+            { text: '首次启动：选择工作目录', link: '/desktop#首次启动选择工作目录' },
             { text: '侧边栏会话树', link: '/desktop#侧边栏会话树' },
             { text: '核心交互', link: '/desktop#核心交互' },
             { text: '登录', link: '/desktop#登录' },
