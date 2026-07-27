@@ -206,6 +206,8 @@ export interface MessageInputProps {
   inputContent?: string;
   permissionMode?: PermissionMode;
   initialAttachedImages?: AttachedImage[];
+  /** Optional slot rendered at the top-left of the input box (desktop workdir selector). */
+  workdirSelector?: React.ReactNode;
 }
 
 /**

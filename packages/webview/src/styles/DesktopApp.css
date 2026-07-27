@@ -1,4 +1,4 @@
-/* Desktop host layout: sidebar + chat, workdir selector overlay */
+/* Desktop host layout: sidebar + chat, workdir selector inside the input */
 
 .desktop-layout {
     display: flex;
@@ -34,104 +34,75 @@
     font-size: 13px;
 }
 
-.desktop-sidebar-workdir {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin: 8px 12px;
-    padding: 5px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    color: var(--vscode-foreground);
-}
-
-.desktop-sidebar-workdir-main {
+.desktop-sidebar-new-chat {
     display: flex;
     align-items: center;
     gap: 6px;
-    flex: 1;
-    min-width: 0;
-    cursor: pointer;
-    border-radius: 4px;
-}
-
-.desktop-sidebar-workdir-main:hover {
-    background: var(--vscode-list-hoverBackground);
-}
-
-.desktop-sidebar-workdir-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.desktop-sidebar-workdir-caret {
-    opacity: 0.6;
-    font-size: 12px;
-    flex-shrink: 0;
-}
-
-.desktop-sidebar-workdir-new {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
+    margin: 8px 12px;
+    padding: 6px 10px;
     border: none;
     border-radius: 4px;
     background: transparent;
     color: var(--vscode-foreground);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 12px;
+    text-align: left;
 }
 
-.desktop-sidebar-workdir-new:hover:not(:disabled) {
+.desktop-sidebar-new-chat:hover:not(:disabled) {
     background: var(--vscode-list-hoverBackground);
 }
 
-.desktop-sidebar-workdir-new:disabled {
+.desktop-sidebar-new-chat:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-.desktop-sidebar-sessions {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    padding: 0 12px 8px;
-}
-
-.desktop-sidebar-sessions .session-list-search {
-    width: 100%;
-    box-sizing: border-box;
-    margin-bottom: 6px;
-}
-
-.desktop-sidebar-sessions .session-list-results {
-    flex: 1;
-    overflow-y: auto;
-}
-
-/* ---- Workdir dropdown (sidebar header) ----
+/* ---- Workdir dropdown (inside the message input, top-left) ----
    Custom dropdown mirroring the permission-mode dropdown in MessageInput:
    a relative container holds the trigger + an absolutely-positioned menu.
-   Expands downward (top:100%) since the header sits near the top of the
-   sidebar; a native <select> popup would be clipped in JCEF. */
+   Expands upward (bottom:100%) since the input sits at the bottom of the
+   viewport; a native <select> popup would be clipped in JCEF. */
 
 .desktop-workdir-container {
     position: relative;
-    display: flex;
-    flex: 1;
+    display: inline-flex;
     min-width: 0;
+}
+
+.desktop-workdir-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+    color: var(--vscode-foreground);
+}
+
+.desktop-workdir-trigger:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.desktop-workdir-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.desktop-workdir-caret {
+    opacity: 0.6;
+    font-size: 12px;
+    flex-shrink: 0;
 }
 
 .desktop-workdir-menu {
     position: absolute;
-    top: 100%;
+    bottom: 100%;
     left: 0;
-    margin-top: 4px;
+    margin-bottom: 4px;
     min-width: 220px;
     max-width: 340px;
     padding: 4px 0;
