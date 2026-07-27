@@ -19,7 +19,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onOpenEnterpriseConsole,
   onLogin,
   onLogout,
-  isAuthenticated
+  isAuthenticated,
+  hideSessionButtons = false
 }) => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -30,27 +31,31 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     <div className="chat-header" data-testid="chat-header">
       <div className="header-title">{title}</div>
       <div className="header-buttons">
-        <Tooltip text="新建会话" position="bottom-left">
-          <button
-            className="header-button"
-            onClick={onClearChat}
-            disabled={isStreaming}
-            data-testid="clear-chat-btn"
-            aria-label="新建会话"
-          >
-            <NewSessionIcon />
-          </button>
-        </Tooltip>
-        <Tooltip text="历史对话" position="bottom-left">
-          <button
-            className="header-button"
-            onClick={() => setShowSessionList((prev) => !prev)}
-            data-testid="history-btn"
-            aria-label="历史对话"
-          >
-            <HistoryIcon />
-          </button>
-        </Tooltip>
+        {!hideSessionButtons && (
+          <>
+            <Tooltip text="新建会话" position="bottom-left">
+              <button
+                className="header-button"
+                onClick={onClearChat}
+                disabled={isStreaming}
+                data-testid="clear-chat-btn"
+                aria-label="新建会话"
+              >
+                <NewSessionIcon />
+              </button>
+            </Tooltip>
+            <Tooltip text="历史对话" position="bottom-left">
+              <button
+                className="header-button"
+                onClick={() => setShowSessionList((prev) => !prev)}
+                data-testid="history-btn"
+                aria-label="历史对话"
+              >
+                <HistoryIcon />
+              </button>
+            </Tooltip>
+          </>
+        )}
         <Tooltip text="更多" position="bottom-left">
           <button
             className="header-button"

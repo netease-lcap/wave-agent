@@ -2,6 +2,8 @@ packages:
   - "packages/*"
 allowBuilds:
   '@vscode/vsce-sign': true
+  electron: true
+  electron-winstaller: false
   esbuild: true
   keytar: true
   protobufjs: true

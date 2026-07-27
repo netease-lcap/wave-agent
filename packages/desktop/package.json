@@ -1,0 +1,71 @@
+{
+  "name": "wave-desktop",
+  "private": true,
+  "description": "Wave code desktop app (Electron)",
+  "version": "0.19.7",
+  "type": "module",
+  "main": "./dist/main/index.cjs",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "pnpm run compile",
+    "compile": "pnpm run sync:webview && tsup",
+    "sync:webview": "node scripts/syncWebview.mjs",
+    "dev": "pnpm run compile && electron . --no-sandbox",
+    "dist": "pnpm run compile && electron-builder",
+    "clean": "node -e \"import('fs').then(fs => ['dist', 'release', 'webview'].forEach(d => {try{fs.rmSync(d, {recursive:true, force:true})}catch(e){}}))\"",
+    "type-check": "tsc --noEmit && tsc -p tests --noEmit",
+    "test": "vitest run",
+    "lint": "eslint --cache"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.1",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.7",
+    "wave-agent-sdk": "workspace:*",
+    "wave-webview": "workspace:*"
+  },
+  "build": {
+    "appId": "com.netease.wave-desktop",
+    "productName": "Wave",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "webview/**",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
