@@ -1,8 +1,6 @@
 package com.wave.jetbrains.session
 
 import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.notification.NotificationGroupManager
-import com.intellij.notification.NotificationType
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
@@ -171,16 +169,13 @@ class WaveSession(
         scope.launch { immediateMessagesUpdate() }
     }
 
-    // VSCE chatSession.ts:97-103: mirror vscode.window.showInformationMessage via the IDE's
-    // balloon notification group. Fires on the stdio reader thread → hop to the EDT.
+    // VSCE chatSession.ts: CompactionNotifier shows a single native notification
+    // while compaction runs and expires it on completion. Fires on the stdio
+    // reader thread → hop to the EDT.
+    private val compactionNotifier = CompactionNotifier.forProject(project)
+
     override fun onCompactionStateChange(isCompacting: Boolean) {
-        val message = if (isCompacting) "正在压缩对话…" else "对话压缩完成"
-        Edt.invokeLater {
-            NotificationGroupManager.getInstance()
-                .getNotificationGroup("Wave")
-                .createNotification("Wave", message, NotificationType.INFORMATION)
-                .notify(project)
-        }
+        Edt.invokeLater { compactionNotifier.onCompactionStateChange(isCompacting) }
     }
 
     override fun onUserMessageAdded(message: JsonElement?) {
