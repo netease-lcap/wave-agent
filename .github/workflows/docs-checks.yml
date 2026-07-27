@@ -17,7 +17,7 @@ on:
       - 'scripts/check-sidebar-anchors.mjs'
 
 jobs:
-  checks:
+  docs-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
