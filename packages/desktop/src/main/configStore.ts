@@ -18,10 +18,7 @@ export interface DesktopConfigData {
 
 interface StoreData {
   configuration: DesktopConfigData;
-  workdir?: string;
   recentWorkdirs: string[];
-  /** Last active agent sessionId, restored on next launch (FR-009). */
-  sessionId?: string;
 }
 
 const MAX_RECENT_WORKDIRS = 10;
@@ -41,11 +38,9 @@ export class ConfigStore {
       const parsed = JSON.parse(raw) as Partial<StoreData>;
       return {
         configuration: parsed.configuration ?? {},
-        workdir: typeof parsed.workdir === 'string' ? parsed.workdir : undefined,
         recentWorkdirs: Array.isArray(parsed.recentWorkdirs)
           ? parsed.recentWorkdirs.filter((d): d is string => typeof d === 'string')
           : [],
-        sessionId: typeof parsed.sessionId === 'string' ? parsed.sessionId : undefined,
       };
     } catch {
       // Missing or corrupt file — start fresh (loadWaveConfigFromFile precedent).
@@ -84,13 +79,8 @@ export class ConfigStore {
     this.save();
   }
 
-  getWorkdir(): string | undefined {
-    return this.data.workdir;
-  }
-
-  /** Persist the active workdir and push it to the front of the recent list. */
-  setWorkdir(dir: string): void {
-    this.data.workdir = dir;
+  /** Push a directory to the front of the recent list (MRU, deduped). */
+  addRecentWorkdir(dir: string): void {
     this.data.recentWorkdirs = [
       dir,
       ...this.data.recentWorkdirs.filter((d) => d !== dir),
@@ -104,15 +94,6 @@ export class ConfigStore {
 
   removeRecentWorkdir(dir: string): void {
     this.data.recentWorkdirs = this.data.recentWorkdirs.filter((d) => d !== dir);
-    this.save();
-  }
-
-  getSessionId(): string | undefined {
-    return this.data.sessionId;
-  }
-
-  setSessionId(sessionId: string | undefined): void {
-    this.data.sessionId = sessionId;
     this.save();
   }
 }

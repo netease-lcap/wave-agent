@@ -78,6 +78,7 @@ export class DesktopHost {
   private isCommandRunning = false;
   private inputContent = '';
   private messageQueue: QueuedMessage[] = [];
+  private sessionTree: Array<{ workdir: string; sessions: SessionMetadata[] }> = [];
   private pendingConfirmations = new Map<string, PendingConfirmation>();
 
   // throttling state (same cadence as vsce ChatSession)
@@ -221,7 +222,7 @@ export class DesktopHost {
   // Agent lifecycle (one per workdir; workdir switch = destroy + recreate)
   // ------------------------------------------------------------------
 
-  private async initializeAgent(restoreSessionId?: string): Promise<void> {
+  private async initializeAgent(): Promise<void> {
     await this.ensureClient();
     if (!this.client || !this.router) throw new Error('StdioClient not initialized');
     if (this.agent) return;
@@ -268,7 +269,6 @@ export class DesktopHost {
       },
       onSessionIdChange: (sessionId: string) => {
         this.sessionId = sessionId;
-        this.configStore.setSessionId(sessionId);
         this.postMessage({
           command: 'updateCurrentSession',
           session: {
@@ -280,6 +280,7 @@ export class DesktopHost {
           } as SessionMetadata,
         });
         void this.listSessions();
+        void this.refreshSessionTree(this.workdir ? [this.workdir] : undefined);
       },
       onPermissionModeChange: (mode: PermissionMode) => {
         this.postMessage({ command: 'updatePermissionMode', mode });
@@ -290,6 +291,11 @@ export class DesktopHost {
       onLoadingChange: (loading: boolean) => {
         this.isStreaming = loading;
         this.postMessage({ command: loading ? 'startStreaming' : 'endStreaming' });
+        // Turn ended — title/lastActiveAt of the current session may have
+        // changed, so refresh its sidebar group (FR-020).
+        if (!loading) {
+          void this.refreshSessionTree(this.workdir ? [this.workdir] : undefined);
+        }
       },
       onCommandRunningChange: (running: boolean) => {
         this.isCommandRunning = running;
@@ -324,33 +330,19 @@ export class DesktopHost {
     };
 
     const agent = new StdioAgent(this.client, this.router, agentCallbacks);
-    const initParams = {
+    await agent.initialize({
       workdir: this.workdir,
-      restoreSessionId,
       apiKey: config.apiKey || undefined,
       defaultHeaders: parseHeaders(config.headers),
       baseURL: config.baseURL || undefined,
       model: config.model,
       fastModel: config.fastModel,
       language: config.language,
-    };
-
-    try {
-      await agent.initialize(initParams);
-    } catch (createError) {
-      // If session not found, retry without restoreSessionId (new session)
-      if (createError instanceof Error && createError.message.startsWith('Session not found:')) {
-        console.log('[DesktopHost] 会话文件不存在，以新会话模式重新初始化');
-        await agent.initialize({ ...initParams, restoreSessionId: undefined });
-      } else {
-        throw createError;
-      }
-    }
+    });
 
     this.agent = agent;
     if (agent.sessionId && this.sessionId !== agent.sessionId) {
       this.sessionId = agent.sessionId;
-      this.configStore.setSessionId(agent.sessionId);
     }
   }
 
@@ -375,9 +367,9 @@ export class DesktopHost {
     }
     this.resetSessionState();
     this.workdir = dir;
-    this.configStore.setWorkdir(dir);
-    this.configStore.setSessionId(undefined);
+    this.configStore.addRecentWorkdir(dir);
     this.sendWorkdirState();
+    void this.refreshSessionTree();
     try {
       await this.initializeAgent();
       await this.pushInitialState();
@@ -521,6 +513,46 @@ export class DesktopHost {
     }
   }
 
+  /** Last N sessions shown per directory in the sidebar session tree (FR-020). */
+  private static readonly SESSION_TREE_LIMIT = 5;
+
+  private async queryDirSessions(workdir: string): Promise<SessionMetadata[]> {
+    try {
+      await this.ensureClient();
+      const result = (await this.utilityClient.request('listSessions', { workdir })) as { sessions: SessionMetadata[] };
+      return result.sessions.filter((s) => s.sessionType === 'main').slice(0, DesktopHost.SESSION_TREE_LIMIT);
+    } catch (error) {
+      console.error(`[DesktopHost] 获取目录会话失败 (${workdir}):`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Refresh the sidebar session tree (FR-020). Queries `listSessions` for each
+   * recent directory in parallel; when `workdirs` is given only those groups are
+   * re-queried and the rest are kept from the current snapshot. Pushes a
+   * `desktopSessionTree` message. Groups follow the recentWorkdirs order.
+   */
+  private async refreshSessionTree(workdirs?: string[]): Promise<void> {
+    const recents = this.configStore.getRecentWorkdirs();
+    if (recents.length === 0) {
+      if (this.sessionTree.length > 0) {
+        this.sessionTree = [];
+        this.postMessage({ command: 'desktopSessionTree', groups: [] });
+      }
+      return;
+    }
+    const targets = workdirs ?? recents;
+    const queried = new Map(
+      await Promise.all(targets.map(async (dir) => [dir, await this.queryDirSessions(dir)] as const)),
+    );
+    this.sessionTree = recents.map((dir) => ({
+      workdir: dir,
+      sessions: queried.get(dir) ?? this.sessionTree.find((g) => g.workdir === dir)?.sessions ?? [],
+    }));
+    this.postMessage({ command: 'desktopSessionTree', groups: this.sessionTree });
+  }
+
   private async refreshWorkflowRuns(): Promise<void> {
     if (!this.agent) return;
     this.workflowRuns = await this.agent.getWorkflowRuns();
@@ -536,7 +568,8 @@ export class DesktopHost {
     switch (msg.command as string) {
       // -- desktop lifecycle & workdir management (FR-001/002/003) -----
       case 'desktopReady':
-        this.workdir = this.configStore.getWorkdir();
+        // workdir is per-launch only (never persisted) — a fresh launch
+        // always starts at the placeholder until the user picks a directory.
         this.sendWorkdirState();
         break;
 
@@ -551,6 +584,11 @@ export class DesktopHost {
       case 'desktopRemoveRecentWorkdir':
         this.configStore.removeRecentWorkdir(msg.path as string);
         this.sendWorkdirState();
+        void this.refreshSessionTree();
+        break;
+
+      case 'desktopSelectSession':
+        await this.handleSelectSession(msg.workdir as string, msg.sessionId as string);
         break;
 
       // -- chat lifecycle ----------------------------------------------
@@ -835,9 +873,10 @@ export class DesktopHost {
         // from the sidebar dropdown.
         await this.ensureClient();
       } else if (!this.agent) {
-        await this.initializeAgent(this.configStore.getSessionId());
+        await this.initializeAgent();
       }
       await this.pushInitialState();
+      void this.refreshSessionTree();
 
       // Auto update check: once per app launch after the first agent is ready.
       if (!this.updateCheckTriggered) {
@@ -868,10 +907,30 @@ export class DesktopHost {
     if (!fs.existsSync(dir)) {
       this.configStore.removeRecentWorkdir(dir);
       this.sendWorkdirState();
+      void this.refreshSessionTree();
       this.pushSystemMessage(`目录不存在：${dir}，已从最近列表移除`);
       return;
     }
     await this.switchWorkdir(dir);
+  }
+
+  /**
+   * Open a session from the sidebar tree (FR-020). Switches workdir first when
+   * the session lives in another directory, then restores it.
+   */
+  private async handleSelectSession(workdir: string, sessionId: string): Promise<void> {
+    if (!workdir || !sessionId) return;
+    if (!fs.existsSync(workdir)) {
+      this.configStore.removeRecentWorkdir(workdir);
+      this.sendWorkdirState();
+      void this.refreshSessionTree();
+      this.pushSystemMessage(`目录不存在：${workdir}，已从最近列表移除`);
+      return;
+    }
+    if (workdir !== this.workdir) {
+      await this.switchWorkdir(workdir);
+    }
+    await this.handleRestoreSession(sessionId);
   }
 
   private async handleSendMessage(
@@ -880,7 +939,7 @@ export class DesktopHost {
     force?: boolean,
   ): Promise<void> {
     if (!this.agent) {
-      this.pushSystemMessage('智能体未初始化，请稍候重试');
+      this.pushSystemMessage('请先选择工作目录');
       return;
     }
 
@@ -928,6 +987,7 @@ export class DesktopHost {
       this.throttledUpdateChatMessages(this.messages);
       await this.clearQueue();
       await this.listSessions();
+      void this.refreshSessionTree(this.workdir ? [this.workdir] : undefined);
     } catch (error) {
       console.error('[DesktopHost] 恢复会话失败:', error);
       this.pushSystemMessage(`恢复会话失败: ${error}`);

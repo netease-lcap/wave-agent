@@ -144,6 +144,117 @@ describe('DesktopApp', () => {
         expect(screen.getByTestId('chat-container')).toBeInTheDocument();
     });
 
+    it('should disable the input area when no workdir is selected, and enable it once a workdir arrives', () => {
+        renderDesktopApp();
+        sendCommand('desktopWorkdirState', { recentWorkdirs: [] });
+
+        expect(screen.getByTestId('message-input')).toHaveAttribute('contenteditable', 'false');
+        expect(screen.getByTestId('send-btn')).toBeDisabled();
+        expect(screen.getByLabelText('添加')).toBeDisabled();
+        expect(screen.getByLabelText('快捷指令')).toBeDisabled();
+        expect(screen.getByLabelText('权限模式')).toBeDisabled();
+
+        sendCommand('desktopWorkdirState', { workdir: '/home/user/project', recentWorkdirs: [] });
+
+        expect(screen.getByTestId('message-input')).toHaveAttribute('contenteditable', 'true');
+        expect(screen.getByLabelText('添加')).toBeEnabled();
+        expect(screen.getByLabelText('快捷指令')).toBeEnabled();
+        expect(screen.getByLabelText('权限模式')).toBeEnabled();
+    });
+
+    describe('session tree (FR-020)', () => {
+        const session = (id: string, firstMessage: string) => ({
+            id,
+            sessionType: 'main',
+            workdir: '/work/a',
+            createdAt: '2026-07-20T00:00:00.000Z',
+            lastActiveAt: '2026-07-21T00:00:00.000Z',
+            latestTotalTokens: 0,
+            firstMessage,
+        });
+
+        const groupHeader = (workdir: string) =>
+            screen.getByTestId(`desktop-session-group-${workdir}`).querySelector('.desktop-session-group-header') as HTMLElement;
+
+        it('renders one group per recent directory, current workdir expanded by default', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a', '/work/b'] });
+            sendCommand('desktopSessionTree', {
+                groups: [
+                    { workdir: '/work/a', sessions: [session('s1', 'hello a')] },
+                    { workdir: '/work/b', sessions: [session('s2', 'hello b')] },
+                ],
+            });
+
+            // Current workdir's group expanded: session visible
+            expect(screen.getByTestId('desktop-session-item-s1')).toBeInTheDocument();
+            // Other group collapsed by default: session hidden
+            expect(screen.queryByTestId('desktop-session-item-s2')).not.toBeInTheDocument();
+            // Group headers show directory basenames
+            expect(screen.getByTestId('desktop-session-group-/work/a')).toHaveTextContent('a');
+            expect(screen.getByTestId('desktop-session-group-/work/b')).toHaveTextContent('b');
+        });
+
+        it('toggles a group on header click', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a', '/work/b'] });
+            sendCommand('desktopSessionTree', {
+                groups: [
+                    { workdir: '/work/a', sessions: [session('s1', 'hello a')] },
+                    { workdir: '/work/b', sessions: [session('s2', 'hello b')] },
+                ],
+            });
+
+            // Expand the collapsed group
+            fireEvent.click(groupHeader('/work/b'));
+            expect(screen.getByTestId('desktop-session-item-s2')).toBeInTheDocument();
+
+            // Collapse the default-expanded group
+            fireEvent.click(groupHeader('/work/a'));
+            expect(screen.queryByTestId('desktop-session-item-s1')).not.toBeInTheDocument();
+        });
+
+        it('posts desktopSelectSession with the group workdir when a session is clicked', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', {
+                groups: [{ workdir: '/work/a', sessions: [session('s1', 'hello a')] }],
+            });
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByTestId('desktop-session-item-s1'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopSelectSession',
+                workdir: '/work/a',
+                sessionId: 's1',
+            });
+        });
+
+        it('shows a running dot on the streaming current session and marks it current', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', {
+                groups: [{ workdir: '/work/a', sessions: [session('s1', 'hello a'), session('s2', 'hello again')] }],
+            });
+            sendCommand('updateCurrentSession', { session: session('s1', 'hello a') });
+            sendCommand('startStreaming', {});
+
+            const current = screen.getByTestId('desktop-session-item-s1');
+            expect(current.querySelector('.desktop-session-dot--running')).not.toBeNull();
+            expect(current.className).toContain('desktop-session-item--current');
+            expect(screen.getByTestId('desktop-session-item-s2').querySelector('.desktop-session-dot--running')).toBeNull();
+        });
+
+        it('shows 无会话 for an expanded empty group', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [] }] });
+
+            expect(screen.getByTestId('desktop-session-group-/work/a')).toHaveTextContent('无会话');
+        });
+    });
+
     describe('theme switching', () => {
         function sendInitialState(theme: { effective: 'light' | 'dark' }) {
             sendCommand('setInitialState', {
