@@ -154,8 +154,18 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       process.stdout.write("\n");
     }
 
-    // Wait for running background tasks and subagents to complete
-    while (agent.hasRunningBackgroundWork) {
+    // Wait for running background tasks/subagents to complete AND for the main
+    // agent to finish processing their completion notifications. The last
+    // background task flips status to "completed" before its notification is
+    // enqueued and before the main agent's follow-up turn runs, so
+    // hasRunningBackgroundWork alone becomes false while the main agent is
+    // still mid-turn — causing a TOCTOU race that aborts the final response.
+    // Including isLoading and queued notifications closes that gap.
+    while (
+      agent.hasRunningBackgroundWork ||
+      agent.isLoading ||
+      agent.hasPendingMessages
+    ) {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 

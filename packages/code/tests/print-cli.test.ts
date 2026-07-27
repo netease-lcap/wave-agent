@@ -514,6 +514,99 @@ test("startPrintCli handles non-string message gracefully", async () => {
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
+test("startPrintCli waits for main agent to finish notification turn after background work completes", async () => {
+  // Regression: the wait loop previously only checked hasRunningBackgroundWork,
+  // which flips false the moment the last background subagent completes — while
+  // the main agent is still mid-turn processing the completion notification.
+  // With multiple background subagents this race nearly always aborts the
+  // main agent's final turn. The loop must also wait for isLoading and queued
+  // notifications.
+  let isLoading = true;
+  let destroyedWhileLoading = false;
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(async () => {
+      if (isLoading) destroyedWhileLoading = true;
+    }),
+    get hasRunningBackgroundWork() {
+      return false; // all background tasks already completed
+    },
+    get isLoading() {
+      return isLoading; // main agent still processing notification turn
+    },
+    get hasPendingMessages() {
+      return false;
+    },
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+
+  vi.useFakeTimers();
+  try {
+    const runPromise = startPrintCli({ message: "test" });
+
+    // Advance past one poll tick (500ms). Old code would have exited and
+    // destroyed the agent already; new code keeps waiting on isLoading.
+    await vi.advanceTimersByTimeAsync(600);
+    expect(mockAgent.destroy).not.toHaveBeenCalled();
+    expect(destroyedWhileLoading).toBe(false);
+
+    // Main agent finishes its notification turn → safe to destroy and exit.
+    isLoading = false;
+    await vi.advanceTimersByTimeAsync(600);
+    await runPromise;
+
+    expect(destroyedWhileLoading).toBe(false);
+    expect(mockAgent.destroy).toHaveBeenCalledTimes(1);
+    expect(mockExit).toHaveBeenCalledWith(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("startPrintCli waits for pending notifications even when main agent is idle", async () => {
+  // When a background task completes, its notification is enqueued before the
+  // main agent's dispatch picks it up. The wait loop must hold on the queued
+  // notification until it is consumed.
+  let hasPending = true;
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    get hasRunningBackgroundWork() {
+      return false;
+    },
+    get isLoading() {
+      return false;
+    },
+    get hasPendingMessages() {
+      return hasPending;
+    },
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+
+  vi.useFakeTimers();
+  try {
+    const runPromise = startPrintCli({ message: "test" });
+
+    await vi.advanceTimersByTimeAsync(600);
+    expect(mockAgent.destroy).not.toHaveBeenCalled();
+
+    hasPending = false;
+    await vi.advanceTimersByTimeAsync(600);
+    await runPromise;
+
+    expect(mockAgent.destroy).toHaveBeenCalledTimes(1);
+    expect(mockExit).toHaveBeenCalledWith(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 afterEach(() => {
   vi.clearAllMocks();
   mockExit.mockClear();
