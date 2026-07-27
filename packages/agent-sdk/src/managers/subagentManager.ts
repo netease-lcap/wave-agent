@@ -290,6 +290,12 @@ export class SubagentManager {
     // Create a child container for the subagent to isolate its managers
     const subagentContainer = this.container.createChild();
 
+    // Register an independent MessageQueue so the subagent's AIManager drains its
+    // own (empty) queue instead of falling back to the parent container's queue.
+    // Without this, concurrent background subagents steal sibling completion
+    // notifications from the parent queue, causing the main agent to exit early.
+    subagentContainer.register("MessageQueue", new MessageQueue());
+
     // Register a modified AgentOptions without onLoadingChange to prevent subagent loading
     // from affecting the parent agent's loading state
     const parentOptions =
