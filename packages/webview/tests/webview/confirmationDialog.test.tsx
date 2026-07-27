@@ -527,7 +527,7 @@ describe('Confirmation Dialog', () => {
             });
         });
 
-        const bypassBtn = screen.getByText('是，并 bypass 权限').closest('button');
+        const bypassBtn = screen.getByText('是，并跳过权限确认').closest('button');
         expect(bypassBtn).toBeInTheDocument();
 
         await act(async () => {
@@ -562,7 +562,7 @@ describe('Confirmation Dialog', () => {
             });
         });
 
-        const bypassBtn = screen.getByText('是，并 bypass 权限').closest('button');
+        const bypassBtn = screen.getByText('是，并跳过权限确认').closest('button');
         expect(bypassBtn).toBeInTheDocument();
 
         await act(async () => {
@@ -599,7 +599,7 @@ describe('Confirmation Dialog', () => {
 
         // Auto ("don't ask again") button hidden, bypass button still visible
         expect(screen.queryByText('是，且在此工作目录下不再询问此命令')).not.toBeInTheDocument();
-        expect(screen.getByText('是，并 bypass 权限')).toBeInTheDocument();
+        expect(screen.getByText('是，并跳过权限确认')).toBeInTheDocument();
     });
 
     it('should not show bypass button for non-Bash tools', async () => {
@@ -615,6 +615,6 @@ describe('Confirmation Dialog', () => {
         });
 
         expect(document.querySelector('.confirmation-dialog')).toBeInTheDocument();
-        expect(screen.queryByText('是，并 bypass 权限')).not.toBeInTheDocument();
+        expect(screen.queryByText('是，并跳过权限确认')).not.toBeInTheDocument();
     });
 });
