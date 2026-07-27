@@ -1266,4 +1266,14 @@ export class Agent {
       this.subagentManager.getActiveInstances().length > 0;
     return runningTasks || activeSubagents;
   }
+
+  /**
+   * Check if there are pending items (messages, bang commands, or background
+   * task notifications) in the message queue. Background task completion
+   * notifications are enqueued before the main agent's dispatch consumes them,
+   * so callers waiting for the agent to fully settle must also wait on this.
+   */
+  public get hasPendingMessages(): boolean {
+    return this.messageQueue.hasPending();
+  }
 }
