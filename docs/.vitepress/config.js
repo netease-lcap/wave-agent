@@ -8,6 +8,7 @@ const nav = [
   { text: '首页', link: '/' },
   { text: '企业管控台', link: '/guide' },
   { text: 'VS Code 扩展 / JetBrains 插件', link: '/vsce' },
+  { text: '桌面版', link: '/desktop' },
   { text: 'CLI', link: '/cli' },
   { text: 'SDK', link: '/sdk' },
   { text: '规格说明', link: '/specs/' },
@@ -160,6 +161,19 @@ export default {
             { text: '9.1 概述', link: '/vsce#plugin-overview' },
             { text: '9.2 探索新插件', link: '/vsce#explore-plugins' },
             { text: '9.3 已激活插件', link: '/vsce#installed-plugins' },
+          ],
+        },
+      ],
+      '/desktop': [
+        {
+          text: '桌面版',
+          collapsed: false,
+          items: [
+            { text: '与 IDE 插件的差异', link: '/desktop#与-ide-插件的差异' },
+            { text: '首次启动：选择工作目录', link: '/desktop#首次启动-选择工作目录' },
+            { text: '侧边栏会话树', link: '/desktop#侧边栏会话树' },
+            { text: '核心交互', link: '/desktop#核心交互' },
+            { text: '登录', link: '/desktop#登录' },
           ],
         },
       ],
