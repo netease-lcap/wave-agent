@@ -1,6 +1,6 @@
 # 功能规格说明：Code Review Skill
 
-**特性分支**：`058-code-review-skill`
+**特性分支**：`code-review-skill`
 **创建日期**：2026-06-29
 
 ## 用户场景与测试 *（必填）*

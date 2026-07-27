@@ -1,6 +1,6 @@
 # 功能规格说明：Markdown 渲染系统
 
-**特性分支**：`018-markdown-rendering-system`  
+**特性分支**：`markdown-rendering-system`  
 **创建日期**：2024-12-01  
 
 ## 用户场景与测试 *（必填）*

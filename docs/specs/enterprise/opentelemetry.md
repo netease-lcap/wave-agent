@@ -1,6 +1,6 @@
 # 功能规格说明：OpenTelemetry 集成
 
-**特性分支**：`052-opentelemetry`
+**特性分支**：`opentelemetry`
 **创建日期**：2026-05-09
 
 ## 用户场景与测试 *（必填）*

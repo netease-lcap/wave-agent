@@ -1,6 +1,6 @@
 # 功能规格说明：SDK 用量追踪与回调系统
 
-**特性分支**：`010-usage-tracking-callback`
+**特性分支**：`usage-tracking-callback`
 **创建日期**：2025-11-11
 
 ## 澄清

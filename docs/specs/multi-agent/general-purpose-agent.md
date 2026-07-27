@@ -1,6 +1,6 @@
 # 功能规格说明：通用 Agent
 
-**特性分支**：`041-general-purpose-agent`
+**特性分支**：`general-purpose-agent`
 **创建日期**：2026-02-03
 
 ## 用户场景与测试 *（必填）*
