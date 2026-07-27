@@ -14,8 +14,8 @@
 | 指标 | 数量 |
 |------|------|
 | 规格文件 | 59 |
-| 用户故事 | 267 |
-| 功能需求 | 1,067 |
+| 用户故事 | 276 |
+| 功能需求 | 1,133 |
 | 测试用例 | 4,339 |
 
 ## 规格列表
@@ -29,7 +29,7 @@
 | WebFetch 工具 | 获取 URL 内容，HTML 转 markdown，AI 模型处理，支持缓存 | 5 | 14 | [规格](core/web-fetch-tool.md) |
 | LSP 集成 | Language Server Protocol 代码智能（定义跳转、引用查找、悬停信息） | 3 | 8 | [规格](core/lsp-integration.md) |
 | 自定义工具 buildTool() | buildTool() 工厂方法，供 SDK 用户定义自定义工具 | 3 | 11 | [规格](core/custom-tools.md) |
-| Agent 配置 | 基于构造函数的配置替代环境变量，支持 max output tokens 和自定义 headers | 9 | 32 | [规格](core/agent-config.md) |
+| Agent 配置 | 基于构造函数的配置替代环境变量，支持 max output tokens 和自定义 headers | 10 | 40 | [规格](core/agent-config.md) |
 | 消息压缩 | 对话历史和用户输入大小管理 | 7 | 29 | [规格](core/message-compact.md) |
 | Prompt 工程 | Prompt 构建和管理框架 | 5 | 13 | [规格](core/prompt-engineering.md) |
 | Prompt 缓存控制 | 基于正则匹配的显式缓存标记，支持 Claude、Qwen 等多种模型 | 5 | 8 | [规格](core/prompt-cache-control.md) |
@@ -43,11 +43,11 @@
 
 | 功能 | 描述 | 用户故事 | 功能需求 | 链接 |
 |------|------|----------|----------|------|
-| 会话管理 | 高性能、基于项目的会话管理系统 | 3 | 17 | [规格](ui/session-management.md) |
+| 会话管理 | 高性能、基于项目的会话管理系统 | 4 | 23 | [规格](ui/session-management.md) |
 | Markdown 渲染 | 终端 Markdown 渲染，Ink 组件支持标题、列表、代码块、表格 | 3 | 8 | [规格](ui/markdown-rendering-system.md) |
-| 消息渲染 | 基于 Ink 的消息/块渲染——静态历史 + 动态工具执行 | 3 | 8 | [规格](ui/message-rendering-system.md) |
+| 消息渲染 | 基于 Ink 的消息/块渲染——静态历史 + 动态工具执行 | 5 | 19 | [规格](ui/message-rendering-system.md) |
 | 图片粘贴 | 从剪贴板粘贴图片到聊天输入，支持占位符和附件 | 3 | 10 | [规格](ui/image-pasting.md) |
-| 文件选择器 | 快速文件/目录选择器 UI 组件 | 3 | 8 | [规格](ui/file-selector.md) |
+| 文件选择器 | 快速文件/目录选择器 UI 组件 | 4 | 18 | [规格](ui/file-selector.md) |
 | 长文本占位符 | 用 `[LongText#ID]` 占位符替换粘贴的长文本，提交时展开 | 1 | 5 | [规格](ui/long-text-placeholder.md) |
 | 确认 UI | 工具权限审批的确认对话框 UI 组件 | 6 | 17 | [规格](ui/confirm-ui.md) |
 | AskUserQuestion 工具 | 结构化用户交互工具，支持选项 | 3 | 11 | [规格](ui/ask-user-tool.md) |
@@ -64,7 +64,7 @@
 | Status 命令 | `/status` 显示版本、会话 ID、cwd、模型和运行时信息 | 1 | 9 | [规格](ui/status-command.md) |
 | Update 命令 | `wave update` / `wave-code update` 更新到最新版本 | 2 | 7 | [规格](ui/update-command.md) |
 | 历史搜索 | Ctrl+R 历史搜索，复用 `~/.wave/history.jsonl` 中的历史提示 | 2 | 10 | [规格](ui/history-search-prompt.md) |
-| Stdio 传输层 | 编辑器插件与 `wave --stdio` 子进程的 JSON-RPC 通信，CLI 解析/安装/升级、多会话路由、错误诊断 | 7 | 41 | [规格](ui/stdio-transport.md) |
+| Stdio 传输层 | 编辑器插件与 `wave --stdio` 子进程的 JSON-RPC 通信，CLI 解析/安装/升级、多会话路由、错误诊断 | 8 | 51 | [规格](ui/stdio-transport.md) |
 
 ### 多 Agent 与并发
 
@@ -89,8 +89,8 @@
 | Init 命令 | `/init` 斜杠命令，使用 init-prompt.md 进行项目初始化 | 2 | 7 | [规格](ecosystem/init-slash-command.md) |
 | Code Review 技能 | 审查当前 `git diff` 的正确性 bug，附带文件/行号引用 | 5 | 27 | [规格](ecosystem/code-review-skill.md) |
 | Simplify 技能 | 审查已变更代码的质量问题（重复、低效）并通过 `/simplify` 自动修复 | 3 | 14 | [规格](ecosystem/simplify-skill.md) |
-| MCP | Model Context Protocol 外部工具和上下文源支持 | 3 | 19 | [规格](ecosystem/mcp.md) |
-| 插件系统 | 插件系统，支持 marketplace、作用域、技能、LSP、MCP、钩子、代理 | 6 | 28 | [规格](ecosystem/plugin.md) |
+| MCP | Model Context Protocol 外部工具和上下文源支持 | 4 | 26 | [规格](ecosystem/mcp.md) |
+| 插件系统 | 插件系统，支持 marketplace、作用域、技能、LSP、MCP、钩子、代理 | 7 | 36 | [规格](ecosystem/plugin.md) |
 
 ### 自动化
 
@@ -104,7 +104,7 @@
 
 | 功能 | 描述 | 用户故事 | 功能需求 | 链接 |
 |------|------|----------|----------|------|
-| SSO 认证 | /login 浏览器 SSO 登录、token 存储、自动 API 代理路由 | 4 | 31 | [规格](enterprise/sso-auth.md) |
+| SSO 认证 | /login 浏览器 SSO 登录、token 存储、自动 API 代理路由 | 5 | 37 | [规格](enterprise/sso-auth.md) |
 | 服务端托管配置 | 从 Wave AI 下载并应用托管设置，支持校验和缓存和合并优先级 | 3 | 11 | [规格](enterprise/server-managed-config.md) |
 | OpenTelemetry 集成 | OpenTelemetry 指标、追踪和日志插桩，支持多种导出器（jsonl、OTLP） | 3 | 16 | [规格](enterprise/opentelemetry.md) |
 | 用量追踪 | SDK 用量追踪回调（`onUsagesChange`），用于 AI 调用和压缩 | 4 | 15 | [规格](enterprise/usage-tracking-callback.md) |

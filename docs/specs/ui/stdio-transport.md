@@ -166,6 +166,27 @@
 
 ---
 
+### 用户故事 8 - IDE 插件消息队列列表（优先级：P2）
+
+作为 IDE 插件用户，我希望在 AI 处理期间发送的消息以队列列表形式展示，可以查看、立即发送、删除或重新编辑排队消息，以便在 AI 忙碌时管理我的待处理输入。
+
+**为什么是这个优先级**：队列管理提升忙碌时的输入可控性，但消息仍可正常排队等待，属于体验增强。
+
+**独立测试**：在 AI 响应期间发送两条消息，验证输入框上方出现"消息队列 (2)"列表；对其中一条点击删除，对另一条点击编辑修改后回车，验证队列内容相应更新。
+
+**验收场景**：
+
+1. **假设** AI 正在处理且用户发送了消息，**当**消息进入队列时，**则**输入框上方显示"消息队列 (N)"列表，N 为排队消息数。
+2. **假设**队列列表已显示，**当**用户点击列表头部时，**则**在折叠（仅显示第一条）与展开（显示全部，超高可滚动）之间切换。
+3. **假设**队列中某条为 shell 命令，**当**列表渲染时，**则**该条摘要带 `!` 前缀；所有条目单行截断显示，悬停时可查看完整内容。
+4. **假设**用户对某条排队消息点击"发送"，**当**操作发生时，**则**该消息立即发送（不等当前处理完成顺序出队）并从队列中移除。
+5. **假设**用户对某条排队消息点击"删除"，**当**操作发生时，**则**该消息立即从列表消失。
+6. **假设**用户对某条排队消息点击"编辑"，**当**操作发生时，**则**消息内容载入输入框并显示"编辑队列消息"标记；用户修改后按回车，**则**原队列消息被替换为新内容；用户删除该标记，**则**退出编辑状态。
+7. **假设**用户通过键盘方向上键尝试召回队列消息，**当**在 IDE 插件输入框中操作时，**则**不支持该召回方式（与 CLI 的产品差异：IDE 插件仅支持点击"编辑"按钮召回）。
+8. **假设**有对话框打开或存在待处理的权限确认，**当**界面渲染时，**则**队列列表隐藏，避免遮挡。
+
+---
+
 ### 边界情况
 
 - **Windows `.cmd` 兼容性**：Node.js（CVE-2024-27980 补丁后）拒绝在没有 shell 的情况下 spawn `.cmd` 文件。所有执行 `npm.cmd` 和 `wave.cmd` 的地方必须设置 `shell: true`（或 `shell: process.platform === 'win32'`）。
@@ -175,6 +196,8 @@
 - **utility 请求无 session 上下文**：FileService（搜索文件）、SessionService（列出会话）、PluginService（管理插件）的请求不需要 sessionId，直接通过共享 StdioClient 发送。
 - **`authUrl` 全局通知**：SSO 登录流程中 CLI 推送的 `authUrl` 通知不带 sessionId，通过 `router.registerGlobal` 注册的处理器接收，直接打开系统浏览器。
 - **CLI 子进程的 env 传递**：StdioClient 构造函数接受可选的 `env` 参数，未传时子进程继承插件宿主的 `process.env`。
+- **消息队列列表编辑无重复入队**：IDE 插件中编辑排队消息时，将原消息删除并把内容载入输入框；若用户编辑后未发送，该消息不会自动回到队列。
+- **消息队列列表无键盘召回**：IDE 插件输入框的方向上键不召回队列消息（与 CLI 不同），仅支持通过列表中的"编辑"按钮召回；这是刻意的平台产品差异。
 
 ## 需求 *（必填）*
 
@@ -243,6 +266,21 @@
 - **FR-039**：StdioAgent 必须处理以下通知类型并更新对应缓存：`messagesChange`→messages、`queuedMessagesChange`→queuedMessages、`tasksChange`→tasks、`sessionIdChange`→sessionId、`permissionModeChange`→permissionMode、`workdirChange`→workingDirectory、`loadingChange`→latestTotalTokens。
 - **FR-040**：当回调函数未设置（undefined）时，StdioAgent 必须正常更新缓存但不触发回调，不抛出错误。
 - **FR-041**：StdioAgent 必须处理以下无缓存更新的通知类型（仅触发回调）：`userMessageAdded`、`assistantMessageAdded`、`assistantContentUpdated`、`assistantReasoningUpdated`、`toolBlockUpdated`、`errorBlockAdded`、`compactBlockAdded`、`commandRunningChange`、`mcpServersChange`、`bangMessageAdded`、`bangMessageUpdated`、`bangMessageCompleted`、`notificationMessageAdded`、`permissionRequest`。
+
+#### 消息队列列表（IDE 插件）
+
+以下 FR 仅适用于 IDE 插件 webview（VSCE / JB），CLI 的队列交互由 CLI 自身规格覆盖。
+
+- **FR-042**：当队列中有消息时，IDE 插件 webview 必须在输入框上方显示可折叠的"消息队列 (N)"列表；队列为空时不渲染。
+- **FR-043**：折叠状态仅显示第一条排队消息；展开状态显示全部，超过最大高度（180px）时列表内滚动。
+- **FR-044**：每条排队消息必须单行截断显示摘要，shell 命令带 `!` 前缀，悬停时可查看完整内容。
+- **FR-045**：点击某条的"发送"必须立即发送该消息（不等当前处理完成顺序出队）并将其从队列中移除。
+- **FR-046**：点击某条的"删除"必须立即将其从列表移除，不等后端确认。
+- **FR-047**：点击某条的"编辑"必须将其内容载入输入框，并在输入框中显示"编辑队列消息"标记；输入框按回车提交后原队列消息被替换为新内容；删除该标记则退出编辑状态。
+- **FR-048**：IDE 插件输入框不得支持通过键盘方向上键召回队列消息（与 CLI 的产品差异）；仅支持通过"编辑"按钮召回。
+- **FR-049**：有对话框打开或存在待处理的权限确认时，队列列表必须隐藏。
+- **FR-050**：队列内容必须与 CLI 侧队列状态保持同步，依赖 `queuedMessagesChange` 通知驱动的缓存更新（见 FR-038/FR-039）。
+- **FR-051**：发送/删除/编辑操作必须映射到对应的队列消息协议请求，修改结果通过缓存同步回 UI。
 
 ### 关键实体
 
