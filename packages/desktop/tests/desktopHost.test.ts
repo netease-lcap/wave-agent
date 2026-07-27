@@ -33,7 +33,6 @@ vi.mock('fs', () => ({
   mkdirSync: vi.fn(),
   existsSync: vi.fn((p: string) => h.existingPaths.has(p)),
   promises: {
-    mkdtemp: vi.fn(async (prefix: string) => `${prefix}mock-tmp`),
     writeFile: vi.fn(async (p: string, data: string | Buffer) => {
       h.files.set(p, data);
     }),
@@ -244,20 +243,6 @@ describe('workdir lifecycle', () => {
     expect(sysMsgs).toHaveLength(1);
   });
 
-  it('desktopUseTempWorkdir destroys the old agent, creates a new one and reposts state', async () => {
-    const { host, store, sent } = await readyHost();
-    const oldAgent = lastAgent();
-
-    await host.handleWebviewMessage({ command: 'desktopUseTempWorkdir' });
-
-    expect(oldAgent.destroy).toHaveBeenCalled();
-    expect(h.agentInstances).toHaveLength(2);
-    expect(store.getWorkdir()).toBe('/tmp/wave-desktop-mock-tmp');
-    const states = sent('desktopWorkdirState');
-    expect(states[states.length - 1]).toMatchObject({ workdir: '/tmp/wave-desktop-mock-tmp' });
-    // new session pushed to the webview
-    expect(sent('setInitialState').length).toBeGreaterThanOrEqual(2);
-  });
 });
 
 // ---------------------------------------------------------------------------

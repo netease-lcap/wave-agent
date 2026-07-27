@@ -134,8 +134,11 @@ export interface ChatAppProps {
 // window.waveHostType === 'desktop' selects the DesktopApp root in index.tsx.
 export interface DesktopHostProps {
   type: 'desktop';
-  workdir: string;
-  onChangeWorkdir: () => void;
+  workdir?: string;
+  recentWorkdirs: string[];
+  onSelectWorkdir: () => void;
+  onSelectRecentWorkdir: (path: string) => void;
+  onRemoveRecentWorkdir: (path: string) => void;
 }
 
 /**

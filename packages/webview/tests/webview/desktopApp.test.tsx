@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, act, fireEvent, screen } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
 import { createMockVscode, sendCommand } from './test-utils';
@@ -20,51 +20,72 @@ describe('DesktopApp', () => {
         expect(screen.getByTestId('desktop-loading')).toBeInTheDocument();
     });
 
-    it('should show the workdir selector when no workdir is set', () => {
+    it('should render the sidebar with a placeholder workdir name when no workdir is set', () => {
         renderDesktopApp();
 
         sendCommand('desktopWorkdirState', { recentWorkdirs: [] });
 
-        expect(screen.getByTestId('workdir-selector')).toBeInTheDocument();
-        expect(screen.queryByTestId('chat-container')).not.toBeInTheDocument();
+        // First launch: sidebar + chat render, no full-screen selector
+        expect(screen.getByTestId('desktop-sidebar')).toBeInTheDocument();
+        expect(screen.getByTestId('chat-container')).toBeInTheDocument();
+        expect(screen.getByTestId('desktop-workdir')).toHaveTextContent('选择工作目录…');
+        // New-session stays disabled until a workdir is picked
+        expect(screen.getByTestId('desktop-new-session')).toBeDisabled();
     });
 
-    it('should post desktopSelectWorkdir when clicking 选择工作目录', () => {
+    it('should toggle the workdir dropdown and post desktopSelectWorkdir when clicking 浏览…', () => {
         const { vscode } = renderDesktopApp();
         sendCommand('desktopWorkdirState', { recentWorkdirs: [] });
         vscode.postMessage.mockClear();
 
-        fireEvent.click(screen.getByTestId('workdir-selector-open'));
+        // Closed by default
+        expect(screen.queryByTestId('desktop-workdir-menu')).not.toBeInTheDocument();
 
+        fireEvent.click(screen.getByTestId('desktop-workdir'));
+        expect(screen.getByTestId('desktop-workdir-menu')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('desktop-workdir-browse'));
         expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopSelectWorkdir' });
+        // Menu closes after selection
+        expect(screen.queryByTestId('desktop-workdir-menu')).not.toBeInTheDocument();
     });
 
-    it('should render recent workdirs and post select/remove commands', () => {
+    it('should close the dropdown when clicking outside', () => {
+        renderDesktopApp();
+        sendCommand('desktopWorkdirState', { recentWorkdirs: [] });
+
+        fireEvent.click(screen.getByTestId('desktop-workdir'));
+        expect(screen.getByTestId('desktop-workdir-menu')).toBeInTheDocument();
+
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('desktop-workdir-menu')).not.toBeInTheDocument();
+    });
+
+    it('should render recent workdirs in the dropdown and post select/remove commands', () => {
         const { vscode } = renderDesktopApp();
-        sendCommand('desktopWorkdirState', { recentWorkdirs: ['/home/user/project-a', '/home/user/project-b'] });
+        sendCommand('desktopWorkdirState', {
+            workdir: '/home/user/project',
+            recentWorkdirs: ['/home/user/project-a', '/home/user/project-b'],
+        });
         vscode.postMessage.mockClear();
 
-        const items = screen.getAllByTestId('workdir-selector-recent-item');
+        fireEvent.click(screen.getByTestId('desktop-workdir'));
+        const items = screen.getAllByTestId('desktop-workdir-recent-item');
         expect(items).toHaveLength(2);
+        // Two-line entry: basename on top, parent path below
+        expect(items[0].querySelector('.desktop-workdir-menu-name')).toHaveTextContent('project-a');
+        expect(items[0].querySelector('.desktop-workdir-menu-parent')).toHaveTextContent('/home/user');
 
         fireEvent.click(items[0]);
         expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopSelectRecentWorkdir', path: '/home/user/project-a' });
 
-        const removeBtn = items[1].querySelector('.workdir-selector-recent-remove') as HTMLElement;
-        fireEvent.click(removeBtn);
+        // Selecting closed the menu — reopen to remove the other entry
+        fireEvent.click(screen.getByTestId('desktop-workdir'));
+        const removeBtns = screen.getAllByTestId('desktop-workdir-recent-remove');
+        fireEvent.click(removeBtns[1]);
         expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopRemoveRecentWorkdir', path: '/home/user/project-b' });
         // Remove click must not trigger selection
         expect(vscode.postMessage).not.toHaveBeenCalledWith({ command: 'desktopSelectRecentWorkdir', path: '/home/user/project-b' });
-    });
-
-    it('should post desktopUseTempWorkdir when clicking 使用临时目录', () => {
-        const { vscode } = renderDesktopApp();
-        sendCommand('desktopWorkdirState', { recentWorkdirs: [] });
-        vscode.postMessage.mockClear();
-
-        fireEvent.click(screen.getByText('使用临时目录'));
-
-        expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopUseTempWorkdir' });
     });
 
     it('should render ChatApp with sidebar and hidden header session buttons when workdir is set', () => {
@@ -92,29 +113,16 @@ describe('DesktopApp', () => {
         expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'clearChat' });
     });
 
-    it('should show the workdir selector overlay when switching workdir, and hide it on cancel', () => {
-        const { vscode } = renderDesktopApp();
-        sendCommand('desktopWorkdirState', { workdir: '/home/user/project', recentWorkdirs: [] });
-
-        fireEvent.click(screen.getByTestId('desktop-workdir'));
-        expect(screen.getByTestId('workdir-selector')).toBeInTheDocument();
-        // Chat stays mounted underneath the overlay
-        expect(screen.getByTestId('chat-container')).toBeInTheDocument();
-
-        fireEvent.click(screen.getByText('取消'));
-        expect(screen.queryByTestId('workdir-selector')).not.toBeInTheDocument();
-        expect(vscode.postMessage).not.toHaveBeenCalledWith({ command: 'desktopSelectWorkdir' });
-    });
-
-    it('should hide the selector overlay when a new workdir state arrives', () => {
+    it('should update the workdir name and enable new-session when a new workdir state arrives', () => {
         renderDesktopApp();
-        sendCommand('desktopWorkdirState', { workdir: '/home/user/project', recentWorkdirs: [] });
-
-        fireEvent.click(screen.getByTestId('desktop-workdir'));
-        expect(screen.getByTestId('workdir-selector')).toBeInTheDocument();
+        sendCommand('desktopWorkdirState', { recentWorkdirs: [] });
+        expect(screen.getByTestId('desktop-workdir')).toHaveTextContent('选择工作目录…');
+        expect(screen.getByTestId('desktop-new-session')).toBeDisabled();
 
         sendCommand('desktopWorkdirState', { workdir: '/home/user/other', recentWorkdirs: ['/home/user/other'] });
-        expect(screen.queryByTestId('workdir-selector')).not.toBeInTheDocument();
+
+        expect(screen.getByTestId('desktop-workdir')).toHaveTextContent('other');
+        expect(screen.getByTestId('desktop-new-session')).toBeEnabled();
         expect(screen.getByTestId('chat-container')).toBeInTheDocument();
     });
 
