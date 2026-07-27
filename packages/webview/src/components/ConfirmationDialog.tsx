@@ -601,7 +601,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                     className="confirmation-btn confirmation-btn-auto"
                     onClick={handleBypassConfirm}
                   >
-                    <span className="btn-text">是，并 bypass 权限</span>
+                    <span className="btn-text">是，并跳过权限确认</span>
                   </button>
                 )}
 
