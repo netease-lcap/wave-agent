@@ -516,7 +516,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode }) => {
       )}
 
       <div className="input-area-container">
-        <div style={{ display: state.activeDialog ? 'none' : 'block' }}>
+        <div style={{ display: state.pendingConfirmations.length === 0 ? 'block' : 'none' }}>
           <TaskList
             tasks={state.tasks}
             isCollapsed={state.isTaskListCollapsed}
