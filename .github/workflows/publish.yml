@@ -147,3 +147,55 @@ jobs:
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --- Desktop app (Electron) ---
+  # Builds the desktop installers and attaches them to the same GitHub Release
+  # (FR-021). macOS .dmg requires a macOS runner and Windows NSIS a Windows
+  # runner, hence the matrix. Unsigned builds — no signing certs configured yet;
+  # the docs describe the Gatekeeper bypass for macOS users.
+  build-desktop:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      # The webview bundles from wave-agent-sdk/dist (see imports like
+      # 'wave-agent-sdk/dist/types/...'), so build the SDK dist first.
+      - name: Build agent-sdk dist
+        run: pnpm -F wave-agent-sdk build
+
+      # Use `compile -- --production` (not `build`) so the webview bundle is
+      # minified — the desktop app's syncWebview step copies dist verbatim.
+      - name: Build webview dist
+        run: pnpm -F wave-webview run compile -- --production
+
+      # `--publish never`: electron-builder only produces the installers; the
+      # release upload is handled by action-gh-release below.
+      - name: Build desktop installers
+        run: pnpm -F wave-desktop run dist -- --publish never
+
+      - name: Attach installers to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.zip
+            packages/desktop/release/*.exe
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
