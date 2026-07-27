@@ -1,7 +1,7 @@
 # 功能规格说明：IDE 插件
 
 **规格文件**：`docs/specs/ui/ide-plugin.md`
-**特性分支**：`060-ide-plugin`
+**特性分支**：`ide-plugin`
 **创建日期**：2026-07-27
 
 > 本规格覆盖 VS Code 扩展与 JetBrains 插件共享的 React webview 中、未被其它 CLI 优先规格覆盖的横切关注点：主题与外观变量、共享 webview 包与构建产物同步、webview 生命周期与消息协议、IDE 专属对话框组件。已由其它规格覆盖的部分（确认对话框见 [确认 UI](confirm-ui.md)、登录流程见 [SSO 认证](../enterprise/sso-auth.md)、编辑器插件与 wave 进程的通信见 [Stdio 传输层](stdio-transport.md)）不在此重复。

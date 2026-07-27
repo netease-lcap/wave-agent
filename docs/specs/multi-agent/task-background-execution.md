@@ -1,6 +1,6 @@
 # 功能规格说明：任务后台执行与管理
 
-**特性分支**：`042-task-background-execution`
+**特性分支**：`task-background-execution`
 **创建日期**：2026-02-09
 
 ## 用户场景与测试 *（必填）*

@@ -1,6 +1,6 @@
 # 功能规格说明：工具权限系统
 
-**特性分支**：`022-tool-permission-system`
+**特性分支**：`tool-permission-system`
 
 ## 概述
 

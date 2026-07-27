@@ -1,6 +1,6 @@
 # 功能规格说明：Bang Shell 命令
 
-**特性分支**：`026-bang-shell-command`
+**特性分支**：`bang-shell-command`
 **创建日期**：2026-03-25
 
 ## 用户场景与测试 *（必填）*

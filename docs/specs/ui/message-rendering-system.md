@@ -1,6 +1,6 @@
 # 功能规格说明：消息渲染系统
 
-**特性分支**：`025-message-rendering-system`
+**特性分支**：`message-rendering-system`
 **创建日期**：2026-03-24
 
 ## 用户场景与测试 *（必填）*

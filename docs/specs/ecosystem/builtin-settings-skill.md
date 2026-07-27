@@ -1,6 +1,6 @@
 # 功能规格说明：内置 Settings Skill
 
-**特性分支**：`050-builtin-settings-skill`
+**特性分支**：`builtin-settings-skill`
 **创建日期**：2026-03-18
 
 ## 用户场景与测试 *（必填）*

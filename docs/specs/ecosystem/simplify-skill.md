@@ -1,6 +1,6 @@
 # 功能规格说明：Simplify Skill
 
-**特性分支**：`059-simplify-skill`
+**特性分支**：`simplify-skill`
 **创建日期**：2026-06-29
 
 ## 用户场景与测试 *（必填）*
