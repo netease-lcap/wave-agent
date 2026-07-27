@@ -139,6 +139,19 @@ export interface DesktopHostProps {
   onSelectWorkdir: () => void;
   onSelectRecentWorkdir: (path: string) => void;
   onRemoveRecentWorkdir: (path: string) => void;
+  /**
+   * Sidebar session tree (FR-020): one group per recent directory, up to 5
+   * sessions each. Pushed via the `desktopSessionTree` message.
+   */
+  sessionTree: DesktopSessionGroup[];
+  /** Open a historical session; switches workdir first when needed. */
+  onSelectSession: (workdir: string, sessionId: string) => void;
+}
+
+/** One directory group in the desktop sidebar session tree (FR-020). */
+export interface DesktopSessionGroup {
+  workdir: string;
+  sessions: SessionMetadata[];
 }
 
 /**
@@ -208,6 +221,8 @@ export interface MessageInputProps {
   initialAttachedImages?: AttachedImage[];
   /** Optional slot rendered at the top-left of the input box (desktop workdir selector). */
   workdirSelector?: React.ReactNode;
+  /** Disable the whole input area (e.g. desktop host without a workdir). */
+  disabled?: boolean;
 }
 
 /**

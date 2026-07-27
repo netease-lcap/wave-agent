@@ -79,7 +79,8 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
     inputContent,
     permissionMode,
     initialAttachedImages,
-    workdirSelector
+    workdirSelector,
+    disabled
   } = props;
   const [message, setMessage] = useState('');
   const _lastSelectionRef = useRef<Selection | null>(null);
@@ -839,6 +840,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
   }, [closeSlashCommandPopup, onSendMessage, vscode]);
 
   const handleSend = useCallback(() => {
+    if (disabled) return;
     if (!textareaRef.current) return;
     
     const { markdown: rawMarkdown, images: extractedImages } = convertToMarkdown(textareaRef.current);
@@ -870,7 +872,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
       setAttachedImages([]);
       closeDropdown();
     }
-  }, [attachedImages, onSendMessage, closeDropdown, vscode, editingQueuedId, onSubmitQueuedEdit]);
+  }, [disabled, attachedImages, onSendMessage, closeDropdown, vscode, editingQueuedId, onSubmitQueuedEdit]);
 
   // Open the history-search popup. Shared by the in-DOM Ctrl/Cmd+R handler and the
   // JetBrains bridge (which forwards the key after swallowing the IDE action — see
@@ -1244,7 +1246,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
             ref={textareaRef}
             id="messageInput"
             className="message-input content-editable-input"
-            contentEditable={true}
+            contentEditable={!disabled}
             onInput={handleInput}
             onKeyDown={handleKeyDown}
             onSelect={handleSelectionChange}
@@ -1266,6 +1268,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
                 className="toolbar-icon-button"
                 aria-label="添加"
                 aria-expanded={plusMenuOpen}
+                disabled={disabled}
                 onClick={() => setPlusMenuOpen(o => !o)}
               >
                 <PlusIcon className="toolbar-icon" />
@@ -1301,6 +1304,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
               type="button"
               className="toolbar-icon-button"
               aria-label="快捷指令"
+              disabled={disabled}
               onClick={handleSlashButtonClick}
             >
               <SlashBoxIcon className="toolbar-icon" />
@@ -1316,6 +1320,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
               className={`permission-mode-select mode-${permissionMode || 'default'}`}
               aria-label="权限模式"
               aria-expanded={permMenuOpen}
+              disabled={disabled}
               onClick={() => setPermMenuOpen(o => !o)}
             >
               {permissionModeIcon(permissionMode)}
@@ -1358,7 +1363,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
                 id="sendButton"
                 className="send-button ai-send-btn"
                 onClick={handleSend}
-                disabled={!message.trim() && attachedImages.length === 0}
+                disabled={disabled || (!message.trim() && attachedImages.length === 0)}
                 data-testid="send-btn"
                 aria-label="发送"
               >

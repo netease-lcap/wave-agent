@@ -11,6 +11,8 @@ const h = vi.hoisted(() => ({
   agentInstances: [] as Array<Record<string, unknown>>,
   clientRequests: [] as Array<{ method: string; params: unknown }>,
   authUrlHandler: null as ((params: unknown) => void) | null,
+  // Per-workdir listSessions results, keyed by directory (FR-020 session tree).
+  dirSessions: new Map<string, unknown[]>(),
 }));
 
 vi.mock('fs', () => ({
@@ -51,8 +53,10 @@ vi.mock('../src/main/stdio/stdioClient', () => ({
     request = vi.fn(async (method: string, params?: unknown) => {
       h.clientRequests.push({ method, params });
       switch (method) {
-        case 'listSessions':
-          return { sessions: [] };
+        case 'listSessions': {
+          const workdir = (params as { workdir?: string } | undefined)?.workdir ?? '';
+          return { sessions: h.dirSessions.get(workdir) ?? [] };
+        }
         case 'getAuthStatus':
           return { isAuthenticated: false, serverUrl: '' };
         case 'getPromptHistory':
@@ -172,8 +176,11 @@ function lastAgent() {
 
 async function readyHost() {
   const ctx = createHost();
-  ctx.store.setWorkdir('/work/a');
+  // workdir is never persisted — pick it from recents like the real UI flow.
+  ctx.store.addRecentWorkdir('/work/a');
+  h.existingPaths.add('/work/a');
   await ctx.host.handleWebviewMessage({ command: 'desktopReady' });
+  await ctx.host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/a' });
   await ctx.host.handleWebviewMessage({ command: 'webviewReady' });
   return ctx;
 }
@@ -184,6 +191,7 @@ beforeEach(() => {
   h.agentInstances.length = 0;
   h.clientRequests.length = 0;
   h.authUrlHandler = null;
+  h.dirSessions.clear();
   vi.clearAllMocks();
   nativeTheme.__reset();
 });
@@ -193,10 +201,10 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('workdir lifecycle', () => {
-  it('desktopReady posts desktopWorkdirState with the persisted workdir and recents', async () => {
+  it('desktopReady always starts fresh: no workdir restored, recents still listed', async () => {
     const { host, store, sent } = createHost();
-    store.setWorkdir('/work/a');
-    store.setWorkdir('/work/b');
+    store.addRecentWorkdir('/work/a');
+    store.addRecentWorkdir('/work/b');
 
     await host.handleWebviewMessage({ command: 'desktopReady' });
 
@@ -204,7 +212,7 @@ describe('workdir lifecycle', () => {
     expect(states).toHaveLength(1);
     expect(states[0]).toEqual({
       command: 'desktopWorkdirState',
-      workdir: '/work/b',
+      workdir: undefined,
       recentWorkdirs: ['/work/b', '/work/a'],
     });
   });
@@ -219,8 +227,8 @@ describe('workdir lifecycle', () => {
 
   it('desktopRemoveRecentWorkdir removes the entry and reposts state', async () => {
     const { host, store, sent } = createHost();
-    store.setWorkdir('/work/a');
-    store.setWorkdir('/work/b');
+    store.addRecentWorkdir('/work/a');
+    store.addRecentWorkdir('/work/b');
 
     await host.handleWebviewMessage({ command: 'desktopRemoveRecentWorkdir', path: '/work/a' });
 
@@ -254,8 +262,8 @@ describe('webviewReady / setInitialState', () => {
     const { sent } = await readyHost();
 
     const states = sent('setInitialState');
-    expect(states).toHaveLength(1);
-    expect(states[0]).toMatchObject({
+    expect(states.length).toBeGreaterThanOrEqual(1);
+    expect(states[states.length - 1]).toMatchObject({
       command: 'setInitialState',
       messages: [],
       isStreaming: false,
@@ -264,20 +272,18 @@ describe('webviewReady / setInitialState', () => {
       workdir: '/work/a',
       sessions: [],
     });
-    expect(states[0].configurationData).toBeDefined();
+    expect(states[states.length - 1].configurationData).toBeDefined();
   });
 
-  it('restores the persisted sessionId into agent.initialize', async () => {
-    const { host, store } = createHost();
-    store.setWorkdir('/work/a');
-    store.setSessionId('sess-restored');
-
-    await host.handleWebviewMessage({ command: 'desktopReady' });
-    await host.handleWebviewMessage({ command: 'webviewReady' });
+  it('starts a fresh session on every launch: agent.initialize never carries restoreSessionId', async () => {
+    await readyHost();
 
     const agent = lastAgent();
+    for (const [params] of agent.initialize.mock.calls) {
+      expect(params).not.toHaveProperty('restoreSessionId');
+    }
     expect(agent.initialize).toHaveBeenCalledWith(
-      expect.objectContaining({ workdir: '/work/a', restoreSessionId: 'sess-restored' }),
+      expect.objectContaining({ workdir: '/work/a' }),
     );
   });
 
@@ -290,9 +296,10 @@ describe('webviewReady / setInitialState', () => {
     });
 
     const { host, store, sent } = createHost();
-    store.setWorkdir('/work/a');
+    store.addRecentWorkdir('/work/a');
+    h.existingPaths.add('/work/a');
     await host.handleWebviewMessage({ command: 'desktopReady' });
-    await host.handleWebviewMessage({ command: 'webviewReady' });
+    await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/a' });
 
     const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('初始化失败'));
     expect(sysMsgs).toHaveLength(1);
@@ -338,7 +345,7 @@ describe('sendMessage', () => {
     const { host, sent } = createHost();
     await host.handleWebviewMessage({ command: 'sendMessage', text: 'hi' });
 
-    const hints = sent('appendMessage').filter((m) => JSON.stringify(m).includes('智能体未初始化'));
+    const hints = sent('appendMessage').filter((m) => JSON.stringify(m).includes('请先选择工作目录'));
     expect(hints).toHaveLength(1);
   });
 });
@@ -370,13 +377,12 @@ describe('agent notifications', () => {
     expect(updates[updates.length - 1]).toMatchObject({ messages });
   });
 
-  it('onSessionIdChange persists the id and posts updateCurrentSession', async () => {
-    const { store, sent } = await readyHost();
+  it('onSessionIdChange posts updateCurrentSession (session id is never persisted)', async () => {
+    const { sent } = await readyHost();
     const { callbacks } = lastAgent();
 
     callbacks.onSessionIdChange('sess-2');
 
-    expect(store.getSessionId()).toBe('sess-2');
     const updates = sent('updateCurrentSession');
     expect(updates[updates.length - 1]).toMatchObject({ session: { id: 'sess-2' } });
   });
@@ -614,6 +620,133 @@ describe('misc commands', () => {
     const { host } = await readyHost();
     await host.dispose();
     expect(lastAgent().destroy).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sidebar session tree (FR-020)
+// ---------------------------------------------------------------------------
+
+describe('session tree', () => {
+  const makeSession = (id: string, workdir: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    sessionType: 'main',
+    workdir,
+    createdAt: new Date('2026-07-20T00:00:00Z'),
+    lastActiveAt: new Date('2026-07-21T00:00:00Z'),
+    latestTotalTokens: 0,
+    firstMessage: `msg ${id}`,
+    ...overrides,
+  });
+
+  it('prefetches one group per recent directory on webviewReady (no agent needed)', async () => {
+    h.dirSessions.set('/work/a', [makeSession('s1', '/work/a'), makeSession('s2', '/work/a')]);
+    h.dirSessions.set('/work/b', [makeSession('s3', '/work/b')]);
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir('/work/a');
+    store.addRecentWorkdir('/work/b');
+
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+
+    await vi.waitFor(() => {
+      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
+    });
+    const tree = sent('desktopSessionTree').at(-1);
+    expect(tree?.groups).toEqual([
+      { workdir: '/work/b', sessions: [expect.objectContaining({ id: 's3' })] },
+      {
+        workdir: '/work/a',
+        sessions: [expect.objectContaining({ id: 's1' }), expect.objectContaining({ id: 's2' })],
+      },
+    ]);
+    // No agent was created — the tree comes from the utility client.
+    expect(h.agentInstances).toHaveLength(0);
+  });
+
+  it('keeps only main sessions and caps each group at 5', async () => {
+    h.dirSessions.set('/work/a', [
+      ...Array.from({ length: 6 }, (_, i) => makeSession(`s${i}`, '/work/a')),
+      makeSession('side', '/work/a', { sessionType: 'subagent' }),
+    ]);
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir('/work/a');
+
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+
+    await vi.waitFor(() => {
+      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
+    });
+    const groups = sent('desktopSessionTree').at(-1)?.groups as Array<{ sessions: Array<{ id: string }> }>;
+    expect(groups[0].sessions).toHaveLength(5);
+    expect(groups[0].sessions.some((s) => s.id === 'side')).toBe(false);
+  });
+
+  it('desktopSelectSession in the current workdir restores without recreating the agent', async () => {
+    const { host } = await readyHost();
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-x' });
+
+    expect(h.agentInstances).toHaveLength(before);
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-x');
+  });
+
+  it('desktopSelectSession in another directory switches workdir first', async () => {
+    const { host, store } = await readyHost();
+    store.addRecentWorkdir('/work/b');
+    h.existingPaths.add('/work/b');
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/b', sessionId: 'sess-y' });
+
+    expect(h.agentInstances).toHaveLength(before + 1);
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/b' }));
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-y');
+  });
+
+  it('desktopSelectSession with a gone directory drops it and skips restore', async () => {
+    const { host, store, sent } = await readyHost();
+    store.addRecentWorkdir('/gone');
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/gone', sessionId: 'sess-z' });
+
+    expect(store.getRecentWorkdirs()).not.toContain('/gone');
+    expect(lastAgent().restoreSession).not.toHaveBeenCalled();
+    const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表移除'));
+    expect(sysMsgs).toHaveLength(1);
+  });
+
+  it('refreshes the current directory group when a turn ends', async () => {
+    h.dirSessions.set('/work/a', [makeSession('s1', '/work/a')]);
+    const { sent } = await readyHost();
+    // readyHost triggers two tree pushes (workdir switch + webviewReady) —
+    // wait for both to settle before measuring the trigger's effect.
+    await vi.waitFor(() => {
+      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(2);
+    });
+    const before = sent('desktopSessionTree').length;
+
+    lastAgent().callbacks.onLoadingChange(false);
+
+    await vi.waitFor(() => {
+      expect(sent('desktopSessionTree').length).toBe(before + 1);
+    });
+  });
+
+  it('refreshes the current directory group when a new session starts', async () => {
+    const { sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(2);
+    });
+    const before = sent('desktopSessionTree').length;
+
+    lastAgent().callbacks.onSessionIdChange('sess-2');
+
+    await vi.waitFor(() => {
+      expect(sent('desktopSessionTree').length).toBe(before + 1);
+    });
   });
 });
 

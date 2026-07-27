@@ -566,6 +566,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
             inputContent={state.inputContent}
             permissionMode={state.permissionMode}
             initialAttachedImages={state.attachedImages}
+            disabled={host?.type === 'desktop' && !host.workdir}
             workdirSelector={
               host?.type === 'desktop' && state.messages.length === 0 ? (
                 <DesktopWorkdirSelector
@@ -637,6 +638,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
           onNewSession={handleClearChat}
           isStreaming={state.isStreaming}
           disabled={!host.workdir}
+          sessionTree={host.sessionTree}
+          currentWorkdir={host.workdir}
+          currentSessionId={state.currentSession?.id}
+          onSelectSession={host.onSelectSession}
         />
         {chatContainer}
       </div>

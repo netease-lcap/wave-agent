@@ -36,9 +36,7 @@ describe('ConfigStore', () => {
   it('starts with empty defaults when the file does not exist', () => {
     const store = new ConfigStore(STORE_PATH);
     expect(store.getConfiguration()).toEqual({});
-    expect(store.getWorkdir()).toBeUndefined();
     expect(store.getRecentWorkdirs()).toEqual([]);
-    expect(store.getSessionId()).toBeUndefined();
   });
 
   it('starts fresh when the file is corrupt', () => {
@@ -73,18 +71,17 @@ describe('ConfigStore', () => {
 
   it('pushes new workdir to the front of the recent list and deduplicates', () => {
     const store = new ConfigStore(STORE_PATH);
-    store.setWorkdir('/a');
-    store.setWorkdir('/b');
-    store.setWorkdir('/a');
+    store.addRecentWorkdir('/a');
+    store.addRecentWorkdir('/b');
+    store.addRecentWorkdir('/a');
 
-    expect(store.getWorkdir()).toBe('/a');
     expect(store.getRecentWorkdirs()).toEqual(['/a', '/b']);
   });
 
   it('caps the recent list at 10 entries', () => {
     const store = new ConfigStore(STORE_PATH);
     for (let i = 0; i < 12; i++) {
-      store.setWorkdir(`/dir-${i}`);
+      store.addRecentWorkdir(`/dir-${i}`);
     }
     const recents = store.getRecentWorkdirs();
     expect(recents).toHaveLength(10);
@@ -94,22 +91,12 @@ describe('ConfigStore', () => {
 
   it('removeRecentWorkdir filters the entry out and persists', () => {
     const store = new ConfigStore(STORE_PATH);
-    store.setWorkdir('/a');
-    store.setWorkdir('/b');
+    store.addRecentWorkdir('/a');
+    store.addRecentWorkdir('/b');
     store.removeRecentWorkdir('/a');
 
     expect(store.getRecentWorkdirs()).toEqual(['/b']);
     expect(new ConfigStore(STORE_PATH).getRecentWorkdirs()).toEqual(['/b']);
-  });
-
-  it('persists and clears sessionId', () => {
-    const store = new ConfigStore(STORE_PATH);
-    store.setSessionId('sess-1');
-    expect(new ConfigStore(STORE_PATH).getSessionId()).toBe('sess-1');
-
-    store.setSessionId(undefined);
-    expect(store.getSessionId()).toBeUndefined();
-    expect(new ConfigStore(STORE_PATH).getSessionId()).toBeUndefined();
   });
 
   it('drops non-string entries from a corrupted recentWorkdirs array', () => {

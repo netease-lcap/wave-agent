@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ChatApp } from './ChatApp';
-import { VsCodeApi, DesktopWorkdirState } from '../types';
+import { VsCodeApi, DesktopWorkdirState, DesktopSessionGroup } from '../types';
 import '../styles/DesktopApp.css';
 
 interface DesktopAppProps {
@@ -16,6 +16,7 @@ interface DesktopAppProps {
  */
 export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   const [workdirState, setWorkdirState] = useState<DesktopWorkdirState | null>(null);
+  const [sessionTree, setSessionTree] = useState<DesktopSessionGroup[]>([]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -25,6 +26,8 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
           workdir: message.workdir,
           recentWorkdirs: message.recentWorkdirs ?? [],
         });
+      } else if (message.command === 'desktopSessionTree') {
+        setSessionTree(message.groups ?? []);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -44,6 +47,10 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     vscode.postMessage({ command: 'desktopRemoveRecentWorkdir', path });
   }, [vscode]);
 
+  const handleSelectSession = useCallback((workdir: string, sessionId: string) => {
+    vscode.postMessage({ command: 'desktopSelectSession', workdir, sessionId });
+  }, [vscode]);
+
   // Waiting for the main process to answer `desktopReady`.
   if (workdirState === null) {
     return <div className="desktop-loading" data-testid="desktop-loading"></div>;
@@ -61,6 +68,8 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         onSelectWorkdir: handleSelectWorkdir,
         onSelectRecentWorkdir: handleSelectRecentWorkdir,
         onRemoveRecentWorkdir: handleRemoveRecentWorkdir,
+        sessionTree,
+        onSelectSession: handleSelectSession,
       }}
     />
   );
