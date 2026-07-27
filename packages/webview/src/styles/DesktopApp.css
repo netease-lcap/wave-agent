@@ -34,47 +34,32 @@
     font-size: 13px;
 }
 
-.desktop-sidebar-new-session {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 8px 12px;
-    padding: 6px 10px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    color: var(--vscode-button-foreground);
-    background: var(--vscode-button-background);
-    font-size: 12px;
-}
-
-.desktop-sidebar-new-session:hover:not(:disabled) {
-    background: var(--vscode-button-hoverBackground);
-}
-
-.desktop-sidebar-new-session:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
 .desktop-sidebar-workdir {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin: 0 12px 8px;
+    gap: 4px;
+    margin: 8px 12px;
     padding: 5px 8px;
     border-radius: 4px;
-    cursor: pointer;
     font-size: 12px;
     color: var(--vscode-foreground);
 }
 
-.desktop-sidebar-workdir:hover {
+.desktop-sidebar-workdir-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.desktop-sidebar-workdir-main:hover {
     background: var(--vscode-list-hoverBackground);
 }
 
 .desktop-sidebar-workdir-name {
-    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -83,6 +68,31 @@
 .desktop-sidebar-workdir-caret {
     opacity: 0.6;
     font-size: 12px;
+    flex-shrink: 0;
+}
+
+.desktop-sidebar-workdir-new {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.desktop-sidebar-workdir-new:hover:not(:disabled) {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.desktop-sidebar-workdir-new:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .desktop-sidebar-sessions {

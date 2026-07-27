@@ -588,4 +588,34 @@ describe('chatReducer', () => {
       expect(newState.currentSession).toBeUndefined();
     });
   });
+
+  describe('theme state', () => {
+    it('SET_INITIAL_STATE stores the theme payload and preserves it when absent', () => {
+      const theme = { effective: 'dark' as const };
+      const newState = chatReducer(initialState, {
+        type: 'SET_INITIAL_STATE',
+        payload: {
+          messages: [],
+          sessions: [],
+          configurationData: {} as any,
+          pendingConfirmations: [],
+          isStreaming: false,
+          theme,
+        },
+      });
+      expect(newState.theme).toEqual(theme);
+
+      const withoutTheme = chatReducer(initialState, {
+        type: 'SET_INITIAL_STATE',
+        payload: {
+          messages: [],
+          sessions: [],
+          configurationData: {} as any,
+          pendingConfirmations: [],
+          isStreaming: false,
+        },
+      });
+      expect(withoutTheme.theme).toBeUndefined();
+    });
+  });
 });

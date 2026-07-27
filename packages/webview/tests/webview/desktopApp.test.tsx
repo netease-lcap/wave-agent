@@ -117,4 +117,37 @@ describe('DesktopApp', () => {
         expect(screen.queryByTestId('workdir-selector')).not.toBeInTheDocument();
         expect(screen.getByTestId('chat-container')).toBeInTheDocument();
     });
+
+    describe('theme switching', () => {
+        function sendInitialState(theme: { effective: 'light' | 'dark' }) {
+            sendCommand('setInitialState', {
+                messages: [],
+                sessions: [],
+                configurationData: {},
+                pendingConfirmations: [],
+                theme,
+            });
+        }
+
+        it('applies the initial effective theme to <html data-theme> (FR-018)', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/home/user/project', recentWorkdirs: [] });
+            sendInitialState({ effective: 'dark' });
+
+            expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+        });
+
+        it('swaps <html data-theme> live on desktopThemeChange without reloading (FR-018)', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/home/user/project', recentWorkdirs: [] });
+            sendInitialState({ effective: 'dark' });
+            expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+
+            sendCommand('desktopThemeChange', { effective: 'light' });
+
+            expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+            // Chat is still mounted — no reload/rebuild
+            expect(screen.getByTestId('chat-container')).toBeInTheDocument();
+        });
+    });
 });

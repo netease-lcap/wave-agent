@@ -36,6 +36,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
     stateRef.current = state;
   }, [state]);
 
+  // Desktop only: keep <html data-theme> in sync with the resolved theme so the
+  // inlined --vscode-* variable set swaps without a reload (FR-018). VSCE/JB
+  // inject their own variables and never set state.theme, so this is inert there.
+  useEffect(() => {
+    if (state.theme) {
+      document.documentElement.setAttribute('data-theme', state.theme.effective);
+    }
+  }, [state.theme]);
+
   // Auto-dismiss the queue-edit warning banner
   useEffect(() => {
     if (!queueEditWarning) return;
@@ -145,9 +154,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
               attachedImages: message.attachedImages,
               queuedMessages: message.queuedMessages,
               isAuthenticated: message.isAuthenticated,
-              workdir: message.workdir
+              workdir: message.workdir,
+              theme: message.theme,
             }
           });
+          break;
+        case 'desktopThemeChange':
+          document.documentElement.setAttribute('data-theme', message.effective);
           break;
         case 'showConfiguration':
           dispatch({
@@ -406,7 +419,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
 
   const handleSessionSelect = useCallback((sessionId: string) => {
     if (state.isStreaming) return;
-    
+
     vscode.postMessage({
       command: 'restoreSession',
       sessionId

@@ -179,7 +179,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         configurationLoading: false,
         initialized: true,
         isAuthenticated: action.payload.isAuthenticated !== undefined ? action.payload.isAuthenticated : state.isAuthenticated,
-        workdir: action.payload.workdir !== undefined ? action.payload.workdir : state.workdir
+        workdir: action.payload.workdir !== undefined ? action.payload.workdir : state.workdir,
+        theme: action.payload.theme !== undefined ? action.payload.theme : state.theme
       };
     case 'UPDATE_SELECTION':
       return {

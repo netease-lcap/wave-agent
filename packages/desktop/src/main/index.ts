@@ -37,6 +37,12 @@ if (!gotLock) {
       });
     });
 
+    // Sync theme lookup for the preload: applied to <html data-theme> before
+    // first paint so the initial frame matches the persisted preference (FR-019).
+    ipcMain.on('wave:get-initial-theme', (event) => {
+      event.returnValue = host?.getInitialEffectiveTheme() ?? 'dark';
+    });
+
     createWindow();
 
     app.on('activate', () => {
