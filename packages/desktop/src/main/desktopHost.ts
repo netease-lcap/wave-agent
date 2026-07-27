@@ -8,7 +8,7 @@
  * packages/vsce/src/session/{chatSession,messageHandler}.ts).
  */
 
-import { app, dialog, shell, type BrowserWindow } from 'electron';
+import { app, dialog, shell, nativeTheme, type BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -91,14 +91,36 @@ export class DesktopHost {
 
   private updateCheckTriggered = false;
 
-  constructor(private readonly configStore: ConfigStore) {}
+  /**
+   * Posted to the renderer whenever the OS appearance flips so it can swap the
+   * `data-theme` attribute and the inlined `--vscode-*` variable set without a
+   * reload (FR-018). Desktop follows the OS appearance only — no in-app toggle
+   * (FR-016), matching the IDE plugins.
+   */
+  private readonly onNativeThemeUpdated = () => {
+    this.postMessage({ command: 'desktopThemeChange', effective: this.getCurrentEffectiveTheme() });
+  };
+
+  constructor(private readonly configStore: ConfigStore) {
+    nativeTheme.on('updated', this.onNativeThemeUpdated);
+  }
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win;
   }
 
+  /**
+   * Effective theme for the preload's sync IPC — applied to <html data-theme>
+   * before first paint so the initial frame already matches the OS appearance
+   * (FR-019, no light↔dark flash on launch).
+   */
+  getInitialEffectiveTheme(): 'light' | 'dark' {
+    return this.getCurrentEffectiveTheme();
+  }
+
   /** Graceful shutdown for app quit (FR-015). */
   async dispose(): Promise<void> {
+    nativeTheme.off('updated', this.onNativeThemeUpdated);
     for (const timer of [this.updateTimer, this.streamingContentTimer, this.streamingReasoningTimer]) {
       if (timer) clearTimeout(timer);
     }
@@ -110,6 +132,14 @@ export class DesktopHost {
     this.client = null;
     this.router = null;
     this.initPromise = null;
+  }
+
+  private getCurrentEffectiveTheme(): 'light' | 'dark' {
+    try {
+      return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    } catch {
+      return 'dark';
+    }
   }
 
   // ------------------------------------------------------------------
@@ -467,6 +497,7 @@ export class DesktopHost {
       queuedMessages: this.messageQueue,
       isAuthenticated,
       workdir: this.agent?.workingDirectory,
+      theme: { effective: this.getCurrentEffectiveTheme() },
     });
   }
 

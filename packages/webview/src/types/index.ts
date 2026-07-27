@@ -138,6 +138,18 @@ export interface DesktopHostProps {
   onChangeWorkdir: () => void;
 }
 
+/**
+ * The resolved theme applied to the DOM via the `data-theme` attribute (FR-018).
+ * The desktop host resolves the OS appearance to one of these before reaching
+ * the renderer; desktop follows the OS only, no in-app preference (FR-016).
+ */
+export type EffectiveTheme = 'light' | 'dark';
+
+/** Theme snapshot pushed by the desktop host (effective only, no preference). */
+export interface ThemeState {
+  effective: EffectiveTheme;
+}
+
 // Pushed by the desktop main process in response to `desktopReady` and after
 // every workdir change (message command: 'desktopWorkdirState').
 export interface DesktopWorkdirState {
@@ -293,6 +305,8 @@ export interface ChatState {
   inputContent?: string;
   // Selection state
   selection?: SelectionInfo;
+  // Desktop theme state (only set inside the desktop host)
+  theme?: ThemeState;
 }
 
 export interface ConfirmationRequest {
@@ -457,6 +471,7 @@ export type ChatAction =
       workdir?: string;
       backgroundTasks?: BackgroundTaskSummary[];
       workflowRuns?: SerializableWorkflowRun[];
+      theme?: ThemeState;
     } }
   // Incremental update actions for streaming optimization
   | { type: 'APPEND_MESSAGE'; payload: Message }

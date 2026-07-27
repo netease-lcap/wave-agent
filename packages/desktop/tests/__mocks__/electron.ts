@@ -27,6 +27,7 @@ export const ipcMain = {
 
 export const ipcRenderer = {
   send: vi.fn(),
+  sendSync: vi.fn(),
   on: vi.fn(),
 };
 
@@ -44,3 +45,39 @@ export class BrowserWindow {
   focus = vi.fn();
   static getAllWindows = vi.fn(() => [] as unknown[]);
 }
+
+// nativeTheme mock: `shouldUseDarkColors` is derived from `themeSource` +
+// the OS appearance (systemDark), mirroring real Electron semantics so the
+// desktop host's nativeTheme listener can be unit-tested deterministically.
+type NativeThemeSetting = 'system' | 'light' | 'dark';
+const nativeThemeListeners: Array<() => void> = [];
+let systemDark = false;
+export const nativeTheme = {
+  themeSource: 'system' as NativeThemeSetting,
+  get shouldUseDarkColors(): boolean {
+    if (this.themeSource === 'dark') return true;
+    if (this.themeSource === 'light') return false;
+    return systemDark;
+  },
+  on: vi.fn((event: string, cb: () => void) => {
+    if (event === 'updated') nativeThemeListeners.push(cb);
+  }),
+  off: vi.fn((event: string, cb: () => void) => {
+    if (event === 'updated') {
+      const i = nativeThemeListeners.indexOf(cb);
+      if (i >= 0) nativeThemeListeners.splice(i, 1);
+    }
+  }),
+  /** Test helper: flip the OS appearance and fire the `updated` event. */
+  __setSystemDark(v: boolean): void {
+    systemDark = v;
+    for (const cb of [...nativeThemeListeners]) cb();
+  },
+  __reset(): void {
+    this.themeSource = 'system';
+    systemDark = false;
+    nativeThemeListeners.length = 0;
+    vi.mocked(this.on).mockClear();
+    vi.mocked(this.off).mockClear();
+  },
+};

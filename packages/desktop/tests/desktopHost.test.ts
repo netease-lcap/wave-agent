@@ -138,7 +138,7 @@ vi.mock('../src/main/updateChecker', () => ({
 import { DesktopHost } from '../src/main/desktopHost';
 import { ConfigStore } from '../src/main/configStore';
 import { HOST_CHANNEL } from '../src/main/channels';
-import { shell } from 'electron';
+import { shell, nativeTheme } from 'electron';
 import { checkForUpdate } from '../src/main/updateChecker';
 
 // ---------------------------------------------------------------------------
@@ -186,6 +186,7 @@ beforeEach(() => {
   h.clientRequests.length = 0;
   h.authUrlHandler = null;
   vi.clearAllMocks();
+  nativeTheme.__reset();
 });
 
 // ---------------------------------------------------------------------------
@@ -628,5 +629,47 @@ describe('misc commands', () => {
     const { host } = await readyHost();
     await host.dispose();
     expect(lastAgent().destroy).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// theme switching (FR-016..FR-019)
+// ---------------------------------------------------------------------------
+
+describe('theme', () => {
+  it('setInitialState carries the resolved effective theme (no in-app preference)', async () => {
+    const { sent } = await readyHost();
+    expect(sent('setInitialState')[0]).toMatchObject({
+      theme: { effective: 'light' },
+    });
+  });
+
+  it('getInitialEffectiveTheme follows the OS appearance (FR-019)', async () => {
+    const { host } = createHost();
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    // Light OS → light.
+    expect(host.getInitialEffectiveTheme()).toBe('light');
+
+    nativeTheme.__setSystemDark(true);
+    expect(host.getInitialEffectiveTheme()).toBe('dark');
+  });
+
+  it('posts desktopThemeChange when the OS appearance flips', async () => {
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+
+    nativeTheme.__setSystemDark(true);
+    const changes = sent('desktopThemeChange');
+    expect(changes[changes.length - 1]).toMatchObject({ effective: 'dark' });
+  });
+
+  it('dispose unsubscribes from nativeTheme updates', async () => {
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.dispose();
+
+    const before = sent('desktopThemeChange').length;
+    nativeTheme.__setSystemDark(true);
+    expect(sent('desktopThemeChange').length).toBe(before);
   });
 });

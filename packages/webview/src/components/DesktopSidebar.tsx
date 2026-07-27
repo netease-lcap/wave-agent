@@ -47,25 +47,26 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       <div className="desktop-sidebar-header">
         <span className="desktop-sidebar-title">Wave 代码智聊</span>
       </div>
-      <button
-        className="desktop-sidebar-new-session"
-        onClick={onNewSession}
-        disabled={isStreaming}
-        title="新建会话"
-        data-testid="desktop-new-session"
-      >
-        <span className="codicon codicon-add"></span>
-        新建会话
-      </button>
-      <div
-        className="desktop-sidebar-workdir"
-        onClick={onChangeWorkdir}
-        title={workdir}
-        data-testid="desktop-workdir"
-      >
-        <span className="codicon codicon-folder-opened"></span>
-        <span className="desktop-sidebar-workdir-name">{dirName}</span>
-        <span className="codicon codicon-chevron-down desktop-sidebar-workdir-caret"></span>
+      <div className="desktop-sidebar-workdir">
+        <div
+          className="desktop-sidebar-workdir-main"
+          onClick={onChangeWorkdir}
+          title={workdir}
+          data-testid="desktop-workdir"
+        >
+          <span className="codicon codicon-folder-opened"></span>
+          <span className="desktop-sidebar-workdir-name">{dirName}</span>
+          <span className="codicon codicon-chevron-down desktop-sidebar-workdir-caret"></span>
+        </div>
+        <button
+          className="desktop-sidebar-workdir-new"
+          onClick={onNewSession}
+          disabled={isStreaming}
+          title="新建会话"
+          data-testid="desktop-new-session"
+        >
+          <span className="codicon codicon-add"></span>
+        </button>
       </div>
       <div className="desktop-sidebar-sessions">
         <input

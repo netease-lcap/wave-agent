@@ -43,4 +43,8 @@ describe('preload', () => {
     expect(postMessage).toHaveBeenCalledWith({ command: 'setInitialState' }, '*');
     vi.unstubAllGlobals();
   });
+
+  it('queries the initial theme synchronously to seed <html data-theme> (FR-019)', () => {
+    expect(ipcRenderer.sendSync).toHaveBeenCalledWith('wave:get-initial-theme');
+  });
 });

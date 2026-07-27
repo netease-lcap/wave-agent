@@ -22,6 +22,25 @@ contextBridge.exposeInMainWorld('acquireVsCodeApi', () => ({
 
 contextBridge.exposeInMainWorld('waveHostType', 'desktop');
 
+// Apply the persisted theme before first paint (FR-019). The main process
+// resolves the effective theme synchronously; <html data-theme> then selects
+// the matching inlined --vscode-* variable set before React mounts, avoiding a
+// light↔dark flash on launch. The preload runs before the DOM is parsed, so
+// <html> may not exist yet — defer to DOMContentLoaded in that case. The
+// static default `data-theme="dark"` in index.html covers the very first paint
+// regardless. Guarded for the node test environment, which has no DOM.
+const initialTheme = ipcRenderer.sendSync('wave:get-initial-theme') as 'light' | 'dark' | undefined;
+const applyInitialTheme = () => {
+  document.documentElement.setAttribute('data-theme', initialTheme || 'dark');
+};
+if (typeof document !== 'undefined') {
+  if (document.documentElement) {
+    applyInitialTheme();
+  } else {
+    document.addEventListener('DOMContentLoaded', applyInitialTheme, { once: true });
+  }
+}
+
 ipcRenderer.on(HOST_CHANNEL, (_event, message) => {
   window.postMessage(message, '*');
 });
