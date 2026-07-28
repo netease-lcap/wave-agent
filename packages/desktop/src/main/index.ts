@@ -7,10 +7,36 @@
  */
 
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { execFileSync } from 'child_process';
 import * as path from 'path';
 import { WEBVIEW_CHANNEL } from './channels';
 import { ConfigStore } from './configStore';
 import { DesktopHost } from './desktopHost';
+
+/**
+ * GUI-launched apps (Finder/Spotlight) get a bare system PATH without the
+ * user's nvm/homebrew dirs, so `which wave`/`which npm`/`which node` all fail
+ * and the binary resolver breaks. Probe the user's login shell once and adopt
+ * its PATH; child processes inherit it via `...process.env` spreads.
+ */
+function adoptLoginShellPath(): void {
+  if (process.platform === 'win32') return;
+  try {
+    // execFileSync, NOT execSync: with execSync the command goes through
+    // /bin/sh -c which would expand `$PATH` BEFORE zsh sources .zshrc,
+    // defeating the whole probe.
+    const probed = execFileSync('/bin/zsh', ['-lic', 'echo $PATH'], {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim().split('\n').pop()?.trim();
+    if (probed) process.env.PATH = probed;
+  } catch {
+    // keep the default PATH — the resolver will surface its usual errors
+  }
+}
+
+adoptLoginShellPath();
 
 let mainWindow: BrowserWindow | null = null;
 let host: DesktopHost | null = null;
