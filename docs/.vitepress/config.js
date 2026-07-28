@@ -173,6 +173,7 @@ export default {
             { text: '与 IDE 插件的差异', link: '/desktop#与-ide-插件的差异' },
             { text: '首次启动：选择工作目录', link: '/desktop#首次启动选择工作目录' },
             { text: '侧边栏会话树', link: '/desktop#侧边栏会话树' },
+            { text: 'localhost 原型预览与元素评论', link: '/desktop#localhost-原型预览与元素评论' },
             { text: '核心交互', link: '/desktop#核心交互' },
             { text: '登录', link: '/desktop#登录' },
           ],

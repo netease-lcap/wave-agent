@@ -398,8 +398,14 @@
 }
 
 .preview-pane-button.active {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground, #ffffff);
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+/* The global .codicon rule sets an explicit icon color, which beats the
+   inherited button color — give the active icon its own selection color. */
+.preview-pane-button.active .codicon {
+    color: var(--vscode-list-activeSelectionIconForeground, currentColor);
 }
 
 .preview-pane-body {
