@@ -1945,6 +1945,69 @@ describe("PermissionManager", () => {
       expect(result.behavior).toBe("allow");
       expect(mockCallback).toHaveBeenCalled();
     });
+
+    it("should allow when parts are covered by different rule sources (persistent + default)", async () => {
+      // Part 1 is only covered by the persistent allow list, part 2 only by
+      // the built-in default rules (Bash(git diff*)) — no single rule source
+      // covers both parts.
+      permissionManager.updateAllowedRules(["Bash(node scripts*)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "node scripts/spec-count.js && git diff --stat" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should allow when parts are covered by instance and persistent rules", async () => {
+      const manager = new PermissionManager(container, {
+        instanceAllowedRules: ["Bash(node scripts*)"],
+      });
+      manager.updateAllowedRules(["Bash(git diff*)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "node scripts/spec-count.js && git diff --stat" },
+      };
+
+      const result = await manager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should not let dangerous variant parts through via default rules in a chain", async () => {
+      // The echo part contains a command substitution: default rules must not
+      // auto-allow it even though another part is covered by a persistent rule.
+      permissionManager.updateAllowedRules(["Bash(node scripts*)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "node scripts/spec-count.js && echo $(whoami)" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should allow dangerous variant parts matched by explicit non-default rules", async () => {
+      permissionManager.updateAllowedRules([
+        "Bash(node scripts*)",
+        "Bash(echo*)",
+      ]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "node scripts/spec-count.js && echo $(whoami)" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
   });
 
   describe("Safe Commands", () => {

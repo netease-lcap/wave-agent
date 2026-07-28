@@ -909,73 +909,63 @@ export class PermissionManager {
    * Check if a tool call is allowed by persistent or temporary rules
    */
   private isAllowedByRule(context: ToolPermissionContext): boolean {
-    const isAllowedByRuleList = (
-      ctx: ToolPermissionContext,
-      rules: string[],
-      isDefaultRules: boolean = false,
-    ) => {
-      if (ctx.toolName === BASH_TOOL_NAME && ctx.toolInput?.command) {
-        const command = String(ctx.toolInput.command);
-        const parts = splitBashCommand(command);
-        if (parts.length === 0) return false;
+    // All allow-rule sources are matched as a union: each part of a chained
+    // command only needs to hit at least one rule across all sources, so
+    // different parts may be covered by different sources.
+    const explicitRules = [
+      ...this.instanceAllowedRules,
+      ...this.temporaryRules,
+      ...this.allowedRules,
+    ];
 
-        const workdir = ctx.toolInput?.workdir as string | undefined;
+    if (context.toolName === BASH_TOOL_NAME && context.toolInput?.command) {
+      const command = String(context.toolInput.command);
+      const parts = splitBashCommand(command);
+      if (parts.length === 0) return false;
 
-        return parts.every((part) => {
-          // Check for auto-allowed read-only commands (FR-019.2 through FR-019.7)
-          if (this.isAutoAllowedPart(part, workdir)) {
-            return true;
-          }
+      const workdir = context.toolInput?.workdir as string | undefined;
 
-          // When checking default rules, block dangerous variants from matching
-          // broad default rules like Bash(echo*) or Bash(cat*)
-          if (
-            isDefaultRules &&
-            (hasWriteRedirections(part) ||
-              isDangerousFind(part) ||
-              hasCommandSubstitution(part) ||
-              hasProcessSubstitution(part) ||
-              hasSedInPlace(part))
-          ) {
-            return false;
-          }
+      return parts.every((part) => {
+        // Check for auto-allowed read-only commands (FR-019.2 through FR-019.7)
+        if (this.isAutoAllowedPart(part, workdir)) {
+          return true;
+        }
 
-          // We create a temporary context with just this part of the command
-          const partContext = {
-            ...ctx,
-            toolInput: { ...ctx.toolInput, command: part },
-          };
-          const allowedByRule = rules.some((rule) => {
-            return this.matchesRule(partContext, rule);
-          });
+        // We create a temporary context with just this part of the command
+        const partContext = {
+          ...context,
+          toolInput: { ...context.toolInput, command: part },
+        };
 
-          if (allowedByRule) return true;
+        if (explicitRules.some((rule) => this.matchesRule(partContext, rule))) {
+          return true;
+        }
 
-          return !this.isRestrictedTool(ctx.toolName);
-        });
-      }
+        // Default rules must not auto-allow dangerous variants (write
+        // redirections, substitutions, sed -i, dangerous find) through broad
+        // rules like Bash(echo*) or Bash(cat*)
+        const isDangerousVariant =
+          hasWriteRedirections(part) ||
+          isDangerousFind(part) ||
+          hasCommandSubstitution(part) ||
+          hasProcessSubstitution(part) ||
+          hasSedInPlace(part);
+        if (
+          !isDangerousVariant &&
+          DEFAULT_ALLOWED_RULES.some((rule) =>
+            this.matchesRule(partContext, rule),
+          )
+        ) {
+          return true;
+        }
 
-      // For other tools, check if any rule matches
-      return rules.some((rule) => this.matchesRule(ctx, rule));
-    };
-
-    // Check instance-specific allowed rules first
-    if (isAllowedByRuleList(context, this.instanceAllowedRules)) {
-      return true;
+        return !this.isRestrictedTool(context.toolName);
+      });
     }
 
-    // Check temporary rules
-    if (isAllowedByRuleList(context, this.temporaryRules)) {
-      return true;
-    }
-
-    // Check persistent allowed rules
-    if (isAllowedByRuleList(context, this.allowedRules)) {
-      return true;
-    }
-
-    // Check default allowed rules
-    return isAllowedByRuleList(context, DEFAULT_ALLOWED_RULES, true);
+    // For other tools, check if any rule matches
+    const allRules = [...explicitRules, ...DEFAULT_ALLOWED_RULES];
+    return allRules.some((rule) => this.matchesRule(context, rule));
   }
 
   /**
