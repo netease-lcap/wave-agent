@@ -46,6 +46,7 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "identity": null,
+      "icon": "assets/icon.png",
       "target": [
         {
           "target": "dmg",
@@ -62,6 +63,7 @@
       ]
     },
     "win": {
+      "icon": "assets/icon.png",
       "target": [
         "nsis"
       ]
