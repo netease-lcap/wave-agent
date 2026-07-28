@@ -100,6 +100,39 @@ describe("worktreeUtils", () => {
       expect(result.originalHeadCommit).toBe("abc123");
     });
 
+    it("uses HEAD as base when baseRef is 'head'", () => {
+      const result = worktreeUtils.createWorktree("my-feat", "/test", {
+        baseRef: "head",
+      });
+
+      expect(result.isNew).toBe(true);
+      // git worktree add -b <branch> <path> HEAD
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["HEAD"]),
+        expect.anything(),
+      );
+      // Should NOT call getDefaultRemoteBranch
+      expect(gitUtils.getDefaultRemoteBranch).not.toHaveBeenCalled();
+    });
+
+    it("uses origin default branch when baseRef is 'fresh'", () => {
+      worktreeUtils.createWorktree("my-feat", "/test", { baseRef: "fresh" });
+
+      expect(gitUtils.getDefaultRemoteBranch).toHaveBeenCalledWith("/test");
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["origin/main"]),
+        expect.anything(),
+      );
+    });
+
+    it("defaults to 'fresh' behavior when baseRef is undefined", () => {
+      worktreeUtils.createWorktree("my-feat", "/test");
+
+      expect(gitUtils.getDefaultRemoteBranch).toHaveBeenCalledWith("/test");
+    });
+
     it("reuses existing worktree", () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
 
@@ -247,6 +280,36 @@ describe("worktreeUtils", () => {
 
       expect(() => worktreeUtils.createWorktree("feat", "/test")).toThrow(
         "Failed to create worktree",
+      );
+    });
+
+    it("should NOT attempt fetch when baseRef is 'head' and creation fails", () => {
+      let callCount = 0;
+      vi.mocked(execFileSync).mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          // getHeadCommit
+          return "abc123\n";
+        }
+        if (callCount === 2) {
+          // git worktree add -b ... HEAD fails
+          const err = new Error("git error") as Error & {
+            stderr?: Buffer;
+          };
+          err.stderr = Buffer.from("not a valid object name");
+          throw err;
+        }
+        return "";
+      });
+
+      expect(() =>
+        worktreeUtils.createWorktree("feat", "/test", { baseRef: "head" }),
+      ).toThrow("Failed to create worktree");
+      // Should not call git fetch
+      expect(execFileSync).not.toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["fetch"]),
+        expect.anything(),
       );
     });
   });

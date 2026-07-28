@@ -102,7 +102,8 @@ export const enterWorktreeTool: ToolPlugin = {
     }
 
     // Create the worktree (captures originalHeadCommit internally)
-    const worktreeInfo = createWorktree(name, mainRepoRoot);
+    const baseRef = context.aiManager?.getWorktreeBaseRef?.();
+    const worktreeInfo = createWorktree(name, mainRepoRoot, { baseRef });
 
     // Build session state
     const session: WorktreeSession = {

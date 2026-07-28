@@ -93,8 +93,16 @@ export function getHeadCommit(cwd: string): string {
 
 /**
  * Create a git worktree for use during a session.
+ * @param name Worktree name
+ * @param cwd Current working directory (will be resolved to main repo root)
+ * @param options Optional creation options
+ * @param options.baseRef "fresh" (default, origin/<default-branch>) | "head" (local HEAD)
  */
-export function createWorktree(name: string, cwd: string): WorktreeInfo {
+export function createWorktree(
+  name: string,
+  cwd: string,
+  options?: { baseRef?: "fresh" | "head" },
+): WorktreeInfo {
   const repoRoot = getGitMainRepoRoot(cwd);
   if (!repoRoot) {
     throw new Error(
@@ -107,7 +115,8 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
 
   const worktreePath = path.join(repoRoot, ".wave", "worktrees", name);
   const branchName = `worktree-${name}`;
-  const baseBranch = getDefaultRemoteBranch(cwd);
+  const useHead = options?.baseRef === "head";
+  const baseBranch = useHead ? "HEAD" : getDefaultRemoteBranch(cwd);
 
   // Ensure Wave runtime files are git-excluded in this repo
   ensureWaveRuntimeFilesExcluded(cwd);
@@ -183,8 +192,9 @@ export function createWorktree(name: string, cwd: string): WorktreeInfo {
       }
     }
     if (
-      stderr.includes("not a valid object name") ||
-      stderr.includes("unknown revision")
+      !useHead &&
+      (stderr.includes("not a valid object name") ||
+        stderr.includes("unknown revision"))
     ) {
       // Base branch not fetched yet — try fetching then retrying
       const branchNameOnly = baseBranch.split("/").pop()!;

@@ -134,6 +134,21 @@
 
 ---
 
+### 用户故事 9 - 基于本地 HEAD 创建 Worktree（优先级：P2）
+
+作为在本地分支上工作的开发者，我希望新 worktree 可基于当前本地 HEAD（而非 origin 默认分支）创建，以便基于尚未推送的本地分支工作、并避免联网 fetch。
+
+**为什么是这个优先级**：对齐 Claude Code 2.1.203 的 `worktree.baseRef` 设置。默认 `fresh` 保持现有行为，`head` 覆盖"基于本地分支"诉求。
+
+**独立测试**：临时仓库 `git checkout` 到某本地分支，settings.json 设置 `worktree.baseRef: "head"`，运行 `wave code -w` 或要求 AI 调用 `EnterWorktree`，验证新 worktree 的 HEAD 等于该本地分支的提交，且全程未发起网络请求；再改回 `"fresh"` 验证走 origin 默认分支。
+
+**验收场景**：
+
+1. **假设** settings.json 设置 `worktree.baseRef: "head"`，**当**通过 CLI `-w` 或 `EnterWorktree` 创建新 worktree 时，**则**新分支基于当前本地 HEAD 创建，不解析 `origin/<默认分支>` 也不发起 fetch。
+2. **假设** `worktree.baseRef` 未设置或为 `"fresh"`，**当**创建新 worktree 时，**则**沿用现有 `fresh` 行为（基于 `origin/<默认分支>`，fetch→HEAD 兜底），与 FR-003/FR-040 一致。
+
+---
+
 ### 边界情况
 
 - **当 worktree 目录已存在时会发生什么？** 系统应该报错或询问是否重用。
@@ -198,6 +213,11 @@
 - **FR-042**：worktree 会话状态（当前是否处于 worktree、其路径/原始 CWD/分支名）必须按会话隔离存储，不得使用进程级模块单例。一个会话进入 worktree 后，其它会话调用 `EnterWorktree` 不得被误拒，调用 `ExitWorktree` 不得读取到其它会话的 worktree 会话状态。
 - **FR-043**：`ExitWorktree` 工具必须只作用于**发起调用的会话自身**的 worktree 会话。当 `action` 为 `"remove"` 时，只能删除本会话的 worktree 目录与分支，绝不能删除或修改其它会话的 worktree 目录、分支或工作目录。
 - **FR-044**：`ExitWorktree` 的无操作判定（FR-036）必须基于**当前会话**是否处于活动 worktree 会话；当前会话未进入 worktree 时必须返回无操作，即使同一进程中的其它会话正处于 worktree 会话中。
+
+#### Worktree Base Ref 配置
+
+- **FR-045**：系统必须支持顶层 settings.json 字段 `worktree.baseRef`，枚举 `"fresh"`（默认）| `"head"`。`fresh` 基于 `origin/<默认分支>` 创建新分支（沿用 FR-003/FR-040）；`head` 基于当前本地 HEAD 创建新分支，跳过 origin 解析与网络 fetch。
+- **FR-046**：`EnterWorktree` 工具与 CLI `-w` 启动路径必须读取并应用 `worktree.baseRef`；未设置或值非法时回退默认 `"fresh"`（行为与现状一致，不影响存量用户）。设置值必须通过 `ConfigurationService` 解析并经 `AIManager` 暴露，按会话读取。
 
 ### 关键实体
 

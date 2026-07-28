@@ -252,6 +252,10 @@ export class AIManager {
     return this.configurationService.resolveAutoMemoryEnabled();
   }
 
+  public getWorktreeBaseRef(): "fresh" | "head" {
+    return this.configurationService.resolveWorktreeBaseRef();
+  }
+
   public getWorkdir(): string {
     return this.container.get<string>("Workdir") ?? process.cwd();
   }

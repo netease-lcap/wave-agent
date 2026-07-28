@@ -26,6 +26,7 @@ describe("enterWorktreeTool", () => {
   let mockSetWorkdir: ReturnType<typeof vi.fn>;
   let mockGetWorktreeSession: ReturnType<typeof vi.fn>;
   let mockSetWorktreeSession: ReturnType<typeof vi.fn>;
+  let mockGetWorktreeBaseRef: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -33,6 +34,7 @@ describe("enterWorktreeTool", () => {
     mockSetWorkdir = vi.fn();
     mockGetWorktreeSession = vi.fn().mockReturnValue(null);
     mockSetWorktreeSession = vi.fn();
+    mockGetWorktreeBaseRef = vi.fn().mockReturnValue("fresh");
 
     mockContext = {
       workdir: "/test/workdir",
@@ -42,6 +44,7 @@ describe("enterWorktreeTool", () => {
         getWorkdir: () => "/test/workdir",
         getWorktreeSession: mockGetWorktreeSession,
         setWorktreeSession: mockSetWorktreeSession,
+        getWorktreeBaseRef: mockGetWorktreeBaseRef,
       } as never,
     };
 
@@ -302,5 +305,87 @@ describe("enterWorktreeTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("Created worktree");
     expect(result.content).not.toContain("WorktreeCreate hooks were executed");
+  });
+
+  it("should pass baseRef 'head' to createWorktree when aiManager returns 'head'", async () => {
+    mockGetWorktreeBaseRef.mockReturnValue("head");
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "head-test",
+      path: "/test/repo/.wave/worktrees/head-test",
+      branch: "worktree-head-test",
+      repoRoot: "/test/repo",
+      isNew: true,
+      originalHeadCommit: "abc123",
+    });
+
+    const result = await enterWorktreeTool.execute(
+      { name: "head-test" },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(worktreeUtils.createWorktree).toHaveBeenCalledWith(
+      "head-test",
+      "/test/repo",
+      { baseRef: "head" },
+    );
+  });
+
+  it("should pass baseRef 'fresh' to createWorktree when aiManager returns 'fresh'", async () => {
+    mockGetWorktreeBaseRef.mockReturnValue("fresh");
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "fresh-test",
+      path: "/test/repo/.wave/worktrees/fresh-test",
+      branch: "worktree-fresh-test",
+      repoRoot: "/test/repo",
+      isNew: true,
+      originalHeadCommit: "abc123",
+    });
+
+    const result = await enterWorktreeTool.execute(
+      { name: "fresh-test" },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(worktreeUtils.createWorktree).toHaveBeenCalledWith(
+      "fresh-test",
+      "/test/repo",
+      { baseRef: "fresh" },
+    );
+  });
+
+  it("should pass undefined baseRef when aiManager has no getWorktreeBaseRef", async () => {
+    // Simulate an aiManager without getWorktreeBaseRef (e.g. older SDK consumer)
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "no-ref",
+      path: "/test/repo/.wave/worktrees/no-ref",
+      branch: "worktree-no-ref",
+      repoRoot: "/test/repo",
+      isNew: true,
+      originalHeadCommit: "abc123",
+    });
+
+    const contextNoBaseRef: ToolContext = {
+      ...mockContext,
+      aiManager: {
+        setWorkdir: mockSetWorkdir,
+        getWorkdir: () => "/test/workdir",
+        getWorktreeSession: mockGetWorktreeSession,
+        setWorktreeSession: mockSetWorktreeSession,
+      } as never,
+    };
+
+    const result = await enterWorktreeTool.execute(
+      { name: "no-ref" },
+      contextNoBaseRef,
+    );
+
+    expect(result.success).toBe(true);
+    expect(worktreeUtils.createWorktree).toHaveBeenCalledWith(
+      "no-ref",
+      "/test/repo",
+      { baseRef: undefined },
+    );
   });
 });

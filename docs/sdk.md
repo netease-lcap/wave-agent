@@ -1323,6 +1323,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 - `language`：AI 通信首选语言（如 `"zh"`、`"en"`）。
 - `autoMemoryEnabled`：启用或禁用自动记忆（默认：`true`）。
 - `autoMemoryFrequency`：自动记忆提取频率（默认：`1`）。
+- `worktree.baseRef`：新建 worktree 的基准引用。`"fresh"`（默认）基于 `origin/<默认分支>` 创建新分支；`"head"` 基于当前本地 HEAD 创建，跳过 origin 解析与网络 fetch。适用于基于尚未推送的本地分支工作的场景。
 
 ## 15. 官方插件市场 {#plugin-marketplaces}
 

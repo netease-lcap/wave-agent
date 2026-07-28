@@ -326,6 +326,7 @@ export function mergeRemoteSettings(
     result.autoMemoryEnabled = remote.autoMemoryEnabled;
   if (remote.autoMemoryFrequency !== undefined)
     result.autoMemoryFrequency = remote.autoMemoryFrequency;
+  if (remote.worktree !== undefined) result.worktree = remote.worktree;
   if (remote.models !== undefined) result.models = remote.models;
   if (remote.marketplaces !== undefined)
     result.marketplaces = remote.marketplaces;
