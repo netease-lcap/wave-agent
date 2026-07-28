@@ -143,6 +143,13 @@ export function resolveWaveBinary(onInstall?: InstallProgressCallback): string {
     // 0. Verify Node.js >= 20 — wave --stdio requires it.
     checkNodeVersion();
 
+    // 0.5. Dev override: point at a workspace build (e.g. packages/code/bin/wave-code.js).
+    const envPath = process.env.WAVE_CLI_PATH;
+    if (envPath && fileExists(envPath)) {
+        cachedPath = envPath;
+        return cachedPath;
+    }
+
     // 1. Try PATH
     const whichCmd = process.platform === 'win32' ? 'where wave' : 'which wave';
     try {
