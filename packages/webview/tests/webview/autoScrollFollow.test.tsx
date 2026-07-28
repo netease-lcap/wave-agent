@@ -80,4 +80,82 @@ describe('auto-scroll follow during streaming', () => {
 
     expect(scrollIntoView).toHaveBeenCalled();
   });
+
+  it('keeps following when the viewport grows (e.g. confirmation dialog closes) without a user scroll-up', async () => {
+    const scrollIntoView = vi.fn();
+    window.Element.prototype.scrollIntoView = scrollIntoView;
+
+    renderChatApp();
+    act(() => {
+      sendCommand('updateMessages', {
+        messages: [userMsg('问题', 'u1'), assistantMsg('正在回答', 'a1')]
+      });
+    });
+    await waitFor(() => expect(screen.getByTestId('messages-container')).toBeInTheDocument());
+
+    act(() => {
+      sendCommand('startStreaming');
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Park the viewport at the bottom: scrollTop 1600 + clientHeight 400 = scrollHeight 2000.
+    setGeometryAndScroll(1600, 2000);
+    scrollIntoView.mockClear();
+
+    // Simulate the confirmation dialog closing: the input area comes back shorter
+    // than the dialog, so the container's clientHeight grows 400 → 700 and the
+    // browser clamps scrollTop down to the new maximum (2000 - 700 = 1300) with
+    // scrollHeight UNCHANGED. This is NOT a user scroll-up gesture.
+    setGeometryAndScroll(1300, 2000, 700);
+    scrollIntoView.mockClear();
+
+    // A subsequent streaming chunk must still auto-scroll to bottom.
+    act(() => {
+      sendCommand('updateMessages', {
+        messages: [userMsg('问题', 'u1'), assistantMsg('正在回答……更多内容追加', 'a1')]
+      });
+    });
+
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+
+  it('stops following after a genuine user scroll-up (geometry unchanged)', async () => {
+    const scrollIntoView = vi.fn();
+    window.Element.prototype.scrollIntoView = scrollIntoView;
+
+    renderChatApp();
+    act(() => {
+      sendCommand('updateMessages', {
+        messages: [userMsg('问题', 'u1'), assistantMsg('正在回答', 'a1')]
+      });
+    });
+    await waitFor(() => expect(screen.getByTestId('messages-container')).toBeInTheDocument());
+
+    act(() => {
+      sendCommand('startStreaming');
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Park the viewport at the bottom.
+    setGeometryAndScroll(1600, 2000);
+    scrollIntoView.mockClear();
+
+    // Genuine user scroll-up: scrollTop decreases while scrollHeight AND
+    // clientHeight stay the same — no layout clamp involved.
+    setGeometryAndScroll(1500, 2000);
+    scrollIntoView.mockClear();
+
+    // The next streaming chunk must NOT yank the user back to the bottom.
+    act(() => {
+      sendCommand('updateMessages', {
+        messages: [userMsg('问题', 'u1'), assistantMsg('正在回答……更多内容追加', 'a1')]
+      });
+    });
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
 });
