@@ -12,6 +12,7 @@ import * as path from 'path';
 import { WEBVIEW_CHANNEL } from './channels';
 import { ConfigStore } from './configStore';
 import { DesktopHost } from './desktopHost';
+import { isLocalhostUrl } from './isLocalhostUrl';
 
 /**
  * GUI-launched apps (Finder/Spotlight) get a bare system PATH without the
@@ -102,6 +103,8 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // The preview pane renders local dev servers in a <webview>.
+      webviewTag: true,
     },
   });
 
@@ -113,6 +116,48 @@ function createWindow(): void {
       void shell.openExternal(url);
     }
     return { action: 'deny' };
+  });
+
+  // Clicking an <a href> navigates the whole window away from the chat UI —
+  // block every non-file navigation (file: is the bundled index.html itself).
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith('file:')) return;
+    event.preventDefault();
+    if (/^https?:/.test(url)) {
+      void shell.openExternal(url);
+    }
+  });
+
+  // Lock down any <webview> the page attaches: the preview pane is the only
+  // consumer and it must stay sandboxed + localhost-only.
+  mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    if (!isLocalhostUrl(params.src)) {
+      console.warn('[Wave Desktop] Blocked <webview> attach with non-localhost src:', params.src);
+      event.preventDefault();
+    }
+  });
+
+  mainWindow.webContents.on('did-attach-webview', (_event, guest) => {
+    // Guest pages must never spawn windows — open them externally instead.
+    // (The <webview> `new-window` DOM event was removed in Electron 39.)
+    guest.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/.test(url)) {
+        void shell.openExternal(url);
+      }
+      return { action: 'deny' };
+    });
+    // The preview pane is localhost-only: divert in-guest navigation
+    // to external sites into the system browser instead of loading them here.
+    guest.on('will-navigate', (event, url) => {
+      if (isLocalhostUrl(url)) return;
+      event.preventDefault();
+      if (/^https?:/.test(url)) {
+        void shell.openExternal(url);
+      }
+    });
   });
 
   mainWindow.on('closed', () => {

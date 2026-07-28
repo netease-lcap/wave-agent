@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import * as path from 'path';
+import { pathToFileURL } from 'url';
 import { WEBVIEW_CHANNEL, HOST_CHANNEL } from './channels';
 
 /**
@@ -21,6 +23,14 @@ contextBridge.exposeInMainWorld('acquireVsCodeApi', () => ({
 }));
 
 contextBridge.exposeInMainWorld('waveHostType', 'desktop');
+
+// file:// URL of the element-picker preload, injected by PreviewPane into the
+// preview <webview> (`preload` attribute). Built to dist/main/pickerPreload.cjs
+// alongside this file, so the relative path holds in dev and inside app.asar.
+contextBridge.exposeInMainWorld(
+  'wavePickerPreloadPath',
+  pathToFileURL(path.join(__dirname, 'pickerPreload.cjs')).toString(),
+);
 
 // Apply the persisted theme before first paint (FR-019). The main process
 // resolves the effective theme synchronously; <html data-theme> then selects

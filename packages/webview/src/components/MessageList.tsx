@@ -26,7 +26,7 @@ function countTimelineBlocks(message: MessageType): number {
   return count;
 }
 
-export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, isStreaming, vscode, onRewindToMessage, workdir }, ref) {
+export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, isStreaming, vscode, onRewindToMessage, workdir, onOpenPreview }, ref) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -238,6 +238,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
               vscode={vscode}
               onRewindToMessage={onRewindToMessage}
               workdir={workdir}
+              onOpenPreview={onOpenPreview}
             />
           );
         };
@@ -274,7 +275,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
         flushGroup();
 
         return rendered;
-      }, [messages, vscode, onRewindToMessage])}
+      }, [messages, vscode, onRewindToMessage, workdir, onOpenPreview])}
       
       {/* Invisible div to scroll to */}
       <div ref={messagesEndRef} />
