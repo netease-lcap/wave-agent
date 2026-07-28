@@ -15,6 +15,7 @@ import WorkflowManager from './WorkflowManager';
 import WelcomeView from './WelcomeView';
 import LoadingLogo from './LoadingLogo';
 import { DesktopSidebar } from './DesktopSidebar';
+import { DesktopShell } from './DesktopShell';
 import { DesktopWorkdirSelector } from './DesktopWorkdirSelector';
 import { DesktopWorktreeControls } from './DesktopWorktreeControls';
 import { PreviewPane } from './PreviewPane';
@@ -27,7 +28,7 @@ import type {
 import { chatReducer, initialState } from '../reducers/chatReducer';
 import '../styles/ChatApp.css';
 
-export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
+export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
   // Desktop new-session worktree controls (FR-022/FR-023).
@@ -38,11 +39,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   const messageInputRef = useRef<MessageInputHandle>(null);
   const messageListRef = useRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }>(null);
   const stateRef = useRef(state);
+  // The pane this instance renders; undefined = single view (IDE hosts and the
+  // desktop single-pane layout). Ref mirror for use inside stable callbacks.
+  const paneIdRef = useRef<string | undefined>(paneId);
 
   // Keep stateRef in sync with state
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    paneIdRef.current = paneId;
+  }, [paneId]);
 
   // Desktop only: keep <html data-theme> in sync with the resolved theme so the
   // inlined --vscode-* variable set swaps without a reload (FR-018). VSCE/JB
@@ -70,62 +78,84 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
 
   // Handle messages from VS Code extension
   useEffect(() => {
+    // Session-scoped host pushes are pane-tagged on desktop (FR-032). This pane
+    // consumes a message when it is untagged (single view / IDE hosts / global
+    // commands) or tagged with this pane's id. Messages tagged with a different
+    // paneId belong to a sibling pane and are ignored here.
+    const myPane = paneIdRef.current;
+    const forThisPane = (message: any): boolean => myPane === undefined || message.paneId === myPane;
+
     const handleMessage = (event: MessageEvent) => {
       const message = event.data as any;
 
       switch (message.command) {
         case 'updateMessages':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_MESSAGES', payload: message.messages });
           break;
         case 'updateTasks':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_TASKS', payload: message.tasks });
           if (message.isTaskListCollapsed !== undefined) {
             dispatch({ type: 'SET_TASK_LIST_COLLAPSED', payload: message.isTaskListCollapsed });
           }
           break;
         case 'updateBackgroundTasks':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_BACKGROUND_TASKS', payload: message.tasks });
           break;
         case 'updateWorkflowRuns':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_WORKFLOW_RUNS', payload: message.runs });
           break;
         case 'updateSelection':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'UPDATE_SELECTION', payload: message.selection });
           break;
         case 'updatePermissionMode':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_PERMISSION_MODE', payload: message.mode });
           break;
         case 'updateWorkdir':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_WORKDIR', payload: message.workdir });
           break;
         case 'updateQueue':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_QUEUED_MESSAGES', payload: message.queue });
           break;
         case 'updateQueuedMessageMissing':
+          if (!forThisPane(message)) break;
           // The edited queue message no longer exists. Keep input content, exit editing.
           dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
           setQueueEditWarning('编辑的队列消息已不存在！');
           break;
         case 'updateCommandRunning':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_COMMAND_RUNNING', payload: message.running });
           break;
-        // Test-only handlers 
+        // Test-only handlers
         case 'startStreaming':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'START_STREAMING' });
           break;
         case 'endStreaming':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'END_STREAMING' });
           break;
         case 'ensureUIReset':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'END_STREAMING' });
           break;
         case 'updateSessions':
           dispatch({ type: 'SET_SESSIONS', payload: message.sessions });
           break;
         case 'updateCurrentSession':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_CURRENT_SESSION', payload: message.session });
           break;
         case 'showConfirmation':
+          if (!forThisPane(message)) break;
           dispatch({
             type: 'SHOW_CONFIRMATION',
             payload: {
@@ -152,6 +182,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
           });
           break;
         case 'setInitialState':
+          if (!forThisPane(message)) break;
           dispatch({
             type: 'SET_INITIAL_STATE',
             payload: {
@@ -179,6 +210,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
           document.documentElement.setAttribute('data-theme', message.effective);
           break;
         case 'showConfiguration':
+          if (!forThisPane(message)) break;
           dispatch({
             type: 'SHOW_DIALOG',
             payload: {
@@ -189,26 +221,31 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
           });
           break;
         case 'showDialog':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SHOW_DIALOG', payload: { type: message.dialogType } });
           break;
         case 'configurationUpdated':
           dispatch({ type: 'HIDE_DIALOG' });
           break;
         case 'statusResponse':
+          if (!forThisPane(message)) break;
           if (message.configurationData) {
             dispatch({ type: 'SET_CONFIGURATION_DATA', payload: message.configurationData });
           }
           break;
         case 'configurationError':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'SET_CONFIGURATION_ERROR', payload: message.error });
           break;
         case 'focusInput':
+          if (!forThisPane(message)) break;
           // Focus the message input
           if (messageInputRef.current && typeof messageInputRef.current.focus === 'function') {
             messageInputRef.current.focus();
           }
           break;
         case 'triggerShortcut':
+          if (!forThisPane(message)) break;
           // Forwarded IDE keymap shortcut (JetBrains): the component-scoped AnAction
           // intercepts the IDE action and forwards the intended operation here, since
           // registerCustomShortcutSet consumes the AWT event before CEF can see it.
@@ -217,6 +254,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
           }
           break;
         case 'scrollToBottom':
+          if (!forThisPane(message)) break;
           // Scroll the message list to bottom
           if (messageListRef.current && typeof messageListRef.current.scrollToBottom === 'function') {
             messageListRef.current.scrollToBottom('smooth');
@@ -224,24 +262,29 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
           break;
         // Incremental update commands for streaming optimization
         case 'appendMessage':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'APPEND_MESSAGE', payload: message.message });
           break;
         case 'updateStreamingContent':
+          if (!forThisPane(message)) break;
           dispatch({
             type: 'UPDATE_STREAMING_CONTENT',
             payload: { messageId: message.messageId, accumulated: message.accumulated, stage: message.stage }
           });
           break;
         case 'updateStreamingReasoning':
+          if (!forThisPane(message)) break;
           dispatch({
             type: 'UPDATE_STREAMING_REASONING',
             payload: { messageId: message.messageId as string, accumulated: message.accumulated as string, stage: message.stage as 'end' | 'streaming' }
           });
           break;
         case 'updateToolBlock':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'UPDATE_TOOL_BLOCK', payload: message.params as ToolBlockUpdateCallbackParams });
           break;
         case 'updateErrorBlock':
+          if (!forThisPane(message)) break;
           dispatch({ type: 'APPEND_ERROR_BLOCK', payload: { error: message.error } });
           break;
         case 'authStatusResponse':
@@ -264,14 +307,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
+  // Desktop multi-pane (FR-032): session-scoped commands carry this pane's id
+  // so the host routes them to the agent bound to this pane. Untagged when
+  // paneId is undefined (IDE hosts) — those backends ignore the field.
+  const postToHost = useCallback((message: Record<string, unknown>) => {
+    const pid = paneIdRef.current;
+    vscode.postMessage(pid === undefined ? message : { ...message, paneId: pid });
+  }, [vscode]);
+
   const handleClearChat = useCallback(() => {
     // Desktop 允许在 streaming 期间新建会话（先中止当前生成）；VSCE/JB 维持原有禁用。
     if (stateRef.current.isStreaming && host?.type !== 'desktop') return;
 
-    vscode.postMessage({
+    postToHost({
       command: 'clearChat'
     });
-  }, [vscode, host]);
+  }, [host, postToHost]);
 
   const handleLogin = useCallback(() => {
     vscode.postMessage({ command: 'login' });
@@ -304,7 +355,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
     }
     if (trimmedText === '/compact' || trimmedText.startsWith('/compact ')) {
       const customInstructions = trimmedText.slice('/compact'.length).trim() || undefined;
-      vscode.postMessage({
+      postToHost({
         command: 'compact',
         customInstructions
       });
@@ -340,7 +391,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
       host.workdir &&
       host.gitBranches
     ) {
-      vscode.postMessage({
+      postToHost({
         command: 'desktopCreateWorktree',
         workdir: host.workdir,
         baseBranch: worktreeBranch || host.gitBranches.current,
@@ -351,21 +402,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
     }
 
     // Send to extension
-    vscode.postMessage({
+    postToHost({
       command: 'sendMessage',
       text: trimmedText,
       images: images,
       force: force
     });
-  }, [vscode, handleClearChat, host, worktreeChecked, worktreeBranch]);
+  }, [handleClearChat, host, worktreeChecked, worktreeBranch, postToHost]);
 
   const handleAbortMessage = useCallback(() => {
     if (!state.isStreaming) return;
-    
-    vscode.postMessage({
+
+    postToHost({
       command: 'abortMessage'
     });
-  }, [state.isStreaming, vscode]);
+  }, [state.isStreaming, postToHost]);
 
   const handleDeleteQueuedMessage = useCallback((id: string) => {
     // Optimistically update local state (filter by id)
@@ -378,11 +429,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
     }
 
     // Notify extension to delete from SDK's queue by id
-    vscode.postMessage({
+    postToHost({
       command: 'deleteQueuedMessageById',
       id
     });
-  }, [state.queuedMessages, state.editingQueuedId, vscode]);
+  }, [state.queuedMessages, state.editingQueuedId, postToHost]);
 
   const handleEditQueuedMessage = useCallback((id: string) => {
     const qm = state.queuedMessages.find(m => m.id === id);
@@ -411,14 +462,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   }, [state.queuedMessages, handleSendMessage, handleDeleteQueuedMessage]);
 
   const handleSubmitQueuedEdit = useCallback((id: string, text: string, images?: Array<{ data: string; mediaType: string; }>) => {
-    vscode.postMessage({
+    postToHost({
       command: 'updateQueuedMessage',
       id,
       text,
       images
     });
     dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
-  }, [vscode]);
+  }, [postToHost]);
 
   const handleCancelQueuedEdit = useCallback(() => {
     dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: null });
@@ -457,11 +508,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   const handleSessionSelect = useCallback((sessionId: string) => {
     if (state.isStreaming) return;
 
-    vscode.postMessage({
+    postToHost({
       command: 'restoreSession',
       sessionId
     });
-  }, [state.isStreaming, vscode]);
+  }, [state.isStreaming, postToHost]);
 
   const handleInputCleared = useCallback(() => {
     dispatch({ type: 'INPUT_CLEARED' });
@@ -475,32 +526,32 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   }, [state.isCommandRunning]);
 
   const handleConfirmation = useCallback((confirmationId: string, decision?: ConfirmationDecision) => {
-    vscode.postMessage({
+    postToHost({
       command: 'confirmationResponse',
       confirmationId,
       approved: true,
       decision
     });
     dispatch({ type: 'HIDE_CONFIRMATION', payload: confirmationId });
-  }, [vscode]);
+  }, [postToHost]);
 
   const handleRejection = useCallback((confirmationId: string) => {
-    vscode.postMessage({
+    postToHost({
       command: 'confirmationResponse',
       confirmationId,
       approved: false
     });
     dispatch({ type: 'HIDE_CONFIRMATION', payload: confirmationId });
-  }, [vscode]);
+  }, [postToHost]);
 
   const handleRewindToMessage = useCallback((messageId: string) => {
     if (state.isStreaming) return;
-    
-    vscode.postMessage({
+
+    postToHost({
       command: 'rewindToMessage',
       messageId
     });
-  }, [state.isStreaming, vscode]);
+  }, [state.isStreaming, postToHost]);
 
   // Desktop only: open/re-target the preview pane. Message.tsx gates
   // on waveHostType, so this never fires in IDE hosts.
@@ -673,6 +724,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   );
 
   if (host?.type === 'desktop') {
+    // FR-032 split-view: when the host has pushed a pane layout, DesktopShell
+    // owns the row of paneId-scoped ChatApp instances. This instance then only
+    // contributes its pane-scoped chatContainer (rendered below); without a
+    // paneId it would double-render, so bail out to the shell instead.
+    if ((host.panes?.length ?? 0) > 0 && paneId === undefined) {
+      return (
+        <DesktopShell
+          vscode={vscode}
+          host={host}
+          onOpenSettings={handleOpenSettings}
+          onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          isAuthenticated={state.isAuthenticated}
+        />
+      );
+    }
+    // Inside DesktopShell each pane renders only its own chatContainer; the
+    // sidebar / preview pane live in the shell / single-pane layout.
+    if (paneId !== undefined) {
+      return chatContainer;
+    }
     return (
       <div className="desktop-layout">
         <DesktopSidebar

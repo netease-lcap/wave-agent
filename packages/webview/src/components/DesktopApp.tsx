@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatApp } from './ChatApp';
-import { VsCodeApi, DesktopWorkdirState, DesktopSessionGroup } from '../types';
+import { VsCodeApi, DesktopWorkdirState, DesktopSessionGroup, DesktopPane } from '../types';
 import '../styles/DesktopApp.css';
 
 interface DesktopAppProps {
@@ -13,11 +13,16 @@ interface DesktopAppProps {
  * The sidebar's workdir dropdown is the single entry point for selecting a
  * workdir — both on first launch (no workdir yet, header shows a placeholder)
  * and when switching (FR-005). No full-screen selector overlay.
+ *
+ * Also owns the split-pane layout (FR-032): the ordered pane list + which pane
+ * is focused, both driven by the host-authoritative `desktopPanes` message.
  */
 export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   const [workdirState, setWorkdirState] = useState<DesktopWorkdirState | null>(null);
   const [sessionTree, setSessionTree] = useState<DesktopSessionGroup[]>([]);
   const [gitBranches, setGitBranches] = useState<{ branches: string[]; current: string } | null>(null);
+  const [panes, setPanes] = useState<DesktopPane[]>([]);
+  const [focusedPaneId, setFocusedPaneId] = useState<string | null>(null);
   // Current workdir in a ref so the message handler can drop stale
   // desktopGitBranches responses from a previous workdir.
   const workdirRef = useRef<string | undefined>(undefined);
@@ -43,6 +48,9 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         if (message.workdir === workdirRef.current) {
           setGitBranches(message.result ?? null);
         }
+      } else if (message.command === 'desktopPanes') {
+        setPanes(message.panes ?? []);
+        setFocusedPaneId(message.focusedPaneId ?? null);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -70,6 +78,10 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     vscode.postMessage({ command: 'desktopDeleteSession', sessionId });
   }, [vscode]);
 
+  const handleOpenPane = useCallback((workdir: string, sessionId: string) => {
+    vscode.postMessage({ command: 'desktopOpenPane', workdir, sessionId });
+  }, [vscode]);
+
   // Waiting for the main process to answer `desktopReady`.
   if (workdirState === null) {
     return <div className="desktop-loading" data-testid="desktop-loading"></div>;
@@ -90,7 +102,10 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         sessionTree,
         onSelectSession: handleSelectSession,
         onDeleteSession: handleDeleteSession,
+        onOpenPane: handleOpenPane,
         gitBranches,
+        panes,
+        focusedPaneId,
       }}
     />
   );

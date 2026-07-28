@@ -63,6 +63,20 @@ interface WorktreeInfo {
   repoRoot: string;
 }
 
+interface Pane {
+  paneId: string;
+  agent: StdioAgent | null;
+}
+
+interface PaneThrottle {
+  updateTimer?: NodeJS.Timeout;
+  pendingUpdate: boolean;
+  forceNextUpdateImmediate: boolean;
+  streamingContentTimer?: NodeJS.Timeout;
+  pendingStreamingContent?: { messageId: string; accumulated: string; stage: 'streaming' | 'end' };
+  streamingReasoningTimer?: NodeJS.Timeout;
+  pendingStreamingReasoning?: { messageId: string; accumulated: string; stage: 'streaming' | 'end' };
+}
 /** Cap on simultaneous live agents (FR-031); least-recently-used idle agent evicted beyond this. */
 const MAX_LIVE_AGENTS = 8;
 
@@ -76,33 +90,57 @@ export class DesktopHost {
   private cliVersion: string | null = null;
 
   // agent pool (multi-session parallel, FR-031): sessionId → live StdioAgent.
-  // webview renders only the activeAgent; background agents keep streaming.
+  // Panes bind agents for display; unbound agents keep streaming in background.
   private agents = new Map<string, StdioAgent>();
-  private activeAgent: StdioAgent | null = null;
+  // Split panes, ordered left→right. Each pane binds at most one agent (none
+  // in the new-session state); the focused pane receives sidebar clicks and
+  // the 新对话 action. Always at least one pane.
+  private panes: Pane[] = [{ paneId: 'pane-1', agent: null }];
+  private focusedPaneId = 'pane-1';
+  private paneCounter = 1;
   private lastActivatedAt = new Map<string, number>();
-  private inputDrafts = new Map<string, string>();
+  private inputDrafts = new Map<string, string>(); // keyed by paneId
   private agentWorktreeInfo = new Map<StdioAgent, WorktreeInfo>();
   private workdir: string | undefined;
 
-  // active-view state. messages/tasks/backgroundTasks/queuedMessages/isStreaming/
-  // isCommandRunning/sessionId are derived from activeAgent (its StdioAgent cache);
-  // only fields the agent does not cache live here.
-  private workflowRuns: SerializableWorkflowRun[] = [];
-  private inputContent = '';
+  // Per-pane view state. messages/tasks/backgroundTasks/queuedMessages/isStreaming/
+  // isCommandRunning/sessionId are derived from the pane's bound agent (its
+  // StdioAgent cache); only fields the agent does not cache live here.
+  private workflowRuns = new Map<string, SerializableWorkflowRun[]>(); // keyed by paneId
   private sessionTree: Array<{ workdir: string; sessions: Array<{ sessionId: string; title: string; lastActiveAt: number; hasWorktree: boolean; running: boolean }> }> = [];
   private pendingConfirmations = new Map<string, PendingConfirmation>();
 
-  // throttling state (same cadence as vsce ChatSession)
-  private updateTimer: NodeJS.Timeout | undefined;
-  private pendingUpdate = false;
-  private forceNextUpdateImmediate = false;
-  private streamingContentTimer: NodeJS.Timeout | undefined;
-  private pendingStreamingContent: { messageId: string; accumulated: string; stage: 'streaming' | 'end' } | undefined;
-  private streamingReasoningTimer: NodeJS.Timeout | undefined;
-  private pendingStreamingReasoning: { messageId: string; accumulated: string; stage: 'streaming' | 'end' } | undefined;
+  // Throttling state, per pane so concurrently streaming panes update
+  // independently (same cadence as vsce ChatSession).
+  private paneThrottles = new Map<string, PaneThrottle>();
 
   private updateCheckTriggered = false;
   private lastIsAuthenticated = false;
+
+  /** Focused pane's agent — the default target for unscoped webview commands. */
+  private get activeAgent(): StdioAgent | null {
+    return this.panes.find((p) => p.paneId === this.focusedPaneId)?.agent ?? null;
+  }
+
+  /** Agent bound to a specific pane; no paneId resolves to the focused pane. */
+  private agentForPane(paneId?: string): StdioAgent | null {
+    if (paneId === undefined) return this.activeAgent;
+    return this.panes.find((p) => p.paneId === paneId)?.agent ?? null;
+  }
+
+  /** Pane currently showing the given agent, if any. */
+  private paneIdForAgent(agent: StdioAgent): string | undefined {
+    return this.panes.find((p) => p.agent === agent)?.paneId;
+  }
+
+  private throttleFor(paneId: string): PaneThrottle {
+    let t = this.paneThrottles.get(paneId);
+    if (!t) {
+      t = { pendingUpdate: false, forceNextUpdateImmediate: false };
+      this.paneThrottles.set(paneId, t);
+    }
+    return t;
+  }
 
   // Derived views over the active agent — its StdioAgent cache is the single
   // source of truth, so these are read-only getters (no duplicated host state).
@@ -144,12 +182,16 @@ export class DesktopHost {
   /** Graceful shutdown for app quit (FR-015): destroy every live agent. */
   async dispose(): Promise<void> {
     nativeTheme.off('updated', this.onNativeThemeUpdated);
-    for (const timer of [this.updateTimer, this.streamingContentTimer, this.streamingReasoningTimer]) {
-      if (timer) clearTimeout(timer);
+    for (const t of this.paneThrottles.values()) {
+      for (const timer of [t.updateTimer, t.streamingContentTimer, t.streamingReasoningTimer]) {
+        if (timer) clearTimeout(timer);
+      }
     }
+    this.paneThrottles.clear();
     await Promise.allSettled([...this.agents.values()].map((agent) => agent.destroy()));
     this.agents.clear();
-    this.activeAgent = null;
+    this.panes = [{ paneId: 'pane-1', agent: null }];
+    this.focusedPaneId = 'pane-1';
     this.client?.dispose();
     this.client = null;
     this.router = null;
@@ -174,18 +216,20 @@ export class DesktopHost {
     }
   }
 
-  /** Insert a host-generated system message into the active chat stream. */
-  private pushSystemMessage(content: string): void {
+  /** Insert a host-generated system message into a pane's chat stream (focused pane by default). */
+  private pushSystemMessage(content: string, paneId?: string): void {
+    const targetPaneId = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(targetPaneId);
     const message = {
       id: `host-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       role: 'assistant',
       blocks: [{ type: 'text', content }],
       timestamp: new Date().toISOString(),
     } as unknown as Message;
-    if (this.activeAgent) {
-      this.activeAgent.messages = [...this.activeAgent.messages, message];
+    if (agent) {
+      agent.messages = [...agent.messages, message];
     }
-    this.postMessage({ command: 'appendMessage', message });
+    this.postMessage({ command: 'appendMessage', paneId: targetPaneId, message });
   }
 
   private sendWorkdirState(): void {
@@ -246,17 +290,17 @@ export class DesktopHost {
   // ------------------------------------------------------------------
 
   /**
-   * Callback factory: builds a StdioAgent whose view callbacks are gated on
-   * this agent being the active one (webview is single-view — a background
-   * agent's incremental events must never reach the webview or sessions cross
-   * talk). Tree/index callbacks run unconditionally because the sidebar is a
-   * global view reflecting all sessions.
+   * Callback factory: builds a StdioAgent whose view callbacks are routed to
+   * the pane currently bound to this agent. While the agent is unbound
+   * (background session), its incremental events never reach the webview, so
+   * sessions never cross-talk. Tree/index callbacks run unconditionally
+   * because the sidebar is a global view reflecting all sessions.
    */
   private createAgent(opts: { workdir?: string; worktreeInfo?: WorktreeInfo }): StdioAgent {
     if (!this.client || !this.router) throw new Error('StdioClient not initialized');
     // The callbacks close over agentRef but only run after the constructor
     // returns, so the const binding is always initialized by call time.
-    const isActive = () => this.activeAgent === agentRef;
+    const paneIdOf = () => this.paneIdForAgent(agentRef);
 
     const callbacks: StdioAgentCallbacks = {
       // NOTE: onMessagesChange deliberately does NOT push the full list to the
@@ -264,48 +308,60 @@ export class DesktopHost {
       // dedicated incremental callback (user/assistantMessageAdded, streaming,
       // toolBlockUpdated, bang…), so pushing the list here would make the
       // webview append each message twice. Full-list pushes happen explicitly
-      // on restore / rewind / compact via pushActiveSessionState /
+      // on restore / rewind / compact via pushPaneSessionState /
       // throttledUpdateChatMessages.
       onCompactBlockAdded: () => {
-        if (!isActive()) return;
-        this.forceNextUpdateImmediate = true;
-        this.throttledUpdateChatMessages();
+        const paneId = paneIdOf();
+        if (!paneId) return;
+        this.throttleFor(paneId).forceNextUpdateImmediate = true;
+        this.throttledUpdateChatMessages(paneId);
       },
       onCompactionStateChange: (isCompacting: boolean) => {
-        if (isActive()) this.pushSystemMessage(isCompacting ? '正在压缩对话…' : '对话压缩完成');
+        const paneId = paneIdOf();
+        if (paneId) this.pushSystemMessage(isCompacting ? '正在压缩对话…' : '对话压缩完成', paneId);
       },
       onUserMessageAdded: (message: Message) => {
-        if (isActive()) this.postMessage({ command: 'appendMessage', message });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'appendMessage', paneId, message });
         this.ensureSessionRegistered(agentRef);
       },
       onAssistantMessageAdded: (message: Message) => {
-        if (isActive()) this.postMessage({ command: 'appendMessage', message });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'appendMessage', paneId, message });
       },
       onAssistantContentUpdated: (params) => {
-        if (isActive()) this.throttledStreamingContentUpdate(params.messageId, params.accumulated, params.stage);
+        const paneId = paneIdOf();
+        if (paneId) this.throttledStreamingContentUpdate(paneId, params.messageId, params.accumulated, params.stage);
       },
       onAssistantReasoningUpdated: (params) => {
-        if (isActive()) this.throttledStreamingReasoningUpdate(params.messageId, params.accumulated, params.stage);
+        const paneId = paneIdOf();
+        if (paneId) this.throttledStreamingReasoningUpdate(paneId, params.messageId, params.accumulated, params.stage);
       },
       onToolBlockUpdated: (params) => {
-        if (isActive()) this.postMessage({ command: 'updateToolBlock', params });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updateToolBlock', paneId, params });
       },
       onErrorBlockAdded: (error: string) => {
-        if (isActive()) this.postMessage({ command: 'updateErrorBlock', error });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updateErrorBlock', paneId, error });
       },
       onTasksChange: (tasks: Task[]) => {
-        if (isActive()) this.postMessage({ command: 'updateTasks', tasks });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updateTasks', paneId, tasks });
       },
       onBackgroundTasksChange: (tasks: BackgroundTaskSummary[]) => {
-        if (!isActive()) return;
-        this.postMessage({ command: 'updateBackgroundTasks', tasks });
-        void this.refreshWorkflowRuns();
+        const paneId = paneIdOf();
+        if (!paneId) return;
+        this.postMessage({ command: 'updateBackgroundTasks', paneId, tasks });
+        void this.refreshWorkflowRuns(paneId);
       },
       onSessionIdChange: (sessionId: string) => {
         this.rekeyAgent(agentRef, sessionId);
-        if (isActive()) {
+        const paneId = paneIdOf();
+        if (paneId) {
           this.postMessage({
             command: 'updateCurrentSession',
+            paneId,
             session: {
               id: sessionId,
               sessionType: 'main',
@@ -314,46 +370,57 @@ export class DesktopHost {
               latestTotalTokens: agentRef.latestTotalTokens ?? 0,
             } as SessionMetadata,
           });
+          this.pushPanes();
         }
         this.registerSessionInIndex(agentRef, sessionId);
         this.refreshSessionTree();
       },
       onPermissionModeChange: (mode: PermissionMode) => {
-        if (isActive()) this.postMessage({ command: 'updatePermissionMode', mode });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updatePermissionMode', paneId, mode });
       },
       onWorkdirChange: (workdir: string) => {
-        if (isActive()) this.postMessage({ command: 'updateWorkdir', workdir });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updateWorkdir', paneId, workdir });
       },
       onLoadingChange: (loading: boolean) => {
         // StdioAgent already wrote isStreaming on the agent; refresh the sidebar
-        // running-dot for every session, not just the active one.
-        if (isActive()) this.postMessage({ command: loading ? 'startStreaming' : 'endStreaming' });
+        // running-dot for every session, not just the visible ones.
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: loading ? 'startStreaming' : 'endStreaming', paneId });
         if (!loading) {
           this.touchSessionInIndex(agentRef);
         }
         this.refreshSessionTree();
       },
       onCommandRunningChange: (running: boolean) => {
-        if (isActive()) this.postMessage({ command: 'updateCommandRunning', running });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updateCommandRunning', paneId, running });
       },
       onQueuedMessagesChange: (messages: QueuedMessage[]) => {
-        if (isActive()) this.postMessage({ command: 'updateQueue', queue: messages });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updateQueue', paneId, queue: messages });
       },
       onMcpServersChange: (servers: McpServerStatus[]) => {
-        if (isActive()) this.postMessage({ command: 'mcpServersUpdate', servers });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'mcpServersUpdate', paneId, servers });
       },
       onBangMessageAdded: () => {
-        if (isActive()) this.postMessage({ command: 'updateMessages', messages: agentRef.messages });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updateMessages', paneId, messages: agentRef.messages });
       },
       onBangMessageUpdated: () => {
-        if (isActive()) this.postMessage({ command: 'updateMessages', messages: agentRef.messages });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updateMessages', paneId, messages: agentRef.messages });
       },
       onBangMessageCompleted: () => {
-        if (isActive()) this.postMessage({ command: 'updateMessages', messages: agentRef.messages });
+        const paneId = paneIdOf();
+        if (paneId) this.postMessage({ command: 'updateMessages', paneId, messages: agentRef.messages });
       },
       onNotificationMessageAdded: (params) => {
-        if (isActive() && params.message) {
-          this.postMessage({ command: 'appendMessage', message: params.message });
+        const paneId = paneIdOf();
+        if (paneId && params.message) {
+          this.postMessage({ command: 'appendMessage', paneId, message: params.message });
         }
       },
       onPermissionRequest: (requestId, context) => {
@@ -392,26 +459,21 @@ export class DesktopHost {
     return agent;
   }
 
-  /** Make an agent the single view rendered by the webview (others keep running). */
-  private setActive(agent: StdioAgent | null): void {
-    const oldSid = this.activeAgent?.sessionId;
-    if (oldSid && this.activeAgent !== agent) {
-      this.inputDrafts.set(oldSid, this.inputContent);
-    }
-    this.clearThrottleState();
-    this.activeAgent = agent;
-    this.workflowRuns = [];
+  /** Bind an agent to a pane (replacing whatever it showed) and focus the pane. */
+  private bindAgentToPane(paneId: string, agent: StdioAgent | null): void {
+    const pane = this.panes.find((p) => p.paneId === paneId);
+    if (!pane) return;
+    this.clearThrottleState(paneId);
+    pane.agent = agent;
+    this.focusedPaneId = paneId;
     if (agent?.sessionId) {
       this.lastActivatedAt.set(agent.sessionId, Date.now());
-      this.inputContent = this.inputDrafts.get(agent.sessionId) ?? '';
-    } else {
-      this.inputContent = '';
     }
   }
 
-  /** Switch the rendered view to an agent: sync workdir, refresh sidebar, push its state. */
-  private async activateAgent(agent: StdioAgent): Promise<void> {
-    this.setActive(agent);
+  /** Point a pane at an agent: sync workdir context, refresh sidebar, push its state. */
+  private async activateAgentInPane(paneId: string, agent: StdioAgent): Promise<void> {
+    this.bindAgentToPane(paneId, agent);
     const dir = agent.workingDirectory;
     if (dir && dir !== this.workdir) {
       this.workdir = dir;
@@ -421,8 +483,130 @@ export class DesktopHost {
     }
     this.sendWorkdirState();
     this.refreshSessionTree();
-    await this.pushActiveSessionState();
-    this.postMessage({ command: 'scrollToBottom' });
+    this.pushPanes();
+    await this.pushPaneSessionState(paneId);
+    this.postMessage({ command: 'scrollToBottom', paneId });
+  }
+
+  /** Push the pane layout (order, session bindings, focus) to the webview. */
+  private pushPanes(): void {
+    this.postMessage({
+      command: 'desktopPanes',
+      panes: this.panes.map((p) => ({ paneId: p.paneId, sessionId: p.agent?.sessionId })),
+      focusedPaneId: this.focusedPaneId,
+    });
+  }
+
+  /** Focus a pane: it becomes the target for sidebar clicks and 新对话. */
+  private handleFocusPane(paneId: string): void {
+    if (!this.panes.some((p) => p.paneId === paneId)) return;
+    if (this.focusedPaneId === paneId) return;
+    this.focusedPaneId = paneId;
+    const dir = this.activeAgent?.workingDirectory;
+    if (dir && dir !== this.workdir) {
+      this.workdir = dir;
+      this.sendWorkdirState();
+    }
+    this.pushPanes();
+  }
+
+  /**
+   * Open a session in a new right-hand pane (drag & drop from the sidebar).
+   * A session already visible in a pane focuses that pane instead of
+   * duplicating it.
+   */
+  private async handleOpenPane(workdir: string, sessionId: string): Promise<void> {
+    if (!sessionId) return;
+    const existing = this.panes.find((p) => p.agent?.sessionId === sessionId);
+    if (existing) {
+      this.handleFocusPane(existing.paneId);
+      return;
+    }
+    const paneId = `pane-${++this.paneCounter}`;
+    this.panes.push({ paneId, agent: null });
+    this.focusedPaneId = paneId;
+    this.pushPanes();
+    await this.bindSessionToPane(paneId, workdir, sessionId);
+  }
+
+  /**
+   * Close a pane. The bound agent is never destroyed — the session keeps
+   * running in the background and stays in the sidebar. The last remaining
+   * pane cannot be closed.
+   */
+  private handleClosePane(paneId: string): void {
+    if (this.panes.length <= 1) return;
+    const idx = this.panes.findIndex((p) => p.paneId === paneId);
+    if (idx === -1) return;
+    this.clearThrottleState(paneId);
+    this.panes.splice(idx, 1);
+    this.inputDrafts.delete(paneId);
+    this.workflowRuns.delete(paneId);
+    if (this.focusedPaneId === paneId) {
+      const neighbor = this.panes[Math.min(idx, this.panes.length - 1)];
+      this.focusedPaneId = neighbor.paneId;
+      const dir = neighbor.agent?.workingDirectory;
+      if (dir && dir !== this.workdir) {
+        this.workdir = dir;
+        this.sendWorkdirState();
+      }
+    }
+    this.pushPanes();
+  }
+
+  /**
+   * Bind an existing session to a pane: reuse a live agent from the pool when
+   * possible, otherwise spawn + restore it, then activate in the pane.
+   */
+  private async bindSessionToPane(paneId: string, workdir: string, sessionId: string): Promise<void> {
+    let agent = this.agents.get(sessionId);
+    if (!agent) {
+      try {
+        agent = await this.spawnAgent({ workdir });
+        await agent.restoreSession(sessionId);
+        if (agent.sessionId) {
+          this.rekeyAgent(agent, agent.sessionId);
+        }
+      } catch (error) {
+        // The pane stays open (empty) so the layout is stable.
+        this.pushSystemMessage(`恢复会话失败：${error instanceof Error ? error.message : String(error)}`, paneId);
+        this.pushPanes();
+        return;
+      }
+    }
+    await this.activateAgentInPane(paneId, agent);
+  }
+
+  /** Lazily-created per-pane throttle state. */
+  private paneThrottle(paneId: string): PaneThrottle {
+    let t = this.paneThrottles.get(paneId);
+    if (!t) {
+      t = { pendingUpdate: false, forceNextUpdateImmediate: false };
+      this.paneThrottles.set(paneId, t);
+    }
+    return t;
+  }
+
+  /** Clear a pane's throttle timers/pending slots (before rebind or close). */
+  private clearThrottleState(paneId: string): void {
+    const t = this.paneThrottles.get(paneId);
+    if (!t) return;
+    for (const timer of [t.updateTimer, t.streamingContentTimer, t.streamingReasoningTimer]) {
+      if (timer) clearTimeout(timer);
+    }
+    this.paneThrottles.delete(paneId);
+  }
+
+  private messagesForPane(paneId: string): Message[] {
+    return this.agentForPane(paneId)?.messages ?? [];
+  }
+
+  private tasksForPane(paneId: string): Task[] {
+    return this.agentForPane(paneId)?.tasks ?? [];
+  }
+
+  private backgroundTasksForPane(paneId: string): BackgroundTaskSummary[] {
+    return this.agentForPane(paneId)?.backgroundTasks ?? [];
   }
 
   /** Re-register an agent under a new sessionId, migrating per-session keyed state. */
@@ -435,24 +619,8 @@ export class DesktopHost {
       this.agents.delete(oldKey);
       const act = this.lastActivatedAt.get(oldKey);
       if (act !== undefined) { this.lastActivatedAt.delete(oldKey); this.lastActivatedAt.set(newSessionId, act); }
-      const draft = this.inputDrafts.get(oldKey);
-      if (draft !== undefined) { this.inputDrafts.delete(oldKey); this.inputDrafts.set(newSessionId, draft); }
     }
     this.agents.set(newSessionId, agent);
-  }
-
-  /** Clear the shared throttle timers/pending slots (called before switching the view). */
-  private clearThrottleState(): void {
-    for (const timer of [this.updateTimer, this.streamingContentTimer, this.streamingReasoningTimer]) {
-      if (timer) clearTimeout(timer);
-    }
-    this.updateTimer = undefined;
-    this.streamingContentTimer = undefined;
-    this.streamingReasoningTimer = undefined;
-    this.pendingUpdate = false;
-    this.forceNextUpdateImmediate = false;
-    this.pendingStreamingContent = undefined;
-    this.pendingStreamingReasoning = undefined;
   }
 
   /** FR-031: evict the least-recently-used idle agent beyond MAX_LIVE_AGENTS. */
@@ -462,27 +630,30 @@ export class DesktopHost {
       let victimKey: string | undefined;
       let oldest = Infinity;
       for (const [key, agent] of this.agents) {
-        if (agent === this.activeAgent || agent.isStreaming) continue;
+        // Agents shown in a pane are never evicted — closing the pane is what
+        // makes a visible session eviction-eligible again.
+        if (this.panes.some((p) => p.agent === agent) || agent.isStreaming) continue;
         if ([...this.pendingConfirmations.values()].some((p) => p.agent === agent)) continue;
         const at = this.lastActivatedAt.get(key) ?? 0;
         if (at < oldest) { oldest = at; victim = agent; victimKey = key; }
       }
-      if (!victim || !victimKey) break; // everyone is busy/active — allow overflow
+      if (!victim || !victimKey) break; // everyone is busy/visible — allow overflow
       this.agents.delete(victimKey);
       this.lastActivatedAt.delete(victimKey);
-      this.inputDrafts.delete(victimKey);
       this.agentWorktreeInfo.delete(victim);
       void victim.destroy().catch(() => { /* best-effort */ });
     }
   }
 
   /**
-   * Switch the host into a directory (FR-031). Existing agents are never
+   * Switch a pane into a directory (FR-031). Existing agents are never
    * destroyed — the most recently activated live session in this directory is
-   * reused when present, otherwise a fresh agent is spawned.
+   * reused when present (and not already shown in another pane), otherwise a
+   * fresh agent is spawned.
    */
-  private async activateWorkdir(opts: { dir: string; forceNew?: boolean }): Promise<void> {
+  private async activateWorkdir(opts: { dir: string; forceNew?: boolean; paneId?: string }): Promise<void> {
     const { dir, forceNew = false } = opts;
+    const paneId = opts.paneId ?? this.focusedPaneId;
     this.workdir = dir;
     this.configStore.addRecentWorkdir(dir);
 
@@ -491,20 +662,22 @@ export class DesktopHost {
       let bestAt = -1;
       for (const [sid, agent] of this.agents) {
         if (agent.workingDirectory !== dir) continue;
+        // Never steal an agent shown in another pane — one session, one pane.
+        if (this.panes.some((p) => p.agent === agent && p.paneId !== paneId)) continue;
         const at = this.lastActivatedAt.get(sid) ?? 0;
         if (at > bestAt) { bestAt = at; best = agent; }
       }
       if (best) {
-        await this.activateAgent(best);
+        await this.activateAgentInPane(paneId, best);
         return;
       }
     }
 
     try {
       const agent = await this.spawnAgent({ workdir: dir });
-      await this.activateAgent(agent);
+      await this.activateAgentInPane(paneId, agent);
     } catch (error) {
-      this.pushSystemMessage(`初始化失败：${error instanceof Error ? error.message : String(error)}`);
+      this.pushSystemMessage(`初始化失败：${error instanceof Error ? error.message : String(error)}`, paneId);
     }
   }
 
@@ -541,11 +714,13 @@ export class DesktopHost {
       });
       this.refreshSessionTree();
 
-      // Only the active session pops the dialog; a background session's request
+      // Only a visible session pops the dialog; a background session's request
       // stays pending and is surfaced when the user switches back to it.
-      if (this.activeAgent === agent) {
+      const paneId = this.paneIdForAgent(agent);
+      if (paneId) {
         this.postMessage({
           command: 'showConfirmation',
+          paneId,
           confirmationId,
           toolName: context.toolName,
           confirmationType,
@@ -572,8 +747,9 @@ export class DesktopHost {
       pending.resolve({ behavior: 'deny', message: '用户拒绝了操作' } as PermissionDecision);
       void pending.agent.abortMessage();
     }
-    this.postMessage({ command: 'focusInput' });
-    this.postMessage({ command: 'scrollToBottom' });
+    const paneId = this.paneIdForAgent(pending.agent) ?? this.focusedPaneId;
+    this.postMessage({ command: 'focusInput', paneId });
+    this.postMessage({ command: 'scrollToBottom', paneId });
   }
 
   // ------------------------------------------------------------------
@@ -594,17 +770,17 @@ export class DesktopHost {
       console.error('[DesktopHost] Failed to get auth status on webview ready:', error);
     }
     this.lastIsAuthenticated = isAuthenticated;
-    await this.pushActiveSessionState();
+    await this.pushPaneSessionState(this.focusedPaneId);
   }
 
   /**
-   * Push the active session's cached state to the webview. Unlike
-   * pushInitialState this does NOT re-query auth/config — used on session and
-   * workdir switches where only the view changes.
+   * Push one pane's cached state to the webview (tagged with paneId). Unlike
+   * pushInitialState this does NOT re-query auth/config — used on session,
+   * workdir and pane switches where only the view changes.
    */
-  private async pushActiveSessionState(): Promise<void> {
+  private async pushPaneSessionState(paneId: string): Promise<void> {
     const configurationData = this.configStore.getConfiguration();
-    const agent = this.activeAgent;
+    const agent = this.agentForPane(paneId);
     const pendingConfirmations = Array.from(this.pendingConfirmations.entries())
       .filter(([, pending]) => pending.agent === agent)
       .map(([confirmationId, pending]) => ({
@@ -616,20 +792,22 @@ export class DesktopHost {
       }));
 
     if (agent) {
-      this.workflowRuns = await agent.getWorkflowRuns().catch(() => this.workflowRuns);
+      const runs = await agent.getWorkflowRuns().catch(() => this.workflowRuns.get(paneId) ?? []);
+      this.workflowRuns.set(paneId, runs);
     }
 
     this.postMessage({
       command: 'setInitialState',
-      messages: this.messages,
-      tasks: this.tasks,
-      backgroundTasks: this.backgroundTasks,
-      workflowRuns: this.workflowRuns,
-      inputContent: this.inputContent,
-      isStreaming: this.isStreaming,
-      isCommandRunning: this.isCommandRunning,
-      session: this.sessionId && agent ? {
-        id: this.sessionId,
+      paneId,
+      messages: this.messagesForPane(paneId),
+      tasks: this.tasksForPane(paneId),
+      backgroundTasks: this.backgroundTasksForPane(paneId),
+      workflowRuns: this.workflowRuns.get(paneId) ?? [],
+      inputContent: this.inputDrafts.get(paneId) ?? '',
+      isStreaming: agent?.isStreaming ?? false,
+      isCommandRunning: agent?.isCommandRunning ?? false,
+      session: agent?.sessionId ? {
+        id: agent.sessionId,
         sessionType: 'main',
         workdir: agent.workingDirectory,
         lastActiveAt: new Date(),
@@ -638,7 +816,7 @@ export class DesktopHost {
       configurationData,
       pendingConfirmations,
       permissionMode: agent?.getPermissionMode(),
-      queuedMessages: this.messageQueue,
+      queuedMessages: agent?.queuedMessages ?? [],
       isAuthenticated: this.lastIsAuthenticated,
       workdir: agent?.workingDirectory,
       theme: { effective: this.getCurrentEffectiveTheme() },
@@ -762,7 +940,7 @@ export class DesktopHost {
       // Agent.destroy() is slow (telemetry shutdown, MCP/LSP cleanup), and
       // awaiting it here would let the replacement view below clobber a
       // session the user selects in the meantime.
-      if (wasActive) this.setActive(null);
+      if (wasActive) this.bindAgentToPane(this.focusedPaneId, null);
       void target.destroy().catch(() => { /* best-effort */ });
     }
 
@@ -822,7 +1000,7 @@ export class DesktopHost {
           repoRoot: result.repoRoot,
         },
       });
-      await this.activateAgent(agent);
+      await this.activateAgentInPane(this.focusedPaneId, agent);
     } catch (error) {
       this.pushSystemMessage(`初始化失败：${error instanceof Error ? error.message : String(error)}`);
       return;
@@ -851,10 +1029,12 @@ export class DesktopHost {
     }
   }
 
-  private async refreshWorkflowRuns(): Promise<void> {
-    if (!this.activeAgent) return;
-    this.workflowRuns = await this.activeAgent.getWorkflowRuns();
-    this.postMessage({ command: 'updateWorkflowRuns', runs: this.workflowRuns });
+  private async refreshWorkflowRuns(paneId: string): Promise<void> {
+    const agent = this.agentForPane(paneId);
+    if (!agent) return;
+    const runs = await agent.getWorkflowRuns();
+    this.workflowRuns.set(paneId, runs);
+    this.postMessage({ command: 'updateWorkflowRuns', paneId, runs });
   }
 
   // ------------------------------------------------------------------
@@ -863,6 +1043,8 @@ export class DesktopHost {
 
   async handleWebviewMessage(message: Record<string, unknown>): Promise<void> {
     const msg = message;
+    // Pane the webview command targets (defaults to the focused pane).
+    const pid = (msg.paneId as string) || this.focusedPaneId;
     switch (msg.command as string) {
       // -- desktop lifecycle & workdir management (FR-001/002/003) -----
       case 'desktopReady':
@@ -898,27 +1080,28 @@ export class DesktopHost {
           msg.text as string,
           msg.images as Array<{ data: string; mediaType: string }> | undefined,
           msg.force as boolean | undefined,
+          pid,
         );
         break;
 
       case 'abortMessage':
-        await this.activeAgent?.abortMessage();
+        await this.agentForPane(pid)?.abortMessage();
         break;
 
       case 'clearChat':
-        await this.handleNewSession();
+        await this.handleNewSession(pid);
         break;
 
       case 'compact':
         try {
-          await this.activeAgent?.compact((msg.customInstructions as string) || undefined);
+          await this.agentForPane(pid)?.compact((msg.customInstructions as string) || undefined);
         } catch (error) {
-          this.pushSystemMessage(`压缩对话失败: ${error}`);
+          this.pushSystemMessage(`压缩对话失败: ${error}`, pid);
         }
         break;
 
       case 'rewindToMessage':
-        await this.handleRewindToMessage(msg.messageId as string);
+        await this.handleRewindToMessage(msg.messageId as string, pid);
         break;
 
       case 'confirmationResponse':
@@ -931,30 +1114,30 @@ export class DesktopHost {
 
       case 'setPermissionMode':
         try {
-          await this.activeAgent?.setPermissionMode(msg.mode as PermissionMode);
+          await this.agentForPane(pid)?.setPermissionMode(msg.mode as PermissionMode);
         } catch (error) {
-          this.pushSystemMessage(`设置权限模式失败: ${error}`);
+          this.pushSystemMessage(`设置权限模式失败: ${error}`, pid);
         }
         break;
 
       // -- message queue -------------------------------------------------
       case 'deleteQueuedMessage':
-        await this.activeAgent?.removeQueuedMessage(msg.index as number);
+        await this.agentForPane(pid)?.removeQueuedMessage(msg.index as number);
         break;
 
       case 'updateQueuedMessage': {
-        const ok = await this.activeAgent?.updateQueuedMessageById(msg.id as string, {
+        const ok = await this.agentForPane(pid)?.updateQueuedMessageById(msg.id as string, {
           content: msg.text as string,
           images: msg.images as Array<{ path: string; mimeType: string }> | undefined,
         });
         if (!ok) {
-          this.postMessage({ command: 'updateQueuedMessageMissing', id: msg.id });
+          this.postMessage({ command: 'updateQueuedMessageMissing', paneId: pid, id: msg.id });
         }
         break;
       }
 
       case 'deleteQueuedMessageById':
-        await this.activeAgent?.removeQueuedMessageById(msg.id as string);
+        await this.agentForPane(pid)?.removeQueuedMessageById(msg.id as string);
         break;
 
       // -- sessions -------------------------------------------------------
@@ -976,6 +1159,18 @@ export class DesktopHost {
         await this.handleListGitBranches(msg.workdir as string);
         break;
 
+      case 'desktopOpenPane':
+        await this.handleOpenPane(msg.workdir as string, msg.sessionId as string);
+        break;
+
+      case 'desktopClosePane':
+        this.handleClosePane(msg.paneId as string);
+        break;
+
+      case 'desktopFocusPane':
+        this.handleFocusPane(msg.paneId as string);
+        break;
+
       case 'restoreSession':
         await this.handleRestoreSession(msg.sessionId as string);
         break;
@@ -993,15 +1188,17 @@ export class DesktopHost {
         break;
 
       // -- status / updates (FR-009/010) -------------------------------------
-      case 'getStatus':
+      case 'getStatus': {
+        const paneAgent = this.agentForPane(pid);
         this.postMessage({
           command: 'statusResponse',
           version: app.getVersion(),
-          sessionId: this.sessionId ?? '',
-          workdir: this.activeAgent?.workingDirectory ?? this.workdir ?? '',
+          sessionId: paneAgent?.sessionId ?? '',
+          workdir: paneAgent?.workingDirectory ?? this.workdir ?? '',
           configurationData: this.configStore.getConfiguration(),
         });
         break;
+      }
 
       case 'checkForUpdates':
         await this.handleCheckForUpdates(true);
@@ -1022,24 +1219,25 @@ export class DesktopHost {
 
       // -- MCP --------------------------------------------------------------------
       case 'getMcpServers': {
-        const servers = this.activeAgent ? await this.activeAgent.getMcpServers() : [];
-        this.postMessage({ command: 'mcpServersResponse', servers });
+        const paneAgent = this.agentForPane(pid);
+        const servers = paneAgent ? await paneAgent.getMcpServers() : [];
+        this.postMessage({ command: 'mcpServersResponse', paneId: pid, servers });
         break;
       }
 
       case 'connectMcpServer':
         try {
-          await this.activeAgent?.connectMcpServer(msg.serverName as string);
+          await this.agentForPane(pid)?.connectMcpServer(msg.serverName as string);
         } catch (error) {
-          this.pushSystemMessage(`连接 MCP 服务器失败: ${error}`);
+          this.pushSystemMessage(`连接 MCP 服务器失败: ${error}`, pid);
         }
         break;
 
       case 'disconnectMcpServer':
         try {
-          await this.activeAgent?.disconnectMcpServer(msg.serverName as string);
+          await this.agentForPane(pid)?.disconnectMcpServer(msg.serverName as string);
         } catch (error) {
-          this.pushSystemMessage(`断开 MCP 服务器失败: ${error}`);
+          this.pushSystemMessage(`断开 MCP 服务器失败: ${error}`, pid);
         }
         break;
 
@@ -1086,26 +1284,30 @@ export class DesktopHost {
 
       // -- background tasks / workflows ----------------------------------------------
       case 'getBackgroundTaskOutput': {
-        const output = this.activeAgent ? await this.activeAgent.getBackgroundTaskOutput(msg.taskId as string) : null;
-        this.postMessage({ command: 'backgroundTaskOutput', taskId: msg.taskId, output });
+        const paneAgent = this.agentForPane(pid);
+        const output = paneAgent ? await paneAgent.getBackgroundTaskOutput(msg.taskId as string) : null;
+        this.postMessage({ command: 'backgroundTaskOutput', paneId: pid, taskId: msg.taskId, output });
         break;
       }
 
       case 'stopBackgroundTask': {
-        const success = this.activeAgent ? await this.activeAgent.stopBackgroundTask(msg.taskId as string) : false;
-        this.postMessage({ command: 'backgroundTaskStopped', taskId: msg.taskId, success });
+        const paneAgent = this.agentForPane(pid);
+        const success = paneAgent ? await paneAgent.stopBackgroundTask(msg.taskId as string) : false;
+        this.postMessage({ command: 'backgroundTaskStopped', paneId: pid, taskId: msg.taskId, success });
         break;
       }
 
       case 'getWorkflowRuns': {
-        const runs = this.activeAgent ? await this.activeAgent.getWorkflowRuns() : [];
-        this.postMessage({ command: 'workflowRunsResponse', runs });
+        const paneAgent = this.agentForPane(pid);
+        const runs = paneAgent ? await paneAgent.getWorkflowRuns() : [];
+        this.postMessage({ command: 'workflowRunsResponse', paneId: pid, runs });
         break;
       }
 
       case 'stopWorkflowRun': {
-        const success = this.activeAgent ? await this.activeAgent.stopWorkflowRun(msg.runId as string) : false;
-        this.postMessage({ command: 'workflowRunStopped', runId: msg.runId, success });
+        const paneAgent = this.agentForPane(pid);
+        const success = paneAgent ? await paneAgent.stopWorkflowRun(msg.runId as string) : false;
+        this.postMessage({ command: 'workflowRunStopped', paneId: pid, runId: msg.runId, success });
         break;
       }
 
@@ -1160,11 +1362,11 @@ export class DesktopHost {
         break;
 
       case 'updateInputContent':
-        this.inputContent = (msg.content as string) ?? '';
+        this.inputDrafts.set(pid, (msg.content as string) ?? '');
         break;
 
       case 'requestSlashCommands':
-        await this.handleSlashCommandsRequest(msg.filterText as string);
+        await this.handleSlashCommandsRequest(msg.filterText as string, pid);
         break;
 
       default:
@@ -1185,7 +1387,7 @@ export class DesktopHost {
         await this.ensureClient();
       } else if (!this.activeAgent) {
         const agent = await this.spawnAgent({ workdir: this.workdir });
-        this.setActive(agent);
+        this.bindAgentToPane(this.focusedPaneId, agent);
       }
       await this.pushInitialState();
       this.refreshSessionTree();
@@ -1228,14 +1430,27 @@ export class DesktopHost {
   }
 
   /**
-   * Open a session from the sidebar tree (FR-020/031). Three branches: the
-   * live agent is activated in place (nothing destroyed); a historical session
-   * spawns a fresh agent + restoreSession; clicking the current session is a
-   * no-op. Worktree sessions live at the worktree path (entry.cwd).
+   * Open a session from the sidebar tree (FR-020/031) in a pane (FR-032). Three
+   * branches: the live agent is activated in place (nothing destroyed); a
+   * historical session spawns a fresh agent + restoreSession; clicking the
+   * session already shown in that pane is a no-op. A session visible in another
+   * pane just refocuses there (one session, one pane). Worktree sessions live
+   * at the worktree path (entry.cwd).
    */
-  private async handleSelectSession(workdir: string, sessionId: string): Promise<void> {
+  private async handleSelectSession(workdir: string, sessionId: string, paneId?: string): Promise<void> {
     if (!workdir || !sessionId) return;
-    if (sessionId === this.activeAgent?.sessionId) return; // already current
+    const pid = paneId ?? this.focusedPaneId;
+    const pane = this.panes.find((p) => p.paneId === pid);
+    if (!pane) return;
+    if (pane.agent?.sessionId === sessionId) return; // already shown in this pane
+
+    // One session, one pane — refocus where it's already visible.
+    const otherPane = this.panes.find((p) => p.agent?.sessionId === sessionId);
+    if (otherPane) {
+      this.handleFocusPane(otherPane.paneId);
+      return;
+    }
+
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
     const targetDir = entry?.worktree ? entry.cwd : workdir;
     if (!fs.existsSync(targetDir)) {
@@ -1252,13 +1467,14 @@ export class DesktopHost {
         entry?.worktree
           ? `worktree 目录不存在：${targetDir}，已从会话列表移除`
           : `目录不存在：${workdir}，已从最近列表与会话列表移除`,
+        pid,
       );
       return;
     }
 
     const live = this.agents.get(sessionId);
     if (live) {
-      await this.activateAgent(live);
+      await this.activateAgentInPane(pid, live);
       return;
     }
 
@@ -1271,13 +1487,13 @@ export class DesktopHost {
       // empty state (which renders as the new-session directory picker).
       await agent.restoreSession(sessionId);
       this.rekeyAgent(agent, sessionId);
-      await this.activateAgent(agent);
+      await this.activateAgentInPane(pid, agent);
       this.ensureSessionRegistered(agent);
       this.touchSessionInIndex(agent);
       this.refreshSessionTree();
     } catch (error) {
       console.error('[DesktopHost] 恢复会话失败:', error);
-      this.pushSystemMessage(`恢复会话失败: ${error}`);
+      this.pushSystemMessage(`恢复会话失败: ${error}`, pid);
     }
   }
 
@@ -1323,9 +1539,12 @@ export class DesktopHost {
     text: string,
     images?: Array<{ data: string; mediaType: string }>,
     force?: boolean,
+    paneId?: string,
   ): Promise<void> {
-    if (!this.activeAgent) {
-      this.pushSystemMessage('请先选择工作目录');
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    if (!agent) {
+      this.pushSystemMessage('请先选择工作目录', pid);
       return;
     }
 
@@ -1335,23 +1554,24 @@ export class DesktopHost {
         : undefined;
 
       if (text.startsWith('!')) {
-        await this.activeAgent.bang(text.slice(1));
+        await agent.bang(text.slice(1));
       } else {
-        await this.activeAgent.sendMessage(text, processedImages, force ?? false);
+        await agent.sendMessage(text, processedImages, force ?? false);
       }
     } catch (error) {
       console.error('[DesktopHost] 发送消息失败:', error);
-      this.pushSystemMessage(`发送消息失败: ${error}`);
+      this.pushSystemMessage(`发送消息失败: ${error}`, pid);
     }
   }
 
   /**
-   * New session (FR-031): spawn a fresh agent and make it active WITHOUT
-   * aborting, clearing or destroying the previous one — background sessions
-   * keep generating. No-op when the active session is already empty.
+   * New session in a pane (FR-031/032): spawn a fresh agent and bind it to the
+   * pane WITHOUT aborting, clearing or destroying the previous one — background
+   * sessions keep generating. No-op when the pane's session is already empty.
    */
-  private async handleNewSession(): Promise<void> {
-    const active = this.activeAgent;
+  private async handleNewSession(paneId?: string): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const active = this.agentForPane(pid);
     // FR-005: a new session lands on the most recently used real directory.
     // Recents never contain worktree temp paths (FR-023), so after a worktree
     // session this falls back to its repo root instead of the worktree path.
@@ -1362,18 +1582,21 @@ export class DesktopHost {
       const agent = await this.spawnAgent({ workdir: dir });
       // Spawning is slow (agent init) — the user may have selected another
       // session meanwhile; don't clobber their view.
-      if (this.activeAgent !== active) return;
-      await this.activateAgent(agent);
-      this.postMessage({ command: 'focusInput' });
+      if (this.agentForPane(pid) !== active) return;
+      await this.activateAgentInPane(pid, agent);
+      this.postMessage({ command: 'focusInput', paneId: pid });
     } catch (error) {
       console.error('[DesktopHost] 新建会话失败:', error);
-      this.pushSystemMessage(`新建会话失败: ${error}`);
+      this.pushSystemMessage(`新建会话失败: ${error}`, pid);
     }
   }
 
   private async clearQueue(): Promise<void> {
-    if (this.activeAgent && this.activeAgent.queuedMessages.length > 0) {
-      await this.activeAgent.abortMessage();
+    for (const pane of this.panes) {
+      const agent = pane.agent;
+      if (agent && agent.queuedMessages.length > 0) {
+        await agent.abortMessage();
+      }
     }
   }
 
@@ -1384,8 +1607,10 @@ export class DesktopHost {
     if (workdir) await this.handleSelectSession(workdir, sessionId);
   }
 
-  private async handleRewindToMessage(messageId: string): Promise<void> {
-    if (!this.activeAgent || !this.mainWindow) return;
+  private async handleRewindToMessage(messageId: string, paneId?: string): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    if (!agent || !this.mainWindow) return;
     const { response } = await dialog.showMessageBox(this.mainWindow, {
       type: 'warning',
       message: '确定要回滚到此消息吗？这将删除之后的所有消息并撤销相关的文件更改。',
@@ -1396,16 +1621,16 @@ export class DesktopHost {
     if (response !== 1) return;
 
     try {
-      const { inputContent } = await this.activeAgent.rewindToMessage(messageId);
-      this.inputContent = inputContent;
-      this.forceNextUpdateImmediate = true;
-      this.throttledUpdateChatMessages();
-      await this.pushInitialState();
-      this.postMessage({ command: 'focusInput' });
-      this.postMessage({ command: 'scrollToBottom' });
+      const { inputContent } = await agent.rewindToMessage(messageId);
+      this.inputDrafts.set(pid, inputContent);
+      this.paneThrottle(pid).forceNextUpdateImmediate = true;
+      this.throttledUpdateChatMessages(pid);
+      await this.pushPaneSessionState(pid);
+      this.postMessage({ command: 'focusInput', paneId: pid });
+      this.postMessage({ command: 'scrollToBottom', paneId: pid });
     } catch (error) {
       console.error('[DesktopHost] 回滚会话失败:', error);
-      this.pushSystemMessage(`回滚失败: ${error}`);
+      this.pushSystemMessage(`回滚失败: ${error}`, pid);
     }
   }
 
@@ -1445,8 +1670,9 @@ export class DesktopHost {
       }
       if (wasStreaming) {
         agent.isStreaming = false;
-        if (agent === this.activeAgent) {
-          this.postMessage({ command: 'endStreaming' });
+        const paneId = this.paneIdForAgent(agent);
+        if (paneId) {
+          this.postMessage({ command: 'endStreaming', paneId });
         }
       }
     }
@@ -1717,9 +1943,11 @@ export class DesktopHost {
     }
   }
 
-  private async handleSlashCommandsRequest(filterText: string): Promise<void> {
+  private async handleSlashCommandsRequest(filterText: string, paneId?: string): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
     try {
-      const sdkCommands = this.activeAgent ? await this.activeAgent.getSlashCommands() : [];
+      const agent = this.agentForPane(pid);
+      const sdkCommands = agent ? await agent.getSlashCommands() : [];
 
       const localCommands = [
         { id: 'config', name: 'config', description: '打开配置设置' },
@@ -1745,10 +1973,10 @@ export class DesktopHost {
         name: command.name,
         description: command.description,
       }));
-      this.postMessage({ command: 'slashCommandsResponse', commands });
+      this.postMessage({ command: 'slashCommandsResponse', paneId: pid, commands });
     } catch (error) {
       console.error('[DesktopHost] 获取指令失败:', error);
-      this.postMessage({ command: 'slashCommandsError', error: `获取指令失败: ${error}` });
+      this.postMessage({ command: 'slashCommandsError', paneId: pid, error: `获取指令失败: ${error}` });
     }
   }
 
@@ -1756,79 +1984,83 @@ export class DesktopHost {
   // Throttled message updates (ported from vsce ChatSession)
   // ------------------------------------------------------------------
 
-  private immediateUpdateChatMessages(): void {
-    if (this.updateTimer) {
-      clearTimeout(this.updateTimer);
-      this.updateTimer = undefined;
+  private immediateUpdateChatMessages(paneId: string): void {
+    const t = this.paneThrottle(paneId);
+    if (t.updateTimer) {
+      clearTimeout(t.updateTimer);
+      t.updateTimer = undefined;
     }
-    this.pendingUpdate = false;
-    this.postMessage({ command: 'updateMessages', messages: this.messages });
+    t.pendingUpdate = false;
+    this.postMessage({ command: 'updateMessages', paneId, messages: this.messagesForPane(paneId) });
   }
 
-  private throttledUpdateChatMessages(): void {
-    if (this.forceNextUpdateImmediate) {
-      this.forceNextUpdateImmediate = false;
-      this.immediateUpdateChatMessages();
+  private throttledUpdateChatMessages(paneId: string): void {
+    const t = this.paneThrottle(paneId);
+    if (t.forceNextUpdateImmediate) {
+      t.forceNextUpdateImmediate = false;
+      this.immediateUpdateChatMessages(paneId);
       return;
     }
 
     // leading edge
-    if (!this.pendingUpdate && !this.updateTimer) {
-      this.postMessage({ command: 'updateMessages', messages: this.messages });
-      this.pendingUpdate = true;
+    if (!t.pendingUpdate && !t.updateTimer) {
+      this.postMessage({ command: 'updateMessages', paneId, messages: this.messagesForPane(paneId) });
+      t.pendingUpdate = true;
       // trailing edge after 300ms cooldown
-      this.updateTimer = setTimeout(() => {
-        this.postMessage({ command: 'updateMessages', messages: this.messages });
-        this.pendingUpdate = false;
-        this.updateTimer = undefined;
+      t.updateTimer = setTimeout(() => {
+        this.postMessage({ command: 'updateMessages', paneId, messages: this.messagesForPane(paneId) });
+        t.pendingUpdate = false;
+        t.updateTimer = undefined;
       }, 300);
     }
   }
 
-  private throttledStreamingContentUpdate(messageId: string, accumulated: string, stage: 'streaming' | 'end'): void {
+  private throttledStreamingContentUpdate(paneId: string, messageId: string, accumulated: string, stage: 'streaming' | 'end'): void {
+    const t = this.paneThrottle(paneId);
     if (stage === 'end') {
-      if (this.streamingContentTimer) {
-        clearTimeout(this.streamingContentTimer);
-        this.streamingContentTimer = undefined;
+      if (t.streamingContentTimer) {
+        clearTimeout(t.streamingContentTimer);
+        t.streamingContentTimer = undefined;
       }
-      this.pendingStreamingContent = undefined;
-      this.postMessage({ command: 'updateStreamingContent', messageId, accumulated, stage });
+      t.pendingStreamingContent = undefined;
+      this.postMessage({ command: 'updateStreamingContent', paneId, messageId, accumulated, stage });
       return;
     }
 
-    this.pendingStreamingContent = { messageId, accumulated, stage };
-    if (!this.streamingContentTimer) {
-      this.postMessage({ command: 'updateStreamingContent', ...this.pendingStreamingContent });
-      this.streamingContentTimer = setTimeout(() => {
-        if (this.pendingStreamingContent) {
-          this.postMessage({ command: 'updateStreamingContent', ...this.pendingStreamingContent });
-          this.pendingStreamingContent = undefined;
+    t.pendingStreamingContent = { messageId, accumulated, stage };
+    if (!t.streamingContentTimer) {
+      this.postMessage({ command: 'updateStreamingContent', paneId, ...t.pendingStreamingContent });
+      t.streamingContentTimer = setTimeout(() => {
+        if (t.pendingStreamingContent) {
+          this.postMessage({ command: 'updateStreamingContent', paneId, ...t.pendingStreamingContent });
+          t.pendingStreamingContent = undefined;
         }
-        this.streamingContentTimer = undefined;
+        t.streamingContentTimer = undefined;
       }, 16);
     }
   }
 
-  private throttledStreamingReasoningUpdate(messageId: string, accumulated: string, stage: 'streaming' | 'end'): void {
+  private throttledStreamingReasoningUpdate(paneId: string, messageId: string, accumulated: string, stage: 'streaming' | 'end'): void {
+    const t = this.paneThrottle(paneId);
     if (stage === 'end') {
-      if (this.streamingReasoningTimer) {
-        clearTimeout(this.streamingReasoningTimer);
-        this.streamingReasoningTimer = undefined;
+      if (t.streamingReasoningTimer) {
+        clearTimeout(t.streamingReasoningTimer);
+        t.streamingReasoningTimer = undefined;
       }
-      this.pendingStreamingReasoning = undefined;
-      this.postMessage({ command: 'updateStreamingReasoning', messageId, accumulated, stage });
+      t.pendingStreamingReasoning = undefined;
+      this.postMessage({ command: 'updateStreamingReasoning', paneId, messageId, accumulated, stage });
       return;
     }
 
-    this.pendingStreamingReasoning = { messageId, accumulated, stage };
-    if (!this.streamingReasoningTimer) {
-      this.postMessage({ command: 'updateStreamingReasoning', ...this.pendingStreamingReasoning });
-      this.streamingReasoningTimer = setTimeout(() => {
-        if (this.pendingStreamingReasoning) {
-          this.postMessage({ command: 'updateStreamingReasoning', ...this.pendingStreamingReasoning });
-          this.pendingStreamingReasoning = undefined;
+    t.pendingStreamingReasoning = { messageId, accumulated, stage };
+    if (!t.streamingReasoningTimer) {
+      this.postMessage({ command: 'updateStreamingReasoning', paneId, ...t.pendingStreamingReasoning });
+      t.streamingReasoningTimer = setTimeout(() => {
+        if (t.pendingStreamingReasoning) {
+          this.postMessage({ command: 'updateStreamingReasoning', paneId, ...t.pendingStreamingReasoning });
+          t.pendingStreamingReasoning = undefined;
         }
-        this.streamingReasoningTimer = undefined;
+        t.streamingReasoningTimer = undefined;
       }, 16);
     }
   }

@@ -1520,3 +1520,149 @@ describe('multi-session parallel (FR-031)', () => {
     expect(agent2.destroy).toHaveBeenCalled();
   });
 });
+
+describe('split-view panes (FR-032~036)', () => {
+  const seedActiveSession = (sessionId: string) => {
+    const agent = lastAgent();
+    agent.messages = [{ id: `m-${sessionId}` }];
+    fireSessionId(agent, sessionId);
+    return agent;
+  };
+
+  const panePushes = (sent: ReturnType<typeof createHost>['sent']) =>
+    sent('desktopPanes').map((m) => m as { panes: Array<{ paneId: string; sessionId?: string }>; focusedPaneId: string });
+
+  it('webviewReady pushes an initial single-pane layout', async () => {
+    const { sent } = await readyHost();
+    const layouts = panePushes(sent);
+    expect(layouts.length).toBeGreaterThan(0);
+    expect(layouts.at(-1)?.panes).toHaveLength(1);
+    expect(layouts.at(-1)?.focusedPaneId).toBe(layouts.at(-1)?.panes[0].paneId);
+  });
+
+  it('desktopOpenPane appends a pane, restores the session into it and focuses it', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-old' });
+
+    // A new agent was spawned + restored for the dropped session.
+    expect(h.agentInstances).toHaveLength(before + 1);
+    const dropped = lastAgent();
+    expect(dropped.restoreSession).toHaveBeenCalledWith('sess-old');
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(2);
+    expect(layout.panes[1].sessionId).toBe('sess-old');
+    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    // The restored pane received its initial state, tagged with its paneId.
+    const init = sent('setInitialState').at(-1);
+    expect(init?.paneId).toBe(layout.panes[1].paneId);
+  });
+
+  it('desktopOpenPane for an already-visible session focuses its pane instead of duplicating', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+
+    expect(h.agentInstances).toHaveLength(before);
+    expect(panePushes(sent).at(-1)?.panes).toHaveLength(2);
+  });
+
+  it('desktopFocusPane switches focus and pushes the layout', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const panes = panePushes(sent).at(-1)!.panes;
+
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: panes[0].paneId });
+
+    expect(panePushes(sent).at(-1)?.focusedPaneId).toBe(panes[0].paneId);
+  });
+
+  it('desktopFocusPane ignores unknown pane ids', async () => {
+    const { host, sent } = await readyHost();
+    const layouts = panePushes(sent).length;
+
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: 'pane-nope' });
+
+    expect(panePushes(sent)).toHaveLength(layouts);
+  });
+
+  it('desktopClosePane removes the pane without destroying its agent, and moves focus to a neighbor', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const agent2 = lastAgent();
+    const focusedPane = panePushes(sent).at(-1)!.focusedPaneId;
+
+    await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: focusedPane });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].sessionId).toBe('sess-1');
+    // Focus moved to the remaining pane; both agents stay alive.
+    expect(layout.focusedPaneId).toBe(layout.panes[0].paneId);
+    expect(agent1.destroy).not.toHaveBeenCalled();
+    expect(agent2.destroy).not.toHaveBeenCalled();
+  });
+
+  it('desktopClosePane on the last remaining pane is a no-op', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const onlyPane = panePushes(sent).at(-1)!.panes[0].paneId;
+    const layouts = panePushes(sent).length;
+
+    await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: onlyPane });
+
+    expect(panePushes(sent)).toHaveLength(layouts);
+    expect(panePushes(sent).at(-1)?.panes).toHaveLength(1);
+  });
+
+  it('a pane-bound agent is exempt from LRU eviction', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    // Pin sess-2 in a second pane (pane-1 keeps sess-1).
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const paneAgent = lastAgent();
+    const firstPane = panePushes(sent).at(-1)!.panes[0];
+    const spawned = h.agentInstances.length;
+
+    // Focus pane-1 so the overflow loop only replaces ITS agent, leaving the
+    // sess-2 pane bound.
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: firstPane.paneId });
+    for (let i = 3; i <= 10; i++) {
+      await host.handleWebviewMessage({ command: 'clearChat' });
+      seedActiveSession(`sess-${i}`);
+    }
+    expect(h.agentInstances.length).toBeGreaterThan(spawned);
+
+    // sess-2 is bound to a pane — never the victim even though it is old.
+    expect(paneAgent.destroy).not.toHaveBeenCalled();
+  });
+
+  it('host pushes carry the paneId of the pane they belong to', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const panes = panePushes(sent).at(-1)!.panes;
+
+    // Send a message scoped to the first pane while the second is focused.
+    await host.handleWebviewMessage({ command: 'sendMessage', text: 'hello', paneId: panes[0].paneId });
+
+    // It reached pane-1's agent, not the focused pane's.
+    const [firstAgent, secondAgent] = h.agentInstances as Array<ReturnType<typeof lastAgent>>;
+    expect(firstAgent.sendMessage).toHaveBeenCalledWith('hello', undefined, false);
+    expect(secondAgent.sendMessage).not.toHaveBeenCalled();
+
+    // Mirror the real agent: a user message fires onUserMessageAdded, and the
+    // resulting appendMessage push is tagged with the owning pane's id.
+    firstAgent.callbacks.onUserMessageAdded({ id: 'u-1', role: 'user', blocks: [] });
+    const append = sent('appendMessage').at(-1);
+    expect(append?.paneId).toBe(panes[0].paneId);
+  });
+});

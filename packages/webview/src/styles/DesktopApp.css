@@ -472,3 +472,96 @@
 .preview-pane-error .preview-pane-button:hover {
     background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
 }
+
+/* ---- Split-view panes (FR-032~036) ---- */
+
+/* Row of chat panes; each pane flex-shares the width, floored at its inline
+   min-width (360px) — the row scrolls horizontally rather than squeezing. */
+.desktop-pane-row {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+/* Drop target highlight while a sidebar session drags over the row. */
+.desktop-pane-row--drop {
+    outline: 2px dashed var(--vscode-focusBorder, #007fd4);
+    outline-offset: -2px;
+}
+
+.desktop-pane {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+
+/* The pane fills the chat-container's parent; chat-container is flex:1 already,
+   but inside a pane it must not impose the global 100vh desktop-layout rule. */
+.desktop-pane .chat-container {
+    height: 100%;
+    min-width: 0;
+}
+
+/* Focused pane indicator: a 2px top accent bar, matching editor tab styling. */
+.desktop-pane--focused::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--vscode-focusBorder, #007fd4);
+    z-index: 5;
+    pointer-events: none;
+}
+
+.desktop-pane-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    opacity: 0.6;
+    cursor: pointer;
+}
+
+.desktop-pane-close:hover {
+    opacity: 1;
+    background: var(--vscode-list-hoverBackground);
+}
+
+/* Transient hint (e.g. min-width refusal), centered at the top of the row. */
+.desktop-pane-hint {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    padding: 6px 14px;
+    border-radius: 4px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+    font-size: 12px;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+/* Sidebar session shown in a non-focused pane: weaker highlight (FR-035). */
+.desktop-session-item--visible {
+    background: var(--vscode-list-inactiveSelectionBackground, rgba(128, 128, 128, 0.15));
+}
