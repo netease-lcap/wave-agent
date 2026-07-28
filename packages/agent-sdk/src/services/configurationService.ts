@@ -320,6 +320,23 @@ export class ConfigurationService {
       }
     }
 
+    // Validate worktree if present
+    if (config.worktree !== undefined) {
+      if (typeof config.worktree !== "object" || config.worktree === null) {
+        result.isValid = false;
+        result.errors.push("worktree configuration must be an object");
+      } else if (
+        config.worktree.baseRef !== undefined &&
+        config.worktree.baseRef !== "fresh" &&
+        config.worktree.baseRef !== "head"
+      ) {
+        result.isValid = false;
+        result.errors.push(
+          `Invalid worktree.baseRef: "${config.worktree.baseRef}". Must be "fresh" or "head".`,
+        );
+      }
+    }
+
     return result;
   }
 
@@ -638,6 +655,19 @@ export class ConfigurationService {
 
     // 3. Default (true)
     return true;
+  }
+
+  /**
+   * Resolves worktree base ref with fallbacks
+   * Resolution priority: settings.json > default ("fresh")
+   * @returns Resolved worktree base ref
+   */
+  resolveWorktreeBaseRef(): "fresh" | "head" {
+    const baseRef = this.currentConfiguration?.worktree?.baseRef;
+    if (baseRef === "head") {
+      return "head";
+    }
+    return "fresh";
   }
 
   /**
@@ -1172,6 +1202,7 @@ export function loadWaveConfigFromFile(
           : undefined,
       models: config.models || undefined,
       marketplaces: config.marketplaces || undefined,
+      worktree: config.worktree || undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -1320,6 +1351,11 @@ export function loadMergedWaveConfig(
       Object.assign(mergedConfig.marketplaces, config.marketplaces);
     }
 
+    // Merge worktree (last one wins)
+    if (config.worktree !== undefined) {
+      mergedConfig.worktree = config.worktree;
+    }
+
     // Merge models
     if (config.models) {
       if (!mergedConfig.models) mergedConfig.models = {};
@@ -1363,5 +1399,6 @@ export function loadMergedWaveConfig(
       mergedConfig.models && Object.keys(mergedConfig.models).length > 0
         ? mergedConfig.models
         : undefined,
+    worktree: mergedConfig.worktree,
   };
 }

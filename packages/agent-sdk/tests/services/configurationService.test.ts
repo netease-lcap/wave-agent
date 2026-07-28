@@ -753,6 +753,50 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("resolveWorktreeBaseRef", () => {
+    it("should return 'fresh' by default", () => {
+      expect(configService.resolveWorktreeBaseRef()).toBe("fresh");
+    });
+
+    it("should return 'head' when configured", async () => {
+      const config = { worktree: { baseRef: "head" as const } };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      expect(configService.resolveWorktreeBaseRef()).toBe("head");
+    });
+
+    it("should return 'fresh' when baseRef is 'fresh'", async () => {
+      const config = { worktree: { baseRef: "fresh" as const } };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      expect(configService.resolveWorktreeBaseRef()).toBe("fresh");
+    });
+
+    it("should return 'fresh' for invalid baseRef value", async () => {
+      const config = { worktree: { baseRef: "invalid" } };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      // loadMergedConfiguration validates; invalid value fails validation
+      const result = await configService.loadMergedConfiguration(tempDir);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject invalid baseRef in validation", () => {
+      const config = {
+        worktree: { baseRef: "invalid" },
+      } as unknown as WaveConfiguration;
+      const result = configService.validateConfiguration(config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors[0]).toContain("Invalid worktree.baseRef");
+    });
+  });
+
   describe("validateEnvironmentConfig", () => {
     it("should validate correct env", () => {
       const result = validateEnvironmentConfig({ KEY: "VAL" });

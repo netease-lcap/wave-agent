@@ -14,9 +14,9 @@
 | 指标 | 数量 |
 |------|------|
 | 规格文件 | 60 |
-| 用户故事 | 281 |
-| 功能需求 | 1,163 |
-| 测试用例 | 4,348 |
+| 用户故事 | 282 |
+| 功能需求 | 1,165 |
+| 测试用例 | 4,352 |
 
 ## 规格列表
 
@@ -79,7 +79,7 @@
 | 任务后台执行 | `run_in_background`、`TaskOutput`/`TaskStop` 工具，`/tasks` 命令替代 `/bashes` | 7 | 42 | [规格](multi-agent/task-background-execution.md) |
 | 任务管理工具 | TaskCreate/TaskGet/TaskUpdate/TaskList，`~/.wave/tasks/` 存储和任务列表 UI | 6 | 32 | [规格](multi-agent/task-management-tools.md) |
 | Workflow 编排 | 确定性多子代理编排，支持 pipeline、parallel 和 phase 控制流 | 5 | 29 | [规格](multi-agent/workflow.md) |
-| CLI Worktree | `-w/--worktree` 隔离的 git worktree，位于 `.wave/worktrees/`，支持安全退出 | 8 | 44 | [规格](multi-agent/worktree.md) |
+| CLI Worktree | `-w/--worktree` 隔离的 git worktree，位于 `.wave/worktrees/`，支持安全退出 | 9 | 46 | [规格](multi-agent/worktree.md) |
 
 ### 扩展与生态
 

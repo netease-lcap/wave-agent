@@ -54,6 +54,11 @@ export interface WaveConfiguration {
   monitoring?: {
     telemetry?: Partial<TelemetryConfig>;
   };
+  /** Worktree configuration */
+  worktree?: {
+    /** Base ref for new worktrees: "fresh" (origin/<default-branch>, default) | "head" (local HEAD) */
+    baseRef?: "fresh" | "head";
+  };
 }
 
 /**

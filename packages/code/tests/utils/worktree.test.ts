@@ -46,6 +46,39 @@ describe("worktree utils", () => {
       );
     });
 
+    it("should use HEAD as base when baseRef is 'head'", () => {
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      const session = createWorktree("my-feat", "/repo/root", {
+        baseRef: "head",
+      });
+
+      expect(session.isNew).toBe(true);
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["HEAD"]),
+        expect.any(Object),
+      );
+      expect(getDefaultRemoteBranch).not.toHaveBeenCalled();
+    });
+
+    it("should use origin default branch when baseRef is 'fresh'", () => {
+      vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      createWorktree("my-feat", "/repo/root", { baseRef: "fresh" });
+
+      expect(getDefaultRemoteBranch).toHaveBeenCalledWith("/repo/root");
+      expect(execFileSync).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining(["origin/main"]),
+        expect.any(Object),
+      );
+    });
+
     it("should reuse an existing worktree", () => {
       vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
       vi.mocked(fs.existsSync).mockReturnValue(true);

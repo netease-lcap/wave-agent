@@ -17,13 +17,20 @@ export interface WorktreeSession {
  * Create a new git worktree
  * @param name Worktree name
  * @param cwd Current working directory
+ * @param options Optional creation options
+ * @param options.baseRef "fresh" (default, origin/<default-branch>) | "head" (local HEAD)
  * @returns Worktree session details
  */
-export function createWorktree(name: string, cwd: string): WorktreeSession {
+export function createWorktree(
+  name: string,
+  cwd: string,
+  options?: { baseRef?: "fresh" | "head" },
+): WorktreeSession {
   const repoRoot = getGitMainRepoRoot(cwd);
   const worktreePath = path.join(repoRoot, ".wave", "worktrees", name);
   const branchName = `worktree-${name}`;
-  const baseBranch = getDefaultRemoteBranch(cwd);
+  const useHead = options?.baseRef === "head";
+  const baseBranch = useHead ? "HEAD" : getDefaultRemoteBranch(cwd);
 
   // Ensure parent directory exists
   const parentDir = path.dirname(worktreePath);
@@ -90,8 +97,9 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
       }
     }
     if (
-      stderr.includes("not a valid object name") ||
-      stderr.includes("unknown revision")
+      !useHead &&
+      (stderr.includes("not a valid object name") ||
+        stderr.includes("unknown revision"))
     ) {
       // Base branch not fetched yet — try fetching then retrying
       const branchNameOnly = baseBranch.split("/").pop()!;

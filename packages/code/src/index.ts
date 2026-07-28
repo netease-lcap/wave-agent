@@ -1,7 +1,12 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import { Scope, generateRandomName, type PermissionMode } from "wave-agent-sdk";
+import {
+  Scope,
+  generateRandomName,
+  loadMergedWaveConfig,
+  type PermissionMode,
+} from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
 import { readFileSync } from "fs";
@@ -320,7 +325,8 @@ export async function main() {
       if (!name || name === "") {
         name = generateRandomName();
       }
-      worktreeSession = createWorktree(name, originalCwd);
+      const baseRef = loadMergedWaveConfig(originalCwd)?.worktree?.baseRef;
+      worktreeSession = createWorktree(name, originalCwd, { baseRef });
 
       // Note: the full worktree session (originalCwd etc.) is injected into the
       // agent's DI container after the agent is created in useChat.tsx. This keeps
