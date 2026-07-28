@@ -124,6 +124,8 @@ export class StdioAgent {
     public queuedMessages: QueuedMessage[] = [];
     public tasks: Task[] = [];
     public backgroundTasks: BackgroundTaskSummary[] = [];
+    public isStreaming = false;
+    public isCommandRunning = false;
 
     private client: StdioClient;
     private router: NotificationRouter;
@@ -458,11 +460,13 @@ export class StdioAgent {
                 if (p.latestTotalTokens !== undefined) {
                     this.latestTotalTokens = p.latestTotalTokens;
                 }
+                this.isStreaming = p.loading;
                 this.callbacks.onLoadingChange?.(p.loading);
                 break;
             }
             case 'commandRunningChange': {
                 const p = params as { running: boolean };
+                this.isCommandRunning = p.running;
                 this.callbacks.onCommandRunningChange?.(p.running);
                 break;
             }
