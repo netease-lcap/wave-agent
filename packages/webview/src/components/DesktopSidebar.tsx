@@ -9,9 +9,9 @@ export interface DesktopSidebarProps {
   disabled: boolean;
   /** Session tree groups, one per recent directory (FR-020). */
   sessionTree: DesktopSessionGroup[];
-  /** Current workdir — its group defaults to expanded. */
+  /** Current workdir — its group defaults to expanded when no session is active. */
   currentWorkdir?: string;
-  /** Active session id — gets the running dot while streaming. */
+  /** Active session id — its group defaults to expanded; gets the running dot while streaming. */
   currentSessionId?: string;
   onSelectSession: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index (also cleans up worktree if applicable). */
@@ -38,21 +38,30 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onDeleteSession,
 }) => {
   // Explicit expand/collapse overrides; groups without an entry follow the
-  // default rule (expanded iff it is the current workdir's group).
+  // default rule (expanded iff it holds the current session — falling back to
+  // the current workdir's group when no session is active. A worktree session
+  // groups under its repo root, which differs from the current workdir).
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
 
-  const isExpanded = (workdir: string): boolean =>
-    overrides[workdir] ?? workdir === currentWorkdir;
+  const isDefaultExpanded = (group: DesktopSessionGroup): boolean =>
+    group.workdir === currentWorkdir ||
+    group.sessions.some((s) => s.sessionId === currentSessionId);
 
-  const toggleGroup = (workdir: string) => {
+  const isExpanded = (group: DesktopSessionGroup): boolean =>
+    overrides[group.workdir] ?? isDefaultExpanded(group);
+
+  const toggleGroup = (group: DesktopSessionGroup) => {
     setOverrides((prev) => ({
       ...prev,
-      [workdir]: !(prev[workdir] ?? workdir === currentWorkdir),
+      [group.workdir]: !(prev[group.workdir] ?? isDefaultExpanded(group)),
     }));
   };
 
   const renderSession = (group: DesktopSessionGroup, session: DesktopSessionEntry) => {
-    const running = session.sessionId === currentSessionId && isStreaming;
+    // FR-031 multi-session parallel: the host derives `session.running` for every
+    // live session; the active one also falls back to the local streaming flag so
+    // its dot appears without waiting for the next tree refresh.
+    const running = session.running || (session.sessionId === currentSessionId && isStreaming);
     return (
       <li
         key={session.sessionId}
@@ -96,7 +105,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       <button
         className="desktop-sidebar-new-chat"
         onClick={onNewSession}
-        disabled={isStreaming || disabled}
+        // 新对话在会话运行（streaming）期间也可用 — 多会话并行，旧会话在后台继续生成（FR-031）。
+        disabled={disabled}
         title="新对话"
         data-testid="desktop-new-session"
       >
@@ -105,7 +115,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       </button>
       <div className="desktop-session-tree" data-testid="desktop-session-tree">
         {sessionTree.map((group) => {
-          const expanded = isExpanded(group.workdir);
+          const expanded = isExpanded(group);
           return (
             <div
               key={group.workdir}
@@ -114,7 +124,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             >
               <div
                 className="desktop-session-group-header"
-                onClick={() => toggleGroup(group.workdir)}
+                onClick={() => toggleGroup(group)}
                 title={group.workdir}
               >
                 <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`}></span>

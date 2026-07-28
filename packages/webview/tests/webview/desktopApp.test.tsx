@@ -192,6 +192,19 @@ describe('DesktopApp', () => {
             expect(screen.getByTestId('desktop-session-group-/work/b')).toHaveTextContent('b');
         });
 
+        it('expands the group containing the current session even when its workdir differs (worktree session)', () => {
+            renderDesktopApp();
+            // Worktree session active: current workdir is the worktree path,
+            // but the session groups under its repo root (FR-020/FR-023).
+            sendCommand('desktopWorkdirState', { workdir: '/work/a/.wave/worktrees/gentle-pike-147', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', {
+                groups: [{ workdir: '/work/a', sessions: [session('s1', 'worktree chat')] }],
+            });
+            sendCommand('updateCurrentSession', { session: { id: 's1', sessionType: 'main', workdir: '/work/a/.wave/worktrees/gentle-pike-147', createdAt: '2026-07-20T00:00:00.000Z', lastActiveAt: '2026-07-21T00:00:00.000Z', latestTotalTokens: 0, firstMessage: 'worktree chat' } });
+
+            expect(screen.getByTestId('desktop-session-item-s1')).toBeInTheDocument();
+        });
+
         it('toggles a group on header click', () => {
             renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a', '/work/b'] });

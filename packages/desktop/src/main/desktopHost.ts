@@ -47,6 +47,7 @@ import { HOST_CHANNEL } from './channels';
 
 interface PendingConfirmation {
   resolve: (decision: PermissionDecision) => void;
+  agent: StdioAgent;
   toolName: string;
   confirmationType: string;
   toolInput: unknown;
@@ -55,31 +56,40 @@ interface PendingConfirmation {
   hidePersistentOption?: boolean;
 }
 
+interface WorktreeInfo {
+  path: string;
+  branch: string;
+  baseBranch: string;
+  repoRoot: string;
+}
+
+/** Cap on simultaneous live agents (FR-031); least-recently-used idle agent evicted beyond this. */
+const MAX_LIVE_AGENTS = 8;
+
 export class DesktopHost {
   private mainWindow: BrowserWindow | null = null;
 
   // stdio infrastructure
   private client: StdioClient | null = null;
-  private worktreeInfo: { path: string; branch: string; baseBranch: string; repoRoot: string } | null = null;
   private router: NotificationRouter | null = null;
   private initPromise: Promise<void> | null = null;
   private cliVersion: string | null = null;
 
-  // agent + workdir
-  private agent: StdioAgent | null = null;
+  // agent pool (multi-session parallel, FR-031): sessionId → live StdioAgent.
+  // webview renders only the activeAgent; background agents keep streaming.
+  private agents = new Map<string, StdioAgent>();
+  private activeAgent: StdioAgent | null = null;
+  private lastActivatedAt = new Map<string, number>();
+  private inputDrafts = new Map<string, string>();
+  private agentWorktreeInfo = new Map<StdioAgent, WorktreeInfo>();
   private workdir: string | undefined;
 
-  // session state (mirrors ChatSession fields)
-  private messages: Message[] = [];
-  private tasks: Task[] = [];
-  private backgroundTasks: BackgroundTaskSummary[] = [];
+  // active-view state. messages/tasks/backgroundTasks/queuedMessages/isStreaming/
+  // isCommandRunning/sessionId are derived from activeAgent (its StdioAgent cache);
+  // only fields the agent does not cache live here.
   private workflowRuns: SerializableWorkflowRun[] = [];
-  private sessionId: string | undefined;
-  private isStreaming = false;
-  private isCommandRunning = false;
   private inputContent = '';
-  private messageQueue: QueuedMessage[] = [];
-  private sessionTree: Array<{ workdir: string; sessions: Array<{ sessionId: string; title: string; lastActiveAt: number; hasWorktree: boolean }> }> = [];
+  private sessionTree: Array<{ workdir: string; sessions: Array<{ sessionId: string; title: string; lastActiveAt: number; hasWorktree: boolean; running: boolean }> }> = [];
   private pendingConfirmations = new Map<string, PendingConfirmation>();
 
   // throttling state (same cadence as vsce ChatSession)
@@ -92,6 +102,17 @@ export class DesktopHost {
   private pendingStreamingReasoning: { messageId: string; accumulated: string; stage: 'streaming' | 'end' } | undefined;
 
   private updateCheckTriggered = false;
+  private lastIsAuthenticated = false;
+
+  // Derived views over the active agent — its StdioAgent cache is the single
+  // source of truth, so these are read-only getters (no duplicated host state).
+  private get messages(): Message[] { return this.activeAgent?.messages ?? []; }
+  private get tasks(): Task[] { return this.activeAgent?.tasks ?? []; }
+  private get backgroundTasks(): BackgroundTaskSummary[] { return this.activeAgent?.backgroundTasks ?? []; }
+  private get messageQueue(): QueuedMessage[] { return this.activeAgent?.queuedMessages ?? []; }
+  private get sessionId(): string | undefined { return this.activeAgent?.sessionId; }
+  private get isStreaming(): boolean { return this.activeAgent?.isStreaming ?? false; }
+  private get isCommandRunning(): boolean { return this.activeAgent?.isCommandRunning ?? false; }
 
   /**
    * Posted to the renderer whenever the OS appearance flips so it can swap the
@@ -120,16 +141,15 @@ export class DesktopHost {
     return this.getCurrentEffectiveTheme();
   }
 
-  /** Graceful shutdown for app quit (FR-015). */
+  /** Graceful shutdown for app quit (FR-015): destroy every live agent. */
   async dispose(): Promise<void> {
     nativeTheme.off('updated', this.onNativeThemeUpdated);
     for (const timer of [this.updateTimer, this.streamingContentTimer, this.streamingReasoningTimer]) {
       if (timer) clearTimeout(timer);
     }
-    if (this.agent) {
-      try { await this.agent.destroy(); } catch { /* process may be gone */ }
-      this.agent = null;
-    }
+    await Promise.allSettled([...this.agents.values()].map((agent) => agent.destroy()));
+    this.agents.clear();
+    this.activeAgent = null;
     this.client?.dispose();
     this.client = null;
     this.router = null;
@@ -154,7 +174,7 @@ export class DesktopHost {
     }
   }
 
-  /** Insert a host-generated system message into the chat stream. */
+  /** Insert a host-generated system message into the active chat stream. */
   private pushSystemMessage(content: string): void {
     const message = {
       id: `host-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -162,7 +182,9 @@ export class DesktopHost {
       blocks: [{ type: 'text', content }],
       timestamp: new Date().toISOString(),
     } as unknown as Message;
-    this.messages = [...this.messages, message];
+    if (this.activeAgent) {
+      this.activeAgent.messages = [...this.activeAgent.messages, message];
+    }
     this.postMessage({ command: 'appendMessage', message });
   }
 
@@ -220,120 +242,139 @@ export class DesktopHost {
   }
 
   // ------------------------------------------------------------------
-  // Agent lifecycle (one per workdir; workdir switch = destroy + recreate)
+  // Agent pool lifecycle (multi-session parallel, FR-031)
   // ------------------------------------------------------------------
 
-  private async initializeAgent(): Promise<void> {
-    await this.ensureClient();
+  /**
+   * Callback factory: builds a StdioAgent whose view callbacks are gated on
+   * this agent being the active one (webview is single-view — a background
+   * agent's incremental events must never reach the webview or sessions cross
+   * talk). Tree/index callbacks run unconditionally because the sidebar is a
+   * global view reflecting all sessions.
+   */
+  private createAgent(opts: { workdir?: string; worktreeInfo?: WorktreeInfo }): StdioAgent {
     if (!this.client || !this.router) throw new Error('StdioClient not initialized');
-    if (this.agent) return;
+    // The callbacks close over agentRef but only run after the constructor
+    // returns, so the const binding is always initialized by call time.
+    const isActive = () => this.activeAgent === agentRef;
 
-    const config = this.configStore.getConfiguration();
-    const agentCallbacks: StdioAgentCallbacks = {
-      onMessagesChange: (messages: Message[]) => {
-        this.messages = messages;
-      },
+    const callbacks: StdioAgentCallbacks = {
+      // NOTE: onMessagesChange deliberately does NOT push the full list to the
+      // view (the agent keeps its own cache). Every mutation also fires a
+      // dedicated incremental callback (user/assistantMessageAdded, streaming,
+      // toolBlockUpdated, bang…), so pushing the list here would make the
+      // webview append each message twice. Full-list pushes happen explicitly
+      // on restore / rewind / compact via pushActiveSessionState /
+      // throttledUpdateChatMessages.
       onCompactBlockAdded: () => {
-        // messagesChange (truncated list) arrives first and updates this.messages
+        if (!isActive()) return;
         this.forceNextUpdateImmediate = true;
-        this.throttledUpdateChatMessages(this.messages);
+        this.throttledUpdateChatMessages();
       },
       onCompactionStateChange: (isCompacting: boolean) => {
-        this.pushSystemMessage(isCompacting ? '正在压缩对话…' : '对话压缩完成');
+        if (isActive()) this.pushSystemMessage(isCompacting ? '正在压缩对话…' : '对话压缩完成');
       },
       onUserMessageAdded: (message: Message) => {
-        this.postMessage({ command: 'appendMessage', message });
+        if (isActive()) this.postMessage({ command: 'appendMessage', message });
+        this.ensureSessionRegistered(agentRef);
       },
       onAssistantMessageAdded: (message: Message) => {
-        this.postMessage({ command: 'appendMessage', message });
+        if (isActive()) this.postMessage({ command: 'appendMessage', message });
       },
       onAssistantContentUpdated: (params) => {
-        this.throttledStreamingContentUpdate(params.messageId, params.accumulated, params.stage);
+        if (isActive()) this.throttledStreamingContentUpdate(params.messageId, params.accumulated, params.stage);
       },
       onAssistantReasoningUpdated: (params) => {
-        this.throttledStreamingReasoningUpdate(params.messageId, params.accumulated, params.stage);
+        if (isActive()) this.throttledStreamingReasoningUpdate(params.messageId, params.accumulated, params.stage);
       },
       onToolBlockUpdated: (params) => {
-        this.postMessage({ command: 'updateToolBlock', params });
+        if (isActive()) this.postMessage({ command: 'updateToolBlock', params });
       },
       onErrorBlockAdded: (error: string) => {
-        this.postMessage({ command: 'updateErrorBlock', error });
+        if (isActive()) this.postMessage({ command: 'updateErrorBlock', error });
       },
       onTasksChange: (tasks: Task[]) => {
-        this.tasks = tasks;
-        this.postMessage({ command: 'updateTasks', tasks });
+        if (isActive()) this.postMessage({ command: 'updateTasks', tasks });
       },
       onBackgroundTasksChange: (tasks: BackgroundTaskSummary[]) => {
-        this.backgroundTasks = tasks;
+        if (!isActive()) return;
         this.postMessage({ command: 'updateBackgroundTasks', tasks });
         void this.refreshWorkflowRuns();
       },
       onSessionIdChange: (sessionId: string) => {
-        this.sessionId = sessionId;
-        this.postMessage({
-          command: 'updateCurrentSession',
-          session: {
-            id: sessionId,
-            sessionType: 'main',
-            workdir: this.agent?.workingDirectory,
-            lastActiveAt: new Date(),
-            latestTotalTokens: this.agent?.latestTotalTokens ?? 0,
-          } as SessionMetadata,
-        });
-        this.registerSessionInIndex(sessionId);
+        this.rekeyAgent(agentRef, sessionId);
+        if (isActive()) {
+          this.postMessage({
+            command: 'updateCurrentSession',
+            session: {
+              id: sessionId,
+              sessionType: 'main',
+              workdir: agentRef.workingDirectory,
+              lastActiveAt: new Date(),
+              latestTotalTokens: agentRef.latestTotalTokens ?? 0,
+            } as SessionMetadata,
+          });
+        }
+        this.registerSessionInIndex(agentRef, sessionId);
         this.refreshSessionTree();
       },
       onPermissionModeChange: (mode: PermissionMode) => {
-        this.postMessage({ command: 'updatePermissionMode', mode });
+        if (isActive()) this.postMessage({ command: 'updatePermissionMode', mode });
       },
       onWorkdirChange: (workdir: string) => {
-        this.postMessage({ command: 'updateWorkdir', workdir });
+        if (isActive()) this.postMessage({ command: 'updateWorkdir', workdir });
       },
       onLoadingChange: (loading: boolean) => {
-        this.isStreaming = loading;
-        this.postMessage({ command: loading ? 'startStreaming' : 'endStreaming' });
-        // Turn ended — title/lastActiveAt of the current session may have
-        // changed, so touch the index and refresh the sidebar (FR-020/024).
+        // StdioAgent already wrote isStreaming on the agent; refresh the sidebar
+        // running-dot for every session, not just the active one.
+        if (isActive()) this.postMessage({ command: loading ? 'startStreaming' : 'endStreaming' });
         if (!loading) {
-          this.touchSessionInIndex();
-          this.refreshSessionTree();
+          this.touchSessionInIndex(agentRef);
         }
+        this.refreshSessionTree();
       },
       onCommandRunningChange: (running: boolean) => {
-        this.isCommandRunning = running;
-        this.postMessage({ command: 'updateCommandRunning', running });
+        if (isActive()) this.postMessage({ command: 'updateCommandRunning', running });
       },
       onQueuedMessagesChange: (messages: QueuedMessage[]) => {
-        this.messageQueue = messages;
-        this.postMessage({ command: 'updateQueue', queue: messages });
+        if (isActive()) this.postMessage({ command: 'updateQueue', queue: messages });
       },
       onMcpServersChange: (servers: McpServerStatus[]) => {
-        this.postMessage({ command: 'mcpServersUpdate', servers });
+        if (isActive()) this.postMessage({ command: 'mcpServersUpdate', servers });
       },
       onBangMessageAdded: () => {
-        this.postMessage({ command: 'updateMessages', messages: this.messages });
+        if (isActive()) this.postMessage({ command: 'updateMessages', messages: agentRef.messages });
       },
       onBangMessageUpdated: () => {
-        this.postMessage({ command: 'updateMessages', messages: this.messages });
+        if (isActive()) this.postMessage({ command: 'updateMessages', messages: agentRef.messages });
       },
       onBangMessageCompleted: () => {
-        this.postMessage({ command: 'updateMessages', messages: this.messages });
+        if (isActive()) this.postMessage({ command: 'updateMessages', messages: agentRef.messages });
       },
       onNotificationMessageAdded: (params) => {
-        if (params.message) {
+        if (isActive() && params.message) {
           this.postMessage({ command: 'appendMessage', message: params.message });
         }
       },
       onPermissionRequest: (requestId, context) => {
-        this.handleToolPermissionRequest(context).then((decision) => {
-          this.agent?.sendPermissionResponse(requestId, decision);
+        void this.handleToolPermissionRequest(agentRef, context).then((decision) => {
+          agentRef.sendPermissionResponse(requestId, decision);
         });
       },
     };
 
-    const agent = new StdioAgent(this.client, this.router, agentCallbacks);
+    const agentRef = new StdioAgent(this.client, this.router, callbacks);
+    if (opts.worktreeInfo) this.agentWorktreeInfo.set(agentRef, opts.worktreeInfo);
+    return agentRef;
+  }
+
+  /** Create + initialize a fresh agent, register it in the pool, enforce the LRU cap. */
+  private async spawnAgent(opts: { workdir?: string; worktreeInfo?: WorktreeInfo }): Promise<StdioAgent> {
+    await this.ensureClient();
+    const config = this.configStore.getConfiguration();
+    const agent = this.createAgent(opts);
     await agent.initialize({
-      workdir: this.workdir,
+      workdir: opts.workdir,
       apiKey: config.apiKey || undefined,
       defaultHeaders: parseHeaders(config.headers),
       baseURL: config.baseURL || undefined,
@@ -341,40 +382,127 @@ export class DesktopHost {
       fastModel: config.fastModel,
       language: config.language,
     });
-
-    this.agent = agent;
-    if (agent.sessionId && this.sessionId !== agent.sessionId) {
-      this.sessionId = agent.sessionId;
+    if (agent.sessionId) {
+      this.agents.set(agent.sessionId, agent);
+      // Seed the LRU timestamp — eviction runs before activateAgent, and a
+      // missing entry would make the brand-new agent the oldest victim.
+      this.lastActivatedAt.set(agent.sessionId, Date.now());
     }
+    this.evictIdleAgentsIfNeeded();
+    return agent;
   }
 
-  private resetSessionState(): void {
-    this.messages = [];
-    this.tasks = [];
-    this.backgroundTasks = [];
+  /** Make an agent the single view rendered by the webview (others keep running). */
+  private setActive(agent: StdioAgent | null): void {
+    const oldSid = this.activeAgent?.sessionId;
+    if (oldSid && this.activeAgent !== agent) {
+      this.inputDrafts.set(oldSid, this.inputContent);
+    }
+    this.clearThrottleState();
+    this.activeAgent = agent;
     this.workflowRuns = [];
-    this.sessionId = undefined;
-    this.isStreaming = false;
-    this.isCommandRunning = false;
-    this.inputContent = '';
-    this.messageQueue = [];
-    this.pendingConfirmations.clear();
+    if (agent?.sessionId) {
+      this.lastActivatedAt.set(agent.sessionId, Date.now());
+      this.inputContent = this.inputDrafts.get(agent.sessionId) ?? '';
+    } else {
+      this.inputContent = '';
+    }
   }
 
-  private async switchWorkdir(dir: string): Promise<void> {
-    if (this.agent) {
-      try { await this.agent.abortMessage(); } catch { /* best-effort */ }
-      try { await this.agent.destroy(); } catch { /* best-effort */ }
-      this.agent = null;
+  /** Switch the rendered view to an agent: sync workdir, refresh sidebar, push its state. */
+  private async activateAgent(agent: StdioAgent): Promise<void> {
+    this.setActive(agent);
+    const dir = agent.workingDirectory;
+    if (dir && dir !== this.workdir) {
+      this.workdir = dir;
+      // FR-023: a worktree session records its repo root in recents — the
+      // worktree path itself is ephemeral and must not be listed.
+      this.configStore.addRecentWorkdir(this.agentWorktreeInfo.get(agent)?.repoRoot ?? dir);
     }
-    this.resetSessionState();
-    this.workdir = dir;
-    this.configStore.addRecentWorkdir(dir);
     this.sendWorkdirState();
     this.refreshSessionTree();
+    await this.pushActiveSessionState();
+    this.postMessage({ command: 'scrollToBottom' });
+  }
+
+  /** Re-register an agent under a new sessionId, migrating per-session keyed state. */
+  private rekeyAgent(agent: StdioAgent, newSessionId: string): void {
+    let oldKey: string | undefined;
+    for (const [key, a] of this.agents) {
+      if (a === agent) { oldKey = key; break; }
+    }
+    if (oldKey && oldKey !== newSessionId) {
+      this.agents.delete(oldKey);
+      const act = this.lastActivatedAt.get(oldKey);
+      if (act !== undefined) { this.lastActivatedAt.delete(oldKey); this.lastActivatedAt.set(newSessionId, act); }
+      const draft = this.inputDrafts.get(oldKey);
+      if (draft !== undefined) { this.inputDrafts.delete(oldKey); this.inputDrafts.set(newSessionId, draft); }
+    }
+    this.agents.set(newSessionId, agent);
+  }
+
+  /** Clear the shared throttle timers/pending slots (called before switching the view). */
+  private clearThrottleState(): void {
+    for (const timer of [this.updateTimer, this.streamingContentTimer, this.streamingReasoningTimer]) {
+      if (timer) clearTimeout(timer);
+    }
+    this.updateTimer = undefined;
+    this.streamingContentTimer = undefined;
+    this.streamingReasoningTimer = undefined;
+    this.pendingUpdate = false;
+    this.forceNextUpdateImmediate = false;
+    this.pendingStreamingContent = undefined;
+    this.pendingStreamingReasoning = undefined;
+  }
+
+  /** FR-031: evict the least-recently-used idle agent beyond MAX_LIVE_AGENTS. */
+  private evictIdleAgentsIfNeeded(): void {
+    while (this.agents.size > MAX_LIVE_AGENTS) {
+      let victim: StdioAgent | null = null;
+      let victimKey: string | undefined;
+      let oldest = Infinity;
+      for (const [key, agent] of this.agents) {
+        if (agent === this.activeAgent || agent.isStreaming) continue;
+        if ([...this.pendingConfirmations.values()].some((p) => p.agent === agent)) continue;
+        const at = this.lastActivatedAt.get(key) ?? 0;
+        if (at < oldest) { oldest = at; victim = agent; victimKey = key; }
+      }
+      if (!victim || !victimKey) break; // everyone is busy/active — allow overflow
+      this.agents.delete(victimKey);
+      this.lastActivatedAt.delete(victimKey);
+      this.inputDrafts.delete(victimKey);
+      this.agentWorktreeInfo.delete(victim);
+      void victim.destroy().catch(() => { /* best-effort */ });
+    }
+  }
+
+  /**
+   * Switch the host into a directory (FR-031). Existing agents are never
+   * destroyed — the most recently activated live session in this directory is
+   * reused when present, otherwise a fresh agent is spawned.
+   */
+  private async activateWorkdir(opts: { dir: string; forceNew?: boolean }): Promise<void> {
+    const { dir, forceNew = false } = opts;
+    this.workdir = dir;
+    this.configStore.addRecentWorkdir(dir);
+
+    if (!forceNew) {
+      let best: StdioAgent | null = null;
+      let bestAt = -1;
+      for (const [sid, agent] of this.agents) {
+        if (agent.workingDirectory !== dir) continue;
+        const at = this.lastActivatedAt.get(sid) ?? 0;
+        if (at > bestAt) { bestAt = at; best = agent; }
+      }
+      if (best) {
+        await this.activateAgent(best);
+        return;
+      }
+    }
+
     try {
-      await this.initializeAgent();
-      await this.pushInitialState();
+      const agent = await this.spawnAgent({ workdir: dir });
+      await this.activateAgent(agent);
     } catch (error) {
       this.pushSystemMessage(`初始化失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -384,7 +512,7 @@ export class DesktopHost {
   // Tool permission flow
   // ------------------------------------------------------------------
 
-  private handleToolPermissionRequest(context: ToolPermissionContext): Promise<PermissionDecision> {
+  private handleToolPermissionRequest(agent: StdioAgent, context: ToolPermissionContext): Promise<PermissionDecision> {
     return new Promise((resolve) => {
       const confirmationId = `confirmation_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
@@ -403,6 +531,7 @@ export class DesktopHost {
 
       this.pendingConfirmations.set(confirmationId, {
         resolve,
+        agent,
         toolName: context.toolName,
         confirmationType,
         toolInput: context.toolInput,
@@ -411,16 +540,20 @@ export class DesktopHost {
         hidePersistentOption: context.hidePersistentOption,
       });
 
-      this.postMessage({
-        command: 'showConfirmation',
-        confirmationId,
-        toolName: context.toolName,
-        confirmationType,
-        toolInput: context.toolInput,
-        planContent: context.planContent,
-        suggestedPrefix: context.suggestedPrefix,
-        hidePersistentOption: context.hidePersistentOption,
-      });
+      // Only the active session pops the dialog; a background session's request
+      // stays pending and is surfaced when the user switches back to it.
+      if (this.activeAgent === agent) {
+        this.postMessage({
+          command: 'showConfirmation',
+          confirmationId,
+          toolName: context.toolName,
+          confirmationType,
+          toolInput: context.toolInput,
+          planContent: context.planContent,
+          suggestedPrefix: context.suggestedPrefix,
+          hidePersistentOption: context.hidePersistentOption,
+        });
+      }
     });
   }
 
@@ -435,7 +568,7 @@ export class DesktopHost {
       pending.resolve(decision ?? ({ behavior: 'allow' } as PermissionDecision));
     } else {
       pending.resolve({ behavior: 'deny', message: '用户拒绝了操作' } as PermissionDecision);
-      void this.agent?.abortMessage();
+      void pending.agent.abortMessage();
     }
     this.postMessage({ command: 'focusInput' });
     this.postMessage({ command: 'scrollToBottom' });
@@ -458,14 +591,31 @@ export class DesktopHost {
     } catch (error) {
       console.error('[DesktopHost] Failed to get auth status on webview ready:', error);
     }
+    this.lastIsAuthenticated = isAuthenticated;
+    await this.pushActiveSessionState();
+  }
 
-    const pendingConfirmations = Array.from(this.pendingConfirmations.entries()).map(([confirmationId, pending]) => ({
-      confirmationId,
-      toolName: pending.toolName,
-      confirmationType: pending.confirmationType,
-      toolInput: pending.toolInput,
-      suggestedPrefix: pending.suggestedPrefix,
-    }));
+  /**
+   * Push the active session's cached state to the webview. Unlike
+   * pushInitialState this does NOT re-query auth/config — used on session and
+   * workdir switches where only the view changes.
+   */
+  private async pushActiveSessionState(): Promise<void> {
+    const configurationData = this.configStore.getConfiguration();
+    const agent = this.activeAgent;
+    const pendingConfirmations = Array.from(this.pendingConfirmations.entries())
+      .filter(([, pending]) => pending.agent === agent)
+      .map(([confirmationId, pending]) => ({
+        confirmationId,
+        toolName: pending.toolName,
+        confirmationType: pending.confirmationType,
+        toolInput: pending.toolInput,
+        suggestedPrefix: pending.suggestedPrefix,
+      }));
+
+    if (agent) {
+      this.workflowRuns = await agent.getWorkflowRuns().catch(() => this.workflowRuns);
+    }
 
     this.postMessage({
       command: 'setInitialState',
@@ -476,19 +626,19 @@ export class DesktopHost {
       inputContent: this.inputContent,
       isStreaming: this.isStreaming,
       isCommandRunning: this.isCommandRunning,
-      session: this.sessionId && this.agent ? {
+      session: this.sessionId && agent ? {
         id: this.sessionId,
         sessionType: 'main',
-        workdir: this.agent.workingDirectory,
+        workdir: agent.workingDirectory,
         lastActiveAt: new Date(),
-        latestTotalTokens: this.agent.latestTotalTokens,
+        latestTotalTokens: agent.latestTotalTokens,
       } : undefined,
       configurationData,
       pendingConfirmations,
-      permissionMode: this.agent?.getPermissionMode(),
+      permissionMode: agent?.getPermissionMode(),
       queuedMessages: this.messageQueue,
-      isAuthenticated,
-      workdir: this.agent?.workingDirectory,
+      isAuthenticated: this.lastIsAuthenticated,
+      workdir: agent?.workingDirectory,
       theme: { effective: this.getCurrentEffectiveTheme() },
     });
   }
@@ -534,52 +684,86 @@ export class DesktopHost {
         title: s.title,
         lastActiveAt: s.lastActiveAt,
         hasWorktree: !!s.worktree,
+        running: this.agents.get(s.sessionId)?.isStreaming ?? false,
       })),
     }));
     this.postMessage({ command: 'desktopSessionTree', groups: this.sessionTree });
   }
 
-  /** Upsert the current session into the desktop-owned session index (FR-024). */
-  private registerSessionInIndex(sessionId: string): void {
-    if (!this.workdir || !this.configStore) return;
+  /** Upsert an agent's session into the desktop-owned session index (FR-024). */
+  private registerSessionInIndex(agent: StdioAgent, sessionId: string, title = ''): void {
+    const cwd = agent.workingDirectory;
+    if (!cwd || !this.configStore) return;
+    const existing = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
+    // An agent without worktree context must never clobber the persisted
+    // worktree info of an existing entry.
+    const worktreeInfo = this.agentWorktreeInfo.get(agent) ?? existing?.worktree;
     // Worktree sessions group under the original repo root (workdir) while the
     // agent's actual working directory (cwd) stays the worktree path (FR-024).
     this.configStore.upsertSession({
       sessionId,
-      title: '',
-      workdir: this.worktreeInfo?.repoRoot ?? this.workdir,
-      cwd: this.workdir,
+      // An established title wins; a re-registration must never wipe it.
+      title: title || existing?.title || '',
+      workdir: worktreeInfo?.repoRoot ?? cwd,
+      cwd,
       lastActiveAt: Date.now(),
-      worktree: this.worktreeInfo ?? undefined,
+      worktree: worktreeInfo,
     });
-    this.worktreeInfo = null;
-  }
-
-  /** Bump lastActiveAt (and title if known) after streaming settles. */
-  private touchSessionInIndex(): void {
-    if (!this.sessionId || !this.configStore) return;
-    this.configStore.touchSession(this.sessionId, Date.now());
   }
 
   /**
-   * FR-025: remove from index; best-effort worktree+branch cleanup. Deleting
-   * the live session first stops generation and returns to the new-session
-   * page; for a worktree session the agent is moved back to the repo root
-   * before the worktree is removed from under it.
+   * FR-024: the CLI assigns the sessionId during initialize() without emitting
+   * sessionIdChange, so a brand-new session never reaches the index through
+   * that notification. Register it once real content exists (first user
+   * message / restored history), deriving the sidebar title from the first
+   * user message — the same 30-char rule the webview header uses.
+   */
+  private ensureSessionRegistered(agent: StdioAgent): void {
+    const sessionId = agent.sessionId;
+    if (!sessionId || !this.configStore) return;
+    const existing = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
+    if (existing?.title) return;
+    this.registerSessionInIndex(agent, sessionId, sessionTitleFromMessages(agent.messages));
+    this.refreshSessionTree();
+  }
+
+  /** Bump lastActiveAt after streaming settles. */
+  private touchSessionInIndex(agent: StdioAgent): void {
+    if (!agent.sessionId || !this.configStore) return;
+    this.configStore.touchSession(agent.sessionId, Date.now());
+  }
+
+  /**
+   * FR-025: destroy the live agent (if any), remove from index, best-effort
+   * worktree+branch cleanup. Deleting the active session moves to a fresh page
+   * — back to the repo root for a worktree session, otherwise a new session.
    */
   private async handleDeleteSession(sessionId: string): Promise<void> {
     if (!this.configStore) return;
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
-    if (sessionId === this.sessionId) {
+    const target = this.agents.get(sessionId);
+    const wasActive = target !== undefined && target === this.activeAgent;
+
+    if (target) {
+      this.agents.delete(sessionId);
+      this.lastActivatedAt.delete(sessionId);
+      this.inputDrafts.delete(sessionId);
+      this.agentWorktreeInfo.delete(target);
+      try { await target.destroy(); } catch { /* best-effort */ }
+    }
+
+    this.configStore.removeSession(sessionId);
+
+    if (wasActive) {
+      // Detach the destroyed agent before picking the next view.
+      this.setActive(null);
       if (entry?.worktree && fs.existsSync(entry.worktree.repoRoot)) {
-        // switchWorkdir aborts + destroys the current agent itself.
-        await this.switchWorkdir(entry.worktree.repoRoot);
+        await this.activateWorkdir({ dir: entry.worktree.repoRoot, forceNew: true });
       } else {
-        try { await this.agent?.abortMessage(); } catch { /* best-effort */ }
-        await this.handleClearChat();
+        await this.handleNewSession();
       }
     }
-    this.configStore.removeSession(sessionId);
+
     if (entry?.worktree) {
       await this.removeWorktree({
         path: entry.worktree.path,
@@ -615,13 +799,22 @@ export class DesktopHost {
       this.pushSystemMessage(`创建 worktree 失败：${error instanceof Error ? error.message : String(error)}`);
       return;
     }
-    this.worktreeInfo = {
-      path: result.path,
-      branch: result.branch,
-      baseBranch: result.baseBranch,
-      repoRoot: result.repoRoot,
-    };
-    await this.switchWorkdir(result.path);
+    let agent: StdioAgent;
+    try {
+      agent = await this.spawnAgent({
+        workdir: result.path,
+        worktreeInfo: {
+          path: result.path,
+          branch: result.branch,
+          baseBranch: result.baseBranch,
+          repoRoot: result.repoRoot,
+        },
+      });
+      await this.activateAgent(agent);
+    } catch (error) {
+      this.pushSystemMessage(`初始化失败：${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
     if (text) {
       await this.handleSendMessage(text, images);
     }
@@ -647,8 +840,8 @@ export class DesktopHost {
   }
 
   private async refreshWorkflowRuns(): Promise<void> {
-    if (!this.agent) return;
-    this.workflowRuns = await this.agent.getWorkflowRuns();
+    if (!this.activeAgent) return;
+    this.workflowRuns = await this.activeAgent.getWorkflowRuns();
     this.postMessage({ command: 'updateWorkflowRuns', runs: this.workflowRuns });
   }
 
@@ -697,16 +890,16 @@ export class DesktopHost {
         break;
 
       case 'abortMessage':
-        await this.agent?.abortMessage();
+        await this.activeAgent?.abortMessage();
         break;
 
       case 'clearChat':
-        await this.handleClearChat();
+        await this.handleNewSession();
         break;
 
       case 'compact':
         try {
-          await this.agent?.compact((msg.customInstructions as string) || undefined);
+          await this.activeAgent?.compact((msg.customInstructions as string) || undefined);
         } catch (error) {
           this.pushSystemMessage(`压缩对话失败: ${error}`);
         }
@@ -726,7 +919,7 @@ export class DesktopHost {
 
       case 'setPermissionMode':
         try {
-          await this.agent?.setPermissionMode(msg.mode as PermissionMode);
+          await this.activeAgent?.setPermissionMode(msg.mode as PermissionMode);
         } catch (error) {
           this.pushSystemMessage(`设置权限模式失败: ${error}`);
         }
@@ -734,11 +927,11 @@ export class DesktopHost {
 
       // -- message queue -------------------------------------------------
       case 'deleteQueuedMessage':
-        await this.agent?.removeQueuedMessage(msg.index as number);
+        await this.activeAgent?.removeQueuedMessage(msg.index as number);
         break;
 
       case 'updateQueuedMessage': {
-        const ok = await this.agent?.updateQueuedMessageById(msg.id as string, {
+        const ok = await this.activeAgent?.updateQueuedMessageById(msg.id as string, {
           content: msg.text as string,
           images: msg.images as Array<{ path: string; mimeType: string }> | undefined,
         });
@@ -749,7 +942,7 @@ export class DesktopHost {
       }
 
       case 'deleteQueuedMessageById':
-        await this.agent?.removeQueuedMessageById(msg.id as string);
+        await this.activeAgent?.removeQueuedMessageById(msg.id as string);
         break;
 
       // -- sessions -------------------------------------------------------
@@ -793,7 +986,7 @@ export class DesktopHost {
           command: 'statusResponse',
           version: app.getVersion(),
           sessionId: this.sessionId ?? '',
-          workdir: this.agent?.workingDirectory ?? this.workdir ?? '',
+          workdir: this.activeAgent?.workingDirectory ?? this.workdir ?? '',
           configurationData: this.configStore.getConfiguration(),
         });
         break;
@@ -817,14 +1010,14 @@ export class DesktopHost {
 
       // -- MCP --------------------------------------------------------------------
       case 'getMcpServers': {
-        const servers = this.agent ? await this.agent.getMcpServers() : [];
+        const servers = this.activeAgent ? await this.activeAgent.getMcpServers() : [];
         this.postMessage({ command: 'mcpServersResponse', servers });
         break;
       }
 
       case 'connectMcpServer':
         try {
-          await this.agent?.connectMcpServer(msg.serverName as string);
+          await this.activeAgent?.connectMcpServer(msg.serverName as string);
         } catch (error) {
           this.pushSystemMessage(`连接 MCP 服务器失败: ${error}`);
         }
@@ -832,7 +1025,7 @@ export class DesktopHost {
 
       case 'disconnectMcpServer':
         try {
-          await this.agent?.disconnectMcpServer(msg.serverName as string);
+          await this.activeAgent?.disconnectMcpServer(msg.serverName as string);
         } catch (error) {
           this.pushSystemMessage(`断开 MCP 服务器失败: ${error}`);
         }
@@ -881,25 +1074,25 @@ export class DesktopHost {
 
       // -- background tasks / workflows ----------------------------------------------
       case 'getBackgroundTaskOutput': {
-        const output = this.agent ? await this.agent.getBackgroundTaskOutput(msg.taskId as string) : null;
+        const output = this.activeAgent ? await this.activeAgent.getBackgroundTaskOutput(msg.taskId as string) : null;
         this.postMessage({ command: 'backgroundTaskOutput', taskId: msg.taskId, output });
         break;
       }
 
       case 'stopBackgroundTask': {
-        const success = this.agent ? await this.agent.stopBackgroundTask(msg.taskId as string) : false;
+        const success = this.activeAgent ? await this.activeAgent.stopBackgroundTask(msg.taskId as string) : false;
         this.postMessage({ command: 'backgroundTaskStopped', taskId: msg.taskId, success });
         break;
       }
 
       case 'getWorkflowRuns': {
-        const runs = this.agent ? await this.agent.getWorkflowRuns() : [];
+        const runs = this.activeAgent ? await this.activeAgent.getWorkflowRuns() : [];
         this.postMessage({ command: 'workflowRunsResponse', runs });
         break;
       }
 
       case 'stopWorkflowRun': {
-        const success = this.agent ? await this.agent.stopWorkflowRun(msg.runId as string) : false;
+        const success = this.activeAgent ? await this.activeAgent.stopWorkflowRun(msg.runId as string) : false;
         this.postMessage({ command: 'workflowRunStopped', runId: msg.runId, success });
         break;
       }
@@ -978,8 +1171,9 @@ export class DesktopHost {
         // still work) but skip agent creation until the user picks a workdir
         // from the sidebar dropdown.
         await this.ensureClient();
-      } else if (!this.agent) {
-        await this.initializeAgent();
+      } else if (!this.activeAgent) {
+        const agent = await this.spawnAgent({ workdir: this.workdir });
+        this.setActive(agent);
       }
       await this.pushInitialState();
       this.refreshSessionTree();
@@ -1006,7 +1200,7 @@ export class DesktopHost {
       properties: ['openDirectory', 'createDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) return;
-    await this.switchWorkdir(result.filePaths[0]);
+    await this.activateWorkdir({ dir: result.filePaths[0] });
   }
 
   private async handleSelectRecentWorkdir(dir: string): Promise<void> {
@@ -1018,16 +1212,18 @@ export class DesktopHost {
       this.pushSystemMessage(`目录不存在：${dir}，已从最近列表移除`);
       return;
     }
-    await this.switchWorkdir(dir);
+    await this.activateWorkdir({ dir });
   }
 
   /**
-   * Open a session from the sidebar tree (FR-020). Switches workdir first when
-   * the session lives in another directory, then restores it. Worktree sessions
-   * switch to the worktree path (entry.cwd), not the repo-root group key.
+   * Open a session from the sidebar tree (FR-020/031). Three branches: the
+   * live agent is activated in place (nothing destroyed); a historical session
+   * spawns a fresh agent + restoreSession; clicking the current session is a
+   * no-op. Worktree sessions live at the worktree path (entry.cwd).
    */
   private async handleSelectSession(workdir: string, sessionId: string): Promise<void> {
     if (!workdir || !sessionId) return;
+    if (sessionId === this.activeAgent?.sessionId) return; // already current
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
     const targetDir = entry?.worktree ? entry.cwd : workdir;
     if (!fs.existsSync(targetDir)) {
@@ -1047,10 +1243,29 @@ export class DesktopHost {
       );
       return;
     }
-    if (targetDir !== this.workdir) {
-      await this.switchWorkdir(targetDir);
+
+    const live = this.agents.get(sessionId);
+    if (live) {
+      await this.activateAgent(live);
+      return;
     }
-    await this.handleRestoreSession(sessionId);
+
+    // Historical session: spawn a fresh agent in its directory, then restore.
+    // Carry the entry's worktree info so re-registration keeps the session
+    // grouped under the repo root (and recents free of the ephemeral path).
+    try {
+      const agent = await this.spawnAgent({ workdir: targetDir, worktreeInfo: entry?.worktree });
+      await this.activateAgent(agent);
+      await agent.restoreSession(sessionId);
+      this.rekeyAgent(agent, sessionId);
+      this.ensureSessionRegistered(agent);
+      this.touchSessionInIndex(agent);
+      this.refreshSessionTree();
+      await this.pushActiveSessionState();
+    } catch (error) {
+      console.error('[DesktopHost] 恢复会话失败:', error);
+      this.pushSystemMessage(`恢复会话失败: ${error}`);
+    }
   }
 
   private async handleSendMessage(
@@ -1058,7 +1273,7 @@ export class DesktopHost {
     images?: Array<{ data: string; mediaType: string }>,
     force?: boolean,
   ): Promise<void> {
-    if (!this.agent) {
+    if (!this.activeAgent) {
       this.pushSystemMessage('请先选择工作目录');
       return;
     }
@@ -1069,9 +1284,9 @@ export class DesktopHost {
         : undefined;
 
       if (text.startsWith('!')) {
-        await this.agent.bang(text.slice(1));
+        await this.activeAgent.bang(text.slice(1));
       } else {
-        await this.agent.sendMessage(text, processedImages, force ?? false);
+        await this.activeAgent.sendMessage(text, processedImages, force ?? false);
       }
     } catch (error) {
       console.error('[DesktopHost] 发送消息失败:', error);
@@ -1079,43 +1294,44 @@ export class DesktopHost {
     }
   }
 
-  private async handleClearChat(): Promise<void> {
-    if (this.agent) {
-      this.forceNextUpdateImmediate = true;
-      this.inputContent = '';
-      await this.agent.clearMessages();
-      this.throttledUpdateChatMessages([]);
+  /**
+   * New session (FR-031): spawn a fresh agent and make it active WITHOUT
+   * aborting, clearing or destroying the previous one — background sessions
+   * keep generating. No-op when the active session is already empty.
+   */
+  private async handleNewSession(): Promise<void> {
+    const active = this.activeAgent;
+    // FR-005: a new session lands on the most recently used real directory.
+    // Recents never contain worktree temp paths (FR-023), so after a worktree
+    // session this falls back to its repo root instead of the worktree path.
+    const dir = this.configStore.getRecentWorkdirs()[0] ?? this.workdir;
+    if (!dir) return;
+    if (active && active.messages.length === 0 && !active.isStreaming) return;
+    try {
+      const agent = await this.spawnAgent({ workdir: dir });
+      await this.activateAgent(agent);
+      this.postMessage({ command: 'focusInput' });
+    } catch (error) {
+      console.error('[DesktopHost] 新建会话失败:', error);
+      this.pushSystemMessage(`新建会话失败: ${error}`);
     }
-    await this.clearQueue();
   }
 
   private async clearQueue(): Promise<void> {
-    if (this.agent && this.agent.queuedMessages.length > 0) {
-      await this.agent.abortMessage();
-    } else if (this.messageQueue.length > 0) {
-      this.messageQueue = [];
-      this.postMessage({ command: 'updateQueue', queue: this.messageQueue });
+    if (this.activeAgent && this.activeAgent.queuedMessages.length > 0) {
+      await this.activeAgent.abortMessage();
     }
   }
 
   private async handleRestoreSession(sessionId: string): Promise<void> {
-    if (!sessionId || !this.agent) return;
-    try {
-      this.forceNextUpdateImmediate = true;
-      this.inputContent = '';
-      await this.agent.restoreSession(sessionId);
-      this.throttledUpdateChatMessages(this.messages);
-      await this.clearQueue();
-      this.touchSessionInIndex();
-      this.refreshSessionTree();
-    } catch (error) {
-      console.error('[DesktopHost] 恢复会话失败:', error);
-      this.pushSystemMessage(`恢复会话失败: ${error}`);
-    }
+    if (!sessionId) return;
+    const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
+    const workdir = entry ? (entry.worktree ? entry.cwd : entry.workdir) : this.workdir;
+    if (workdir) await this.handleSelectSession(workdir, sessionId);
   }
 
   private async handleRewindToMessage(messageId: string): Promise<void> {
-    if (!this.agent || !this.mainWindow) return;
+    if (!this.activeAgent || !this.mainWindow) return;
     const { response } = await dialog.showMessageBox(this.mainWindow, {
       type: 'warning',
       message: '确定要回滚到此消息吗？这将删除之后的所有消息并撤销相关的文件更改。',
@@ -1126,10 +1342,10 @@ export class DesktopHost {
     if (response !== 1) return;
 
     try {
-      const { inputContent } = await this.agent.rewindToMessage(messageId);
+      const { inputContent } = await this.activeAgent.rewindToMessage(messageId);
       this.inputContent = inputContent;
       this.forceNextUpdateImmediate = true;
-      this.throttledUpdateChatMessages(this.messages);
+      this.throttledUpdateChatMessages();
       await this.pushInitialState();
       this.postMessage({ command: 'focusInput' });
       this.postMessage({ command: 'scrollToBottom' });
@@ -1157,21 +1373,29 @@ export class DesktopHost {
     }
   }
 
-  /** Server-side destroy + recreate with restored session (same as vsce updateAllSessionsConfig). */
+  /** Server-side destroy + recreate with restored session, applied to every live agent (FR-031). */
   private async updateAgentConfig(config: DesktopConfigData): Promise<void> {
-    if (!this.agent) return;
-    if (this.isStreaming) {
-      this.isStreaming = false;
-      this.postMessage({ command: 'endStreaming' });
-    }
-    await this.agent.updateConfig({
+    const params = {
       apiKey: config.apiKey || undefined,
       baseURL: config.baseURL || undefined,
       defaultHeaders: parseHeaders(config.headers),
       model: config.model,
       fastModel: config.fastModel,
       language: config.language,
-    });
+    };
+    for (const [oldSid, agent] of [...this.agents]) {
+      const wasStreaming = agent.isStreaming;
+      await agent.updateConfig(params);
+      if (agent.sessionId && agent.sessionId !== oldSid) {
+        this.rekeyAgent(agent, agent.sessionId);
+      }
+      if (wasStreaming) {
+        agent.isStreaming = false;
+        if (agent === this.activeAgent) {
+          this.postMessage({ command: 'endStreaming' });
+        }
+      }
+    }
     await this.clearQueue();
   }
 
@@ -1441,7 +1665,7 @@ export class DesktopHost {
 
   private async handleSlashCommandsRequest(filterText: string): Promise<void> {
     try {
-      const sdkCommands = this.agent ? await this.agent.getSlashCommands() : [];
+      const sdkCommands = this.activeAgent ? await this.activeAgent.getSlashCommands() : [];
 
       const localCommands = [
         { id: 'config', name: 'config', description: '打开配置设置' },
@@ -1487,9 +1711,7 @@ export class DesktopHost {
     this.postMessage({ command: 'updateMessages', messages: this.messages });
   }
 
-  private throttledUpdateChatMessages(messages: Message[]): void {
-    this.messages = messages;
-
+  private throttledUpdateChatMessages(): void {
     if (this.forceNextUpdateImmediate) {
       this.forceNextUpdateImmediate = false;
       this.immediateUpdateChatMessages();
@@ -1556,6 +1778,20 @@ export class DesktopHost {
       }, 16);
     }
   }
+}
+
+/** First real user message text, trimmed to 30 chars (mirrors the webview header rule). */
+function sessionTitleFromMessages(messages: Message[]): string {
+  for (const message of messages) {
+    if (message.role !== 'user' || message.isMeta) continue;
+    const text = (message.blocks ?? [])
+      .filter((b) => b.type === 'text' || b.type === 'compact')
+      .map((b) => b.content || '')
+      .join('')
+      .trim();
+    if (text) return text.length > 30 ? text.substring(0, 30) + '...' : text;
+  }
+  return '';
 }
 
 function parseHeaders(headersStr?: string): Record<string, string> | undefined {

@@ -183,6 +183,8 @@ export interface DesktopSessionEntry {
   lastActiveAt: number;
   /** True when this session lives in a worktree (delete also cleans up branch+dir). */
   hasWorktree: boolean;
+  /** True while this session is generating — drives the per-session running dot (FR-031). */
+  running?: boolean;
 }
 
 /**

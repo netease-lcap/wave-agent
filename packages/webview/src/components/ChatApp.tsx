@@ -265,12 +265,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   }, []);
 
   const handleClearChat = useCallback(() => {
-    if (stateRef.current.isStreaming) return;
+    // Desktop 允许在 streaming 期间新建会话（先中止当前生成）；VSCE/JB 维持原有禁用。
+    if (stateRef.current.isStreaming && host?.type !== 'desktop') return;
 
     vscode.postMessage({
       command: 'clearChat'
     });
-  }, [vscode]);
+  }, [vscode, host]);
 
   const handleLogin = useCallback(() => {
     vscode.postMessage({ command: 'login' });

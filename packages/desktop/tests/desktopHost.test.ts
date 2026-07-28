@@ -18,6 +18,9 @@ const h = vi.hoisted(() => ({
   worktreeResult: null as null | { name: string; path: string; branch: string; baseBranch: string; repoRoot: string },
   worktreeError: null as Error | null,
   branchesResult: null as null | { branches: string[]; current: string },
+  // Multi-agent pool: each StdioAgent instance gets a unique sessionId so the
+  // host's agents Map keys don't collapse (FR-031).
+  agentCounter: 0,
 }));
 
 vi.mock('fs', () => ({
@@ -104,17 +107,27 @@ vi.mock('../src/main/stdio/notificationRouter', () => ({
 
 vi.mock('../src/main/stdio/stdioAgent', () => ({
   StdioAgent: class {
-    sessionId: string | undefined = 'sess-1';
+    sessionId: string | undefined;
     workingDirectory: string | undefined;
     latestTotalTokens = 0;
+    messages: unknown[] = [];
+    tasks: unknown[] = [];
+    backgroundTasks: unknown[] = [];
     queuedMessages: unknown[] = [];
+    isStreaming = false;
+    isCommandRunning = false;
     callbacks: Record<string, (...args: never[]) => void>;
 
-    initialize = vi.fn(async function (this: { workingDirectory: string | undefined }, params: { workdir?: string }) {
+    initialize = vi.fn(async function (this: { workingDirectory?: string; sessionId?: string }, params: { workdir?: string }) {
       this.workingDirectory = params.workdir;
+      this.sessionId = `sess-${++h.agentCounter}`;
     });
     destroy = vi.fn(async () => undefined);
-    restoreSession = vi.fn(async () => undefined);
+    restoreSession = vi.fn(async function (this: { sessionId?: string; messages?: unknown[] }, sessionId: string) {
+      this.sessionId = sessionId;
+      // Mirror the real agent: after restore, messages holds the full history.
+      this.messages = [{ id: 'restored-u1', role: 'user', blocks: [{ type: 'text', content: '历史会话的第一条消息' }] }];
+    });
     updateConfig = vi.fn(async () => undefined);
     sendMessage = vi.fn(async () => undefined);
     bang = vi.fn(async () => undefined);
@@ -190,6 +203,12 @@ function lastAgent() {
   };
 }
 
+/** Mirror what the real StdioAgent does on sessionIdChange: set the field, then fire. */
+function fireSessionId(agent: ReturnType<typeof lastAgent>, sessionId: string) {
+  agent.sessionId = sessionId;
+  agent.callbacks.onSessionIdChange(sessionId);
+}
+
 async function readyHost() {
   const ctx = createHost();
   // workdir is never persisted — pick it from recents like the real UI flow.
@@ -211,6 +230,7 @@ beforeEach(() => {
   h.worktreeResult = null;
   h.worktreeError = null;
   h.branchesResult = null;
+  h.agentCounter = 0;
   vi.clearAllMocks();
   nativeTheme.__reset();
 });
@@ -383,16 +403,72 @@ describe('agent notifications', () => {
     expect(sent('endStreaming')).toHaveLength(1);
   });
 
-  it('restoreSession posts updateMessages with the latest agent messages', async () => {
+  it('restoreSession delivers the restored list via setInitialState, never via updateMessages (FR-031)', async () => {
     const { host, sent } = await readyHost();
-    const { callbacks } = lastAgent();
-    const messages = [{ id: 'm1' }];
-    callbacks.onMessagesChange(messages);
 
     await host.handleWebviewMessage({ command: 'restoreSession', sessionId: 'sess-x' });
 
-    const updates = sent('updateMessages');
-    expect(updates[updates.length - 1]).toMatchObject({ messages });
+    const states = sent('setInitialState');
+    expect(states.at(-1)?.messages).toEqual([
+      { id: 'restored-u1', role: 'user', blocks: [{ type: 'text', content: '历史会话的第一条消息' }] },
+    ]);
+    expect(sent('updateMessages')).toHaveLength(0);
+  });
+
+  it('onMessagesChange never pushes the full list — each message arrives once via appendMessage', async () => {
+    const { sent } = await readyHost();
+    const agent = lastAgent();
+    // Contract: the desktop does not subscribe to messagesChange at all (the
+    // agent keeps its own cache). The CLI fires messagesChange first, then
+    // the incremental userMessageAdded — pushing both double-appended.
+    expect(agent.callbacks.onMessagesChange).toBeUndefined();
+    const userMsg = { id: 'u1', role: 'user', blocks: [{ type: 'text', content: '你好' }] };
+    agent.messages = [userMsg];
+    agent.callbacks.onUserMessageAdded(userMsg);
+
+    expect(sent('updateMessages')).toHaveLength(0);
+    expect(sent('appendMessage')).toEqual([expect.objectContaining({ message: userMsg })]);
+  });
+
+  it('first user message registers the new session in the sidebar tree with a truncated title (FR-024)', async () => {
+    const { sent } = await readyHost();
+    const agent = lastAgent();
+    // The CLI assigns sessionId during initialize() without emitting
+    // sessionIdChange, so nothing is in the index yet.
+    expect(sent('desktopSessionTree')).toHaveLength(0);
+
+    const longText = 'x'.repeat(40);
+    const userMsg = { id: 'u1', role: 'user', blocks: [{ type: 'text', content: longText }] };
+    agent.messages = [userMsg];
+    agent.callbacks.onUserMessageAdded(userMsg);
+
+    const tree = sent('desktopSessionTree').at(-1);
+    const sessions = ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; title: string }> }>) ?? []).flatMap(
+      (g) => g.sessions,
+    );
+    expect(sessions).toContainEqual(expect.objectContaining({ sessionId: 'sess-1', title: 'x'.repeat(30) + '...' }));
+
+    // A later message does NOT rewrite the established title.
+    const second = { id: 'u2', role: 'user', blocks: [{ type: 'text', content: '另一条消息' }] };
+    agent.messages = [userMsg, second];
+    agent.callbacks.onUserMessageAdded(second);
+    const sessionsAfter = (
+      (sent('desktopSessionTree').at(-1)?.groups as Array<{ sessions: Array<{ sessionId: string; title: string }> }>) ?? []
+    ).flatMap((g) => g.sessions);
+    expect(sessionsAfter.find((s) => s.sessionId === 'sess-1')?.title).toBe('x'.repeat(30) + '...');
+  });
+
+  it('restoring a historical session backfills its sidebar title from history (FR-024)', async () => {
+    const { host, store, sent } = await readyHost();
+    store.upsertSession({ sessionId: 'hist-1', title: '', workdir: '/work/a', cwd: '/work/a', lastActiveAt: 1 });
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'hist-1' });
+
+    const tree = sent('desktopSessionTree').at(-1);
+    const sessions = ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; title: string }> }>) ?? []).flatMap(
+      (g) => g.sessions,
+    );
+    expect(sessions.find((s) => s.sessionId === 'hist-1')?.title).toBe('历史会话的第一条消息');
   });
 
   it('onSessionIdChange posts updateCurrentSession (session id is never persisted)', async () => {
@@ -577,10 +653,25 @@ describe('checkForUpdates', () => {
 // ---------------------------------------------------------------------------
 
 describe('misc commands', () => {
-  it('clearChat clears agent messages and the queue', async () => {
+  it('clearChat spawns a fresh session without clearing the old one (FR-031)', async () => {
     const { host } = await readyHost();
+    lastAgent().messages = [{ id: 'm1' }]; // make the active session non-empty
+    const oldAgent = lastAgent();
+    const before = h.agentInstances.length;
+
     await host.handleWebviewMessage({ command: 'clearChat' });
-    expect(lastAgent().clearMessages).toHaveBeenCalled();
+
+    expect(h.agentInstances).toHaveLength(before + 1);
+    expect(oldAgent.clearMessages).not.toHaveBeenCalled();
+    expect(oldAgent.destroy).not.toHaveBeenCalled();
+    expect(oldAgent.abortMessage).not.toHaveBeenCalled();
+  });
+
+  it('clearChat on an empty active session is a no-op', async () => {
+    const { host } = await readyHost();
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    expect(h.agentInstances).toHaveLength(before);
   });
 
   it('restoreSession forwards to the agent and refreshes the session tree', async () => {
@@ -704,13 +795,13 @@ describe('session tree', () => {
     expect(groups[0].sessions[0].sessionId).toBe('s6');
   });
 
-  it('desktopSelectSession in the current workdir restores without recreating the agent', async () => {
+  it('desktopSelectSession on a historical session spawns a fresh agent and restores (FR-031)', async () => {
     const { host } = await readyHost();
     const before = h.agentInstances.length;
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-x' });
 
-    expect(h.agentInstances).toHaveLength(before);
+    expect(h.agentInstances).toHaveLength(before + 1);
     expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-x');
   });
 
@@ -784,15 +875,18 @@ describe('session tree', () => {
     });
   });
 
-  it('desktopDeleteSession on the live session aborts generation and clears the chat', async () => {
+  it('desktopDeleteSession on the live session destroys it and returns to a fresh session (FR-031)', async () => {
     const { host, store } = await readyHost();
     lastAgent().callbacks.onSessionIdChange('live-1');
+    const doomed = lastAgent();
+    const before = h.agentInstances.length;
 
     await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'live-1' });
 
-    expect(lastAgent().abortMessage).toHaveBeenCalled();
-    expect(lastAgent().clearMessages).toHaveBeenCalled();
+    expect(doomed.destroy).toHaveBeenCalled();
     expect(store.getSessionIndex().some((e) => e.sessionId === 'live-1')).toBe(false);
+    // A fresh session replaced the deleted active one.
+    expect(h.agentInstances).toHaveLength(before + 1);
   });
 });
 
@@ -848,7 +942,9 @@ describe('worktree flow', () => {
     expect(h.agentInstances).toHaveLength(before + 1);
     expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
     expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: worktree.path });
-    expect(store.getRecentWorkdirs()).toContain(worktree.path);
+    // FR-023: recents record the repo root, never the ephemeral worktree path.
+    expect(store.getRecentWorkdirs()).toContain('/work/a');
+    expect(store.getRecentWorkdirs()).not.toContain(worktree.path);
   });
 
   it('desktopCreateWorktree with a first message forwards it after the switch', async () => {
@@ -865,6 +961,19 @@ describe('worktree flow', () => {
 
     expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
     expect(lastAgent().sendMessage).toHaveBeenCalledWith('hello worktree', undefined, false);
+  });
+
+  it('new session after a worktree session starts in the repo root, not the worktree path (FR-005)', async () => {
+    const { host, sent } = await readyHost();
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+    await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a' });
+    lastAgent().messages = [{ id: 'm1' }]; // non-empty so clearChat is not a no-op
+
+    await host.handleWebviewMessage({ command: 'clearChat' });
+
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/a' }));
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: '/work/a' });
   });
 
   it('desktopCreateWorktree failure pushes a system message and keeps the workdir', async () => {
@@ -928,6 +1037,33 @@ describe('worktree flow', () => {
     expect(h.agentInstances).toHaveLength(before + 1);
     expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
     expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-wt');
+  });
+
+  it('restoring a worktree session keeps it grouped under the repo root', async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession({
+      sessionId: 'sess-wt',
+      title: 'wt',
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      lastActiveAt: Date.now(),
+      worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
+    });
+    h.existingPaths.add(worktree.path);
+
+    await host.handleWebviewMessage({
+      command: 'desktopSelectSession',
+      workdir: worktree.repoRoot,
+      sessionId: 'sess-wt',
+    });
+    // The real CLI emits sessionIdChange after restore — it must not clobber
+    // the index entry or pollute recents with the ephemeral worktree path.
+    lastAgent().callbacks.onSessionIdChange('sess-wt');
+
+    const entry = store.getSessionIndex().find((e) => e.sessionId === 'sess-wt');
+    expect(entry).toMatchObject({ workdir: worktree.repoRoot, cwd: worktree.path });
+    expect(entry?.worktree?.repoRoot).toBe(worktree.repoRoot);
+    expect(store.getRecentWorkdirs()).not.toContain(worktree.path);
   });
 
   it('desktopSelectSession with a gone worktree drops the index entry only', async () => {
@@ -1035,5 +1171,140 @@ describe('theme', () => {
     const before = sent('desktopThemeChange').length;
     nativeTheme.__setSystemDark(true);
     expect(sent('desktopThemeChange').length).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// multi-session parallel (FR-031)
+// ---------------------------------------------------------------------------
+
+describe('multi-session parallel (FR-031)', () => {
+  /** Give the active agent content + register its session in the index. */
+  const seedActiveSession = (sessionId: string) => {
+    const agent = lastAgent();
+    agent.messages = [{ id: `m-${sessionId}` }];
+    fireSessionId(agent, sessionId);
+    return agent;
+  };
+
+  const treeSessions = (tree: Record<string, unknown> | undefined) =>
+    ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; running: boolean }> }>) ?? []).flatMap(
+      (g) => g.sessions,
+    );
+
+  it('desktopSelectSession on a live agent activates it without spawning or restoring', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    seedActiveSession('sess-2');
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
+
+    expect(h.agentInstances).toHaveLength(before);
+    expect(agent1.restoreSession).not.toHaveBeenCalled();
+    expect(sent('setInitialState').at(-1)).toMatchObject({ session: { id: 'sess-1' } });
+  });
+
+  it('desktopSelectSession on the current session is a no-op', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const states = sent('setInitialState').length;
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
+
+    expect(h.agentInstances).toHaveLength(1);
+    expect(sent('setInitialState')).toHaveLength(states);
+  });
+
+  it('switching back to a directory reactivates its live agent instead of spawning', async () => {
+    const { host, store, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    store.addRecentWorkdir('/work/b');
+    h.existingPaths.add('/work/b');
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/b' });
+    expect(h.agentInstances).toHaveLength(2);
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/a' });
+
+    expect(h.agentInstances).toHaveLength(2);
+    expect(sent('setInitialState').at(-1)).toMatchObject({ session: { id: 'sess-1' } });
+  });
+
+  it('keeps the running dot on background sessions in the tree', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession('sess-1');
+    agent1.isStreaming = true;
+    agent1.callbacks.onLoadingChange(true);
+
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    expect(agent1.destroy).not.toHaveBeenCalled();
+    const agent2 = seedActiveSession('sess-2');
+    agent2.isStreaming = true;
+    agent2.callbacks.onLoadingChange(true);
+
+    const sessions = treeSessions(sent('desktopSessionTree').at(-1));
+    expect(sessions.find((s) => s.sessionId === 'sess-1')?.running).toBe(true);
+    expect(sessions.find((s) => s.sessionId === 'sess-2')?.running).toBe(true);
+
+    // Background turn end: no endStreaming for the view, but the dot clears.
+    agent1.isStreaming = false;
+    agent1.callbacks.onLoadingChange(false);
+    expect(sent('endStreaming')).toHaveLength(0);
+    const after = treeSessions(sent('desktopSessionTree').at(-1));
+    expect(after.find((s) => s.sessionId === 'sess-1')?.running).toBe(false);
+    expect(after.find((s) => s.sessionId === 'sess-2')?.running).toBe(true);
+  });
+
+  it('gates background agent view callbacks until the session is activated', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    seedActiveSession('sess-2');
+
+    const appends = sent('appendMessage').length;
+    agent1.messages = [{ id: 'm-sess-1' }, { id: 'bg-1' }];
+    agent1.callbacks.onAssistantMessageAdded({ id: 'bg-1' });
+    expect(sent('appendMessage')).toHaveLength(appends);
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
+    expect(sent('setInitialState').at(-1)?.messages).toEqual([{ id: 'm-sess-1' }, { id: 'bg-1' }]);
+  });
+
+  it('evicts the least-recently-used idle agent beyond the pool cap, never streaming ones', async () => {
+    const { host } = await readyHost();
+    const agents = [seedActiveSession('sess-1')];
+    // Spawn up to the cap (8); each new session needs a non-empty active one.
+    for (let i = 2; i <= 8; i++) {
+      await host.handleWebviewMessage({ command: 'clearChat' });
+      agents.push(seedActiveSession(`sess-${i}`));
+    }
+    // Overflow by one -> the oldest idle agent (sess-1) is evicted.
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    agents.push(seedActiveSession('sess-9'));
+
+    expect(agents[0].destroy).toHaveBeenCalled();
+    for (const a of agents.slice(1)) expect(a.destroy).not.toHaveBeenCalled();
+
+    // A streaming agent is never the victim — the next-oldest idle one goes.
+    agents[1].isStreaming = true;
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    agents.push(seedActiveSession('sess-10'));
+
+    expect(agents[1].destroy).not.toHaveBeenCalled();
+    expect(agents[2].destroy).toHaveBeenCalled();
+  });
+
+  it('dispose destroys every live agent in the pool', async () => {
+    const { host } = await readyHost();
+    const agent1 = seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    const agent2 = seedActiveSession('sess-2');
+
+    await host.dispose();
+
+    expect(agent1.destroy).toHaveBeenCalled();
+    expect(agent2.destroy).toHaveBeenCalled();
   });
 });
