@@ -15,7 +15,7 @@
 |------|------|
 | 规格文件 | 61 |
 | 用户故事 | 295 |
-| 功能需求 | 1,201 |
+| 功能需求 | 1,202 |
 | 测试用例 | 4,411 |
 
 ## 规格列表
@@ -36,7 +36,7 @@
 | 记忆管理 | 通过记忆文件在对话间持久化信息 | 8 | 26 | [规格](core/memory-management.md) |
 | 流式输出 | 助手消息和工具参数的实时内容流式传输 | 6 | 26 | [规格](core/stream-content-updates.md) |
 | AI 错误处理 | 处理输出 token 限制超限，提示 agent 将工作拆分为更小的块 | 6 | 10 | [规格](core/ai-error-handling.md) |
-| 工具权限系统 | 权限系统，支持模式、通配符、拒绝规则、信任、acceptEdits、dontAsk、安全区 | 18 | 54 | [规格](core/tool-permission-system.md) |
+| 工具权限系统 | 权限系统，支持模式、通配符、拒绝规则、信任、acceptEdits、dontAsk、安全区 | 18 | 55 | [规格](core/tool-permission-system.md) |
 | Plan 模式 | Shift+Tab plan 模式，只读分析并增量编辑 plan 文件 | 9 | 29 | [规格](core/plan-mode.md) |
 
 ### 交互与 UI
