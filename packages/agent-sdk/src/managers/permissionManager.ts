@@ -23,7 +23,11 @@ import {
   hasWriteRedirections,
   getSmartPrefix,
   isDangerousFind,
+  hasCommandSubstitution,
+  hasProcessSubstitution,
+  hasSedInPlace,
   DANGEROUS_COMMANDS,
+  READ_ONLY_COMMANDS,
 } from "../utils/bashParser.js";
 import { isPathInside } from "../utils/pathSafety.js";
 import {
@@ -36,23 +40,6 @@ import {
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import type { WorktreeSession } from "../utils/worktreeSession.js";
-
-const SAFE_COMMANDS = [
-  "cd",
-  "ls",
-  "pwd",
-  "true",
-  "false",
-  "grep",
-  "rg",
-  "cat",
-  "head",
-  "tail",
-  "wc",
-  "sleep",
-  "find",
-  "sort",
-];
 
 const DEFAULT_ALLOWED_RULES = [
   "Bash(git status*)",
@@ -747,6 +734,14 @@ export class PermissionManager {
         if (hasWriteRedirections(part)) {
           return true;
         }
+        // Command/process substitution and sed -i are dangerous (FR-019.5, FR-019.6)
+        if (
+          hasCommandSubstitution(part) ||
+          hasProcessSubstitution(part) ||
+          hasSedInPlace(part)
+        ) {
+          return true;
+        }
         const processedPart = stripRedirections(stripEnvVars(part));
         const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
         if (commandMatch) {
@@ -862,6 +857,55 @@ export class PermissionManager {
   }
 
   /**
+   * Check if a single bash command part is auto-allowed (read-only and safe).
+   * Auto-allowed commands skip the confirmation dialog entirely.
+   * FR-019.2 through FR-019.7: read-only commands without write redirections,
+   * command substitution, process substitution, or sed -i are auto-allowed.
+   */
+  private isAutoAllowedPart(part: string, workdir?: string): boolean {
+    // Write redirections disqualify (FR-019.4)
+    if (hasWriteRedirections(part)) return false;
+    // Command substitution $(...) or `...` disqualifies (FR-019.6)
+    if (hasCommandSubstitution(part)) return false;
+    // Process substitution <(...) or >(...) disqualifies (FR-019.6)
+    if (hasProcessSubstitution(part)) return false;
+
+    const processedPart = stripRedirections(stripEnvVars(part));
+    const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
+    if (!commandMatch) return false;
+
+    const cmd = commandMatch[1];
+    const args = commandMatch[2]?.trim() || "";
+
+    // sed -i (in-place edit) disqualifies (FR-019.5)
+    if (hasSedInPlace(part)) return false;
+
+    // Read-only commands are auto-allowed (FR-019.2, FR-019.3)
+    if (READ_ONLY_COMMANDS.includes(cmd)) {
+      // find with dangerous flags (e.g. -exec, -delete) disqualifies
+      if (cmd === "find" && isDangerousFind(part)) return false;
+      return true;
+    }
+
+    // cd is not read-only but is safe if all paths are within the Safe Zone
+    if (cmd === "cd") {
+      if (!workdir) return false;
+      const pathArgs =
+        (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
+          (arg) => !arg.startsWith("-"),
+        ) || [];
+      if (pathArgs.length === 0) return true; // cd without args = current dir
+      return pathArgs.every((pathArg) => {
+        const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
+        const { isInside } = this.isInsideSafeZone(cleanPath, workdir);
+        return isInside;
+      });
+    }
+
+    return false;
+  }
+
+  /**
    * Check if a tool call is allowed by persistent or temporary rules
    */
   private isAllowedByRule(context: ToolPermissionContext): boolean {
@@ -878,67 +922,21 @@ export class PermissionManager {
         const workdir = ctx.toolInput?.workdir as string | undefined;
 
         return parts.every((part) => {
-          const hasWrite = hasWriteRedirections(part);
-          const processedPart = stripRedirections(stripEnvVars(part));
-
-          // Check for safe commands
-          if (!hasWrite) {
-            const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
-            if (commandMatch) {
-              const cmd = commandMatch[1];
-              const args = commandMatch[2]?.trim() || "";
-
-              if (SAFE_COMMANDS.includes(cmd)) {
-                if (
-                  cmd === "pwd" ||
-                  cmd === "true" ||
-                  cmd === "false" ||
-                  cmd === "ls" ||
-                  cmd === "grep" ||
-                  cmd === "rg" ||
-                  cmd === "cat" ||
-                  cmd === "head" ||
-                  cmd === "tail" ||
-                  cmd === "wc" ||
-                  cmd === "sleep" ||
-                  cmd === "sort" ||
-                  (cmd === "find" && !isDangerousFind(part))
-                ) {
-                  return true;
-                }
-
-                if (workdir) {
-                  // For cd, check paths
-                  const pathArgs =
-                    (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
-                      (arg) => !arg.startsWith("-"),
-                    ) || [];
-
-                  if (pathArgs.length === 0) {
-                    // cd without arguments operates on current dir (workdir)
-                    return true;
-                  }
-
-                  const allPathsSafe = pathArgs.every((pathArg) => {
-                    // Remove quotes if present
-                    const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-                    const { isInside } = this.isInsideSafeZone(
-                      cleanPath,
-                      workdir,
-                    );
-                    return isInside;
-                  });
-
-                  if (allPathsSafe) {
-                    return true;
-                  }
-                }
-              }
-            }
+          // Check for auto-allowed read-only commands (FR-019.2 through FR-019.7)
+          if (this.isAutoAllowedPart(part, workdir)) {
+            return true;
           }
 
-          // Check if this specific part is allowed by any rule
-          if (isDefaultRules && (hasWrite || isDangerousFind(part))) {
+          // When checking default rules, block dangerous variants from matching
+          // broad default rules like Bash(echo*) or Bash(cat*)
+          if (
+            isDefaultRules &&
+            (hasWriteRedirections(part) ||
+              isDangerousFind(part) ||
+              hasCommandSubstitution(part) ||
+              hasProcessSubstitution(part) ||
+              hasSedInPlace(part))
+          ) {
             return false;
           }
 
@@ -996,52 +994,8 @@ export class PermissionManager {
       const hasWrite = hasWriteRedirections(part);
       const processedPart = stripRedirections(stripEnvVars(part));
 
-      // Check for safe commands
-      const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
-      let isSafe = false;
-
-      if (commandMatch && !hasWrite) {
-        const cmd = commandMatch[1];
-        const args = commandMatch[2]?.trim() || "";
-
-        if (SAFE_COMMANDS.includes(cmd)) {
-          if (
-            cmd === "pwd" ||
-            cmd === "true" ||
-            cmd === "false" ||
-            cmd === "ls" ||
-            cmd === "grep" ||
-            cmd === "rg" ||
-            cmd === "cat" ||
-            cmd === "head" ||
-            cmd === "tail" ||
-            cmd === "wc" ||
-            cmd === "sleep" ||
-            (cmd === "find" && !isDangerousFind(part))
-          ) {
-            isSafe = true;
-          } else {
-            // For cd, check paths
-            const pathArgs =
-              (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
-                (arg) => !arg.startsWith("-"),
-              ) || [];
-
-            if (pathArgs.length === 0) {
-              isSafe = true;
-            } else {
-              const allPathsSafe = pathArgs.every((pathArg) => {
-                const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-                const { isInside } = this.isInsideSafeZone(cleanPath, workdir);
-                return isInside;
-              });
-              if (allPathsSafe) {
-                isSafe = true;
-              }
-            }
-          }
-        }
-      }
+      // Check for auto-allowed read-only commands
+      const isSafe = this.isAutoAllowedPart(part, workdir);
 
       if (!isSafe) {
         // Check if command is dangerous or out-of-bounds
@@ -1050,7 +1004,11 @@ export class PermissionManager {
           const cmd = commandMatch[1];
           const args = commandMatch[2]?.trim() || "";
 
-          if (DANGEROUS_COMMANDS.includes(cmd) || isDangerousFind(part)) {
+          if (
+            DANGEROUS_COMMANDS.includes(cmd) ||
+            isDangerousFind(part) ||
+            hasSedInPlace(part)
+          ) {
             continue;
           }
 

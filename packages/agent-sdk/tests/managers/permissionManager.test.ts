@@ -2171,7 +2171,8 @@ describe("PermissionManager", () => {
     it("should handle multiple non-safe commands", () => {
       const command = "npm install | sed 's/a/b/'";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(npm install*)", "Bash(sed 's/a/b/')"]);
+      // sed without -i is read-only, so only npm install generates a rule
+      expect(rules).toEqual(["Bash(npm install*)"]);
     });
 
     it("should return empty array for only safe commands", () => {
@@ -2198,10 +2199,11 @@ describe("PermissionManager", () => {
       expect(rules).toEqual([]);
     });
 
-    it("should handle pwd as safe", () => {
+    it("should handle pwd and echo as safe", () => {
       const command = "pwd && echo hello";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(echo hello)"]);
+      // both pwd and echo are read-only commands, so no rules are generated
+      expect(rules).toEqual([]);
     });
 
     it("should handle true and false as safe", () => {
@@ -2455,6 +2457,198 @@ describe("PermissionManager", () => {
       await manager.addPermissionRule("Bash(ls*)");
 
       expect(mockConfigService.addAllowedRule).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Read-Only Command Classification", () => {
+    const workdir = "/home/user/project";
+
+    it("should auto-allow 'sed -n' for stdout output", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: {
+          command: "sed -n '19631,19900p' file.d.ts",
+          workdir,
+        },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should deny 'sed -i' (in-place edit)", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: {
+          command: "sed -i 's/a/b/' file.txt",
+          workdir,
+        },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should set hidePersistentOption for sed -i", () => {
+      const context = permissionManager.createContext(
+        "Bash",
+        "default",
+        undefined,
+        { command: "sed -i 's/a/b/' file.txt", workdir },
+      );
+      expect(context.hidePersistentOption).toBe(true);
+    });
+
+    it("should auto-allow 'awk' commands", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "awk '{print $1}' file.txt", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should auto-allow 'jq' commands", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "jq '.field' file.json", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should auto-allow 'diff' commands", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "diff file1.txt file2.txt", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should auto-allow 'tr' commands", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "echo 'hello' | tr 'a-z' 'A-Z'", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should auto-allow chained read-only commands", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: {
+          command: "sed -n '1,10p' file.txt | grep pattern | wc -l",
+          workdir,
+        },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should deny read-only command with write redirection", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cat file.txt > out.txt", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should deny command with command substitution even if base is read-only", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cat $(rm file.txt)", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should set hidePersistentOption for command substitution", () => {
+      const context = permissionManager.createContext(
+        "Bash",
+        "default",
+        undefined,
+        { command: "cat $(rm file.txt)", workdir },
+      );
+      expect(context.hidePersistentOption).toBe(true);
+    });
+
+    it("should deny process substitution even if base is read-only", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "diff <(ls a) <(ls b)", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should set hidePersistentOption for process substitution", () => {
+      const context = permissionManager.createContext(
+        "Bash",
+        "default",
+        undefined,
+        { command: "diff <(ls a) <(ls b)", workdir },
+      );
+      expect(context.hidePersistentOption).toBe(true);
+    });
+
+    it("should auto-allow 'cut' commands", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cut -d, -f1 file.csv", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should auto-allow 'md5sum' commands", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "md5sum file.txt", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should expand read-only commands to empty rules", () => {
+      const rules = permissionManager.expandBashRule(
+        "sed -n '1,10p' file.txt",
+        workdir,
+      );
+      expect(rules).toEqual([]);
+    });
+
+    it("should skip sed -i in expandBashRule (treated as dangerous)", () => {
+      const rules = permissionManager.expandBashRule(
+        "sed -i 's/a/b/' file.txt",
+        workdir,
+      );
+      // sed -i is dangerous, so it's skipped (like rm, etc.)
+      expect(rules).toEqual([]);
+    });
+
+    it("should not allow broad default rule to match command with substitution", async () => {
+      // cat is read-only, but cat $(rm x) should NOT be auto-allowed
+      // and should NOT be matched by Bash(cat*) default rule
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cat $(echo hi)", workdir },
+      };
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
     });
   });
 });

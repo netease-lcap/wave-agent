@@ -477,6 +477,77 @@ export const DANGEROUS_COMMANDS = [
 ];
 
 /**
+ * Read-only command set: commands that only read/transform data and write to stdout.
+ * When a command in this set is used without write redirections, command substitution,
+ * or dangerous flags (e.g. sed -i), it is auto-allowed without a confirmation dialog.
+ * Aligned with Claude Code's SEMANTIC_READ_ONLY_COMMANDS, excluding interactive pagers
+ * (less, more, man, info), command executors (xargs), and infinite-output generators (yes).
+ * FR-019.2 through FR-019.7 in tool-permission-system.md.
+ */
+export const READ_ONLY_COMMANDS = [
+  "ls",
+  "cat",
+  "head",
+  "tail",
+  "wc",
+  "sort",
+  "uniq",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "find",
+  "which",
+  "whereis",
+  "file",
+  "stat",
+  "du",
+  "df",
+  "free",
+  "uptime",
+  "uname",
+  "hostname",
+  "whoami",
+  "id",
+  "groups",
+  "env",
+  "printenv",
+  "echo",
+  "printf",
+  "date",
+  "true",
+  "false",
+  "pwd",
+  "tree",
+  "diff",
+  "cmp",
+  "md5sum",
+  "sha256sum",
+  "sha1sum",
+  "xxd",
+  "od",
+  "hexdump",
+  "strings",
+  "readlink",
+  "realpath",
+  "basename",
+  "dirname",
+  "seq",
+  "column",
+  "jq",
+  "yq",
+  "cut",
+  "paste",
+  "tr",
+  "awk",
+  "sed",
+  "test",
+  "expr",
+  "bc",
+  "sleep",
+];
+
+/**
  * Registry of commands and their expected subcommand depth for smart prefix extraction.
  * For example, 'git: 2' means 'git commit' is a valid prefix, but 'git' alone is not.
  * Multi-word keys can be used for more specific rules.
@@ -632,6 +703,41 @@ export function isDangerousFind(command: string): boolean {
     const unquoted = token.replace(/^(['"])(.*)\1$/, "$2");
     return dangerousFlags.includes(unquoted);
   });
+}
+
+/**
+ * Detects command substitution $(...) or backticks `...` in a command string.
+ * Commands with substitution are never auto-allowed because the substituted
+ * command may be dangerous (e.g. cat $(rm x)). FR-019.6.
+ */
+export function hasCommandSubstitution(command: string): boolean {
+  // Remove quoted strings first so $() or backticks inside quotes don't trigger
+  const stripped = command
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''");
+  return /\$\([^)]*\)/.test(stripped) || /`[^`]*`/.test(stripped);
+}
+
+/**
+ * Detects process substitution <(...) or >(...) in a command string.
+ * These can execute side effects and are never auto-allowed. FR-019.6.
+ */
+export function hasProcessSubstitution(command: string): boolean {
+  const stripped = command
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''");
+  return /[<>]\([^)]*\)/.test(stripped);
+}
+
+/**
+ * Detects sed in-place edit flag (-i, with optional backup suffix like -i.bak).
+ * sed -i modifies files in place and must NOT be auto-allowed. FR-019.5.
+ */
+export function hasSedInPlace(command: string): boolean {
+  const stripped = stripRedirections(stripEnvVars(command));
+  const tokens = stripped.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+  if (tokens.length === 0 || tokens[0] !== "sed") return false;
+  return tokens.some((token) => /^-i(\..*)?$/.test(token));
 }
 
 /**
