@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
-import { createMockVscode, sendCommand } from './test-utils';
+import { createMockVscode, sendCommand, fireInput } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
 
 vi.mock('../../src/styles/DesktopApp.css', () => ({}));
@@ -249,6 +249,169 @@ describe('DesktopApp', () => {
             sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [] }] });
 
             expect(screen.getByTestId('desktop-session-group-/work/a')).toHaveTextContent('无会话');
+        });
+
+        it('posts desktopDeleteSession after the user confirms', () => {
+            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', {
+                groups: [{ workdir: '/work/a', sessions: [session('s1', 'hello a')] }],
+            });
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByTestId('desktop-session-delete-s1'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopDeleteSession',
+                sessionId: 's1',
+            });
+            confirmSpy.mockRestore();
+        });
+
+        it('does not delete when the user cancels the confirm dialog', () => {
+            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', {
+                groups: [{ workdir: '/work/a', sessions: [session('s1', 'hello a')] }],
+            });
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByTestId('desktop-session-delete-s1'));
+
+            expect(vscode.postMessage).not.toHaveBeenCalled();
+            confirmSpy.mockRestore();
+        });
+
+        it('warns about worktree + temp branch cleanup when deleting a worktree session', () => {
+            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', {
+                groups: [
+                    {
+                        workdir: '/work/a',
+                        sessions: [
+                            { sessionId: 'wt', title: 'wt session', lastActiveAt: Date.now(), hasWorktree: true },
+                        ],
+                    },
+                ],
+            });
+
+            fireEvent.click(screen.getByTestId('desktop-session-delete-wt'));
+
+            expect(confirmSpy).toHaveBeenCalledWith(
+                expect.stringContaining('worktree 目录与临时分支将一并删除'),
+            );
+            confirmSpy.mockRestore();
+        });
+    });
+
+    describe('worktree controls (FR-022/FR-023)', () => {
+        const branches = { branches: ['main', 'dev'], current: 'main' };
+
+        it('requests branches when a workdir arrives and shows branch selector + checkbox', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopListGitBranches', workdir: '/work/a' });
+            // Controls hidden until the branch list arrives
+            expect(screen.queryByTestId('desktop-worktree-controls')).not.toBeInTheDocument();
+
+            sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
+
+            expect(screen.getByTestId('desktop-branch-selector')).toHaveTextContent('main');
+            expect(screen.getByTestId('desktop-worktree-checkbox')).toBeInTheDocument();
+        });
+
+        it('stays hidden when the workdir is not a git repo (result null)', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopGitBranches', { workdir: '/work/a', result: null });
+
+            expect(screen.queryByTestId('desktop-worktree-controls')).not.toBeInTheDocument();
+        });
+
+        it('hides stale controls immediately on workdir change until fresh branches arrive', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
+            expect(screen.getByTestId('desktop-worktree-controls')).toBeInTheDocument();
+
+            sendCommand('desktopWorkdirState', { workdir: '/work/b', recentWorkdirs: ['/work/a', '/work/b'] });
+
+            expect(screen.queryByTestId('desktop-worktree-controls')).not.toBeInTheDocument();
+        });
+
+        it('selects a branch from the dropdown', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
+
+            fireEvent.click(screen.getByTestId('desktop-branch-selector'));
+            const items = screen.getAllByTestId('desktop-branch-item');
+            expect(items).toHaveLength(2);
+
+            fireEvent.click(items[1]);
+            expect(screen.getByTestId('desktop-branch-selector')).toHaveTextContent('dev');
+            expect(screen.queryByTestId('desktop-branch-menu')).not.toBeInTheDocument();
+        });
+
+        it('posts desktopCreateWorktree instead of sendMessage when the checkbox is on', async () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
+            vscode.postMessage.mockClear();
+
+            // Pick dev as the base branch and tick the checkbox
+            fireEvent.click(screen.getByTestId('desktop-branch-selector'));
+            fireEvent.click(screen.getAllByTestId('desktop-branch-item')[1]);
+            fireEvent.click(screen.getByTestId('desktop-worktree-checkbox').querySelector('input')!);
+
+            const input = screen.getByTestId('message-input');
+            input.textContent = 'hello worktree';
+            await fireInput(input, { inputType: 'insertText' });
+            fireEvent.click(screen.getByTestId('send-btn'));
+
+            const sentMessages = vscode.postMessage.mock.calls.map((c) => c[0]);
+            expect(sentMessages.find((m: Record<string, unknown>) => m.command === 'sendMessage')).toBeUndefined();
+            expect(sentMessages.find((m: Record<string, unknown>) => m.command === 'desktopCreateWorktree')).toEqual({
+                command: 'desktopCreateWorktree',
+                workdir: '/work/a',
+                baseBranch: 'dev',
+                text: 'hello worktree',
+                images: undefined,
+            });
+            // Checkbox resets for the next session
+            expect(screen.getByTestId('desktop-worktree-checkbox').querySelector('input')).not.toBeChecked();
+        });
+
+        it('posts sendMessage normally when the checkbox is off', async () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
+            vscode.postMessage.mockClear();
+
+            const input = screen.getByTestId('message-input');
+            input.textContent = 'plain message';
+            await fireInput(input, { inputType: 'insertText' });
+            fireEvent.click(screen.getByTestId('send-btn'));
+
+            const sentMessages = vscode.postMessage.mock.calls.map((c) => c[0]);
+            expect(sentMessages.find((m: Record<string, unknown>) => m.command === 'desktopCreateWorktree')).toBeUndefined();
+            expect(sentMessages.find((m: Record<string, unknown>) => m.command === 'sendMessage')).toBeDefined();
+        });
+
+        it('hides the controls once the conversation starts', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
+            expect(screen.getByTestId('desktop-worktree-controls')).toBeInTheDocument();
+
+            sendCommand('updateMessages', { messages: [MockDataGenerator.createUserMessage('hi')] });
+
+            expect(screen.queryByTestId('desktop-worktree-controls')).not.toBeInTheDocument();
         });
     });
 

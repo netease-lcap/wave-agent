@@ -16,6 +16,7 @@ import WelcomeView from './WelcomeView';
 import LoadingLogo from './LoadingLogo';
 import { DesktopSidebar } from './DesktopSidebar';
 import { DesktopWorkdirSelector } from './DesktopWorkdirSelector';
+import { DesktopWorktreeControls } from './DesktopWorktreeControls';
 import type {
   ChatAppProps,
   ConfigurationData,
@@ -28,6 +29,9 @@ import '../styles/ChatApp.css';
 export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
+  // Desktop new-session worktree controls (FR-022/FR-023).
+  const [worktreeBranch, setWorktreeBranch] = useState<string>('');
+  const [worktreeChecked, setWorktreeChecked] = useState(false);
   const messageInputRef = useRef<MessageInputHandle>(null);
   const messageListRef = useRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }>(null);
   const stateRef = useRef(state);
@@ -52,6 +56,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
     const timer = setTimeout(() => setQueueEditWarning(null), 4000);
     return () => clearTimeout(timer);
   }, [queueEditWarning]);
+
+  // Desktop: reset the worktree controls when the branch list changes (i.e. the
+  // workdir was re-queried). Default to the repo's current branch, unchecked.
+  const gitBranches = host?.type === 'desktop' ? host.gitBranches : null;
+  useEffect(() => {
+    setWorktreeBranch(gitBranches?.current ?? '');
+    setWorktreeChecked(false);
+  }, [gitBranches]);
 
   // Handle messages from VS Code extension
   useEffect(() => {
@@ -314,6 +326,27 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
     if (trimmedText === '/tasks') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'tasks' } }); return; }
     if (trimmedText === '/workflows' || trimmedText === '/workflows ') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'workflows' } }); return; }
 
+    // Desktop worktree flow (FR-023): on the first message of a new session
+    // with the worktree checkbox on, create the worktree first — the main
+    // process switches into it and forwards this message.
+    if (
+      host?.type === 'desktop' &&
+      stateRef.current.messages.length === 0 &&
+      worktreeChecked &&
+      host.workdir &&
+      host.gitBranches
+    ) {
+      setWorktreeChecked(false);
+      vscode.postMessage({
+        command: 'desktopCreateWorktree',
+        workdir: host.workdir,
+        baseBranch: worktreeBranch || host.gitBranches.current,
+        text: trimmedText,
+        images: images,
+      });
+      return;
+    }
+
     // Send to extension
     vscode.postMessage({
       command: 'sendMessage',
@@ -321,7 +354,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
       images: images,
       force: force
     });
-  }, [vscode, handleClearChat]);
+  }, [vscode, handleClearChat, host, worktreeChecked, worktreeBranch]);
 
   const handleAbortMessage = useCallback(() => {
     if (!state.isStreaming) return;
@@ -569,13 +602,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
             disabled={host?.type === 'desktop' && !host.workdir}
             workdirSelector={
               host?.type === 'desktop' && state.messages.length === 0 ? (
-                <DesktopWorkdirSelector
-                  workdir={host.workdir}
-                  recentWorkdirs={host.recentWorkdirs}
-                  onSelectWorkdir={host.onSelectWorkdir}
-                  onSelectRecentWorkdir={host.onSelectRecentWorkdir}
-                  onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
-                />
+                <>
+                  <DesktopWorkdirSelector
+                    workdir={host.workdir}
+                    recentWorkdirs={host.recentWorkdirs}
+                    onSelectWorkdir={host.onSelectWorkdir}
+                    onSelectRecentWorkdir={host.onSelectRecentWorkdir}
+                    onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
+                  />
+                  {host.workdir && host.gitBranches && (
+                    <DesktopWorktreeControls
+                      branches={host.gitBranches.branches}
+                      branch={worktreeBranch || host.gitBranches.current}
+                      worktreeChecked={worktreeChecked}
+                      onBranchChange={setWorktreeBranch}
+                      onWorktreeChange={setWorktreeChecked}
+                    />
+                  )}
+                </>
               ) : undefined
             }
           />

@@ -70,7 +70,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           title="删除会话"
           onClick={(e) => {
             e.stopPropagation();
-            onDeleteSession(session.sessionId);
+            // FR-025: confirm before deleting; worktree sessions warn about the
+            // worktree dir + temp branch and the loss of uncommitted changes.
+            const label = session.title || '新对话';
+            const message = session.hasWorktree
+              ? `确定删除会话「${label}」？\n该会话的 worktree 目录与临时分支将一并删除，未提交的改动将丢失。`
+              : `确定删除会话「${label}」？`;
+            if (window.confirm(message)) {
+              onDeleteSession(session.sessionId);
+            }
           }}
           data-testid={`desktop-session-delete-${session.sessionId}`}
         >

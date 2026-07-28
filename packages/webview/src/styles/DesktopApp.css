@@ -172,6 +172,39 @@
     opacity: 0.6;
 }
 
+/* ---- Worktree controls: branch selector + checkbox (FR-022/FR-023) ----
+   Rendered next to the workdir selector in the input-workdir-row. The branch
+   dropdown reuses the .desktop-workdir-* classes; only the row layout and the
+   checkbox need their own styles. */
+
+.desktop-worktree-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.desktop-branch-active .desktop-workdir-menu-name {
+    font-weight: 600;
+}
+
+.desktop-worktree-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.desktop-worktree-checkbox input[type='checkbox'] {
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--vscode-button-background);
+}
+
 /* ---- Workdir dropdown (inside the message input, top-left) ----
    Custom dropdown mirroring the permission-mode dropdown in MessageInput:
    a relative container holds the trigger + an absolutely-positioned menu.

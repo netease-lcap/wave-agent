@@ -148,6 +148,12 @@ export interface DesktopHostProps {
   onSelectSession: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index; also removes worktree+branch if applicable. */
   onDeleteSession: (sessionId: string) => void;
+  /**
+   * Git branches of the current workdir (FR-022), pushed via the
+   * `desktopGitBranches` message. `null` = not a git repo / git unavailable —
+   * branch selector and worktree checkbox stay hidden.
+   */
+  gitBranches: { branches: string[]; current: string } | null;
 }
 
 /** One directory group in the desktop sidebar session tree (FR-020). */
