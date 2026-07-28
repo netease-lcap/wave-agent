@@ -146,12 +146,23 @@ export interface DesktopHostProps {
   sessionTree: DesktopSessionGroup[];
   /** Open a historical session; switches workdir first when needed. */
   onSelectSession: (workdir: string, sessionId: string) => void;
+  /** Delete a session from the index; also removes worktree+branch if applicable. */
+  onDeleteSession: (sessionId: string) => void;
 }
 
 /** One directory group in the desktop sidebar session tree (FR-020). */
 export interface DesktopSessionGroup {
   workdir: string;
-  sessions: SessionMetadata[];
+  sessions: DesktopSessionEntry[];
+}
+
+/** A session in the desktop sidebar tree, derived from the session index (FR-024). */
+export interface DesktopSessionEntry {
+  sessionId: string;
+  title: string;
+  lastActiveAt: number;
+  /** True when this session lives in a worktree (delete also cleans up branch+dir). */
+  hasWorktree: boolean;
 }
 
 /**

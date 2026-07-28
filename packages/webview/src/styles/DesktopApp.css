@@ -143,6 +143,29 @@
     white-space: nowrap;
 }
 
+.desktop-session-delete {
+    display: none;
+    flex-shrink: 0;
+    padding: 0 2px;
+    border: none;
+    background: none;
+    color: var(--vscode-foreground);
+    opacity: 0.6;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.desktop-session-item:hover .desktop-session-delete {
+    display: inline-flex;
+    align-items: center;
+}
+
+.desktop-session-delete:hover {
+    opacity: 1;
+    color: var(--vscode-errorForeground, #f14c4c);
+}
+
 .desktop-session-empty {
     padding: 4px 6px 4px 20px;
     font-size: 12px;

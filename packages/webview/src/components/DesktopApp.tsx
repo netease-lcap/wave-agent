@@ -51,6 +51,10 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     vscode.postMessage({ command: 'desktopSelectSession', workdir, sessionId });
   }, [vscode]);
 
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    vscode.postMessage({ command: 'desktopDeleteSession', sessionId });
+  }, [vscode]);
+
   // Waiting for the main process to answer `desktopReady`.
   if (workdirState === null) {
     return <div className="desktop-loading" data-testid="desktop-loading"></div>;
@@ -70,6 +74,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         onRemoveRecentWorkdir: handleRemoveRecentWorkdir,
         sessionTree,
         onSelectSession: handleSelectSession,
+        onDeleteSession: handleDeleteSession,
       }}
     />
   );

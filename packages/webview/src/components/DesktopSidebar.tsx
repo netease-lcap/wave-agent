@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import type { DesktopSessionGroup, SessionMetadata } from '../types';
-import { formatSessionLabel } from '../utils/session';
+import type { DesktopSessionGroup, DesktopSessionEntry } from '../types';
 import '../styles/DesktopApp.css';
 
 export interface DesktopSidebarProps {
@@ -15,6 +14,8 @@ export interface DesktopSidebarProps {
   /** Active session id — gets the running dot while streaming. */
   currentSessionId?: string;
   onSelectSession: (workdir: string, sessionId: string) => void;
+  /** Delete a session from the index (also cleans up worktree if applicable). */
+  onDeleteSession: (sessionId: string) => void;
 }
 
 const dirName = (workdir: string): string =>
@@ -34,6 +35,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   currentWorkdir,
   currentSessionId,
   onSelectSession,
+  onDeleteSession,
 }) => {
   // Explicit expand/collapse overrides; groups without an entry follow the
   // default rule (expanded iff it is the current workdir's group).
@@ -49,20 +51,31 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     }));
   };
 
-  const renderSession = (group: DesktopSessionGroup, session: SessionMetadata) => {
-    const running = session.id === currentSessionId && isStreaming;
+  const renderSession = (group: DesktopSessionGroup, session: DesktopSessionEntry) => {
+    const running = session.sessionId === currentSessionId && isStreaming;
     return (
       <li
-        key={session.id}
-        className={`desktop-session-item ${session.id === currentSessionId ? 'desktop-session-item--current' : ''}`}
-        onClick={() => onSelectSession(group.workdir, session.id)}
-        data-testid={`desktop-session-item-${session.id}`}
+        key={session.sessionId}
+        className={`desktop-session-item ${session.sessionId === currentSessionId ? 'desktop-session-item--current' : ''}`}
+        onClick={() => onSelectSession(group.workdir, session.sessionId)}
+        data-testid={`desktop-session-item-${session.sessionId}`}
       >
         <span
           className={`desktop-session-dot${running ? ' desktop-session-dot--running' : ''}`}
           title={running ? '正在运行' : undefined}
         />
-        <span className="desktop-session-title">{formatSessionLabel(session)}</span>
+        <span className="desktop-session-title">{session.title || '新对话'}</span>
+        <button
+          className="desktop-session-delete"
+          title="删除会话"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteSession(session.sessionId);
+          }}
+          data-testid={`desktop-session-delete-${session.sessionId}`}
+        >
+          <span className="codicon codicon-trash"></span>
+        </button>
       </li>
     );
   };

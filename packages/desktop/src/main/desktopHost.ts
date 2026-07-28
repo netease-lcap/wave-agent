@@ -60,6 +60,7 @@ export class DesktopHost {
 
   // stdio infrastructure
   private client: StdioClient | null = null;
+  private worktreeInfo: { path: string; branch: string; baseBranch: string; repoRoot: string } | null = null;
   private router: NotificationRouter | null = null;
   private initPromise: Promise<void> | null = null;
   private cliVersion: string | null = null;
@@ -78,7 +79,7 @@ export class DesktopHost {
   private isCommandRunning = false;
   private inputContent = '';
   private messageQueue: QueuedMessage[] = [];
-  private sessionTree: Array<{ workdir: string; sessions: SessionMetadata[] }> = [];
+  private sessionTree: Array<{ workdir: string; sessions: Array<{ sessionId: string; title: string; lastActiveAt: number; hasWorktree: boolean }> }> = [];
   private pendingConfirmations = new Map<string, PendingConfirmation>();
 
   // throttling state (same cadence as vsce ChatSession)
@@ -279,8 +280,8 @@ export class DesktopHost {
             latestTotalTokens: this.agent?.latestTotalTokens ?? 0,
           } as SessionMetadata,
         });
-        void this.listSessions();
-        void this.refreshSessionTree(this.workdir ? [this.workdir] : undefined);
+        this.registerSessionInIndex(sessionId);
+        this.refreshSessionTree();
       },
       onPermissionModeChange: (mode: PermissionMode) => {
         this.postMessage({ command: 'updatePermissionMode', mode });
@@ -292,9 +293,10 @@ export class DesktopHost {
         this.isStreaming = loading;
         this.postMessage({ command: loading ? 'startStreaming' : 'endStreaming' });
         // Turn ended — title/lastActiveAt of the current session may have
-        // changed, so refresh its sidebar group (FR-020).
+        // changed, so touch the index and refresh the sidebar (FR-020/024).
         if (!loading) {
-          void this.refreshSessionTree(this.workdir ? [this.workdir] : undefined);
+          this.touchSessionInIndex();
+          this.refreshSessionTree();
         }
       },
       onCommandRunningChange: (running: boolean) => {
@@ -369,7 +371,7 @@ export class DesktopHost {
     this.workdir = dir;
     this.configStore.addRecentWorkdir(dir);
     this.sendWorkdirState();
-    void this.refreshSessionTree();
+    this.refreshSessionTree();
     try {
       await this.initializeAgent();
       await this.pushInitialState();
@@ -445,7 +447,6 @@ export class DesktopHost {
 
   private async pushInitialState(): Promise<void> {
     const configurationData = this.configStore.getConfiguration();
-    const sessions = await this.getSessionsList();
     let isAuthenticated = false;
     try {
       const authResult = (await this.utilityClient.request('getAuthStatus')) as { isAuthenticated: boolean; serverUrl: string };
@@ -475,7 +476,6 @@ export class DesktopHost {
       inputContent: this.inputContent,
       isStreaming: this.isStreaming,
       isCommandRunning: this.isCommandRunning,
-      sessions,
       session: this.sessionId && this.agent ? {
         id: this.sessionId,
         sessionType: 'main',
@@ -493,47 +493,16 @@ export class DesktopHost {
     });
   }
 
-  private async getSessionsList(): Promise<SessionMetadata[]> {
-    if (!this.workdir) return [];
-    const result = (await this.utilityClient.request('listSessions', {
-      workdir: this.workdir,
-    })) as { sessions: SessionMetadata[] };
-    return result.sessions
-      .filter((session) => session.sessionType === 'main')
-      .slice(0, 10);
-  }
-
-  private async listSessions(): Promise<void> {
-    try {
-      const sessions = await this.getSessionsList();
-      this.postMessage({ command: 'updateSessions', sessions });
-    } catch (error) {
-      console.error('[DesktopHost] 获取会话列表失败:', error);
-      this.postMessage({ command: 'updateSessions', sessions: [] });
-    }
-  }
-
   /** Last N sessions shown per directory in the sidebar session tree (FR-020). */
   private static readonly SESSION_TREE_LIMIT = 5;
 
-  private async queryDirSessions(workdir: string): Promise<SessionMetadata[]> {
-    try {
-      await this.ensureClient();
-      const result = (await this.utilityClient.request('listSessions', { workdir })) as { sessions: SessionMetadata[] };
-      return result.sessions.filter((s) => s.sessionType === 'main').slice(0, DesktopHost.SESSION_TREE_LIMIT);
-    } catch (error) {
-      console.error(`[DesktopHost] 获取目录会话失败 (${workdir}):`, error);
-      return [];
-    }
-  }
-
   /**
-   * Refresh the sidebar session tree (FR-020). Queries `listSessions` for each
-   * recent directory in parallel; when `workdirs` is given only those groups are
-   * re-queried and the rest are kept from the current snapshot. Pushes a
-   * `desktopSessionTree` message. Groups follow the recentWorkdirs order.
+   * Refresh the sidebar session tree (FR-020). Data comes entirely from the
+   * desktop session index (FR-024) — no stdio listSessions calls. Groups are
+   * ordered by the recent-workdirs list; sessions within each group are sorted
+   * by lastActiveAt descending and capped at SESSION_TREE_LIMIT.
    */
-  private async refreshSessionTree(workdirs?: string[]): Promise<void> {
+  private refreshSessionTree(): void {
     const recents = this.configStore.getRecentWorkdirs();
     if (recents.length === 0) {
       if (this.sessionTree.length > 0) {
@@ -542,15 +511,97 @@ export class DesktopHost {
       }
       return;
     }
-    const targets = workdirs ?? recents;
-    const queried = new Map(
-      await Promise.all(targets.map(async (dir) => [dir, await this.queryDirSessions(dir)] as const)),
-    );
+    const index = this.configStore.getSessionIndex();
     this.sessionTree = recents.map((dir) => ({
       workdir: dir,
-      sessions: queried.get(dir) ?? this.sessionTree.find((g) => g.workdir === dir)?.sessions ?? [],
+      sessions: index
+        .filter((s) => s.workdir === dir)
+        .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+        .slice(0, DesktopHost.SESSION_TREE_LIMIT)
+        .map((s) => ({
+          sessionId: s.sessionId,
+          title: s.title,
+          lastActiveAt: s.lastActiveAt,
+          hasWorktree: !!s.worktree,
+        })),
     }));
     this.postMessage({ command: 'desktopSessionTree', groups: this.sessionTree });
+  }
+
+  /** Upsert the current session into the desktop-owned session index (FR-024). */
+  private registerSessionInIndex(sessionId: string): void {
+    if (!this.workdir || !this.configStore) return;
+    this.configStore.upsertSession({
+      sessionId,
+      title: '',
+      workdir: this.workdir,
+      cwd: this.workdir,
+      lastActiveAt: Date.now(),
+      worktree: this.worktreeInfo ?? undefined,
+    });
+    this.worktreeInfo = null;
+  }
+
+  /** Bump lastActiveAt (and title if known) after streaming settles. */
+  private touchSessionInIndex(): void {
+    if (!this.sessionId || !this.configStore) return;
+    this.configStore.touchSession(this.sessionId, Date.now());
+  }
+
+  /** FR-025: remove from index; best-effort worktree+branch cleanup. */
+  private async handleDeleteSession(sessionId: string): Promise<void> {
+    if (!this.configStore) return;
+    const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
+    this.configStore.removeSession(sessionId);
+    if (entry?.worktree) {
+      await this.removeWorktree({
+        path: entry.worktree.path,
+        branch: entry.worktree.branch,
+        repoRoot: entry.worktree.repoRoot,
+      });
+    }
+    this.refreshSessionTree();
+  }
+
+  /** FR-022/FR-023: create worktree via stdio, then switch into it. */
+  private async handleCreateWorktree(
+    workdir: string,
+    baseBranch?: string,
+    name?: string,
+  ): Promise<void> {
+    const result = (await this.utilityClient.request('createWorktree', { workdir, baseBranch, name })) as {
+      name: string;
+      path: string;
+      branch: string;
+      baseBranch: string;
+      repoRoot: string;
+    };
+    this.worktreeInfo = {
+      path: result.path,
+      branch: result.branch,
+      baseBranch: result.baseBranch,
+      repoRoot: result.repoRoot,
+    };
+    await this.switchWorkdir(result.path);
+  }
+
+  /** FR-052 proxy: branch list for the new-session worktree selector. */
+  private async handleListGitBranches(workdir: string): Promise<void> {
+    try {
+      const result = await this.utilityClient.request('listGitBranches', { workdir });
+      this.postMessage({ command: 'desktopGitBranches', workdir, result });
+    } catch {
+      this.postMessage({ command: 'desktopGitBranches', workdir, result: null });
+    }
+  }
+
+  /** Best-effort worktree removal via stdio (FR-053). */
+  private async removeWorktree(params: { path: string; branch: string; repoRoot: string }): Promise<void> {
+    try {
+      await this.utilityClient.request('removeWorktree', params);
+    } catch {
+      // best-effort — stdio removeWorktree never throws
+    }
   }
 
   private async refreshWorkflowRuns(): Promise<void> {
@@ -584,7 +635,7 @@ export class DesktopHost {
       case 'desktopRemoveRecentWorkdir':
         this.configStore.removeRecentWorkdir(msg.path as string);
         this.sendWorkdirState();
-        void this.refreshSessionTree();
+        this.refreshSessionTree();
         break;
 
       case 'desktopSelectSession':
@@ -661,8 +712,20 @@ export class DesktopHost {
         break;
 
       // -- sessions -------------------------------------------------------
-      case 'listSessions':
-        await this.listSessions();
+      case 'desktopDeleteSession':
+        await this.handleDeleteSession(msg.sessionId as string);
+        break;
+
+      case 'desktopCreateWorktree':
+        await this.handleCreateWorktree(
+          msg.workdir as string,
+          msg.baseBranch as string | undefined,
+          msg.name as string | undefined,
+        );
+        break;
+
+      case 'desktopListGitBranches':
+        await this.handleListGitBranches(msg.workdir as string);
         break;
 
       case 'restoreSession':
@@ -876,7 +939,7 @@ export class DesktopHost {
         await this.initializeAgent();
       }
       await this.pushInitialState();
-      void this.refreshSessionTree();
+      this.refreshSessionTree();
 
       // Auto update check: once per app launch after the first agent is ready.
       if (!this.updateCheckTriggered) {
@@ -907,7 +970,7 @@ export class DesktopHost {
     if (!fs.existsSync(dir)) {
       this.configStore.removeRecentWorkdir(dir);
       this.sendWorkdirState();
-      void this.refreshSessionTree();
+      this.refreshSessionTree();
       this.pushSystemMessage(`目录不存在：${dir}，已从最近列表移除`);
       return;
     }
@@ -923,7 +986,7 @@ export class DesktopHost {
     if (!fs.existsSync(workdir)) {
       this.configStore.removeRecentWorkdir(workdir);
       this.sendWorkdirState();
-      void this.refreshSessionTree();
+      this.refreshSessionTree();
       this.pushSystemMessage(`目录不存在：${workdir}，已从最近列表移除`);
       return;
     }
@@ -986,8 +1049,8 @@ export class DesktopHost {
       await this.agent.restoreSession(sessionId);
       this.throttledUpdateChatMessages(this.messages);
       await this.clearQueue();
-      await this.listSessions();
-      void this.refreshSessionTree(this.workdir ? [this.workdir] : undefined);
+      this.touchSessionInIndex();
+      this.refreshSessionTree();
     } catch (error) {
       console.error('[DesktopHost] 恢复会话失败:', error);
       this.pushSystemMessage(`恢复会话失败: ${error}`);
