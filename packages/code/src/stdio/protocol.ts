@@ -91,7 +91,11 @@ export type RequestMethod =
   | "getBackgroundTaskOutput"
   | "stopBackgroundTask"
   | "getWorkflowRuns"
-  | "stopWorkflowRun";
+  | "stopWorkflowRun"
+  // Git / worktree (global — no session required)
+  | "listGitBranches"
+  | "createWorktree"
+  | "removeWorktree";
 
 // ── Client → Server notification methods ────────────────────────
 

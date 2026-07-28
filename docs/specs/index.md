@@ -14,8 +14,8 @@
 | 指标 | 数量 |
 |------|------|
 | 规格文件 | 61 |
-| 用户故事 | 289 |
-| 功能需求 | 1,184 |
+| 用户故事 | 290 |
+| 功能需求 | 1,191 |
 | 测试用例 | 4,352 |
 
 ## 规格列表
@@ -64,9 +64,9 @@
 | Status 命令 | `/status` 显示版本、会话 ID、cwd、模型和运行时信息 | 1 | 9 | [规格](ui/status-command.md) |
 | Update 命令 | `wave update` / `wave-code update` 更新到最新版本 | 2 | 7 | [规格](ui/update-command.md) |
 | 历史搜索 | Ctrl+R 历史搜索，复用 `~/.wave/history.jsonl` 中的历史提示 | 2 | 10 | [规格](ui/history-search-prompt.md) |
-| Stdio 传输层 | 编辑器插件与 `wave --stdio` 子进程的 JSON-RPC 通信，CLI 解析/安装/升级、多会话路由、错误诊断 | 8 | 51 | [规格](ui/stdio-transport.md) |
+| Stdio 传输层 | 编辑器插件与 `wave --stdio` 子进程的 JSON-RPC 通信，CLI 解析/安装/升级、多会话路由、错误诊断 | 8 | 54 | [规格](ui/stdio-transport.md) |
 | IDE 插件 | VS Code/JetBrains 共享 React webview 的横切关注点：主题变量、共享包与构建产物、生命周期与消息协议、IDE 专属对话框 | 4 | 23 | [规格](ui/ide-plugin.md) |
-| Wave Desktop（Electron 桌面应用） |  | 8 | 21 | [规格](ui/desktop-app.md) |
+| Wave Desktop（Electron 桌面应用） |  | 9 | 25 | [规格](ui/desktop-app.md) |
 
 ### 多 Agent 与并发
 
