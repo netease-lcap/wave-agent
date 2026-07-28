@@ -41,8 +41,10 @@
       "package.json"
     ],
     "asar": true,
+    "afterPack": "scripts/afterPack.js",
     "mac": {
       "category": "public.app-category.developer-tools",
+      "identity": null,
       "target": [
         {
           "target": "dmg",
