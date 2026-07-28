@@ -22,8 +22,6 @@ export interface DesktopSidebarProps {
   currentWorkdir?: string;
   /** Active session id — its group defaults to expanded; gets the running dot while streaming. */
   currentSessionId?: string;
-  /** Sessions currently visible in split-view panes — get a weaker highlight (FR-035). */
-  visibleSessionIds?: string[];
   onSelectSession: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index (also cleans up worktree if applicable). */
   onDeleteSession: (sessionId: string) => void;
@@ -50,7 +48,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   sessionTree,
   currentWorkdir,
   currentSessionId,
-  visibleSessionIds,
   onSelectSession,
   onDeleteSession,
 }) => {
@@ -84,11 +81,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     // meaningfully "running", and it needs attention more than the running dot.
     const waiting = session.waitingConfirmation ?? false;
     const isCurrent = session.sessionId === currentSessionId;
-    const isVisible = !isCurrent && (visibleSessionIds?.includes(session.sessionId) ?? false);
     return (
       <li
         key={session.sessionId}
-        className={`desktop-session-item${isCurrent ? ' desktop-session-item--current' : ''}${isVisible ? ' desktop-session-item--visible' : ''}`}
+        className={`desktop-session-item${isCurrent ? ' desktop-session-item--current' : ''}`}
         onClick={() => onSelectSession(group.workdir, session.sessionId)}
         draggable
         onDragStart={(e) => {

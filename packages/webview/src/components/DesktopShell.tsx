@@ -122,7 +122,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         sessionTree={host.sessionTree}
         currentWorkdir={host.workdir}
         currentSessionId={focusedSessionId}
-        visibleSessionIds={panes.map((p) => p.sessionId).filter((id): id is string => !!id)}
         onSelectSession={host.onSelectSession}
         onDeleteSession={host.onDeleteSession}
       />

@@ -560,8 +560,3 @@
     pointer-events: none;
     white-space: nowrap;
 }
-
-/* Sidebar session shown in a non-focused pane: weaker highlight (FR-035). */
-.desktop-session-item--visible {
-    background: var(--vscode-list-inactiveSelectionBackground, rgba(128, 128, 128, 0.15));
-}
