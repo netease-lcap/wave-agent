@@ -22,6 +22,8 @@ export interface DesktopSidebarProps {
   currentWorkdir?: string;
   /** Active session id — its group defaults to expanded; gets the running dot while streaming. */
   currentSessionId?: string;
+  /** Sessions currently visible in split-view panes — get a weaker highlight (FR-035). */
+  visibleSessionIds?: string[];
   onSelectSession: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index (also cleans up worktree if applicable). */
   onDeleteSession: (sessionId: string) => void;
@@ -48,6 +50,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   sessionTree,
   currentWorkdir,
   currentSessionId,
+  visibleSessionIds,
   onSelectSession,
   onDeleteSession,
 }) => {
@@ -80,11 +83,26 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     // Waiting takes precedence: a session blocked on user confirmation is not
     // meaningfully "running", and it needs attention more than the running dot.
     const waiting = session.waitingConfirmation ?? false;
+    const isCurrent = session.sessionId === currentSessionId;
+    const isVisible = !isCurrent && (visibleSessionIds?.includes(session.sessionId) ?? false);
     return (
       <li
         key={session.sessionId}
-        className={`desktop-session-item ${session.sessionId === currentSessionId ? 'desktop-session-item--current' : ''}`}
+        className={`desktop-session-item${isCurrent ? ' desktop-session-item--current' : ''}${isVisible ? ' desktop-session-item--visible' : ''}`}
         onClick={() => onSelectSession(group.workdir, session.sessionId)}
+        draggable
+        onDragStart={(e) => {
+          // FR-032: carry the session payload for the split-view drop zone.
+          e.dataTransfer.setData(
+            'application/x-wave-session',
+            JSON.stringify({ workdir: group.workdir, sessionId: session.sessionId })
+          );
+          try {
+            e.dataTransfer.effectAllowed = 'copy';
+          } catch {
+            // jsdom's DataTransfer polyfill exposes a read-only effectAllowed.
+          }
+        }}
         data-testid={`desktop-session-item-${session.sessionId}`}
       >
         <span

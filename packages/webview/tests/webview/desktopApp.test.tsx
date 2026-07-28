@@ -528,6 +528,208 @@ describe('DesktopApp', () => {
         });
     });
 
+    describe('split-view panes (FR-032~036)', () => {
+        const session = (sessionId: string, title: string) => ({
+            sessionId,
+            title,
+            lastActiveAt: Date.now(),
+            hasWorktree: false,
+        });
+
+        function renderWithPanes(panes: Array<{ paneId: string; sessionId?: string }>, focusedPaneId: string | null) {
+            const result = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', {
+                groups: [{ workdir: '/work/a', sessions: [session('s1', 'chat one'), session('s2', 'chat two')] }],
+            });
+            sendCommand('desktopPanes', { panes, focusedPaneId });
+            return result;
+        }
+
+        function makeDataTransfer(payload?: Record<string, unknown>) {
+            const store: Record<string, string> = {};
+            if (payload) store['application/x-wave-session'] = JSON.stringify(payload);
+            return {
+                types: Object.keys(store),
+                setData: (type: string, value: string) => { store[type] = value; },
+                getData: (type: string) => store[type] ?? '',
+                effectAllowed: '',
+                dropEffect: '',
+            };
+        }
+
+        it('renders one paneId-scoped chat container per pushed pane', () => {
+            renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+
+            expect(screen.getByTestId('desktop-shell')).toBeInTheDocument();
+            expect(screen.getByTestId('desktop-pane-pane-0')).toBeInTheDocument();
+            expect(screen.getByTestId('desktop-pane-pane-1')).toBeInTheDocument();
+            expect(screen.getAllByTestId('chat-container')).toHaveLength(2);
+        });
+
+        it('marks the focused pane and posts desktopFocusPane on mousedown of another pane', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+
+            expect(screen.getByTestId('desktop-pane-pane-0').className).toContain('desktop-pane--focused');
+            expect(screen.getByTestId('desktop-pane-pane-1').className).not.toContain('desktop-pane--focused');
+
+            vscode.postMessage.mockClear();
+            fireEvent.mouseDown(screen.getByTestId('desktop-pane-pane-1'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopFocusPane', paneId: 'pane-1' });
+        });
+
+        it('does not re-post focus when clicking the already-focused pane', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            vscode.postMessage.mockClear();
+
+            fireEvent.mouseDown(screen.getByTestId('desktop-pane-pane-0'));
+
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopFocusPane' }),
+            );
+        });
+
+        it('shows a close button per pane only when more than one pane is open', () => {
+            renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            expect(screen.getByTestId('desktop-pane-close-pane-0')).toBeInTheDocument();
+            expect(screen.getByTestId('desktop-pane-close-pane-1')).toBeInTheDocument();
+        });
+
+        it('posts desktopClosePane with the paneId when the close button is clicked', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByTestId('desktop-pane-close-pane-1'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopClosePane', paneId: 'pane-1' });
+        });
+
+        it('makes sidebar session items draggable with the session payload', () => {
+            renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+
+            const item = screen.getByTestId('desktop-session-item-s2');
+            expect(item).toHaveAttribute('draggable', 'true');
+
+            const dataTransfer = makeDataTransfer();
+            fireEvent.dragStart(item, { dataTransfer });
+
+            expect(dataTransfer.getData('application/x-wave-session')).toBe(
+                JSON.stringify({ workdir: '/work/a', sessionId: 's2' }),
+            );
+        });
+
+        it('highlights the row while dragging a session over it and posts desktopOpenPane on drop', () => {
+            const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+
+            const row = screen.getByTestId('desktop-pane-row');
+            // jsdom reports 0 widths; give the row room for a second pane.
+            vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
+                width: 1200, height: 600, top: 0, left: 0, bottom: 600, right: 1200, x: 0, y: 0, toJSON: () => ({}),
+            });
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' });
+
+            fireEvent.dragEnter(row, { dataTransfer });
+            expect(row.className).toContain('desktop-pane-row--drop');
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(row, { dataTransfer });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's2',
+            });
+            expect(row.className).not.toContain('desktop-pane-row--drop');
+        });
+
+        it('ignores drops without a session payload', () => {
+            const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+            vscode.postMessage.mockClear();
+
+            const row = screen.getByTestId('desktop-pane-row');
+            const dataTransfer = { types: ['text/plain'], getData: () => 'plain text', setData: () => {}, effectAllowed: '', dropEffect: '' };
+            fireEvent.drop(row, { dataTransfer });
+
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopOpenPane' }),
+            );
+        });
+
+        it('refuses the drop with a hint when the row is too narrow for another pane', () => {
+            const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+
+            const row = screen.getByTestId('desktop-pane-row');
+            // jsdom reports 0 widths; force a too-narrow measurement.
+            vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
+                width: 500, height: 600, top: 0, left: 0, bottom: 600, right: 500, x: 0, y: 0, toJSON: () => ({}),
+            });
+            vscode.postMessage.mockClear();
+
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' });
+            fireEvent.drop(row, { dataTransfer });
+
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopOpenPane' }),
+            );
+            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口宽度不足');
+        });
+
+        it('routes a pane-tagged host push only to the matching pane', () => {
+            renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+
+            const panes = screen.getAllByTestId('chat-container');
+            sendCommand('updateMessages', {
+                paneId: 'pane-1',
+                messages: [MockDataGenerator.createUserMessage('hello pane two')],
+            });
+
+            expect(panes[0]).not.toHaveTextContent('hello pane two');
+            expect(panes[1]).toHaveTextContent('hello pane two');
+        });
+
+        it('tags outgoing sendMessage with the paneId of the pane it was sent from', async () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            // Both panes start a conversation so the input is enabled.
+            sendCommand('updateMessages', { paneId: 'pane-0', messages: [MockDataGenerator.createUserMessage('a')] });
+            sendCommand('updateMessages', { paneId: 'pane-1', messages: [MockDataGenerator.createUserMessage('b')] });
+            vscode.postMessage.mockClear();
+
+            const inputs = screen.getAllByTestId('message-input');
+            inputs[1].textContent = 'from pane two';
+            await fireInput(inputs[1], { inputType: 'insertText' });
+            const sendButtons = screen.getAllByTestId('send-btn');
+            fireEvent.click(sendButtons[1]);
+
+            const sent = vscode.postMessage.mock.calls
+                .map((c) => c[0])
+                .filter((m: Record<string, unknown>) => m.command === 'sendMessage');
+            expect(sent).toHaveLength(1);
+            expect(sent[0]).toMatchObject({ paneId: 'pane-1', text: 'from pane two' });
+        });
+    });
+
     describe('theme switching', () => {
         function sendInitialState(theme: { effective: 'light' | 'dark' }) {
             sendCommand('setInitialState', {

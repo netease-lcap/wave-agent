@@ -142,6 +142,21 @@ export interface HistorySearchState {
 export interface ChatAppProps {
   vscode: VsCodeApi;
   host?: DesktopHostProps;
+  /**
+   * Desktop split-view: the paneId this instance renders. When set, the message
+   * listener filters host pushes by paneId and outgoing commands carry it back.
+   * Undefined for the IDE hosts and for a single-pane desktop layout.
+   */
+  paneId?: string;
+}
+
+/**
+ * One split-view pane in the desktop layout (FR-032). Order = left→right.
+ * `sessionId` is undefined while the pane's session is still being resolved.
+ */
+export interface DesktopPane {
+  paneId: string;
+  sessionId?: string;
 }
 
 // Desktop host support — injected when running inside packages/desktop (Electron).
@@ -163,11 +178,23 @@ export interface DesktopHostProps {
   /** Delete a session from the index; also removes worktree+branch if applicable. */
   onDeleteSession: (sessionId: string) => void;
   /**
+   * Open a session in a new right-hand pane (drag & drop from the sidebar).
+   * Always appends — never replaces an existing pane (FR-033).
+   */
+  onOpenPane: (workdir: string, sessionId: string) => void;
+  /**
    * Git branches of the current workdir (FR-022), pushed via the
    * `desktopGitBranches` message. `null` = not a git repo / git unavailable —
    * branch selector and worktree checkbox stay hidden.
    */
   gitBranches: { branches: string[]; current: string } | null;
+  /**
+   * Ordered split-view panes (FR-032), pushed via `desktopPanes`. Empty until
+   * the first layout push; the layout renders a single pane in that case.
+   */
+  panes?: DesktopPane[];
+  /** The pane that receives sidebar clicks / 新对话, pushed via `desktopPanes`. */
+  focusedPaneId?: string | null;
 }
 
 /** One directory group in the desktop sidebar session tree (FR-020). */
