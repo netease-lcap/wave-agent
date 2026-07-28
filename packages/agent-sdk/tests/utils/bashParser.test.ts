@@ -8,6 +8,10 @@ import {
   isBashHeredocWrite,
   getSmartPrefix,
   isDangerousFind,
+  hasCommandSubstitution,
+  hasProcessSubstitution,
+  hasSedInPlace,
+  READ_ONLY_COMMANDS,
 } from "../../src/utils/bashParser.js";
 
 describe("bashParser", () => {
@@ -329,6 +333,96 @@ describe("bashParser", () => {
       expect(getSmartPrefix("sudo apt update")).toBe(null); // apt is dangerous
       expect(getSmartPrefix("sudo npm install")).toBe("sudo npm install");
       expect(getSmartPrefix("sudo git status")).toBe("sudo git status");
+    });
+  });
+
+  describe("hasCommandSubstitution", () => {
+    it("should detect $(...) substitution", () => {
+      expect(hasCommandSubstitution("cat $(rm file)")).toBe(true);
+      expect(hasCommandSubstitution("echo $(date)")).toBe(true);
+      expect(hasCommandSubstitution("ls $(pwd)")).toBe(true);
+    });
+
+    it("should detect backtick substitution", () => {
+      expect(hasCommandSubstitution("cat `rm file`")).toBe(true);
+      expect(hasCommandSubstitution("echo `date`")).toBe(true);
+    });
+
+    it("should not trigger on $() inside quotes", () => {
+      expect(hasCommandSubstitution('echo "$(date)"')).toBe(false);
+      expect(hasCommandSubstitution("echo '$(date)'")).toBe(false);
+      expect(hasCommandSubstitution('echo "`date`"')).toBe(false);
+    });
+
+    it("should return false for commands without substitution", () => {
+      expect(hasCommandSubstitution("ls -la")).toBe(false);
+      expect(hasCommandSubstitution("cat file.txt")).toBe(false);
+      expect(hasCommandSubstitution("echo $HOME")).toBe(false);
+      expect(hasCommandSubstitution("sed -n '19631,19900p' file.d.ts")).toBe(
+        false,
+      );
+    });
+  });
+
+  describe("hasProcessSubstitution", () => {
+    it("should detect <(...) substitution", () => {
+      expect(hasProcessSubstitution("diff <(ls a) <(ls b)")).toBe(true);
+      expect(hasProcessSubstitution("cat <(echo hi)")).toBe(true);
+    });
+
+    it("should detect >(...) substitution", () => {
+      expect(hasProcessSubstitution("tee >(gzip > out.gz)")).toBe(true);
+    });
+
+    it("should not trigger on <() inside quotes", () => {
+      expect(hasProcessSubstitution('echo "<(ls)"')).toBe(false);
+      expect(hasProcessSubstitution("echo '>(ls)'")).toBe(false);
+    });
+
+    it("should return false for commands without process substitution", () => {
+      expect(hasProcessSubstitution("ls -la")).toBe(false);
+      expect(hasProcessSubstitution("cat file.txt")).toBe(false);
+      expect(hasProcessSubstitution("echo a > b")).toBe(false);
+    });
+  });
+
+  describe("hasSedInPlace", () => {
+    it("should detect sed -i", () => {
+      expect(hasSedInPlace("sed -i 's/a/b/' file.txt")).toBe(true);
+      expect(hasSedInPlace("sed -i.bak 's/a/b/' file.txt")).toBe(true);
+    });
+
+    it("should not flag sed without -i", () => {
+      expect(hasSedInPlace("sed -n '19631,19900p' file.d.ts")).toBe(false);
+      expect(hasSedInPlace("sed 's/a/b/' file.txt")).toBe(false);
+      expect(hasSedInPlace("sed -e 's/a/b/' file.txt")).toBe(false);
+    });
+
+    it("should return false for non-sed commands", () => {
+      expect(hasSedInPlace("cat file.txt")).toBe(false);
+      expect(hasSedInPlace("awk '{print $1}' file.txt")).toBe(false);
+    });
+  });
+
+  describe("READ_ONLY_COMMANDS", () => {
+    it("should include common read-only commands", () => {
+      expect(READ_ONLY_COMMANDS).toContain("sed");
+      expect(READ_ONLY_COMMANDS).toContain("awk");
+      expect(READ_ONLY_COMMANDS).toContain("jq");
+      expect(READ_ONLY_COMMANDS).toContain("cat");
+      expect(READ_ONLY_COMMANDS).toContain("grep");
+      expect(READ_ONLY_COMMANDS).toContain("diff");
+      expect(READ_ONLY_COMMANDS).toContain("tr");
+      expect(READ_ONLY_COMMANDS).toContain("cut");
+    });
+
+    it("should not include interactive pagers or command executors", () => {
+      expect(READ_ONLY_COMMANDS).not.toContain("less");
+      expect(READ_ONLY_COMMANDS).not.toContain("more");
+      expect(READ_ONLY_COMMANDS).not.toContain("man");
+      expect(READ_ONLY_COMMANDS).not.toContain("xargs");
+      expect(READ_ONLY_COMMANDS).not.toContain("yes");
+      expect(READ_ONLY_COMMANDS).not.toContain("cd");
     });
   });
 });
