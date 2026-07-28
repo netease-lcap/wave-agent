@@ -25,6 +25,11 @@ export const ipcMain = {
   handle: vi.fn(),
 };
 
+export const Menu = {
+  buildFromTemplate: vi.fn((template: unknown[]) => ({ __template: template })),
+  setApplicationMenu: vi.fn(),
+};
+
 export const ipcRenderer = {
   send: vi.fn(),
   sendSync: vi.fn(),

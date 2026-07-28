@@ -929,6 +929,135 @@ describe('session tree', () => {
 });
 
 // ---------------------------------------------------------------------------
+// session switch shortcut (FR-038)
+// ---------------------------------------------------------------------------
+
+describe('session switch shortcut (FR-038)', () => {
+  const entry = (sessionId: string, workdir: string, lastActiveAt: number) => ({
+    sessionId,
+    title: `Session ${sessionId}`,
+    workdir,
+    cwd: workdir,
+    lastActiveAt,
+  });
+
+  // Seeds s1/s2 in /work/a + s3 in /work/b (all dirs exist), then runs the
+  // ready flow so the tree is derived. Flattened order: s3 (the /work/b group
+  // leads — its latest session is the most recent overall), then s2, s1.
+  async function hostWithTree() {
+    const ctx = createHost();
+    ctx.store.addRecentWorkdir('/work/a');
+    h.existingPaths.add('/work/a');
+    h.existingPaths.add('/work/b');
+    ctx.store.upsertSession(entry('s1', '/work/a', 1000));
+    ctx.store.upsertSession(entry('s2', '/work/a', 2000));
+    ctx.store.upsertSession(entry('s3', '/work/b', 3000));
+    await ctx.host.handleWebviewMessage({ command: 'desktopReady' });
+    await ctx.host.handleWebviewMessage({ command: 'webviewReady' });
+    return ctx;
+  }
+
+  it('cycles through the flattened tree across directories and wraps around', async () => {
+    const { host, sent } = await hostWithTree();
+
+    // No current session: next lands on the first entry (s3, leading group).
+    await host.activateAdjacentSession(1);
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/b' }));
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s3');
+
+    // s3 → s2: the cycle crosses directory groups (back to /work/a).
+    await host.activateAdjacentSession(1);
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/a' }));
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s2');
+
+    // s2 → s1.
+    await host.activateAdjacentSession(1);
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s1');
+
+    // s1 is the last entry: next wraps to s3, whose agent is still live —
+    // activated in place, no new spawn and no restore.
+    const before = h.agentInstances.length;
+    await host.activateAdjacentSession(1);
+    expect(h.agentInstances).toHaveLength(before);
+    expect(sent('setInitialState').at(-1)?.session).toMatchObject({ id: 's3' });
+
+    // s3 is the first entry: prev wraps to the last entry (s1, also live).
+    await host.activateAdjacentSession(-1);
+    expect(h.agentInstances).toHaveLength(before);
+    expect(sent('setInitialState').at(-1)?.session).toMatchObject({ id: 's1' });
+  });
+
+  it('drops the frozen cycle order when the session changes outside the cycle', async () => {
+    const { host } = await hostWithTree();
+    await host.activateAdjacentSession(1); // s3, snapshot frozen at [s3, s2, s1]
+
+    // Clicking s2 (outside the cycle) bumps it to the front of the MRU tree.
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 's2' });
+
+    // The stale snapshot would cycle onto the already-current s2 (a no-op);
+    // the fresh order [s2, s1, s3] lands on s1 instead.
+    await host.activateAdjacentSession(1);
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s1');
+  });
+
+  it('is a no-op on an empty tree', async () => {
+    const { host } = createHost();
+    await host.activateAdjacentSession(1);
+    await host.activateAdjacentSession(-1);
+    expect(h.agentInstances).toHaveLength(0);
+  });
+
+  it('is a no-op when the tree holds only the current session', async () => {
+    const ctx = createHost();
+    ctx.store.addRecentWorkdir('/work/a');
+    h.existingPaths.add('/work/a');
+    ctx.store.upsertSession(entry('s1', '/work/a', 1000));
+    await ctx.host.handleWebviewMessage({ command: 'desktopReady' });
+    await ctx.host.handleWebviewMessage({ command: 'webviewReady' });
+
+    await ctx.host.activateAdjacentSession(1); // activates s1
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s1');
+    const before = h.agentInstances.length;
+    const restores = lastAgent().restoreSession.mock.calls.length;
+
+    await ctx.host.activateAdjacentSession(1);
+    await ctx.host.activateAdjacentSession(-1);
+    expect(h.agentInstances).toHaveLength(before);
+    expect(lastAgent().restoreSession.mock.calls.length).toBe(restores);
+  });
+
+  it('treats a fresh unregistered session as outside the tree (next → first entry)', async () => {
+    const { host, store } = await readyHost(); // active agent, empty index/tree
+    store.upsertSession(entry('s9', '/work/a', 5000));
+    store.upsertSession(entry('s8', '/work/a', 4000));
+    // Re-derive the tree (webviewReady refreshes it without a new agent).
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+
+    await host.activateAdjacentSession(1);
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s9');
+  });
+
+  it('drops a stale-directory entry encountered while cycling (same as clicking it)', async () => {
+    const ctx = createHost();
+    ctx.store.addRecentWorkdir('/work/a');
+    h.existingPaths.add('/work/a');
+    ctx.store.upsertSession(entry('s1', '/work/a', 1000));
+    ctx.store.upsertSession(entry('s2', '/gone', 3000)); // /gone leads the tree
+    await ctx.host.handleWebviewMessage({ command: 'desktopReady' });
+    await ctx.host.handleWebviewMessage({ command: 'webviewReady' });
+
+    await ctx.host.activateAdjacentSession(1);
+
+    expect(ctx.store.getSessionIndex().some((e) => e.sessionId === 's2')).toBe(false);
+    expect(h.agentInstances).toHaveLength(0);
+    const sysMsgs = ctx.sent('appendMessage').filter((m) =>
+      JSON.stringify(m).includes('已从最近列表与会话列表移除'),
+    );
+    expect(sysMsgs).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // worktree flow (FR-022..FR-025)
 // ---------------------------------------------------------------------------
 
