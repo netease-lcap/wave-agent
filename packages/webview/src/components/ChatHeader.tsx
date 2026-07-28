@@ -20,7 +20,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onLogin,
   onLogout,
   isAuthenticated,
-  hideSessionButtons = false
+  hideSessionButtons = false,
+  hideMoreButton = false
 }) => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -56,16 +57,18 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             </Tooltip>
           </>
         )}
-        <Tooltip text="更多" position="bottom-left">
-          <button
-            className="header-button"
-            onClick={() => setShowMoreMenu((prev) => !prev)}
-            data-testid="more-btn"
-            aria-label="更多"
-          >
-            <MoreIcon />
-          </button>
-        </Tooltip>
+        {!hideMoreButton && (
+          <Tooltip text="更多" position="bottom-left">
+            <button
+              className="header-button"
+              onClick={() => setShowMoreMenu((prev) => !prev)}
+              data-testid="more-btn"
+              aria-label="更多"
+            >
+              <MoreIcon />
+            </button>
+          </Tooltip>
+        )}
       </div>
       {showSessionList && (
         <SessionListPopup
@@ -76,7 +79,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onClose={() => setShowSessionList(false)}
         />
       )}
-      {showMoreMenu && (
+      {showMoreMenu && !hideMoreButton && (
         <MoreMenu
           onOpenSettings={onOpenSettings}
           onOpenEnterpriseConsole={onOpenEnterpriseConsole}
