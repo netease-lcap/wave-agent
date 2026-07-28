@@ -6,7 +6,7 @@
  * happens inside DesktopHost via the shared StdioClient.
  */
 
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron';
 import { execFileSync } from 'child_process';
 import * as path from 'path';
 import { WEBVIEW_CHANNEL } from './channels';
@@ -62,6 +62,12 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(() => {
+    // Dev launches the bare Electron binary, whose default atom icon shows in
+    // the Dock — swap in the brand icon (packaged apps get it from the icns).
+    if (!app.isPackaged) {
+      app.dock?.setIcon(nativeImage.createFromPath(path.join(__dirname, '../../assets/icon.png')));
+    }
+
     const configStore = new ConfigStore();
     host = new DesktopHost(configStore);
 
