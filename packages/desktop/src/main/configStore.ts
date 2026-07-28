@@ -16,9 +16,27 @@ export interface DesktopConfigData {
   serverUrl?: string;
 }
 
+/** Session index entry — one per desktop-created session (FR-024). */
+export interface SessionIndexEntry {
+  sessionId: string;
+  title: string;
+  /** Grouping key for the sidebar tree (original repo dir for worktree sessions). */
+  workdir: string;
+  /** Actual working directory (worktree path for worktree sessions). */
+  cwd: string;
+  lastActiveAt: number;
+  worktree?: {
+    path: string;
+    branch: string;
+    baseBranch: string;
+    repoRoot: string;
+  };
+}
+
 interface StoreData {
   configuration: DesktopConfigData;
   recentWorkdirs: string[];
+  sessions: SessionIndexEntry[];
 }
 
 const MAX_RECENT_WORKDIRS = 10;
@@ -41,10 +59,16 @@ export class ConfigStore {
         recentWorkdirs: Array.isArray(parsed.recentWorkdirs)
           ? parsed.recentWorkdirs.filter((d): d is string => typeof d === 'string')
           : [],
+        sessions: Array.isArray(parsed.sessions)
+          ? parsed.sessions.filter(
+              (s): s is SessionIndexEntry =>
+                typeof s === 'object' && s !== null && typeof s.sessionId === 'string',
+            )
+          : [],
       };
     } catch {
       // Missing or corrupt file — start fresh (loadWaveConfigFromFile precedent).
-      return { configuration: {}, recentWorkdirs: [] };
+      return { configuration: {}, recentWorkdirs: [], sessions: [] };
     }
   }
 
@@ -95,5 +119,40 @@ export class ConfigStore {
   removeRecentWorkdir(dir: string): void {
     this.data.recentWorkdirs = this.data.recentWorkdirs.filter((d) => d !== dir);
     this.save();
+  }
+
+  // ── Session index (FR-024) ──────────────────────────────────────
+
+  getSessionIndex(): SessionIndexEntry[] {
+    return this.data.sessions.map((s) => ({ ...s }));
+  }
+
+  /** Register or update a session in the index. */
+  upsertSession(entry: SessionIndexEntry): void {
+    const idx = this.data.sessions.findIndex((s) => s.sessionId === entry.sessionId);
+    if (idx >= 0) {
+      this.data.sessions[idx] = entry;
+    } else {
+      this.data.sessions.push(entry);
+    }
+    this.save();
+  }
+
+  /** Update lastActiveAt for a session (called on agent activity). */
+  touchSession(sessionId: string, lastActiveAt: number): void {
+    const entry = this.data.sessions.find((s) => s.sessionId === sessionId);
+    if (entry) {
+      entry.lastActiveAt = lastActiveAt;
+      this.save();
+    }
+  }
+
+  /** Remove a session from the index. Returns the removed entry, if found. */
+  removeSession(sessionId: string): SessionIndexEntry | undefined {
+    const idx = this.data.sessions.findIndex((s) => s.sessionId === sessionId);
+    if (idx < 0) return undefined;
+    const [removed] = this.data.sessions.splice(idx, 1);
+    this.save();
+    return removed;
   }
 }
