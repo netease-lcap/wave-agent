@@ -270,7 +270,6 @@ describe('webviewReady / setInitialState', () => {
       isCommandRunning: false,
       isAuthenticated: false,
       workdir: '/work/a',
-      sessions: [],
     });
     expect(states[states.length - 1].configurationData).toBeDefined();
   });
@@ -565,13 +564,13 @@ describe('misc commands', () => {
     expect(lastAgent().clearMessages).toHaveBeenCalled();
   });
 
-  it('restoreSession forwards to the agent and refreshes the session list', async () => {
+  it('restoreSession forwards to the agent and refreshes the session tree', async () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({ command: 'restoreSession', sessionId: 'sess-x' });
 
     expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-x');
     await vi.waitFor(() => {
-      expect(sent('updateSessions').length).toBeGreaterThanOrEqual(1);
+      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -628,23 +627,22 @@ describe('misc commands', () => {
 // ---------------------------------------------------------------------------
 
 describe('session tree', () => {
-  const makeSession = (id: string, workdir: string, overrides: Record<string, unknown> = {}) => ({
-    id,
-    sessionType: 'main',
+  const makeIndexEntry = (sessionId: string, workdir: string, overrides: Record<string, unknown> = {}) => ({
+    sessionId,
+    title: `Session ${sessionId}`,
     workdir,
-    createdAt: new Date('2026-07-20T00:00:00Z'),
-    lastActiveAt: new Date('2026-07-21T00:00:00Z'),
-    latestTotalTokens: 0,
-    firstMessage: `msg ${id}`,
+    cwd: workdir,
+    lastActiveAt: Date.now(),
     ...overrides,
   });
 
   it('prefetches one group per recent directory on webviewReady (no agent needed)', async () => {
-    h.dirSessions.set('/work/a', [makeSession('s1', '/work/a'), makeSession('s2', '/work/a')]);
-    h.dirSessions.set('/work/b', [makeSession('s3', '/work/b')]);
     const { host, store, sent } = createHost();
     store.addRecentWorkdir('/work/a');
     store.addRecentWorkdir('/work/b');
+    store.upsertSession(makeIndexEntry('s1', '/work/a'));
+    store.upsertSession(makeIndexEntry('s2', '/work/a'));
+    store.upsertSession(makeIndexEntry('s3', '/work/b'));
 
     await host.handleWebviewMessage({ command: 'desktopReady' });
     await host.handleWebviewMessage({ command: 'webviewReady' });
@@ -654,23 +652,22 @@ describe('session tree', () => {
     });
     const tree = sent('desktopSessionTree').at(-1);
     expect(tree?.groups).toEqual([
-      { workdir: '/work/b', sessions: [expect.objectContaining({ id: 's3' })] },
+      { workdir: '/work/b', sessions: [expect.objectContaining({ sessionId: 's3' })] },
       {
         workdir: '/work/a',
-        sessions: [expect.objectContaining({ id: 's1' }), expect.objectContaining({ id: 's2' })],
+        sessions: [expect.objectContaining({ sessionId: 's1' }), expect.objectContaining({ sessionId: 's2' })],
       },
     ]);
-    // No agent was created — the tree comes from the utility client.
+    // No agent was created — the tree comes from the desktop index.
     expect(h.agentInstances).toHaveLength(0);
   });
 
-  it('keeps only main sessions and caps each group at 5', async () => {
-    h.dirSessions.set('/work/a', [
-      ...Array.from({ length: 6 }, (_, i) => makeSession(`s${i}`, '/work/a')),
-      makeSession('side', '/work/a', { sessionType: 'subagent' }),
-    ]);
+  it('caps each group at 5 sessions from the index', async () => {
     const { host, store, sent } = createHost();
     store.addRecentWorkdir('/work/a');
+    for (let i = 0; i < 7; i++) {
+      store.upsertSession(makeIndexEntry(`s${i}`, '/work/a', { lastActiveAt: Date.now() + i }));
+    }
 
     await host.handleWebviewMessage({ command: 'desktopReady' });
     await host.handleWebviewMessage({ command: 'webviewReady' });
@@ -678,9 +675,10 @@ describe('session tree', () => {
     await vi.waitFor(() => {
       expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
     });
-    const groups = sent('desktopSessionTree').at(-1)?.groups as Array<{ sessions: Array<{ id: string }> }>;
+    const groups = sent('desktopSessionTree').at(-1)?.groups as Array<{ sessions: Array<{ sessionId: string }> }>;
     expect(groups[0].sessions).toHaveLength(5);
-    expect(groups[0].sessions.some((s) => s.id === 'side')).toBe(false);
+    // Sorted by lastActiveAt desc — the 5 most recent.
+    expect(groups[0].sessions[0].sessionId).toBe('s6');
   });
 
   it('desktopSelectSession in the current workdir restores without recreating the agent', async () => {
@@ -718,8 +716,7 @@ describe('session tree', () => {
     expect(sysMsgs).toHaveLength(1);
   });
 
-  it('refreshes the current directory group when a turn ends', async () => {
-    h.dirSessions.set('/work/a', [makeSession('s1', '/work/a')]);
+  it('refreshes the tree when a turn ends (touchSessionInIndex)', async () => {
     const { sent } = await readyHost();
     // readyHost triggers two tree pushes (workdir switch + webviewReady) —
     // wait for both to settle before measuring the trigger's effect.
@@ -735,7 +732,7 @@ describe('session tree', () => {
     });
   });
 
-  it('refreshes the current directory group when a new session starts', async () => {
+  it('refreshes the tree when a new session starts (registerSessionInIndex)', async () => {
     const { sent } = await readyHost();
     await vi.waitFor(() => {
       expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(2);
@@ -746,6 +743,21 @@ describe('session tree', () => {
 
     await vi.waitFor(() => {
       expect(sent('desktopSessionTree').length).toBe(before + 1);
+    });
+  });
+
+  it('desktopDeleteSession removes from index and refreshes tree', async () => {
+    const { host, store, sent } = await readyHost();
+    store.upsertSession(makeIndexEntry('del-1', '/work/a'));
+    store.upsertSession(makeIndexEntry('del-2', '/work/a'));
+
+    await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'del-1' });
+
+    await vi.waitFor(() => {
+      const tree = sent('desktopSessionTree').at(-1);
+      const sessions = (tree?.groups as Array<{ sessions: Array<{ sessionId: string }> }>)?.[0]?.sessions ?? [];
+      expect(sessions.some((s) => s.sessionId === 'del-1')).toBe(false);
+      expect(sessions.some((s) => s.sessionId === 'del-2')).toBe(true);
     });
   });
 });

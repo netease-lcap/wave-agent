@@ -163,14 +163,11 @@ describe('DesktopApp', () => {
     });
 
     describe('session tree (FR-020)', () => {
-        const session = (id: string, firstMessage: string) => ({
-            id,
-            sessionType: 'main',
-            workdir: '/work/a',
-            createdAt: '2026-07-20T00:00:00.000Z',
-            lastActiveAt: '2026-07-21T00:00:00.000Z',
-            latestTotalTokens: 0,
-            firstMessage,
+        const session = (sessionId: string, title: string) => ({
+            sessionId,
+            title,
+            lastActiveAt: Date.now(),
+            hasWorktree: false,
         });
 
         const groupHeader = (workdir: string) =>
@@ -237,7 +234,7 @@ describe('DesktopApp', () => {
             sendCommand('desktopSessionTree', {
                 groups: [{ workdir: '/work/a', sessions: [session('s1', 'hello a'), session('s2', 'hello again')] }],
             });
-            sendCommand('updateCurrentSession', { session: session('s1', 'hello a') });
+            sendCommand('updateCurrentSession', { session: { id: 's1', sessionType: 'main', workdir: '/work/a', createdAt: '2026-07-20T00:00:00.000Z', lastActiveAt: '2026-07-21T00:00:00.000Z', latestTotalTokens: 0, firstMessage: 'hello a' } });
             sendCommand('startStreaming', {});
 
             const current = screen.getByTestId('desktop-session-item-s1');
