@@ -19,18 +19,20 @@ export interface WorktreeSession {
  * @param cwd Current working directory
  * @param options Optional creation options
  * @param options.baseRef "fresh" (default, origin/<default-branch>) | "head" (local HEAD)
+ * @param options.baseBranch Explicit base branch (overrides baseRef)
  * @returns Worktree session details
  */
 export function createWorktree(
   name: string,
   cwd: string,
-  options?: { baseRef?: "fresh" | "head" },
+  options?: { baseRef?: "fresh" | "head"; baseBranch?: string },
 ): WorktreeSession {
   const repoRoot = getGitMainRepoRoot(cwd);
   const worktreePath = path.join(repoRoot, ".wave", "worktrees", name);
   const branchName = `worktree-${name}`;
   const useHead = options?.baseRef === "head";
-  const baseBranch = useHead ? "HEAD" : getDefaultRemoteBranch(cwd);
+  const resolvedBaseBranch =
+    options?.baseBranch ?? (useHead ? "HEAD" : getDefaultRemoteBranch(cwd));
 
   // Ensure parent directory exists
   const parentDir = path.dirname(worktreePath);
@@ -56,7 +58,7 @@ export function createWorktree(
     // Create worktree and branch
     execFileSync(
       "git",
-      ["worktree", "add", "-b", branchName, worktreePath, baseBranch],
+      ["worktree", "add", "-b", branchName, worktreePath, resolvedBaseBranch],
       {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],
@@ -102,7 +104,7 @@ export function createWorktree(
         stderr.includes("unknown revision"))
     ) {
       // Base branch not fetched yet — try fetching then retrying
-      const branchNameOnly = baseBranch.split("/").pop()!;
+      const branchNameOnly = resolvedBaseBranch.split("/").pop()!;
       try {
         execFileSync("git", ["fetch", "origin", branchNameOnly], {
           cwd: repoRoot,
@@ -110,7 +112,14 @@ export function createWorktree(
         });
         execFileSync(
           "git",
-          ["worktree", "add", "-b", branchName, worktreePath, baseBranch],
+          [
+            "worktree",
+            "add",
+            "-b",
+            branchName,
+            worktreePath,
+            resolvedBaseBranch,
+          ],
           {
             cwd: repoRoot,
             stdio: ["ignore", "pipe", "pipe"],

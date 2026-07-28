@@ -282,6 +282,14 @@
 - **FR-050**：队列内容必须与 CLI 侧队列状态保持同步，依赖 `queuedMessagesChange` 通知驱动的缓存更新（见 FR-038/FR-039）。
 - **FR-051**：发送/删除/编辑操作必须映射到对应的队列消息协议请求，修改结果通过缓存同步回 UI。
 
+#### Git 与 worktree（utility 请求）
+
+以下方法为无 session 上下文的 utility 请求（与 `listSessions` 同类），供桌面端等宿主查询 git 状态、创建/清理 worktree，复用 CLI `wave -w` 的创建与命名逻辑。
+
+- **FR-052**：协议必须提供 `listGitBranches` 请求方法：参数 `{workdir}`；响应 `{branches: string[], current: string | null}`（本地分支列表与当前分支）；`workdir` 不是 git 仓库或 git 不可用时必须返回错误（而非空列表），以便宿主隐藏分支相关 UI。
+- **FR-053**：协议必须提供 `createWorktree` 请求方法：参数 `{workdir, baseBranch?, name?}`；未传 `name` 时必须使用与 `wave -w` 相同的双形容词-名词随机命名；worktree 路径为 `<repoRoot>/.wave/worktrees/<name>`、分支名为 `worktree-<name>`；`baseBranch` 缺省时回退到仓库默认远程分支（与 `wave -w` 一致）；响应 `{name, path, branch, repoRoot, baseBranch}`；创建失败必须返回包含原因的错误。
+- **FR-054**：协议必须提供 `removeWorktree` 请求方法：参数 `{path, branch, repoRoot}`（`path` 为 worktree 路径，`branch` 为其临时分支名）；必须执行 `git worktree remove --force` 并删除对应 `worktree-<name>` 分支（复用 CLI 既有移除逻辑，含"当前分支已被切换"时的安全处理）；worktree 已被外部删除等清理失败场景不得报错，按幂等成功处理。
+
 ### 关键实体
 
 - **StdioClient**：低层 JSON-RPC 2.0 传输层。管理 `wave --stdio` 子进程的 stdin/stdout，提供 `request()`/`notify()`/`onNotification()`/`dispose()` 接口。单实例共享。

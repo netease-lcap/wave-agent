@@ -6,10 +6,27 @@ import {
   PromptHistoryManager,
   listSessions,
   searchFiles,
+  generateRandomName,
+  getDefaultRemoteBranch,
 } from "wave-agent-sdk";
+import { execFileSync } from "node:child_process";
+import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    execFileSync: vi.fn(),
+  };
+});
+
+vi.mock("../../src/utils/worktree.js", () => ({
+  createWorktree: vi.fn(),
+  removeWorktree: vi.fn(),
+}));
 
 // Mock process.stderr.write to suppress noise
 const stderrWriteSpy = vi
@@ -1536,4 +1553,247 @@ test("notifications route by sessionId when callbacks fire", async () => {
     params: { messages: messagesB },
     sessionId: "sess-B",
   });
+});
+
+// ── listGitBranches ────────────────────────────────────────────
+
+test("listGitBranches returns branches and current branch", async () => {
+  const { bridge } = createBridge();
+
+  vi.mocked(execFileSync)
+    // git for-each-ref
+    .mockReturnValueOnce("main\ndev\nfeature-x\n")
+    // git rev-parse --abbrev-ref HEAD
+    .mockReturnValueOnce("dev\n");
+
+  const result = (await bridge.handleRequest("listGitBranches", {
+    workdir: "/repo",
+  })) as { branches: string[]; current: string | null };
+
+  expect(result.branches).toEqual(["main", "dev", "feature-x"]);
+  expect(result.current).toBe("dev");
+
+  expect(execFileSync).toHaveBeenCalledWith(
+    "git",
+    ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+    expect.objectContaining({ cwd: "/repo" }),
+  );
+  expect(execFileSync).toHaveBeenCalledWith(
+    "git",
+    ["rev-parse", "--abbrev-ref", "HEAD"],
+    expect.objectContaining({ cwd: "/repo" }),
+  );
+});
+
+test("listGitBranches throws when workdir is missing", async () => {
+  const { bridge } = createBridge();
+  await expect(bridge.handleRequest("listGitBranches", {})).rejects.toThrow(
+    "workdir is required",
+  );
+});
+
+test("listGitBranches throws when not a git repo", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(execFileSync).mockImplementation(() => {
+    throw new Error("not a git repository");
+  });
+
+  await expect(
+    bridge.handleRequest("listGitBranches", { workdir: "/not-a-repo" }),
+  ).rejects.toThrow("Not a git repository");
+});
+
+test("listGitBranches returns null current on detached HEAD", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(execFileSync)
+    .mockReturnValueOnce("main\n")
+    .mockReturnValueOnce("HEAD\n");
+
+  const result = (await bridge.handleRequest("listGitBranches", {
+    workdir: "/repo",
+  })) as { branches: string[]; current: string | null };
+
+  expect(result.current).toBeNull();
+});
+
+test("listGitBranches returns null current when rev-parse fails", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(execFileSync)
+    .mockReturnValueOnce("main\n")
+    .mockImplementationOnce(() => {
+      throw new Error("rev-parse failed");
+    });
+
+  const result = (await bridge.handleRequest("listGitBranches", {
+    workdir: "/repo",
+  })) as { branches: string[]; current: string | null };
+
+  expect(result.branches).toEqual(["main"]);
+  expect(result.current).toBeNull();
+});
+
+// ── createWorktree ─────────────────────────────────────────────
+
+test("createWorktree creates worktree with default name", async () => {
+  const { bridge } = createBridge();
+
+  vi.mocked(generateRandomName).mockReturnValue("random-name");
+  vi.mocked(createWorktree).mockReturnValue({
+    name: "random-name",
+    path: "/repo/.wave/worktrees/random-name",
+    branch: "worktree-random-name",
+    repoRoot: "/repo",
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+    isNew: true,
+  });
+  vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+
+  const result = (await bridge.handleRequest("createWorktree", {
+    workdir: "/repo",
+    baseBranch: "origin/main",
+  })) as {
+    name: string;
+    path: string;
+    branch: string;
+    repoRoot: string;
+    baseBranch: string;
+  };
+
+  expect(result.name).toBe("random-name");
+  expect(result.path).toBe("/repo/.wave/worktrees/random-name");
+  expect(result.branch).toBe("worktree-random-name");
+  expect(result.repoRoot).toBe("/repo");
+  expect(result.baseBranch).toBe("origin/main");
+
+  expect(createWorktree).toHaveBeenCalledWith("random-name", "/repo", {
+    baseBranch: "origin/main",
+  });
+});
+
+test("createWorktree uses caller-provided name", async () => {
+  const { bridge } = createBridge();
+
+  vi.mocked(createWorktree).mockReturnValue({
+    name: "custom",
+    path: "/repo/.wave/worktrees/custom",
+    branch: "worktree-custom",
+    repoRoot: "/repo",
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+    isNew: true,
+  });
+
+  const result = (await bridge.handleRequest("createWorktree", {
+    workdir: "/repo",
+    name: "custom",
+  })) as { name: string };
+
+  expect(result.name).toBe("custom");
+  expect(createWorktree).toHaveBeenCalledWith("custom", "/repo", {
+    baseBranch: undefined,
+  });
+});
+
+test("createWorktree trims whitespace from name", async () => {
+  const { bridge } = createBridge();
+
+  vi.mocked(createWorktree).mockReturnValue({
+    name: "trimmed",
+    path: "/repo/.wave/worktrees/trimmed",
+    branch: "worktree-trimmed",
+    repoRoot: "/repo",
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+    isNew: true,
+  });
+
+  await bridge.handleRequest("createWorktree", {
+    workdir: "/repo",
+    name: "  trimmed  ",
+  });
+
+  expect(createWorktree).toHaveBeenCalledWith("trimmed", "/repo", {
+    baseBranch: undefined,
+  });
+});
+
+test("createWorktree falls back to generateRandomName on empty name", async () => {
+  const { bridge } = createBridge();
+
+  vi.mocked(generateRandomName).mockReturnValue("fallback-name");
+  vi.mocked(createWorktree).mockReturnValue({
+    name: "fallback-name",
+    path: "/repo/.wave/worktrees/fallback-name",
+    branch: "worktree-fallback-name",
+    repoRoot: "/repo",
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+    isNew: true,
+  });
+
+  await bridge.handleRequest("createWorktree", {
+    workdir: "/repo",
+    name: "   ",
+  });
+
+  expect(generateRandomName).toHaveBeenCalled();
+});
+
+test("createWorktree throws when workdir is missing", async () => {
+  const { bridge } = createBridge();
+  await expect(bridge.handleRequest("createWorktree", {})).rejects.toThrow(
+    "workdir is required",
+  );
+});
+
+test("createWorktree wraps createWorktree errors in RpcError", async () => {
+  const { bridge } = createBridge();
+
+  vi.mocked(generateRandomName).mockReturnValue("fail-name");
+  vi.mocked(createWorktree).mockImplementation(() => {
+    throw new Error("git worktree add failed");
+  });
+
+  await expect(
+    bridge.handleRequest("createWorktree", { workdir: "/repo" }),
+  ).rejects.toThrow("git worktree add failed");
+});
+
+// ── removeWorktree ─────────────────────────────────────────────
+
+test("removeWorktree calls removeWorktree with correct session", async () => {
+  const { bridge } = createBridge();
+
+  const result = (await bridge.handleRequest("removeWorktree", {
+    path: "/repo/.wave/worktrees/feat",
+    branch: "worktree-feat",
+    repoRoot: "/repo",
+  })) as { ok: true };
+
+  expect(result.ok).toBe(true);
+  expect(removeWorktree).toHaveBeenCalledWith({
+    name: "",
+    path: "/repo/.wave/worktrees/feat",
+    branch: "worktree-feat",
+    repoRoot: "/repo",
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+    isNew: false,
+  });
+});
+
+test("removeWorktree delegates to removeWorktree (best-effort)", async () => {
+  const { bridge } = createBridge();
+
+  // removeWorktree is mocked as a no-op (success). The real implementation
+  // catches its own errors internally and never throws.
+  const result = (await bridge.handleRequest("removeWorktree", {
+    path: "/nonexistent",
+    branch: "gone",
+    repoRoot: "/repo",
+  })) as { ok: true };
+
+  expect(result.ok).toBe(true);
+  expect(removeWorktree).toHaveBeenCalledTimes(1);
 });

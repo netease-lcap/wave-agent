@@ -34,6 +34,8 @@ import {
   type Scope,
   listSessions,
   searchFiles,
+  generateRandomName,
+  getDefaultRemoteBranch,
   PromptHistoryManager,
   AuthService,
   PluginCore,
@@ -44,6 +46,8 @@ import {
   INTERNAL_ERROR as PROTOCOL_INTERNAL_ERROR,
   METHOD_NOT_FOUND as PROTOCOL_METHOD_NOT_FOUND,
 } from "./protocol.js";
+import { execFileSync } from "node:child_process";
+import { createWorktree, removeWorktree } from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
 
 export type NotificationEmitter = (
@@ -298,6 +302,22 @@ export class AgentBridge {
       case "stopWorkflowRun":
         return this.stopWorkflowRun(p.runId as string, sessionId);
 
+      // ── Git / worktree (global — no session required) ──
+      case "listGitBranches":
+        return this.listGitBranches(p.workdir as string | undefined);
+      case "createWorktree":
+        return this.createWorktreeSession(
+          p as unknown as {
+            workdir: string;
+            baseBranch?: string;
+            name?: string;
+          },
+        );
+      case "removeWorktree":
+        return this.removeWorktreeSession(
+          p as unknown as { path: string; branch: string; repoRoot: string },
+        );
+
       default:
         throw new RpcError(
           PROTOCOL_METHOD_NOT_FOUND,
@@ -398,6 +418,104 @@ export class AgentBridge {
       workdir || this.getSessionWorkdir(sessionId) || process.cwd(),
     );
     return { sessions };
+  }
+
+  // ── Git / worktree ────────────────────────────────────────────
+
+  private listGitBranches(workdir?: string): {
+    branches: string[];
+    current: string | null;
+  } {
+    if (!workdir) {
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, "workdir is required");
+    }
+    const gitOpts = {
+      cwd: workdir,
+      encoding: "utf8" as const,
+      stdio: ["ignore", "pipe", "pipe"] as ["ignore", "pipe", "pipe"],
+    };
+    let branchesRaw: string;
+    try {
+      branchesRaw = execFileSync(
+        "git",
+        ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+        gitOpts,
+      ).trim();
+    } catch {
+      throw new RpcError(
+        PROTOCOL_INTERNAL_ERROR,
+        `Not a git repository (or git unavailable): ${workdir}`,
+      );
+    }
+    const branches = branchesRaw
+      ? branchesRaw
+          .split("\n")
+          .map((b) => b.trim())
+          .filter(Boolean)
+      : [];
+    let current: string | null = null;
+    try {
+      const head = execFileSync(
+        "git",
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        gitOpts,
+      ).trim();
+      // Detached HEAD prints "HEAD" — treat as no current branch.
+      current = head && head !== "HEAD" ? head : null;
+    } catch {
+      current = null;
+    }
+    return { branches, current };
+  }
+
+  private createWorktreeSession(params: {
+    workdir: string;
+    baseBranch?: string;
+    name?: string;
+  }): {
+    name: string;
+    path: string;
+    branch: string;
+    repoRoot: string;
+    baseBranch: string;
+  } {
+    if (!params.workdir) {
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, "workdir is required");
+    }
+    const name = params.name?.trim() || generateRandomName();
+    try {
+      const session = createWorktree(name, params.workdir, {
+        baseBranch: params.baseBranch,
+      });
+      return {
+        name: session.name,
+        path: session.path,
+        branch: session.branch,
+        repoRoot: session.repoRoot,
+        baseBranch: params.baseBranch ?? getDefaultRemoteBranch(params.workdir),
+      };
+    } catch (e) {
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, (e as Error).message);
+    }
+  }
+
+  private removeWorktreeSession(params: {
+    path: string;
+    branch: string;
+    repoRoot: string;
+  }): { ok: true } {
+    // removeWorktree is best-effort/idempotent: already-removed worktrees or
+    // branches only log, never throw.
+    removeWorktree({
+      name: "",
+      path: params.path,
+      branch: params.branch,
+      repoRoot: params.repoRoot,
+      hasUncommittedChanges: false,
+      hasNewCommits: false,
+      isNew: false,
+    });
+    return { ok: true };
   }
 
   private getSessionInfo(sessionId?: string): {
