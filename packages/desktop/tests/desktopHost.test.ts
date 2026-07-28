@@ -584,7 +584,9 @@ describe('misc commands', () => {
   });
 
   it('restoreSession forwards to the agent and refreshes the session tree', async () => {
-    const { host, sent } = await readyHost();
+    const { host, store, sent } = await readyHost();
+    store.upsertSession({ sessionId: 'sess-x', title: 'x', workdir: '/work/a', cwd: '/work/a', lastActiveAt: 1000 });
+
     await host.handleWebviewMessage({ command: 'restoreSession', sessionId: 'sess-x' });
 
     expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-x');
@@ -655,13 +657,14 @@ describe('session tree', () => {
     ...overrides,
   });
 
-  it('prefetches one group per recent directory on webviewReady (no agent needed)', async () => {
+  it('derives groups from the session index (not recents) on webviewReady', async () => {
     const { host, store, sent } = createHost();
-    store.addRecentWorkdir('/work/a');
-    store.addRecentWorkdir('/work/b');
-    store.upsertSession(makeIndexEntry('s1', '/work/a'));
-    store.upsertSession(makeIndexEntry('s2', '/work/a'));
-    store.upsertSession(makeIndexEntry('s3', '/work/b'));
+    // /work/only-recent is in recents but has no sessions -> must NOT appear as a group.
+    // /work/only-index has sessions but is not in recents -> still a group.
+    store.addRecentWorkdir('/work/only-recent');
+    store.upsertSession(makeIndexEntry('s1', '/work/a', { lastActiveAt: 1000 }));
+    store.upsertSession(makeIndexEntry('s2', '/work/a', { lastActiveAt: 2000 }));
+    store.upsertSession(makeIndexEntry('s3', '/work/only-index', { lastActiveAt: 3000 }));
 
     await host.handleWebviewMessage({ command: 'desktopReady' });
     await host.handleWebviewMessage({ command: 'webviewReady' });
@@ -670,11 +673,12 @@ describe('session tree', () => {
       expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
     });
     const tree = sent('desktopSessionTree').at(-1);
+    // Groups ordered by latest session lastActiveAt desc; sessions within a group desc.
     expect(tree?.groups).toEqual([
-      { workdir: '/work/b', sessions: [expect.objectContaining({ sessionId: 's3' })] },
+      { workdir: '/work/only-index', sessions: [expect.objectContaining({ sessionId: 's3' })] },
       {
         workdir: '/work/a',
-        sessions: [expect.objectContaining({ sessionId: 's1' }), expect.objectContaining({ sessionId: 's2' })],
+        sessions: [expect.objectContaining({ sessionId: 's2' }), expect.objectContaining({ sessionId: 's1' })],
       },
     ]);
     // No agent was created — the tree comes from the desktop index.
@@ -723,24 +727,26 @@ describe('session tree', () => {
     expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-y');
   });
 
-  it('desktopSelectSession with a gone directory drops it and skips restore', async () => {
+  it('desktopSelectSession with a gone directory drops the index entry and the recent', async () => {
     const { host, store, sent } = await readyHost();
-    store.addRecentWorkdir('/gone');
+    store.upsertSession(makeIndexEntry('sess-z', '/gone'));
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/gone', sessionId: 'sess-z' });
 
+    expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-z')).toBe(false);
     expect(store.getRecentWorkdirs()).not.toContain('/gone');
     expect(lastAgent().restoreSession).not.toHaveBeenCalled();
-    const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表移除'));
+    const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表与会话列表移除'));
     expect(sysMsgs).toHaveLength(1);
   });
 
   it('refreshes the tree when a turn ends (touchSessionInIndex)', async () => {
     const { sent } = await readyHost();
-    // readyHost triggers two tree pushes (workdir switch + webviewReady) —
-    // wait for both to settle before measuring the trigger's effect.
+    // readyHost leaves the index empty -> no tree posts yet. Seed a session so
+    // refreshSessionTree actually emits (an empty index is a no-op post).
+    lastAgent().callbacks.onSessionIdChange('sess-1');
     await vi.waitFor(() => {
-      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(2);
+      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
     });
     const before = sent('desktopSessionTree').length;
 
@@ -753,15 +759,13 @@ describe('session tree', () => {
 
   it('refreshes the tree when a new session starts (registerSessionInIndex)', async () => {
     const { sent } = await readyHost();
-    await vi.waitFor(() => {
-      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(2);
-    });
-    const before = sent('desktopSessionTree').length;
+    // readyHost leaves the index empty -> no tree posts yet.
+    expect(sent('desktopSessionTree')).toHaveLength(0);
 
     lastAgent().callbacks.onSessionIdChange('sess-2');
 
     await vi.waitFor(() => {
-      expect(sent('desktopSessionTree').length).toBe(before + 1);
+      expect(sent('desktopSessionTree').length).toBe(1);
     });
   });
 
