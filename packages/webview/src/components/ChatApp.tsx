@@ -32,7 +32,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
-  const [worktreeChecked, setWorktreeChecked] = useState(false);
+  const [worktreeChecked, setWorktreeChecked] = useState(true);
   // Desktop only: localhost URL shown in the preview pane. Null = closed.
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const messageInputRef = useRef<MessageInputHandle>(null);
@@ -61,11 +61,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   }, [queueEditWarning]);
 
   // Desktop: reset the worktree controls when the branch list changes (i.e. the
-  // workdir was re-queried). Default to the repo's current branch, unchecked.
+  // workdir was re-queried). Default to the repo's current branch, checked.
   const gitBranches = host?.type === 'desktop' ? host.gitBranches : null;
   useEffect(() => {
     setWorktreeBranch(gitBranches?.current ?? '');
-    setWorktreeChecked(false);
+    setWorktreeChecked(true);
   }, [gitBranches]);
 
   // Handle messages from VS Code extension
@@ -340,7 +340,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
       host.workdir &&
       host.gitBranches
     ) {
-      setWorktreeChecked(false);
       vscode.postMessage({
         command: 'desktopCreateWorktree',
         workdir: host.workdir,

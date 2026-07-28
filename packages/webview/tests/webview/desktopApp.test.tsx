@@ -335,7 +335,8 @@ describe('DesktopApp', () => {
             sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
 
             expect(screen.getByTestId('desktop-branch-selector')).toHaveTextContent('main');
-            expect(screen.getByTestId('desktop-worktree-checkbox')).toBeInTheDocument();
+            const checkbox = screen.getByTestId('desktop-worktree-checkbox').querySelector('input');
+            expect(checkbox).toBeChecked();
         });
 
         it('stays hidden when the workdir is not a git repo (result null)', () => {
@@ -377,10 +378,9 @@ describe('DesktopApp', () => {
             sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
             vscode.postMessage.mockClear();
 
-            // Pick dev as the base branch and tick the checkbox
+            // Pick dev as the base branch (the checkbox is on by default)
             fireEvent.click(screen.getByTestId('desktop-branch-selector'));
             fireEvent.click(screen.getAllByTestId('desktop-branch-item')[1]);
-            fireEvent.click(screen.getByTestId('desktop-worktree-checkbox').querySelector('input')!);
 
             const input = screen.getByTestId('message-input');
             input.textContent = 'hello worktree';
@@ -396,8 +396,8 @@ describe('DesktopApp', () => {
                 text: 'hello worktree',
                 images: undefined,
             });
-            // Checkbox resets for the next session
-            expect(screen.getByTestId('desktop-worktree-checkbox').querySelector('input')).not.toBeChecked();
+            // Checkbox stays at its checked default for the next session
+            expect(screen.getByTestId('desktop-worktree-checkbox').querySelector('input')).toBeChecked();
         });
 
         it('posts sendMessage normally when the checkbox is off', async () => {
@@ -405,6 +405,9 @@ describe('DesktopApp', () => {
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
             vscode.postMessage.mockClear();
+
+            // Untick the default-checked checkbox
+            fireEvent.click(screen.getByTestId('desktop-worktree-checkbox').querySelector('input')!);
 
             const input = screen.getByTestId('message-input');
             input.textContent = 'plain message';
