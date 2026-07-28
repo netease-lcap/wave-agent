@@ -49,8 +49,9 @@ export class NodeJsVersionError extends Error {
 }
 
 /**
- * Find `node` executable: PATH first, then `process.execPath` (the Node
- * running the extension host, which is always a valid node binary).
+ * Find `node` executable: PATH first, then `process.execPath` (in VSCE the
+ * extension-host runtime is Node; in Electron the app binary doubles as Node
+ * via ELECTRON_RUN_AS_NODE=1 — see checkNodeVersion).
  */
 function findNode(): string {
     const cmd = process.platform === 'win32' ? 'where node' : 'which node';
@@ -73,6 +74,13 @@ function checkNodeVersion(): void {
     const output = execFileSync(node, ['-v'], {
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 5000,
+        // In the Electron main process process.execPath is the app binary, not
+        // Node; ELECTRON_RUN_AS_NODE makes it behave as one. Harmless when
+        // `node` is a real Node binary (VSCE host / PATH lookup).
+        env: node === process.execPath
+            ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+            : process.env,
     }).trim();
     const match = output.match(/^v?(\d+)/);
     if (!match) throw new NodeJsVersionError(output);
