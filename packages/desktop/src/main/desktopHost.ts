@@ -929,24 +929,35 @@ export class DesktopHost {
     if (!this.configStore) return;
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
     const target = this.agents.get(sessionId);
-    const wasActive = target !== undefined && target === this.activeAgent;
+    const boundPaneIds = this.panes
+      .filter((p) => p.agent !== null && (p.agent === target || p.agent.sessionId === sessionId))
+      .map((p) => p.paneId);
 
     if (target) {
       this.agents.delete(sessionId);
       this.lastActivatedAt.delete(sessionId);
-      this.inputDrafts.delete(sessionId);
       this.agentWorktreeInfo.delete(target);
-      // Detach before picking the next view, and destroy in the background:
-      // Agent.destroy() is slow (telemetry shutdown, MCP/LSP cleanup), and
-      // awaiting it here would let the replacement view below clobber a
-      // session the user selects in the meantime.
-      if (wasActive) this.bindAgentToPane(this.focusedPaneId, null);
-      void target.destroy().catch(() => { /* best-effort */ });
     }
+
+    // Every pane showing the deleted session closes; a sole pane resets to a
+    // fresh session below instead. Detach before the reset and destroy in the
+    // background: Agent.destroy() is slow (telemetry shutdown, MCP/LSP
+    // cleanup), and awaiting it here would let the replacement view below
+    // clobber a session the user selects in the meantime.
+    let resetSolePane = false;
+    for (const paneId of boundPaneIds) {
+      if (this.panes.length > 1) {
+        this.handleClosePane(paneId);
+      } else {
+        this.bindAgentToPane(paneId, null);
+        resetSolePane = true;
+      }
+    }
+    if (target) void target.destroy().catch(() => { /* best-effort */ });
 
     this.configStore.removeSession(sessionId);
 
-    if (wasActive) {
+    if (resetSolePane) {
       if (entry?.worktree && fs.existsSync(entry.worktree.repoRoot)) {
         await this.activateWorkdir({ dir: entry.worktree.repoRoot, forceNew: true });
       } else {
