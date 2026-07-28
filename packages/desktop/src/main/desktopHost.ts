@@ -758,14 +758,17 @@ export class DesktopHost {
       this.lastActivatedAt.delete(sessionId);
       this.inputDrafts.delete(sessionId);
       this.agentWorktreeInfo.delete(target);
-      try { await target.destroy(); } catch { /* best-effort */ }
+      // Detach before picking the next view, and destroy in the background:
+      // Agent.destroy() is slow (telemetry shutdown, MCP/LSP cleanup), and
+      // awaiting it here would let the replacement view below clobber a
+      // session the user selects in the meantime.
+      if (wasActive) this.setActive(null);
+      void target.destroy().catch(() => { /* best-effort */ });
     }
 
     this.configStore.removeSession(sessionId);
 
     if (wasActive) {
-      // Detach the destroyed agent before picking the next view.
-      this.setActive(null);
       if (entry?.worktree && fs.existsSync(entry.worktree.repoRoot)) {
         await this.activateWorkdir({ dir: entry.worktree.repoRoot, forceNew: true });
       } else {
@@ -1264,13 +1267,14 @@ export class DesktopHost {
     // grouped under the repo root (and recents free of the ephemeral path).
     try {
       const agent = await this.spawnAgent({ workdir: targetDir, worktreeInfo: entry?.worktree });
-      await this.activateAgent(agent);
+      // Restore before activating so the view never flashes the fresh agent's
+      // empty state (which renders as the new-session directory picker).
       await agent.restoreSession(sessionId);
       this.rekeyAgent(agent, sessionId);
+      await this.activateAgent(agent);
       this.ensureSessionRegistered(agent);
       this.touchSessionInIndex(agent);
       this.refreshSessionTree();
-      await this.pushActiveSessionState();
     } catch (error) {
       console.error('[DesktopHost] 恢复会话失败:', error);
       this.pushSystemMessage(`恢复会话失败: ${error}`);
@@ -1318,6 +1322,9 @@ export class DesktopHost {
     if (active && active.messages.length === 0 && !active.isStreaming) return;
     try {
       const agent = await this.spawnAgent({ workdir: dir });
+      // Spawning is slow (agent init) — the user may have selected another
+      // session meanwhile; don't clobber their view.
+      if (this.activeAgent !== active) return;
       await this.activateAgent(agent);
       this.postMessage({ command: 'focusInput' });
     } catch (error) {

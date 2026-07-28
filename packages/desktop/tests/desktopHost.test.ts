@@ -888,6 +888,44 @@ describe('session tree', () => {
     // A fresh session replaced the deleted active one.
     expect(h.agentInstances).toHaveLength(before + 1);
   });
+
+  it('desktopDeleteSession on the active session does not clobber a session selected while destroy is in flight', async () => {
+    const { host, store, sent } = await readyHost();
+    fireSessionId(lastAgent(), 'live-1');
+    const doomed = lastAgent();
+    store.upsertSession(makeIndexEntry('hist-b', '/work/a'));
+
+    // Destroy is slow in the real CLI (telemetry shutdown, MCP/LSP cleanup),
+    // so the delete handler stays in flight while the user clicks another session.
+    let releaseDestroy: () => void = () => {};
+    doomed.destroy.mockImplementation(
+      () => new Promise<undefined>((resolve) => { releaseDestroy = () => resolve(undefined); }),
+    );
+
+    const deletePromise = host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'live-1' });
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'hist-b' });
+
+    releaseDestroy();
+    await deletePromise;
+
+    const states = sent('setInitialState');
+    const last = states.at(-1);
+    expect(last?.session).toMatchObject({ id: 'hist-b' });
+    expect(last?.messages).toHaveLength(1);
+  });
+
+  it('desktopSelectSession on a historical session activates only after restore (no empty-state flash)', async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(makeIndexEntry('hist-1', '/work/a'));
+    send.mockClear();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'hist-1' });
+
+    const states = sent('setInitialState');
+    expect(states).toHaveLength(1);
+    expect(states[0]?.session).toMatchObject({ id: 'hist-1' });
+    expect(states[0]?.messages).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
