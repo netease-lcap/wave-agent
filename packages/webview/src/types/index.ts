@@ -185,6 +185,8 @@ export interface DesktopSessionEntry {
   hasWorktree: boolean;
   /** True while this session is generating — drives the per-session running dot (FR-031). */
   running?: boolean;
+  /** True while a confirmation request (tool/plan/question) awaits the user — drives the waiting dot. */
+  waitingConfirmation?: boolean;
 }
 
 /**

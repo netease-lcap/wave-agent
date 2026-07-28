@@ -1188,7 +1188,7 @@ describe('multi-session parallel (FR-031)', () => {
   };
 
   const treeSessions = (tree: Record<string, unknown> | undefined) =>
-    ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; running: boolean }> }>) ?? []).flatMap(
+    ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; running: boolean; waitingConfirmation?: boolean }> }>) ?? []).flatMap(
       (g) => g.sessions,
     );
 
@@ -1255,6 +1255,51 @@ describe('multi-session parallel (FR-031)', () => {
     const after = treeSessions(sent('desktopSessionTree').at(-1));
     expect(after.find((s) => s.sessionId === 'sess-1')?.running).toBe(false);
     expect(after.find((s) => s.sessionId === 'sess-2')?.running).toBe(true);
+  });
+
+  it('flags a background session waiting-confirmation in the tree until resolved', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    seedActiveSession('sess-2');
+
+    // Background permission request: no dialog, but the tree flags the session.
+    agent1.callbacks.onPermissionRequest('req-bg', { toolName: 'Edit', toolInput: { file_path: '/x.ts' } });
+    expect(sent('showConfirmation')).toHaveLength(0);
+    const flagged = treeSessions(sent('desktopSessionTree').at(-1));
+    expect(flagged.find((s) => s.sessionId === 'sess-1')?.waitingConfirmation).toBe(true);
+    expect(flagged.find((s) => s.sessionId === 'sess-2')?.waitingConfirmation).toBe(false);
+
+    // Switching back surfaces the pending confirmation via initial state;
+    // responding clears the tree flag.
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
+    const state = sent('setInitialState').at(-1) as { pendingConfirmations?: Array<{ confirmationId: string }> };
+    expect(state.pendingConfirmations).toHaveLength(1);
+    await host.handleWebviewMessage({
+      command: 'confirmationResponse',
+      confirmationId: state.pendingConfirmations![0].confirmationId,
+      approved: true,
+    });
+
+    const cleared = treeSessions(sent('desktopSessionTree').at(-1));
+    expect(cleared.find((s) => s.sessionId === 'sess-1')?.waitingConfirmation).toBe(false);
+  });
+
+  it('flags the active session waiting-confirmation alongside the dialog', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+
+    lastAgent().callbacks.onPermissionRequest('req-1', { toolName: 'Edit', toolInput: { file_path: '/x.ts' } });
+    await vi.waitFor(() => {
+      expect(sent('showConfirmation')).toHaveLength(1);
+    });
+    const flagged = treeSessions(sent('desktopSessionTree').at(-1));
+    expect(flagged.find((s) => s.sessionId === 'sess-1')?.waitingConfirmation).toBe(true);
+
+    const confirmationId = sent('showConfirmation')[0].confirmationId as string;
+    await host.handleWebviewMessage({ command: 'confirmationResponse', confirmationId, approved: true });
+    const cleared = treeSessions(sent('desktopSessionTree').at(-1));
+    expect(cleared.find((s) => s.sessionId === 'sess-1')?.waitingConfirmation).toBe(false);
   });
 
   it('gates background agent view callbacks until the session is activated', async () => {
