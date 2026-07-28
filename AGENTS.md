@@ -8,9 +8,10 @@ This is a pnpm monorepo focused on AI-powered development tools.
 
 - **`packages/agent-sdk`**: Core Node.js SDK. Handles AI model integration, tool systems, and memory management.
 - **`packages/code`**: CLI frontend built with React Ink. Provides the interactive terminal interface.
-- **`packages/webview`**: React 18 chat UI shared by the VS Code extension and JetBrains plugin.
+- **`packages/webview`**: React 18 chat UI shared by the VS Code extension, JetBrains plugin, and desktop app.
 - **`packages/vsce`**: VS Code extension. Uses esbuild for bundling (not tsc). Its `webview/` directory is a build artifact synced from `packages/webview` — always edit the source in `packages/webview/src/`.
 - **`packages/jetbrains`**: JetBrains plugin (Gradle/Kotlin), reuses the `packages/webview` UI.
+- **`packages/desktop`**: Electron desktop app, reuses the `packages/webview` UI and drives the CLI via stdio.
 - **`docs/`**: VitePress documentation site.
 - **`docs/specs/`**: Contains feature specifications grouped by topic (e.g., `docs/specs/ui/slash-commands.md`). These are the source of truth for feature design and implementation tasks, and are rendered into the docs site.
 - **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
@@ -19,6 +20,7 @@ This is a pnpm monorepo focused on AI-powered development tools.
 - `packages/code` depends on `packages/agent-sdk`.
 - `packages/vsce` depends on `packages/agent-sdk` and `packages/webview`.
 - `packages/jetbrains` consumes the `packages/webview` build output.
+- `packages/desktop` consumes the `packages/webview` build output and spawns the `wave --stdio` CLI (from `packages/code`).
 - **Important**: After modifying `agent-sdk` or `webview`, you MUST rebuild them (`pnpm -F wave-agent-sdk build` / `pnpm -F wave-webview build`) before the changes are available to dependent packages.
 
 ## 🛠 Development Commands
@@ -45,6 +47,13 @@ Always use `pnpm` as the package manager.
 - **Run IDE with plugin**: `pnpm run jb:run`
 - **Build**: `pnpm run jb:build` (builds webview first, then the Gradle plugin)
 - **Test**: `pnpm run jb:test`
+
+### Desktop App (`packages/desktop`)
+- **Run dev**: `cd packages/desktop && pnpm run dev` (compiles, then launches Electron; dev uses a separate `wave-desktop-dev` userData so it coexists with the installed app)
+- **Build installer**: `pnpm run dist` (electron-builder → `release/`). **Do not bypass `scripts/afterPack.js`**: electron-builder's bundle mutation breaks the ad-hoc linker seal, and without the re-sign step LaunchServices silently refuses to launch the app.
+- **Test**: `pnpm -F wave-desktop test`
+- **Architecture**: the main process wraps the shared webview and talks JSON-RPC to a `wave --stdio` child process — `src/main/desktopHost.ts` (agent pool: one `StdioAgent` per session for parallel conversations, see FR-031) → `stdio/stdioClient.ts` + `stdio/notificationRouter.ts` (routes notifications by sessionId). Session index/worktree metadata persists in `userData/wave-desktop.json` via `configStore.ts`.
+- **CLI resolution**: `WAVE_CLI_PATH` env var points at a workspace `wave-code` build; otherwise the bundled binary is used.
 
 ### Docs Site
 - **Preview**: `pnpm run docs:dev`
