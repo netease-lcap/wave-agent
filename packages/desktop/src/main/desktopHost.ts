@@ -1281,6 +1281,44 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * Cycle the active session through the flattened sidebar tree order (FR-038)
+   * — the keyboard/menu counterpart of clicking a session entry, so it
+   * delegates to handleSelectSession for identical semantics (FR-020 click
+   * behavior; background sessions keep streaming, FR-031). Next/previous wrap
+   * around at the edges; when the current session is not in the tree (a fresh
+   * unregistered session), next lands on the first entry and previous on the
+   * last. Empty tree or cycling onto the current session is a no-op (the
+   * handleSelectSession early-return).
+   *
+   * The order is frozen in a snapshot at cycle start: activation bumps the
+   * session's lastActiveAt, so the MRU-derived tree re-sorts mid-cycle and a
+   * re-derived order would ping-pong between entries. The snapshot is dropped
+   * as soon as anything outside the cycle changes the current session (click,
+   * new session, delete…), falling back to a fresh MRU-derived order.
+   */
+  private sessionCycleSnapshot: Array<{ workdir: string; sessionId: string }> | null = null;
+  private sessionCycleIndex = -1;
+
+  async activateAdjacentSession(direction: 1 | -1): Promise<void> {
+    const currentId = this.activeAgent?.sessionId;
+    if (!this.sessionCycleSnapshot || this.sessionCycleSnapshot[this.sessionCycleIndex]?.sessionId !== currentId) {
+      const flat = this.sessionTree.flatMap((group) =>
+        group.sessions.map((s) => ({ workdir: group.workdir, sessionId: s.sessionId })),
+      );
+      const index = flat.findIndex((s) => s.sessionId === currentId);
+      this.sessionCycleSnapshot = flat;
+      // An untracked current session sits before the first entry for next and
+      // after the last for previous, so the first press lands on an edge.
+      this.sessionCycleIndex = index === -1 ? (direction === 1 ? -1 : flat.length) : index;
+    }
+    const snapshot = this.sessionCycleSnapshot;
+    if (!snapshot || snapshot.length === 0) return;
+    this.sessionCycleIndex = (this.sessionCycleIndex + direction + snapshot.length) % snapshot.length;
+    const target = snapshot[this.sessionCycleIndex];
+    await this.handleSelectSession(target.workdir, target.sessionId);
+  }
+
   private async handleSendMessage(
     text: string,
     images?: Array<{ data: string; mediaType: string }>,

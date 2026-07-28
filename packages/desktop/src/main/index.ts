@@ -13,6 +13,7 @@ import { WEBVIEW_CHANNEL } from './channels';
 import { ConfigStore } from './configStore';
 import { DesktopHost } from './desktopHost';
 import { isLocalhostUrl } from './isLocalhostUrl';
+import { attachSessionSwitchKeys, installApplicationMenu, type SessionSwitchActions } from './menu';
 
 /**
  * GUI-launched apps (Finder/Spotlight) get a bare system PATH without the
@@ -49,6 +50,17 @@ if (!app.isPackaged) {
 let mainWindow: BrowserWindow | null = null;
 let host: DesktopHost | null = null;
 
+// Session-switch shortcuts (Ctrl+Tab / Ctrl+Shift+Tab, macOS also
+// Cmd+Shift+] / [) — shared by the application menu and before-input-event.
+const sessionSwitchActions: SessionSwitchActions = {
+  nextSession: () => {
+    void host?.activateAdjacentSession(1);
+  },
+  prevSession: () => {
+    void host?.activateAdjacentSession(-1);
+  },
+};
+
 const gotLock = app.requestSingleInstanceLock();
 
 if (!gotLock) {
@@ -70,6 +82,7 @@ if (!gotLock) {
 
     const configStore = new ConfigStore();
     host = new DesktopHost(configStore);
+    installApplicationMenu(sessionSwitchActions);
 
     ipcMain.on(WEBVIEW_CHANNEL, (_event, message: Record<string, unknown>) => {
       void host?.handleWebviewMessage(message).catch((error) => {
@@ -122,6 +135,7 @@ function createWindow(): void {
   });
 
   host?.setMainWindow(mainWindow);
+  attachSessionSwitchKeys(mainWindow.webContents, sessionSwitchActions);
 
   // External links always open in the system browser (FR-008).
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -154,6 +168,8 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.on('did-attach-webview', (_event, guest) => {
+    // The session-switch keys must also work while the preview pane has focus.
+    attachSessionSwitchKeys(guest, sessionSwitchActions);
     // Guest pages must never spawn windows — open them externally instead.
     // (The <webview> `new-window` DOM event was removed in Electron 39.)
     guest.setWindowOpenHandler(({ url }) => {
