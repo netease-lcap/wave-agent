@@ -482,13 +482,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
       decision
     });
     dispatch({ type: 'HIDE_CONFIRMATION', payload: confirmationId });
-    
-    // Scroll to bottom after confirmation is hidden and input is shown
-    setTimeout(() => {
-      if (messageListRef.current) {
-        messageListRef.current.scrollToBottom('smooth');
-      }
-    }, 0);
   }, [vscode]);
 
   const handleRejection = useCallback((confirmationId: string) => {
@@ -498,13 +491,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
       approved: false
     });
     dispatch({ type: 'HIDE_CONFIRMATION', payload: confirmationId });
-
-    // Scroll to bottom after confirmation is hidden and input is shown
-    setTimeout(() => {
-      if (messageListRef.current) {
-        messageListRef.current.scrollToBottom('smooth');
-      }
-    }, 0);
   }, [vscode]);
 
   const handleRewindToMessage = useCallback((messageId: string) => {

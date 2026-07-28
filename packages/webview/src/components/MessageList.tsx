@@ -52,6 +52,12 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
   // scrollTop downward to keep it within bounds, which otherwise looks identical
   // to an upward user gesture and would wrongly suspend auto-follow.
   const prevScrollHeightRef = useRef(0);
+  // Last seen clientHeight, used the same way for a viewport-GROWTH clamp: when
+  // the container gets taller (confirmation dialog closes, input area shrinks,
+  // window/panel grows) while parked at the bottom, the browser clamps scrollTop
+  // downward with scrollHeight UNCHANGED — which passes the contentShrank check
+  // and would likewise suspend auto-follow without a user gesture.
+  const prevClientHeightRef = useRef(0);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
   // at the top of the list as a context hint (设计稿 2236-3792).
@@ -164,10 +170,15 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
         // scrollTop downward but is NOT user intent — ignore it so auto-follow
         // survives reasoning collapse / streaming-end reflow / image load.
         const contentShrank = container.scrollHeight < prevScrollHeightRef.current;
+        // Same for a viewport-growth clamp (clientHeight increased, scrollHeight
+        // unchanged): the container got taller under the user's parked position,
+        // e.g. when the confirmation dialog closes and the input area comes back
+        // shorter than the dialog.
+        const viewportGrew = container.clientHeight > prevClientHeightRef.current;
         // An upward gesture always opts out of following (covers the "slight
         // nudge up then stop" case that the distance threshold alone missed).
         // A downward gesture to the bottom region opts back in.
-        if (scrolledUp && !contentShrank) {
+        if (scrolledUp && !contentShrank && !viewportGrew) {
           userScrolledUpRef.current = true;
         } else if (isNearBottom) {
           userScrolledUpRef.current = false;
@@ -175,6 +186,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       }
       prevScrollTopRef.current = container.scrollTop;
       prevScrollHeightRef.current = container.scrollHeight;
+      prevClientHeightRef.current = container.clientHeight;
       computeSticky();
     };
 
@@ -184,6 +196,15 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     // (images, diffs, etc.). Auto-scroll itself is driven by the messages
     // dependency below, not by the observer.
     const resizeObserver = new ResizeObserver(() => {
+      // Re-baseline the geometry refs on container resizes. A resize that
+      // produces no scroll event (user not at the bottom → no clamp) would
+      // otherwise leave prevClientHeight stale, and the NEXT genuine scroll-up
+      // would be misread as a viewport-growth clamp and fail to suspend
+      // following. If a clamp's scroll event hasn't been dispatched yet,
+      // re-baselining here also neutralizes it (scrollTop no longer "decreased").
+      prevScrollTopRef.current = container.scrollTop;
+      prevScrollHeightRef.current = container.scrollHeight;
+      prevClientHeightRef.current = container.clientHeight;
       computeSticky();
     });
 
