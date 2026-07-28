@@ -8,7 +8,7 @@ const truncate = (content: string): string => {
 };
 
 /** Extract the first real user message text, used as a session title fallback. */
-const firstUserMessageText = (messages?: Message[]): string | undefined => {
+export const firstUserMessageText = (messages?: Message[]): string | undefined => {
   if (!messages) return undefined;
   for (const message of messages) {
     if (message.role !== 'user' || message.isMeta) continue;

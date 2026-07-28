@@ -1,4 +1,5 @@
 import type { ChatState, ChatAction, Message, MessageBlock, TextBlock, ToolBlock, ErrorBlock } from '../types';
+import { firstUserMessageText } from '../utils/session';
 
 export const initialState: ChatState = {
   messages: [],
@@ -33,11 +34,24 @@ export const initialState: ChatState = {
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
-    case 'SET_MESSAGES':
+    case 'SET_MESSAGES': {
+      let currentSession = state.currentSession;
+      // Pin the header title while the first user message is still in the
+      // list — compaction later truncates it to [compact, ...tail rounds]
+      // (assistant-only), so derivation after the fact comes up empty and the
+      // header would fall back to the default title.
+      if (currentSession && !currentSession.firstMessage) {
+        const derived = firstUserMessageText(action.payload);
+        if (derived) {
+          currentSession = { ...currentSession, firstMessage: derived };
+        }
+      }
       return {
         ...state,
-        messages: action.payload
+        messages: action.payload,
+        currentSession
       };
+    }
     case 'SET_TASKS':
       return {
         ...state,
