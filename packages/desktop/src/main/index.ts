@@ -39,6 +39,13 @@ function adoptLoginShellPath(): void {
 
 adoptLoginShellPath();
 
+// Dev instances get their own userData so they can run alongside an installed
+// app (the single-instance lock is scoped to the userData directory) and never
+// touch the real config/session index.
+if (!app.isPackaged) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'wave-desktop-dev'));
+}
+
 let mainWindow: BrowserWindow | null = null;
 let host: DesktopHost | null = null;
 
