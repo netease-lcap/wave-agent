@@ -1645,6 +1645,45 @@ describe('split-view panes (FR-032~036)', () => {
     expect(paneAgent.destroy).not.toHaveBeenCalled();
   });
 
+  it('desktopDeleteSession closes the focused pane showing it instead of resetting to a fresh session', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const agent2 = lastAgent();
+    const spawned = h.agentInstances.length;
+    // pane-2 (sess-2) is focused after the drop.
+
+    await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'sess-2' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].sessionId).toBe('sess-1');
+    expect(layout.focusedPaneId).toBe(layout.panes[0].paneId);
+    expect(agent2.destroy).toHaveBeenCalled();
+    expect(agent1.destroy).not.toHaveBeenCalled();
+    // The pane closed — no fresh session was spawned to fill it.
+    expect(h.agentInstances).toHaveLength(spawned);
+  });
+
+  it('desktopDeleteSession closes a non-focused pane showing the deleted session', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const agent2 = lastAgent();
+    // Focus pane-1 so sess-2 lives in a background pane.
+    const firstPane = panePushes(sent).at(-1)!.panes[0];
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: firstPane.paneId });
+
+    await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'sess-2' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].sessionId).toBe('sess-1');
+    expect(layout.focusedPaneId).toBe(firstPane.paneId);
+    expect(agent2.destroy).toHaveBeenCalled();
+    expect(agent1.destroy).not.toHaveBeenCalled();
+  });
+
   it('host pushes carry the paneId of the pane they belong to', async () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
