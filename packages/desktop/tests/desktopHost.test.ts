@@ -13,6 +13,11 @@ const h = vi.hoisted(() => ({
   authUrlHandler: null as ((params: unknown) => void) | null,
   // Per-workdir listSessions results, keyed by directory (FR-020 session tree).
   dirSessions: new Map<string, unknown[]>(),
+  // FR-052..054: stdio git method stubs. `worktreeError` makes createWorktree
+  // reject; `branchesResult: null` simulates a non-git workdir.
+  worktreeResult: null as null | { name: string; path: string; branch: string; baseBranch: string; repoRoot: string },
+  worktreeError: null as Error | null,
+  branchesResult: null as null | { branches: string[]; current: string },
 }));
 
 vi.mock('fs', () => ({
@@ -68,6 +73,17 @@ vi.mock('../src/main/stdio/stdioClient', () => ({
           return { plugins: [] };
         case 'listMarketplaces':
           return { marketplaces: [] };
+        case 'listGitBranches': {
+          if (!h.branchesResult) throw new Error('not a git repository');
+          return h.branchesResult;
+        }
+        case 'createWorktree': {
+          if (h.worktreeError) throw h.worktreeError;
+          if (!h.worktreeResult) throw new Error('createWorktree not stubbed');
+          return h.worktreeResult;
+        }
+        case 'removeWorktree':
+          return { removed: true };
         default:
           return {};
       }
@@ -192,6 +208,9 @@ beforeEach(() => {
   h.clientRequests.length = 0;
   h.authUrlHandler = null;
   h.dirSessions.clear();
+  h.worktreeResult = null;
+  h.worktreeError = null;
+  h.branchesResult = null;
   vi.clearAllMocks();
   nativeTheme.__reset();
 });
@@ -759,6 +778,217 @@ describe('session tree', () => {
       expect(sessions.some((s) => s.sessionId === 'del-1')).toBe(false);
       expect(sessions.some((s) => s.sessionId === 'del-2')).toBe(true);
     });
+  });
+
+  it('desktopDeleteSession on the live session aborts generation and clears the chat', async () => {
+    const { host, store } = await readyHost();
+    lastAgent().callbacks.onSessionIdChange('live-1');
+
+    await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'live-1' });
+
+    expect(lastAgent().abortMessage).toHaveBeenCalled();
+    expect(lastAgent().clearMessages).toHaveBeenCalled();
+    expect(store.getSessionIndex().some((e) => e.sessionId === 'live-1')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// worktree flow (FR-022..FR-025)
+// ---------------------------------------------------------------------------
+
+describe('worktree flow', () => {
+  const worktree = {
+    name: 'gentle-pike-147',
+    path: '/work/a/.wave/worktrees/gentle-pike-147',
+    branch: 'worktree-gentle-pike-147',
+    baseBranch: 'main',
+    repoRoot: '/work/a',
+  };
+
+  it('desktopListGitBranches pushes the branch list', async () => {
+    const { host, sent } = await readyHost();
+    h.branchesResult = { branches: ['main', 'dev'], current: 'main' };
+
+    await host.handleWebviewMessage({ command: 'desktopListGitBranches', workdir: '/work/a' });
+
+    const msg = sent('desktopGitBranches').at(-1);
+    expect(msg).toMatchObject({ workdir: '/work/a', result: { branches: ['main', 'dev'], current: 'main' } });
+  });
+
+  it('desktopListGitBranches on a non-git dir pushes result null', async () => {
+    const { host, sent } = await readyHost();
+    h.branchesResult = null;
+
+    await host.handleWebviewMessage({ command: 'desktopListGitBranches', workdir: '/work/a' });
+
+    const msg = sent('desktopGitBranches').at(-1);
+    expect(msg).toMatchObject({ workdir: '/work/a', result: null });
+  });
+
+  it('desktopCreateWorktree switches workdir into the worktree', async () => {
+    const { host, store, sent } = await readyHost();
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: 'desktopCreateWorktree',
+      workdir: '/work/a',
+      baseBranch: 'dev',
+    });
+
+    expect(h.clientRequests).toContainEqual({
+      method: 'createWorktree',
+      params: { workdir: '/work/a', baseBranch: 'dev', name: undefined },
+    });
+    expect(h.agentInstances).toHaveLength(before + 1);
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: worktree.path });
+    expect(store.getRecentWorkdirs()).toContain(worktree.path);
+  });
+
+  it('desktopCreateWorktree with a first message forwards it after the switch', async () => {
+    const { host } = await readyHost();
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+
+    await host.handleWebviewMessage({
+      command: 'desktopCreateWorktree',
+      workdir: '/work/a',
+      baseBranch: 'main',
+      text: 'hello worktree',
+    });
+
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
+    expect(lastAgent().sendMessage).toHaveBeenCalledWith('hello worktree', undefined, false);
+  });
+
+  it('desktopCreateWorktree failure pushes a system message and keeps the workdir', async () => {
+    const { host, sent } = await readyHost();
+    h.worktreeError = new Error('branch already exists');
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: 'desktopCreateWorktree',
+      workdir: '/work/a',
+      baseBranch: 'dev',
+      text: 'never sent',
+    });
+
+    expect(h.agentInstances).toHaveLength(before);
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: '/work/a' });
+    const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('创建 worktree 失败'));
+    expect(sysMsgs).toHaveLength(1);
+  });
+
+  it('registers the worktree session under the repo root with cwd = worktree path', async () => {
+    const { host, store } = await readyHost();
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+
+    await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a' });
+    lastAgent().callbacks.onSessionIdChange('sess-wt');
+
+    const entry = store.getSessionIndex().find((e) => e.sessionId === 'sess-wt');
+    expect(entry).toMatchObject({
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      worktree: {
+        path: worktree.path,
+        branch: worktree.branch,
+        baseBranch: worktree.baseBranch,
+        repoRoot: worktree.repoRoot,
+      },
+    });
+  });
+
+  it('desktopSelectSession on a worktree session switches to entry.cwd', async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession({
+      sessionId: 'sess-wt',
+      title: 'wt',
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      lastActiveAt: Date.now(),
+      worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
+    });
+    h.existingPaths.add(worktree.path);
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: 'desktopSelectSession',
+      workdir: worktree.repoRoot,
+      sessionId: 'sess-wt',
+    });
+
+    expect(h.agentInstances).toHaveLength(before + 1);
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-wt');
+  });
+
+  it('desktopSelectSession with a gone worktree drops the index entry only', async () => {
+    const { host, store, sent } = await readyHost();
+    store.upsertSession({
+      sessionId: 'sess-wt',
+      title: 'wt',
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      lastActiveAt: Date.now(),
+      worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
+    });
+    // worktree.path NOT added to existingPaths — removed externally.
+
+    await host.handleWebviewMessage({
+      command: 'desktopSelectSession',
+      workdir: worktree.repoRoot,
+      sessionId: 'sess-wt',
+    });
+
+    expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-wt')).toBe(false);
+    // Repo root stays in recents — only the stale index entry is dropped.
+    expect(store.getRecentWorkdirs()).toContain('/work/a');
+    expect(lastAgent().restoreSession).not.toHaveBeenCalled();
+    const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('worktree 目录不存在'));
+    expect(sysMsgs).toHaveLength(1);
+  });
+
+  it('desktopDeleteSession on a worktree session requests removeWorktree', async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession({
+      sessionId: 'sess-wt',
+      title: 'wt',
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      lastActiveAt: Date.now(),
+      worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
+    });
+
+    await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'sess-wt' });
+
+    expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-wt')).toBe(false);
+    expect(h.clientRequests).toContainEqual({
+      method: 'removeWorktree',
+      params: { path: worktree.path, branch: worktree.branch, repoRoot: worktree.repoRoot },
+    });
+  });
+
+  it('desktopDeleteSession on the live worktree session switches back to the repo root first', async () => {
+    const { host, store, sent } = await readyHost();
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+    await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a', baseBranch: 'main' });
+    lastAgent().callbacks.onSessionIdChange('live-wt');
+
+    await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'live-wt' });
+
+    // Agent moved back to the repo root before the worktree was removed.
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/a' }));
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: '/work/a' });
+    expect(h.clientRequests).toContainEqual({
+      method: 'removeWorktree',
+      params: { path: worktree.path, branch: worktree.branch, repoRoot: worktree.repoRoot },
+    });
+    expect(store.getSessionIndex().some((e) => e.sessionId === 'live-wt')).toBe(false);
   });
 });
 

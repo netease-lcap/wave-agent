@@ -531,10 +531,12 @@ export class DesktopHost {
   /** Upsert the current session into the desktop-owned session index (FR-024). */
   private registerSessionInIndex(sessionId: string): void {
     if (!this.workdir || !this.configStore) return;
+    // Worktree sessions group under the original repo root (workdir) while the
+    // agent's actual working directory (cwd) stays the worktree path (FR-024).
     this.configStore.upsertSession({
       sessionId,
       title: '',
-      workdir: this.workdir,
+      workdir: this.worktreeInfo?.repoRoot ?? this.workdir,
       cwd: this.workdir,
       lastActiveAt: Date.now(),
       worktree: this.worktreeInfo ?? undefined,
@@ -548,10 +550,24 @@ export class DesktopHost {
     this.configStore.touchSession(this.sessionId, Date.now());
   }
 
-  /** FR-025: remove from index; best-effort worktree+branch cleanup. */
+  /**
+   * FR-025: remove from index; best-effort worktree+branch cleanup. Deleting
+   * the live session first stops generation and returns to the new-session
+   * page; for a worktree session the agent is moved back to the repo root
+   * before the worktree is removed from under it.
+   */
   private async handleDeleteSession(sessionId: string): Promise<void> {
     if (!this.configStore) return;
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
+    if (sessionId === this.sessionId) {
+      if (entry?.worktree && fs.existsSync(entry.worktree.repoRoot)) {
+        // switchWorkdir aborts + destroys the current agent itself.
+        await this.switchWorkdir(entry.worktree.repoRoot);
+      } else {
+        try { await this.agent?.abortMessage(); } catch { /* best-effort */ }
+        await this.handleClearChat();
+      }
+    }
     this.configStore.removeSession(sessionId);
     if (entry?.worktree) {
       await this.removeWorktree({
@@ -563,19 +579,31 @@ export class DesktopHost {
     this.refreshSessionTree();
   }
 
-  /** FR-022/FR-023: create worktree via stdio, then switch into it. */
+  /**
+   * FR-022/FR-023: create worktree via stdio, then switch into it. When the
+   * caller passed a first message (worktree checkbox + send in one go), forward
+   * it after the switch so the session starts in the worktree.
+   */
   private async handleCreateWorktree(
     workdir: string,
     baseBranch?: string,
     name?: string,
+    text?: string,
+    images?: Array<{ data: string; mediaType: string }>,
   ): Promise<void> {
-    const result = (await this.utilityClient.request('createWorktree', { workdir, baseBranch, name })) as {
+    let result: {
       name: string;
       path: string;
       branch: string;
       baseBranch: string;
       repoRoot: string;
     };
+    try {
+      result = (await this.utilityClient.request('createWorktree', { workdir, baseBranch, name })) as typeof result;
+    } catch (error) {
+      this.pushSystemMessage(`创建 worktree 失败：${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
     this.worktreeInfo = {
       path: result.path,
       branch: result.branch,
@@ -583,6 +611,9 @@ export class DesktopHost {
       repoRoot: result.repoRoot,
     };
     await this.switchWorkdir(result.path);
+    if (text) {
+      await this.handleSendMessage(text, images);
+    }
   }
 
   /** FR-052 proxy: branch list for the new-session worktree selector. */
@@ -721,6 +752,8 @@ export class DesktopHost {
           msg.workdir as string,
           msg.baseBranch as string | undefined,
           msg.name as string | undefined,
+          msg.text as string | undefined,
+          msg.images as Array<{ data: string; mediaType: string }> | undefined,
         );
         break;
 
@@ -979,19 +1012,29 @@ export class DesktopHost {
 
   /**
    * Open a session from the sidebar tree (FR-020). Switches workdir first when
-   * the session lives in another directory, then restores it.
+   * the session lives in another directory, then restores it. Worktree sessions
+   * switch to the worktree path (entry.cwd), not the repo-root group key.
    */
   private async handleSelectSession(workdir: string, sessionId: string): Promise<void> {
     if (!workdir || !sessionId) return;
-    if (!fs.existsSync(workdir)) {
-      this.configStore.removeRecentWorkdir(workdir);
-      this.sendWorkdirState();
-      this.refreshSessionTree();
-      this.pushSystemMessage(`目录不存在：${workdir}，已从最近列表移除`);
+    const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
+    const targetDir = entry?.worktree ? entry.cwd : workdir;
+    if (!fs.existsSync(targetDir)) {
+      if (entry?.worktree) {
+        // The worktree was removed externally — drop the stale index entry only.
+        this.configStore.removeSession(sessionId);
+        this.refreshSessionTree();
+        this.pushSystemMessage(`worktree 目录不存在：${targetDir}，已从会话列表移除`);
+      } else {
+        this.configStore.removeRecentWorkdir(workdir);
+        this.sendWorkdirState();
+        this.refreshSessionTree();
+        this.pushSystemMessage(`目录不存在：${workdir}，已从最近列表移除`);
+      }
       return;
     }
-    if (workdir !== this.workdir) {
-      await this.switchWorkdir(workdir);
+    if (targetDir !== this.workdir) {
+      await this.switchWorkdir(targetDir);
     }
     await this.handleRestoreSession(sessionId);
   }
