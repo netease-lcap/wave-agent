@@ -16,26 +16,33 @@ const session = (id: string, workdir: string, firstMessage: string, lastActiveAt
     firstMessage
 });
 
+const treeSession = (sessionId: string, title: string, lastActiveAt: string) => ({
+    sessionId,
+    title,
+    lastActiveAt: new Date(lastActiveAt).getTime(),
+    hasWorktree: false
+});
+
 const treeGroups = [
     {
         workdir: DIR_A,
         sessions: [
-            session('sess-a1', DIR_A, '帮我修复登录页的样式问题', '2026-07-27T10:12:00Z'),
-            session('sess-a2', DIR_A, '给 bashTool 增加超时参数', '2026-07-26T09:40:00Z'),
-            session('sess-a3', DIR_A, '解释一下 listSessions 的实现', '2026-07-25T15:02:00Z')
+            treeSession('sess-a1', '帮我修复登录页的样式问题', '2026-07-27T10:12:00Z'),
+            treeSession('sess-a2', '给 bashTool 增加超时参数', '2026-07-26T09:40:00Z'),
+            treeSession('sess-a3', '解释一下 listSessions 的实现', '2026-07-25T15:02:00Z')
         ]
     },
     {
         workdir: DIR_B,
         sessions: [
-            session('sess-b1', DIR_B, '订单接口偶发 500 排查', '2026-07-27T08:30:00Z'),
-            session('sess-b2', DIR_B, '给购物车加单元测试', '2026-07-24T11:20:00Z')
+            treeSession('sess-b1', '订单接口偶发 500 排查', '2026-07-27T08:30:00Z'),
+            treeSession('sess-b2', '给购物车加单元测试', '2026-07-24T11:20:00Z')
         ]
     },
     {
         workdir: DIR_C,
         sessions: [
-            session('sess-c1', DIR_C, '支持 Markdown 导出', '2026-07-23T14:00:00Z')
+            treeSession('sess-c1', '支持 Markdown 导出', '2026-07-23T14:00:00Z')
         ]
     }
 ];

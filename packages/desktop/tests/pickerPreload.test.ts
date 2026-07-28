@@ -101,9 +101,10 @@ describe('pickerPreload', () => {
 
     expect(button.classList.contains('__wave-picker-highlight')).toBe(true);
     const root = shadowRoot();
-    const target = root.querySelector('.target') as HTMLElement;
-    expect(target.textContent).toContain('button.primary');
-    expect(target.textContent).toContain('立即购买');
+    // Card footer shows just the element tag name (selector on hover title).
+    const tag = root.querySelector('.tag') as HTMLElement;
+    expect(tag.textContent).toBe('button');
+    expect(tag.title).toBe('#app > div > button');
     expect(root.querySelector('textarea')).toBeTruthy();
     // Send disabled until the user types.
     expect((root.querySelector('.send') as HTMLButtonElement).disabled).toBe(true);
@@ -170,22 +171,6 @@ describe('pickerPreload', () => {
     );
   });
 
-  it('× cancels the selection back to hover-pick state', () => {
-    const { button, container } = renderPage();
-    activate();
-    click(button);
-    expect(shadowRoot()).toBeTruthy();
-
-    (shadowRoot().querySelector('.cancel') as HTMLButtonElement).click();
-    expect(button.classList.contains('__wave-picker-highlight')).toBe(false);
-    expect(document.body.lastElementChild?.shadowRoot ?? null).toBeNull();
-
-    // Still active: can pick another element.
-    click(container);
-    expect(container.classList.contains('__wave-picker-highlight')).toBe(true);
-    expect(shadowRoot().querySelector('.target')?.textContent).toContain('div.card');
-  });
-
   it('clicking outside the card cancels the current selection', () => {
     const { button, container } = renderPage();
     activate();
@@ -199,6 +184,7 @@ describe('pickerPreload', () => {
 
     click(container); // next click selects
     expect(container.classList.contains('__wave-picker-highlight')).toBe(true);
+    expect(shadowRoot().querySelector('.tag')?.textContent).toBe('div');
   });
 
   it('clicks inside the card do not cancel or propagate', () => {

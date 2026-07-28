@@ -32,7 +32,7 @@ interface PickerMessage {
 
 const HIGHLIGHT_CLASS = '__wave-picker-highlight';
 const CARD_WIDTH = 280;
-const CARD_HEIGHT_ESTIMATE = 120;
+const CARD_HEIGHT_ESTIMATE = 100;
 
 let active = false;
 let palette: PickerPalette = {};
@@ -151,63 +151,63 @@ function showCard(el: Element): void {
       color: ${palette.foreground ?? '#cccccc'};
       border: 1px solid ${palette.border ?? 'rgba(128,128,128,0.35)'};
       border-radius: 6px;
-      padding: 8px;
+      padding: 6px;
       font: 12px/1.4 -apple-system, "Segoe UI", sans-serif;
       box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     }
-    .head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-    .target { flex: 1; color: ${palette.accent ?? '#0e639c'}; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .cancel { background: none; border: none; color: inherit; cursor: pointer; padding: 0 2px; font: inherit; opacity: 0.7; }
-    .cancel:hover { opacity: 1; }
-    .row { display: flex; gap: 6px; align-items: flex-end; }
-    textarea {
-      flex: 1; min-height: 40px; resize: vertical;
+    .input {
+      display: flex; flex-direction: column; gap: 2px;
       background: ${palette.inputBackground ?? '#3c3c3c'};
       color: ${palette.inputForeground ?? '#cccccc'};
       border: 1px solid ${palette.border ?? 'rgba(128,128,128,0.35)'};
-      border-radius: 4px; padding: 4px 6px; font: inherit; outline: none;
+      border-radius: 6px; padding: 6px;
     }
-    textarea:focus { border-color: ${palette.accent ?? '#0e639c'}; }
+    .input:focus-within { border-color: ${palette.accent ?? '#0e639c'}; }
+    textarea {
+      width: 100%; min-height: 40px; resize: vertical; box-sizing: border-box;
+      background: transparent; color: inherit;
+      border: none; padding: 0; font: inherit; outline: none;
+    }
+    .footer { display: flex; align-items: center; }
+    .tag {
+      flex: 1; color: ${palette.accent ?? '#0e639c'}; font-family: monospace; font-size: 11px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     .send {
-      background: ${palette.accent ?? '#0e639c'};
-      color: ${palette.accentForeground ?? '#ffffff'};
-      border: none; border-radius: 4px; width: 28px; height: 28px;
+      background: ${palette.foreground ?? '#cccccc'};
+      color: ${palette.background ?? '#1e1e1e'};
+      border: none; border-radius: 50%; width: 20px; height: 20px; flex-shrink: 0;
       cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
     }
-    .send:disabled { opacity: 0.5; cursor: default; }
-    svg { width: 14px; height: 14px; fill: currentColor; }
+    .send:hover:not(:disabled) { filter: brightness(0.92); }
+    .send:disabled { opacity: 0.4; cursor: default; }
+    svg { width: 12px; height: 12px; fill: currentColor; }
   `);
   shadow.adoptedStyleSheets = [sheet];
 
   const card = document.createElement('div');
   card.className = 'card';
 
-  const head = document.createElement('div');
-  head.className = 'head';
-  const target = document.createElement('div');
-  target.className = 'target';
-  target.textContent = `${summarize(el)} ${snippet(el)}`.trim();
-  target.title = buildSelector(el);
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.className = 'cancel';
-  cancel.title = '取消';
-  cancel.textContent = '×';
-  head.append(target, cancel);
-
-  const row = document.createElement('div');
-  row.className = 'row';
+  const input = document.createElement('div');
+  input.className = 'input';
   const textarea = document.createElement('textarea');
   textarea.placeholder = '评论这个元素…';
+  const footer = document.createElement('div');
+  footer.className = 'footer';
+  const tag = document.createElement('div');
+  tag.className = 'tag';
+  tag.textContent = el.tagName.toLowerCase();
+  tag.title = buildSelector(el);
   const send = document.createElement('button');
   send.type = 'button';
   send.className = 'send';
   send.title = '发送';
   send.innerHTML =
-    '<svg viewBox="0 0 16 16"><path d="M1.5 1.2l13 6.3-13 6.3-.03-4.9 8.5-1.4-8.5-1.4z"/></svg>';
-  row.append(textarea, send);
+    '<svg viewBox="0 0 16 16"><path transform="translate(2.65 2)" d="M10.7071 4.99999L5.70711 0H5L0 4.99999L0.707108 5.7071L4.85355 1.56066V12H5.85355V1.56066L9.99998 5.7071L10.7071 4.99999Z"/></svg>';
+  footer.append(tag, send);
+  input.append(textarea, footer);
 
-  card.append(head, row);
+  card.append(input);
   shadow.append(card);
 
   const submit = () => {
@@ -225,7 +225,6 @@ function showCard(el: Element): void {
   };
 
   send.addEventListener('click', submit);
-  cancel.addEventListener('click', () => deselect());
   textarea.addEventListener('input', () => {
     send.disabled = textarea.value.trim() === '';
   });
