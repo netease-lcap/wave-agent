@@ -623,6 +623,88 @@ describe("Agent - Abort Handling", () => {
       expect(messageQueue.getQueue()).toHaveLength(0);
     });
 
+    it("should not dispatch queued notification during abort", async () => {
+      const mockCallbacks = {
+        onMessagesChange: vi.fn(),
+        onLoadingChange: vi.fn(),
+        onQueuedMessagesChange: vi.fn(),
+      };
+
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-abort-notification",
+        callbacks: mockCallbacks,
+      });
+
+      activeTestAgent = testAgent;
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+
+      const aiManager = (testAgent as unknown as { aiManager: AIManager })
+        .aiManager;
+
+      // Simulate active streaming — notifications will queue but not dispatch
+      aiManager.setIsLoading(true);
+
+      // Enqueue a background notification
+      const xml =
+        "<task-notification><task-id>bg-1</task-id><task-type>shell</task-type><status>completed</status><summary>Done</summary></task-notification>";
+      messageQueue.enqueueNotification(xml);
+      expect(messageQueue.hasNotifications()).toBe(true);
+
+      // Spy on sendAIMessage to detect if the notification gets dispatched
+      const sendSpy = vi
+        .spyOn(aiManager, "sendAIMessage")
+        .mockResolvedValue(undefined);
+
+      // Abort — should interrupt the current turn WITHOUT dispatching the
+      // queued notification as a new AI turn
+      testAgent.abortMessage();
+
+      // sendAIMessage must NOT have been called for the notification
+      expect(sendSpy).not.toHaveBeenCalled();
+
+      // Notification should still be preserved in the queue (not lost)
+      expect(messageQueue.hasNotifications()).toBe(true);
+
+      sendSpy.mockRestore();
+    });
+
     it("should reset queue state to idle on abort", async () => {
       const testAgent = await Agent.create({
         apiKey: "test-key",

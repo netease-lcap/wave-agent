@@ -78,6 +78,7 @@ export class Agent {
   private reversionManager: ReversionManager;
   private messageQueue: MessageQueue; // Unified queue for messages, bang commands, and notifications
   private dispatchPromise: Promise<void> | null = null; // Track current dispatch for teardown
+  private isAborting = false; // Guard: prevents tryDispatch from firing during abortMessage
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private taskManager: TaskManager;
@@ -412,6 +413,7 @@ export class Agent {
    * onLoadingChange(false), and onCommandRunningChange(false).
    */
   private tryDispatch(): void {
+    if (this.isAborting) return; // Suppress dispatch during abort to prevent queued notifications from being dispatched as a side-effect
     if (this.messageQueue.state !== "idle") return;
     if (!this.messageQueue.hasPending()) return;
     if (this.aiManager.isLoading || this.isCommandRunning) return;
@@ -847,17 +849,24 @@ export class Agent {
 
   /** Unified interrupt method, interrupts both AI messages and command execution */
   public abortMessage(): void {
-    if (this.aiManager.isLoading || this.isCommandRunning) {
-      // Clear user-facing queue items first to prevent processQueuedMessage
-      // from dequeuing when abortAIMessage triggers onLoadingChange(false).
-      // Notifications are preserved so background task results aren't lost.
-      this.messageQueue.clear();
-      this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+    // Guard: prevent tryDispatch (triggered by abortAIMessage → setIsLoading(false))
+    // from dispatching preserved notifications as a new AI turn during the abort.
+    this.isAborting = true;
+    try {
+      if (this.aiManager.isLoading || this.isCommandRunning) {
+        // Clear user-facing queue items first to prevent processQueuedMessage
+        // from dequeuing when abortAIMessage triggers onLoadingChange(false).
+        // Notifications are preserved so background task results aren't lost.
+        this.messageQueue.clear();
+        this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
+      }
+      this.messageQueue.transitionTo("idle"); // Reset state on abort
+      this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
+      this.abortBashCommand();
+      this.abortSlashCommand();
+    } finally {
+      this.isAborting = false;
     }
-    this.messageQueue.transitionTo("idle"); // Reset state on abort
-    this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
-    this.abortBashCommand();
-    this.abortSlashCommand();
   }
 
   /** Interrupt bash command execution */
