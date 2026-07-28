@@ -159,6 +159,10 @@
     background: var(--vscode-testing-iconPassed, #73c991);
 }
 
+.desktop-session-dot--waiting {
+    background: var(--vscode-testing-iconQueued, #cca700);
+}
+
 .desktop-session-title {
     flex: 1;
     overflow: hidden;

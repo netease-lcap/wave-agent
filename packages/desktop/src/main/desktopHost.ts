@@ -539,6 +539,7 @@ export class DesktopHost {
         suggestedPrefix: context.suggestedPrefix,
         hidePersistentOption: context.hidePersistentOption,
       });
+      this.refreshSessionTree();
 
       // Only the active session pops the dialog; a background session's request
       // stays pending and is surfaced when the user switches back to it.
@@ -564,6 +565,7 @@ export class DesktopHost {
       return;
     }
     this.pendingConfirmations.delete(confirmationId);
+    this.refreshSessionTree();
     if (approved) {
       pending.resolve(decision ?? ({ behavior: 'allow' } as PermissionDecision));
     } else {
@@ -677,15 +679,22 @@ export class DesktopHost {
       return { workdir: sorted[0].workdir, sorted };
     });
     sortedGroups.sort((a, b) => b.sorted[0].lastActiveAt - a.sorted[0].lastActiveAt);
+    const agentsWithPendingConfirmation = new Set(
+      [...this.pendingConfirmations.values()].map((p) => p.agent),
+    );
     this.sessionTree = sortedGroups.map(({ workdir, sorted }) => ({
       workdir,
-      sessions: sorted.slice(0, DesktopHost.SESSION_TREE_LIMIT).map((s) => ({
-        sessionId: s.sessionId,
-        title: s.title,
-        lastActiveAt: s.lastActiveAt,
-        hasWorktree: !!s.worktree,
-        running: this.agents.get(s.sessionId)?.isStreaming ?? false,
-      })),
+      sessions: sorted.slice(0, DesktopHost.SESSION_TREE_LIMIT).map((s) => {
+        const agent = this.agents.get(s.sessionId);
+        return {
+          sessionId: s.sessionId,
+          title: s.title,
+          lastActiveAt: s.lastActiveAt,
+          hasWorktree: !!s.worktree,
+          running: agent?.isStreaming ?? false,
+          waitingConfirmation: agent ? agentsWithPendingConfirmation.has(agent) : false,
+        };
+      }),
     }));
     this.postMessage({ command: 'desktopSessionTree', groups: this.sessionTree });
   }

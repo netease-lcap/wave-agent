@@ -77,6 +77,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     // live session; the active one also falls back to the local streaming flag so
     // its dot appears without waiting for the next tree refresh.
     const running = session.running || (session.sessionId === currentSessionId && isStreaming);
+    // Waiting takes precedence: a session blocked on user confirmation is not
+    // meaningfully "running", and it needs attention more than the running dot.
+    const waiting = session.waitingConfirmation ?? false;
     return (
       <li
         key={session.sessionId}
@@ -85,8 +88,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         data-testid={`desktop-session-item-${session.sessionId}`}
       >
         <span
-          className={`desktop-session-dot${running ? ' desktop-session-dot--running' : ''}`}
-          title={running ? '正在运行' : undefined}
+          className={`desktop-session-dot${waiting ? ' desktop-session-dot--waiting' : running ? ' desktop-session-dot--running' : ''}`}
+          title={waiting ? '等待确认' : running ? '正在运行' : undefined}
         />
         <span className="desktop-session-title">{session.title || '新对话'}</span>
         <button

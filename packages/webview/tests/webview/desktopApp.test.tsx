@@ -327,6 +327,32 @@ describe('DesktopApp', () => {
             expect(screen.getByTestId('desktop-session-item-s2').querySelector('.desktop-session-dot--running')).toBeNull();
         });
 
+        it('shows a waiting dot on sessions with a pending confirmation, taking precedence over running', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', {
+                groups: [{
+                    workdir: '/work/a',
+                    sessions: [
+                        { ...session('s1', 'waiting one'), waitingConfirmation: true, running: true },
+                        session('s2', 'plain running'),
+                    ],
+                }],
+            });
+            sendCommand('updateCurrentSession', { session: { id: 's2', sessionType: 'main', workdir: '/work/a', createdAt: '2026-07-20T00:00:00.000Z', lastActiveAt: '2026-07-21T00:00:00.000Z', latestTotalTokens: 0, firstMessage: 'plain running' } });
+            sendCommand('startStreaming', {});
+
+            const waiting = screen.getByTestId('desktop-session-item-s1');
+            // Both flags set: waiting wins, no running modifier.
+            expect(waiting.querySelector('.desktop-session-dot--waiting')).not.toBeNull();
+            expect(waiting.querySelector('.desktop-session-dot--running')).toBeNull();
+            expect(waiting.querySelector('.desktop-session-dot')).toHaveAttribute('title', '等待确认');
+
+            const running = screen.getByTestId('desktop-session-item-s2');
+            expect(running.querySelector('.desktop-session-dot--waiting')).toBeNull();
+            expect(running.querySelector('.desktop-session-dot--running')).not.toBeNull();
+        });
+
         it('shows 无会话 for an expanded empty group', () => {
             renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
