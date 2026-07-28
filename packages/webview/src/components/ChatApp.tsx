@@ -17,6 +17,7 @@ import LoadingLogo from './LoadingLogo';
 import { DesktopSidebar } from './DesktopSidebar';
 import { DesktopWorkdirSelector } from './DesktopWorkdirSelector';
 import { DesktopWorktreeControls } from './DesktopWorktreeControls';
+import { PreviewPane } from './PreviewPane';
 import type {
   ChatAppProps,
   ConfigurationData,
@@ -32,6 +33,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
   const [worktreeChecked, setWorktreeChecked] = useState(false);
+  // Desktop only: localhost URL shown in the preview pane. Null = closed.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const messageInputRef = useRef<MessageInputHandle>(null);
   const messageListRef = useRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }>(null);
   const stateRef = useRef(state);
@@ -513,6 +516,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
     });
   }, [state.isStreaming, vscode]);
 
+  // Desktop only: open/re-target the preview pane. Message.tsx gates
+  // on waveHostType, so this never fires in IDE hosts.
+  const handleOpenPreview = useCallback((url: string) => {
+    setPreviewUrl(url);
+  }, []);
+
   const chatContainer = (
     <div className="chat-container" data-testid="chat-container">
       {queueEditWarning && (
@@ -561,6 +570,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
           vscode={vscode}
           onRewindToMessage={handleRewindToMessage}
           workdir={state.workdir}
+          onOpenPreview={handleOpenPreview}
         />
       )}
 
@@ -689,6 +699,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
           onDeleteSession={host.onDeleteSession}
         />
         {chatContainer}
+        {previewUrl && (
+          <PreviewPane url={previewUrl} vscode={vscode} onClose={() => setPreviewUrl(null)} />
+        )}
       </div>
     );
   }

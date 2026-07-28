@@ -68,6 +68,20 @@ export interface VsCodeApi {
   setState: (state: unknown) => void;
 }
 
+// Host-injected globals. Declared here (not in index.tsx) so the augmentation
+// reaches every compilation unit that imports types — the tests tsconfig only
+// pulls in src files reachable from test imports, never index.tsx itself.
+declare global {
+  interface Window {
+    /** Provided by every host: VS Code runtime, JetBrains bridge, Electron preload. */
+    acquireVsCodeApi(): VsCodeApi;
+    /** Set by the Electron preload (packages/desktop); undefined in IDE hosts. */
+    waveHostType?: string;
+    /** file:// URL of the element-picker preload, exposed by the Electron preload. */
+    wavePickerPreloadPath?: string;
+  }
+}
+
 // VS Code webview message types
 
 /**
@@ -197,6 +211,8 @@ export interface MessageListProps {
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
   workdir?: string;
+  /** Desktop host only: open a localhost URL in the preview pane. */
+  onOpenPreview?: (url: string) => void;
 }
 
 export interface MessageProps {
@@ -205,6 +221,8 @@ export interface MessageProps {
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
   workdir?: string;
+  /** Desktop host only: open a localhost URL in the preview pane. */
+  onOpenPreview?: (url: string) => void;
 }
 
 // Image attachment types (uses base64 data directly)
