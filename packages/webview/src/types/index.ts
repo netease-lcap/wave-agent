@@ -300,6 +300,8 @@ export interface ChatHeaderProps {
   isAuthenticated: boolean;
   // Desktop host: session new/list buttons live in DesktopSidebar instead.
   hideSessionButtons?: boolean;
+  // Desktop host: the more button + menu live in DesktopSidebar instead.
+  hideMoreButton?: boolean;
 }
 
 // Matches wave-agent-sdk's QueuedMessage type

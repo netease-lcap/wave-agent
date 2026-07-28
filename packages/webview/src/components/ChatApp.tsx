@@ -551,6 +551,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
         onLogout={handleLogout}
         isAuthenticated={state.isAuthenticated}
         hideSessionButtons={host?.type === 'desktop'}
+        hideMoreButton={host?.type === 'desktop'}
       />
       
       {showWelcomeReady ? (
@@ -692,6 +693,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host }) => {
           onNewSession={handleClearChat}
           isStreaming={state.isStreaming}
           disabled={!host.workdir}
+          onOpenSettings={handleOpenSettings}
+          onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          isAuthenticated={state.isAuthenticated}
           sessionTree={host.sessionTree}
           currentWorkdir={host.workdir}
           currentSessionId={state.currentSession?.id}

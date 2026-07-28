@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { Tooltip } from './Tooltip';
+import { MoreIcon } from './HeaderIcons';
+import { MoreMenu } from './MoreMenu';
 import type { DesktopSessionGroup, DesktopSessionEntry } from '../types';
 import '../styles/DesktopApp.css';
 
@@ -7,6 +10,12 @@ export interface DesktopSidebarProps {
   isStreaming: boolean;
   /** No workdir picked yet — starting a new session is not possible. */
   disabled: boolean;
+  /** Desktop host: the more menu (settings/enterprise console/login) lives here. */
+  onOpenSettings: () => void;
+  onOpenEnterpriseConsole: () => void;
+  onLogin: () => void;
+  onLogout: () => void;
+  isAuthenticated: boolean;
   /** Session tree groups, one per recent directory (FR-020). */
   sessionTree: DesktopSessionGroup[];
   /** Current workdir — its group defaults to expanded when no session is active. */
@@ -31,6 +40,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onNewSession,
   isStreaming,
   disabled,
+  onOpenSettings,
+  onOpenEnterpriseConsole,
+  onLogin,
+  onLogout,
+  isAuthenticated,
   sessionTree,
   currentWorkdir,
   currentSessionId,
@@ -42,6 +56,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // the current workdir's group when no session is active. A worktree session
   // groups under its repo root, which differs from the current workdir).
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const isDefaultExpanded = (group: DesktopSessionGroup): boolean =>
     group.workdir === currentWorkdir ||
@@ -101,7 +116,27 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     <div className="desktop-sidebar" data-testid="desktop-sidebar">
       <div className="desktop-sidebar-header">
         <span className="desktop-sidebar-title">Wave 代码智聊</span>
+        <Tooltip text="更多" position="bottom-left">
+          <button
+            className="desktop-sidebar-more-btn"
+            onClick={() => setShowMoreMenu((prev) => !prev)}
+            data-testid="desktop-more-btn"
+            aria-label="更多"
+          >
+            <MoreIcon />
+          </button>
+        </Tooltip>
       </div>
+      {showMoreMenu && (
+        <MoreMenu
+          onOpenSettings={onOpenSettings}
+          onOpenEnterpriseConsole={onOpenEnterpriseConsole}
+          onLogin={onLogin}
+          onLogout={onLogout}
+          isAuthenticated={isAuthenticated}
+          onClose={() => setShowMoreMenu(false)}
+        />
+      )}
       <button
         className="desktop-sidebar-new-chat"
         onClick={onNewSession}

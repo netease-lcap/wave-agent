@@ -116,7 +116,9 @@ describe('DesktopApp', () => {
         // Header session buttons are replaced by the sidebar
         expect(screen.queryByTestId('clear-chat-btn')).not.toBeInTheDocument();
         expect(screen.queryByTestId('history-btn')).not.toBeInTheDocument();
-        expect(screen.getByTestId('more-btn')).toBeInTheDocument();
+        // The header more button moves to the sidebar on desktop
+        expect(screen.queryByTestId('more-btn')).not.toBeInTheDocument();
+        expect(screen.getByTestId('desktop-more-btn')).toBeInTheDocument();
         // ChatApp still announces readiness to the host
         expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'webviewReady' });
     });
@@ -160,6 +162,75 @@ describe('DesktopApp', () => {
         expect(screen.getByLabelText('添加')).toBeEnabled();
         expect(screen.getByLabelText('快捷指令')).toBeEnabled();
         expect(screen.getByLabelText('权限模式')).toBeEnabled();
+    });
+
+    describe('sidebar more menu (FR-037)', () => {
+        function openSidebarMoreMenu() {
+            fireEvent.click(screen.getByTestId('desktop-more-btn'));
+            return screen.getByTestId('more-menu');
+        }
+
+        it('renders the more button in the sidebar header, not the chat header', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: [] });
+
+            const sidebar = screen.getByTestId('desktop-sidebar');
+            expect(sidebar.querySelector('[data-testid="desktop-more-btn"]')).not.toBeNull();
+            expect(screen.getByTestId('chat-header').querySelector('[data-testid="more-btn"]')).toBeNull();
+        });
+
+        it('opens the shared menu with all items and closes on Escape', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: [] });
+            sendCommand('authStatusResponse', { isAuthenticated: true });
+
+            openSidebarMoreMenu();
+
+            expect(screen.getByTestId('more-menu-settings')).toHaveTextContent('设置');
+            expect(screen.getByTestId('more-menu-enterprise')).toHaveTextContent('企业控制台');
+            expect(screen.getByTestId('more-menu-logout')).toHaveTextContent('退出登录');
+
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.queryByTestId('more-menu')).not.toBeInTheDocument();
+        });
+
+        it('stays available when no workdir is selected', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { recentWorkdirs: [] });
+
+            openSidebarMoreMenu();
+
+            expect(screen.getByTestId('more-menu-settings')).toBeInTheDocument();
+        });
+
+        it('requests configuration when 设置 is clicked', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openSidebarMoreMenu();
+            fireEvent.click(screen.getByTestId('more-menu-settings'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'getConfiguration' })
+            );
+            expect(screen.queryByTestId('more-menu')).not.toBeInTheDocument();
+        });
+
+        it('posts login when 登录 is clicked while unauthenticated', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: [] });
+            sendCommand('authStatusResponse', { isAuthenticated: false });
+            vscode.postMessage.mockClear();
+
+            openSidebarMoreMenu();
+            expect(screen.queryByTestId('more-menu-logout')).not.toBeInTheDocument();
+            fireEvent.click(screen.getByTestId('more-menu-login'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'login' })
+            );
+        });
     });
 
     describe('session tree (FR-020)', () => {
