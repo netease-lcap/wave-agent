@@ -41,7 +41,7 @@ import {
   ensureCliUpToDate,
   getCliVersion,
 } from './stdio/binaryResolver';
-import { ConfigStore, type DesktopConfigData } from './configStore';
+import { ConfigStore, type DesktopConfigData, type SessionIndexEntry } from './configStore';
 import { checkForUpdate } from './updateChecker';
 import { HOST_CHANNEL } from './channels';
 
@@ -498,32 +498,43 @@ export class DesktopHost {
 
   /**
    * Refresh the sidebar session tree (FR-020). Data comes entirely from the
-   * desktop session index (FR-024) — no stdio listSessions calls. Groups are
-   * ordered by the recent-workdirs list; sessions within each group are sorted
-   * by lastActiveAt descending and capped at SESSION_TREE_LIMIT.
+   * desktop session index (FR-024) — no stdio listSessions calls and no
+   * recent-workdirs involvement. Groups are derived by clustering index
+   * entries on `workdir`, ordered by each group's latest `lastActiveAt`
+   * descending; sessions within each group are sorted by `lastActiveAt`
+   * descending and capped at SESSION_TREE_LIMIT.
    */
   private refreshSessionTree(): void {
-    const recents = this.configStore.getRecentWorkdirs();
-    if (recents.length === 0) {
+    const index = this.configStore.getSessionIndex();
+    const byWorkdir = new Map<string, SessionIndexEntry[]>();
+    for (const entry of index) {
+      const list = byWorkdir.get(entry.workdir);
+      if (list) {
+        list.push(entry);
+      } else {
+        byWorkdir.set(entry.workdir, [entry]);
+      }
+    }
+    if (byWorkdir.size === 0) {
       if (this.sessionTree.length > 0) {
         this.sessionTree = [];
         this.postMessage({ command: 'desktopSessionTree', groups: [] });
       }
       return;
     }
-    const index = this.configStore.getSessionIndex();
-    this.sessionTree = recents.map((dir) => ({
-      workdir: dir,
-      sessions: index
-        .filter((s) => s.workdir === dir)
-        .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
-        .slice(0, DesktopHost.SESSION_TREE_LIMIT)
-        .map((s) => ({
-          sessionId: s.sessionId,
-          title: s.title,
-          lastActiveAt: s.lastActiveAt,
-          hasWorktree: !!s.worktree,
-        })),
+    const sortedGroups = [...byWorkdir.values()].map((entries) => {
+      const sorted = entries.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+      return { workdir: sorted[0].workdir, sorted };
+    });
+    sortedGroups.sort((a, b) => b.sorted[0].lastActiveAt - a.sorted[0].lastActiveAt);
+    this.sessionTree = sortedGroups.map(({ workdir, sorted }) => ({
+      workdir,
+      sessions: sorted.slice(0, DesktopHost.SESSION_TREE_LIMIT).map((s) => ({
+        sessionId: s.sessionId,
+        title: s.title,
+        lastActiveAt: s.lastActiveAt,
+        hasWorktree: !!s.worktree,
+      })),
     }));
     this.postMessage({ command: 'desktopSessionTree', groups: this.sessionTree });
   }
@@ -666,7 +677,6 @@ export class DesktopHost {
       case 'desktopRemoveRecentWorkdir':
         this.configStore.removeRecentWorkdir(msg.path as string);
         this.sendWorkdirState();
-        this.refreshSessionTree();
         break;
 
       case 'desktopSelectSession':
@@ -1001,9 +1011,10 @@ export class DesktopHost {
 
   private async handleSelectRecentWorkdir(dir: string): Promise<void> {
     if (!fs.existsSync(dir)) {
+      // Picker-only hygiene: removing a recent dir never touches the
+      // index-derived session tree (FR-006), so no refreshSessionTree here.
       this.configStore.removeRecentWorkdir(dir);
       this.sendWorkdirState();
-      this.refreshSessionTree();
       this.pushSystemMessage(`目录不存在：${dir}，已从最近列表移除`);
       return;
     }
@@ -1020,17 +1031,20 @@ export class DesktopHost {
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
     const targetDir = entry?.worktree ? entry.cwd : workdir;
     if (!fs.existsSync(targetDir)) {
-      if (entry?.worktree) {
-        // The worktree was removed externally — drop the stale index entry only.
-        this.configStore.removeSession(sessionId);
-        this.refreshSessionTree();
-        this.pushSystemMessage(`worktree 目录不存在：${targetDir}，已从会话列表移除`);
-      } else {
+      // Directory gone — auto-clear the stale index entry (worktree or not,
+      // per FR-020 stale-directory behavior). For non-worktree dirs the entry
+      // is also removed from the recent-workdirs picker list.
+      this.configStore.removeSession(sessionId);
+      if (!entry?.worktree) {
         this.configStore.removeRecentWorkdir(workdir);
         this.sendWorkdirState();
-        this.refreshSessionTree();
-        this.pushSystemMessage(`目录不存在：${workdir}，已从最近列表移除`);
       }
+      this.refreshSessionTree();
+      this.pushSystemMessage(
+        entry?.worktree
+          ? `worktree 目录不存在：${targetDir}，已从会话列表移除`
+          : `目录不存在：${workdir}，已从最近列表与会话列表移除`,
+      );
       return;
     }
     if (targetDir !== this.workdir) {
