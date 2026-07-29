@@ -687,7 +687,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       );
     }
     if (kind === 'diff') {
-      return <DiffPane workdir={effectiveWorkdir} {...common} />;
+      return (
+        <DiffPane
+          vscode={vscode}
+          paneId={paneId}
+          visible={checkedPanels.includes('diff')}
+          isStreaming={state.isStreaming}
+          sessionId={state.currentSession?.id}
+          workdir={effectiveWorkdir}
+          {...common}
+        />
+      );
     }
     return <TerminalPane workdir={effectiveWorkdir} {...common} />;
   };
