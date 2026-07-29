@@ -43,6 +43,7 @@ import {
 } from './stdio/binaryResolver';
 import { ConfigStore, type DesktopConfigData, type SessionIndexEntry } from './configStore';
 import { getWorkspaceDiff } from './gitDiff';
+import { TerminalManager } from './terminal';
 import { checkForUpdate } from './updateChecker';
 import { HOST_CHANNEL } from './channels';
 
@@ -127,6 +128,12 @@ export class DesktopHost {
 
   private updateCheckTriggered = false;
   private lastIsAuthenticated = false;
+
+  /** PTY terminals keyed by webview termId (one per pane, FR-044/045). */
+  private terminalManager = new TerminalManager({
+    onData: (termId, data) => this.postMessage({ command: 'desktopTerminalData', termId, data }),
+    onExit: (termId, info) => this.postMessage({ command: 'desktopTerminalExit', termId, ...info }),
+  });
 
   /** Focused pane's agent — the default target for unscoped webview commands. */
   private get activeAgent(): StdioAgent | null {
@@ -220,6 +227,7 @@ export class DesktopHost {
   /** Graceful shutdown for app quit (FR-015): destroy every live agent. */
   async dispose(): Promise<void> {
     nativeTheme.off('updated', this.onNativeThemeUpdated);
+    this.terminalManager.killAll();
     for (const t of this.paneThrottles.values()) {
       for (const timer of [t.updateTimer, t.streamingContentTimer, t.streamingReasoningTimer]) {
         if (timer) clearTimeout(timer);
@@ -647,6 +655,7 @@ export class DesktopHost {
     if (this.panes.length <= 1) return;
     const idx = this.panes.findIndex((p) => p.paneId === paneId);
     if (idx === -1) return;
+    this.terminalManager.killForPane(paneId);
     this.clearThrottleState(paneId);
     this.panes.splice(idx, 1);
     this.inputDrafts.delete(paneId);
@@ -1040,6 +1049,9 @@ export class DesktopHost {
     // clobber a session the user selects in the meantime.
     let resetSolePane = false;
     for (const paneId of boundPaneIds) {
+      // Kill the pane's PTY before any worktree cleanup below — a shell still
+      // sitting in the worktree directory would break its removal.
+      this.terminalManager.killForPane(paneId);
       if (this.panes.length > 1) {
         this.handleClosePane(paneId);
       } else {
@@ -1281,6 +1293,39 @@ export class DesktopHost {
         this.postMessage({ command: 'desktopWorkspaceDiff', paneId: pid, result });
         break;
       }
+
+      // -- terminal panel (FR-044/045) ---------------------------------------
+      case 'desktopTerminalCreate': {
+        const cwd = this.agentForPane(pid)?.workingDirectory ?? this.workdir;
+        if (!cwd) {
+          this.postMessage({
+            command: 'desktopTerminalExit',
+            termId: msg.termId,
+            error: '无法确定终端工作目录',
+          });
+          break;
+        }
+        await this.terminalManager.create(
+          msg.termId as string,
+          cwd,
+          (msg.cols as number) || 80,
+          (msg.rows as number) || 24,
+          pid,
+        );
+        break;
+      }
+
+      case 'desktopTerminalInput':
+        this.terminalManager.write(msg.termId as string, msg.data as string);
+        break;
+
+      case 'desktopTerminalResize':
+        this.terminalManager.resize(msg.termId as string, msg.cols as number, msg.rows as number);
+        break;
+
+      case 'desktopTerminalKill':
+        this.terminalManager.kill(msg.termId as string);
+        break;
 
       case 'desktopOpenPane':
         await this.handleOpenPane(msg.workdir as string, msg.sessionId as string);

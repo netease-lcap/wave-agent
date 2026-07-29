@@ -699,7 +699,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         />
       );
     }
-    return <TerminalPane workdir={effectiveWorkdir} {...common} />;
+    return (
+      <TerminalPane
+        vscode={vscode}
+        paneId={paneId}
+        visible={checkedPanels.includes('terminal')}
+        sessionId={state.currentSession?.id}
+        workdir={effectiveWorkdir}
+        {...common}
+      />
+    );
   };
 
   const chatBodyContent = (
