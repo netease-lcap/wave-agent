@@ -582,3 +582,40 @@
     pointer-events: none;
     white-space: nowrap;
 }
+
+/* ---- Conversation-level panel group: message column + side panels ----
+   The header spans the full pane width; below it the message column sits
+   left of the checked panels (preview → diff → terminal). */
+
+.desktop-chat-body {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.desktop-chat-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Wrapper that keeps an unchecked panel mounted (display:none) so its content
+   — preview guest, terminal session — survives toggling. */
+.desktop-panel-slot {
+    display: flex;
+    min-height: 0;
+}
+
+/* Shared empty/placeholder body for panel stubs. */
+.desktop-panel-placeholder {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground, #999);
+}

@@ -20,13 +20,19 @@ function renderPane(options?: { url?: string; onClose?: () => void }) {
     const vscode = createMockVscode();
     const url = options?.url ?? 'http://localhost:5173/app';
     const onClose = options?.onClose ?? vi.fn();
-    const result = render(<PreviewPane url={url} vscode={vscode} onClose={onClose} />);
+    // Controlled-width harness: PreviewPane no longer owns its width state.
+    const Harness = ({ url: u }: { url: string }) => {
+        const [width, setWidth] = React.useState(420);
+        return <PreviewPane url={u} vscode={vscode} onClose={onClose} width={width} onWidthChange={setWidth} maxWidth={716} />;
+    };
+    const result = render(<Harness url={url} />);
     const wv = result.container.querySelector('webview') as unknown as MockWebview;
     wv.send = vi.fn();
     wv.loadURL = vi.fn().mockResolvedValue(undefined);
     wv.reload = vi.fn();
     wv.getURL = vi.fn(() => url);
-    return { ...result, vscode, wv, url, onClose };
+    const rerenderWithUrl = (u: string) => result.rerender(<Harness url={u} />);
+    return { ...result, rerenderWithUrl, vscode, wv, url, onClose };
 }
 
 const fireDomReady = (wv: MockWebview) => fireEvent(wv, new Event('dom-ready'));
@@ -165,9 +171,9 @@ describe('PreviewPane', () => {
     });
 
     it('navigates via loadURL when a different URL arrives after dom-ready', () => {
-        const { wv, rerender } = renderPane();
+        const { wv, rerenderWithUrl } = renderPane();
         fireDomReady(wv);
-        rerender(<PreviewPane url="http://localhost:3000/other" vscode={createMockVscode()} onClose={vi.fn()} />);
+        rerenderWithUrl('http://localhost:3000/other');
         expect(wv.loadURL).toHaveBeenCalledWith('http://localhost:3000/other');
     });
 
@@ -175,13 +181,15 @@ describe('PreviewPane', () => {
         const { container } = renderPane();
         const pane = screen.getByTestId('preview-pane');
         const handle = container.querySelector('.preview-pane-drag-handle') as HTMLElement;
+        // jsdom rects are all-zero; pin the aside's right edge at 1024.
+        vi.spyOn(pane, 'getBoundingClientRect').mockReturnValue({ right: 1024 } as DOMRect);
 
         fireEvent.mouseDown(handle);
         fireEvent.mouseMove(window, { clientX: 624 }); // 1024 - 624 = 400
         expect(pane).toHaveStyle({ width: '400px' });
         fireEvent.mouseMove(window, { clientX: 950 }); // 74 → clamped to 320
         expect(pane).toHaveStyle({ width: '320px' });
-        fireEvent.mouseMove(window, { clientX: 10 }); // 1014 → clamped to 70% of 1024
+        fireEvent.mouseMove(window, { clientX: 10 }); // 1014 → clamped to maxWidth 716
         expect(pane).toHaveStyle({ width: '716px' });
         fireEvent.mouseUp(window);
     });
@@ -256,6 +264,9 @@ describe('PreviewPane integration (DesktopApp)', () => {
         expect(pane.querySelector('webview')?.getAttribute('src')).toBe('http://localhost:5173/proto');
 
         fireEvent.click(screen.getByTestId('preview-close'));
-        expect(screen.queryByTestId('preview-pane')).not.toBeInTheDocument();
+        // Close = uncheck: the panel stays mounted (guest not reloaded), just hidden.
+        const slot = screen.getByTestId('preview-pane').parentElement;
+        expect(slot).toHaveClass('desktop-panel-slot');
+        expect(slot).toHaveStyle({ display: 'none' });
     });
 });
