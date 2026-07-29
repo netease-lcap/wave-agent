@@ -97,8 +97,24 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
       const header = paneNodes.current.get(pane.paneId)?.querySelector<HTMLElement>('.chat-header');
       if (!header) return;
       header.draggable = true;
+      // A press that begins on an interactive header child (panel toggle,
+      // popup menu items) must stay a click: any pointer movement during the
+      // press would otherwise start a pane drag and swallow the click.
+      // dragstart is dispatched to the draggable header itself, so the press
+      // target is recorded on mousedown and the drag is vetoed here.
+      let pressTarget: EventTarget | null = null;
+      const onMouseDown = (e: MouseEvent) => {
+        pressTarget = e.target;
+      };
       const onDragStart = (e: DragEvent) => {
         if (!e.dataTransfer) return;
+        if (
+          pressTarget instanceof Element &&
+          pressTarget.closest('button, a, input, select, textarea, [role="button"]')
+        ) {
+          e.preventDefault();
+          return;
+        }
         e.dataTransfer.setData(PANE_DRAG_MIME, JSON.stringify({ paneId: pane.paneId, fromIndex: index }));
         try {
           e.dataTransfer.effectAllowed = 'move';
@@ -107,12 +123,15 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         }
       };
       const onDragEnd = () => {
+        pressTarget = null;
         dropBoundary.current = null;
         setDropIndicatorX(null);
       };
+      header.addEventListener('mousedown', onMouseDown);
       header.addEventListener('dragstart', onDragStart);
       header.addEventListener('dragend', onDragEnd);
       disposers.push(() => {
+        header.removeEventListener('mousedown', onMouseDown);
         header.removeEventListener('dragstart', onDragStart);
         header.removeEventListener('dragend', onDragEnd);
         header.draggable = false;

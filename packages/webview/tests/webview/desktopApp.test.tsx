@@ -915,6 +915,35 @@ describe('DesktopApp', () => {
             );
         });
 
+        it('vetoes the pane drag when the press starts on a header button, so buttons stay clickable', () => {
+            renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+
+            const pane = screen.getByTestId('desktop-pane-pane-1');
+            const header = within(pane).getByTestId('chat-header');
+            const toggle = within(pane).getByTestId('panel-toggle-btn');
+
+            // Browsers dispatch dragstart at the draggable header even when
+            // the press began on a button inside it; simulate that sequence.
+            fireEvent.mouseDown(toggle);
+            const dataTransfer = makeDataTransfer();
+            const dragStart = createEvent.dragStart(header, { dataTransfer });
+            fireEvent(header, dragStart);
+
+            expect(dataTransfer.getData('application/x-wave-pane')).toBe('');
+            expect(dragStart.defaultPrevented).toBe(true);
+
+            // A press on the header body still drags normally.
+            fireEvent.mouseDown(header);
+            const second = makeDataTransfer();
+            fireEvent.dragStart(header, { dataTransfer: second });
+            expect(second.getData('application/x-wave-pane')).toBe(
+                JSON.stringify({ paneId: 'pane-1', fromIndex: 1 }),
+            );
+        });
+
         it('renders host-pushed pane widths as flex ratios', () => {
             renderWithPanes(
                 [{ paneId: 'pane-0', sessionId: 's1', width: 0.75 }, { paneId: 'pane-1', sessionId: 's2', width: 0.25 }],
