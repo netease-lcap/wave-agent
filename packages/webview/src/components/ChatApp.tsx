@@ -553,6 +553,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const handleSessionSelect = useCallback((sessionId: string) => {
     if (state.isStreaming) return;
 
+    // 清空当前任务列表：避免恢复期间残留旧会话的任务，
+    // 并让新会话任务从空状态进入（若全部已完成则直接保持隐藏）
+    dispatch({ type: 'SET_TASKS', payload: [] });
+
     postToHost({
       command: 'restoreSession',
       sessionId

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderChatApp, screen, waitFor, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, waitFor, act, sendCommand, fireEvent } from './test-utils';
 
 const tasks = [
   { id: '1', subject: '分析现有架构', description: '审查实现', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
@@ -91,7 +91,11 @@ describe('scroll updated task into view', () => {
   });
 });
 
-describe('auto-hide when all tasks completed (FR-020)', () => {
+describe('auto-hide when all tasks completed', () => {
+  const mixed = [
+    { id: '1', subject: '任务一', description: '', status: 'in_progress', blocks: [], blockedBy: [], metadata: {} },
+    { id: '2', subject: '任务二', description: '', status: 'pending', blocks: [], blockedBy: [], metadata: {} },
+  ];
   const allCompleted = [
     { id: '1', subject: '任务一', description: '', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
     { id: '2', subject: '任务二', description: '', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
@@ -105,12 +109,31 @@ describe('auto-hide when all tasks completed (FR-020)', () => {
     vi.useRealTimers();
   });
 
-  it('stays visible before 5s and hides after 5s', async () => {
+  it('hides immediately when loaded with all tasks completed', async () => {
     renderChatApp();
     act(() => {
       sendCommand('updateTasks', { tasks: allCompleted });
     });
-    // 全部完成后立即仍可见
+    // 加载即全部完成：立即隐藏，不经历 5 秒展示
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+  });
+
+  it('stays visible 5s then hides when tasks complete during the session', async () => {
+    renderChatApp();
+    act(() => {
+      sendCommand('updateTasks', { tasks: mixed });
+    });
+    expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+    act(() => {
+      sendCommand('updateTasks', { tasks: allCompleted });
+    });
+    // 任务在用户观看期间完成：保留 5 秒宽限
     expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
     await act(async () => {
@@ -127,9 +150,11 @@ describe('auto-hide when all tasks completed (FR-020)', () => {
   it('reappears when a new non-completed task arrives after auto-hide', async () => {
     renderChatApp();
     act(() => {
+      sendCommand('updateTasks', { tasks: mixed });
+    });
+    act(() => {
       sendCommand('updateTasks', { tasks: allCompleted });
     });
-    expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
@@ -144,5 +169,55 @@ describe('auto-hide when all tasks completed (FR-020)', () => {
       sendCommand('updateTasks', { tasks: withPending });
     });
     expect(screen.getByTestId('task-list')).toBeInTheDocument();
+  });
+
+  it('stays hidden when switching to a session whose tasks are all completed', async () => {
+    const { vscode } = renderChatApp();
+    const sessions = [
+      {
+        id: 'session-a',
+        sessionType: 'main',
+        workdir: '/test/project',
+        firstMessage: 'Session A',
+        lastActiveAt: new Date('2023-12-01T10:00:00Z'),
+        latestTotalTokens: 100
+      },
+      {
+        id: 'session-b',
+        sessionType: 'main',
+        workdir: '/test/project',
+        firstMessage: 'Session B',
+        lastActiveAt: new Date('2023-12-01T11:00:00Z'),
+        latestTotalTokens: 200
+      }
+    ];
+    act(() => {
+      sendCommand('updateSessions', { sessions });
+      sendCommand('updateTasks', { tasks: mixed });
+    });
+    expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+    // 选择历史会话：任务列表立即清空，并发起 restoreSession
+    act(() => {
+      fireEvent.click(screen.getByTestId('history-btn'));
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId('session-list-item-session-b'));
+    });
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'restoreSession', sessionId: 'session-b' })
+    );
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+
+    // 后端推送恢复会话的任务（全部完成）：保持隐藏，不闪现
+    act(() => {
+      sendCommand('updateTasks', { tasks: allCompleted });
+    });
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
   });
 });

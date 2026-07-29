@@ -47,6 +47,8 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, isCollapsed, onToggle
   const [autoHidden, setAutoHidden] = useState(false);
   const itemsRef = useRef<HTMLDivElement>(null);
   const prevTasksRef = useRef<Task[]>(tasks);
+  // 是否在当前展示期间观察到过未完成任务；用于区分“任务在眼前完成”与“加载时已全部完成”
+  const hadIncompleteRef = useRef(false);
 
   useEffect(() => {
     const prev = prevTasksRef.current;
@@ -67,16 +69,27 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, isCollapsed, onToggle
     }
   }, [tasks, isCollapsed]);
 
-  // FR-020: 所有活动任务完成后 5 秒自动隐藏；有非完成任务时重新出现
+  // 观察到任务从“存在未完成”变为“全部完成”时保留 5 秒再隐藏；
+  // 加载或切换到已全部完成的会话时立即隐藏，避免先闪现再消失
   useEffect(() => {
-    if (allCompleted) {
-      const timer = setTimeout(() => setAutoHidden(true), 5000);
-      return () => clearTimeout(timer);
+    if (visibleTasks.length === 0) {
+      hadIncompleteRef.current = false;
+      return;
     }
-    setAutoHidden(false);
-  }, [allCompleted]);
+    if (!allCompleted) {
+      hadIncompleteRef.current = true;
+      setAutoHidden(false);
+      return;
+    }
+    if (!hadIncompleteRef.current) {
+      setAutoHidden(true);
+      return;
+    }
+    const timer = setTimeout(() => setAutoHidden(true), 5000);
+    return () => clearTimeout(timer);
+  }, [allCompleted, visibleTasks.length]);
 
-  if (visibleTasks.length === 0 || autoHidden) {
+  if (visibleTasks.length === 0 || autoHidden || (allCompleted && !hadIncompleteRef.current)) {
     return null;
   }
 
