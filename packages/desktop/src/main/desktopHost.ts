@@ -42,6 +42,7 @@ import {
   getCliVersion,
 } from './stdio/binaryResolver';
 import { ConfigStore, type DesktopConfigData, type SessionIndexEntry } from './configStore';
+import { getWorkspaceDiff } from './gitDiff';
 import { checkForUpdate } from './updateChecker';
 import { HOST_CHANNEL } from './channels';
 
@@ -1269,6 +1270,17 @@ export class DesktopHost {
       case 'desktopListGitBranches':
         await this.handleListGitBranches(msg.workdir as string);
         break;
+
+      // Read-only workspace diff for the diff panel — runs git directly in
+      // the main process rather than via the stdio CLI (large output, and
+      // the CLI has no reusable implementation).
+      case 'desktopGetWorkspaceDiff': {
+        const paneAgent = this.agentForPane(pid);
+        const cwd = paneAgent?.workingDirectory ?? this.workdir;
+        const result = cwd ? await getWorkspaceDiff(cwd) : ({ kind: 'not-a-repo' } as const);
+        this.postMessage({ command: 'desktopWorkspaceDiff', paneId: pid, result });
+        break;
+      }
 
       case 'desktopOpenPane':
         await this.handleOpenPane(msg.workdir as string, msg.sessionId as string);
