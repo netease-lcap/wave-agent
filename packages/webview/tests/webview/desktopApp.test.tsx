@@ -617,6 +617,46 @@ describe('DesktopApp', () => {
             );
         });
 
+        it('highlights every pane-displayed session in the sidebar — focused strong, others weak', () => {
+            renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+
+            const s1 = screen.getByTestId('desktop-session-item-s1');
+            const s2 = screen.getByTestId('desktop-session-item-s2');
+            expect(s1.className).toContain('desktop-session-item--current');
+            expect(s1.className).not.toContain('desktop-session-item--visible');
+            expect(s2.className).toContain('desktop-session-item--visible');
+            expect(s2.className).not.toContain('desktop-session-item--current');
+        });
+
+        it('moves the strong sidebar highlight when the focused pane changes', () => {
+            renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            sendCommand('desktopPanes', {
+                panes: [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                focusedPaneId: 'pane-1',
+            });
+
+            expect(screen.getByTestId('desktop-session-item-s1').className).toContain('desktop-session-item--visible');
+            expect(screen.getByTestId('desktop-session-item-s2').className).toContain('desktop-session-item--current');
+        });
+
+        it('does not weak-highlight sessions that no pane displays, nor new-session panes', () => {
+            renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1' }], 'pane-1');
+
+            const s1 = screen.getByTestId('desktop-session-item-s1');
+            const s2 = screen.getByTestId('desktop-session-item-s2');
+            // Focused pane has no session — nothing gets the strong highlight.
+            expect(s1.className).toContain('desktop-session-item--visible');
+            expect(s1.className).not.toContain('desktop-session-item--current');
+            expect(s2.className).not.toContain('desktop-session-item--visible');
+            expect(s2.className).not.toContain('desktop-session-item--current');
+        });
+
         it('shows a close button per pane only when more than one pane is open', () => {
             renderWithPanes(
                 [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
