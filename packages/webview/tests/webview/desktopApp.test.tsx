@@ -751,7 +751,7 @@ describe('DesktopApp', () => {
             fireEvent(el, event);
         }
 
-        it('shows the insertion indicator only when a dragged session hovers a pane gap', () => {
+        it('shows the insertion indicator wherever a dragged session hovers the pane row', () => {
             renderWithPanes(
                 [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
                 'pane-0',
@@ -760,20 +760,19 @@ describe('DesktopApp', () => {
             mockPaneRect('pane-1', 400, 400);
             const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's3' }, 'application/x-wave-session');
 
-            // Middle of pane-0 — no gap nearby, no indicator.
+            // Same midpoint rule as pane-header drags: the indicator follows the
+            // cursor anywhere over the row, not just near edges.
             dragOverRow(dataTransfer, 200);
-            expect(screen.queryByTestId('desktop-pane-drop-indicator')).not.toBeInTheDocument();
+            expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
 
-            // Near the boundary between the two panes — indicator appears.
             dragOverRow(dataTransfer, 405);
             expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
 
-            // Near the right edge of the last pane — indicator stays (append gap).
             dragOverRow(dataTransfer, 795);
             expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
         });
 
-        it('posts desktopOpenPane with insertionIndex when a dragged session drops on a pane gap', () => {
+        it('posts desktopOpenPane with insertionIndex when a dragged session drops on a pane half', () => {
             const { vscode } = renderWithPanes(
                 [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
                 'pane-0',
@@ -800,7 +799,7 @@ describe('DesktopApp', () => {
             expect(screen.queryByTestId('desktop-pane-drop-indicator')).not.toBeInTheDocument();
         });
 
-        it('posts desktopOpenPane without insertionIndex when a dragged session drops away from any gap', () => {
+        it('posts desktopOpenPane with the last insertionIndex when a dragged session drops on the right half of the last pane', () => {
             const { vscode } = renderWithPanes(
                 [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
                 'pane-0',
@@ -810,14 +809,17 @@ describe('DesktopApp', () => {
             mockPaneRect('pane-1', 400, 400);
             const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's3' }, 'application/x-wave-session');
 
-            // Hover the pane middle (clears any boundary), then drop there.
-            dragOverRow(dataTransfer, 200);
+            // Right half of the last pane → boundary past the end, i.e. append.
+            dragOverRow(dataTransfer, 700);
             vscode.postMessage.mockClear();
-            fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer, clientX: 200 });
+            fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer, clientX: 700 });
 
-            const call = vscode.postMessage.mock.calls.find(([message]) => message.command === 'desktopOpenPane');
-            expect(call?.[0]).toMatchObject({ workdir: '/work/a', sessionId: 's3' });
-            expect(call?.[0].insertionIndex).toBeUndefined();
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's3',
+                insertionIndex: 2,
+            });
         });
 
         it('refuses a sidebar drop with a hint when the row is too narrow for another pane', () => {

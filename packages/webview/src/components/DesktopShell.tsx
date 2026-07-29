@@ -7,8 +7,6 @@ import '../styles/DesktopApp.css';
 const MIN_PANE_WIDTH = 360;
 const HINT_DURATION_MS = 2400;
 const PANE_DRAG_MIME = 'application/x-wave-pane';
-/** Cursor distance from a pane edge that counts as hovering its insertion gap. */
-const SESSION_GAP_PX = 12;
 
 interface DesktopShellProps {
   vscode: VsCodeApi;
@@ -181,9 +179,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   }, [vscode]);
 
   // Sidebar session drags are handled at row level (pane/separator dragovers
-  // ignore the session MIME and let the event bubble up here). Hovering near
-  // a pane edge shows the insertion indicator at that boundary; anywhere else
-  // clears it, and the drop then appends at the right end.
+  // ignore the session MIME and let the event bubble up here). The insertion
+  // boundary follows the same midpoint rule as pane-header drags: hovering a
+  // pane's left half inserts before it, right half after it; gaps between
+  // panes snap to that boundary; past the last pane appends at the right end.
   const handleSessionDragOver = useCallback((e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes(SESSION_DRAG_MIME)) return;
     e.preventDefault();
@@ -192,29 +191,24 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     } catch {
       // jsdom's DataTransfer polyfill exposes a read-only dropEffect.
     }
-    let boundary: number | null = null;
-    let markerX = 0;
     for (let i = 0; i < panes.length; i += 1) {
       const el = paneNodes.current.get(panes[i].paneId);
       if (!el) continue;
       const rect = el.getBoundingClientRect();
-      if (Math.abs(e.clientX - rect.left) <= SESSION_GAP_PX) {
-        boundary = i;
-        markerX = rect.left;
-        break;
+      if (e.clientX < rect.left) {
+        // In the gap before this pane.
+        showDropIndicator(i, rect.left);
+        return;
       }
-      if (i === panes.length - 1 && Math.abs(e.clientX - rect.right) <= SESSION_GAP_PX) {
-        boundary = i + 1;
-        markerX = rect.right;
-        break;
+      if (e.clientX <= rect.right) {
+        const before = e.clientX < rect.left + rect.width / 2;
+        showDropIndicator(before ? i : i + 1, before ? rect.left : rect.right);
+        return;
       }
+      // Past this pane — keep looking (covers inter-pane gaps).
     }
-    if (boundary == null) {
-      dropBoundary.current = null;
-      setDropIndicatorX(null);
-    } else {
-      showDropIndicator(boundary, markerX);
-    }
+    const lastEl = paneNodes.current.get(panes[panes.length - 1]?.paneId);
+    if (lastEl) showDropIndicator(panes.length, lastEl.getBoundingClientRect().right);
   }, [panes, showDropIndicator]);
 
   const handleSessionDrop = useCallback((e: React.DragEvent) => {
