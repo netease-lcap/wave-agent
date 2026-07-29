@@ -488,6 +488,7 @@ export class DesktopHost {
     this.pushPanes();
     await this.pushPaneSessionState(paneId);
     this.postMessage({ command: 'scrollToBottom', paneId });
+    this.postMessage({ command: 'focusInput', paneId });
   }
 
   /** Push the pane layout (order, session bindings, focus) to the webview. */
@@ -522,6 +523,7 @@ export class DesktopHost {
     const existing = this.panes.find((p) => p.agent?.sessionId === sessionId);
     if (existing) {
       this.handleFocusPane(existing.paneId);
+      this.postMessage({ command: 'focusInput', paneId: existing.paneId });
       return;
     }
     const paneId = `pane-${++this.paneCounter}`;
@@ -552,6 +554,7 @@ export class DesktopHost {
         this.workdir = dir;
         this.sendWorkdirState();
       }
+      this.postMessage({ command: 'focusInput', paneId: neighbor.paneId });
     }
     this.pushPanes();
   }
@@ -1468,6 +1471,7 @@ export class DesktopHost {
     const otherPane = this.panes.find((p) => p.agent?.sessionId === sessionId);
     if (otherPane) {
       this.handleFocusPane(otherPane.paneId);
+      this.postMessage({ command: 'focusInput', paneId: otherPane.paneId });
       return;
     }
 
@@ -1604,7 +1608,6 @@ export class DesktopHost {
       // session meanwhile; don't clobber their view.
       if (this.agentForPane(pid) !== active) return;
       await this.activateAgentInPane(pid, agent);
-      this.postMessage({ command: 'focusInput', paneId: pid });
     } catch (error) {
       console.error('[DesktopHost] 新建会话失败:', error);
       this.pushSystemMessage(`新建会话失败: ${error}`, pid);
