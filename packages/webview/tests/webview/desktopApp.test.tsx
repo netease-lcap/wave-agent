@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent, screen } from '@testing-library/react';
+import { render, fireEvent, createEvent, screen, within } from '@testing-library/react';
 import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
 import { createMockVscode, sendCommand, fireInput } from './test-utils';
@@ -536,7 +536,7 @@ describe('DesktopApp', () => {
             hasWorktree: false,
         });
 
-        function renderWithPanes(panes: Array<{ paneId: string; sessionId?: string }>, focusedPaneId: string | null) {
+        function renderWithPanes(panes: Array<{ paneId: string; sessionId?: string; width?: number }>, focusedPaneId: string | null) {
             const result = renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
@@ -546,16 +546,31 @@ describe('DesktopApp', () => {
             return result;
         }
 
-        function makeDataTransfer(payload?: Record<string, unknown>) {
+        function makeDataTransfer(payload?: Record<string, unknown>, mime = 'application/x-wave-pane') {
             const store: Record<string, string> = {};
-            if (payload) store['application/x-wave-session'] = JSON.stringify(payload);
+            if (payload) store[mime] = JSON.stringify(payload);
             return {
-                types: Object.keys(store),
+                get types() { return Object.keys(store); },
                 setData: (type: string, value: string) => { store[type] = value; },
                 getData: (type: string) => store[type] ?? '',
                 effectAllowed: '',
                 dropEffect: '',
             };
+        }
+
+        // jsdom reports 0 widths; mock the row/pane rects to give the layout real sizes.
+        function mockRowWidth(width: number) {
+            const row = screen.getByTestId('desktop-pane-row');
+            vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
+                width, height: 600, top: 0, left: 0, bottom: 600, right: width, x: 0, y: 0, toJSON: () => ({}),
+            });
+        }
+
+        function mockPaneRect(paneId: string, left: number, width: number) {
+            const el = screen.getByTestId(`desktop-pane-${paneId}`);
+            vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+                width, height: 600, top: 0, left, bottom: 600, right: left + width, x: left, y: 0, toJSON: () => ({}),
+            });
         }
 
         it('renders one paneId-scoped chat container per pushed pane', () => {
@@ -620,74 +635,223 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopClosePane', paneId: 'pane-1' });
         });
 
-        it('makes sidebar session items draggable with the session payload', () => {
+        it('does not make sidebar session items draggable', () => {
             renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
 
-            const item = screen.getByTestId('desktop-session-item-s2');
-            expect(item).toHaveAttribute('draggable', 'true');
+            expect(screen.getByTestId('desktop-session-item-s2')).not.toHaveAttribute('draggable');
+        });
 
-            const dataTransfer = makeDataTransfer();
-            fireEvent.dragStart(item, { dataTransfer });
+        it('posts desktopSelectSession on a plain click of a sidebar session', () => {
+            const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+            vscode.postMessage.mockClear();
 
-            expect(dataTransfer.getData('application/x-wave-session')).toBe(
-                JSON.stringify({ workdir: '/work/a', sessionId: 's2' }),
+            fireEvent.click(screen.getByTestId('desktop-session-item-s2'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopSelectSession',
+                workdir: '/work/a',
+                sessionId: 's2',
+            });
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopOpenPane' }),
             );
         });
 
-        it('highlights the row while dragging a session over it and posts desktopOpenPane on drop', () => {
+        it('posts desktopOpenPane on Ctrl+Click of a sidebar session (non-mac platform)', () => {
             const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
-
-            const row = screen.getByTestId('desktop-pane-row');
-            // jsdom reports 0 widths; give the row room for a second pane.
-            vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
-                width: 1200, height: 600, top: 0, left: 0, bottom: 600, right: 1200, x: 0, y: 0, toJSON: () => ({}),
-            });
-            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' });
-
-            fireEvent.dragEnter(row, { dataTransfer });
-            expect(row.className).toContain('desktop-pane-row--drop');
-
+            mockRowWidth(1200);
             vscode.postMessage.mockClear();
-            fireEvent.drop(row, { dataTransfer });
+
+            fireEvent.click(screen.getByTestId('desktop-session-item-s2'), { ctrlKey: true });
 
             expect(vscode.postMessage).toHaveBeenCalledWith({
                 command: 'desktopOpenPane',
                 workdir: '/work/a',
                 sessionId: 's2',
             });
-            expect(row.className).not.toContain('desktop-pane-row--drop');
         });
 
-        it('ignores drops without a session payload', () => {
+        it('posts desktopOpenPane on Cmd+Click of a sidebar session on macOS', () => {
+            const originalPlatform = navigator.platform;
+            Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true });
+            try {
+                const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+                mockRowWidth(1200);
+                vscode.postMessage.mockClear();
+
+                fireEvent.click(screen.getByTestId('desktop-session-item-s2'), { metaKey: true });
+
+                expect(vscode.postMessage).toHaveBeenCalledWith({
+                    command: 'desktopOpenPane',
+                    workdir: '/work/a',
+                    sessionId: 's2',
+                });
+            } finally {
+                Object.defineProperty(navigator, 'platform', { value: originalPlatform, configurable: true });
+            }
+        });
+
+        it('keeps the plain-click behavior for metaKey on non-mac platforms', () => {
             const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
             vscode.postMessage.mockClear();
 
-            const row = screen.getByTestId('desktop-pane-row');
-            const dataTransfer = { types: ['text/plain'], getData: () => 'plain text', setData: () => {}, effectAllowed: '', dropEffect: '' };
-            fireEvent.drop(row, { dataTransfer });
+            fireEvent.click(screen.getByTestId('desktop-session-item-s2'), { metaKey: true });
 
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopSelectSession',
+                workdir: '/work/a',
+                sessionId: 's2',
+            });
             expect(vscode.postMessage).not.toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'desktopOpenPane' }),
             );
         });
 
-        it('refuses the drop with a hint when the row is too narrow for another pane', () => {
+        it('still posts desktopOpenPane when Ctrl+Click targets a session already shown (host dedupes)', () => {
             const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
-
-            const row = screen.getByTestId('desktop-pane-row');
-            // jsdom reports 0 widths; force a too-narrow measurement.
-            vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
-                width: 500, height: 600, top: 0, left: 0, bottom: 600, right: 500, x: 0, y: 0, toJSON: () => ({}),
-            });
+            mockRowWidth(1200);
             vscode.postMessage.mockClear();
 
-            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' });
-            fireEvent.drop(row, { dataTransfer });
+            fireEvent.click(screen.getByTestId('desktop-session-item-s1'), { ctrlKey: true });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's1',
+            });
+        });
+
+        it('refuses Cmd/Ctrl+Click with a hint when the row is too narrow for another pane', () => {
+            const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+            mockRowWidth(500);
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByTestId('desktop-session-item-s2'), { ctrlKey: true });
 
             expect(vscode.postMessage).not.toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'desktopOpenPane' }),
             );
             expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口宽度不足');
+        });
+
+        it('posts desktopMovePane when a pane header is dragged onto another pane edge', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }, { paneId: 'pane-2' }],
+                'pane-0',
+            );
+            mockPaneRect('pane-0', 0, 400);
+            mockPaneRect('pane-1', 400, 400);
+            mockPaneRect('pane-2', 800, 400);
+
+            const header = within(screen.getByTestId('desktop-pane-pane-2')).getByTestId('chat-header');
+            const dataTransfer = makeDataTransfer();
+            fireEvent.dragStart(header, { dataTransfer });
+            expect(dataTransfer.getData('application/x-wave-pane')).toBe(
+                JSON.stringify({ paneId: 'pane-2', fromIndex: 2 }),
+            );
+
+            // Left half of pane-0 → insert before it; the indicator shows.
+            // jsdom lacks DragEvent, so fireEvent's dragOver drops clientX —
+            // build the event manually to pin the pointer position.
+            const target = screen.getByTestId('desktop-pane-pane-0');
+            const dragOver = createEvent.dragOver(target, { dataTransfer });
+            Object.defineProperty(dragOver, 'clientX', { value: 100 });
+            fireEvent(target, dragOver);
+            expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(target, { dataTransfer, clientX: 100 });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopMovePane',
+                paneId: 'pane-2',
+                toIndex: 0,
+            });
+            expect(screen.queryByTestId('desktop-pane-drop-indicator')).not.toBeInTheDocument();
+        });
+
+        it('does not post desktopMovePane when a pane header drops at its own position', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }, { paneId: 'pane-2' }],
+                'pane-0',
+            );
+            mockPaneRect('pane-0', 0, 400);
+            mockPaneRect('pane-1', 400, 400);
+            mockPaneRect('pane-2', 800, 400);
+
+            const header = within(screen.getByTestId('desktop-pane-pane-1')).getByTestId('chat-header');
+            const dataTransfer = makeDataTransfer();
+            fireEvent.dragStart(header, { dataTransfer });
+
+            // Left half of pane-1 → boundary 1, which equals the pane's own index.
+            const target = screen.getByTestId('desktop-pane-pane-1');
+            const dragOver = createEvent.dragOver(target, { dataTransfer });
+            Object.defineProperty(dragOver, 'clientX', { value: 450 });
+            fireEvent(target, dragOver);
+            vscode.postMessage.mockClear();
+            fireEvent.drop(target, { dataTransfer, clientX: 450 });
+
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopMovePane' }),
+            );
+        });
+
+        it('renders host-pushed pane widths as flex ratios', () => {
+            renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1', width: 0.75 }, { paneId: 'pane-1', sessionId: 's2', width: 0.25 }],
+                'pane-0',
+            );
+
+            expect(screen.getByTestId('desktop-pane-pane-0').style.flex).toContain('75%');
+            expect(screen.getByTestId('desktop-pane-pane-1').style.flex).toContain('25%');
+        });
+
+        it('previews widths while dragging a separator and posts desktopResizePanes on mouseup', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            mockPaneRect('pane-0', 0, 600);
+            mockPaneRect('pane-1', 600, 600);
+
+            fireEvent.mouseDown(screen.getByTestId('desktop-pane-separator-0'), { clientX: 600 });
+            fireEvent.mouseMove(window, { clientX: 660 });
+
+            expect(screen.getByTestId('desktop-pane-pane-0').style.flex).toContain('660px');
+            expect(screen.getByTestId('desktop-pane-pane-1').style.flex).toContain('540px');
+
+            vscode.postMessage.mockClear();
+            fireEvent.mouseUp(window);
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopResizePanes',
+                widths: [0.55, 0.45],
+            });
+            // The local preview is cleared — the host pushes the authoritative widths.
+            expect(screen.getByTestId('desktop-pane-pane-0').style.flex).toBe('');
+        });
+
+        it('clamps the separator drag at the minimum pane width', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            mockPaneRect('pane-0', 0, 600);
+            mockPaneRect('pane-1', 600, 600);
+
+            fireEvent.mouseDown(screen.getByTestId('desktop-pane-separator-0'), { clientX: 600 });
+            fireEvent.mouseMove(window, { clientX: 600 + 10000 });
+
+            expect(screen.getByTestId('desktop-pane-pane-0').style.flex).toContain('840px');
+            expect(screen.getByTestId('desktop-pane-pane-1').style.flex).toContain('360px');
+
+            vscode.postMessage.mockClear();
+            fireEvent.mouseUp(window);
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopResizePanes',
+                widths: [0.7, 0.3],
+            });
         });
 
         it('routes a pane-tagged host push only to the matching pane', () => {

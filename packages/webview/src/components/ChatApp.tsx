@@ -766,6 +766,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           currentWorkdir={host.workdir}
           currentSessionId={state.currentSession?.id}
           onSelectSession={host.onSelectSession}
+          onOpenPane={host.onOpenPane}
           onDeleteSession={host.onDeleteSession}
         />
         {chatContainer}

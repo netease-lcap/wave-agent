@@ -23,12 +23,17 @@ export interface DesktopSidebarProps {
   /** Active session id — its group defaults to expanded; gets the running dot while streaming. */
   currentSessionId?: string;
   onSelectSession: (workdir: string, sessionId: string) => void;
+  /** Cmd/Ctrl+Click: open the session in an additional pane to the right. */
+  onOpenPane: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index (also cleans up worktree if applicable). */
   onDeleteSession: (sessionId: string) => void;
 }
 
 const dirName = (workdir: string): string =>
   workdir.split('/').filter(Boolean).pop() ?? workdir;
+
+const isMacPlatform = (): boolean =>
+  typeof navigator !== 'undefined' && navigator.platform.toUpperCase().startsWith('MAC');
 
 /**
  * Left rail for the desktop host: app title, "新对话" button, and the session
@@ -49,6 +54,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   currentWorkdir,
   currentSessionId,
   onSelectSession,
+  onOpenPane,
   onDeleteSession,
 }) => {
   // Explicit expand/collapse overrides; groups without an entry follow the
@@ -85,18 +91,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       <li
         key={session.sessionId}
         className={`desktop-session-item${isCurrent ? ' desktop-session-item--current' : ''}`}
-        onClick={() => onSelectSession(group.workdir, session.sessionId)}
-        draggable
-        onDragStart={(e) => {
-          // FR-032: carry the session payload for the split-view drop zone.
-          e.dataTransfer.setData(
-            'application/x-wave-session',
-            JSON.stringify({ workdir: group.workdir, sessionId: session.sessionId })
-          );
-          try {
-            e.dataTransfer.effectAllowed = 'copy';
-          } catch {
-            // jsdom's DataTransfer polyfill exposes a read-only effectAllowed.
+        onClick={(e) => {
+          // Cmd on macOS / Ctrl elsewhere opens the session in a new pane to
+          // the right; a plain click keeps the replace-focused-pane behavior.
+          if (isMacPlatform() ? e.metaKey : e.ctrlKey) {
+            onOpenPane(group.workdir, session.sessionId);
+          } else {
+            onSelectSession(group.workdir, session.sessionId);
           }
         }}
         data-testid={`desktop-session-item-${session.sessionId}`}

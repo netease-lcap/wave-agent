@@ -157,6 +157,11 @@ export interface ChatAppProps {
 export interface DesktopPane {
   paneId: string;
   sessionId?: string;
+  /**
+   * Width ratio across the pane row (0–1), maintained by the host. Absent
+   * means the pane takes an equal share of the row.
+   */
+  width?: number;
 }
 
 // Desktop host support — injected when running inside packages/desktop (Electron).
@@ -178,8 +183,9 @@ export interface DesktopHostProps {
   /** Delete a session from the index; also removes worktree+branch if applicable. */
   onDeleteSession: (sessionId: string) => void;
   /**
-   * Open a session in a new right-hand pane (drag & drop from the sidebar).
-   * Always appends — never replaces an existing pane (FR-033).
+   * Open a session in a new right-hand pane (Cmd/Ctrl+Click on a sidebar
+   * session). Always appends — never replaces an existing pane; when the
+   * session is already shown, the host focuses that pane instead.
    */
   onOpenPane: (workdir: string, sessionId: string) => void;
   /**

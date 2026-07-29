@@ -5,6 +5,7 @@ import {
   buildApplicationMenuTemplate,
   installApplicationMenu,
   matchSessionSwitchInput,
+  updateMenuState,
 } from '../src/main/menu';
 
 const keyEvent = (overrides: Partial<Input>): Input =>
@@ -72,7 +73,7 @@ describe('matchSessionSwitchInput', () => {
 });
 
 describe('buildApplicationMenuTemplate', () => {
-  const actions = { nextSession: vi.fn(), prevSession: vi.fn() };
+  const actions = { nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), closePane: vi.fn() };
 
   function sessionMenuItems(isMac: boolean): MenuItemConstructorOptions[] {
     const template = buildApplicationMenuTemplate(actions, isMac);
@@ -81,18 +82,31 @@ describe('buildApplicationMenuTemplate', () => {
     return sessionMenu?.submenu as MenuItemConstructorOptions[];
   }
 
+  function itemByLabel(isMac: boolean, label: string): MenuItemConstructorOptions {
+    const item = sessionMenuItems(isMac).find((i) => i.label === label);
+    expect(item).toBeDefined();
+    return item as MenuItemConstructorOptions;
+  }
+
   it('shows Ctrl+Tab / Ctrl+Shift+Tab on Windows/Linux', () => {
-    const [next, prev] = sessionMenuItems(false);
-    expect(next).toMatchObject({ label: '下一个会话', accelerator: 'Ctrl+Tab', registerAccelerator: false });
-    expect(prev).toMatchObject({ label: '上一个会话', accelerator: 'Ctrl+Shift+Tab', registerAccelerator: false });
+    expect(itemByLabel(false, '下一个会话')).toMatchObject({ accelerator: 'Ctrl+Tab', registerAccelerator: false });
+    expect(itemByLabel(false, '上一个会话')).toMatchObject({ accelerator: 'Ctrl+Shift+Tab', registerAccelerator: false });
   });
 
   it('shows Cmd+Shift+] / Cmd+Shift+[ plus the macOS app menu on macOS', () => {
     const template = buildApplicationMenuTemplate(actions, true);
     expect(template[0]).toMatchObject({ role: 'appMenu' });
-    const [next, prev] = sessionMenuItems(true);
-    expect(next).toMatchObject({ accelerator: 'Cmd+Shift+]', registerAccelerator: false });
-    expect(prev).toMatchObject({ accelerator: 'Cmd+Shift+[', registerAccelerator: false });
+    expect(itemByLabel(true, '下一个会话')).toMatchObject({ accelerator: 'Cmd+Shift+]', registerAccelerator: false });
+    expect(itemByLabel(true, '上一个会话')).toMatchObject({ accelerator: 'Cmd+Shift+[', registerAccelerator: false });
+  });
+
+  it('offers 新对话 / 关闭分屏 as registered accelerators that override the window defaults', () => {
+    for (const isMac of [true, false]) {
+      // Registered (registerAccelerator undefined): the accelerator fires
+      // app-wide and preempts Electron's new-window / close-window defaults.
+      expect(itemByLabel(isMac, '新对话')).toMatchObject({ id: 'new-session', accelerator: 'CmdOrCtrl+N' });
+      expect(itemByLabel(isMac, '关闭分屏')).toMatchObject({ id: 'close-pane', accelerator: 'CmdOrCtrl+W' });
+    }
   });
 
   it('keeps the platform default menus (file/edit/view/window roles)', () => {
@@ -101,17 +115,36 @@ describe('buildApplicationMenuTemplate', () => {
   });
 
   it('menu item clicks take the same code path as the keys', () => {
-    const [next, prev] = sessionMenuItems(false);
-    next.click?.({} as never, {} as never, {} as never);
-    prev.click?.({} as never, {} as never, {} as never);
+    itemByLabel(false, '下一个会话').click?.({} as never, {} as never, {} as never);
+    itemByLabel(false, '上一个会话').click?.({} as never, {} as never, {} as never);
+    itemByLabel(false, '新对话').click?.({} as never, {} as never, {} as never);
+    itemByLabel(false, '关闭分屏').click?.({} as never, {} as never, {} as never);
     expect(actions.nextSession).toHaveBeenCalledTimes(1);
     expect(actions.prevSession).toHaveBeenCalledTimes(1);
+    expect(actions.newSession).toHaveBeenCalledTimes(1);
+    expect(actions.closePane).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('updateMenuState', () => {
+  it('toggles the 新对话 / 关闭分屏 items by id', () => {
+    const items = (Menu as unknown as { __mockMenuItems: Map<string, { enabled: boolean }> }).__mockMenuItems;
+    items.set('new-session', { enabled: true });
+    items.set('close-pane', { enabled: true });
+
+    updateMenuState({ canNewSession: false, canClosePane: true });
+    expect(items.get('new-session')?.enabled).toBe(false);
+    expect(items.get('close-pane')?.enabled).toBe(true);
+
+    updateMenuState({ canNewSession: true, canClosePane: false });
+    expect(items.get('new-session')?.enabled).toBe(true);
+    expect(items.get('close-pane')?.enabled).toBe(false);
   });
 });
 
 describe('installApplicationMenu', () => {
   it('builds and sets the application menu', () => {
-    installApplicationMenu({ nextSession: vi.fn(), prevSession: vi.fn() });
+    installApplicationMenu({ nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), closePane: vi.fn() });
     expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(1);
     expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(1);
   });
