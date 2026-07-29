@@ -833,7 +833,7 @@ export class AIManager {
     // has superseded us. setIsLoading(true) here also closes the "idle but
     // previous turn not finished" race window by marking us busy immediately.
     this.turnGeneration++;
-    const myGeneration = this.turnGeneration;
+    let myGeneration = this.turnGeneration;
     this.setIsLoading(true);
 
     outer: while (true) {
@@ -1507,6 +1507,14 @@ export class AIManager {
               });
             }
           }
+          // Re-assert loading state before restarting: if this turn was
+          // aborted, abortAIMessage already reset loading to false, and the
+          // restart below continues the conversation — the UI must show
+          // streaming again (cursor, stop button, ESC handling).
+          this.setIsLoading(true);
+          // Adopt the current (possibly abort-bumped) generation so this
+          // continued turn's end-of-turn cleanup is not skipped as superseded.
+          myGeneration = this.turnGeneration;
           // Restart outer loop to process the notifications
           shouldRestart = true;
           turnOffset = 0;
