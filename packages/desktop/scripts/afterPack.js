@@ -9,6 +9,10 @@
  * binary still works, which masks the bug). First release ships unsigned
  * (FR-021), so re-seal with an ad-hoc signature; without this hook
  * electron-builder skips signing entirely when `identity: null`.
+ *
+ * `--deep` also seals the node-pty native binaries (pty.node + the
+ * spawn-helper executable, asar-unpacked so posix_spawn/dlopen can reach
+ * them) — both must carry a signature consistent with the bundle.
  */
 import { execFileSync } from 'node:child_process';
 

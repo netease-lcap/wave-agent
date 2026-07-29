@@ -1,0 +1,49 @@
+name: CI (Desktop Terminal)
+
+# FR-046: node-pty native module must work on the release platforms. Runs the
+# real-PTY smoke test (no mocks) on macOS + Windows — the Linux blocking CI
+# never executes desktop tests (no test:coverage script there), so this matrix
+# is the CI proof that the terminal panel's backend loads and spawns
+# cross-platform. Triggered on PRs that touch desktop/terminal code or the
+# lockfile, and manually.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'packages/desktop/**'
+      - 'packages/webview/src/components/TerminalPane.tsx'
+      - 'packages/webview/src/terminal-entry.ts'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-desktop-terminal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terminal-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: node-pty smoke test
+        run: pnpm --filter wave-desktop exec vitest run tests/terminalPty.smoke.test.ts
