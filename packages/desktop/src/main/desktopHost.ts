@@ -201,9 +201,8 @@ export class DesktopHost {
    */
   onMenuStateChange?: (state: { canNewSession: boolean; canClosePane: boolean }) => void;
 
-  /** 会话 → 新对话 (CmdOrCtrl+N): new session in the focused pane. No-op while it streams. */
+  /** 会话 → 新对话 (CmdOrCtrl+N): new session in the focused pane, same as the sidebar button. */
   async newSessionInFocusedPane(): Promise<void> {
-    if (this.activeAgent?.isStreaming) return;
     await this.handleNewSession(this.focusedPaneId);
   }
 
@@ -454,8 +453,6 @@ export class DesktopHost {
           this.touchSessionInIndex(agentRef);
         }
         this.refreshSessionTree();
-        // 新对话 is disabled while the focused pane streams.
-        this.emitMenuState();
       },
       onCommandRunningChange: (running: boolean) => {
         const paneId = paneIdOf();
@@ -574,7 +571,9 @@ export class DesktopHost {
   /** Menu enablement — index.ts reflects this in the application menu. */
   private emitMenuState(): void {
     this.onMenuStateChange?.({
-      canNewSession: !(this.activeAgent?.isStreaming ?? false),
+      // 新对话 is always available (like the sidebar button) — a streaming
+      // session keeps generating in the background while the pane switches.
+      canNewSession: true,
       // Multiple panes: close removes one. Sole pane: close resets it, which
       // is only meaningful while it still shows a session.
       canClosePane: this.panes.length > 1 || this.panes[0]?.agent != null,
