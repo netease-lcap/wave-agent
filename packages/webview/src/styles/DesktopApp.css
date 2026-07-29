@@ -543,6 +543,12 @@
     pointer-events: none;
 }
 
+/* Multi-pane: reserve top-right header space for the overlay close button so
+   it never covers the header's right-most button (panel toggle). */
+.desktop-pane--closable .chat-header {
+    padding-right: 34px;
+}
+
 .desktop-pane-close {
     position: absolute;
     top: 6px;
