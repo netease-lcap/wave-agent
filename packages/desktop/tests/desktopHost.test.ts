@@ -1770,3 +1770,111 @@ describe('split-view panes (FR-032~036)', () => {
     expect(append?.paneId).toBe(panes[0].paneId);
   });
 });
+
+describe('input focus on conversation switch', () => {
+  const seedActiveSession = (sessionId: string) => {
+    const agent = lastAgent();
+    agent.messages = [{ id: `m-${sessionId}` }];
+    fireSessionId(agent, sessionId);
+    return agent;
+  };
+
+  const panePushes = (sent: ReturnType<typeof createHost>['sent']) =>
+    sent('desktopPanes').map((m) => m as { panes: Array<{ paneId: string; sessionId?: string }>; focusedPaneId: string });
+
+  it('desktopSelectSession on a live session focuses the input', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    seedActiveSession('sess-2');
+    const paneId = panePushes(sent).at(-1)!.focusedPaneId;
+    const before = sent('focusInput').length;
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
+
+    const focus = sent('focusInput');
+    expect(focus.length).toBeGreaterThan(before);
+    expect(focus.at(-1)).toMatchObject({ paneId });
+  });
+
+  it('desktopSelectSession on a historical session focuses the input after restore', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const paneId = panePushes(sent).at(-1)!.focusedPaneId;
+    const before = sent('focusInput').length;
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'hist-1' });
+
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('hist-1');
+    const focus = sent('focusInput');
+    expect(focus.length).toBeGreaterThan(before);
+    expect(focus.at(-1)).toMatchObject({ paneId });
+  });
+
+  it('activateAdjacentSession (switch shortcut) focuses the input', async () => {
+    const { host, sent, store } = createHost();
+    store.addRecentWorkdir('/work/a');
+    h.existingPaths.add('/work/a');
+    store.upsertSession({ sessionId: 's1', title: 'Session s1', workdir: '/work/a', cwd: '/work/a', lastActiveAt: 1000 });
+    store.upsertSession({ sessionId: 's2', title: 'Session s2', workdir: '/work/a', cwd: '/work/a', lastActiveAt: 2000 });
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+    const before = sent('focusInput').length;
+
+    await host.activateAdjacentSession(1);
+
+    const focus = sent('focusInput');
+    expect(focus.length).toBeGreaterThan(before);
+    expect(focus.at(-1)).toMatchObject({ paneId: panePushes(sent).at(-1)!.focusedPaneId });
+  });
+
+  it('selecting a session already visible in another pane focuses that pane input', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    // pane-2 (sess-2) is focused; sess-1 stays visible in pane-1.
+    const firstPane = panePushes(sent).at(-1)!.panes[0];
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
+
+    expect(panePushes(sent).at(-1)?.focusedPaneId).toBe(firstPane.paneId);
+    expect(sent('focusInput').at(-1)).toMatchObject({ paneId: firstPane.paneId });
+  });
+
+  it('desktopOpenPane on an already-visible session focuses that pane input', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const firstPane = panePushes(sent).at(-1)!.panes[0];
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-1' });
+
+    expect(sent('focusInput').at(-1)).toMatchObject({ paneId: firstPane.paneId });
+  });
+
+  it('desktopClosePane on the focused pane focuses the neighbor input', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const [firstPane, secondPane] = panePushes(sent).at(-1)!.panes;
+
+    await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: secondPane.paneId });
+
+    expect(panePushes(sent).at(-1)?.focusedPaneId).toBe(firstPane.paneId);
+    expect(sent('focusInput').at(-1)).toMatchObject({ paneId: firstPane.paneId });
+  });
+
+  it('desktopFocusPane (pane mousedown) does not steal input focus', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const firstPane = panePushes(sent).at(-1)!.panes[0];
+    const before = sent('focusInput').length;
+
+    // A click anywhere in an unfocused pane (e.g. selecting message text)
+    // refocuses the pane but must not yank the caret into the input.
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: firstPane.paneId });
+
+    expect(sent('focusInput')).toHaveLength(before);
+  });
+});
