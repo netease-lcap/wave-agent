@@ -1623,6 +1623,39 @@ describe('split-view panes (FR-032~036)', () => {
     expect(init?.paneId).toBe(layout.panes[1].paneId);
   });
 
+  it('desktopOpenPane on a worktree session spawns the agent at entry.cwd, not the repo root', async () => {
+    const { host, store, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const worktree = {
+      path: '/work/a/.wave/worktrees/gentle-pike-147',
+      branch: 'worktree-gentle-pike-147',
+      repoRoot: '/work/a',
+    };
+    // The sidebar groups worktree sessions under the repo root, so the webview
+    // sends the repo root as workdir while the session files live at cwd.
+    store.upsertSession({
+      sessionId: 'sess-wt',
+      title: 'wt',
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      lastActiveAt: Date.now(),
+      worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
+    });
+    h.existingPaths.add(worktree.path);
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: worktree.repoRoot, sessionId: 'sess-wt' });
+
+    expect(h.agentInstances).toHaveLength(before + 1);
+    // Spawning at the repo root makes restoreSession look in the wrong project
+    // store — it throws and the pane stays a new session.
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-wt');
+    expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-wt');
+    // The ephemeral worktree path must not leak into recents.
+    expect(store.getRecentWorkdirs()).not.toContain(worktree.path);
+  });
+
   it('desktopOpenPane with insertionIndex inserts the pane at that position and focuses it', async () => {
     const { host, sent } = await readyHost(1600);
     seedActiveSession('sess-1');

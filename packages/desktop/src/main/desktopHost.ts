@@ -713,8 +713,14 @@ export class DesktopHost {
   private async bindSessionToPane(paneId: string, workdir: string, sessionId: string): Promise<void> {
     let agent = this.agents.get(sessionId);
     if (!agent) {
+      // Worktree sessions are grouped under the repo root in the sidebar, but
+      // their session files live at the worktree path — resolve the real
+      // directory the same way handleSelectSession does, otherwise restore
+      // looks in the wrong project store and the pane stays a new session.
+      const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
+      const targetDir = entry?.worktree ? entry.cwd : workdir;
       try {
-        agent = await this.spawnAgent({ workdir });
+        agent = await this.spawnAgent({ workdir: targetDir, worktreeInfo: entry?.worktree });
         await agent.restoreSession(sessionId);
         if (agent.sessionId) {
           this.rekeyAgent(agent, agent.sessionId);
