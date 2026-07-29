@@ -956,6 +956,9 @@ export class DesktopHost {
     if (target) void target.destroy().catch(() => { /* best-effort */ });
 
     this.configStore.removeSession(sessionId);
+    // Update the sidebar right away — the worktree cleanup below runs in the
+    // background and must not hold back the tree refresh.
+    this.refreshSessionTree();
 
     if (resetSolePane) {
       if (entry?.worktree && fs.existsSync(entry.worktree.repoRoot)) {
@@ -966,13 +969,12 @@ export class DesktopHost {
     }
 
     if (entry?.worktree) {
-      await this.removeWorktree({
+      void this.removeWorktree({
         path: entry.worktree.path,
         branch: entry.worktree.branch,
         repoRoot: entry.worktree.repoRoot,
       });
     }
-    this.refreshSessionTree();
   }
 
   /**

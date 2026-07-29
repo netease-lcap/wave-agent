@@ -468,23 +468,23 @@ export class AgentBridge {
     return { branches, current };
   }
 
-  private createWorktreeSession(params: {
+  private async createWorktreeSession(params: {
     workdir: string;
     baseBranch?: string;
     name?: string;
-  }): {
+  }): Promise<{
     name: string;
     path: string;
     branch: string;
     repoRoot: string;
     baseBranch: string;
-  } {
+  }> {
     if (!params.workdir) {
       throw new RpcError(PROTOCOL_INTERNAL_ERROR, "workdir is required");
     }
     const name = params.name?.trim() || generateRandomName();
     try {
-      const session = createWorktree(name, params.workdir, {
+      const session = await createWorktree(name, params.workdir, {
         baseBranch: params.baseBranch,
       });
       return {
@@ -499,14 +499,14 @@ export class AgentBridge {
     }
   }
 
-  private removeWorktreeSession(params: {
+  private async removeWorktreeSession(params: {
     path: string;
     branch: string;
     repoRoot: string;
-  }): { ok: true } {
+  }): Promise<{ ok: true }> {
     // removeWorktree is best-effort/idempotent: already-removed worktrees or
     // branches only log, never throw.
-    removeWorktree({
+    await removeWorktree({
       name: "",
       path: params.path,
       branch: params.branch,

@@ -326,7 +326,7 @@ export async function main() {
         name = generateRandomName();
       }
       const baseRef = loadMergedWaveConfig(originalCwd)?.worktree?.baseRef;
-      worktreeSession = createWorktree(name, originalCwd, { baseRef });
+      worktreeSession = await createWorktree(name, originalCwd, { baseRef });
 
       // Note: the full worktree session (originalCwd etc.) is injected into the
       // agent's DI container after the agent is created in useChat.tsx. This keeps
