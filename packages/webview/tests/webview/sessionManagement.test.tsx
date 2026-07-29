@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderChatApp, screen, fireEvent, act, sendCommand } from './test-utils';
+import { renderChatApp, screen, fireEvent, act, sendCommand, fireInput } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
 
 /**
@@ -180,7 +180,7 @@ describe('Session Management', () => {
         expect(popup).toHaveTextContent('未找到匹配的历史记录');
     });
 
-    it('should create new session after clear chat through callbacks', () => {
+    it('should create new session after clear chat through callbacks', async () => {
         const { vscode } = renderChatApp();
 
         // Setup: Create and select a session with some messages
@@ -218,10 +218,14 @@ describe('Session Management', () => {
         // Clear message log to track clear chat command
         vscode.postMessage.mockClear();
 
-        // Clear chat (new session)
-        const clearBtn = screen.getByTestId('clear-chat-btn');
+        // Clear chat via the /clear slash command (the header button now opens a new tab instead)
+        const input = screen.getByTestId('message-input');
         act(() => {
-            fireEvent.click(clearBtn);
+            input.textContent = '/clear';
+        });
+        await fireInput(input, { data: '/clear', inputType: 'insertText' });
+        act(() => {
+            fireEvent.click(screen.getByTestId('send-btn'));
         });
 
         // Verify clear command was sent
@@ -269,7 +273,7 @@ describe('Session Management', () => {
         expect(screen.getByTestId('session-list-item-session-new')).toBeInTheDocument();
     });
 
-    it('should disable the new session button during streaming', () => {
+    it('should keep the new session button enabled during streaming', () => {
         renderChatApp();
 
         // Setup sessions
@@ -294,16 +298,16 @@ describe('Session Management', () => {
             sendCommand('startStreaming');
         });
 
-        // New session button should be disabled during streaming
-        expect(screen.getByTestId('clear-chat-btn')).toBeDisabled();
+        // New session button stays enabled during streaming (it opens a new tab, never clears in place)
+        expect(screen.getByTestId('new-session-btn')).not.toBeDisabled();
 
         // End streaming
         act(() => {
             sendCommand('endStreaming');
         });
 
-        // Button should be enabled again
-        expect(screen.getByTestId('clear-chat-btn')).not.toBeDisabled();
+        // Button remains enabled
+        expect(screen.getByTestId('new-session-btn')).not.toBeDisabled();
     });
 
     it('should show 新会话 title when current session is not yet in the list', () => {

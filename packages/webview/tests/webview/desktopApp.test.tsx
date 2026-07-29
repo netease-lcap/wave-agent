@@ -114,7 +114,7 @@ describe('DesktopApp', () => {
         expect(screen.getByTestId('desktop-sidebar')).toBeInTheDocument();
         expect(screen.getByTestId('chat-container')).toBeInTheDocument();
         // Header session buttons are replaced by the sidebar
-        expect(screen.queryByTestId('clear-chat-btn')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('new-session-btn')).not.toBeInTheDocument();
         expect(screen.queryByTestId('history-btn')).not.toBeInTheDocument();
         // The header more button moves to the sidebar on desktop
         expect(screen.queryByTestId('more-btn')).not.toBeInTheDocument();

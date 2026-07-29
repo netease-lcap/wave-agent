@@ -361,13 +361,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [vscode]);
 
   const handleClearChat = useCallback(() => {
-    // Desktop 允许在 streaming 期间新建会话（先中止当前生成）；VSCE/JB 维持原有禁用。
+    // Desktop 的 clearChat 即"新建会话"（先中止当前生成），streaming 期间放行；
+    // VSCE/JB 的 clearChat 仅来自 /clear 斜杠命令，streaming 期间忽略。
     if (stateRef.current.isStreaming && host?.type !== 'desktop') return;
 
     postToHost({
       command: 'clearChat'
     });
   }, [host, postToHost]);
+
+  // IDE 宿主（VSCE/JB）顶部"新建会话"按钮：由宿主新开一个标签页承载全新会话，
+  // 当前会话在其标签页中继续运行，因此流式期间保持可用。Desktop 不渲染该按钮。
+  const handleNewChatTab = useCallback(() => {
+    postToHost({
+      command: 'newChatTab'
+    });
+  }, [postToHost]);
 
   const handleLogin = useCallback(() => {
     vscode.postMessage({ command: 'login' });
@@ -848,9 +857,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         </div>
       )}
       <ChatHeader
-        onClearChat={handleClearChat}
+        onNewSession={handleNewChatTab}
         onAbortMessage={handleAbortMessage}
-        isStreaming={state.isStreaming}
         messages={state.messages}
         sessions={state.sessions}
         currentSession={state.currentSession}

@@ -7,6 +7,9 @@ vi.mock('vscode', () => ({
         showInformationMessage: vi.fn(),
         showErrorMessage: vi.fn(),
     },
+    commands: {
+        executeCommand: vi.fn(),
+    },
 }));
 
 import * as vscode from 'vscode';
@@ -259,5 +262,17 @@ describe('MessageHandler MCP handlers', () => {
         const compact = posted.commands.find(c => c.id === 'compact');
         expect(compact).toBeDefined();
         expect(compact?.name).toBe('compact');
+    });
+
+    // The header "new session" button opens a fresh editor tab instead of clearing
+    // the current session in place, so a running conversation stays alive in its panel.
+    test('newChatTab executes wave-code.openChatTab without touching current session', async () => {
+        const session = createMockSession();
+
+        const { handler, context } = createHandler(session);
+        await handler.handleMessage({ command: 'newChatTab' }, 'tab');
+
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith('wave-code.openChatTab');
+        expect(context.getChatSession).not.toHaveBeenCalled();
     });
 });

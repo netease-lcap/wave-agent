@@ -51,6 +51,10 @@ export class MessageHandler {
             case 'clearChat':
                 await this.clearChat(viewType, windowId);
                 break;
+            case 'newChatTab':
+                // 顶部"新建会话"按钮：新开编辑器标签页承载全新会话，当前会话所在面板不受影响。
+                await vscode.commands.executeCommand('wave-code.openChatTab');
+                break;
             case 'compact':
                 await this.compactChat(msg.customInstructions as string | undefined, viewType, windowId);
                 break;

@@ -35,10 +35,10 @@ export class UIStateVerifier {
     }
 
     /**
-     * Get the clear chat button
+     * Get the new session button
      */
-    get clearChatButton(): Locator {
-        return this.page.getByTestId('clear-chat-btn');
+    get newSessionButton(): Locator {
+        return this.page.getByTestId('new-session-btn');
     }
 
     /**
@@ -219,10 +219,10 @@ export class UIStateVerifier {
     }
 
     /**
-     * Click clear chat button
+     * Click new session button
      */
-    async clickClearChat() {
-        await this.clearChatButton.click();
+    async clickNewSession() {
+        await this.newSessionButton.click();
     }
 
     /**
@@ -236,13 +236,13 @@ export class UIStateVerifier {
     }
 
     /**
-     * Verify clear chat button state
+     * Verify new session button state
      */
-    async verifyClearChatButtonEnabled(shouldBeEnabled: boolean = true) {
+    async verifyNewSessionButtonEnabled(shouldBeEnabled: boolean = true) {
         if (shouldBeEnabled) {
-            await expect(this.clearChatButton).toBeEnabled();
+            await expect(this.newSessionButton).toBeEnabled();
         } else {
-            await expect(this.clearChatButton).toBeDisabled();
+            await expect(this.newSessionButton).toBeDisabled();
         }
     }
 

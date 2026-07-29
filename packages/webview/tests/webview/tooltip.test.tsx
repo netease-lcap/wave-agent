@@ -47,7 +47,7 @@ describe('Tooltip Component', () => {
         });
     });
 
-    it('should show tooltip for the clear chat button', async () => {
+    it('should show tooltip for the new session button', async () => {
         renderChatApp();
 
         await act(async () => {
@@ -58,8 +58,8 @@ describe('Tooltip Component', () => {
             });
         });
 
-        const clearBtn = screen.getByTestId('clear-chat-btn');
-        const container = clearBtn.closest('.tooltip-container') as HTMLElement;
+        const newSessionBtn = screen.getByTestId('new-session-btn');
+        const container = newSessionBtn.closest('.tooltip-container') as HTMLElement;
         expect(container).not.toBeNull();
 
         await act(async () => {

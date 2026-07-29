@@ -9,8 +9,7 @@ import type { ChatHeaderProps } from '../types';
 import '../styles/ChatHeader.css';
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
-  onClearChat,
-  isStreaming,
+  onNewSession,
   messages,
   sessions,
   currentSession,
@@ -40,9 +39,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             <Tooltip text="新建会话" position="bottom-left">
               <button
                 className="header-button"
-                onClick={onClearChat}
-                disabled={isStreaming}
-                data-testid="clear-chat-btn"
+                onClick={onNewSession}
+                data-testid="new-session-btn"
                 aria-label="新建会话"
               >
                 <NewSessionIcon />
