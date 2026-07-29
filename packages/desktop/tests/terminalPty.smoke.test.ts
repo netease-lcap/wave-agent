@@ -2,11 +2,10 @@ import { describe, it, expect } from 'vitest';
 import * as pty from 'node-pty';
 
 /**
- * FR-046 platform smoke test: node-pty must actually load its native binary
- * and spawn a shell on every release platform. Runs in the normal desktop
- * suite and is the sole test executed by the macOS/Windows CI matrix
- * (ci-desktop-terminal.yml). No mocks — this is the end-to-end proof that
- * the terminal panel's backend works in the current environment.
+ * Platform smoke test: node-pty must actually load its native binary and
+ * spawn a shell in the current environment. Runs in the normal desktop
+ * suite (blocking CI). No mocks — this is the end-to-end proof that the
+ * terminal panel's backend works on whatever platform executes it.
  */
 describe('node-pty platform smoke test', () => {
   it('spawns a shell and relays echo output through the PTY', async () => {
