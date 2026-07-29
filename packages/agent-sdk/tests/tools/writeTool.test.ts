@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as path from "path";
+import { createHash } from "crypto";
 import { writeTool } from "@/tools/writeTool.js";
 import { TaskManager } from "@/services/taskManager.js";
-import { readFile, writeFile, mkdir } from "fs/promises";
+import { readFile, writeFile, mkdir, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 import { Container } from "@/utils/container.js";
 
@@ -22,11 +23,24 @@ describe("writeTool", () => {
       abortSignal: new AbortController().signal,
       workdir: "/test/workdir",
       taskManager: new TaskManager(new Container(), "test-session"),
+      // Pre-populate readFileState so read-before-write + staleness checks
+      // pass for existing-file happy-path tests. Keys are the *resolved*
+      // path (matches source's resolvePath()). Individual tests override
+      // with an empty Map or undefined to exercise rejection.
+      readFileState: new Map([
+        [path.resolve("/test/file.js"), { mtime: 1000, hash: "abc" }],
+        [path.resolve("/test/existing.txt"), { mtime: 1000, hash: "abc" }],
+        [path.resolve("/test/file.txt"), { mtime: 1000, hash: "abc" }],
+      ]),
     };
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default stat mock returns mtime matching pre-populated readFileState.
+    vi.mocked(stat).mockResolvedValue({
+      mtime: { getTime: () => 1000 } as Date,
+    } as unknown as Awaited<ReturnType<typeof stat>>);
   });
 
   afterEach(() => {
@@ -479,6 +493,107 @@ describe("writeTool", () => {
       expect(result.error).toBe(
         "content parameter is required and must be a string",
       );
+    });
+  });
+
+  describe("Read-before-write & staleness", () => {
+    it("should reject writing an existing file not read in this session", async () => {
+      const originalContent = "old content";
+      vi.mocked(readFile).mockResolvedValue(originalContent);
+
+      const result = await writeTool.execute(
+        { file_path: "/test/file.js", content: "new content" },
+        { ...mockContext, readFileState: new Map() },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("File has not been read yet");
+      expect(writeFile).not.toHaveBeenCalled();
+    });
+
+    it("should reject when existing file modified since read (content changed)", async () => {
+      const originalContent = "modified externally";
+      vi.mocked(readFile).mockResolvedValue(originalContent);
+      vi.mocked(stat).mockResolvedValue({
+        mtime: { getTime: () => 2000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+
+      const result = await writeTool.execute(
+        { file_path: "/test/file.js", content: "new content" },
+        mockContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("unexpectedly modified since last read");
+      expect(writeFile).not.toHaveBeenCalled();
+    });
+
+    it("should pass when mtime changed but content unchanged (full read)", async () => {
+      const originalContent = "unchanged content";
+      const hash = createHash("sha256").update(originalContent).digest("hex");
+      vi.mocked(readFile).mockResolvedValue(originalContent);
+      vi.mocked(stat).mockResolvedValue({
+        mtime: { getTime: () => 2000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+      vi.mocked(writeFile).mockResolvedValue(undefined);
+
+      const result = await writeTool.execute(
+        { file_path: "/test/file.js", content: "new content" },
+        {
+          ...mockContext,
+          readFileState: new Map([
+            [path.resolve("/test/file.js"), { mtime: 1000, hash }],
+          ]),
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("File overwritten");
+      expect(writeFile).toHaveBeenCalledWith(
+        path.resolve("/test/file.js"),
+        "new content",
+        "utf-8",
+      );
+    });
+
+    it("should reject staleness for partial read even when content matches", async () => {
+      const originalContent = "unchanged content";
+      const hash = createHash("sha256").update(originalContent).digest("hex");
+      vi.mocked(readFile).mockResolvedValue(originalContent);
+      vi.mocked(stat).mockResolvedValue({
+        mtime: { getTime: () => 2000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+
+      const result = await writeTool.execute(
+        { file_path: "/test/file.js", content: "new content" },
+        {
+          ...mockContext,
+          readFileState: new Map([
+            [
+              path.resolve("/test/file.js"),
+              { mtime: 1000, hash, offset: 1, limit: 10 },
+            ],
+          ]),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("unexpectedly modified since last read");
+      expect(writeFile).not.toHaveBeenCalled();
+    });
+
+    it("should bypass checks for new file (does not exist yet)", async () => {
+      vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
+      vi.mocked(mkdir).mockResolvedValue(undefined);
+      vi.mocked(writeFile).mockResolvedValue(undefined);
+
+      const result = await writeTool.execute(
+        { file_path: "/test/brand-new.js", content: "fresh" },
+        { ...mockContext, readFileState: new Map() },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("File created");
     });
   });
 });

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { editTool } from "@/tools/editTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { readFile, writeFile, stat } from "fs/promises";
+import { createHash } from "crypto";
 import * as path from "path";
 import type { ToolContext } from "@/tools/types.js";
 import { Container } from "@/utils/container.js";
@@ -595,6 +596,112 @@ describe("editTool", () => {
       } as unknown as Awaited<ReturnType<typeof stat>>)
       .mockResolvedValueOnce({
         mtime: { getTime: () => 2000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      { ...mockContext, readFileState },
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("should pass staleness check when mtime changed but content is unchanged (full read)", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    // readFileState: recorded mtime older than current, but hash matches content
+    const readFileState = new Map<
+      string,
+      { mtime: number; hash: string; offset?: number; limit?: number }
+    >();
+    readFileState.set(r("/test/file.js"), {
+      mtime: 1000,
+      hash: createHash("sha256").update(mockContent).digest("hex"),
+    });
+
+    // First stat: staleness check (newer mtime) → content fallback allows edit
+    // Second stat: post-write state update
+    vi.mocked(stat)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 2000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 3000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      { ...mockContext, readFileState },
+    );
+
+    expect(result.success).toBe(true);
+    expect(writeFile).toHaveBeenCalled();
+  });
+
+  it("should fail staleness check for partial read even when content hash matches", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+
+    // Partial read: offset/limit defined → no content fallback
+    const readFileState = new Map<
+      string,
+      { mtime: number; hash: string; offset?: number; limit?: number }
+    >();
+    readFileState.set(r("/test/file.js"), {
+      mtime: 1000,
+      hash: createHash("sha256").update(mockContent).digest("hex"),
+      offset: 0,
+      limit: 10,
+    });
+
+    vi.mocked(stat).mockResolvedValue({
+      mtime: { getTime: () => 2000 } as Date,
+    } as unknown as Awaited<ReturnType<typeof stat>>);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      { ...mockContext, readFileState },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("unexpectedly modified");
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("should pass staleness check when mtime went backward (only newer flagged)", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    // readFileState recorded a newer mtime than current (clock skew / restore)
+    const readFileState = new Map<
+      string,
+      { mtime: number; hash: string; offset?: number; limit?: number }
+    >();
+    readFileState.set(r("/test/file.js"), { mtime: 2000, hash: "abc" });
+
+    // First stat: staleness check (current 1000 < recorded 2000 → not flagged)
+    // Second stat: post-write state update
+    vi.mocked(stat)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 1000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 3000 } as Date,
       } as unknown as Awaited<ReturnType<typeof stat>>);
 
     const result = await editTool.execute(

@@ -137,18 +137,30 @@ Usage:
         };
       }
 
-      // Staleness check: file must not have been modified since last Read
+      // Staleness check (aligned with Claude Code): only flag when the file got
+      // newer since last read. For full reads, a content-hash fallback avoids
+      // false positives when mtime changed but content didn't (git checkout,
+      // editor round-trip save, cloud sync, antivirus). Partial reads get no
+      // fallback since only a slice was cached.
       if (context.readFileState) {
         const state = context.readFileState.get(resolvedPath);
         if (state) {
           const currentStats = await stat(resolvedPath);
-          if (currentStats.mtime.getTime() !== state.mtime) {
-            return {
-              success: false,
-              content: "",
-              error:
-                "File has been unexpectedly modified since last read. Read it again before editing it.",
-            };
+          if (currentStats.mtime.getTime() > state.mtime) {
+            const isFullRead =
+              state.offset === undefined && state.limit === undefined;
+            const contentUnchanged =
+              isFullRead &&
+              createHash("sha256").update(originalContent).digest("hex") ===
+                state.hash;
+            if (!contentUnchanged) {
+              return {
+                success: false,
+                content: "",
+                error:
+                  "File has been unexpectedly modified since last read. Read it again before editing it.",
+              };
+            }
           }
         }
       }
