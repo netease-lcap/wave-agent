@@ -118,9 +118,19 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     vscode.postMessage({ command: 'desktopTerminalKill', termId });
   }, [vscode, termId]);
 
+  // Bump to re-run the mount flow (chunk-load failure retry).
+  const [bootNonce, setBootNonce] = useState(0);
+
   const restart = useCallback(() => {
+    if (!termRef.current) {
+      // The terminal was never built (chunk load failed) — re-run the mount
+      // flow, which retries loadTerminalLib (its failure cache self-clears).
+      setStatus({ kind: 'loading' });
+      setBootNonce((n) => n + 1);
+      return;
+    }
     killPty();
-    termRef.current?.reset();
+    termRef.current.reset();
     createPty();
   }, [killPty, createPty]);
 
@@ -201,7 +211,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       fitRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [bootNonce]);
 
   // Visibility / session-context changes (FR-045). A hidden terminal is kept
   // alive; a session switch kills it (rebuilt with the new cwd if visible).

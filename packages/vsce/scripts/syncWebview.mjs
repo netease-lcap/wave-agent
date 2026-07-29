@@ -31,8 +31,13 @@ if (!fs.existsSync(srcDir)) {
 fs.rmSync(destDir, { recursive: true, force: true });
 fs.mkdirSync(destDir, { recursive: true });
 
-// Exclude source maps in production as a safety net.
-const files = fs.readdirSync(srcDir).filter(f => !production || !f.endsWith('.map'));
+// Exclude source maps in production as a safety net. The terminal chunk
+// (terminal.js/terminal.css) is desktop-only and must never ship in the VSCE
+// webview.
+const files = fs
+    .readdirSync(srcDir)
+    .filter((f) => !/^terminal\./.test(f))
+    .filter((f) => !production || !f.endsWith('.map'));
 for (const file of files) {
     fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
 }
