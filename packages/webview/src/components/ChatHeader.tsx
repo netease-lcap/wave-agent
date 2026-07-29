@@ -37,7 +37,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       <div className="header-buttons">
         {!hideSessionButtons && (
           <>
-            <Tooltip text="新建会话" position="bottom-left">
+            <Tooltip text="新建会话" position="bottom">
               <button
                 className="header-button"
                 onClick={onClearChat}
@@ -48,7 +48,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                 <NewSessionIcon />
               </button>
             </Tooltip>
-            <Tooltip text="历史对话" position="bottom-left">
+            <Tooltip text="历史对话" position="bottom">
               <button
                 className="header-button"
                 onClick={() => setShowSessionList((prev) => !prev)}
@@ -61,7 +61,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           </>
         )}
         {!hideMoreButton && (
-          <Tooltip text="更多" position="bottom-left">
+          <Tooltip text="更多" position="bottom">
             <button
               className="header-button"
               onClick={() => setShowMoreMenu((prev) => !prev)}
@@ -73,7 +73,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           </Tooltip>
         )}
         {panelToggle && (
-          <Tooltip text="面板" position="bottom-left">
+          <Tooltip text="面板" position="bottom">
             <button
               className="header-button header-panel-toggle"
               onClick={() => setShowPanelMenu((prev) => !prev)}

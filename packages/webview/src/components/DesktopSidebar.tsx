@@ -145,7 +145,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     <div className="desktop-sidebar" data-testid="desktop-sidebar">
       <div className="desktop-sidebar-header">
         <span className="desktop-sidebar-title">Wave 代码智聊</span>
-        <Tooltip text="更多" position="bottom-left">
+        <Tooltip text="更多" position="bottom">
           <button
             className="desktop-sidebar-more-btn"
             onClick={() => setShowMoreMenu((prev) => !prev)}

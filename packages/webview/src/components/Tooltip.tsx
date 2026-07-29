@@ -68,6 +68,14 @@ export const Tooltip: React.FC<TooltipProps> = ({
         break;
     }
     
+    // Keep the tooltip inside the viewport (webview bounds); if it would
+    // overflow an edge, shift it inward so it never gets clipped.
+    const margin = 4;
+    const maxLeft = Math.max(window.innerWidth - tooltipRect.width - margin, margin);
+    const maxTop = Math.max(window.innerHeight - tooltipRect.height - margin, margin);
+    left = Math.min(Math.max(left, margin), maxLeft);
+    top = Math.min(Math.max(top, margin), maxTop);
+    
     setTooltipStyle({ left, top });
   }, [position, offset]);
 
