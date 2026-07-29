@@ -45,5 +45,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # pnpm strips the exec bit from node-pty's prebuilt spawn-helper
+      # (prebuilds/darwin-*/spawn-helper), which makes pty.spawn() fail with
+      # "posix_spawnp failed". Windows has no exec bit so this is macOS-only.
+      - name: Restore node-pty spawn-helper exec bit
+        if: runner.os == 'macOS'
+        run: chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper
+
       - name: node-pty smoke test
         run: pnpm --filter wave-desktop exec vitest run tests/terminalPty.smoke.test.ts
