@@ -78,11 +78,11 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
       const html = marked.parse(part);
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
-          'p', 'br', 'strong', 'b', 'em', 'i', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
-          'ul', 'ol', 'li', 'a', 'blockquote',
+          'p', 'br', 'strong', 'b', 'em', 'i', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+          'ul', 'ol', 'li', 'a', 'blockquote', 'hr', 'img',
           'table', 'thead', 'tbody', 'tr', 'th', 'td', 'del', 'input'
         ],
-        ALLOWED_ATTR: ['href', 'title', 'align', 'type', 'checked', 'disabled', 'class'],
+        ALLOWED_ATTR: ['href', 'title', 'align', 'type', 'checked', 'disabled', 'class', 'src', 'alt'],
         ALLOW_DATA_ATTR: false,
         FORBID_ATTR: [],
         FORBID_TAGS: []
