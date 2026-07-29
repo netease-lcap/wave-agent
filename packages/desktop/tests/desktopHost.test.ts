@@ -464,6 +464,28 @@ describe('agent notifications', () => {
     expect(sessionsAfter.find((s) => s.sessionId === 'sess-1')?.title).toBe('x'.repeat(30) + '...');
   });
 
+  it('setInitialState backfills session.firstMessage from the index after compaction truncated the messages', async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+
+    // First user message establishes the index title (same as the sidebar).
+    const userMsg = { id: 'u1', role: 'user', blocks: [{ type: 'text', content: '帮我重构登录模块' }] };
+    agent.messages = [userMsg];
+    agent.callbacks.onUserMessageAdded(userMsg);
+
+    // Compaction truncates the agent's message list to the compact boundary,
+    // so a re-pushed pane state can no longer derive the title from messages.
+    agent.messages = [{ id: 'c1', role: 'assistant', blocks: [{ type: 'compact', content: '对话摘要' }] }];
+    agent.callbacks.onCompactBlockAdded('对话摘要');
+
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+
+    expect(sent('setInitialState').at(-1)?.session).toMatchObject({
+      id: 'sess-1',
+      firstMessage: '帮我重构登录模块',
+    });
+  });
+
   it('restoring a historical session backfills its sidebar title from history (FR-024)', async () => {
     const { host, store, sent } = await readyHost();
     store.upsertSession({ sessionId: 'hist-1', title: '', workdir: '/work/a', cwd: '/work/a', lastActiveAt: 1 });

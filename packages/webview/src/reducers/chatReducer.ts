@@ -1,5 +1,5 @@
 import type { ChatState, ChatAction, Message, MessageBlock, TextBlock, ToolBlock, ErrorBlock } from '../types';
-import { firstUserMessageText } from '../utils/session';
+import { pinSessionTitle } from '../utils/session';
 
 export const initialState: ChatState = {
   messages: [],
@@ -36,21 +36,10 @@ export const initialState: ChatState = {
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
     case 'SET_MESSAGES': {
-      let currentSession = state.currentSession;
-      // Pin the header title while the first user message is still in the
-      // list — compaction later truncates it to [compact, ...tail rounds]
-      // (assistant-only), so derivation after the fact comes up empty and the
-      // header would fall back to the default title.
-      if (currentSession && !currentSession.firstMessage) {
-        const derived = firstUserMessageText(action.payload);
-        if (derived) {
-          currentSession = { ...currentSession, firstMessage: derived };
-        }
-      }
       return {
         ...state,
         messages: action.payload,
-        currentSession
+        currentSession: pinSessionTitle(state.currentSession, action.payload)
       };
     }
     case 'SET_TASKS':
@@ -185,7 +174,12 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         isStreaming: action.payload.isStreaming !== undefined ? action.payload.isStreaming : state.isStreaming,
         isCommandRunning: action.payload.isCommandRunning !== undefined ? action.payload.isCommandRunning : state.isCommandRunning,
         sessions: action.payload.sessions || state.sessions || [],
-        currentSession: action.payload.currentSession || state.currentSession,
+        // Re-pin from the same-snapshot messages: hosts re-push the session
+        // object without firstMessage on pane/webview re-init.
+        currentSession: pinSessionTitle(
+          action.payload.currentSession || state.currentSession,
+          action.payload.messages
+        ),
         configurationData: action.payload.configurationData || state.configurationData,
         pendingConfirmations: action.payload.pendingConfirmations || [],
         queuedMessages: action.payload.queuedMessages || [],
@@ -233,11 +227,17 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         workdir: action.payload
       };
     // Incremental update actions for streaming optimization
-    case 'APPEND_MESSAGE':
+    case 'APPEND_MESSAGE': {
+      const messages = [...state.messages, action.payload];
       return {
         ...state,
-        messages: [...state.messages, action.payload]
+        messages,
+        // Hosts that deliver user messages incrementally (desktop, VSCE) never
+        // route them through SET_MESSAGES, so the title pin must happen here
+        // too — otherwise compaction wipes the derivation material.
+        currentSession: pinSessionTitle(state.currentSession, messages)
       };
+    }
     case 'UPDATE_STREAMING_CONTENT': {
       const { messageId, accumulated, stage } = action.payload;
       const messageIndex = state.messages.findIndex(m => m.id === messageId);

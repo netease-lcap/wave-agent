@@ -34,6 +34,22 @@ export const formatSessionLabel = (session: SessionMetadata): string => {
 };
 
 /**
+ * Pin the session title from the first user message while it is still in the
+ * message list. Compaction later truncates the list to [compact, ...tail
+ * rounds] (assistant-only), so deriving after the fact comes up empty and the
+ * header would fall back to the default title. An already-set firstMessage
+ * always wins.
+ */
+export const pinSessionTitle = (
+  currentSession: SessionMetadata | undefined,
+  messages?: Message[],
+): SessionMetadata | undefined => {
+  if (!currentSession || currentSession.firstMessage) return currentSession;
+  const derived = firstUserMessageText(messages);
+  return derived ? { ...currentSession, firstMessage: derived } : currentSession;
+};
+
+/**
  * Resolve the header title for the active session. The backend pushes a
  * currentSession without a firstMessage on creation, so once the user sends a
  * message we derive the title from the message list instead of leaving it stuck

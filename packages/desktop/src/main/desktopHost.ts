@@ -429,6 +429,7 @@ export class DesktopHost {
               workdir: agentRef.workingDirectory,
               lastActiveAt: new Date(),
               latestTotalTokens: agentRef.latestTotalTokens ?? 0,
+              firstMessage: this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId)?.title || undefined,
             } as SessionMetadata,
           });
           this.pushPanes();
@@ -945,6 +946,10 @@ export class DesktopHost {
         workdir: agent.workingDirectory,
         lastActiveAt: new Date(),
         latestTotalTokens: agent.latestTotalTokens,
+        // Backfill the header title from the session index: after compaction
+        // the pushed messages start at the compact boundary, so the webview
+        // can no longer derive the first user message itself.
+        firstMessage: this.configStore.getSessionIndex().find((e) => e.sessionId === agent.sessionId)?.title || undefined,
       } : undefined,
       configurationData,
       pendingConfirmations,
