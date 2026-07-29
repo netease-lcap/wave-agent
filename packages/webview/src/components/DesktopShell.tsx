@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ChatApp } from './ChatApp';
 import { DesktopSidebar } from './DesktopSidebar';
 import type { DesktopHostProps, DesktopPane, VsCodeApi } from '../types';
@@ -6,6 +6,7 @@ import '../styles/DesktopApp.css';
 
 const MIN_PANE_WIDTH = 360;
 const HINT_DURATION_MS = 2400;
+const PANE_DRAG_MIME = 'application/x-wave-pane';
 
 interface DesktopShellProps {
   vscode: VsCodeApi;
@@ -19,16 +20,18 @@ interface DesktopShellProps {
 }
 
 /**
- * Desktop split-view layout (FR-032~036): sidebar on the left, N chat panes in
- * the middle, preview pane (owned by the single-pane ChatApp) on the right.
+ * Desktop split-view layout: sidebar on the left, N chat panes in the middle,
+ * preview pane (owned by the single-pane ChatApp) on the right.
  *
  * Rendered when the host pushes ≥1 pane via `desktopPanes`. ChatApp delegates
  * here; for each pane it renders one paneId-scoped ChatApp instance, which
  * filters host pushes by paneId and tags outgoing commands with it.
  *
- * Drag & drop: sidebar session items carry a session payload; dropping anywhere
- * on the pane row appends a new right-hand pane via `desktopOpenPane` — unless
- * adding another pane would squeeze every pane below MIN_PANE_WIDTH.
+ * The layout itself is host-authoritative: Cmd/Ctrl+Click on a sidebar session
+ * appends a pane (`desktopOpenPane`), dragging a pane header reorders
+ * (`desktopMovePane`), and dragging a separator resizes the adjacent pair
+ * (`desktopResizePanes`, with a live local preview). The webview never applies
+ * the new order or widths on its own — it waits for the next `desktopPanes`.
  */
 export const DesktopShell: React.FC<DesktopShellProps> = ({
   vscode,
@@ -41,13 +44,16 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
 }) => {
   const panes: DesktopPane[] = host.panes ?? [];
   const focusedPaneId = host.focusedPaneId ?? panes[0]?.paneId ?? null;
-  const [dropActive, setDropActive] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [dropIndicatorX, setDropIndicatorX] = useState<number | null>(null);
+  const [resizePreview, setResizePreview] = useState<number[] | null>(null);
+  const [activeSeparator, setActiveSeparator] = useState<number | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // HTML5 DnD fires dragenter on every child; a counter tracks nesting depth so
-  // the highlight only clears when the drag truly leaves the row.
-  const dragDepth = useRef(0);
+  const paneNodes = useRef(new Map<string, HTMLDivElement>());
+  // Insertion boundary (0..panes.length) tracked while a pane header drags.
+  const dropBoundary = useRef<number | null>(null);
+  const resizePreviewRef = useRef<number[] | null>(null);
 
   const showHint = useCallback((text: string) => {
     if (hintTimer.current) clearTimeout(hintTimer.current);
@@ -60,41 +66,14 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     return rowWidth / (panes.length + 1) >= MIN_PANE_WIDTH;
   }, [panes.length]);
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes('application/x-wave-session')) return;
-    e.preventDefault();
-    dragDepth.current += 1;
-    setDropActive(true);
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes('application/x-wave-session')) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    dragDepth.current = Math.max(0, dragDepth.current - 1);
-    if (dragDepth.current === 0) setDropActive(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    dragDepth.current = 0;
-    setDropActive(false);
-    const raw = e.dataTransfer.getData('application/x-wave-session');
-    if (!raw) return;
-    try {
-      const { workdir, sessionId } = JSON.parse(raw);
-      if (!sessionId) return;
-      if (!canAddPane()) {
-        showHint('窗口宽度不足，无法添加更多分屏');
-        return;
-      }
-      host.onOpenPane(workdir, sessionId);
-    } catch {
-      // Not a session payload — ignore.
+  // Cmd/Ctrl+Click on a sidebar session — guarded by the same min-width rule
+  // the host applies, so the refusal hint shows without a round trip.
+  const handleOpenPane = useCallback((workdir: string, sessionId: string) => {
+    if (!canAddPane()) {
+      showHint('窗口宽度不足，无法添加更多分屏');
+      return;
     }
+    host.onOpenPane(workdir, sessionId);
   }, [canAddPane, host, showHint]);
 
   const handleFocusPane = useCallback((paneId: string) => {
@@ -105,6 +84,132 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   const handleClosePane = useCallback((paneId: string) => {
     vscode.postMessage({ command: 'desktopClosePane', paneId });
   }, [vscode]);
+
+  // The pane header is rendered inside each pane-scoped ChatApp (a shared
+  // component), so the reorder drag source is wired imperatively here rather
+  // than threading drag props through the shared chat tree.
+  useLayoutEffect(() => {
+    const disposers: Array<() => void> = [];
+    panes.forEach((pane, index) => {
+      const header = paneNodes.current.get(pane.paneId)?.querySelector<HTMLElement>('.chat-header');
+      if (!header) return;
+      header.draggable = true;
+      const onDragStart = (e: DragEvent) => {
+        if (!e.dataTransfer) return;
+        e.dataTransfer.setData(PANE_DRAG_MIME, JSON.stringify({ paneId: pane.paneId, fromIndex: index }));
+        try {
+          e.dataTransfer.effectAllowed = 'move';
+        } catch {
+          // jsdom's DataTransfer polyfill exposes a read-only effectAllowed.
+        }
+      };
+      const onDragEnd = () => {
+        dropBoundary.current = null;
+        setDropIndicatorX(null);
+      };
+      header.addEventListener('dragstart', onDragStart);
+      header.addEventListener('dragend', onDragEnd);
+      disposers.push(() => {
+        header.removeEventListener('dragstart', onDragStart);
+        header.removeEventListener('dragend', onDragEnd);
+        header.draggable = false;
+      });
+    });
+    return () => disposers.forEach((dispose) => dispose());
+  }, [panes]);
+
+  // Records the insertion boundary and places the marker at markerX (viewport
+  // coordinates), converted into row-content coordinates for the overlay.
+  const showDropIndicator = useCallback((boundary: number, markerX: number) => {
+    const rowEl = rowRef.current;
+    if (!rowEl) return;
+    dropBoundary.current = boundary;
+    const rowRect = rowEl.getBoundingClientRect();
+    setDropIndicatorX(markerX - rowRect.left + rowEl.scrollLeft);
+  }, []);
+
+  const handlePaneDragOver = useCallback((e: React.DragEvent, index: number) => {
+    if (!e.dataTransfer.types.includes(PANE_DRAG_MIME)) return;
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = 'move';
+    } catch {
+      // jsdom's DataTransfer polyfill exposes a read-only dropEffect.
+    }
+    const pane = panes[index];
+    const paneEl = pane ? paneNodes.current.get(pane.paneId) : undefined;
+    if (!paneEl) return;
+    const rect = paneEl.getBoundingClientRect();
+    const before = e.clientX < rect.left + rect.width / 2;
+    showDropIndicator(before ? index : index + 1, before ? rect.left : rect.right);
+  }, [panes, showDropIndicator]);
+
+  const handleSeparatorDragOver = useCallback((e: React.DragEvent, boundary: number) => {
+    if (!e.dataTransfer.types.includes(PANE_DRAG_MIME)) return;
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = 'move';
+    } catch {
+      // jsdom's DataTransfer polyfill exposes a read-only dropEffect.
+    }
+    showDropIndicator(boundary, e.currentTarget.getBoundingClientRect().left);
+  }, [showDropIndicator]);
+
+  const handlePaneDrop = useCallback((e: React.DragEvent) => {
+    const raw = e.dataTransfer.getData(PANE_DRAG_MIME);
+    if (!raw) return;
+    e.preventDefault();
+    setDropIndicatorX(null);
+    try {
+      const { paneId, fromIndex } = JSON.parse(raw);
+      const boundary = dropBoundary.current;
+      dropBoundary.current = null;
+      if (!paneId || boundary == null) return;
+      // The boundary refers to the current order; after pulling the dragged
+      // pane out, boundaries to its right shift one slot left.
+      const toIndex = boundary > fromIndex ? boundary - 1 : boundary;
+      if (toIndex === fromIndex) return;
+      vscode.postMessage({ command: 'desktopMovePane', paneId, toIndex });
+    } catch {
+      // Not a pane payload — ignore.
+    }
+  }, [vscode]);
+
+  const handleSeparatorMouseDown = useCallback((e: React.MouseEvent, separatorIndex: number) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const widths = panes.map((pane) => paneNodes.current.get(pane.paneId)?.getBoundingClientRect().width ?? 0);
+    const pairTotal = widths[separatorIndex] + widths[separatorIndex + 1];
+    setActiveSeparator(separatorIndex);
+    const onMouseMove = (ev: MouseEvent) => {
+      // Both panes of the pair keep at least the minimum width; a pair that
+      // can't satisfy that is frozen in place.
+      if (pairTotal < MIN_PANE_WIDTH * 2) return;
+      const clamped = Math.max(
+        MIN_PANE_WIDTH,
+        Math.min(pairTotal - MIN_PANE_WIDTH, widths[separatorIndex] + ev.clientX - startX),
+      );
+      const next = [...widths];
+      next[separatorIndex] = clamped;
+      next[separatorIndex + 1] = pairTotal - clamped;
+      resizePreviewRef.current = next;
+      setResizePreview(next);
+    };
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      setActiveSeparator(null);
+      const preview = resizePreviewRef.current;
+      resizePreviewRef.current = null;
+      setResizePreview(null);
+      if (!preview) return;
+      const sum = preview.reduce((total, w) => total + w, 0);
+      if (sum <= 0) return;
+      vscode.postMessage({ command: 'desktopResizePanes', widths: preview.map((w) => w / sum) });
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, [panes, vscode]);
 
   const focusedSessionId = panes.find((p) => p.paneId === focusedPaneId)?.sessionId;
 
@@ -123,39 +228,64 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         currentWorkdir={host.workdir}
         currentSessionId={focusedSessionId}
         onSelectSession={host.onSelectSession}
+        onOpenPane={handleOpenPane}
         onDeleteSession={host.onDeleteSession}
       />
-      <div
-        ref={rowRef}
-        className={`desktop-pane-row${dropActive ? ' desktop-pane-row--drop' : ''}`}
-        data-testid="desktop-pane-row"
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {panes.map((pane) => (
-          <div
-            key={pane.paneId}
-            className={`desktop-pane${pane.paneId === focusedPaneId ? ' desktop-pane--focused' : ''}`}
-            style={{ minWidth: MIN_PANE_WIDTH }}
-            onMouseDown={() => handleFocusPane(pane.paneId)}
-            data-testid={`desktop-pane-${pane.paneId}`}
-          >
-            {panes.length > 1 && (
-              <button
-                className="desktop-pane-close"
-                title="关闭分屏"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => handleClosePane(pane.paneId)}
-                data-testid={`desktop-pane-close-${pane.paneId}`}
+      <div ref={rowRef} className="desktop-pane-row" data-testid="desktop-pane-row">
+        {panes.map((pane, index) => {
+          const paneStyle: React.CSSProperties = { minWidth: MIN_PANE_WIDTH };
+          if (resizePreview && resizePreview[index] != null) {
+            // Live preview while a separator drags (pixel widths).
+            paneStyle.flex = `0 0 ${resizePreview[index]}px`;
+          } else if (pane.width != null) {
+            paneStyle.flex = `0 0 ${pane.width * 100}%`;
+          }
+          return (
+            <React.Fragment key={pane.paneId}>
+              {index > 0 && (
+                <div
+                  className={`desktop-pane-separator${activeSeparator === index - 1 ? ' desktop-pane-separator--active' : ''}`}
+                  onMouseDown={(e) => handleSeparatorMouseDown(e, index - 1)}
+                  onDragOver={(e) => handleSeparatorDragOver(e, index)}
+                  onDrop={handlePaneDrop}
+                  data-testid={`desktop-pane-separator-${index - 1}`}
+                />
+              )}
+              <div
+                ref={(el) => {
+                  if (el) paneNodes.current.set(pane.paneId, el);
+                  else paneNodes.current.delete(pane.paneId);
+                }}
+                className={`desktop-pane${pane.paneId === focusedPaneId ? ' desktop-pane--focused' : ''}`}
+                style={paneStyle}
+                onMouseDown={() => handleFocusPane(pane.paneId)}
+                onDragOver={(e) => handlePaneDragOver(e, index)}
+                onDrop={handlePaneDrop}
+                data-testid={`desktop-pane-${pane.paneId}`}
               >
-                <span className="codicon codicon-close"></span>
-              </button>
-            )}
-            <ChatApp vscode={vscode} host={host} paneId={pane.paneId} />
-          </div>
-        ))}
+                {panes.length > 1 && (
+                  <button
+                    className="desktop-pane-close"
+                    title="关闭分屏"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => handleClosePane(pane.paneId)}
+                    data-testid={`desktop-pane-close-${pane.paneId}`}
+                  >
+                    <span className="codicon codicon-close"></span>
+                  </button>
+                )}
+                <ChatApp vscode={vscode} host={host} paneId={pane.paneId} />
+              </div>
+            </React.Fragment>
+          );
+        })}
+        {dropIndicatorX != null && (
+          <div
+            className="desktop-pane-drop-indicator"
+            style={{ left: dropIndicatorX }}
+            data-testid="desktop-pane-drop-indicator"
+          />
+        )}
         {hint && (
           <div className="desktop-pane-hint" role="status" data-testid="desktop-pane-hint">
             {hint}

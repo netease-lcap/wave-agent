@@ -25,9 +25,16 @@ export const ipcMain = {
   handle: vi.fn(),
 };
 
+const mockMenuItems = new Map<string, { enabled: boolean }>();
+
 export const Menu = {
   buildFromTemplate: vi.fn((template: unknown[]) => ({ __template: template })),
   setApplicationMenu: vi.fn(),
+  getApplicationMenu: vi.fn(() => ({
+    getMenuItemById: (id: string) => mockMenuItems.get(id) ?? null,
+  })),
+  /** Test hook: seed the items that getMenuItemById returns. */
+  __mockMenuItems: mockMenuItems,
 };
 
 export const ipcRenderer = {

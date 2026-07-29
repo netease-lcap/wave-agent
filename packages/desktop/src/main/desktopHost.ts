@@ -66,6 +66,8 @@ interface WorktreeInfo {
 interface Pane {
   paneId: string;
   agent: StdioAgent | null;
+  /** Width as a ratio of the chat area (sidebar/preview excluded); undefined = equal split. */
+  width?: number;
 }
 
 interface PaneThrottle {
@@ -77,8 +79,12 @@ interface PaneThrottle {
   streamingReasoningTimer?: NodeJS.Timeout;
   pendingStreamingReasoning?: { messageId: string; accumulated: string; stage: 'streaming' | 'end' };
 }
-/** Cap on simultaneous live agents (FR-031); least-recently-used idle agent evicted beyond this. */
-const MAX_LIVE_AGENTS = 8;
+/** Minimum chat-pane width — mirrors the webview DesktopShell MIN_PANE_WIDTH. */
+const MIN_PANE_WIDTH_PX = 360;
+/** Fixed sidebar width — mirrors DesktopApp.css .desktop-sidebar. */
+const SIDEBAR_WIDTH_PX = 240;
+/** Float tolerance for ratio-vs-minimum comparisons. */
+const WIDTH_EPSILON = 1e-9;
 
 export class DesktopHost {
   private mainWindow: BrowserWindow | null = null;
@@ -89,8 +95,10 @@ export class DesktopHost {
   private initPromise: Promise<void> | null = null;
   private cliVersion: string | null = null;
 
-  // agent pool (multi-session parallel, FR-031): sessionId → live StdioAgent.
-  // Panes bind agents for display; unbound agents keep streaming in background.
+  // agent pool (multi-session parallel): sessionId → live StdioAgent. No
+  // capacity limit — agents live until their session is deleted or the app
+  // exits. Panes bind agents for display; unbound agents keep streaming in
+  // background.
   private agents = new Map<string, StdioAgent>();
   // Split panes, ordered left→right. Each pane binds at most one agent (none
   // in the new-session state); the focused pane receives sidebar clicks and
@@ -98,7 +106,9 @@ export class DesktopHost {
   private panes: Pane[] = [{ paneId: 'pane-1', agent: null }];
   private focusedPaneId = 'pane-1';
   private paneCounter = 1;
-  private lastActivatedAt = new Map<string, number>();
+  // Preview-pane width as last reported by the webview (0 = closed). Used to
+  // deduct the preview from the chat area in min-pane-width checks.
+  private previewWidthPx = 0;
   private inputDrafts = new Map<string, string>(); // keyed by paneId
   private agentWorktreeInfo = new Map<StdioAgent, WorktreeInfo>();
   private workdir: string | undefined;
@@ -168,6 +178,33 @@ export class DesktopHost {
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win;
+  }
+
+  /**
+   * Menu enablement hook — index.ts assigns this to reflect pane/streaming
+   * state in the application menu (新对话 / 关闭分屏).
+   */
+  onMenuStateChange?: (state: { canNewSession: boolean; canClosePane: boolean }) => void;
+
+  /** 会话 → 新对话 (CmdOrCtrl+N): new session in the focused pane. No-op while it streams. */
+  async newSessionInFocusedPane(): Promise<void> {
+    if (this.activeAgent?.isStreaming) return;
+    await this.handleNewSession(this.focusedPaneId);
+  }
+
+  /**
+   * 会话 → 关闭分屏 (CmdOrCtrl+W): close the focused pane. With multiple panes
+   * this matches the pane close button; on the sole pane it resets that pane
+   * to a fresh session. The detached agent is never destroyed — the session
+   * keeps running in the background and stays in the sidebar.
+   */
+  async closeFocusedPane(): Promise<void> {
+    if (this.panes.length > 1) {
+      this.handleClosePane(this.focusedPaneId);
+      return;
+    }
+    const pane = this.panes[0];
+    if (pane?.agent) await this.handleNewSession(pane.paneId);
   }
 
   /**
@@ -392,6 +429,8 @@ export class DesktopHost {
           this.touchSessionInIndex(agentRef);
         }
         this.refreshSessionTree();
+        // 新对话 is disabled while the focused pane streams.
+        this.emitMenuState();
       },
       onCommandRunningChange: (running: boolean) => {
         const paneId = paneIdOf();
@@ -453,11 +492,7 @@ export class DesktopHost {
     });
     if (agent.sessionId) {
       this.agents.set(agent.sessionId, agent);
-      // Seed the LRU timestamp — eviction runs before activateAgent, and a
-      // missing entry would make the brand-new agent the oldest victim.
-      this.lastActivatedAt.set(agent.sessionId, Date.now());
     }
-    this.evictIdleAgentsIfNeeded();
     return agent;
   }
 
@@ -468,9 +503,19 @@ export class DesktopHost {
     this.clearThrottleState(paneId);
     pane.agent = agent;
     this.focusedPaneId = paneId;
-    if (agent?.sessionId) {
-      this.lastActivatedAt.set(agent.sessionId, Date.now());
-    }
+    if (agent) this.touchAgentAsRecent(agent);
+  }
+
+  /**
+   * Mark an agent as most-recently-used by moving it to the end of the pool
+   * Map — iteration order doubles as the recency order activateWorkdir uses
+   * to pick a reusable session.
+   */
+  private touchAgentAsRecent(agent: StdioAgent): void {
+    const key = agent.sessionId;
+    if (!key || this.agents.get(key) !== agent) return;
+    this.agents.delete(key);
+    this.agents.set(key, agent);
   }
 
   /** Point a pane at an agent: sync workdir context, refresh sidebar, push its state. */
@@ -491,12 +536,23 @@ export class DesktopHost {
     this.postMessage({ command: 'focusInput', paneId });
   }
 
-  /** Push the pane layout (order, session bindings, focus) to the webview. */
+  /** Push the pane layout (order, session bindings, widths, focus) to the webview. */
   private pushPanes(): void {
     this.postMessage({
       command: 'desktopPanes',
-      panes: this.panes.map((p) => ({ paneId: p.paneId, sessionId: p.agent?.sessionId })),
+      panes: this.panes.map((p) => ({ paneId: p.paneId, sessionId: p.agent?.sessionId, width: p.width })),
       focusedPaneId: this.focusedPaneId,
+    });
+    this.emitMenuState();
+  }
+
+  /** Menu enablement — index.ts reflects this in the application menu. */
+  private emitMenuState(): void {
+    this.onMenuStateChange?.({
+      canNewSession: !(this.activeAgent?.isStreaming ?? false),
+      // Multiple panes: close removes one. Sole pane: close resets it, which
+      // is only meaningful while it still shows a session.
+      canClosePane: this.panes.length > 1 || this.panes[0]?.agent != null,
     });
   }
 
@@ -516,7 +572,8 @@ export class DesktopHost {
   /**
    * Open a session in a new right-hand pane (drag & drop from the sidebar).
    * A session already visible in a pane focuses that pane instead of
-   * duplicating it.
+   * duplicating it. Existing panes shrink proportionally so the layout keeps
+   * the user's manual ratios.
    */
   private async handleOpenPane(workdir: string, sessionId: string): Promise<void> {
     if (!sessionId) return;
@@ -526,11 +583,58 @@ export class DesktopHost {
       this.postMessage({ command: 'focusInput', paneId: existing.paneId });
       return;
     }
+    if (!this.canAddPane()) {
+      this.pushSystemMessage('窗口宽度不足，无法添加更多分屏', this.focusedPaneId);
+      return;
+    }
     const paneId = `pane-${++this.paneCounter}`;
-    this.panes.push({ paneId, agent: null });
+    const count = this.panes.length;
+    const widths = this.effectiveWidths();
+    this.panes.forEach((p, i) => { p.width = widths[i] * (count / (count + 1)); });
+    this.panes.push({ paneId, agent: null, width: 1 / (count + 1) });
     this.focusedPaneId = paneId;
     this.pushPanes();
     await this.bindSessionToPane(paneId, workdir, sessionId);
+  }
+
+  /**
+   * Min-width gate for adding a pane: every pane (current + new) must fit at
+   * MIN_PANE_WIDTH_PX within the chat area (window minus sidebar and the
+   * preview pane). The webview applies the same rule on its measured row, so
+   * this is the authoritative backstop.
+   */
+  private canAddPane(): boolean {
+    if (!this.mainWindow) return true;
+    const [windowWidth] = this.mainWindow.getContentSize();
+    if (!windowWidth) return true;
+    const chatArea = windowWidth - SIDEBAR_WIDTH_PX - this.previewWidthPx;
+    return chatArea / (this.panes.length + 1) >= MIN_PANE_WIDTH_PX - WIDTH_EPSILON;
+  }
+
+  /** Current pane widths as ratios; unset width means an equal share. */
+  private effectiveWidths(): number[] {
+    return this.panes.map((p) => p.width ?? 1 / this.panes.length);
+  }
+
+  /** Reorder a pane (drag the pane header onto another slot). */
+  private handleMovePane(paneId: string, toIndex: number): void {
+    const from = this.panes.findIndex((p) => p.paneId === paneId);
+    if (from === -1 || !Number.isFinite(toIndex)) return;
+    const target = Math.max(0, Math.min(this.panes.length - 1, Math.trunc(toIndex)));
+    if (target === from) return;
+    const [pane] = this.panes.splice(from, 1);
+    this.panes.splice(target, 0, pane);
+    this.pushPanes();
+  }
+
+  /** Apply separator-drag widths (ratios in pane order, normalized here). */
+  private handleResizePanes(widths: unknown): void {
+    if (!Array.isArray(widths) || widths.length !== this.panes.length) return;
+    if (widths.some((w) => typeof w !== 'number' || !Number.isFinite(w) || w <= 0)) return;
+    const sum = widths.reduce((total: number, w: number) => total + w, 0);
+    if (sum <= WIDTH_EPSILON) return;
+    this.panes.forEach((p, i) => { p.width = widths[i] / sum; });
+    this.pushPanes();
   }
 
   /**
@@ -546,6 +650,15 @@ export class DesktopHost {
     this.panes.splice(idx, 1);
     this.inputDrafts.delete(paneId);
     this.workflowRuns.delete(paneId);
+    // The closed pane's width returns to the survivors proportionally; an
+    // untouched equal-split layout (no explicit widths) stays equal-split.
+    const remaining = this.panes.map((p) => p.width);
+    if (remaining.some((w) => w !== undefined)) {
+      const sum = remaining.reduce<number>((total, w) => total + (w ?? 0), 0);
+      if (sum > WIDTH_EPSILON) {
+        this.panes.forEach((p, i) => { p.width = (remaining[i] ?? 0) / sum; });
+      }
+    }
     if (this.focusedPaneId === paneId) {
       const neighbor = this.panes[Math.min(idx, this.panes.length - 1)];
       this.focusedPaneId = neighbor.paneId;
@@ -614,7 +727,7 @@ export class DesktopHost {
     return this.agentForPane(paneId)?.backgroundTasks ?? [];
   }
 
-  /** Re-register an agent under a new sessionId, migrating per-session keyed state. */
+  /** Re-register an agent under a new sessionId. */
   private rekeyAgent(agent: StdioAgent, newSessionId: string): void {
     let oldKey: string | undefined;
     for (const [key, a] of this.agents) {
@@ -622,32 +735,8 @@ export class DesktopHost {
     }
     if (oldKey && oldKey !== newSessionId) {
       this.agents.delete(oldKey);
-      const act = this.lastActivatedAt.get(oldKey);
-      if (act !== undefined) { this.lastActivatedAt.delete(oldKey); this.lastActivatedAt.set(newSessionId, act); }
     }
     this.agents.set(newSessionId, agent);
-  }
-
-  /** FR-031: evict the least-recently-used idle agent beyond MAX_LIVE_AGENTS. */
-  private evictIdleAgentsIfNeeded(): void {
-    while (this.agents.size > MAX_LIVE_AGENTS) {
-      let victim: StdioAgent | null = null;
-      let victimKey: string | undefined;
-      let oldest = Infinity;
-      for (const [key, agent] of this.agents) {
-        // Agents shown in a pane are never evicted — closing the pane is what
-        // makes a visible session eviction-eligible again.
-        if (this.panes.some((p) => p.agent === agent) || agent.isStreaming) continue;
-        if ([...this.pendingConfirmations.values()].some((p) => p.agent === agent)) continue;
-        const at = this.lastActivatedAt.get(key) ?? 0;
-        if (at < oldest) { oldest = at; victim = agent; victimKey = key; }
-      }
-      if (!victim || !victimKey) break; // everyone is busy/visible — allow overflow
-      this.agents.delete(victimKey);
-      this.lastActivatedAt.delete(victimKey);
-      this.agentWorktreeInfo.delete(victim);
-      void victim.destroy().catch(() => { /* best-effort */ });
-    }
   }
 
   /**
@@ -663,14 +752,14 @@ export class DesktopHost {
     this.configStore.addRecentWorkdir(dir);
 
     if (!forceNew) {
+      // Pool iteration order is recency order (bindAgentToPane re-keys), so
+      // the last match is the most recently activated session in this dir.
       let best: StdioAgent | null = null;
-      let bestAt = -1;
-      for (const [sid, agent] of this.agents) {
+      for (const agent of this.agents.values()) {
         if (agent.workingDirectory !== dir) continue;
         // Never steal an agent shown in another pane — one session, one pane.
         if (this.panes.some((p) => p.agent === agent && p.paneId !== paneId)) continue;
-        const at = this.lastActivatedAt.get(sid) ?? 0;
-        if (at > bestAt) { bestAt = at; best = agent; }
+        best = agent;
       }
       if (best) {
         await this.activateAgentInPane(paneId, best);
@@ -940,7 +1029,6 @@ export class DesktopHost {
 
     if (target) {
       this.agents.delete(sessionId);
-      this.lastActivatedAt.delete(sessionId);
       this.agentWorktreeInfo.delete(target);
     }
 
@@ -1192,6 +1280,20 @@ export class DesktopHost {
 
       case 'desktopFocusPane':
         this.handleFocusPane(msg.paneId as string);
+        break;
+
+      case 'desktopMovePane':
+        this.handleMovePane(msg.paneId as string, msg.toIndex as number);
+        break;
+
+      case 'desktopResizePanes':
+        this.handleResizePanes(msg.widths);
+        break;
+
+      case 'desktopPreviewState':
+        // The preview pane reports its width (0 = closed) so the min-pane-width
+        // gate can deduct it from the chat area.
+        this.previewWidthPx = typeof msg.width === 'number' && msg.width > 0 ? msg.width : 0;
         break;
 
       case 'restoreSession':

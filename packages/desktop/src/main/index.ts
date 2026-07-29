@@ -13,7 +13,7 @@ import { WEBVIEW_CHANNEL } from './channels';
 import { ConfigStore } from './configStore';
 import { DesktopHost } from './desktopHost';
 import { isLocalhostUrl } from './isLocalhostUrl';
-import { attachSessionSwitchKeys, installApplicationMenu, type SessionSwitchActions } from './menu';
+import { attachSessionSwitchKeys, installApplicationMenu, updateMenuState, type SessionSwitchActions } from './menu';
 
 /**
  * GUI-launched apps (Finder/Spotlight) get a bare system PATH without the
@@ -51,7 +51,8 @@ let mainWindow: BrowserWindow | null = null;
 let host: DesktopHost | null = null;
 
 // Session-switch shortcuts (Ctrl+Tab / Ctrl+Shift+Tab, macOS also
-// Cmd+Shift+] / [) — shared by the application menu and before-input-event.
+// Cmd+Shift+] / [) plus 新对话 Cmd+N / 关闭分屏 Cmd+W — shared by the
+// application menu and before-input-event.
 const sessionSwitchActions: SessionSwitchActions = {
   nextSession: () => {
     void host?.activateAdjacentSession(1);
@@ -59,6 +60,8 @@ const sessionSwitchActions: SessionSwitchActions = {
   prevSession: () => {
     void host?.activateAdjacentSession(-1);
   },
+  newSession: () => host?.newSessionInFocusedPane(),
+  closePane: () => host?.closeFocusedPane(),
 };
 
 const gotLock = app.requestSingleInstanceLock();
@@ -82,6 +85,7 @@ if (!gotLock) {
 
     const configStore = new ConfigStore();
     host = new DesktopHost(configStore);
+    host.onMenuStateChange = updateMenuState;
     installApplicationMenu(sessionSwitchActions);
 
     ipcMain.on(WEBVIEW_CHANNEL, (_event, message: Record<string, unknown>) => {

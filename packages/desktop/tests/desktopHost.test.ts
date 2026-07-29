@@ -183,13 +183,14 @@ import { checkForUpdate } from '../src/main/updateChecker';
 
 const STORE_PATH = '/mock-userData/wave-desktop.json';
 
-function createHost() {
+function createHost(winWidth = 1280) {
   const store = new ConfigStore(STORE_PATH);
   const host = new DesktopHost(store);
   const send = vi.fn();
   const win = {
     webContents: { send },
     isDestroyed: () => false,
+    getContentSize: () => [winWidth, 800],
   } as unknown as BrowserWindow;
   host.setMainWindow(win);
   const sent = (command: string) =>
@@ -213,8 +214,8 @@ function fireSessionId(agent: ReturnType<typeof lastAgent>, sessionId: string) {
   agent.callbacks.onSessionIdChange(sessionId);
 }
 
-async function readyHost() {
-  const ctx = createHost();
+async function readyHost(winWidth?: number) {
+  const ctx = createHost(winWidth);
   // workdir is never persisted — pick it from recents like the real UI flow.
   ctx.store.addRecentWorkdir('/work/a');
   h.existingPaths.add('/work/a');
@@ -1549,28 +1550,22 @@ describe('multi-session parallel (FR-031)', () => {
     expect(sent('setInitialState').at(-1)?.messages).toEqual([{ id: 'm-sess-1' }, { id: 'bg-1' }]);
   });
 
-  it('evicts the least-recently-used idle agent beyond the pool cap, never streaming ones', async () => {
+  it('never evicts idle agents — the pool is unbounded until session deletion', async () => {
     const { host } = await readyHost();
     const agents = [seedActiveSession('sess-1')];
-    // Spawn up to the cap (8); each new session needs a non-empty active one.
-    for (let i = 2; i <= 8; i++) {
+    // Spawn well beyond the old pool cap; each new session needs a non-empty active one.
+    for (let i = 2; i <= 10; i++) {
       await host.handleWebviewMessage({ command: 'clearChat' });
       agents.push(seedActiveSession(`sess-${i}`));
     }
-    // Overflow by one -> the oldest idle agent (sess-1) is evicted.
-    await host.handleWebviewMessage({ command: 'clearChat' });
-    agents.push(seedActiveSession('sess-9'));
 
-    expect(agents[0].destroy).toHaveBeenCalled();
-    for (const a of agents.slice(1)) expect(a.destroy).not.toHaveBeenCalled();
+    for (const a of agents) expect(a.destroy).not.toHaveBeenCalled();
 
-    // A streaming agent is never the victim — the next-oldest idle one goes.
-    agents[1].isStreaming = true;
-    await host.handleWebviewMessage({ command: 'clearChat' });
-    agents.push(seedActiveSession('sess-10'));
-
-    expect(agents[1].destroy).not.toHaveBeenCalled();
-    expect(agents[2].destroy).toHaveBeenCalled();
+    // Switching back to the oldest session still reuses its live agent.
+    const before = h.agentInstances.length;
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
+    expect(h.agentInstances).toHaveLength(before);
+    expect(agents[0].restoreSession).not.toHaveBeenCalled();
   });
 
   it('dispose destroys every live agent in the pool', async () => {
@@ -1595,7 +1590,9 @@ describe('split-view panes (FR-032~036)', () => {
   };
 
   const panePushes = (sent: ReturnType<typeof createHost>['sent']) =>
-    sent('desktopPanes').map((m) => m as { panes: Array<{ paneId: string; sessionId?: string }>; focusedPaneId: string });
+    sent('desktopPanes').map(
+      (m) => m as { panes: Array<{ paneId: string; sessionId?: string; width?: number }>; focusedPaneId: string },
+    );
 
   it('webviewReady pushes an initial single-pane layout', async () => {
     const { sent } = await readyHost();
@@ -1688,26 +1685,27 @@ describe('split-view panes (FR-032~036)', () => {
     expect(panePushes(sent).at(-1)?.panes).toHaveLength(1);
   });
 
-  it('a pane-bound agent is exempt from LRU eviction', async () => {
+  it('a pane-bound agent survives any number of later sessions', async () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
     // Pin sess-2 in a second pane (pane-1 keeps sess-1).
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
     const paneAgent = lastAgent();
     const firstPane = panePushes(sent).at(-1)!.panes[0];
-    const spawned = h.agentInstances.length;
 
-    // Focus pane-1 so the overflow loop only replaces ITS agent, leaving the
+    // Focus pane-1 so the spawn loop only replaces ITS agent, leaving the
     // sess-2 pane bound.
     await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: firstPane.paneId });
     for (let i = 3; i <= 10; i++) {
       await host.handleWebviewMessage({ command: 'clearChat' });
       seedActiveSession(`sess-${i}`);
     }
-    expect(h.agentInstances.length).toBeGreaterThan(spawned);
 
-    // sess-2 is bound to a pane — never the victim even though it is old.
+    // No eviction: the sess-2 pane is untouched and its agent stays alive.
     expect(paneAgent.destroy).not.toHaveBeenCalled();
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(2);
+    expect(layout.panes[1].sessionId).toBe('sess-2');
   });
 
   it('desktopDeleteSession closes the focused pane showing it instead of resetting to a fresh session', async () => {
@@ -1876,5 +1874,105 @@ describe('input focus on conversation switch', () => {
     await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: firstPane.paneId });
 
     expect(sent('focusInput')).toHaveLength(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// native menu actions (spec: desktop-split-view-multi-chat §原生菜单)
+// ---------------------------------------------------------------------------
+
+describe('native menu actions', () => {
+  const seedActiveSession = (sessionId: string) => {
+    const agent = lastAgent();
+    agent.messages = [{ id: `m-${sessionId}` }];
+    fireSessionId(agent, sessionId);
+    return agent;
+  };
+
+  const panePushes = (sent: ReturnType<typeof createHost>['sent']) =>
+    sent('desktopPanes').map((m) => m as { panes: Array<{ paneId: string; sessionId?: string }>; focusedPaneId: string });
+
+  it('newSessionInFocusedPane resets the focused pane to a new session', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const agentsBefore = h.agentInstances.length;
+
+    await host.newSessionInFocusedPane();
+
+    expect(h.agentInstances.length).toBe(agentsBefore + 1);
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].sessionId).not.toBe('sess-1');
+  });
+
+  it('newSessionInFocusedPane is a no-op while the active agent streams', async () => {
+    const { host } = await readyHost();
+    lastAgent().isStreaming = true;
+    const agentsBefore = h.agentInstances.length;
+
+    await host.newSessionInFocusedPane();
+
+    expect(h.agentInstances.length).toBe(agentsBefore);
+  });
+
+  it('closeFocusedPane closes the focused pane and keeps its agent alive', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const left = lastAgent();
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    expect(panePushes(sent).at(-1)!.panes).toHaveLength(2);
+    const right = lastAgent();
+
+    await host.closeFocusedPane();
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].sessionId).toBe('sess-1');
+    expect(left.destroy).not.toHaveBeenCalled();
+    expect(right.destroy).not.toHaveBeenCalled();
+  });
+
+  it('closeFocusedPane on the sole pane with a session resets it to a new session', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const old = lastAgent();
+    const agentsBefore = h.agentInstances.length;
+
+    await host.closeFocusedPane();
+
+    expect(h.agentInstances.length).toBe(agentsBefore + 1);
+    expect(old.destroy).not.toHaveBeenCalled();
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].sessionId).not.toBe('sess-1');
+  });
+
+  it('closeFocusedPane on the sole pane with an empty new session is a no-op', async () => {
+    const { host, sent } = await readyHost();
+    const agentsBefore = h.agentInstances.length;
+    const pushesBefore = panePushes(sent).length;
+
+    await host.closeFocusedPane();
+
+    expect(h.agentInstances.length).toBe(agentsBefore);
+    expect(panePushes(sent).length).toBe(pushesBefore);
+  });
+
+  it('onMenuStateChange fires on pushPanes and stream toggles with enabled states', async () => {
+    const { host } = await readyHost();
+    const fn = vi.fn();
+    host.onMenuStateChange = fn;
+
+    const agent = lastAgent();
+    agent.isStreaming = true;
+    agent.callbacks.onLoadingChange(true);
+    expect(fn).toHaveBeenLastCalledWith({ canNewSession: false, canClosePane: true });
+
+    agent.isStreaming = false;
+    agent.callbacks.onLoadingChange(false);
+    expect(fn).toHaveBeenLastCalledWith({ canNewSession: true, canClosePane: true });
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    expect(fn).toHaveBeenLastCalledWith({ canNewSession: true, canClosePane: true });
   });
 });

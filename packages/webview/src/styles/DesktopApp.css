@@ -489,10 +489,29 @@
     overflow-y: hidden;
 }
 
-/* Drop target highlight while a sidebar session drags over the row. */
-.desktop-pane-row--drop {
-    outline: 2px dashed var(--vscode-focusBorder, #007fd4);
-    outline-offset: -2px;
+/* Resize handle between adjacent panes; overlays the pane border. */
+.desktop-pane-separator {
+    position: relative;
+    z-index: 6;
+    flex: 0 0 5px;
+    margin: 0 -2px;
+    cursor: col-resize;
+}
+
+.desktop-pane-separator:hover,
+.desktop-pane-separator--active {
+    background: var(--vscode-focusBorder, #007fd4);
+}
+
+/* Insertion marker shown while dragging a pane header to reorder. */
+.desktop-pane-drop-indicator {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    z-index: 7;
+    background: var(--vscode-focusBorder, #007fd4);
+    pointer-events: none;
 }
 
 .desktop-pane {
