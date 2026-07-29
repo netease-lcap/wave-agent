@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 为 Agent 初始化仓库（优先级：P1）
+### 用户故事：为 Agent 初始化仓库（优先级：P1）
 
 作为为 Wave Agent 设置新仓库的开发者，我希望运行一个简单的命令，自动分析代码库并为未来的 agent 实例生成指导文件。
 
@@ -21,7 +21,7 @@
 
 ---
 
-### 用户故事 2 - Init 命令的可发现性（优先级：P2）
+### 用户故事：Init 命令的可发现性（优先级：P2）
 
 作为 Wave Agent CLI 的用户，我希望看到 `/init` 作为可用命令，以便我知道它存在以及如何使用它。
 
@@ -45,13 +45,13 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须在 agent 界面中支持 `/init` 斜杠命令。
-- **FR-002**：系统必须使用内置 init skill（`builtin/skills/init/SKILL.md`）的内容作为 `/init` 调用时 agent 的基础指令。
-- **FR-003**：系统必须分析当前仓库以识别构建/测试/lint 命令和高级架构。
-- **FR-004**：系统必须在仓库根目录中创建或更新名为 `AGENTS.md` 的文件。
-- **FR-005**：系统必须确保 `AGENTS.md` 以内置 init skill 中指定的必需前缀开头。
-- **FR-006**：系统必须不包含通用开发实践、冗余指令或 `.wave/rules/` 中的规则，如提示指南中所指定。
-- **FR-007**：系统必须纳入 `.cursor/rules/`、`.cursorrules` 或 `.github/copilot-instructions.md` 中的现有规则（如果它们存在）。
+- 系统必须在 agent 界面中支持 `/init` 斜杠命令。
+- 系统必须使用内置 init skill（`builtin/skills/init/SKILL.md`）的内容作为 `/init` 调用时 agent 的基础指令。
+- 系统必须分析当前仓库以识别构建/测试/lint 命令和高级架构。
+- 系统必须在仓库根目录中创建或更新名为 `AGENTS.md` 的文件。
+- 系统必须确保 `AGENTS.md` 以内置 init skill 中指定的必需前缀开头。
+- 系统必须不包含通用开发实践、冗余指令或 `.wave/rules/` 中的规则，如提示指南中所指定。
+- 系统必须纳入 `.cursor/rules/`、`.cursorrules` 或 `.github/copilot-instructions.md` 中的现有规则（如果它们存在）。
 
 ### 关键实体
 

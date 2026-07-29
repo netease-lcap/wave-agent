@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 使用名称创建 Worktree（优先级：P1）
+### 用户故事：使用名称创建 Worktree（优先级：P1）
 
 作为开发者，我希望在专用的 git worktree 中启动 Wave 会话并指定名称，以便在不影响主工作目录的情况下开发功能。
 
@@ -20,7 +20,7 @@
 
 ---
 
-### 用户故事 2 - 自动生成 Worktree 名称（优先级：P1）
+### 用户故事：自动生成 Worktree 名称（优先级：P1）
 
 作为开发者，我希望快速启动 worktree 会话而不用想名称，以便立即开始工作。
 
@@ -35,7 +35,7 @@
 
 ---
 
-### 用户故事 3 - 带未提交更改退出（优先级：P1）
+### 用户故事：带未提交更改退出（优先级：P1）
 
 作为开发者，我希望在退出 worktree 会话时如果有未提交的更改收到警告，这样我就不会意外丢失工作。
 
@@ -51,7 +51,7 @@
 
 ---
 
-### 用户故事 4 - 带新提交退出（优先级：P2）
+### 用户故事：带新提交退出（优先级：P2）
 
 作为开发者，我希望在退出 worktree 会话时如果有新提交收到警告，这样我就知道如果移除 worktree 分支将被删除。
 
@@ -66,7 +66,7 @@
 
 ---
 
-### 用户故事 5 - 干净退出（优先级：P2）
+### 用户故事：干净退出（优先级：P2）
 
 作为开发者，我希望如果我没有做任何更改，CLI 自动清理 worktree，这样我就不必手动删除空的 worktree。
 
@@ -80,7 +80,7 @@
 
 ---
 
-### 用户故事 6 - 会话中 EnterWorktree 工具（优先级：P1）
+### 用户故事：会话中 EnterWorktree 工具（优先级：P1）
 
 作为使用 Wave 的开发者，我希望在会话中通过向 AI 请求来创建 worktree，以便在不重启会话的情况下隔离我的工作。
 
@@ -99,7 +99,7 @@
 
 ---
 
-### 用户故事 7 - 会话中 ExitWorktree 工具（优先级：P1）
+### 用户故事：会话中 ExitWorktree 工具（优先级：P1）
 
 作为使用 Wave 的开发者，我希望在会话中通过向 AI 请求来退出 worktree，以便在不结束会话的情况下返回原始工作目录。
 
@@ -117,7 +117,7 @@
 
 ---
 
-### 用户故事 8 - stdio 多 Agent 并发下的 Worktree 会话隔离（优先级：P1）
+### 用户故事：stdio 多 Agent 并发下的 Worktree 会话隔离（优先级：P1）
 
 作为通过 stdio 后端同时运行多个会话的用户（例如 VS Code 侧边栏 + 多个编辑器标签页 / 多个窗口，或 JetBrains 插件），我希望一个会话进入 worktree 不会影响其它并发会话的工作目录、worktree 状态或工具执行，以便每个会话彼此隔离、互不干扰。
 
@@ -134,7 +134,7 @@
 
 ---
 
-### 用户故事 9 - 基于本地 HEAD 创建 Worktree（优先级：P2）
+### 用户故事：基于本地 HEAD 创建 Worktree（优先级：P2）
 
 作为在本地分支上工作的开发者，我希望新 worktree 可基于当前本地 HEAD（而非 origin 默认分支）创建，以便基于尚未推送的本地分支工作、并避免联网 fetch。
 
@@ -145,7 +145,7 @@
 **验收场景**：
 
 1. **假设** settings.json 设置 `worktree.baseRef: "head"`，**当**通过 CLI `-w` 或 `EnterWorktree` 创建新 worktree 时，**则**新分支基于当前本地 HEAD 创建，不解析 `origin/<默认分支>` 也不发起 fetch。
-2. **假设** `worktree.baseRef` 未设置或为 `"fresh"`，**当**创建新 worktree 时，**则**沿用现有 `fresh` 行为（基于 `origin/<默认分支>`，fetch→HEAD 兜底），与 FR-003/FR-040 一致。
+2. **假设** `worktree.baseRef` 未设置或为 `"fresh"`，**当**创建新 worktree 时，**则**沿用现有 `fresh` 行为（基于 `origin/<默认分支>`，fetch→HEAD 兜底），与既有 fresh 行为一致。
 
 ---
 
@@ -166,58 +166,58 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须支持 `-w` 和 `--worktree [feat-name]` 命令行参数。
-- **FR-002**：如果未提供 `<feat-name>`，系统必须生成唯一的功能名称（例如 `adjective-adjective-noun`）。
-- **FR-003**：系统必须在 `.wave/worktrees/<feat-name>`（绝对路径）创建 git worktree，相对于**主仓库根目录**（即使从 worktree 内运行），从默认远程分支分支。默认分支必须使用文件系统读取（`.git/refs/remotes/origin/HEAD`）而非子进程调用来解析。如果 `origin/HEAD` 指向不再存在的分支（陈旧引用），系统必须依次回退到 `refs/remotes/origin/main`、`refs/remotes/origin/master`，最终回退到硬编码的 `main`。
-- **FR-004**：系统必须将 worktree 分支命名为 `worktree-<feat-name>`。
-- **FR-005**：CLI 启动时若通过 `-w` 进入 worktree，允许在启动阶段调用一次 `process.chdir()` 到 worktree 路径（便于 tmux 和其他窗口复制功能）。但会话中途通过 `EnterWorktree`/`ExitWorktree` 切换工作目录时，系统不得调用 `process.chdir()`；工作目录的切换必须只作用于当前会话的 DI 容器（见 FR-041）。`AIManager.setWorkdir()` 不得改变进程级 `process.cwd()`。
-- **FR-006**：系统必须在退出时检测 worktree 中的未提交更改（已暂存或未暂存，通过 `git status --porcelain` 识别）。
-- **FR-007**：系统必须在退出时检测 worktree 中不在默认远程分支中的提交（通过 `git log @{u}..HEAD` 识别）。
-- **FR-008**：如果退出时存在未提交的更改或新提交，系统必须显示交互式提示。
-- **FR-009**：退出提示必须提供两个选项："Keep worktree"和"Remove worktree"。
-- **FR-010**："Keep worktree"必须退出 CLI 同时保持 worktree 目录完整。
-- **FR-011**："Remove worktree"必须删除 git worktree（使用 `git worktree remove --force`）和 worktree 分支（使用 `git branch -D`）。
-- **FR-012**：如果未检测到更改或提交，系统必须无提示退出并删除 git worktree 和分支。
-- **FR-013**：如果在 git 仓库之外使用 `-w` 或 `--worktree`，系统必须报错并退出。
-- **FR-014**：系统必须处理 `SIGINT`（Ctrl+C）和 `SIGTERM` 信号，触发退出检测和提示流程。
-- **FR-015**：如果用户取消退出提示（例如通过 Esc），CLI 必须返回活动会话。
-- **FR-016**：如果同名 worktree 已存在，系统必须重用它并跳过创建步骤。
-- **FR-017**：退出检测必须在 500ms 内完成，以避免用户可感知的延迟。
-- **FR-018**：系统必须在新 worktree 创建时触发 `WorktreeCreate` 钩子事件。
-- **FR-019**：`WorktreeCreate` 钩子必须通过 stdin 提供包含 `name` 字段的 JSON 输入。钩子必须在新创建的 worktree 目录中执行。
-- **FR-020**：重用现有 worktree 时不得触发 `WorktreeCreate` 钩子。
-- **FR-021**：在 worktree 会话期间，系统必须自动拒绝尝试修改主仓库（当前 worktree 之外）文件的 `Write` 和 `Edit` 工具操作。
-- **FR-022**：自动拒绝机制必须提供描述性错误消息，说明在 worktree 会话期间对主仓库的修改受到限制。
-- **FR-023**：自动拒绝机制不得限制对当前计划文件的修改，即使它位于 worktree 之外。
-- **FR-024**：系统必须在 worktree 会话期间在系统提示中包含 worktree 隔离指导，警告 agent 它在隔离的 git worktree 中工作，不应修改 worktree 之外的文件。
-- **FR-025**：系统提示指导必须包含 worktree 路径、原始 CWD 路径和分支名称，以便 agent 可以从先前上下文转换绝对路径。
-- **FR-026**：`-w` CLI 标志必须注册 worktree 会话状态（通过 `setCurrentWorktreeSession`），以便提示指导包含在系统提示中。
-- **FR-027**：系统必须提供 `EnterWorktree` 工具，创建 git worktree 并将会话的工作目录切换到该处。
-- **FR-028**：`EnterWorktree` 工具必须接受可选的 `name` 参数。如果未提供，必须生成随机名称。
-- **FR-029**：`EnterWorktree` 工具必须验证 worktree 名称以防止路径遍历和无效字符（最多 64 个字符，仅允许字母、数字、点、下划线、短横线和 `/` 用于嵌套）。
-- **FR-030**：如果**当前会话**已在活动 worktree 会话中，`EnterWorktree` 工具必须失败。worktree 会话状态必须按会话（per-Agent）隔离，不得使用进程级模块单例，以免影响同一进程内的其它并发会话（见 FR-042）。
-- **FR-031**：如果不在 git 仓库中，`EnterWorktree` 工具必须失败，并显示建议使用 WorktreeCreate/WorktreeRemove 钩子的错误消息。
-- **FR-032**：`EnterWorktree` 工具必须通过 `AIManager.setWorkdir()` 更新**当前会话**的工作目录（仅更新该会话独立的 DI 容器，不调用 `process.chdir()`）。工作目录的更新必须限定在当前会话范围内，不得影响同一 stdio 进程中其它并发会话的工作目录或进程级 `process.cwd()`（见 FR-041）。
-- **FR-033**：系统必须提供 `ExitWorktree` 工具，退出 worktree 会话并恢复原始工作目录。
-- **FR-034**：`ExitWorktree` 工具必须接受必需的 `action` 参数：`"keep"`（保留 worktree）或 `"remove"`（删除 worktree）。
-- **FR-035**：`ExitWorktree` 工具必须接受可选的 `discard_changes` 参数（默认 `false`）。当 `action` 为 `"remove"` 且 worktree 有未提交文件或新提交时，工具必须拒绝，除非 `discard_changes: true`。
-- **FR-036**：如果没有活跃的 EnterWorktree 会话，`ExitWorktree` 工具必须是无操作（无文件系统更改）。
-- **FR-037**：`ExitWorktree` 工具必须通过 `AIManager.setWorkdir()` 将会话的工作目录恢复到原始 CWD。
-- **FR-038**：当 `action` 为 `"remove"` 时，系统必须使用 `git worktree remove --force` 删除 worktree 目录，并使用 `git branch -D` 删除关联分支。
-- **FR-039**：`EnterWorktree` 工具不得触发 `WorktreeCreate` 钩子事件（钩子支持不在会话中工具的范围内）。
-- **FR-040**：系统必须验证从 `origin/HEAD` 解析的分支存在于 `refs/remotes/origin/` 中。如果分支不存在（陈旧的 `origin/HEAD`），系统必须依次回退到 `origin/main`、`origin/master`，最终回退到硬编码的 `main`，全部通过文件系统读取解析，不发起网络请求。
+- 系统必须支持 `-w` 和 `--worktree [feat-name]` 命令行参数。
+- 如果未提供 `<feat-name>`，系统必须生成唯一的功能名称（例如 `adjective-adjective-noun`）。
+- 系统必须在 `.wave/worktrees/<feat-name>`（绝对路径）创建 git worktree，相对于**主仓库根目录**（即使从 worktree 内运行），从默认远程分支分支。默认分支必须使用文件系统读取（`.git/refs/remotes/origin/HEAD`）而非子进程调用来解析。如果 `origin/HEAD` 指向不再存在的分支（陈旧引用），系统必须依次回退到 `refs/remotes/origin/main`、`refs/remotes/origin/master`，最终回退到硬编码的 `main`。
+- 系统必须将 worktree 分支命名为 `worktree-<feat-name>`。
+- CLI 启动时若通过 `-w` 进入 worktree，允许在启动阶段调用一次 `process.chdir()` 到 worktree 路径（便于 tmux 和其他窗口复制功能）。但会话中途通过 `EnterWorktree`/`ExitWorktree` 切换工作目录时，系统不得调用 `process.chdir()`；工作目录的切换必须只作用于当前会话的 DI 容器。`AIManager.setWorkdir()` 不得改变进程级 `process.cwd()`。
+- 系统必须在退出时检测 worktree 中的未提交更改（已暂存或未暂存，通过 `git status --porcelain` 识别）。
+- 系统必须在退出时检测 worktree 中不在默认远程分支中的提交（通过 `git log @{u}..HEAD` 识别）。
+- 如果退出时存在未提交的更改或新提交，系统必须显示交互式提示。
+- 退出提示必须提供两个选项："Keep worktree"和"Remove worktree"。
+- "Keep worktree"必须退出 CLI 同时保持 worktree 目录完整。
+- "Remove worktree"必须删除 git worktree（使用 `git worktree remove --force`）和 worktree 分支（使用 `git branch -D`）。
+- 如果未检测到更改或提交，系统必须无提示退出并删除 git worktree 和分支。
+- 如果在 git 仓库之外使用 `-w` 或 `--worktree`，系统必须报错并退出。
+- 系统必须处理 `SIGINT`（Ctrl+C）和 `SIGTERM` 信号，触发退出检测和提示流程。
+- 如果用户取消退出提示（例如通过 Esc），CLI 必须返回活动会话。
+- 如果同名 worktree 已存在，系统必须重用它并跳过创建步骤。
+- 退出检测必须在 500ms 内完成，以避免用户可感知的延迟。
+- 系统必须在新 worktree 创建时触发 `WorktreeCreate` 钩子事件。
+- `WorktreeCreate` 钩子必须通过 stdin 提供包含 `name` 字段的 JSON 输入。钩子必须在新创建的 worktree 目录中执行。
+- 重用现有 worktree 时不得触发 `WorktreeCreate` 钩子。
+- 在 worktree 会话期间，系统必须自动拒绝尝试修改主仓库（当前 worktree 之外）文件的 `Write` 和 `Edit` 工具操作。
+- 自动拒绝机制必须提供描述性错误消息，说明在 worktree 会话期间对主仓库的修改受到限制。
+- 自动拒绝机制不得限制对当前计划文件的修改，即使它位于 worktree 之外。
+- 系统必须在 worktree 会话期间在系统提示中包含 worktree 隔离指导，警告 agent 它在隔离的 git worktree 中工作，不应修改 worktree 之外的文件。
+- 系统提示指导必须包含 worktree 路径、原始 CWD 路径和分支名称，以便 agent 可以从先前上下文转换绝对路径。
+- `-w` CLI 标志必须注册 worktree 会话状态（通过 `setCurrentWorktreeSession`），以便提示指导包含在系统提示中。
+- 系统必须提供 `EnterWorktree` 工具，创建 git worktree 并将会话的工作目录切换到该处。
+- `EnterWorktree` 工具必须接受可选的 `name` 参数。如果未提供，必须生成随机名称。
+- `EnterWorktree` 工具必须验证 worktree 名称以防止路径遍历和无效字符（最多 64 个字符，仅允许字母、数字、点、下划线、短横线和 `/` 用于嵌套）。
+- 如果**当前会话**已在活动 worktree 会话中，`EnterWorktree` 工具必须失败。worktree 会话状态必须按会话（per-Agent）隔离，不得使用进程级模块单例，以免影响同一进程内的其它并发会话。
+- 如果不在 git 仓库中，`EnterWorktree` 工具必须失败，并显示建议使用 WorktreeCreate/WorktreeRemove 钩子的错误消息。
+- `EnterWorktree` 工具必须通过 `AIManager.setWorkdir()` 更新**当前会话**的工作目录（仅更新该会话独立的 DI 容器，不调用 `process.chdir()`）。工作目录的更新必须限定在当前会话范围内，不得影响同一 stdio 进程中其它并发会话的工作目录或进程级 `process.cwd()`。
+- 系统必须提供 `ExitWorktree` 工具，退出 worktree 会话并恢复原始工作目录。
+- `ExitWorktree` 工具必须接受必需的 `action` 参数：`"keep"`（保留 worktree）或 `"remove"`（删除 worktree）。
+- `ExitWorktree` 工具必须接受可选的 `discard_changes` 参数（默认 `false`）。当 `action` 为 `"remove"` 且 worktree 有未提交文件或新提交时，工具必须拒绝，除非 `discard_changes: true`。
+- 如果没有活跃的 EnterWorktree 会话，`ExitWorktree` 工具必须是无操作（无文件系统更改）。
+- `ExitWorktree` 工具必须通过 `AIManager.setWorkdir()` 将会话的工作目录恢复到原始 CWD。
+- 当 `action` 为 `"remove"` 时，系统必须使用 `git worktree remove --force` 删除 worktree 目录，并使用 `git branch -D` 删除关联分支。
+- `EnterWorktree` 工具不得触发 `WorktreeCreate` 钩子事件（钩子支持不在会话中工具的范围内）。
+- 系统必须验证从 `origin/HEAD` 解析的分支存在于 `refs/remotes/origin/` 中。如果分支不存在（陈旧的 `origin/HEAD`），系统必须依次回退到 `origin/main`、`origin/master`，最终回退到硬编码的 `main`，全部通过文件系统读取解析，不发起网络请求。
 
 #### 多会话隔离需求
 
-- **FR-041**：会话的工作目录必须按会话（per-Agent）独立存储与解析。在 stdio 多会话模式下，一个会话通过 `EnterWorktree`/`ExitWorktree` 改变工作目录，不得改变同一进程中其它并发会话的工作目录，也不得改变进程级 `process.cwd()` 以致污染依赖它的其它逻辑（例如 cron、skill 加载、文件搜索、插件核心）。
-- **FR-042**：worktree 会话状态（当前是否处于 worktree、其路径/原始 CWD/分支名）必须按会话隔离存储，不得使用进程级模块单例。一个会话进入 worktree 后，其它会话调用 `EnterWorktree` 不得被误拒，调用 `ExitWorktree` 不得读取到其它会话的 worktree 会话状态。
-- **FR-043**：`ExitWorktree` 工具必须只作用于**发起调用的会话自身**的 worktree 会话。当 `action` 为 `"remove"` 时，只能删除本会话的 worktree 目录与分支，绝不能删除或修改其它会话的 worktree 目录、分支或工作目录。
-- **FR-044**：`ExitWorktree` 的无操作判定（FR-036）必须基于**当前会话**是否处于活动 worktree 会话；当前会话未进入 worktree 时必须返回无操作，即使同一进程中的其它会话正处于 worktree 会话中。
+- 会话的工作目录必须按会话（per-Agent）独立存储与解析。在 stdio 多会话模式下，一个会话通过 `EnterWorktree`/`ExitWorktree` 改变工作目录，不得改变同一进程中其它并发会话的工作目录，也不得改变进程级 `process.cwd()` 以致污染依赖它的其它逻辑（例如 cron、skill 加载、文件搜索、插件核心）。
+- worktree 会话状态（当前是否处于 worktree、其路径/原始 CWD/分支名）必须按会话隔离存储，不得使用进程级模块单例。一个会话进入 worktree 后，其它会话调用 `EnterWorktree` 不得被误拒，调用 `ExitWorktree` 不得读取到其它会话的 worktree 会话状态。
+- `ExitWorktree` 工具必须只作用于**发起调用的会话自身**的 worktree 会话。当 `action` 为 `"remove"` 时，只能删除本会话的 worktree 目录与分支，绝不能删除或修改其它会话的 worktree 目录、分支或工作目录。
+- `ExitWorktree` 的无操作判定必须基于**当前会话**是否处于活动 worktree 会话；当前会话未进入 worktree 时必须返回无操作，即使同一进程中的其它会话正处于 worktree 会话中。
 
 #### Worktree Base Ref 配置
 
-- **FR-045**：系统必须支持顶层 settings.json 字段 `worktree.baseRef`，枚举 `"fresh"`（默认）| `"head"`。`fresh` 基于 `origin/<默认分支>` 创建新分支（沿用 FR-003/FR-040）；`head` 基于当前本地 HEAD 创建新分支，跳过 origin 解析与网络 fetch。
-- **FR-046**：`EnterWorktree` 工具与 CLI `-w` 启动路径必须读取并应用 `worktree.baseRef`；未设置或值非法时回退默认 `"fresh"`（行为与现状一致，不影响存量用户）。设置值必须通过 `ConfigurationService` 解析并经 `AIManager` 暴露，按会话读取。
+- 系统必须支持顶层 settings.json 字段 `worktree.baseRef`，枚举 `"fresh"`（默认）| `"head"`。`fresh` 基于 `origin/<默认分支>` 创建新分支（沿用既有 fresh 行为）；`head` 基于当前本地 HEAD 创建新分支，跳过 origin 解析与网络 fetch。
+- `EnterWorktree` 工具与 CLI `-w` 启动路径必须读取并应用 `worktree.baseRef`；未设置或值非法时回退默认 `"fresh"`（行为与现状一致，不影响存量用户）。设置值必须通过 `ConfigurationService` 解析并经 `AIManager` 暴露，按会话读取。
 
 ### 关键实体
 

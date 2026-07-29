@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 通过 Skill 管理 Wave 设置（优先级：P1）
+### 用户故事：通过 Skill 管理 Wave 设置（优先级：P1）
 
 作为用户，我希望能够使用简单的 skill 命令查看和修改我的 Wave 设置（用户、项目或本地），这样就不必手动查找和编辑 JSON 文件。
 
@@ -20,7 +20,7 @@
 
 ---
 
-### 用户故事 2 - settings.json 编写指导（优先级：P2）
+### 用户故事：settings.json 编写指导（优先级：P2）
 
 作为用户，我希望 `settings` skill 提供如何编写 `settings.json` 的指导和文档，包括可用字段及其含义。
 
@@ -34,7 +34,7 @@
 
 ---
 
-### 用户故事 3 - 复杂 Hook 的文档（优先级：P3）
+### 用户故事：复杂 Hook 的文档（优先级：P3）
 
 作为用户，我希望复杂 hook 配置的详细文档在单独的文件中可用，从主 skill 文档链接，这样我就可以了解如何使用高级功能而不会使主指南变得混乱。
 
@@ -58,14 +58,14 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须提供内置的 `settings` skill。
-- **FR-002**：`settings` skill 必须能够读取和显示来自用户、项目和本地作用域的合并配置。
-- **FR-003**：`settings` skill 必须允许用户在特定作用域（用户、项目或本地）中更新设置。
-- **FR-004**：`settings` skill 必须提供关于如何配置 Wave 的指南，涵盖 `settings.json` 中所有支持的字段（`hooks`、`env`、`permissions`、`enabledPlugins`、`language`、`autoMemoryEnabled`、`autoMemoryFrequency`、`models`）以及其他配置文件（`.mcp.json` 用于 MCP 服务器包括 `type` 传输字段、`.wave/rules/` 用于内存规则、`.wave/skills/` 用于自定义 skill、`.wave/agents/` 用于子 agent）。
-- **FR-005**：系统必须包含 `settings` skill 的 `SKILL.md`。
-- **FR-006**：系统必须为复杂配置创建单独的 markdown 文件（例如 `HOOKS.md`、`ENV.md`、`MCP.md`、`MEMORY.md`、`SKILLS.md`、`SUBAGENTS.md`、`MODELS.md`）并从 `SKILL.md` 链接。
-- **FR-008**：`settings` skill 必须提供关于如何创建和管理自定义 skill 和子 agent 的指导。
-- **FR-007**：`settings` skill 必须在保存更改之前验证配置。
+- 系统必须提供内置的 `settings` skill。
+- `settings` skill 必须能够读取和显示来自用户、项目和本地作用域的合并配置。
+- `settings` skill 必须允许用户在特定作用域（用户、项目或本地）中更新设置。
+- `settings` skill 必须提供关于如何配置 Wave 的指南，涵盖 `settings.json` 中所有支持的字段（`hooks`、`env`、`permissions`、`enabledPlugins`、`language`、`autoMemoryEnabled`、`autoMemoryFrequency`、`models`）以及其他配置文件（`.mcp.json` 用于 MCP 服务器包括 `type` 传输字段、`.wave/rules/` 用于内存规则、`.wave/skills/` 用于自定义 skill、`.wave/agents/` 用于子 agent）。
+- 系统必须包含 `settings` skill 的 `SKILL.md`。
+- 系统必须为复杂配置创建单独的 markdown 文件（例如 `HOOKS.md`、`ENV.md`、`MCP.md`、`MEMORY.md`、`SKILLS.md`、`SUBAGENTS.md`、`MODELS.md`）并从 `SKILL.md` 链接。
+- `settings` skill 必须提供关于如何创建和管理自定义 skill 和子 agent 的指导。
+- `settings` skill 必须在保存更改之前验证配置。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

@@ -6,7 +6,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 提出附带问题（优先级：P1）
+### 用户故事：提出附带问题（优先级：P1）
 
 作为 CLI 用户，我希望输入 `/btw <question>` 来快速提出一个附带问题，以便我可以在不触发工具执行或打断主对话的情况下获得答案。
 
@@ -19,7 +19,7 @@
 
 ---
 
-### 用户故事 2 - BTW 期间的视觉反馈（优先级：P2）
+### 用户故事：BTW 期间的视觉反馈（优先级：P2）
 
 作为 CLI 用户，我希望在附带问题激活时有清晰的视觉指示器，以便我可以将其与主对话区分开来。
 
@@ -41,13 +41,13 @@
 
 ### 功能需求
 
-- **FR-001**：SDK 必须提供 `AiService.btw()` 方法，使用阻止工具使用的专门系统提示调用 AI。
-- **FR-002**：`Agent` 类必须暴露委托到 `AiService.btw()` 的 `askBtw()` 方法。
-- **FR-003**：`/btw` 命令必须绕过主消息队列并立即处理。
-- **FR-004**：附带问题和答案不得添加到主聊天历史或用户输入历史中。
-- **FR-005**：CLI 必须渲染 `BtwDisplay` 组件，显示问题并带有状态指示器（加载时黄色，完成时绿色）。
-- **FR-006**：当附带问题活动时，InputBox 必须被隐藏。
-- **FR-007**：答案显示后，`BtwDisplay` 必须显示"ESC to dismiss"提示。
-- **FR-008**：按下 **ESC** 必须关闭 `BtwDisplay` 并恢复 InputBox。
-- **FR-009**：`inputReducer` 必须跟踪 `btwState`，包含 `question`、`answer` 和 `isLoading` 字段。
-- **FR-010**：`/btw <question>` 命令必须是单步流程；不带问题的 `/btw` 被忽略。
+- SDK 必须提供 `AiService.btw()` 方法，使用阻止工具使用的专门系统提示调用 AI。
+- `Agent` 类必须暴露委托到 `AiService.btw()` 的 `askBtw()` 方法。
+- `/btw` 命令必须绕过主消息队列并立即处理。
+- 附带问题和答案不得添加到主聊天历史或用户输入历史中。
+- CLI 必须渲染 `BtwDisplay` 组件，显示问题并带有状态指示器（加载时黄色，完成时绿色）。
+- 当附带问题活动时，InputBox 必须被隐藏。
+- 答案显示后，`BtwDisplay` 必须显示"ESC to dismiss"提示。
+- 按下 **ESC** 必须关闭 `BtwDisplay` 并恢复 InputBox。
+- `inputReducer` 必须跟踪 `btwState`，包含 `question`、`answer` 和 `isLoading` 字段。
+- `/btw <question>` 命令必须是单步流程；不带问题的 `/btw` 被忽略。

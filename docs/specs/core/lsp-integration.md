@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 代码导航（优先级：P1）
+### 用户故事：代码导航（优先级：P1）
 
 作为 AI agent，我希望找到符号的定义，以便我可以在不手动搜索文件的情况下了解其实现方式。
 
@@ -20,7 +20,7 @@
 
 ---
 
-### 用户故事 2 - 类型和文档检查（优先级：P1）
+### 用户故事：类型和文档检查（优先级：P1）
 
 作为 AI agent，我希望获取符号的悬停信息，以便我可以看到其类型签名和文档。
 
@@ -34,7 +34,7 @@
 
 ---
 
-### 用户故事 3 - 调用层次探索（优先级：P2）
+### 用户故事：调用层次探索（优先级：P2）
 
 作为 AI agent，我希望看到哪些函数调用了特定方法，以便我可以了解更改它的影响。
 
@@ -59,14 +59,14 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须从 `.lsp.json` 加载 LSP 配置。
-- **FR-002**：系统必须管理 LSP 服务器子进程的生命周期。
-- **FR-003**：系统必须通过 stdio 实现 JSON-RPC 与服务器通信。
-- **FR-004**：系统必须使用 `textDocument/didOpen` 同步文件状态。
-- **FR-005**：系统必须为 agent 提供内置的 `lsp` 工具。
-- **FR-006**：系统必须支持 `goToDefinition`、`hover`、`findReferences`、`documentSymbol`、`workspaceSymbol`、`goToImplementation` 和调用层次操作。
-- **FR-007**：系统必须将 LSP URI 转换为本地文件路径。
-- **FR-008**：系统必须确保所有 LSP 进程在 agent 关闭时被终止。
+- 系统必须从 `.lsp.json` 加载 LSP 配置。
+- 系统必须管理 LSP 服务器子进程的生命周期。
+- 系统必须通过 stdio 实现 JSON-RPC 与服务器通信。
+- 系统必须使用 `textDocument/didOpen` 同步文件状态。
+- 系统必须为 agent 提供内置的 `lsp` 工具。
+- 系统必须支持 `goToDefinition`、`hover`、`findReferences`、`documentSymbol`、`workspaceSymbol`、`goToImplementation` 和调用层次操作。
+- 系统必须将 LSP URI 转换为本地文件路径。
+- 系统必须确保所有 LSP 进程在 agent 关闭时被终止。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

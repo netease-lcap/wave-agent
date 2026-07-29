@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 通过子 agent 执行 Bash 命令（优先级：P1）
+### 用户故事：通过子 agent 执行 Bash 命令（优先级：P1）
 
 作为用户，我希望将复杂的 bash 操作（如 git 工作流或多步骤终端任务）委托给专门的子 agent，以便主 agent 可以专注于高层推理，而子 agent 处理执行细节。
 
@@ -24,13 +24,13 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须包含一个名为"Bash"的新内置子 agent。
-- **FR-002**：Bash 子 agent 必须被描述为"Command execution specialist for running bash commands"。
-- **FR-003**：Bash 子 agent 必须被推荐用于 git 操作、命令执行和其他终端任务。
-- **FR-004**：Bash 子 agent 必须使用特定的系统提示，强调精确性、安全性、清晰的报告和正确的路径引用。
-- **FR-005**：Bash 子 agent 必须继承主 agent 的模型配置。
-- **FR-006**：Bash 子 agent 必须能够访问标准 bash 执行工具（相当于参考中的 `S4`）。
-- **FR-007**：Bash 子 agent 必须注册为"built-in"来源。
+- 系统必须包含一个名为"Bash"的新内置子 agent。
+- Bash 子 agent 必须被描述为"Command execution specialist for running bash commands"。
+- Bash 子 agent 必须被推荐用于 git 操作、命令执行和其他终端任务。
+- Bash 子 agent 必须使用特定的系统提示，强调精确性、安全性、清晰的报告和正确的路径引用。
+- Bash 子 agent 必须继承主 agent 的模型配置。
+- Bash 子 agent 必须能够访问标准 bash 执行工具（相当于参考中的 `S4`）。
+- Bash 子 agent 必须注册为"built-in"来源。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

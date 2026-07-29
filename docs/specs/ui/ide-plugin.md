@@ -8,7 +8,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 与宿主主题一致的外观（优先级：P1）
+### 用户故事：与宿主主题一致的外观（优先级：P1）
 
 作为用户，我希望在 VS Code 或 JetBrains IDE 中打开 Wave 面板时，聊天界面自动跟随当前 IDE 的浅色/深色主题，字体、背景、输入框、按钮与列表选中色都与宿主一致，以便界面不显得突兀。
 
@@ -24,7 +24,7 @@
 
 ---
 
-### 用户故事 2 - 单一 React 源、双宿主构建产物（优先级：P1）
+### 用户故事：单一 React 源、双宿主构建产物（优先级：P1）
 
 作为开发者，我希望 webview 的 React 源码只维护一份（`packages/webview/src/`），VS Code 扩展与 JetBrains 插件各自消费其构建产物，以便一处改动两处生效、避免双份 UI 漂移。
 
@@ -39,7 +39,7 @@
 
 ---
 
-### 用户故事 3 - 稳定的 webview 生命周期与消息协议（优先级：P1）
+### 用户故事：稳定的 webview 生命周期与消息协议（优先级：P1）
 
 作为用户，我希望面板在加载初期就能可靠地把消息发给宿主、并接收宿主下发的指令（流式块、工具块、确认、模式切换等），即便 React 早于宿主桥就绪挂载也不会丢消息。
 
@@ -55,7 +55,7 @@
 
 ---
 
-### 用户故事 4 - IDE 专属对话框组件（优先级：P2）
+### 用户故事：IDE 专属对话框组件（优先级：P2）
 
 作为用户，我希望在面板内能查看版本/会话/模型运行时信息（Status 对话框）、配置语言（Config 对话框）、看到首次引导（Welcome 视图），并以一致的对话框视觉规范呈现，以便这些 IDE 独有能力有统一的入口与外观。
 
@@ -85,38 +85,38 @@
 
 #### 主题与外观
 
-- **FR-001**：webview 必须仅通过 `--vscode-*` CSS 自定义变量消费宿主主题色，不在组件样式中硬编码主题色（允许带 fallback 值）。
-- **FR-002**：VS Code 宿主必须由扩展将 `--vscode-*` 变量注入 webview（VS Code 原生能力），webview 无需自备主题表。
-- **FR-003**：JetBrains 宿主必须从当前 IntelliJ LaF 读取关键颜色（背景、前景、输入、按钮、边框、链接、悬停、列表选中、代码块背景、次级按钮等），生成 `--vscode-*` 覆盖并注入到 `:root`。
-- **FR-004**：JetBrains 宿主必须提供主题基线样式表（深色 `theme-base.css`、浅色 `theme-base-light.css`），承载 80+ 未被 LaF 覆盖覆盖的 `--vscode-*` 变量，使缺省主题完整。
-- **FR-005**：JetBrains 宿主注入顺序必须为主题基线在前、LaF 覆盖在后，使 LaF 派生值经层叠优先胜出。
-- **FR-006**：当 IDE LaF 变更时，JetBrains 宿主必须重新计算 LaF 覆盖与对应主题基线（深/浅随亮/暗翻转），并通过运行时脚本重写对应 `<style>` 元素文本，不整页重载。
-- **FR-007**：JetBrains 宿主必须从 LaF 读取字体族名并注入 `--vscode-font-family` 与 `--vscode-editor-font-family`，使面板字体与宿主一致。
-- **FR-008**：webview 可定义少量 `--wave-*` 自定义变量（如 `--wave-blue`），但每处使用必须带 fallback 值，保证宿主未注入时仍可用。
+- webview 必须仅通过 `--vscode-*` CSS 自定义变量消费宿主主题色，不在组件样式中硬编码主题色（允许带 fallback 值）。
+- VS Code 宿主必须由扩展将 `--vscode-*` 变量注入 webview（VS Code 原生能力），webview 无需自备主题表。
+- JetBrains 宿主必须从当前 IntelliJ LaF 读取关键颜色（背景、前景、输入、按钮、边框、链接、悬停、列表选中、代码块背景、次级按钮等），生成 `--vscode-*` 覆盖并注入到 `:root`。
+- JetBrains 宿主必须提供主题基线样式表（深色 `theme-base.css`、浅色 `theme-base-light.css`），承载 80+ 未被 LaF 覆盖覆盖的 `--vscode-*` 变量，使缺省主题完整。
+- JetBrains 宿主注入顺序必须为主题基线在前、LaF 覆盖在后，使 LaF 派生值经层叠优先胜出。
+- 当 IDE LaF 变更时，JetBrains 宿主必须重新计算 LaF 覆盖与对应主题基线（深/浅随亮/暗翻转），并通过运行时脚本重写对应 `<style>` 元素文本，不整页重载。
+- JetBrains 宿主必须从 LaF 读取字体族名并注入 `--vscode-font-family` 与 `--vscode-editor-font-family`，使面板字体与宿主一致。
+- webview 可定义少量 `--wave-*` 自定义变量（如 `--wave-blue`），但每处使用必须带 fallback 值，保证宿主未注入时仍可用。
 
 #### 共享 webview 包与构建产物
 
-- **FR-009**：`packages/webview/src/` 必须是 webview 唯一手编 React 源；VS Code 与 JetBrains 均消费其构建产物而非各自维护源。
-- **FR-010**：`packages/vsce/webview/` 与 JetBrains 资源目录下的 webview 文件必须为构建产物，禁止手编；任何源改动只能落在 `packages/webview/src/`。
-- **FR-011**：修改 `packages/webview/src/` 后必须重新构建 webview，产物方可同步至各宿主资源目录并被依赖包使用。
-- **FR-012**：JetBrains 宿主必须将 webview 构建产物（`chat.js`、`chat.css`、`vscode-shim.js`）打包进插件资源，运行时解包到临时目录并以 `file://` 加载。
+- `packages/webview/src/` 必须是 webview 唯一手编 React 源；VS Code 与 JetBrains 均消费其构建产物而非各自维护源。
+- `packages/vsce/webview/` 与 JetBrains 资源目录下的 webview 文件必须为构建产物，禁止手编；任何源改动只能落在 `packages/webview/src/`。
+- 修改 `packages/webview/src/` 后必须重新构建 webview，产物方可同步至各宿主资源目录并被依赖包使用。
+- JetBrains 宿主必须将 webview 构建产物（`chat.js`、`chat.css`、`vscode-shim.js`）打包进插件资源，运行时解包到临时目录并以 `file://` 加载。
 
 #### webview 生命周期与消息协议
 
-- **FR-013**：webview 入口必须在生命周期内仅调用一次 `acquireVsCodeApi()`，将所得实例作为 prop 向下传递，不得在各组件中重复获取。
-- **FR-014**：JetBrains 宿主必须提供 `vscode-shim.js` 实现 `acquireVsCodeApi`：返回 `postMessage`/`getState`/`setState`，并在已获取后再次调用时抛错。
-- **FR-015**：shim 必须在宿主桥（`__wavePostMessage`）就绪前将早期 `postMessage` 入队，桥就绪后自动冲刷队列，不丢消息。
-- **FR-016**：宿主→webview 方向，JetBrains 必须经 `__waveReceive` 将 JSON 字符串解析并派发为 `MessageEvent('message')`，复用 webview 既有的 `message` 监听器。
-- **FR-017**：webview 必须以单一 reducer 集中处理宿主下发的动作类型（消息、流式、工具块、确认、对话框、会话、任务、权限模式、配置、认证等），动作类型命名采用大写下划线常量。
-- **FR-018**：webview 必须在挂载后向宿主发送就绪信号，宿主据此开始下发初始状态与流式更新。
+- webview 入口必须在生命周期内仅调用一次 `acquireVsCodeApi()`，将所得实例作为 prop 向下传递，不得在各组件中重复获取。
+- JetBrains 宿主必须提供 `vscode-shim.js` 实现 `acquireVsCodeApi`：返回 `postMessage`/`getState`/`setState`，并在已获取后再次调用时抛错。
+- shim 必须在宿主桥（`__wavePostMessage`）就绪前将早期 `postMessage` 入队，桥就绪后自动冲刷队列，不丢消息。
+- 宿主→webview 方向，JetBrains 必须经 `__waveReceive` 将 JSON 字符串解析并派发为 `MessageEvent('message')`，复用 webview 既有的 `message` 监听器。
+- webview 必须以单一 reducer 集中处理宿主下发的动作类型（消息、流式、工具块、确认、对话框、会话、任务、权限模式、配置、认证等），动作类型命名采用大写下划线常量。
+- webview 必须在挂载后向宿主发送就绪信号，宿主据此开始下发初始状态与流式更新。
 
 #### IDE 专属对话框组件
 
-- **FR-019**：Status 对话框必须显示版本、会话 ID、cwd、模型与运行时信息，数据来源于 reducer 状态。
-- **FR-020**：Config 对话框必须仅显示 IDE 侧可配置字段（如语言）；`/model` 命令不得在 IDE 出现，模型选择不属 IDE 配置范围。
-- **FR-021**：Welcome 视图必须在未认证或无会话时显示引导与登录入口，认证/有会话后消失。
-- **FR-022**：IDE 专属对话框（Status、Config、Welcome、MCP、插件、后台任务、Workflow、会话列表等）必须复用共享对话框布局类与遮罩/ESC 关闭行为，不得各自重写视觉骨架。
-- **FR-023**：确认对话框与登录对话框的规格分别由 [确认 UI](confirm-ui.md) 与 [SSO 认证](../enterprise/sso-auth.md) 承载，本规格不重复定义其行为。
+- Status 对话框必须显示版本、会话 ID、cwd、模型与运行时信息，数据来源于 reducer 状态。
+- Config 对话框必须仅显示 IDE 侧可配置字段（如语言）；`/model` 命令不得在 IDE 出现，模型选择不属 IDE 配置范围。
+- Welcome 视图必须在未认证或无会话时显示引导与登录入口，认证/有会话后消失。
+- IDE 专属对话框（Status、Config、Welcome、MCP、插件、后台任务、Workflow、会话列表等）必须复用共享对话框布局类与遮罩/ESC 关闭行为，不得各自重写视觉骨架。
+- 确认对话框与登录对话框的规格分别由 [确认 UI](confirm-ui.md) 与 [SSO 认证](../enterprise/sso-auth.md) 承载，本规格不重复定义其行为。
 
 ### 关键实体 *（涉及数据时填写）*
 

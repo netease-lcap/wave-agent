@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *(必填)*
 
-### 用户故事 1 - 执行前台命令（优先级：P1）
+### 用户故事：执行前台命令（优先级：P1）
 
 作为 AI 代理，我希望在前台执行 shell 命令，以便执行运行测试、管理 git 或执行构建脚本等任务并立即查看结果。
 
@@ -21,7 +21,7 @@
 
 ---
 
-### 用户故事 2 - 后台进程管理（优先级：P2）
+### 用户故事：后台进程管理（优先级：P2）
 
 作为 AI 代理，我希望在后台运行长时间运行的命令并在稍后获取其输出，以便在命令执行期间继续处理其他任务。
 
@@ -38,7 +38,7 @@
 
 ---
 
-### 用户故事 3 - 实时前台流式传输（优先级：P2）
+### 用户故事：实时前台流式传输（优先级：P2）
 
 作为 AI 代理，我希望实时查看前台命令的输出，以便监控进度并为长时间运行的任务获得即时反馈。
 
@@ -54,7 +54,7 @@
 
 ---
 
-### 用户故事 4 - Windows 平台 Git Bash 支持（优先级：P2）
+### 用户故事：Windows 平台 Git Bash 支持（优先级：P2）
 
 作为 Windows 用户，我希望 Bash 工具能自动使用 Git Bash 执行命令，以便所有 POSIX 语法（如 `pwd`、`&&`、管道等）在 Windows 上正常工作。
 
@@ -73,7 +73,7 @@
 
 ---
 
-### 用户故事 5 - 跨平台显式 shell 解析（优先级：P1）
+### 用户故事：跨平台显式 shell 解析（优先级：P1）
 
 作为 AI 代理，我希望 Bash 工具在所有平台上都显式使用 bash 或 zsh 执行命令（而非系统默认 `/bin/sh`），以便 bash 特有语法（进程替换 `<()`、`[[ ]]`、数组等）在 macOS、Linux 上正常工作。
 
@@ -106,35 +106,35 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须提供用于执行 shell 命令的 `Bash` 工具。
-- **FR-002**：`Bash` 工具必须支持可选的 `timeout` 参数（前台默认 120 秒）。当 `run_in_background` 为 true 时，超时必须被取消（不应用超时）——后台进程运行直到完成或手动停止。
-- **FR-003**：`Bash` 工具必须支持 `run_in_background` 参数。
-- **FR-019**：当前台命令超时时，系统必须自动将其转为后台（通过 `adoptProcess`）而不是终止，除非命令的基础命令在 `DISALLOWED_AUTO_BACKGROUND_COMMANDS`（当前为 `["sleep"]`）中，在这种情况下必须按原方式终止。
-- **FR-004**：系统必须不提供 `TaskOutput`（原 `BashOutput`）工具；代理应使用 `Read` 工具读取 `outputPath`。
-- **FR-006**：系统必须提供 `TaskStop`（原 `KillBash`）工具来终止后台进程。
-- **FR-007**：所有 bash 输出必须去除 ANSI 颜色代码。
-- **FR-008**：前台 bash 输出如果超过 30,000 个字符必须被截断。
-- **FR-009**：后台 bash 任务在运行时不得更新其 `shortResult`，以防止不必要的消息更新和 UI 中的 "unknown" 工具块。
-- **FR-010**：每次 `Bash` 调用都会生成一个新的 shell 进程，`cwd: context.workdir` 和 `process.env` 的副本。在一个命令中设置的环境变量不会持久化到后续命令。
-- **FR-011**：当 `run_in_background` 为 true 时，系统必须返回指向实时日志文件的 `outputPath`。
-- **FR-012**：系统必须将 `stdout` 和 `stderr` 实时管道传输到 `outputPath` 日志文件。
-- **FR-013**：前台 `Bash` 工具必须支持对 `shortResult` 和完整 `result` 内容的实时流式更新。
-- **FR-014**：前台 `Bash` 工具的实时更新必须节流为每秒一次。
-- **FR-015**：前台 `Bash` 工具的实时 `shortResult` 必须显示最后 3 行输出。
-- **FR-016**：`Read` 工具必须能够读取后台进程的 `outputPath`。
-- **FR-017**：系统必须在 Bash 执行后通过检查 shell 的最终工作目录来检测 CWD 更改。如果 CWD 发生更改（例如通过 `cd`），系统必须更新代理的 `workdir` 上下文以供后续工具调用使用。
-- **FR-018**：Bash 工具提示必须告知代理"工作目录在命令之间持久化"（当使用 `cd` 时），与实际行为一致。
-- **FR-020**：在 Windows 系统上，系统必须检测并使用 Git Bash 作为 shell，而非 cmd.exe。检测顺序：`$WAVE_GIT_BASH_PATH` 环境变量 → 从 `git` 可执行文件位置反推（`<git 目录>/../../bin/bash.exe`，即使 Git Bash 不在 PATH 或常见目录，只要 `git` 可被定位即可）→ 常见安装路径（`C:\Program Files\Git\bin\bash.exe` 等）。
-- **FR-021**：在 Windows 系统上，如果未检测到 Git Bash，系统必须返回错误消息，提示用户安装 Git for Windows 或设置 `WAVE_GIT_BASH_PATH` 环境变量。
-- **FR-022**：在 Windows 系统上使用 Git Bash 时，`spawn` 调用必须将 shell 参数设置为检测到的 Git Bash 可执行文件路径，而非 `true`。
-- **FR-023**：在 Windows 系统上，CWD 追踪命令（`pwd -P >| tempfile`）必须使用 Git Bash 执行，确保输出为 POSIX 路径格式。
-- **FR-024**：在 Windows 系统上，传递给 Git Bash 的临时文件路径必须将反斜杠转换为正斜杠（`C:\Users\...` → `C:/Users/...`），因为 Bash 将反斜杠视为转义字符，会导致路径损坏并在项目目录中创建临时文件。
-- **FR-025**：CWD 追踪临时文件必须在所有退出路径上被清理，包括正常退出（exit）、中止（abort）、执行错误（error）和转为后台（background）。
-- **FR-026**：在所有平台上，Bash 工具必须显式解析一个 bash 或 zsh 二进制作为执行 shell，不得依赖 `spawn({shell: true})` 回退到 `/bin/sh`。
-- **FR-027**：在 macOS/Linux 上，shell 解析优先级为：`WAVE_SHELL` 环境变量（仅当指向可执行的 bash/zsh）→ `$SHELL`（仅当为 bash/zsh）→ `which('bash')` / `which('zsh')` → 常见固定路径（`/bin/bash`、`/usr/bin/bash`、`/usr/local/bin/bash`、`/bin/zsh`、`/opt/homebrew/bin/zsh` 等）。当 `$SHELL` 为 bash 时优先 bash，否则优先 zsh。
-- **FR-028**：当 `$SHELL` 指向 zsh 时，系统必须优先使用 zsh，以尊重用户交互式 shell 选择。
-- **FR-029**：在 macOS/Linux 上，若未找到任何可执行的 bash 或 zsh，系统必须返回清晰错误消息（提示安装 bash/zsh 或设置 `WAVE_SHELL` 环境变量），不得静默回退到 `/bin/sh`。
-- **FR-030**：`resolveShellPath()` 的返回值必须传入 `spawn()` 的 `shell` 选项（而非 `true`），确保 Node.js 使用解析到的 bash/zsh 而非默认 `/bin/sh`。
+- 系统必须提供用于执行 shell 命令的 `Bash` 工具。
+- `Bash` 工具必须支持可选的 `timeout` 参数（前台默认 120 秒）。当 `run_in_background` 为 true 时，超时必须被取消（不应用超时）——后台进程运行直到完成或手动停止。
+- `Bash` 工具必须支持 `run_in_background` 参数。
+- 当前台命令超时时，系统必须自动将其转为后台（通过 `adoptProcess`）而不是终止，除非命令的基础命令在 `DISALLOWED_AUTO_BACKGROUND_COMMANDS`（当前为 `["sleep"]`）中，在这种情况下必须按原方式终止。
+- 系统必须不提供 `TaskOutput`（原 `BashOutput`）工具；代理应使用 `Read` 工具读取 `outputPath`。
+- 系统必须提供 `TaskStop`（原 `KillBash`）工具来终止后台进程。
+- 所有 bash 输出必须去除 ANSI 颜色代码。
+- 前台 bash 输出如果超过 30,000 个字符必须被截断。
+- 后台 bash 任务在运行时不得更新其 `shortResult`，以防止不必要的消息更新和 UI 中的 "unknown" 工具块。
+- 每次 `Bash` 调用都会生成一个新的 shell 进程，`cwd: context.workdir` 和 `process.env` 的副本。在一个命令中设置的环境变量不会持久化到后续命令。
+- 当 `run_in_background` 为 true 时，系统必须返回指向实时日志文件的 `outputPath`。
+- 系统必须将 `stdout` 和 `stderr` 实时管道传输到 `outputPath` 日志文件。
+- 前台 `Bash` 工具必须支持对 `shortResult` 和完整 `result` 内容的实时流式更新。
+- 前台 `Bash` 工具的实时更新必须节流为每秒一次。
+- 前台 `Bash` 工具的实时 `shortResult` 必须显示最后 3 行输出。
+- `Read` 工具必须能够读取后台进程的 `outputPath`。
+- 系统必须在 Bash 执行后通过检查 shell 的最终工作目录来检测 CWD 更改。如果 CWD 发生更改（例如通过 `cd`），系统必须更新代理的 `workdir` 上下文以供后续工具调用使用。
+- Bash 工具提示必须告知代理"工作目录在命令之间持久化"（当使用 `cd` 时），与实际行为一致。
+- 在 Windows 系统上，系统必须检测并使用 Git Bash 作为 shell，而非 cmd.exe。检测顺序：`$WAVE_GIT_BASH_PATH` 环境变量 → 从 `git` 可执行文件位置反推（`<git 目录>/../../bin/bash.exe`，即使 Git Bash 不在 PATH 或常见目录，只要 `git` 可被定位即可）→ 常见安装路径（`C:\Program Files\Git\bin\bash.exe` 等）。
+- 在 Windows 系统上，如果未检测到 Git Bash，系统必须返回错误消息，提示用户安装 Git for Windows 或设置 `WAVE_GIT_BASH_PATH` 环境变量。
+- 在 Windows 系统上使用 Git Bash 时，`spawn` 调用必须将 shell 参数设置为检测到的 Git Bash 可执行文件路径，而非 `true`。
+- 在 Windows 系统上，CWD 追踪命令（`pwd -P >| tempfile`）必须使用 Git Bash 执行，确保输出为 POSIX 路径格式。
+- 在 Windows 系统上，传递给 Git Bash 的临时文件路径必须将反斜杠转换为正斜杠（`C:\Users\...` → `C:/Users/...`），因为 Bash 将反斜杠视为转义字符，会导致路径损坏并在项目目录中创建临时文件。
+- CWD 追踪临时文件必须在所有退出路径上被清理，包括正常退出（exit）、中止（abort）、执行错误（error）和转为后台（background）。
+- 在所有平台上，Bash 工具必须显式解析一个 bash 或 zsh 二进制作为执行 shell，不得依赖 `spawn({shell: true})` 回退到 `/bin/sh`。
+- 在 macOS/Linux 上，shell 解析优先级为：`WAVE_SHELL` 环境变量（仅当指向可执行的 bash/zsh）→ `$SHELL`（仅当为 bash/zsh）→ `which('bash')` / `which('zsh')` → 常见固定路径（`/bin/bash`、`/usr/bin/bash`、`/usr/local/bin/bash`、`/bin/zsh`、`/opt/homebrew/bin/zsh` 等）。当 `$SHELL` 为 bash 时优先 bash，否则优先 zsh。
+- 当 `$SHELL` 指向 zsh 时，系统必须优先使用 zsh，以尊重用户交互式 shell 选择。
+- 在 macOS/Linux 上，若未找到任何可执行的 bash 或 zsh，系统必须返回清晰错误消息（提示安装 bash/zsh 或设置 `WAVE_SHELL` 环境变量），不得静默回退到 `/bin/sh`。
+- `resolveShellPath()` 的返回值必须传入 `spawn()` 的 `shell` 选项（而非 `true`），确保 Node.js 使用解析到的 bash/zsh 而非默认 `/bin/sh`。
 
 ### 关键实体
 

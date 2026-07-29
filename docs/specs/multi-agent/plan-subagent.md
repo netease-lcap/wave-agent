@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 使用内置 Plan 子 agent 的计划模式（优先级：P1）
+### 用户故事：使用内置 Plan 子 agent 的计划模式（优先级：P1）
 
 当用户进入计划模式时，他们可以生成内置的 Plan 子 agent 来探索代码库并设计实现方案。Plan 子 agent 充当软件架构师，基于彻底的代码探索提供详细的实现计划。
 
@@ -21,7 +21,7 @@
 
 ---
 
-### 用户故事 2 - 只读工具限制（优先级：P1）
+### 用户故事：只读工具限制（优先级：P1）
 
 Plan 子 agent 严格限制为只读操作，确保它们可以探索和分析代码但不能在计划阶段进行任何修改。
 
@@ -37,7 +37,7 @@ Plan 子 agent 严格限制为只读操作，确保它们可以探索和分析�
 
 ---
 
-### 用户故事 3 - 多规划视角（优先级：P2）
+### 用户故事：多规划视角（优先级：P2）
 
 用户可以生成多个具有不同视角的 Plan 子 agent，为复杂任务探索各种实现方案。
 
@@ -52,7 +52,7 @@ Plan 子 agent 严格限制为只读操作，确保它们可以探索和分析�
 
 ---
 
-### 用户故事 4 - 关键文件识别（优先级：P2）
+### 用户故事：关键文件识别（优先级：P2）
 
 Plan 子 agent 识别并列出实现其提议计划最关键的 3-5 个文件，帮助用户理解将在何处进行更改。
 
@@ -79,22 +79,22 @@ Plan 子 agent 识别并列出实现其提议计划最关键的 3-5 个文件，
 
 ### 功能需求
 
-- **FR-001**：系统必须提供内置的"Plan"子 agent，无需用户配置即可使用
-- **FR-002**：Plan 子 agent 必须限制为只读工具（Glob、Grep、Read、LSP 和只读 Bash 命令）
-- **FR-003**：Plan 子 agent 不得有文件修改工具的访问权限（Write、Edit、NotebookEdit）
-- **FR-004**：Plan 子 agent 必须包含系统提示，明确说明只读限制和规划职责
-- **FR-005**：系统必须允许并行生成多个具有不同视角的 Plan 子 agent
-- **FR-006**：Plan 子 agent 必须生成包含"Critical Files for Implementation"部分的输出
-- **FR-007**：Plan 子 agent 必须与计划模式工作流集成（见 FR-016 的计划模式提醒行为）
-- **FR-008**：当 Plan 子 agent 尝试禁止的操作时，系统必须提供清晰的错误消息
-- **FR-009**：Plan 子 agent 必须支持使用 Glob、Grep 和 Read 工具不受限制地探索代码库
-- **FR-010**：Plan 子 agent 必须能够执行只读 Bash 命令（ls、git status、git log、git diff、find、cat、head、tail）
-- **FR-011**：系统必须在 Plan 子 agent 提示中包含强调只读模式的关键提醒
-- **FR-012**：Plan 子 agent 必须默认使用"inherit"模型以匹配父 agent 的模型
-- **FR-013**：系统必须在 Task 工具描述中列出 Plan 子 agent 并附带适当的"whenToUse"指导
-- **FR-014**：Plan 子 agent 必须可被具有相同名称的用户配置子 agent 覆盖
-- **FR-015**：系统必须验证 Plan 子 agent 在运行时仅接收只读工具访问
-- **FR-016**：当 Plan 子 agent 收到计划模式提醒时，提醒不得指示子 agent 写入或编辑计划文件。相反，它必须告诉子 agent 以文本输出形式返回发现，由父 agent 写入计划文件。提醒可以包含计划文件路径以便在文件已存在时读取上下文。
+- 系统必须提供内置的"Plan"子 agent，无需用户配置即可使用
+- Plan 子 agent 必须限制为只读工具（Glob、Grep、Read、LSP 和只读 Bash 命令）
+- Plan 子 agent 不得有文件修改工具的访问权限（Write、Edit、NotebookEdit）
+- Plan 子 agent 必须包含系统提示，明确说明只读限制和规划职责
+- 系统必须允许并行生成多个具有不同视角的 Plan 子 agent
+- Plan 子 agent 必须生成包含"Critical Files for Implementation"部分的输出
+- Plan 子 agent 必须与计划模式工作流集成（见 plan-mode.md 的计划模式提醒行为）
+- 当 Plan 子 agent 尝试禁止的操作时，系统必须提供清晰的错误消息
+- Plan 子 agent 必须支持使用 Glob、Grep 和 Read 工具不受限制地探索代码库
+- Plan 子 agent 必须能够执行只读 Bash 命令（ls、git status、git log、git diff、find、cat、head、tail）
+- 系统必须在 Plan 子 agent 提示中包含强调只读模式的关键提醒
+- Plan 子 agent 必须默认使用"inherit"模型以匹配父 agent 的模型
+- 系统必须在 Task 工具描述中列出 Plan 子 agent 并附带适当的"whenToUse"指导
+- Plan 子 agent 必须可被具有相同名称的用户配置子 agent 覆盖
+- 系统必须验证 Plan 子 agent 在运行时仅接收只读工具访问
+- 当 Plan 子 agent 收到计划模式提醒时，提醒不得指示子 agent 写入或编辑计划文件。相反，它必须告诉子 agent 以文本输出形式返回发现，由父 agent 写入计划文件。提醒可以包含计划文件路径以便在文件已存在时读取上下文。
 
 ## 成功标准
 

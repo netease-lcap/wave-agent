@@ -8,7 +8,7 @@
 
 ## 用户场景与测试
 
-### 用户故事 1 - 带确认的默认安全模式（优先级：P1）
+### 用户故事：带确认的默认安全模式（优先级：P1）
 
 用户运行 Wave CLI 不带任何特殊标志，系统在执行任何潜在的破坏性操作（如文件编辑或 bash 命令）之前提示确认。
 
@@ -18,14 +18,14 @@
 3. **假设**显示了确认提示，**当**用户输入替代指令时，**则** Wave 通过工具结果字段接收新指令，而不是执行原始操作。
 4. **假设** AI 返回多个受限工具调用，**当**每个工具调用被执行时，**则**每个调用都会出现单独的顺序确认提示。
 
-### 用户故事 2 - 高级用户的绕过模式（优先级：P2）
+### 用户故事：高级用户的绕过模式（优先级：P2）
 
 高级用户使用 `--dangerously-skip-permissions` 运行 Wave CLI 以绕过所有权限检查，实现不间断操作。
 
 **验收场景**：
 1. **假设**绕过模式已启用，**当** Wave 尝试任何受限操作时，**则**不出现确认提示，操作立即执行。
 
-### 用户故事 3 - 命令的通配符匹配（优先级：P1）
+### 用户故事：命令的通配符匹配（优先级：P1）
 
 作为用户，我希望通过使用通配符指定通用模式来允许一组相关命令，这样我就不必在权限中列出每个命令的每个变体。
 
@@ -33,7 +33,7 @@
 1. **假设** `permissions.allow` 包含 `Bash(git commit *)`，**当** agent 尝试运行 `Bash(git commit -m "initial commit")` 时，**则**操作被允许。
 2. **假设** `permissions.allow` 包含 `Bash(git * main)`，**当** agent 尝试运行 `Bash(git push origin main)` 时，**则**操作被允许。
 
-### 用户故事 4 - 智能通配符启发式（优先级：P1）
+### 用户故事：智能通配符启发式（优先级：P1）
 
 作为用户，我希望信任 `npm install lodash` 这样的命令，这样当我运行 `npm install express` 时不会再被提示。
 
@@ -41,7 +41,7 @@
 1. **假设**系统提示 `npm install lodash`，**当**用户选择"是，不再询问"时，**则**系统应该建议一个智能通配符模式（如 `npm install *`）并保存。
 2. **假设** `npm install *` 已被信任，**当**用户运行 `npm install express` 时，**则**它立即执行而不提示。
 
-### 用户故事 5 - 分解和验证链式命令（优先级：P1）
+### 用户故事：分解和验证链式命令（优先级：P1）
 
 作为用户，我希望当且仅当链中的每个单独命令都已被允许时，系统自动允许复杂命令（使用 `&&`、`|` 等）。
 
@@ -50,7 +50,7 @@
 2. **假设** `permissions.allow` 包含 `cd /tmp/*` 但不包含 `rm *`，**当**用户执行 `cd /tmp/test && rm -rf /` 时，**则**系统不得自动允许，应该提示权限确认。
 3. **假设** `permissions.allow` 包含 `Bash(node scripts*)` 但不含任何 git 规则，且内置默认允许规则包含 `Bash(git diff*)`，**当**用户执行 `node scripts/spec-count.js && git diff --stat` 时，**则**系统应该自动允许该命令——链中各段可分别由不同规则来源（用户规则、内置默认规则等）覆盖，不要求单一规则来源覆盖所有段。
 
-### 用户故事 6 - 拒绝规则与优先级（优先级：P1）
+### 用户故事：拒绝规则与优先级（优先级：P1）
 
 作为注重安全的用户，我希望明确禁止 agent 使用某些工具或访问特定路径，即使它们在其他情况下会被允许。
 
@@ -58,14 +58,14 @@
 1. **假设** `permissions.deny` 包含 `["Bash"]`，**当** agent 尝试运行任何 bash 命令时，**则**系统必须阻止执行。
 2. **假设** `permissions.allow` 包含 `["*"]` 且 `permissions.deny` 包含 `["Bash"]`，**当** agent 尝试运行 bash 命令时，**则**系统必须拒绝请求，因为拒绝规则优先。
 
-### 用户故事 7 - 基于路径的权限（优先级：P1）
+### 用户故事：基于路径的权限（优先级：P1）
 
 作为用户，我希望通过为操作文件路径的工具定义拒绝规则来防止 agent 访问特定文件（如 `.env` 文件）。
 
 **验收场景**：
 1. **假设** `permissions.deny` 包含 `["Read(**/.env)"]`，**当** agent 尝试读取任何目录中名为 `.env` 的文件时，**则**系统必须拒绝请求。
 
-### 用户故事 8 - 内置安全命令与只读命令自动放行（优先级：P2）
+### 用户故事：内置安全命令与只读命令自动放行（优先级：P2）
 
 作为用户，我希望常见的只读命令（如 `cat`、`sed`、`grep`、`awk`、`jq`、`find`）默认自动允许执行而无需逐次确认，以便代理在探查代码库时不被频繁打断；但能改写文件系统或执行任意命令的变体（如 `sed -i`、`find -delete`、写重定向、命令替换）仍须提示确认。`cd` 应限制在当前工作目录内。
 
@@ -80,7 +80,7 @@
 8. **假设**任何命令，**当**用户执行 `cat $(rm important)` 或 `grep x \`whoami\`` 时，**则**系统不得自动允许（含命令替换/进程替换，可能触发隐藏的破坏性执行），必须提示权限确认。
 9. **假设**链式命令 `sed -n '1,10p' a.txt | grep foo`，**当** 执行时，**则** 系统应该自动允许（每段均为只读）。
 
-### 用户故事 9 - MCP 工具权限（优先级：P1）
+### 用户故事：MCP 工具权限（优先级：P1）
 
 作为用户，我希望 MCP 工具受到与内置受限工具相同的权限检查，这样我就可以控制 agent 可以执行哪些外部工具。
 
@@ -89,7 +89,7 @@
 2. **假设**显示了 MCP 工具的确认提示，**当**用户选择"是，不再询问"时，**则**系统必须以 `mcp__server__tool` 格式保存持久规则。
 3. **假设**存在持久规则 `mcp__server__tool`，**当** agent 调用该特定 MCP 工具时，**则**它必须立即执行而不提示。
 
-### 用户故事 10 - 编程式和会话特定权限（优先级：P1）
+### 用户故事：编程式和会话特定权限（优先级：P1）
 
 作为使用 SDK 的开发者或 CLI 上的用户，我希望提供仅应用于当前 agent 实例或会话的临时权限规则（包括允许和禁止）。这允许在不修改全局设置的情况下进行细粒度的安全控制。
 
@@ -98,7 +98,7 @@
 2. **假设** CLI 启动时带有 `--allowedTools "Bash(git status)"`，**当** agent 运行 `git status` 时，**则**仅在该会话中自动批准。
 3. **假设** agent 配置了 `tools: ["Bash"]`（过滤）和 `disallowedTools: ["Bash(rm *)"]`（权限），**当** AI 尝试 `ls` 时，**则**被允许；**当**尝试 `rm` 时，**则**被拒绝。
 
-### 用户故事 11 - 配置权限模式（优先级：P1）
+### 用户故事：配置权限模式（优先级：P1）
 
 一个经常需要为开发工作流绕过权限的开发者希望避免每次都输入 `--dangerously-skip-permissions`。他们希望设置持久化配置，使绕过权限成为其项目的默认行为。
 
@@ -108,7 +108,7 @@
 3. **假设** `settings.json` 包含 `"permissions": {"permissionMode": "default"}`，**当**用户运行 agent 命令时，**则**用户对受限工具被提示确认。
 4. **假设** `settings.json` 包含无效的 `permissionMode` 值，**当** agent 启动时，**则**系统回退到默认权限行为并记录警告。
 
-### 用户故事 12 - 从提示自动接受文件编辑（优先级：P1）
+### 用户故事：从提示自动接受文件编辑（优先级：P1）
 
 作为用户，当我被提示确认文件编辑或目录创建时，我希望能够选择自动接受当前会话中所有未来的编辑，这样我就不必逐个确认。
 
@@ -117,7 +117,7 @@
 2. **假设**显示了 `Write` 或 `mkdir` 操作的确认提示，**当**用户选择"是，并自动接受编辑"时，**则**当前操作被执行，agent 的权限模式设置为 `acceptEdits`。
 3. **假设** agent 的权限模式通过提示被设置为 `acceptEdits`，**当** agent 尝试后续的 `Edit` 或 `mkdir` 操作时，**则**它被执行而不提示。
 
-### 用户故事 13 - 持久化 Bash 命令权限（优先级：P1）
+### 用户故事：持久化 Bash 命令权限（优先级：P1）
 
 作为用户，当我被提示确认 Bash 命令时，我希望能够允许该特定命令在当前项目中无需再次询问即可运行，以便我可以安全地自动化重复任务。
 
@@ -126,7 +126,7 @@
 2. **假设**显示了 `Bash` 命令 `ls` 的确认提示，**当**用户选择"是，不再询问..."时，**则**命令被执行，`Bash(ls)` 被添加到 `.wave/settings.local.json` 的 `permissions.allow` 数组中。
 3. **假设** `Bash(ls)` 在本地项目设置的 `permissions.allow` 数组中，**当** agent 尝试命令为 `ls` 的 `Bash` 操作时，**则**它被执行而不提示。
 
-### 用户故事 14 - 安全区域内的自动文件编辑（优先级：P1）
+### 用户故事：安全区域内的自动文件编辑（优先级：P1）
 
 作为用户，我希望 agent 在我的项目目录或明确允许的目录内自动应用文件编辑，而无需每次都征求我的许可，这样当我信任 agent 的更改时可以提高工作效率。
 
@@ -134,7 +134,7 @@
 1. **假设** agent 处于 `acceptEdits` 模式且文件在安全区域内（CWD 或 `additionalDirectories`），**当** agent 尝试使用 `Edit`、`Delete` 或 `Write` 工具时，**则**操作立即执行，无需权限提示。
 2. **假设** agent 处于 `acceptEdits` 模式且目录在安全区域内，**当** agent 尝试通过 `Bash` 工具使用 `mkdir` 时，**则**操作立即执行，无需权限提示。
 
-### 用户故事 15 - 越界安全确认（优先级：P1）
+### 用户故事：越界安全确认（优先级：P1）
 
 作为用户，我希望系统在修改项目或允许目录之外的任何文件之前征求我的明确许可，即使我已启用自动接受模式，以便我可以防止对我的系统进行意外或恶意更改。
 
@@ -142,7 +142,7 @@
 1. **假设**文件位于安全区域之外，**当**系统尝试写入或编辑该文件时，**则**向用户显示确认提示，无论 `acceptEdits` 设置如何。
 2. **假设**系统处于 `acceptEdits` 模式，**当**尝试越界文件操作时，**则**系统仍必须显示确认提示，而不是自动执行。
 
-### 用户故事 16 - CLI 模式切换（优先级：P2）
+### 用户故事：CLI 模式切换（优先级：P2）
 
 作为 CLI 用户，我希望在会话期间使用键盘快捷键快速切换权限模式，以便我可以轻松地在手动控制、自动编辑、规划和绕过之间切换。
 
@@ -152,21 +152,21 @@
 3. **假设** CLI 处于 `plan` 模式，**当**用户按下 `Shift+Tab` 时，**则**权限模式更改为 `bypassPermissions`。
 4. **假设** CLI 处于 `bypassPermissions` 模式，**当**用户按下 `Shift+Tab` 时，**则**权限模式更改回 `default`。
 
-### 用户故事 17 - 自动拒绝未批准的工具（优先级：P1）
+### 用户故事：自动拒绝未批准的工具（优先级：P1）
 
 作为用户，我希望当我处于 `dontAsk` 模式时，未经预批准的工具被自动拒绝，这样我就不会被未明确允许的工具的权限请求打断。
 
 **验收场景**：
 1. **假设**权限模式设置为 `dontAsk` 且 `Bash` 不在 `permissions.allow` 中，**当** agent 调用 `Bash` 时，**则**工具调用被立即拒绝，agent 收到"权限拒绝"错误，用户不会被提示。
 
-### 用户故事 18 - 配置 dontAsk 模式（优先级：P2）
+### 用户故事：配置 dontAsk 模式（优先级：P2）
 
 作为用户，我希望能够将权限模式设置为 `dontAsk`，以便我可以跨会话强制执行此行为。
 
 **验收场景**：
 1. **假设**配置文件中有 `permissionMode: "dontAsk"`，**当** agent 启动时，**则**有效权限模式为 `dontAsk`。
 
-### ~~用户故事 19 - Bash Heredoc 写入重定向到专用工具（优先级：P1）~~
+### ~~用户故事：Bash Heredoc 写入重定向到专用工具（优先级：P1）~~
 
 *已移除。基于 Heredoc 的 bash 命令不再被自动拒绝。用户应依赖工具权限规则和软提示引导来鼓励使用专用的 Write/Edit 工具。*
 
@@ -175,86 +175,86 @@
 ### 功能需求
 
 #### 权限模式与 UI
-- **FR-001**：Agent 必须支持 `permissionMode` 值："default"、"bypassPermissions"、"acceptEdits"、"plan"、"dontAsk"。
-- **FR-002**：Wave CLI 必须支持 `--dangerously-skip-permissions` 将模式设置为 "bypassPermissions"。
-- **FR-003**：CLI 必须为 "default" 模式下的受限工具提供确认组件。
-- **FR-004**：确认组件必须支持"是"、"是，不再询问"、"是，并自动接受编辑"（用于文件系统工具）、"是，并跳过权限确认"（用于 Bash 工具，切换到 bypassPermissions 模式），以及通过文本输入的替代指令。
-- **FR-005**：系统必须支持 Agent SDK 中的 `canUseTool` 回调用于自定义权限逻辑。
-- **FR-006**：系统必须支持通过 `Shift+Tab` 切换权限模式（default -> acceptEdits -> bypassPermissions -> plan）。
-- **FR-021**：系统必须对识别为危险或越界的命令隐藏"不再询问"选项。
-- **FR-056**：系统必须检测 bash 命令中的写入重定向（`>`、`>>` 等）并将其视为危险操作，隐藏"不再询问"选项。
-- **FR-057**：系统在检测写入重定向时必须忽略文件描述符重定向（如 `2>&1`）。
-- **FR-036**：选择"是，并自动接受编辑"必须将当前会话的权限模式设置为 `acceptEdits`。
-- **FR-037**：选择"是，并在此工作目录中不再为此命令询问"必须将规则 `Bash([command])` 保存到 `.wave/settings.local.json` 的 `permissions.allow` 数组中。
-- **FR-045**：在 `acceptEdits` 模式下，系统必须自动授予安全区域内 `Edit`、`Delete` 和 `Write` 操作的权限。
-- **FR-046**：在 `dontAsk` 模式下，系统必须自动拒绝任何不匹配 `permissions.allow` 或 `temporaryRules` 中规则的受限工具调用。
-- **FR-047**：在 `dontAsk` 模式下，系统不得对未批准的受限工具调用 `canUseToolCallback`（通常会触发用户提示）。
-- **FR-048**：`dontAsk` 模式不得包含在 "Shift+Tab" 快捷键触发的权限模式循环中。
-- ~~**FR-049**：当 `dontAsk` 模式激活时，系统必须向 agent 的系统提示中注入一条消息，说明："工具在'用户选择的权限模式'下执行。权限可以通过 settings.json 和 settings.local.json 配置。"~~ *已移除：代码中不存在此提示注入。*
+- Agent 必须支持 `permissionMode` 值："default"、"bypassPermissions"、"acceptEdits"、"plan"、"dontAsk"。
+- Wave CLI 必须支持 `--dangerously-skip-permissions` 将模式设置为 "bypassPermissions"。
+- CLI 必须为 "default" 模式下的受限工具提供确认组件。
+- 确认组件必须支持"是"、"是，不再询问"、"是，并自动接受编辑"（用于文件系统工具）、"是，并跳过权限确认"（用于 Bash 工具，切换到 bypassPermissions 模式），以及通过文本输入的替代指令。
+- 系统必须支持 Agent SDK 中的 `canUseTool` 回调用于自定义权限逻辑。
+- 系统必须支持通过 `Shift+Tab` 切换权限模式（default -> acceptEdits -> bypassPermissions -> plan）。
+- 系统必须对识别为危险或越界的命令隐藏"不再询问"选项。
+- 系统必须检测 bash 命令中的写入重定向（`>`、`>>` 等）并将其视为危险操作，隐藏"不再询问"选项。
+- 系统在检测写入重定向时必须忽略文件描述符重定向（如 `2>&1`）。
+- 选择"是，并自动接受编辑"必须将当前会话的权限模式设置为 `acceptEdits`。
+- 选择"是，并在此工作目录中不再为此命令询问"必须将规则 `Bash([command])` 保存到 `.wave/settings.local.json` 的 `permissions.allow` 数组中。
+- 在 `acceptEdits` 模式下，系统必须自动授予安全区域内 `Edit`、`Delete` 和 `Write` 操作的权限。
+- 在 `dontAsk` 模式下，系统必须自动拒绝任何不匹配 `permissions.allow` 或 `temporaryRules` 中规则的受限工具调用。
+- 在 `dontAsk` 模式下，系统不得对未批准的受限工具调用 `canUseToolCallback`（通常会触发用户提示）。
+- `dontAsk` 模式不得包含在 "Shift+Tab" 快捷键触发的权限模式循环中。
+- ~~当 `dontAsk` 模式激活时，系统必须向 agent 的系统提示中注入一条消息，说明："工具在'用户选择的权限模式'下执行。权限可以通过 settings.json 和 settings.local.json 配置。"~~ *已移除：代码中不存在此提示注入。*
 
 #### 安全区域与安全文件访问
-- **FR-050**：系统必须将"安全区域"识别为当前工作目录和 `permissions.additionalDirectories` 中列出的所有路径的并集。
-- **FR-051**：系统必须拦截所有文件修改操作（Write、Edit、Delete 以及通过 Bash 的 `mkdir`）。
-- **FR-052**：系统必须验证修改操作的目标文件路径是否在安全区域内。
-- **FR-053**：系统必须对任何针对安全区域之外文件的修改操作显示确认提示，无论 `permissionMode` 设置如何（`bypassPermissions` 除外）。
-- **FR-054**：系统必须支持 `permissions.additionalDirectories` 中的绝对路径和相对于工作目录的路径。
-- **FR-055**：系统必须在执行安全区域检查之前将符号链接解析为其绝对真实路径。
+- 系统必须将"安全区域"识别为当前工作目录和 `permissions.additionalDirectories` 中列出的所有路径的并集。
+- 系统必须拦截所有文件修改操作（Write、Edit、Delete 以及通过 Bash 的 `mkdir`）。
+- 系统必须验证修改操作的目标文件路径是否在安全区域内。
+- 系统必须对任何针对安全区域之外文件的修改操作显示确认提示，无论 `permissionMode` 设置如何（`bypassPermissions` 除外）。
+- 系统必须支持 `permissions.additionalDirectories` 中的绝对路径和相对于工作目录的路径。
+- 系统必须在执行安全区域检查之前将符号链接解析为其绝对真实路径。
 
 #### 配置与持久化
-- **FR-038**：系统必须支持 `settings.json` 中 `permissions` 对象的 `permissionMode` 设置。
-- **FR-039**：当未提供命令行权限标志时，系统必须将配置的 `permissionMode` 应用为默认权限行为。
-- **FR-040**：命令行权限标志必须覆盖任何已配置的 `permissionMode` 设置（仅针对该次执行）。
-- **FR-041**：系统必须验证 `permissionMode` 值，并对无效配置回退到标准默认行为。
-- **FR-042**：`permissionMode` 设置必须在用户级、项目级和本地项目设置文件中生效，优先级为：`settings.local.json` > `settings.json`（项目）> `settings.json`（用户）。
-- **FR-043**：启动时，系统必须从所有适用的 `settings.json` 文件中加载 `permissions.allow`。
-- **FR-044**：保存本地权限规则时，如果 `.wave` 目录和 `settings.local.json` 文件不存在，系统必须创建它们。
+- 系统必须支持 `settings.json` 中 `permissions` 对象的 `permissionMode` 设置。
+- 当未提供命令行权限标志时，系统必须将配置的 `permissionMode` 应用为默认权限行为。
+- 命令行权限标志必须覆盖任何已配置的 `permissionMode` 设置（仅针对该次执行）。
+- 系统必须验证 `permissionMode` 值，并对无效配置回退到标准默认行为。
+- `permissionMode` 设置必须在用户级、项目级和本地项目设置文件中生效，优先级为：`settings.local.json` > `settings.json`（项目）> `settings.json`（用户）。
+- 启动时，系统必须从所有适用的 `settings.json` 文件中加载 `permissions.allow`。
+- 保存本地权限规则时，如果 `.wave` 目录和 `settings.local.json` 文件不存在，系统必须创建它们。
 
 #### MCP 工具权限
-- **FR-026**：系统必须将任何以 `mcp__` 开头的工具名称视为受限工具。
-- **FR-027**：系统必须在执行任何 MCP 工具之前触发权限检查。
-- **FR-028**：系统必须支持 MCP 工具的持久权限规则，格式为 `mcp__server__tool`。
-- **FR-029**：系统必须将 `ToolContext` 传播到 MCP 工具执行函数以启用权限执行。
+- 系统必须将任何以 `mcp__` 开头的工具名称视为受限工具。
+- 系统必须在执行任何 MCP 工具之前触发权限检查。
+- 系统必须支持 MCP 工具的持久权限规则，格式为 `mcp__server__tool`。
+- 系统必须将 `ToolContext` 传播到 MCP 工具执行函数以启用权限执行。
 
 #### 匹配逻辑与通配符
-- **FR-007**：系统必须支持 `permissions.allow` 和 `permissions.deny` 中规则的精确字符串匹配和 `*` 通配符匹配。
-- **FR-008**：通配符（`*`）必须支持在模式中的任何位置。
-- **FR-009**：系统必须实现"智能通配符"启发式算法来建议 bash 命令的模式（如 `npm install *`）。
-- **FR-010**：系统不得对高度敏感的命令（如 `rm`、`sudo`、`chmod`）允许通配符匹配。这些命令始终需要精确匹配或手动批准。
-- **FR-023**：当用户选择"不再询问"时，系统必须将链式命令拆分为单独的简单命令。
-- **FR-024**：拆分链式命令时，系统不得将内置安全命令保存到 `permissions.allow` 数组中。
+- 系统必须支持 `permissions.allow` 和 `permissions.deny` 中规则的精确字符串匹配和 `*` 通配符匹配。
+- 通配符（`*`）必须支持在模式中的任何位置。
+- 系统必须实现"智能通配符"启发式算法来建议 bash 命令的模式（如 `npm install *`）。
+- 系统不得对高度敏感的命令（如 `rm`、`sudo`、`chmod`）允许通配符匹配。这些命令始终需要精确匹配或手动批准。
+- 当用户选择"不再询问"时，系统必须将链式命令拆分为单独的简单命令。
+- 拆分链式命令时，系统不得将内置安全命令保存到 `permissions.allow` 数组中。
 
 #### 安全管道验证
-- **FR-011**：系统必须解析复杂的 bash 命令并识别所有通过操作符（`&&`、`||`、`;`、`|`）连接的单独"简单命令"。
-- **FR-012**：复杂命令必须仅在每个组成的简单命令都匹配已允许的规则时才被自动允许。所有允许规则的来源（实例规则、临时规则、持久化 `permissions.allow`、内置默认允许规则）须以**并集**形式参与逐段匹配：每一段只需命中并集中至少一条规则即视为已允许，不要求单一规则来源覆盖所有段。
-- **FR-013**：系统必须在匹配之前剥离内联环境变量赋值（如 `VAR=val cmd`）。
-- **FR-025**：系统必须确保带有写入重定向的 bash 命令不被默认规则（如 `Bash(echo*)`）自动允许。
-- **FR-058**：内置默认允许规则参与并集匹配时仍须遵守危险变体拦截：含写重定向、命令替换、进程替换、`sed -i` 或危险 `find` 标志的命令段不得通过默认规则放行；此类段仅可被非默认来源（实例规则、临时规则、持久化 `permissions.allow`）中显式匹配的规则放行。
+- 系统必须解析复杂的 bash 命令并识别所有通过操作符（`&&`、`||`、`;`、`|`）连接的单独"简单命令"。
+- 复杂命令必须仅在每个组成的简单命令都匹配已允许的规则时才被自动允许。所有允许规则的来源（实例规则、临时规则、持久化 `permissions.allow`、内置默认允许规则）须以**并集**形式参与逐段匹配：每一段只需命中并集中至少一条规则即视为已允许，不要求单一规则来源覆盖所有段。
+- 系统必须在匹配之前剥离内联环境变量赋值（如 `VAR=val cmd`）。
+- 系统必须确保带有写入重定向的 bash 命令不被默认规则（如 `Bash(echo*)`）自动允许。
+- 内置默认允许规则参与并集匹配时仍须遵守危险变体拦截：含写重定向、命令替换、进程替换、`sed -i` 或危险 `find` 标志的命令段不得通过默认规则放行；此类段仅可被非默认来源（实例规则、临时规则、持久化 `permissions.allow`）中显式匹配的规则放行。
 
 #### 拒绝规则与基于路径的权限
-- **FR-014**：系统必须支持设置中的 `permissions.deny` 字段。
-- **FR-015**：`permissions.deny` 必须优先于 `permissions.allow`。
-- **FR-016**：系统必须支持 `ToolName(path_pattern)` 格式的路径规则（如 `Read(**/*.env)`），用于以单一路径作为主要输入的工具。
-- **FR-017**：如果请求匹配 `permissions.deny` 中的任何规则，则必须立即被拒绝。
+- 系统必须支持设置中的 `permissions.deny` 字段。
+- `permissions.deny` 必须优先于 `permissions.allow`。
+- 系统必须支持 `ToolName(path_pattern)` 格式的路径规则（如 `Read(**/*.env)`），用于以单一路径作为主要输入的工具。
+- 如果请求匹配 `permissions.deny` 中的任何规则，则必须立即被拒绝。
 
 #### 内置安全命令
-- **FR-018**：系统必须维护内置安全命令列表（`cd`、`ls`、`pwd`、`mkdir`、`find`），在满足安全条件时允许。
-- **FR-019**：尝试访问 CWD 之外路径的内置安全命令（如 `cd ..`、`ls /etc`）必须要求明确许可。
-- **FR-019.1**：`find` 只有在不包含 `-exec`、`-execdir`、`-ok`、`-okdir`、`-delete`、`-fprint`、`-fprint0` 或 `-fprintf` 等危险标志时才应被视为安全。
-- **FR-019.2**：系统必须维护一份只读命令集，并在命令被判定为只读时自动放行（`behavior: allow`），无需调用 `canUseToolCallback`。只读命令集至少包括：`ls`、`cat`、`head`、`tail`、`wc`、`sort`、`uniq`、`grep`/`egrep`/`fgrep`/`rg`、`find`、`which`、`whereis`、`file`、`stat`、`du`、`df`、`free`、`uptime`、`uname`、`hostname`、`whoami`、`id`、`groups`、`env`、`printenv`、`echo`、`printf`、`date`、`true`、`false`、`pwd`、`tree`、`diff`、`cmp`、`md5sum`、`sha256sum`、`sha1sum`、`xxd`、`od`、`hexdump`、`strings`、`readlink`、`realpath`、`basename`、`dirname`、`seq`、`column`、`jq`、`yq`、`cut`、`paste`、`tr`、`awk`、`sed`、`test`、`expr`、`bc`。该集合对齐 Claude Code 的只读命令分类。
-- **FR-019.3**：只读判定必须先剥离内联环境变量赋值（`VAR=val cmd`）与重定向，再取首个命令名进行匹配；对链式命令（`&&`、`||`、`;`、`|`）须逐段判定，仅当所有段均为只读时整条命令才自动放行。
-- **FR-019.4**：含写重定向（`>`、`>>`、`&>`、`2>` 等，`/dev/null` 与文件描述符重定向如 `2>&1` 除外）的命令不得被只读判定自动放行。
-- **FR-019.5**：`sed` 带 `-i` 或 `--in-place`（含 `--in-place=` 形式）时不得被只读判定自动放行（原地编辑等同于写操作）。
-- **FR-019.6**：含命令替换（`$(...)`）、反引号、或进程替换（`<(...)`、`>(...)`）的命令不得被只读判定自动放行——即使外层命令名属于只读集，以防隐藏的破坏性执行（如 `cat $(rm x)`）。此类命令回退到常规权限流程（提示确认）。
-- **FR-019.7**：交互式分页器（`less`、`more`、`man`、`info`）、命令执行器（`xargs`）以及会产生无限输出的命令（`yes`）不得纳入只读集，须始终提示确认。
-- **FR-019.8**：只读自动放行不影响拒绝规则的优先级——若命令匹配 `permissions.deny`，即使命令名为只读集成员，仍须被拒绝。
+- 系统必须维护内置安全命令列表（`cd`、`ls`、`pwd`、`mkdir`、`find`），在满足安全条件时允许。
+- 尝试访问 CWD 之外路径的内置安全命令（如 `cd ..`、`ls /etc`）必须要求明确许可。
+- `find` 只有在不包含 `-exec`、`-execdir`、`-ok`、`-okdir`、`-delete`、`-fprint`、`-fprint0` 或 `-fprintf` 等危险标志时才应被视为安全。
+- 系统必须维护一份只读命令集，并在命令被判定为只读时自动放行（`behavior: allow`），无需调用 `canUseToolCallback`。只读命令集至少包括：`ls`、`cat`、`head`、`tail`、`wc`、`sort`、`uniq`、`grep`/`egrep`/`fgrep`/`rg`、`find`、`which`、`whereis`、`file`、`stat`、`du`、`df`、`free`、`uptime`、`uname`、`hostname`、`whoami`、`id`、`groups`、`env`、`printenv`、`echo`、`printf`、`date`、`true`、`false`、`pwd`、`tree`、`diff`、`cmp`、`md5sum`、`sha256sum`、`sha1sum`、`xxd`、`od`、`hexdump`、`strings`、`readlink`、`realpath`、`basename`、`dirname`、`seq`、`column`、`jq`、`yq`、`cut`、`paste`、`tr`、`awk`、`sed`、`test`、`expr`、`bc`。该集合对齐 Claude Code 的只读命令分类。
+- 只读判定必须先剥离内联环境变量赋值（`VAR=val cmd`）与重定向，再取首个命令名进行匹配；对链式命令（`&&`、`||`、`;`、`|`）须逐段判定，仅当所有段均为只读时整条命令才自动放行。
+- 含写重定向（`>`、`>>`、`&>`、`2>` 等，`/dev/null` 与文件描述符重定向如 `2>&1` 除外）的命令不得被只读判定自动放行。
+- `sed` 带 `-i` 或 `--in-place`（含 `--in-place=` 形式）时不得被只读判定自动放行（原地编辑等同于写操作）。
+- 含命令替换（`$(...)`）、反引号、或进程替换（`<(...)`、`>(...)`）的命令不得被只读判定自动放行——即使外层命令名属于只读集，以防隐藏的破坏性执行（如 `cat $(rm x)`）。此类命令回退到常规权限流程（提示确认）。
+- 交互式分页器（`less`、`more`、`man`、`info`）、命令执行器（`xargs`）以及会产生无限输出的命令（`yes`）不得纳入只读集，须始终提示确认。
+- 只读自动放行不影响拒绝规则的优先级——若命令匹配 `permissions.deny`，即使命令名为只读集成员，仍须被拒绝。
 
 #### 编程式和会话特定权限
-- **FR-030**：SDK 中的 `AgentOptions` 接口必须包含可选的 `allowedTools` 和 `disallowedTools` 属性，类型为 `string[]`。
-- **FR-031**：CLI 必须支持 `--allowedTools` 和 `--disallowedTools` 标志，接受逗号分隔的规则字符串。
-- **FR-032**：通过 SDK 或 CLI 提供的规则必须是实例特定或会话特定的，不得自动持久化到 `settings.json`。
-- **FR-033**：`tools` 和权限规则必须独立运作：`tools` 过滤可用的工具定义（可见性），而 `allowedTools`/`disallowedTools` 定义执行权限。
-- **FR-034**：如果工具调用同时匹配两者，`disallowedTools` 必须优先于 `allowedTools`。
-- **FR-035**：如果 `disallowedTools` 或 `permissions.deny` 包含仅由工具名称组成的规则（如 `"Bash"`、`"Write"`），系统必须从提供给 AI 的可用工具列表中过滤掉这些工具，有效地将可见性和执行控制结合起来。
+- SDK 中的 `AgentOptions` 接口必须包含可选的 `allowedTools` 和 `disallowedTools` 属性，类型为 `string[]`。
+- CLI 必须支持 `--allowedTools` 和 `--disallowedTools` 标志，接受逗号分隔的规则字符串。
+- 通过 SDK 或 CLI 提供的规则必须是实例特定或会话特定的，不得自动持久化到 `settings.json`。
+- `tools` 和权限规则必须独立运作：`tools` 过滤可用的工具定义（可见性），而 `allowedTools`/`disallowedTools` 定义执行权限。
+- 如果工具调用同时匹配两者，`disallowedTools` 必须优先于 `allowedTools`。
+- 如果 `disallowedTools` 或 `permissions.deny` 包含仅由工具名称组成的规则（如 `"Bash"`、`"Write"`），系统必须从提供给 AI 的可用工具列表中过滤掉这些工具，有效地将可见性和执行控制结合起来。
 
 ## 关键实体
 

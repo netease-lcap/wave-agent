@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 截断时自动继续（优先级：P1）
+### 用户故事：截断时自动继续（优先级：P1）
 
 作为用户，我希望代理在响应被输出 token 限制截断时自动继续其响应，这样我不必手动提示它完成工作。继续提示应该从 UI 中隐藏以保持对话整洁。
 
@@ -19,7 +19,7 @@
 
 ---
 
-### 用户故事 2 - 带工具调用的截断（优先级：P1）
+### 用户故事：带工具调用的截断（优先级：P1）
 
 作为用户，我希望代理在响应被输出 token 限制截断时执行工具然后自动继续其响应，即使调用了工具也是如此。
 
@@ -29,7 +29,7 @@
 
 ---
 
-### 用户故事 3 - 速率限制弹性（优先级：P2）
+### 用户故事：速率限制弹性（优先级：P2）
 
 作为用户，我希望代理能够应对临时 API 速率限制（429 错误），这样我的工作不会被瞬态网络或 API 问题中断。重试策略应尊重服务器指示的等待时间，避免在限流窗口内无效重试。
 
@@ -41,7 +41,7 @@
 
 ---
 
-### 用户故事 4 - 调试 API 错误（优先级：P3）
+### 用户故事：调试 API 错误（优先级：P3）
 
 作为开发者，我希望系统在发生 400 Bad Request 错误时保存调试信息，这样我可以轻松诊断格式错误请求或无效参数的问题。
 
@@ -51,7 +51,7 @@
 
 ---
 
-### 用户故事 5 - 处理格式错误的工具参数（优先级：P2）
+### 用户故事：处理格式错误的工具参数（优先级：P2）
 
 作为用户，我希望代理处理 AI 为工具参数提供格式错误 JSON 的情况，特别是当响应被截断时，这样我能得到关于出了什么问题的清晰说明。
 
@@ -61,7 +61,7 @@
 
 ---
 
-### 用户故事 6 - 恢复截断的工具参数（优先级：P2）
+### 用户故事：恢复截断的工具参数（优先级：P2）
 
 作为用户，我希望代理尝试恢复截断的工具参数（如缺少闭合大括号的 Write/Edit），这样工具仍然可以执行而不是直接失败。
 
@@ -90,19 +90,19 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须检测 AI 响应何时因输出 token 限制被截断（`finish_reason: "length"`）
-- **FR-002**：如果响应被截断，系统必须添加隐藏的用户消息（带 `isMeta: true`）："Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."
-- **FR-003**：如果响应被截断，系统必须自动发起递归 AI 调用以继续响应
-- **FR-004**：系统必须从 UI 渲染中过滤掉 `isMeta: true` 的消息
-- **FR-005**：系统必须使用指数退避重试 429 和 5xx 服务器错误（HTTP 500、502、503、504，不含 501）。重试参数：最多 10 次重试，基准延迟 500ms，延迟计算 `min(500 * 2^(attempt-1), 32000) + 25% jitter`。如果响应包含 `Retry-After` 头，则优先使用该头指定的秒数作为延迟（不受 32 秒上限约束）
-- **FR-006**：系统必须在发生 400 错误时将调试数据（消息、错误详情）保存到临时目录
-- **FR-007**：系统必须处理工具参数的 JSON 解析错误。如果响应被截断，错误消息必须包含：`"(output truncated, please reduce your output)"`
-- **FR-007a**：系统必须在失败前尝试通过闭合未闭合的字符串（`"`）和大括号（`}`）来恢复截断的工具参数 JSON。当检测到未闭合的 `[` 方括号时不得尝试恢复（无法猜测数组内容）
-- **FR-007b**：当恢复的 JSON 解析成功时，系统必须执行工具并在工具结果中追加警告：`"\n\n⚠️ Tool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls."`
-- **FR-007c**：`convertMessagesForAPI.ts` 中的 `safeToolArguments()` 函数也必须在回退到 `{"invalid_arguments": args}` 之前尝试 `recoverTruncatedJson()`
-- **FR-008**：系统必须尊重中止信号和后台工具，即使发生截断也停止递归
-- **FR-009**：系统必须检测新工具调用是否与上一轮的工具调用相同（相同工具名称和参数）。如果是，必须添加用户消息提醒代理避免循环并考虑改变方法
-- **FR-010**：5xx 服务器错误（500、502、503、504）与 429 共用 FR-005 定义的重试策略
+- 系统必须检测 AI 响应何时因输出 token 限制被截断（`finish_reason: "length"`）
+- 如果响应被截断，系统必须添加隐藏的用户消息（带 `isMeta: true`）："Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."
+- 如果响应被截断，系统必须自动发起递归 AI 调用以继续响应
+- 系统必须从 UI 渲染中过滤掉 `isMeta: true` 的消息
+- 系统必须使用指数退避重试 429 和 5xx 服务器错误（HTTP 500、502、503、504，不含 501）。重试参数：最多 10 次重试，基准延迟 500ms，延迟计算 `min(500 * 2^(attempt-1), 32000) + 25% jitter`。如果响应包含 `Retry-After` 头，则优先使用该头指定的秒数作为延迟（不受 32 秒上限约束）
+- 系统必须在发生 400 错误时将调试数据（消息、错误详情）保存到临时目录
+- 系统必须处理工具参数的 JSON 解析错误。如果响应被截断，错误消息必须包含：`"(output truncated, please reduce your output)"`
+- 系统必须在失败前尝试通过闭合未闭合的字符串（`"`）和大括号（`}`）来恢复截断的工具参数 JSON。当检测到未闭合的 `[` 方括号时不得尝试恢复（无法猜测数组内容）
+- 当恢复的 JSON 解析成功时，系统必须执行工具并在工具结果中追加警告：`"\n\n⚠️ Tool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls."`
+- `convertMessagesForAPI.ts` 中的 `safeToolArguments()` 函数也必须在回退到 `{"invalid_arguments": args}` 之前尝试 `recoverTruncatedJson()`
+- 系统必须尊重中止信号和后台工具，即使发生截断也停止递归
+- 系统必须检测新工具调用是否与上一轮的工具调用相同（相同工具名称和参数）。如果是，必须添加用户消息提醒代理避免循环并考虑改变方法
+- 5xx 服务器错误（500、502、503、504）与 429 共用上文指数退避重试策略
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

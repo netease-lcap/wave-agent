@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 访问通用子 agent（优先级：P1）
+### 用户故事：访问通用子 agent（优先级：P1）
 
 作为开发者，我希望能够将复杂的研究、多步骤任务和代码修改委托给专门的子 agent，以便主 agent 可以专注于高层协调，而子 agent 处理代码库探索和实现的重型工作。
 
@@ -20,7 +20,7 @@
 
 ---
 
-### 用户故事 2 - 互补的子 agent 角色（优先级：P2）
+### 用户故事：互补的子 agent 角色（优先级：P2）
 
 作为系统维护者，我希望 `general-purpose` 子 agent 通过提供写入能力和更广泛的操作范围来补充 `Explore` 子 agent，同时保持一致的安全指南（如绝对路径和不主动创建文档）。
 
@@ -42,13 +42,13 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须注册一个内置 agent，其 `agentType: "general-purpose"`。
-- **FR-002**：系统必须定义通用 agent 的 `whenToUse` 元数据，突出其在多步骤研究和实现方面相对于只读 `Explore` agent 的优势。
-- **FR-003**：系统必须为通用 agent 提供特定的 `getSystemPrompt`，定义其研究和实现优势。
-- **FR-004**：系统应该省略 `general-purpose` agent 配置中的 `tools` 字段，以允许默认的完整工具访问。
-- **FR-005**：系统必须设置 `scope: "builtin"` 并使用占位符 `filePath`（例如 `"<builtin:general-purpose>"`）来标识其内置状态。
-- **FR-006**：系统必须确保通用 agent 可作为 `Task` 工具的有效目标。
-- **FR-007**：系统必须将 `general-purpose` agent 与 `Explore` agent 一起集成到 `getBuiltinSubagents` 工具中。
+- 系统必须注册一个内置 agent，其 `agentType: "general-purpose"`。
+- 系统必须定义通用 agent 的 `whenToUse` 元数据，突出其在多步骤研究和实现方面相对于只读 `Explore` agent 的优势。
+- 系统必须为通用 agent 提供特定的 `getSystemPrompt`，定义其研究和实现优势。
+- 系统应该省略 `general-purpose` agent 配置中的 `tools` 字段，以允许默认的完整工具访问。
+- 系统必须设置 `scope: "builtin"` 并使用占位符 `filePath`（例如 `"<builtin:general-purpose>"`）来标识其内置状态。
+- 系统必须确保通用 agent 可作为 `Task` 工具的有效目标。
+- 系统必须将 `general-purpose` agent 与 `Explore` agent 一起集成到 `getBuiltinSubagents` 工具中。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 
