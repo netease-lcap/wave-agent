@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer, useCallback, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useReducer, useCallback, useRef, useState } from 'react';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import type { MessageInputHandle } from './MessageInput';
@@ -38,7 +38,53 @@ const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 320;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
 const CHAT_MAIN_MIN_WIDTH = 360;
+/** Row minimums for the panel second row (message row / panel row). */
+const CHAT_MAIN_MIN_HEIGHT = 240;
+const PANEL_ROW_MIN_HEIGHT = 160;
+const PANEL_ROW_SEPARATOR_PX = 5;
+const PANEL_ROW_DEFAULT_RATIO = 0.35;
 const PANEL_HINT_DURATION_MS = 2400;
+const PANEL_DRAG_MIME = 'application/x-wave-panel';
+
+type PanelRow = 1 | 2;
+
+/** Default height for a newly created panel second row, clamped to the row
+ * minimums so the message area keeps CHAT_MAIN_MIN_HEIGHT. */
+function defaultPanelRowHeight(bodyH: number): number {
+  return Math.min(
+    Math.max(Math.round(bodyH * PANEL_ROW_DEFAULT_RATIO), PANEL_ROW_MIN_HEIGHT),
+    Math.max(bodyH - CHAT_MAIN_MIN_HEIGHT - PANEL_ROW_SEPARATOR_PX, PANEL_ROW_MIN_HEIGHT),
+  );
+}
+
+/** True when a second row can be created without violating either row minimum. */
+function canCreatePanelRow(bodyH: number): boolean {
+  return bodyH >= CHAT_MAIN_MIN_HEIGHT + PANEL_ROW_SEPARATOR_PX + PANEL_ROW_MIN_HEIGHT;
+}
+
+/**
+ * Per-pane panel group snapshot. A pane moved across window rows unmounts and
+ * remounts its ChatApp (React cannot reparent); the cache carries the panel
+ * group across that remount so the group migrates with the pane. Entries are
+ * pruned by DesktopApp when a pane disappears from the host push.
+ */
+interface PanelGroupState {
+  checked: DesktopPanelKind[];
+  mounted: DesktopPanelKind[];
+  widths: Record<DesktopPanelKind, number>;
+  rows: Record<DesktopPanelKind, PanelRow>;
+  rowHeight: number | null;
+  previewUrl: string | null;
+}
+
+const panelGroupCache = new Map<string, PanelGroupState>();
+
+/** Drop cache entries for panes no longer present (pane closed). */
+export function prunePanelGroupCache(activePaneIds: string[]): void {
+  for (const key of [...panelGroupCache.keys()]) {
+    if (!activePaneIds.includes(key)) panelGroupCache.delete(key);
+  }
+}
 
 export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
@@ -49,21 +95,59 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
   const [worktreeChecked, setWorktreeChecked] = useState(true);
   // Desktop only: localhost URL shown in the preview pane. Null = never opened.
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(
+    () => (paneId ? panelGroupCache.get(paneId)?.previewUrl : null) ?? null,
+  );
   // Desktop only: conversation-level panel group (checked = visible; mounted =
-  // rendered but possibly hidden, so panel content survives unchecking).
-  const [checkedPanels, setCheckedPanels] = useState<DesktopPanelKind[]>([]);
-  const [mountedPanels, setMountedPanels] = useState<DesktopPanelKind[]>([]);
-  const [panelWidths, setPanelWidths] = useState<Record<DesktopPanelKind, number>>({
-    preview: PANEL_DEFAULT_WIDTH,
-    diff: PANEL_DEFAULT_WIDTH,
-    terminal: PANEL_DEFAULT_WIDTH,
-  });
+  // rendered but possibly hidden, so panel content survives unchecking). When
+  // this pane's group was cached (pane moved across window rows), restore it.
+  const [checkedPanels, setCheckedPanels] = useState<DesktopPanelKind[]>(
+    () => (paneId ? panelGroupCache.get(paneId)?.checked : undefined) ?? [],
+  );
+  const [mountedPanels, setMountedPanels] = useState<DesktopPanelKind[]>(
+    () => (paneId ? panelGroupCache.get(paneId)?.mounted : undefined) ?? [],
+  );
+  const [panelWidths, setPanelWidths] = useState<Record<DesktopPanelKind, number>>(
+    () =>
+      (paneId ? panelGroupCache.get(paneId)?.widths : undefined) ?? {
+        preview: PANEL_DEFAULT_WIDTH,
+        diff: PANEL_DEFAULT_WIDTH,
+        terminal: PANEL_DEFAULT_WIDTH,
+      },
+  );
+  // Panel row assignment: 1 = right of the message area (default), 2 = second
+  // row below it. Unchecking keeps the assignment; the row follows on recheck.
+  const [panelRows, setPanelRows] = useState<Record<DesktopPanelKind, PanelRow>>(
+    () =>
+      (paneId ? panelGroupCache.get(paneId)?.rows : undefined) ?? {
+        preview: 1,
+        diff: 1,
+        terminal: 1,
+      },
+  );
+  // Pixel height of the panel second row; null until a row is first created.
+  const [panelRowHeight, setPanelRowHeight] = useState<number | null>(
+    () => (paneId ? panelGroupCache.get(paneId)?.rowHeight : undefined) ?? null,
+  );
   const [panelHint, setPanelHint] = useState<string | null>(null);
+  // VS Code-style translucent overlay over the target row while a panel
+  // toolbar drags; geometry is relative to the chat body (top/height in px).
+  const [panelDropZone, setPanelDropZone] = useState<{ row: PanelRow; top: number; height: number } | null>(null);
+  // True between a panel-toolbar dragstart and dragend; disables guest
+  // pointer-events so dragover keeps firing over the preview webview.
+  const [panelDragActive, setPanelDragActive] = useState(false);
+  const [panelRowSeparatorActive, setPanelRowSeparatorActive] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatBodyRef = useRef<HTMLDivElement>(null);
   const panelHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const checkedPanelsRef = useRef(checkedPanels);
   const panelWidthsRef = useRef(panelWidths);
+  const panelRowsRef = useRef(panelRows);
+  const panelRowHeightRef = useRef(panelRowHeight);
+  const panelSlotNodes = useRef(new Map<DesktopPanelKind, HTMLDivElement>());
+  // The panel whose toolbar is being dragged (same-document drag source; the
+  // MIME alone cannot expose the payload during dragover).
+  const draggedPanelRef = useRef<DesktopPanelKind | null>(null);
   // Mirrors so the stable message listener can reach the panel toggle logic
   // (defined below) without re-subscribing.
   const togglePanelRef = useRef<(kind: DesktopPanelKind) => void>(() => {});
@@ -87,6 +171,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   useEffect(() => {
     panelWidthsRef.current = panelWidths;
   }, [panelWidths]);
+
+  useEffect(() => {
+    panelRowsRef.current = panelRows;
+  }, [panelRows]);
+
+  useEffect(() => {
+    panelRowHeightRef.current = panelRowHeight;
+  }, [panelRowHeight]);
+
+  // Cache the whole panel group per pane so it survives this ChatApp being
+  // unmounted/remounted when the pane moves across window rows.
+  useEffect(() => {
+    if (!paneId) return;
+    panelGroupCache.set(paneId, {
+      checked: checkedPanels,
+      mounted: mountedPanels,
+      widths: panelWidths,
+      rows: panelRows,
+      rowHeight: panelRowHeight,
+      previewUrl,
+    });
+  }, [paneId, checkedPanels, mountedPanels, panelWidths, panelRows, panelRowHeight, previewUrl]);
 
   useEffect(() => {
     paneIdRef.current = paneId;
@@ -627,17 +733,35 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     panelHintTimer.current = setTimeout(() => setPanelHint(null), PANEL_HINT_DURATION_MS);
   }, []);
 
-  // Check a panel on: refuse when the remaining conversation area would drop
-  // below its minimum width. Mounting is sticky — unchecking only hides.
+  const isDesktop = host?.type === 'desktop';
+
+  // Check a panel on: refuse when the remaining space in its assigned row
+  // would drop below the minimum. Mounting is sticky — unchecking only hides.
   const tryOpenPanel = useCallback((kind: DesktopPanelKind): boolean => {
+    const row = panelRowsRef.current[kind];
     const containerW = chatContainerRef.current?.getBoundingClientRect().width;
     if (containerW) {
       const used =
-        checkedPanelsRef.current.reduce((sum, k) => sum + panelWidthsRef.current[k], 0) +
-        panelWidthsRef.current[kind];
-      if (containerW - used < CHAT_MAIN_MIN_WIDTH) {
+        checkedPanelsRef.current
+          .filter((k) => panelRowsRef.current[k] === row)
+          .reduce((sum, k) => sum + panelWidthsRef.current[k], 0) + panelWidthsRef.current[kind];
+      // First-row panels share their line with the message area; second-row
+      // panels may span the full width.
+      if (containerW - used < (row === 1 ? CHAT_MAIN_MIN_WIDTH : 0)) {
         showPanelHint('空间不足，无法开启面板');
         return false;
+      }
+    }
+    // Rechecking a second-row panel while no second row is shown re-creates
+    // it — refuse when the body is too short for both row minimums.
+    if (row === 2 && !checkedPanelsRef.current.some((k) => panelRowsRef.current[k] === 2)) {
+      const bodyH = chatBodyRef.current?.getBoundingClientRect().height;
+      if (bodyH) {
+        if (!canCreatePanelRow(bodyH)) {
+          showPanelHint('空间不足，无法开启面板');
+          return false;
+        }
+        if (panelRowHeightRef.current == null) setPanelRowHeight(defaultPanelRowHeight(bodyH));
       }
     }
     setCheckedPanels((prev) => (prev.includes(kind) ? prev : [...prev, kind]));
@@ -659,17 +783,172 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [handleTogglePanel]);
 
   // Authoritative clamp at drag time: keep the panel within [320, container -
-  // other checked panels - conversation minimum].
+  // other checked panels in the same row - (row 1 only) conversation minimum].
   const handlePanelWidthChange = useCallback((kind: DesktopPanelKind, width: number) => {
     let clamped = Math.max(width, PANEL_MIN_WIDTH);
     const containerW = chatContainerRef.current?.getBoundingClientRect().width;
     if (containerW) {
+      const row = panelRowsRef.current[kind];
       const others = checkedPanelsRef.current
-        .filter((k) => k !== kind)
+        .filter((k) => k !== kind && panelRowsRef.current[k] === row)
         .reduce((sum, k) => sum + panelWidthsRef.current[k], 0);
-      clamped = Math.min(clamped, containerW - others - CHAT_MAIN_MIN_WIDTH);
+      clamped = Math.min(clamped, containerW - others - (row === 1 ? CHAT_MAIN_MIN_WIDTH : 0));
     }
     setPanelWidths((prev) => ({ ...prev, [kind]: clamped }));
+  }, []);
+
+  // Move a panel between the first row (right of the message area) and the
+  // second row (below it). Creating the row refuses with a hint when the body
+  // is too short for both row minimums.
+  const movePanelToRow = useCallback((kind: DesktopPanelKind, row: PanelRow) => {
+    if (panelRowsRef.current[kind] === row) return;
+    if (row === 2 && !checkedPanelsRef.current.some((k) => panelRowsRef.current[k] === 2)) {
+      const bodyH = chatBodyRef.current?.getBoundingClientRect().height ?? 0;
+      if (bodyH) {
+        if (!canCreatePanelRow(bodyH)) {
+          showPanelHint('空间不足，无法创建面板行');
+          return;
+        }
+        if (panelRowHeightRef.current == null) setPanelRowHeight(defaultPanelRowHeight(bodyH));
+      }
+    }
+    setPanelRows((prev) => ({ ...prev, [kind]: row }));
+  }, [showPanelHint]);
+
+  // Panel-toolbar drag source. The toolbars live inside the panel components,
+  // so the drag is wired imperatively (same pattern as the pane-header drag in
+  // DesktopShell): the press target is recorded on mousedown and a drag that
+  // began on a toolbar button is vetoed at dragstart so it stays a click.
+  useLayoutEffect(() => {
+    if (!isDesktop) return;
+    const disposers: Array<() => void> = [];
+    for (const kind of mountedPanels) {
+      const toolbar = panelSlotNodes.current
+        .get(kind)
+        ?.querySelector<HTMLElement>('.preview-pane-toolbar');
+      if (!toolbar) continue;
+      toolbar.draggable = true;
+      let pressTarget: EventTarget | null = null;
+      const onMouseDown = (e: MouseEvent) => {
+        pressTarget = e.target;
+      };
+      const onDragStart = (e: DragEvent) => {
+        if (!e.dataTransfer) return;
+        if (
+          pressTarget instanceof Element &&
+          pressTarget.closest('button, a, input, select, textarea, [role="button"]')
+        ) {
+          e.preventDefault();
+          return;
+        }
+        draggedPanelRef.current = kind;
+        setPanelDragActive(true);
+        e.dataTransfer.setData(PANEL_DRAG_MIME, kind);
+        try {
+          e.dataTransfer.effectAllowed = 'move';
+        } catch {
+          // jsdom's DataTransfer polyfill exposes a read-only effectAllowed.
+        }
+      };
+      const onDragEnd = () => {
+        pressTarget = null;
+        draggedPanelRef.current = null;
+        setPanelDragActive(false);
+        setPanelDropZone(null);
+      };
+      toolbar.addEventListener('mousedown', onMouseDown);
+      toolbar.addEventListener('dragstart', onDragStart);
+      toolbar.addEventListener('dragend', onDragEnd);
+      disposers.push(() => {
+        toolbar.removeEventListener('mousedown', onMouseDown);
+        toolbar.removeEventListener('dragstart', onDragStart);
+        toolbar.removeEventListener('dragend', onDragEnd);
+        toolbar.draggable = false;
+      });
+    }
+    return () => disposers.forEach((dispose) => dispose());
+    // previewUrl swaps the preview slot between the stub and PreviewPane —
+    // two different toolbar nodes — so the wiring must re-run on that swap.
+  }, [isDesktop, mountedPanels, previewUrl]);
+
+  // Hit-testing while a panel toolbar drags over the chat body: the bottom
+  // band targets the second row (creating it when absent), the rest targets
+  // the first row. The overlay is only shown for an actual row change.
+  const handlePanelDragOver = useCallback((e: React.DragEvent) => {
+    const kind = draggedPanelRef.current;
+    if (!kind || !e.dataTransfer.types.includes(PANEL_DRAG_MIME)) return;
+    const body = chatBodyRef.current;
+    if (!body) return;
+    const rect = body.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const row2Height = panelRowHeightRef.current ?? 0;
+    const hasRow2 = checkedPanelsRef.current.some((k) => panelRowsRef.current[k] === 2);
+    let target: PanelRow;
+    if (hasRow2) {
+      target = y >= rect.height - row2Height ? 2 : 1;
+    } else {
+      // No second row yet: a bottom edge band previews where it would open.
+      const band = Math.min(120, Math.max(64, rect.height * 0.3));
+      target = y >= rect.height - band ? 2 : 1;
+    }
+    if (target === panelRowsRef.current[kind]) {
+      setPanelDropZone(null);
+      return;
+    }
+    if (target === 2) {
+      if (!hasRow2) {
+        if (rect.height && !canCreatePanelRow(rect.height)) {
+          showPanelHint('空间不足，无法创建面板行');
+          setPanelDropZone(null);
+          return;
+        }
+        const h = row2Height || defaultPanelRowHeight(rect.height);
+        setPanelDropZone({ row: 2, top: rect.height - h, height: h });
+      } else {
+        setPanelDropZone({ row: 2, top: rect.height - row2Height, height: row2Height });
+      }
+    } else {
+      setPanelDropZone({ row: 1, top: 0, height: rect.height - row2Height - PANEL_ROW_SEPARATOR_PX });
+    }
+    e.preventDefault();
+  }, [showPanelHint]);
+
+  const handlePanelDragLeave = useCallback((e: React.DragEvent) => {
+    const body = chatBodyRef.current;
+    if (body && e.relatedTarget instanceof Node && body.contains(e.relatedTarget)) return;
+    setPanelDropZone(null);
+  }, []);
+
+  const handlePanelDrop = useCallback((e: React.DragEvent) => {
+    const kind = draggedPanelRef.current;
+    if (!kind || !e.dataTransfer.types.includes(PANEL_DRAG_MIME)) return;
+    e.preventDefault();
+    const zone = panelDropZone;
+    setPanelDropZone(null);
+    if (zone) movePanelToRow(kind, zone.row);
+  }, [panelDropZone, movePanelToRow]);
+
+  // Dragging the horizontal separator trades message-row height for
+  // panel-row height, clamped to both row minimums.
+  const handlePanelRowSeparatorMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const bodyH = chatBodyRef.current?.getBoundingClientRect().height ?? 0;
+    const startY = e.clientY;
+    const startH = panelRowHeightRef.current ?? defaultPanelRowHeight(bodyH);
+    const max = bodyH
+      ? Math.max(bodyH - CHAT_MAIN_MIN_HEIGHT - PANEL_ROW_SEPARATOR_PX, PANEL_ROW_MIN_HEIGHT)
+      : Number.MAX_SAFE_INTEGER;
+    setPanelRowSeparatorActive(true);
+    const onMove = (ev: MouseEvent) => {
+      setPanelRowHeight(Math.min(Math.max(startH - (ev.clientY - startY), PANEL_ROW_MIN_HEIGHT), max));
+    };
+    const onUp = () => {
+      setPanelRowSeparatorActive(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   }, []);
 
   // Desktop only: open/re-target the preview panel. Clicking a localhost link
@@ -680,7 +959,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setPreviewUrl(url);
   }, [tryOpenPanel]);
 
-  const isDesktop = host?.type === 'desktop';
   // The pane's effective cwd: the session's own workdir (per-pane on desktop)
   // wins over the host-level current workdir.
   const effectiveWorkdir = state.workdir ?? (isDesktop ? host?.workdir : undefined);
@@ -698,15 +976,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     postToHost({ command: 'desktopPanelState', checked: checkedPanels });
   }, [checkedPanels, isDesktop, postToHost]);
 
-  // Width ceiling for one panel: container minus the other checked panels and
-  // the conversation-area minimum. Render-time estimate — the drag handler
-  // re-clamps authoritatively on every mousemove.
+  // Width ceiling for one panel: container minus the other checked panels in
+  // the same row and (row 1 only) the conversation-area minimum. Render-time
+  // estimate — the drag handler re-clamps authoritatively on every mousemove.
   const panelMaxWidth = (kind: DesktopPanelKind): number => {
     const containerW = chatContainerRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+    const row = panelRows[kind];
     const others = checkedPanels
-      .filter((k) => k !== kind)
+      .filter((k) => k !== kind && panelRows[k] === row)
       .reduce((sum, k) => sum + panelWidths[k], 0);
-    return containerW - others - CHAT_MAIN_MIN_WIDTH;
+    return containerW - others - (row === 1 ? CHAT_MAIN_MIN_WIDTH : 0);
   };
 
   const renderPanelSlot = (kind: DesktopPanelKind) => {
@@ -715,6 +994,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       onWidthChange: (w: number) => handlePanelWidthChange(kind, w),
       maxWidth: panelMaxWidth(kind),
       onClose: () => handleTogglePanel(kind),
+      widthFromLeft: panelRows[kind] === 2,
     };
     if (kind === 'preview') {
       return previewUrl ? (
@@ -856,6 +1136,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     </>
   );
 
+  // Second row exists while at least one checked panel is assigned to it.
+  const hasPanelRow2 = checkedPanels.some((k) => panelRows[k] === 2);
+  // With no first-row panels the message area must claim the full first line,
+  // otherwise the row separator would share its line (flex-wrap line packing).
+  const panelRow1Empty = !checkedPanels.some((k) => panelRows[k] === 1);
+
   const chatContainer = (
     <div className="chat-container" data-testid="chat-container" ref={isDesktop ? chatContainerRef : undefined}>
       {queueEditWarning && (
@@ -892,17 +1178,50 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         }
       />
       {isDesktop ? (
-        <div className="desktop-chat-body">
+        <div
+          ref={chatBodyRef}
+          className={`desktop-chat-body${hasPanelRow2 ? ' desktop-chat-body--two-rows' : ''}${
+            hasPanelRow2 && panelRow1Empty ? ' desktop-chat-body--row1-empty' : ''
+          }${panelDragActive ? ' desktop-chat-body--panel-dragging' : ''}`}
+          style={
+            hasPanelRow2 && panelRowHeight != null
+              ? ({ '--panel-row-height': `${panelRowHeight}px` } as React.CSSProperties)
+              : undefined
+          }
+          onDragOver={handlePanelDragOver}
+          onDragLeave={handlePanelDragLeave}
+          onDrop={handlePanelDrop}
+        >
           <div className="desktop-chat-main">{chatBodyContent}</div>
           {PANEL_ORDER.filter((kind) => mountedPanels.includes(kind)).map((kind) => (
             <div
               key={kind}
-              className="desktop-panel-slot"
+              ref={(el) => {
+                if (el) panelSlotNodes.current.set(kind, el);
+                else panelSlotNodes.current.delete(kind);
+              }}
+              className={`desktop-panel-slot desktop-panel-slot--row-${panelRows[kind]}`}
               style={{ display: checkedPanels.includes(kind) ? undefined : 'none' }}
             >
               {renderPanelSlot(kind)}
             </div>
           ))}
+          {hasPanelRow2 && (
+            <div
+              className={`desktop-panel-row-separator${
+                panelRowSeparatorActive ? ' desktop-panel-row-separator--active' : ''
+              }`}
+              data-testid="desktop-panel-row-separator"
+              onMouseDown={handlePanelRowSeparatorMouseDown}
+            />
+          )}
+          {panelDropZone && (
+            <div
+              className="desktop-panel-dropzone"
+              data-testid="desktop-panel-dropzone"
+              style={{ top: panelDropZone.top, height: panelDropZone.height }}
+            />
+          )}
           {panelHint && (
             <div className="desktop-pane-hint" role="status" data-testid="desktop-panel-hint">
               {panelHint}

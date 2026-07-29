@@ -151,8 +151,9 @@ export interface ChatAppProps {
 }
 
 /**
- * One split-view pane in the desktop layout (FR-032). Order = left→right.
- * `sessionId` is undefined while the pane's session is still being resolved.
+ * One split-view pane in the desktop layout (FR-032). Panes are organized into
+ * at most two rows (top/bottom); within a row order = left→right. `sessionId`
+ * is undefined while the pane's session is still being resolved.
  */
 export interface DesktopPane {
   paneId: string;
@@ -162,6 +163,21 @@ export interface DesktopPane {
    * means the pane takes an equal share of the row.
    */
   width?: number;
+  /** Pane row: 0 = top (default when absent), 1 = bottom. */
+  row?: 0 | 1;
+}
+
+/** Options for opening a session in a new pane. */
+export interface OpenPaneOptions {
+  /** Gap index (0..target-row pane count) to insert at — from a sidebar drop. */
+  insertionIndex?: number;
+  /** Target row; default is the focused pane's row. */
+  row?: 0 | 1;
+  /**
+   * Split the single row into two and put the new pane alone in the fresh
+   * row ('above' = new row on top). Ignored when two rows already exist.
+   */
+  newRow?: 'above' | 'below';
 }
 
 // Desktop host support — injected when running inside packages/desktop (Electron).
@@ -185,11 +201,11 @@ export interface DesktopHostProps {
   /**
    * Open a session in a new pane (Cmd/Ctrl+Click on a sidebar session, or drag
    * one into the chat area). When the session is already shown, the host
-   * focuses that pane instead. `insertionIndex` (0..pane count) inserts the
-   * new pane at that position — from a sidebar drop on a pane gap; omitted
-   * means append at the right end.
+   * focuses that pane instead. `opts` picks the target row / insertion gap /
+   * a fresh second row; omitted options mean "append at the right end of the
+   * focused pane's row".
    */
-  onOpenPane: (workdir: string, sessionId: string, insertionIndex?: number) => void;
+  onOpenPane: (workdir: string, sessionId: string, opts?: OpenPaneOptions) => void;
   /**
    * Git branches of the current workdir (FR-022), pushed via the
    * `desktopGitBranches` message. `null` = not a git repo / git unavailable —
@@ -197,10 +213,16 @@ export interface DesktopHostProps {
    */
   gitBranches: { branches: string[]; current: string } | null;
   /**
-   * Ordered split-view panes (FR-032), pushed via `desktopPanes`. Empty until
-   * the first layout push; the layout renders a single pane in that case.
+   * Split-view panes (FR-032) grouped into up to two rows, pushed via
+   * `desktopPanes`. Empty until the first layout push; the layout renders a
+   * single pane in that case.
    */
   panes?: DesktopPane[];
+  /**
+   * Row height ratios [top, bottom] (sum ≈ 1), pushed via `desktopPanes`.
+   * Present only while two rows exist; absent = single row fills the area.
+   */
+  rowHeights?: number[];
   /** The pane that receives sidebar clicks / 新对话, pushed via `desktopPanes`. */
   focusedPaneId?: string | null;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, fireEvent, screen } from '@testing-library/react';
+import { render, fireEvent, screen, createEvent, within } from '@testing-library/react';
 import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
 import { ChatApp } from '../../src/components/ChatApp';
@@ -178,5 +178,247 @@ describe('ChatApp desktop panel framework', () => {
         sendCommand('authStatusResponse', { isAuthenticated: true });
         expect(screen.queryByTestId('panel-toggle-btn')).not.toBeInTheDocument();
         expect(document.querySelector('.desktop-panel-slot')).toBeNull();
+    });
+
+    describe('panel second row', () => {
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        const bodyOf = (root: ParentNode = document) =>
+            root.querySelector('.desktop-chat-body') as HTMLElement;
+
+        const slotOf = (testid: string) =>
+            screen.getByTestId(testid).closest('.desktop-panel-slot') as HTMLElement;
+
+        function toolbarOf(testid: string): HTMLElement {
+            const toolbar = screen.getByTestId(testid).querySelector('.preview-pane-toolbar');
+            if (!toolbar) throw new Error(`no toolbar in ${testid}`);
+            return toolbar as HTMLElement;
+        }
+
+        // jsdom reports 0 rects; the drag hit-testing measures the chat body.
+        function mockChatBodyHeight(body: HTMLElement, height: number) {
+            vi.spyOn(body, 'getBoundingClientRect').mockReturnValue({
+                width: 1200, height, top: 0, left: 0, bottom: height, right: 1200, x: 0, y: 0, toJSON: () => ({}),
+            });
+        }
+
+        function makeDataTransfer() {
+            const store: Record<string, string> = {};
+            return {
+                get types() { return Object.keys(store); },
+                setData: (type: string, value: string) => { store[type] = value; },
+                getData: (type: string) => store[type] ?? '',
+                effectAllowed: '',
+                dropEffect: '',
+            };
+        }
+
+        // jsdom lacks DragEvent, so fireEvent's dragOver drops clientY — build
+        // the event manually to pin the pointer position.
+        function dragOverBody(body: HTMLElement, dataTransfer: ReturnType<typeof makeDataTransfer>, clientY: number) {
+            const event = createEvent.dragOver(body, { dataTransfer });
+            Object.defineProperty(event, 'clientY', { value: clientY });
+            fireEvent(body, event);
+        }
+
+        function openDiffPanel() {
+            fireEvent.click(screen.getByTestId('panel-toggle-btn'));
+            fireEvent.click(screen.getByTestId('panel-toggle-item-diff'));
+        }
+
+        // Starts a toolbar drag, targets the bottom band, and drops there.
+        function dragDiffToRow2(bodyHeight = 800) {
+            const body = bodyOf();
+            mockChatBodyHeight(body, bodyHeight);
+            const toolbar = toolbarOf('diff-pane');
+            const dataTransfer = makeDataTransfer();
+            fireEvent.dragStart(toolbar, { dataTransfer });
+            dragOverBody(body, dataTransfer, bodyHeight - 10);
+            fireEvent.drop(body, { dataTransfer });
+            fireEvent.dragEnd(toolbar, { dataTransfer });
+        }
+
+        it('dragging a panel toolbar into the bottom band creates the second row', () => {
+            window.waveHostType = 'desktop';
+            renderDesktop({ workdir: '/work/a' });
+            openDiffPanel();
+            const body = bodyOf();
+            mockChatBodyHeight(body, 800);
+
+            const dataTransfer = makeDataTransfer();
+            fireEvent.dragStart(toolbarOf('diff-pane'), { dataTransfer });
+            dragOverBody(body, dataTransfer, 790);
+
+            // VS Code-style overlay previews the row that would open.
+            const zone = screen.getByTestId('desktop-panel-dropzone');
+            expect(zone.style.top).toBe('520px');
+            expect(zone.style.height).toBe('280px');
+
+            fireEvent.drop(body, { dataTransfer });
+            fireEvent.dragEnd(toolbarOf('diff-pane'), { dataTransfer });
+
+            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-2');
+            expect(screen.getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
+            expect(body.className).toContain('desktop-chat-body--two-rows');
+            // Default row height: 35% of 800px, clamped to the row minimums.
+            expect(body.style.getPropertyValue('--panel-row-height')).toBe('280px');
+            expect(screen.queryByTestId('desktop-panel-dropzone')).not.toBeInTheDocument();
+        });
+
+        it('dragging within the panel’s own row shows no overlay and changes nothing', () => {
+            window.waveHostType = 'desktop';
+            renderDesktop({ workdir: '/work/a' });
+            openDiffPanel();
+            const body = bodyOf();
+            mockChatBodyHeight(body, 800);
+
+            const dataTransfer = makeDataTransfer();
+            const toolbar = toolbarOf('diff-pane');
+            fireEvent.dragStart(toolbar, { dataTransfer });
+            dragOverBody(body, dataTransfer, 100);
+
+            expect(screen.queryByTestId('desktop-panel-dropzone')).not.toBeInTheDocument();
+
+            fireEvent.drop(body, { dataTransfer });
+            fireEvent.dragEnd(toolbar, { dataTransfer });
+
+            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-1');
+            expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
+        });
+
+        it('dragging a second-row panel back up collapses the second row', () => {
+            window.waveHostType = 'desktop';
+            renderDesktop({ workdir: '/work/a' });
+            openDiffPanel();
+            dragDiffToRow2();
+            expect(screen.getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
+
+            const body = bodyOf();
+            const dataTransfer = makeDataTransfer();
+            const toolbar = toolbarOf('diff-pane');
+            fireEvent.dragStart(toolbar, { dataTransfer });
+            dragOverBody(body, dataTransfer, 50);
+
+            // The overlay covers the first row (everything above row 2 + separator).
+            const zone = screen.getByTestId('desktop-panel-dropzone');
+            expect(zone.style.top).toBe('0px');
+            expect(zone.style.height).toBe('515px');
+
+            fireEvent.drop(body, { dataTransfer });
+            fireEvent.dragEnd(toolbar, { dataTransfer });
+
+            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-1');
+            expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
+            expect(body.className).not.toContain('desktop-chat-body--two-rows');
+        });
+
+        it('the panel row separator drag resizes the second row with both clamps', () => {
+            window.waveHostType = 'desktop';
+            renderDesktop({ workdir: '/work/a' });
+            openDiffPanel();
+            dragDiffToRow2();
+            const body = bodyOf();
+            expect(body.style.getPropertyValue('--panel-row-height')).toBe('280px');
+
+            const separator = screen.getByTestId('desktop-panel-row-separator');
+            fireEvent.mouseDown(separator, { clientY: 500 });
+            expect(separator.className).toContain('desktop-panel-row-separator--active');
+
+            // Dragging up grows the panel row: 280 + (500-400) = 380.
+            fireEvent.mouseMove(window, { clientY: 400 });
+            expect(body.style.getPropertyValue('--panel-row-height')).toBe('380px');
+
+            // Clamped at the panel-row minimum (160) when dragged far down.
+            fireEvent.mouseMove(window, { clientY: 900 });
+            expect(body.style.getPropertyValue('--panel-row-height')).toBe('160px');
+
+            // Clamped at body - message minimum - separator (800-240-5=555).
+            fireEvent.mouseMove(window, { clientY: 0 });
+            expect(body.style.getPropertyValue('--panel-row-height')).toBe('555px');
+
+            fireEvent.mouseUp(window);
+            expect(separator.className).not.toContain('desktop-panel-row-separator--active');
+        });
+
+        it('refuses to create the second row when the chat body is too short', () => {
+            window.waveHostType = 'desktop';
+            renderDesktop({ workdir: '/work/a' });
+            openDiffPanel();
+            const body = bodyOf();
+            mockChatBodyHeight(body, 300);
+
+            const dataTransfer = makeDataTransfer();
+            const toolbar = toolbarOf('diff-pane');
+            fireEvent.dragStart(toolbar, { dataTransfer });
+            dragOverBody(body, dataTransfer, 290);
+
+            expect(screen.queryByTestId('desktop-panel-dropzone')).not.toBeInTheDocument();
+            expect(screen.getByTestId('desktop-panel-hint')).toHaveTextContent('空间不足');
+
+            fireEvent.drop(body, { dataTransfer });
+            fireEvent.dragEnd(toolbar, { dataTransfer });
+
+            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-1');
+            expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
+        });
+
+        it('the panel group survives the pane moving across window rows', () => {
+            window.waveHostType = 'desktop';
+            renderDesktop({ workdir: '/work/a' });
+            const session = (sessionId: string) => ({
+                sessionId,
+                title: sessionId,
+                lastActiveAt: Date.now(),
+                hasWorktree: false,
+            });
+            sendCommand('desktopSessionTree', {
+                groups: [{ workdir: '/work/a', sessions: [session('s1'), session('s2')] }],
+            });
+            sendCommand('desktopPanes', {
+                panes: [
+                    { paneId: 'pane-cache-a', sessionId: 's1', row: 0 },
+                    { paneId: 'pane-cache-b', sessionId: 's2', row: 1 },
+                ],
+                rowHeights: [0.5, 0.5],
+                focusedPaneId: 'pane-cache-a',
+            });
+
+            // Open the diff panel in pane-cache-a and drag it into the second row.
+            const paneA = screen.getByTestId('desktop-pane-pane-cache-a');
+            fireEvent.click(within(paneA).getByTestId('panel-toggle-btn'));
+            fireEvent.click(within(paneA).getByTestId('panel-toggle-item-diff'));
+            const bodyA = paneA.querySelector('.desktop-chat-body') as HTMLElement;
+            mockChatBodyHeight(bodyA, 800);
+            const toolbar = paneA.querySelector('.preview-pane-toolbar') as HTMLElement;
+            const dataTransfer = makeDataTransfer();
+            fireEvent.dragStart(toolbar, { dataTransfer });
+            dragOverBody(bodyA, dataTransfer, 790);
+            fireEvent.drop(bodyA, { dataTransfer });
+            fireEvent.dragEnd(toolbar, { dataTransfer });
+            expect(within(paneA).getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
+
+            // The host moves pane-cache-a into window row 1 — the pane subtree
+            // unmounts and remounts (React cannot reparent DOM nodes).
+            sendCommand('desktopPanes', {
+                panes: [
+                    { paneId: 'pane-cache-b', sessionId: 's2', row: 0 },
+                    { paneId: 'pane-cache-a', sessionId: 's1', row: 1 },
+                ],
+                rowHeights: [0.5, 0.5],
+                focusedPaneId: 'pane-cache-a',
+            });
+
+            // The panel group migrated with the pane: diff still checked and
+            // still in its second row.
+            const paneA2 = screen.getByTestId('desktop-pane-pane-cache-a');
+            const diff = within(paneA2).getByTestId('diff-pane');
+            expect(diff.closest('.desktop-panel-slot')!.className).toContain('desktop-panel-slot--row-2');
+            expect(within(paneA2).getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
+            const bodyA2 = paneA2.querySelector('.desktop-chat-body') as HTMLElement;
+            expect(bodyA2.className).toContain('desktop-chat-body--two-rows');
+            expect(bodyA2.style.getPropertyValue('--panel-row-height')).toBe('280px');
+        });
     });
 });

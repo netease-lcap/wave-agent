@@ -183,14 +183,14 @@ import { checkForUpdate } from '../src/main/updateChecker';
 
 const STORE_PATH = '/mock-userData/wave-desktop.json';
 
-function createHost(winWidth = 1280) {
+function createHost(winWidth = 1280, winHeight = 800) {
   const store = new ConfigStore(STORE_PATH);
   const host = new DesktopHost(store);
   const send = vi.fn();
   const win = {
     webContents: { send },
     isDestroyed: () => false,
-    getContentSize: () => [winWidth, 800],
+    getContentSize: () => [winWidth, winHeight],
   } as unknown as BrowserWindow;
   host.setMainWindow(win);
   const sent = (command: string) =>
@@ -214,8 +214,8 @@ function fireSessionId(agent: ReturnType<typeof lastAgent>, sessionId: string) {
   agent.callbacks.onSessionIdChange(sessionId);
 }
 
-async function readyHost(winWidth?: number) {
-  const ctx = createHost(winWidth);
+async function readyHost(winWidth?: number, winHeight?: number) {
+  const ctx = createHost(winWidth ?? 1280, winHeight ?? 800);
   // workdir is never persisted — pick it from recents like the real UI flow.
   ctx.store.addRecentWorkdir('/work/a');
   h.existingPaths.add('/work/a');
@@ -1844,6 +1844,271 @@ describe('split-view panes (FR-032~036)', () => {
     firstAgent.callbacks.onUserMessageAdded({ id: 'u-1', role: 'user', blocks: [] });
     const append = sent('appendMessage').at(-1);
     expect(append?.paneId).toBe(panes[0].paneId);
+  });
+});
+
+describe('pane rows (two-row layout)', () => {
+  const seedActiveSession = (sessionId: string) => {
+    const agent = lastAgent();
+    agent.messages = [{ id: `m-${sessionId}` }];
+    fireSessionId(agent, sessionId);
+    return agent;
+  };
+
+  const panePushes = (sent: ReturnType<typeof createHost>['sent']) =>
+    sent('desktopPanes').map(
+      (m) =>
+        m as {
+          panes: Array<{ paneId: string; sessionId?: string; width?: number; row: number }>;
+          rowHeights?: number[];
+          focusedPaneId: string;
+        },
+    );
+
+  const lastSystemMessage = (sent: ReturnType<typeof createHost>['sent']) =>
+    sent('appendMessage')
+      .map((m) => m.message as { role: string; blocks: Array<{ type: string; content: string }> })
+      .filter((msg) => msg.blocks?.[0]?.type === 'text')
+      .at(-1);
+
+  it('webviewReady pushes a single-row layout without rowHeights', async () => {
+    const { sent } = await readyHost();
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].row).toBe(0);
+    expect(layout.rowHeights).toBeUndefined();
+  });
+
+  it('desktopOpenPane with newRow: below splits the layout into two rows', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+      ['sess-1', 0],
+      ['sess-2', 1],
+    ]);
+    expect(layout.rowHeights).toEqual([0.5, 0.5]);
+    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+  });
+
+  it('desktopOpenPane with newRow: above pushes existing panes into the bottom row', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'above' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+      ['sess-2', 0],
+      ['sess-1', 1],
+    ]);
+    expect(layout.rowHeights).toEqual([0.5, 0.5]);
+  });
+
+  it('desktopOpenPane with newRow refuses the split when the window is too short', async () => {
+    const { host, sent } = await readyHost(1280, 500);
+    seedActiveSession('sess-1');
+    const spawned = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+
+    // No new pane, no agent spawn, and a system message explains the refusal.
+    expect(h.agentInstances).toHaveLength(spawned);
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.rowHeights).toBeUndefined();
+    expect(lastSystemMessage(sent)?.blocks[0].content).toBe('窗口高度不足，无法拆分为两行');
+  });
+
+  it('desktopOpenPane with newRow targets the derived row when two rows already exist', async () => {
+    const { host, sent } = await readyHost(1600);
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3', newRow: 'above' });
+
+    // Rows already exist, so "above" just means row 0 — no second split.
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+      ['sess-1', 0],
+      ['sess-3', 0],
+      ['sess-2', 1],
+    ]);
+    expect(layout.rowHeights).toEqual([0.5, 0.5]);
+  });
+
+  it('desktopOpenPane with row inserts the pane into the given row and rebalances only that row', async () => {
+    const { host, sent } = await readyHost(1600);
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3', row: 1 });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+      ['sess-1', 0],
+      ['sess-2', 1],
+      ['sess-3', 1],
+    ]);
+    // Row 0 keeps its untouched width; row 1 splits evenly.
+    expect(layout.panes[0].width).toBeUndefined();
+    expect(layout.panes[1].width).toBeCloseTo(0.5);
+    expect(layout.panes[2].width).toBeCloseTo(0.5);
+  });
+
+  it('desktopMovePane with newRow moves the pane alone into a fresh row', async () => {
+    const { host, sent } = await readyHost(1600);
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    const first = panePushes(sent).at(-1)!.panes[0];
+
+    await host.handleWebviewMessage({ command: 'desktopMovePane', paneId: first.paneId, newRow: 'below' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+      ['sess-2', 0],
+      ['sess-1', 1],
+    ]);
+    // The remaining top-row pane re-expands to the full row width.
+    expect(layout.panes[0].width).toBeCloseTo(1);
+    expect(layout.panes[1].width).toBeUndefined();
+    expect(layout.rowHeights).toEqual([0.5, 0.5]);
+  });
+
+  it('desktopMovePane with newRow is a no-op for a single pane', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const onlyPane = panePushes(sent).at(-1)!.panes[0];
+    const pushes = panePushes(sent).length;
+
+    await host.handleWebviewMessage({ command: 'desktopMovePane', paneId: onlyPane.paneId, newRow: 'below' });
+
+    expect(panePushes(sent)).toHaveLength(pushes);
+    expect(panePushes(sent).at(-1)!.panes).toHaveLength(1);
+  });
+
+  it('desktopMovePane with toRow/toIndex moves the pane across rows and rebalances both rows', async () => {
+    const { host, sent } = await readyHost(1600);
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3' });
+    // Layout: row0 [sess-1], row1 [sess-2, sess-3].
+    const sess3Pane = panePushes(sent).at(-1)!.panes.find((p) => p.sessionId === 'sess-3')!;
+
+    await host.handleWebviewMessage({ command: 'desktopMovePane', paneId: sess3Pane.paneId, toRow: 0, toIndex: 0 });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+      ['sess-3', 0],
+      ['sess-1', 0],
+      ['sess-2', 1],
+    ]);
+    expect(layout.panes[0].width).toBeCloseTo(0.5);
+    expect(layout.panes[1].width).toBeCloseTo(0.5);
+    // The abandoned row re-expands to full width.
+    expect(layout.panes[2].width).toBeCloseTo(1);
+  });
+
+  it('desktopMovePane with toIndex alone reorders within its own row', async () => {
+    const { host, sent } = await readyHost(1600);
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3' });
+    const sess3Pane = panePushes(sent).at(-1)!.panes.find((p) => p.sessionId === 'sess-3')!;
+
+    await host.handleWebviewMessage({ command: 'desktopMovePane', paneId: sess3Pane.paneId, toIndex: 0 });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => p.sessionId)).toEqual(['sess-3', 'sess-1', 'sess-2']);
+    expect(layout.panes.every((p) => p.row === 0)).toBe(true);
+    expect(layout.rowHeights).toBeUndefined();
+  });
+
+  it('desktopResizePanes applies widths only to the addressed row', async () => {
+    const { host, sent } = await readyHost(1600);
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3' });
+    // Layout: row0 [sess-1], row1 [sess-2, sess-3].
+
+    await host.handleWebviewMessage({ command: 'desktopResizePanes', widths: [0.3, 0.7], row: 1 });
+
+    let layout = panePushes(sent).at(-1)!;
+    expect(layout.panes[0].width).toBeUndefined(); // row 0 untouched
+    expect(layout.panes[1].width).toBeCloseTo(0.3);
+    expect(layout.panes[2].width).toBeCloseTo(0.7);
+
+    // A length that doesn't match the row's pane count is ignored.
+    await host.handleWebviewMessage({ command: 'desktopResizePanes', widths: [0.5, 0.5], row: 0 });
+    layout = panePushes(sent).at(-1)!;
+    expect(layout.panes[0].width).toBeUndefined();
+  });
+
+  it('desktopResizePaneRows normalizes pixel heights into rowHeights', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+
+    await host.handleWebviewMessage({ command: 'desktopResizePaneRows', heights: [300, 500] });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.rowHeights![0]).toBeCloseTo(0.375);
+    expect(layout.rowHeights![1]).toBeCloseTo(0.625);
+  });
+
+  it('desktopResizePaneRows ignores malformed payloads and single-row layouts', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+
+    await host.handleWebviewMessage({ command: 'desktopResizePaneRows', heights: [300, 500] });
+    const pushes = panePushes(sent).length;
+
+    await host.handleWebviewMessage({ command: 'desktopResizePaneRows', heights: [600] });
+    await host.handleWebviewMessage({ command: 'desktopResizePaneRows', heights: [0, 800] });
+    await host.handleWebviewMessage({ command: 'desktopResizePaneRows', heights: 'bogus' });
+
+    expect(panePushes(sent)).toHaveLength(pushes);
+    expect(panePushes(sent).at(-1)!.rowHeights![0]).toBeCloseTo(0.375);
+
+    // Single-row layout: the command is meaningless and ignored.
+    const solo = await readyHost();
+    const soloPushes = panePushes(solo.sent).length;
+    await solo.host.handleWebviewMessage({ command: 'desktopResizePaneRows', heights: [400, 400] });
+    expect(panePushes(solo.sent)).toHaveLength(soloPushes);
+  });
+
+  it('closing the last pane of a row collapses the layout back to one row', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+    const bottomPane = panePushes(sent).at(-1)!.panes[1];
+
+    await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: bottomPane.paneId });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].sessionId).toBe('sess-1');
+    expect(layout.panes[0].row).toBe(0);
+    expect(layout.rowHeights).toBeUndefined();
+  });
+
+  it('closing every top-row pane promotes the bottom row to row 0', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+    const topPane = panePushes(sent).at(-1)!.panes[0];
+
+    await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: topPane.paneId });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].sessionId).toBe('sess-2');
+    expect(layout.panes[0].row).toBe(0);
+    expect(layout.rowHeights).toBeUndefined();
   });
 });
 

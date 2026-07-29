@@ -120,14 +120,21 @@ describe('TerminalManager', () => {
     expect(callbacks.onExit).not.toHaveBeenCalled();
   });
 
-  it('a stale exit from a replaced process is ignored', async () => {
+  it('create on a live termId reattaches: resize + scrollback replay, no respawn', async () => {
     const { manager, callbacks } = await freshManager();
-    await manager.create('term-1', '/work/a', 80, 24);
+    await manager.create('term-1', '/work/a', 80, 24, 'pane-1');
     const first = h.procs[0];
-    await manager.create('term-1', '/work/a', 80, 24); // silently replaces
-    expect(first.kill).toHaveBeenCalled();
+    first.dataCb?.('some output');
+    callbacks.onData.mockClear();
+    await manager.create('term-1', '/work/a', 120, 40, 'pane-2');
+    expect(first.kill).not.toHaveBeenCalled();
+    expect(h.spawn).toHaveBeenCalledTimes(1);
+    expect(first.resize).toHaveBeenCalledWith(120, 40);
+    // Buffered scrollback replays so a remounted xterm restores its content.
+    expect(callbacks.onData).toHaveBeenCalledWith('term-1', 'some output');
+    // A real exit after reattach still reaches the webview.
     first.exitCb?.({ exitCode: 0 });
-    expect(callbacks.onExit).not.toHaveBeenCalled();
+    expect(callbacks.onExit).toHaveBeenCalledWith('term-1', { exitCode: 0 });
   });
 
   it('killForPane kills only the terminals owned by that pane', async () => {

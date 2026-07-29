@@ -64,16 +64,37 @@ interface TerminalEntry {
   proc: PtyProcess;
   paneId?: string;
   disposables: Array<{ dispose(): void }>;
+  /** Capped scrollback, replayed to a remounted xterm on reattach. */
+  buffer: string;
 }
+
+/** Scrollback kept per PTY for reattach replay (~last 256 KB of output). */
+const BUFFER_CAP_BYTES = 256 * 1024;
 
 export class TerminalManager {
   private terminals = new Map<string, TerminalEntry>();
 
   constructor(private callbacks: TerminalManagerCallbacks) {}
 
-  /** Create (or silently replace) the PTY for termId. Failures report via onExit. */
+  /**
+   * Create the PTY for termId, or reattach to the live one: a remounted
+   * terminal panel (pane moved across rows) re-sends create — keeping the PTY
+   * alive preserves the shell session, so the existing process is resized to
+   * the fresh grid and its scrollback replayed instead of respawned.
+   * Failures report via onExit.
+   */
   async create(termId: string, cwd: string, cols: number, rows: number, paneId?: string): Promise<void> {
-    this.kill(termId);
+    const existing = this.terminals.get(termId);
+    if (existing) {
+      try {
+        existing.proc.resize(cols, rows);
+      } catch {
+        // PTY may be mid-teardown; a stale resize is harmless.
+      }
+      existing.paneId = paneId ?? existing.paneId;
+      if (existing.buffer) this.callbacks.onData(termId, existing.buffer);
+      return;
+    }
     const pty = await loadPty();
     if (!pty) {
       this.callbacks.onExit(termId, { error: `终端组件加载失败：${ptyLoadError}` });
@@ -92,9 +113,12 @@ export class TerminalManager {
           COLORTERM: 'truecolor',
         },
       });
-      const entry: TerminalEntry = { proc, paneId, disposables: [] };
+      const entry: TerminalEntry = { proc, paneId, disposables: [], buffer: '' };
       entry.disposables.push(
-        proc.onData((data) => this.callbacks.onData(termId, data)),
+        proc.onData((data) => {
+          entry.buffer = (entry.buffer + data).slice(-BUFFER_CAP_BYTES);
+          this.callbacks.onData(termId, data);
+        }),
         proc.onExit(({ exitCode }) => {
           if (this.terminals.get(termId) !== entry) return; // replaced/killed silently
           this.terminals.delete(termId);

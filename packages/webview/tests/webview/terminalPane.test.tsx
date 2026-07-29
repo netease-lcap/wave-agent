@@ -182,13 +182,13 @@ describe('TerminalPane', () => {
         expect(postsOf(vscode, 'desktopTerminalCreate')).toHaveLength(1);
     });
 
-    it('unmount kills the PTY and disposes the terminal', async () => {
+    it('unmount disposes the terminal but leaves the PTY alive for reattach', async () => {
         const { vscode, unmount } = renderPane();
         await act(async () => {});
         unmount();
-        expect(postsOf(vscode, 'desktopTerminalKill')).toEqual([
-            { command: 'desktopTerminalKill', termId: 'term-main' },
-        ]);
+        // The host owns the PTY lifecycle: a remount (e.g. the pane moving
+        // across window rows) reattaches to the live PTY instead of a respawn.
+        expect(postsOf(vscode, 'desktopTerminalKill')).toEqual([]);
         expect(mockTerminals[0].disposed).toBe(true);
     });
 

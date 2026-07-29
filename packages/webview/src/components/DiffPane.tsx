@@ -46,6 +46,9 @@ export interface DiffPaneProps {
   /** Session identity / workdir changes re-point the panel while visible. */
   sessionId?: string;
   workdir?: string;
+  /** Second-row layout: panels pack from the left, so the width drag anchors
+   * the (fixed) left edge instead of the right edge. */
+  widthFromLeft?: boolean;
 }
 
 /** Workspace git-diff panel: accordion of per-file collapsible diff blocks. */
@@ -60,6 +63,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   isStreaming,
   sessionId,
   workdir,
+  widthFromLeft,
 }) => {
   const [state, setState] = useState<DiffState>({ kind: 'loading' });
   // Collapsed paths survive refreshes; files are expanded by default.
@@ -106,9 +110,11 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
 
   const onDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
-    const right = asideRef.current?.getBoundingClientRect().right ?? 0;
-    const onMove = (ev: MouseEvent) =>
-      onWidthChange(Math.min(Math.max(right - ev.clientX, MIN_WIDTH), maxWidth));
+    const rect = asideRef.current?.getBoundingClientRect();
+    const onMove = (ev: MouseEvent) => {
+      const next = widthFromLeft ? ev.clientX - (rect?.left ?? 0) : (rect?.right ?? 0) - ev.clientX;
+      onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
+    };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
