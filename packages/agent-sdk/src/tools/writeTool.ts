@@ -93,7 +93,14 @@ Usage:
       // existing file is still rejected. Staleness uses the same `>` + full-
       // read content-hash fallback as editTool to avoid false positives from
       // git checkout / editor round-trip save / cloud sync / antivirus.
-      if (isExistingFile && context.readFileState) {
+      // Plan mode is excluded: it has its own stricter write gate (plan-file-
+      // only, enforced in permissionManager) whose denial message must surface
+      // instead of being masked by a read-state rejection.
+      if (
+        isExistingFile &&
+        context.readFileState &&
+        context.permissionMode !== "plan"
+      ) {
         const state = context.readFileState.get(resolvedPath);
         if (!state) {
           return {
