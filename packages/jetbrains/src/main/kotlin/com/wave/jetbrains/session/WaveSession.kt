@@ -12,7 +12,6 @@ import com.wave.jetbrains.stdio.StdioAgent
 import com.wave.jetbrains.stdio.StdioClient
 import com.wave.jetbrains.stdio.StdioClientException
 import com.wave.jetbrains.update.UpdateChecker
-import com.wave.jetbrains.util.Edt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -169,13 +168,10 @@ class WaveSession(
         scope.launch { immediateMessagesUpdate() }
     }
 
-    // VSCE chatSession.ts: CompactionNotifier shows a single native notification
-    // while compaction runs and expires it on completion. Fires on the stdio
-    // reader thread → hop to the EDT.
-    private val compactionNotifier = CompactionNotifier.forProject(project)
-
+    // Forward the compaction state to the shared webview, which renders the
+    // "正在压缩对话…" hint after the blinking cursor (mirrors VSCE chatSession.ts).
     override fun onCompactionStateChange(isCompacting: Boolean) {
-        Edt.invokeLater { compactionNotifier.onCompactionStateChange(isCompacting) }
+        postMessage("compactionStateChange", buildJsonObject { put("isCompacting", isCompacting) })
     }
 
     override fun onUserMessageAdded(message: JsonElement?) {

@@ -239,6 +239,7 @@ export interface MessageListProps {
   messages: Message[];
   queuedMessages?: QueuedMessage[];
   isStreaming?: boolean;
+  isCompacting?: boolean;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
   workdir?: string;
@@ -365,6 +366,9 @@ export interface ChatState {
   isQueueCollapsed: boolean;
   editingQueuedId: string | null;
   isStreaming: boolean;
+  // Compaction in progress — shows the "正在压缩对话…" hint after the blinking
+  // cursor at the end of the message list.
+  isCompacting: boolean;
   isCommandRunning: boolean;
   shouldClearInput: boolean;
   sessions: SessionMetadata[];
@@ -522,6 +526,7 @@ export type ChatAction =
   | { type: 'TOGGLE_QUEUE_COLLAPSE' }
   | { type: 'START_STREAMING' }
   | { type: 'END_STREAMING' }
+  | { type: 'SET_COMPACTING'; payload: boolean }
   | { type: 'INPUT_CLEARED' }
   | { type: 'SET_SESSIONS'; payload: SessionMetadata[] }
   | { type: 'SET_CURRENT_SESSION'; payload: SessionMetadata | undefined }

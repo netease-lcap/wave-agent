@@ -182,6 +182,25 @@
     line-height: 1;
 }
 
+/* While compacting, the hint below carries its own blinking cursor — suppress
+   the container's plain streaming cursor to avoid a double cursor. */
+.messages-container.compacting::after {
+    content: none;
+}
+
+.compaction-hint {
+    align-self: flex-start;
+    padding-left: 2px;
+    line-height: 1;
+    color: var(--vscode-descriptionForeground);
+}
+
+.compaction-hint-cursor {
+    animation: blink 1s ease-in-out infinite;
+    color: var(--vscode-foreground);
+    margin-right: 2px;
+}
+
 /* Content Container for Mixed HTML/Mermaid Content */
 .message-content-container {
     display: flex;

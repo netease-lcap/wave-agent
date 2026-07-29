@@ -4,7 +4,6 @@ import { ConfigurationData } from '../services/configurationService';
 import { StdioClient } from '../stdio/stdioClient';
 import { StdioAgent, type StdioAgentCallbacks } from '../stdio/stdioAgent';
 import { NotificationRouter } from '../stdio/notificationRouter';
-import { CompactionNotifier } from './compactionNotifier';
 
 export interface ChatSessionCallbacks {
     onMessagesChange: (messages: Message[]) => void;
@@ -13,6 +12,7 @@ export interface ChatSessionCallbacks {
     onWorkflowRunsChange?: (runs: SerializableWorkflowRun[]) => void;
     onSessionIdChange: (sessionId: string) => void;
     onStreamingChange: (isStreaming: boolean) => void;
+    onCompactionStateChange?: (isCompacting: boolean) => void;
     onQueueChange: (queue: QueuedMessage[]) => void;
     onCommandRunningChange: (running: boolean) => void;
     onPermissionModeChange: (mode: PermissionMode) => void;
@@ -56,7 +56,6 @@ export class ChatSession {
     private updateTimer: NodeJS.Timeout | undefined;
     private pendingUpdate: boolean = false;
     private forceNextUpdateImmediate: boolean = false;
-    private compactionNotifier = new CompactionNotifier();
 
     // Throttled incremental update fields
     private streamingContentUpdateTimer: NodeJS.Timeout | undefined;
@@ -101,7 +100,7 @@ export class ChatSession {
                     this.throttledUpdateChatMessages(this.messages);
                 },
                 onCompactionStateChange: (isCompacting: boolean) => {
-                    this.compactionNotifier.notify(isCompacting);
+                    this.callbacks.onCompactionStateChange?.(isCompacting);
                 },
                 onUserMessageAdded: (message: Message) => {
                     this.callbacks.onAssistantMessageAdded?.(message);

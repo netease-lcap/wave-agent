@@ -26,7 +26,7 @@ function countTimelineBlocks(message: MessageType): number {
   return count;
 }
 
-export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, isStreaming, vscode, onRewindToMessage, workdir, onOpenPreview }, ref) {
+export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, isStreaming, isCompacting, vscode, onRewindToMessage, workdir, onOpenPreview }, ref) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -226,7 +226,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     <div 
       ref={containerRef}
       id="messagesContainer" 
-      className={`messages-container${isStreaming ? ' streaming' : ''}`}
+      className={`messages-container${isStreaming ? ' streaming' : ''}${isCompacting ? ' compacting' : ''}`}
       data-testid="messages-container"
     >
       {stickyMessage && (
@@ -298,6 +298,15 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
         return rendered;
       }, [messages, vscode, onRewindToMessage, workdir, onOpenPreview])}
       
+      {/* Compaction hint: blinking cursor + label pinned to the end of the
+          message list, independent of isStreaming (auto-compaction runs between
+          turns, after the streaming cursor is gone). */}
+      {isCompacting && (
+        <div className="compaction-hint" data-testid="compaction-hint">
+          <span className="compaction-hint-cursor">▋</span>正在压缩对话…
+        </div>
+      )}
+
       {/* Invisible div to scroll to */}
       <div ref={messagesEndRef} />
     </div>
