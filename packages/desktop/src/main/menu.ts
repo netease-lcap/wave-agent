@@ -1,6 +1,6 @@
 /**
- * Application menu + session-switch shortcuts (FR-038) + 新对话/关闭分屏
- * shortcuts (CmdOrCtrl+N / CmdOrCtrl+W) + panel-toggle shortcuts.
+ * Application menu + session-switch + 新对话/关闭分屏
+ * (CmdOrCtrl+N / CmdOrCtrl+W) + panel-toggle shortcuts.
  *
  * The switch keys — Ctrl+Tab / Ctrl+Shift+Tab on every platform, plus
  * Cmd+Shift+] / Cmd+Shift+[ on macOS (aligned with Claude Code Desktop) — and

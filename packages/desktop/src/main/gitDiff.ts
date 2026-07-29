@@ -1,8 +1,8 @@
 /**
- * Read-only workspace git-diff service for the diff panel (FR-043).
+ * Read-only workspace git-diff service for the diff panel.
  * Runs git directly in the main process — this is a read-only query with
  * potentially large output and the stdio CLI has no reusable implementation,
- * so (unlike the FR-022 worktree write ops) it does NOT go through the CLI.
+ * so (unlike the worktree write ops) it does NOT go through the CLI.
  */
 
 import { execFile } from 'child_process';

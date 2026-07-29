@@ -1,5 +1,5 @@
 /**
- * PTY terminal service for the terminal panel (FR-044/045). Spawns the user's
+ * PTY terminal service for the terminal panel. Spawns the user's
  * default login shell via node-pty, keyed by a webview-supplied termId (one per
  * pane). node-pty is a native module loaded lazily — a load failure must surface
  * as a panel-local error without affecting anything else.

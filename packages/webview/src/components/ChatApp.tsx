@@ -669,7 +669,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [panelDisabled]);
 
   // Report this pane's toggle state so the desktop app menu's 面板 checkboxes
-  // reflect the focused pane (FR-042).
+  // reflect the focused pane.
   useEffect(() => {
     if (!isDesktop) return;
     postToHost({ command: 'desktopPanelState', checked: checkedPanels });

@@ -16,7 +16,7 @@ declare global {
 
 const MIN_WIDTH = 320;
 
-/** Singleton loader for the desktop-only xterm chunk (FR-044). */
+/** Singleton loader for the desktop-only xterm chunk. */
 let terminalLibPromise: Promise<NonNullable<Window['WaveTerminal']>> | null = null;
 
 function loadTerminalLib(): Promise<NonNullable<Window['WaveTerminal']>> {
@@ -39,7 +39,7 @@ function loadTerminalLib(): Promise<NonNullable<Window['WaveTerminal']>> {
   return terminalLibPromise;
 }
 
-/** Terminal colors follow the app theme via --vscode-* variables (FR-044). */
+/** Terminal colors follow the app theme via --vscode-* variables. */
 const readTerminalTheme = () => {
   const styles = getComputedStyle(document.documentElement);
   const pick = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
@@ -69,9 +69,9 @@ export interface TerminalPaneProps {
   onClose: () => void;
   /** Split-view pane identity: tags PTY create requests for cwd resolution. */
   paneId?: string;
-  /** Hidden panels stay mounted; the PTY survives hiding (FR-045). */
+  /** Hidden panels stay mounted; the PTY survives hiding. */
   visible: boolean;
-  /** Session identity change → rebuild (visible) or kill (hidden) per FR-045. */
+  /** Session identity change → rebuild (visible) or kill (hidden). */
   sessionId?: string;
 }
 
@@ -151,7 +151,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
           detail: msg.error ?? `进程已退出（退出码 ${msg.exitCode ?? '未知'}）`,
         });
       } else if (msg?.command === 'desktopThemeChange') {
-        // Follow the app theme live (FR-044).
+        // Follow the app theme live.
         if (termRef.current) termRef.current.options.theme = readTerminalTheme();
       }
     };
@@ -213,7 +213,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootNonce]);
 
-  // Visibility / session-context changes (FR-045). A hidden terminal is kept
+  // Visibility / session-context changes. A hidden terminal is kept
   // alive; a session switch kills it (rebuilt with the new cwd if visible).
   const prevRef = useRef({ visible, sessionId, workdir });
   useEffect(() => {

@@ -90,7 +90,7 @@ if (!gotLock) {
     host = new DesktopHost(configStore);
     host.onMenuStateChange = updateMenuState;
     installApplicationMenu(menuActions);
-    // 面板 menu checkboxes mirror the focused pane's toggle state (FR-042).
+    // 面板 menu checkboxes mirror the focused pane's toggle state.
     host.onPanelStateChanged = (checked) => installApplicationMenu(menuActions, checked);
 
     ipcMain.on(WEBVIEW_CHANNEL, (_event, message: Record<string, unknown>) => {
