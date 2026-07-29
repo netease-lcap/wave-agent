@@ -15,6 +15,13 @@
  * accelerators fire app-wide (even while the preview guest has focus) and
  * preempt the default Electron behavior (new window / close window), which
  * the single-window app must suppress.
+ *
+ * For that preemption to work, 关闭分屏 must be the ONLY Cmd+W claimant: the
+ * default fileMenu role expands to File → Close Window (Cmd+W) on macOS, and
+ * windowMenu to Minimize / Zoom / Close (Cmd+W) off macOS. Both precede the
+ * 会话 menu in menu-bar order, so their Cmd+W would win and close the whole
+ * window. buildApplicationMenuTemplate therefore keeps those items but
+ * strips their Cmd+W accelerator.
  */
 
 import { Menu, type Input, type MenuItemConstructorOptions, type WebContents } from 'electron';
@@ -60,7 +67,12 @@ export function buildApplicationMenuTemplate(
 ): MenuItemConstructorOptions[] {
   return [
     ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
-    { role: 'fileMenu' },
+    // macOS fileMenu = Close Window (Cmd+W) — keep the item so the window can
+    // still be closed from the menu, but strip the accelerator (an explicit
+    // '' overrides the role default) so 关闭分屏 is the sole Cmd+W claimant.
+    isMac
+      ? { label: '文件', submenu: [{ role: 'close', accelerator: '' }] }
+      : { role: 'fileMenu' },
     { role: 'editMenu' },
     {
       label: '会话',
@@ -93,7 +105,11 @@ export function buildApplicationMenuTemplate(
       ],
     },
     { role: 'viewMenu' },
-    { role: 'windowMenu' },
+    // Off macOS windowMenu ends with Close (Cmd+W) — same conflict, so keep
+    // only Minimize / Zoom. The macOS windowMenu has no Close item.
+    isMac
+      ? { role: 'windowMenu' }
+      : { label: '窗口', submenu: [{ role: 'minimize' }, { role: 'zoom' }] },
   ];
 }
 

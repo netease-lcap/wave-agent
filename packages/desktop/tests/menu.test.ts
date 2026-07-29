@@ -109,9 +109,34 @@ describe('buildApplicationMenuTemplate', () => {
     }
   });
 
-  it('keeps the platform default menus (file/edit/view/window roles)', () => {
-    const roles = buildApplicationMenuTemplate(actions, true).map((item) => item.role);
-    expect(roles).toEqual(expect.arrayContaining(['fileMenu', 'editMenu', 'viewMenu', 'windowMenu']));
+  it('keeps the platform default menus (file/edit/view/window)', () => {
+    // macOS: File/Window are custom items (their default Cmd+W is stripped);
+    // off macOS: File stays the fileMenu role, Window becomes a custom menu.
+    const mac = buildApplicationMenuTemplate(actions, true);
+    expect(mac.map((item) => item.role)).toEqual(expect.arrayContaining(['editMenu', 'viewMenu', 'windowMenu']));
+    expect(mac.some((item) => item.label === '文件')).toBe(true);
+    const win = buildApplicationMenuTemplate(actions, false);
+    expect(win.map((item) => item.role)).toEqual(expect.arrayContaining(['fileMenu', 'editMenu', 'viewMenu']));
+    expect(win.some((item) => item.label === '窗口')).toBe(true);
+  });
+
+  it('关闭分屏 is the only Cmd+W claimant in the whole menu', () => {
+    const collectAccelerators = (items: MenuItemConstructorOptions[]): string[] =>
+      items.flatMap((item) => [
+        ...(typeof item.accelerator === 'string' ? [item.accelerator] : []),
+        ...(Array.isArray(item.submenu) ? collectAccelerators(item.submenu) : []),
+      ]);
+    for (const isMac of [true, false]) {
+      const cmdW = collectAccelerators(buildApplicationMenuTemplate(actions, isMac)).filter((a) =>
+        /^(CmdOrCtrl|CommandOrControl|Cmd|Command|Ctrl|Control)\+W$/i.test(a),
+      );
+      expect(cmdW).toEqual(['CmdOrCtrl+W']);
+    }
+  });
+
+  it('macOS keeps a clickable Close Window item without the Cmd+W accelerator', () => {
+    const fileMenu = buildApplicationMenuTemplate(actions, true).find((item) => item.label === '文件');
+    expect(fileMenu).toMatchObject({ submenu: [{ role: 'close', accelerator: '' }] });
   });
 
   it('menu item clicks take the same code path as the keys', () => {
