@@ -1346,7 +1346,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
           </div>
 
           {isStreaming ? (
-            <Tooltip text="停止" position="left">
+            <Tooltip text="停止" position="top">
               <button
                 className="abort-button ai-abort-btn"
                 id="abortButton"
@@ -1358,7 +1358,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
               </button>
             </Tooltip>
           ) : (
-            <Tooltip text="发送" position="top-left">
+            <Tooltip text="发送" position="top">
               <button
                 id="sendButton"
                 className="send-button ai-send-btn"
