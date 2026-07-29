@@ -244,7 +244,7 @@ describe('DesktopApp', () => {
         const groupHeader = (workdir: string) =>
             screen.getByTestId(`desktop-session-group-${workdir}`).querySelector('.desktop-session-group-header') as HTMLElement;
 
-        it('renders one group per recent directory, current workdir expanded by default', () => {
+        it('renders one group per recent directory, all groups expanded by default', () => {
             renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a', '/work/b'] });
             sendCommand('desktopSessionTree', {
@@ -254,16 +254,15 @@ describe('DesktopApp', () => {
                 ],
             });
 
-            // Current workdir's group expanded: session visible
+            // Both groups expanded by default: all sessions visible
             expect(screen.getByTestId('desktop-session-item-s1')).toBeInTheDocument();
-            // Other group collapsed by default: session hidden
-            expect(screen.queryByTestId('desktop-session-item-s2')).not.toBeInTheDocument();
+            expect(screen.getByTestId('desktop-session-item-s2')).toBeInTheDocument();
             // Group headers show directory basenames
             expect(screen.getByTestId('desktop-session-group-/work/a')).toHaveTextContent('a');
             expect(screen.getByTestId('desktop-session-group-/work/b')).toHaveTextContent('b');
         });
 
-        it('expands the group containing the current session even when its workdir differs (worktree session)', () => {
+        it('renders a worktree session under its repo root group', () => {
             renderDesktopApp();
             // Worktree session active: current workdir is the worktree path,
             // but the session groups under its repo root (FR-020/FR-023).
@@ -286,11 +285,15 @@ describe('DesktopApp', () => {
                 ],
             });
 
-            // Expand the collapsed group
+            // Collapse an expanded-by-default group
+            fireEvent.click(groupHeader('/work/b'));
+            expect(screen.queryByTestId('desktop-session-item-s2')).not.toBeInTheDocument();
+
+            // Re-expand it
             fireEvent.click(groupHeader('/work/b'));
             expect(screen.getByTestId('desktop-session-item-s2')).toBeInTheDocument();
 
-            // Collapse the default-expanded group
+            // Collapse the other group
             fireEvent.click(groupHeader('/work/a'));
             expect(screen.queryByTestId('desktop-session-item-s1')).not.toBeInTheDocument();
         });

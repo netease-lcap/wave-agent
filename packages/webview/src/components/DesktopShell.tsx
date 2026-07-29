@@ -303,7 +303,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onLogout={onLogout}
         isAuthenticated={isAuthenticated}
         sessionTree={host.sessionTree}
-        currentWorkdir={host.workdir}
         currentSessionId={focusedSessionId}
         onSelectSession={host.onSelectSession}
         onOpenPane={handleOpenPane}

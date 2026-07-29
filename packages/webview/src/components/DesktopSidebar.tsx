@@ -21,9 +21,7 @@ export interface DesktopSidebarProps {
   isAuthenticated: boolean;
   /** Session tree groups, one per recent directory (FR-020). */
   sessionTree: DesktopSessionGroup[];
-  /** Current workdir — its group defaults to expanded when no session is active. */
-  currentWorkdir?: string;
-  /** Active session id — its group defaults to expanded; gets the running dot while streaming. */
+  /** Active session id — gets the running dot while streaming. */
   currentSessionId?: string;
   onSelectSession: (workdir: string, sessionId: string) => void;
   /** Cmd/Ctrl+Click: open the session in an additional pane to the right. */
@@ -54,30 +52,24 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onLogout,
   isAuthenticated,
   sessionTree,
-  currentWorkdir,
   currentSessionId,
   onSelectSession,
   onOpenPane,
   onDeleteSession,
 }) => {
-  // Explicit expand/collapse overrides; groups without an entry follow the
-  // default rule (expanded iff it holds the current session — falling back to
-  // the current workdir's group when no session is active. A worktree session
-  // groups under its repo root, which differs from the current workdir).
+  // Explicit expand/collapse overrides; groups without an entry are expanded
+  // by default — the tree starts fully expanded on every app launch (expansion
+  // state is not persisted).
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  const isDefaultExpanded = (group: DesktopSessionGroup): boolean =>
-    group.workdir === currentWorkdir ||
-    group.sessions.some((s) => s.sessionId === currentSessionId);
-
   const isExpanded = (group: DesktopSessionGroup): boolean =>
-    overrides[group.workdir] ?? isDefaultExpanded(group);
+    overrides[group.workdir] ?? true;
 
   const toggleGroup = (group: DesktopSessionGroup) => {
     setOverrides((prev) => ({
       ...prev,
-      [group.workdir]: !(prev[group.workdir] ?? isDefaultExpanded(group)),
+      [group.workdir]: !(prev[group.workdir] ?? true),
     }));
   };
 
