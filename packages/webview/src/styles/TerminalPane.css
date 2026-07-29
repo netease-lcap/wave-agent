@@ -1,0 +1,26 @@
+/* TerminalPane Component Styles — embedded PTY terminal (desktop) */
+
+.terminal-pane-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    padding: 4px 0 4px 6px;
+    overflow: hidden;
+}
+
+.terminal-pane-body .xterm {
+    height: 100%;
+}
+
+/* Loading / exited overlays sit above the (possibly dead) xterm element. */
+.terminal-pane-body > .desktop-panel-placeholder {
+    position: absolute;
+    inset: 0;
+    background: var(--vscode-panel-background, var(--vscode-editor-background));
+    z-index: 1;
+}
+
+.terminal-pane-exited {
+    flex-direction: column;
+    gap: 8px;
+}

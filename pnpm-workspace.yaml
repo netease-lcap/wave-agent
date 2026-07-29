@@ -6,4 +6,5 @@ allowBuilds:
   electron-winstaller: false
   esbuild: true
   keytar: true
+  node-pty: true
   protobufjs: true

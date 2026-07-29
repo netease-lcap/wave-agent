@@ -72,5 +72,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     }
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
   }
 }

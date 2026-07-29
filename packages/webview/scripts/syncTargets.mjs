@@ -23,9 +23,10 @@ if (!fs.existsSync(distDir)) {
     process.exit(1);
 }
 
-// VS Code extension: copy the whole dist (bundle + sourcemaps).
+// VS Code extension: copy the whole dist (bundle + sourcemaps) EXCEPT the
+// desktop-only terminal chunk (xterm must never ship in plugin artifacts).
 fs.mkdirSync(vsceDest, { recursive: true });
-const distFiles = fs.readdirSync(distDir);
+const distFiles = fs.readdirSync(distDir).filter((file) => !/^terminal\./.test(file));
 for (const file of distFiles) {
     fs.copyFileSync(path.join(distDir, file), path.join(vsceDest, file));
 }
