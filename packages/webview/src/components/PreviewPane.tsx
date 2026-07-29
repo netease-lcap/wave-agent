@@ -38,7 +38,6 @@ export function formatPreviewComment(msg: PreviewComment): string {
 }
 
 const MIN_WIDTH = 320;
-const clampWidth = (w: number) => Math.min(Math.max(w, MIN_WIDTH), Math.floor(window.innerWidth * 0.7));
 
 /** Colors the guest picker can't read cross-origin — sampled from the host theme. */
 const readPalette = (): Record<string, string> => {
@@ -60,10 +59,16 @@ export interface PreviewPaneProps {
   url: string;
   vscode: VsCodeApi;
   onClose: () => void;
+  /** Controlled width (px); the parent enforces the conversation-area minimum. */
+  width: number;
+  onWidthChange: (width: number) => void;
+  /** Upper bound so the conversation area keeps its minimum width. */
+  maxWidth: number;
+  /** Split-view pane this preview belongs to; tags picker comments for routing. */
+  paneId?: string;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose }) => {
-  const [width, setWidth] = useState(420);
+export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, paneId }) => {
   const [displayUrl, setDisplayUrl] = useState(url);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pickerActive, setPickerActive] = useState(false);
@@ -140,7 +145,9 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose }
         return;
       }
       if (msg?.type === 'submit' && msg.comment) {
-        vscode.postMessage({ command: 'sendMessage', text: formatPreviewComment(msg), images: [] });
+        const outgoing: Record<string, unknown> = { command: 'sendMessage', text: formatPreviewComment(msg), images: [] };
+        if (paneId !== undefined) outgoing.paneId = paneId;
+        vscode.postMessage(outgoing);
         pickerActiveRef.current = false;
         setPickerActive(false);
       }
@@ -209,9 +216,14 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose }
     vscode.postMessage({ command: 'openExternal', url: currentUrlRef.current });
   };
 
+  const asideRef = useRef<HTMLElement | null>(null);
+  // Dragging the left edge resizes this panel; panels to its right keep their
+  // widths, so the aside's right edge is fixed for the duration of the drag.
   const onDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
-    const onMove = (ev: MouseEvent) => setWidth(clampWidth(window.innerWidth - ev.clientX));
+    const right = asideRef.current?.getBoundingClientRect().right ?? 0;
+    const onMove = (ev: MouseEvent) =>
+      onWidthChange(Math.min(Math.max(right - ev.clientX, MIN_WIDTH), maxWidth));
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
@@ -221,7 +233,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose }
   };
 
   return (
-    <aside className="preview-pane" style={{ width }} data-testid="preview-pane">
+    <aside ref={asideRef} className="preview-pane" style={{ width }} data-testid="preview-pane">
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">

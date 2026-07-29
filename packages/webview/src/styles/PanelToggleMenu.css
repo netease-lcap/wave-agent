@@ -1,0 +1,65 @@
+/* Desktop header panel-toggle dropdown (anchored inside .chat-header, which is
+   position:relative — same pattern as .more-menu). */
+.panel-toggle-menu {
+  position: absolute;
+  top: 40px;
+  right: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 200px;
+  box-sizing: border-box;
+  padding: 8px;
+  background-color: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+}
+
+.panel-toggle-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.panel-toggle-menu-item:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.panel-toggle-menu-item--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.panel-toggle-menu-item--disabled:hover {
+  background-color: transparent;
+}
+
+.panel-toggle-menu-check {
+  width: 16px;
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.panel-toggle-menu-check--on {
+  visibility: visible;
+}
+
+.panel-toggle-menu-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-toggle-menu-shortcut {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #999);
+}

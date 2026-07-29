@@ -3,6 +3,7 @@ import { Tooltip } from './Tooltip';
 import { NewSessionIcon, HistoryIcon, MoreIcon } from './HeaderIcons';
 import { SessionListPopup } from './SessionListPopup';
 import { MoreMenu } from './MoreMenu';
+import { PanelToggleMenu } from './PanelToggleMenu';
 import { getSessionTitle } from '../utils/session';
 import type { ChatHeaderProps } from '../types';
 import '../styles/ChatHeader.css';
@@ -21,10 +22,12 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onLogout,
   isAuthenticated,
   hideSessionButtons = false,
-  hideMoreButton = false
+  hideMoreButton = false,
+  panelToggle
 }) => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showPanelMenu, setShowPanelMenu] = useState(false);
 
   const title = getSessionTitle(currentSession, messages);
 
@@ -69,6 +72,19 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             </button>
           </Tooltip>
         )}
+        {panelToggle && (
+          <Tooltip text="面板" position="bottom-left">
+            <button
+              className="header-button header-panel-toggle"
+              onClick={() => setShowPanelMenu((prev) => !prev)}
+              data-testid="panel-toggle-btn"
+              aria-label="面板"
+            >
+              <i className="codicon codicon-layout-sidebar-right" />
+              <i className="codicon codicon-chevron-down header-panel-toggle-caret" />
+            </button>
+          </Tooltip>
+        )}
       </div>
       {showSessionList && (
         <SessionListPopup
@@ -87,6 +103,14 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onLogout={onLogout}
           isAuthenticated={isAuthenticated}
           onClose={() => setShowMoreMenu(false)}
+        />
+      )}
+      {showPanelMenu && panelToggle && (
+        <PanelToggleMenu
+          checked={panelToggle.checked}
+          onToggle={panelToggle.onToggle}
+          disabled={panelToggle.disabled}
+          onClose={() => setShowPanelMenu(false)}
         />
       )}
     </div>

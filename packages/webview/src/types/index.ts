@@ -320,6 +320,19 @@ export interface FileSuggestionDropdownProps {
   isLoading?: boolean;
 }
 
+/** Desktop conversation-level side panels. VSCE/JetBrains hosts never render these. */
+export type DesktopPanelKind = 'preview' | 'diff' | 'terminal';
+
+/** Header panel-toggle control: which panels are checked + toggle callback. */
+export interface PanelToggleProps {
+  /** Currently checked panels. */
+  checked: DesktopPanelKind[];
+  /** Toggle one panel's checked state. */
+  onToggle: (kind: DesktopPanelKind) => void;
+  /** Panels that can't be toggled right now (e.g. no workdir for diff/terminal). */
+  disabled?: DesktopPanelKind[];
+}
+
 export interface ChatHeaderProps {
   onClearChat: () => void;
   onAbortMessage: () => void;
@@ -338,6 +351,8 @@ export interface ChatHeaderProps {
   hideSessionButtons?: boolean;
   // Desktop host: the more button + menu live in DesktopSidebar instead.
   hideMoreButton?: boolean;
+  // Desktop host: conversation-level panel toggle (preview/diff/terminal).
+  panelToggle?: PanelToggleProps;
 }
 
 // Matches wave-agent-sdk's QueuedMessage type

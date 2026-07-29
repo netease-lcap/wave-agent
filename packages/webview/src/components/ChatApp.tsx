@@ -19,14 +19,25 @@ import { DesktopShell } from './DesktopShell';
 import { DesktopWorkdirSelector } from './DesktopWorkdirSelector';
 import { DesktopWorktreeControls } from './DesktopWorktreeControls';
 import { PreviewPane } from './PreviewPane';
+import { DiffPane } from './DiffPane';
+import { TerminalPane } from './TerminalPane';
 import type {
   ChatAppProps,
   ConfigurationData,
   ConfirmationDecision,
+  DesktopPanelKind,
   ToolBlockUpdateCallbackParams,
 } from '../types';
 import { chatReducer, initialState } from '../reducers/chatReducer';
 import '../styles/ChatApp.css';
+
+/** Desktop conversation-level panels: fixed left→right order regardless of check order. */
+const PANEL_ORDER: DesktopPanelKind[] = ['preview', 'diff', 'terminal'];
+const PANEL_DEFAULT_WIDTH = 420;
+const PANEL_MIN_WIDTH = 320;
+/** The conversation (message) area never shrinks below this when opening/dragging panels. */
+const CHAT_MAIN_MIN_WIDTH = 360;
+const PANEL_HINT_DURATION_MS = 2400;
 
 export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
@@ -34,8 +45,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
   const [worktreeChecked, setWorktreeChecked] = useState(true);
-  // Desktop only: localhost URL shown in the preview pane. Null = closed.
+  // Desktop only: localhost URL shown in the preview pane. Null = never opened.
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Desktop only: conversation-level panel group (checked = visible; mounted =
+  // rendered but possibly hidden, so panel content survives unchecking).
+  const [checkedPanels, setCheckedPanels] = useState<DesktopPanelKind[]>([]);
+  const [mountedPanels, setMountedPanels] = useState<DesktopPanelKind[]>([]);
+  const [panelWidths, setPanelWidths] = useState<Record<DesktopPanelKind, number>>({
+    preview: PANEL_DEFAULT_WIDTH,
+    diff: PANEL_DEFAULT_WIDTH,
+    terminal: PANEL_DEFAULT_WIDTH,
+  });
+  const [panelHint, setPanelHint] = useState<string | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const panelHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkedPanelsRef = useRef(checkedPanels);
+  const panelWidthsRef = useRef(panelWidths);
   const messageInputRef = useRef<MessageInputHandle>(null);
   const messageListRef = useRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }>(null);
   const stateRef = useRef(state);
@@ -47,6 +72,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    checkedPanelsRef.current = checkedPanels;
+  }, [checkedPanels]);
+
+  useEffect(() => {
+    panelWidthsRef.current = panelWidths;
+  }, [panelWidths]);
 
   useEffect(() => {
     paneIdRef.current = paneId;
@@ -557,44 +590,110 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     });
   }, [state.isStreaming, postToHost]);
 
-  // Desktop only: open/re-target the preview pane. Message.tsx gates
-  // on waveHostType, so this never fires in IDE hosts.
-  const handleOpenPreview = useCallback((url: string) => {
-    setPreviewUrl(url);
+  const showPanelHint = useCallback((text: string) => {
+    if (panelHintTimer.current) clearTimeout(panelHintTimer.current);
+    setPanelHint(text);
+    panelHintTimer.current = setTimeout(() => setPanelHint(null), PANEL_HINT_DURATION_MS);
   }, []);
 
-  const chatContainer = (
-    <div className="chat-container" data-testid="chat-container">
-      {queueEditWarning && (
-        <div className="queue-edit-warning-banner" role="alert" data-testid="queue-edit-warning">
-          <span className="queue-edit-warning-text">{queueEditWarning}</span>
-          <button
-            className="queue-edit-warning-close"
-            onClick={() => setQueueEditWarning(null)}
-            aria-label="关闭"
-          >
-            <i className="codicon codicon-close"></i>
-          </button>
-        </div>
-      )}
-      <ChatHeader
-        onClearChat={handleClearChat}
-        onAbortMessage={handleAbortMessage}
-        isStreaming={state.isStreaming}
-        messages={state.messages}
-        sessions={state.sessions}
-        currentSession={state.currentSession}
-        onSessionSelect={handleSessionSelect}
-        sessionsLoading={state.sessionsLoading}
-        onOpenSettings={handleOpenSettings}
-        onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
-        onLogin={handleLogin}
-        onLogout={handleLogout}
-        isAuthenticated={state.isAuthenticated}
-        hideSessionButtons={host?.type === 'desktop'}
-        hideMoreButton={host?.type === 'desktop'}
-      />
-      
+  // Check a panel on: refuse when the remaining conversation area would drop
+  // below its minimum width. Mounting is sticky — unchecking only hides.
+  const tryOpenPanel = useCallback((kind: DesktopPanelKind): boolean => {
+    const containerW = chatContainerRef.current?.getBoundingClientRect().width;
+    if (containerW) {
+      const used =
+        checkedPanelsRef.current.reduce((sum, k) => sum + panelWidthsRef.current[k], 0) +
+        panelWidthsRef.current[kind];
+      if (containerW - used < CHAT_MAIN_MIN_WIDTH) {
+        showPanelHint('空间不足，无法开启面板');
+        return false;
+      }
+    }
+    setCheckedPanels((prev) => (prev.includes(kind) ? prev : [...prev, kind]));
+    setMountedPanels((prev) => (prev.includes(kind) ? prev : [...prev, kind]));
+    return true;
+  }, [showPanelHint]);
+
+  const handleTogglePanel = useCallback((kind: DesktopPanelKind) => {
+    if (checkedPanelsRef.current.includes(kind)) {
+      setCheckedPanels((prev) => prev.filter((k) => k !== kind));
+    } else {
+      tryOpenPanel(kind);
+    }
+  }, [tryOpenPanel]);
+
+  // Authoritative clamp at drag time: keep the panel within [320, container -
+  // other checked panels - conversation minimum].
+  const handlePanelWidthChange = useCallback((kind: DesktopPanelKind, width: number) => {
+    let clamped = Math.max(width, PANEL_MIN_WIDTH);
+    const containerW = chatContainerRef.current?.getBoundingClientRect().width;
+    if (containerW) {
+      const others = checkedPanelsRef.current
+        .filter((k) => k !== kind)
+        .reduce((sum, k) => sum + panelWidthsRef.current[k], 0);
+      clamped = Math.min(clamped, containerW - others - CHAT_MAIN_MIN_WIDTH);
+    }
+    setPanelWidths((prev) => ({ ...prev, [kind]: clamped }));
+  }, []);
+
+  // Desktop only: open/re-target the preview panel. Clicking a localhost link
+  // checks the preview item (refused with a hint when space runs out) and loads
+  // the URL. Message.tsx gates on waveHostType, so this never fires in IDE hosts.
+  const handleOpenPreview = useCallback((url: string) => {
+    if (!checkedPanelsRef.current.includes('preview') && !tryOpenPanel('preview')) return;
+    setPreviewUrl(url);
+  }, [tryOpenPanel]);
+
+  const isDesktop = host?.type === 'desktop';
+  // The pane's effective cwd: the session's own workdir (per-pane on desktop)
+  // wins over the host-level current workdir.
+  const effectiveWorkdir = state.workdir ?? (isDesktop ? host?.workdir : undefined);
+  // Diff/terminal need a workdir; preview only needs a URL.
+  const panelDisabled: DesktopPanelKind[] = effectiveWorkdir ? [] : ['diff', 'terminal'];
+
+  // Width ceiling for one panel: container minus the other checked panels and
+  // the conversation-area minimum. Render-time estimate — the drag handler
+  // re-clamps authoritatively on every mousemove.
+  const panelMaxWidth = (kind: DesktopPanelKind): number => {
+    const containerW = chatContainerRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+    const others = checkedPanels
+      .filter((k) => k !== kind)
+      .reduce((sum, k) => sum + panelWidths[k], 0);
+    return containerW - others - CHAT_MAIN_MIN_WIDTH;
+  };
+
+  const renderPanelSlot = (kind: DesktopPanelKind) => {
+    const common = {
+      width: panelWidths[kind],
+      onWidthChange: (w: number) => handlePanelWidthChange(kind, w),
+      maxWidth: panelMaxWidth(kind),
+      onClose: () => handleTogglePanel(kind),
+    };
+    if (kind === 'preview') {
+      return previewUrl ? (
+        <PreviewPane url={previewUrl} vscode={vscode} paneId={paneId} {...common} />
+      ) : (
+        <aside className="preview-pane" style={{ width: common.width }} data-testid="preview-pane-empty">
+          <div className="preview-pane-inner">
+            <div className="preview-pane-toolbar">
+              <span className="preview-pane-url">预览</span>
+              <button className="preview-pane-button" title="关闭" data-testid="preview-close" onClick={common.onClose}>
+                <i className="codicon codicon-close" />
+              </button>
+            </div>
+            <div className="desktop-panel-placeholder">点击消息中的 localhost 链接加载预览</div>
+          </div>
+        </aside>
+      );
+    }
+    if (kind === 'diff') {
+      return <DiffPane workdir={effectiveWorkdir} {...common} />;
+    }
+    return <TerminalPane workdir={effectiveWorkdir} {...common} />;
+  };
+
+  const chatBodyContent = (
+    <>
       {showWelcomeReady ? (
         <WelcomeView
           isAuthenticated={state.isAuthenticated}
@@ -688,6 +787,66 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           />
         )}
       </div>
+    </>
+  );
+
+  const chatContainer = (
+    <div className="chat-container" data-testid="chat-container" ref={isDesktop ? chatContainerRef : undefined}>
+      {queueEditWarning && (
+        <div className="queue-edit-warning-banner" role="alert" data-testid="queue-edit-warning">
+          <span className="queue-edit-warning-text">{queueEditWarning}</span>
+          <button
+            className="queue-edit-warning-close"
+            onClick={() => setQueueEditWarning(null)}
+            aria-label="关闭"
+          >
+            <i className="codicon codicon-close"></i>
+          </button>
+        </div>
+      )}
+      <ChatHeader
+        onClearChat={handleClearChat}
+        onAbortMessage={handleAbortMessage}
+        isStreaming={state.isStreaming}
+        messages={state.messages}
+        sessions={state.sessions}
+        currentSession={state.currentSession}
+        onSessionSelect={handleSessionSelect}
+        sessionsLoading={state.sessionsLoading}
+        onOpenSettings={handleOpenSettings}
+        onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+        isAuthenticated={state.isAuthenticated}
+        hideSessionButtons={isDesktop}
+        hideMoreButton={isDesktop}
+        panelToggle={
+          isDesktop
+            ? { checked: checkedPanels, onToggle: handleTogglePanel, disabled: panelDisabled }
+            : undefined
+        }
+      />
+      {isDesktop ? (
+        <div className="desktop-chat-body">
+          <div className="desktop-chat-main">{chatBodyContent}</div>
+          {PANEL_ORDER.filter((kind) => mountedPanels.includes(kind)).map((kind) => (
+            <div
+              key={kind}
+              className="desktop-panel-slot"
+              style={{ display: checkedPanels.includes(kind) ? undefined : 'none' }}
+            >
+              {renderPanelSlot(kind)}
+            </div>
+          ))}
+          {panelHint && (
+            <div className="desktop-pane-hint" role="status" data-testid="desktop-panel-hint">
+              {panelHint}
+            </div>
+          )}
+        </div>
+      ) : (
+        chatBodyContent
+      )}
 
       {state.activeDialog === 'config' && (
         <ConfigDialog
@@ -770,9 +929,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onDeleteSession={host.onDeleteSession}
         />
         {chatContainer}
-        {previewUrl && (
-          <PreviewPane url={previewUrl} vscode={vscode} onClose={() => setPreviewUrl(null)} />
-        )}
       </div>
     );
   }
