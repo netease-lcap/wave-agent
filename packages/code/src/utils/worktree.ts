@@ -1,7 +1,13 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { getDefaultRemoteBranch, getGitMainRepoRoot } from "wave-agent-sdk";
+
+// Never use execFileSync here: the shared `wave --stdio` process handles all
+// desktop sessions, so a synchronous git call (especially a multi-second
+// recursive worktree delete or a network fetch) freezes every session.
+const execFileAsync = promisify(execFile);
 
 export interface WorktreeSession {
   name: string;
@@ -22,11 +28,11 @@ export interface WorktreeSession {
  * @param options.baseBranch Explicit base branch (overrides baseRef)
  * @returns Worktree session details
  */
-export function createWorktree(
+export async function createWorktree(
   name: string,
   cwd: string,
   options?: { baseRef?: "fresh" | "head"; baseBranch?: string },
-): WorktreeSession {
+): Promise<WorktreeSession> {
   const repoRoot = getGitMainRepoRoot(cwd);
   const worktreePath = path.join(repoRoot, ".wave", "worktrees", name);
   const branchName = `worktree-${name}`;
@@ -56,12 +62,11 @@ export function createWorktree(
 
   try {
     // Create worktree and branch
-    execFileSync(
+    await execFileAsync(
       "git",
       ["worktree", "add", "-b", branchName, worktreePath, resolvedBaseBranch],
       {
         cwd: repoRoot,
-        stdio: ["ignore", "pipe", "pipe"],
       },
     );
 
@@ -75,14 +80,18 @@ export function createWorktree(
       isNew: true,
     };
   } catch (error: unknown) {
-    const stderr = (error as { stderr?: Buffer }).stderr?.toString() || "";
+    const stderr =
+      (error as { stderr?: Buffer | string }).stderr?.toString() || "";
     if (stderr.includes("already exists")) {
       // If branch already exists, try to add worktree without -b
       try {
-        execFileSync("git", ["worktree", "add", worktreePath, branchName], {
-          cwd: repoRoot,
-          stdio: ["ignore", "pipe", "pipe"],
-        });
+        await execFileAsync(
+          "git",
+          ["worktree", "add", worktreePath, branchName],
+          {
+            cwd: repoRoot,
+          },
+        );
         return {
           name,
           path: worktreePath,
@@ -106,11 +115,10 @@ export function createWorktree(
       // Base branch not fetched yet — try fetching then retrying
       const branchNameOnly = resolvedBaseBranch.split("/").pop()!;
       try {
-        execFileSync("git", ["fetch", "origin", branchNameOnly], {
+        await execFileAsync("git", ["fetch", "origin", branchNameOnly], {
           cwd: repoRoot,
-          stdio: ["ignore", "pipe", "pipe"],
         });
-        execFileSync(
+        await execFileAsync(
           "git",
           [
             "worktree",
@@ -122,7 +130,6 @@ export function createWorktree(
           ],
           {
             cwd: repoRoot,
-            stdio: ["ignore", "pipe", "pipe"],
           },
         );
         return {
@@ -137,12 +144,11 @@ export function createWorktree(
       } catch {
         // Fetch or retry failed — fall back to HEAD
         try {
-          execFileSync(
+          await execFileAsync(
             "git",
             ["worktree", "add", "-b", branchName, worktreePath, "HEAD"],
             {
               cwd: repoRoot,
-              stdio: ["ignore", "pipe", "pipe"],
             },
           );
           return {
@@ -171,37 +177,39 @@ export function createWorktree(
  * Remove a git worktree and its associated branch
  * @param session Worktree session details
  */
-export function removeWorktree(session: WorktreeSession): void {
+export async function removeWorktree(session: WorktreeSession): Promise<void> {
   const repoRoot = session.repoRoot;
 
   try {
     // Get current branch in worktree before removing it
     let currentBranch: string | undefined;
     try {
-      currentBranch = execFileSync(
+      const { stdout } = await execFileAsync(
         "git",
         ["rev-parse", "--abbrev-ref", "HEAD"],
         {
           cwd: session.path,
           encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
         },
-      ).trim();
+      );
+      currentBranch = stdout.trim();
     } catch {
       // Ignore errors getting current branch
     }
 
     // Remove worktree
-    execFileSync("git", ["worktree", "remove", "--force", session.path], {
-      cwd: repoRoot,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    await execFileAsync(
+      "git",
+      ["worktree", "remove", "--force", session.path],
+      {
+        cwd: repoRoot,
+      },
+    );
 
     // Delete original branch
     try {
-      execFileSync("git", ["branch", "-D", session.branch], {
+      await execFileAsync("git", ["branch", "-D", session.branch], {
         cwd: repoRoot,
-        stdio: ["ignore", "pipe", "pipe"],
       });
     } catch {
       // Ignore errors deleting original branch
@@ -222,9 +230,8 @@ export function removeWorktree(session: WorktreeSession): void {
         currentBranch !== "master"
       ) {
         try {
-          execFileSync("git", ["branch", "-D", currentBranch], {
+          await execFileAsync("git", ["branch", "-D", currentBranch], {
             cwd: repoRoot,
-            stdio: ["ignore", "pipe", "pipe"],
           });
         } catch {
           // Ignore errors deleting current branch

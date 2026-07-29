@@ -1638,7 +1638,7 @@ test("createWorktree creates worktree with default name", async () => {
   const { bridge } = createBridge();
 
   vi.mocked(generateRandomName).mockReturnValue("random-name");
-  vi.mocked(createWorktree).mockReturnValue({
+  vi.mocked(createWorktree).mockResolvedValue({
     name: "random-name",
     path: "/repo/.wave/worktrees/random-name",
     branch: "worktree-random-name",
@@ -1674,7 +1674,7 @@ test("createWorktree creates worktree with default name", async () => {
 test("createWorktree uses caller-provided name", async () => {
   const { bridge } = createBridge();
 
-  vi.mocked(createWorktree).mockReturnValue({
+  vi.mocked(createWorktree).mockResolvedValue({
     name: "custom",
     path: "/repo/.wave/worktrees/custom",
     branch: "worktree-custom",
@@ -1698,7 +1698,7 @@ test("createWorktree uses caller-provided name", async () => {
 test("createWorktree trims whitespace from name", async () => {
   const { bridge } = createBridge();
 
-  vi.mocked(createWorktree).mockReturnValue({
+  vi.mocked(createWorktree).mockResolvedValue({
     name: "trimmed",
     path: "/repo/.wave/worktrees/trimmed",
     branch: "worktree-trimmed",
@@ -1722,7 +1722,7 @@ test("createWorktree falls back to generateRandomName on empty name", async () =
   const { bridge } = createBridge();
 
   vi.mocked(generateRandomName).mockReturnValue("fallback-name");
-  vi.mocked(createWorktree).mockReturnValue({
+  vi.mocked(createWorktree).mockResolvedValue({
     name: "fallback-name",
     path: "/repo/.wave/worktrees/fallback-name",
     branch: "worktree-fallback-name",
@@ -1751,9 +1751,9 @@ test("createWorktree wraps createWorktree errors in RpcError", async () => {
   const { bridge } = createBridge();
 
   vi.mocked(generateRandomName).mockReturnValue("fail-name");
-  vi.mocked(createWorktree).mockImplementation(() => {
-    throw new Error("git worktree add failed");
-  });
+  vi.mocked(createWorktree).mockRejectedValue(
+    new Error("git worktree add failed"),
+  );
 
   await expect(
     bridge.handleRequest("createWorktree", { workdir: "/repo" }),

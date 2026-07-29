@@ -18,6 +18,9 @@ const h = vi.hoisted(() => ({
   worktreeResult: null as null | { name: string; path: string; branch: string; baseBranch: string; repoRoot: string },
   worktreeError: null as Error | null,
   branchesResult: null as null | { branches: string[]; current: string },
+  // When set, the removeWorktree RPC awaits this promise (simulates a slow
+  // multi-second git worktree remove in the shared stdio process).
+  removeWorktreeGate: null as Promise<void> | null,
   // Multi-agent pool: each StdioAgent instance gets a unique sessionId so the
   // host's agents Map keys don't collapse (FR-031).
   agentCounter: 0,
@@ -86,6 +89,7 @@ vi.mock('../src/main/stdio/stdioClient', () => ({
           return h.worktreeResult;
         }
         case 'removeWorktree':
+          if (h.removeWorktreeGate) await h.removeWorktreeGate;
           return { removed: true };
         default:
           return {};
@@ -230,6 +234,7 @@ beforeEach(() => {
   h.worktreeResult = null;
   h.worktreeError = null;
   h.branchesResult = null;
+  h.removeWorktreeGate = null;
   h.agentCounter = 0;
   vi.clearAllMocks();
   nativeTheme.__reset();
@@ -1277,6 +1282,43 @@ describe('worktree flow', () => {
       method: 'removeWorktree',
       params: { path: worktree.path, branch: worktree.branch, repoRoot: worktree.repoRoot },
     });
+  });
+
+  it('desktopDeleteSession refreshes the tree without waiting for worktree removal', async () => {
+    const { host, store, sent } = await readyHost();
+    store.upsertSession({
+      sessionId: 'sess-wt-slow',
+      title: 'wt',
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      lastActiveAt: Date.now(),
+      worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
+    });
+    // A second surviving session keeps the tree non-empty after the delete,
+    // so refreshSessionTree actually posts an update.
+    store.upsertSession({
+      sessionId: 'sess-keep',
+      title: 'keep',
+      workdir: worktree.repoRoot,
+      cwd: worktree.repoRoot,
+      lastActiveAt: Date.now(),
+    });
+    // Block the removeWorktree RPC — the delete must not wait for it. If the
+    // handler awaited removal, the await below would hang until test timeout.
+    let releaseRemoval: () => void = () => {};
+    h.removeWorktreeGate = new Promise<void>((resolve) => { releaseRemoval = () => resolve(); });
+
+    await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'sess-wt-slow' });
+
+    expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-wt-slow')).toBe(false);
+    const tree = sent('desktopSessionTree').at(-1);
+    expect(JSON.stringify(tree).includes('sess-wt-slow')).toBe(false);
+    // Removal was still kicked off in the background.
+    expect(h.clientRequests).toContainEqual({
+      method: 'removeWorktree',
+      params: { path: worktree.path, branch: worktree.branch, repoRoot: worktree.repoRoot },
+    });
+    releaseRemoval();
   });
 
   it('desktopDeleteSession on the live worktree session switches back to the repo root first', async () => {
