@@ -71,6 +71,7 @@ export class TaskManager extends EventEmitter {
     let lockHandle;
     const maxRetries = 100;
     const retryDelay = process.env.NODE_ENV === "test" ? 1 : 100;
+    const staleThreshold = 10000;
 
     await this.ensureSessionDir();
 
@@ -79,16 +80,41 @@ export class TaskManager extends EventEmitter {
         lockHandle = await fs.open(lockPath, "wx");
         break;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-          if (i === maxRetries - 1) {
-            throw new Error(
-              `Could not acquire lock for task list ${this.taskListId} after ${maxRetries} retries`,
-            );
+        const code = (error as NodeJS.ErrnoException).code;
+
+        // Only EEXIST (lock held) and EPERM (Windows pending-delete window)
+        // are transient lock-contention errors. EACCES/ENOENT are real failures
+        // and must not be retried as lock competition.
+        if (code !== "EEXIST" && code !== "EPERM") {
+          throw error;
+        }
+
+        if (i === maxRetries - 1) {
+          throw new Error(
+            `Could not acquire lock for task list ${this.taskListId} after ${maxRetries} retries`,
+          );
+        }
+
+        // Stale recovery: if the lock holder crashed without releasing, the
+        // lock file remains forever. Check mtime — if older than the threshold,
+        // remove it. Aligns with proper-lockfile's default 10s stale detection.
+        // The lock file is empty (no PID content), so mtime is the only signal.
+        if (
+          code === "EEXIST" &&
+          (await this.isLockStale(lockPath, staleThreshold))
+        ) {
+          logger.warn(
+            `TaskManager: removing stale lock for task list ${this.taskListId}`,
+          );
+          try {
+            await fs.unlink(lockPath);
+          } catch {
+            // Another waiter may have already removed it — retry anyway
           }
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
           continue;
         }
-        throw error;
+
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
       }
     }
 
@@ -106,6 +132,19 @@ export class TaskManager extends EventEmitter {
           error,
         );
       }
+    }
+  }
+
+  private async isLockStale(
+    lockPath: string,
+    threshold: number,
+  ): Promise<boolean> {
+    try {
+      const stats = await fs.stat(lockPath);
+      return Date.now() - stats.mtimeMs > threshold;
+    } catch {
+      // Lock was removed between our EEXIST and stat — not stale, just retry
+      return false;
     }
   }
 

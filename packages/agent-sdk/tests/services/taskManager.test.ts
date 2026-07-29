@@ -223,6 +223,10 @@ describe("TaskManager", () => {
       vi.mocked(fs.readdir).mockResolvedValue(
         [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
       );
+      // Lock is active (recent mtime) — not stale, so retry-and-wait
+      vi.mocked(fs.stat).mockResolvedValue({
+        mtimeMs: Date.now(),
+      } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
       // Fail twice, then succeed
       vi.mocked(fs.open)
@@ -246,10 +250,104 @@ describe("TaskManager", () => {
         [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
       );
       vi.mocked(fs.open).mockRejectedValue(lockError);
+      // Lock is active (recent mtime) — not stale, so retries exhaust
+      vi.mocked(fs.stat).mockResolvedValue({
+        mtimeMs: Date.now(),
+      } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
       await expect(taskManager.createTask(mockTask)).rejects.toThrow(
         `Could not acquire lock for task list ${sessionId} after 100 retries`,
       );
+    });
+
+    it("should retry on EPERM (Windows pending-delete window)", async () => {
+      const mockFileHandle = {
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const epermError = new Error("EPERM") as NodeJS.ErrnoException;
+      epermError.code = "EPERM";
+
+      vi.mocked(fs.readdir).mockResolvedValue(
+        [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
+      );
+      vi.mocked(fs.open)
+        .mockRejectedValueOnce(epermError)
+        .mockResolvedValueOnce(
+          mockFileHandle as unknown as Awaited<ReturnType<typeof fs.open>>,
+        );
+
+      await taskManager.createTask(mockTask);
+
+      expect(fs.open).toHaveBeenCalledTimes(2);
+      expect(fs.writeFile).toHaveBeenCalled();
+    });
+
+    it("should remove stale lock (old mtime) and retry", async () => {
+      const mockFileHandle = {
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const lockError = new Error("File exists") as NodeJS.ErrnoException;
+      lockError.code = "EEXIST";
+
+      vi.mocked(fs.readdir).mockResolvedValue(
+        [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
+      );
+      // Lock mtime is 20s old — exceeds the 10s stale threshold
+      vi.mocked(fs.stat).mockResolvedValue({
+        mtimeMs: Date.now() - 20000,
+      } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+      vi.mocked(fs.open)
+        .mockRejectedValueOnce(lockError)
+        .mockResolvedValueOnce(
+          mockFileHandle as unknown as Awaited<ReturnType<typeof fs.open>>,
+        );
+
+      await taskManager.createTask(mockTask);
+
+      expect(fs.unlink).toHaveBeenCalledWith(
+        expect.stringMatching(/[/\\]\.lock$/),
+      );
+      expect(fs.writeFile).toHaveBeenCalled();
+    });
+
+    it("should not remove active lock (recent mtime)", async () => {
+      const lockError = new Error("File exists") as NodeJS.ErrnoException;
+      lockError.code = "EEXIST";
+
+      vi.mocked(fs.readdir).mockResolvedValue(
+        [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
+      );
+      // Lock mtime is 1s ago — active, not stale
+      vi.mocked(fs.stat).mockResolvedValue({
+        mtimeMs: Date.now() - 1000,
+      } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+      vi.mocked(fs.open).mockRejectedValue(lockError);
+      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+
+      await expect(taskManager.createTask(mockTask)).rejects.toThrow(
+        `Could not acquire lock for task list ${sessionId} after 100 retries`,
+      );
+
+      // Stale recovery must NOT have removed the active lock
+      expect(fs.unlink).not.toHaveBeenCalled();
+    });
+
+    it("should not retry on non-transient errors (EACCES)", async () => {
+      const eaccesError = new Error(
+        "Permission denied",
+      ) as NodeJS.ErrnoException;
+      eaccesError.code = "EACCES";
+
+      vi.mocked(fs.readdir).mockResolvedValue(
+        [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
+      );
+      vi.mocked(fs.open).mockRejectedValue(eaccesError);
+
+      await expect(taskManager.createTask(mockTask)).rejects.toThrow(
+        "Permission denied",
+      );
+      expect(fs.open).toHaveBeenCalledTimes(1);
     });
 
     it("should ensure lock is released even if operation fails", async () => {
@@ -298,6 +396,10 @@ describe("TaskManager", () => {
       vi.mocked(fs.unlink).mockImplementation(async () => {
         lockAcquired = false;
       });
+      // Lock is active (recent mtime) — not stale
+      vi.mocked(fs.stat).mockResolvedValue({
+        mtimeMs: Date.now(),
+      } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
       // Start two updates
       const p1 = taskManager.updateTask(mockTask);

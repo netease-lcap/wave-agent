@@ -13,6 +13,7 @@ vi.mock("fs", () => ({
     writeFile: vi.fn(),
     readFile: vi.fn(),
     unlink: vi.fn(),
+    stat: vi.fn(),
   },
 }));
 
@@ -92,6 +93,11 @@ describe("TaskCreate Concurrency", () => {
       activeLocks.delete(path as string);
       return undefined as unknown as Awaited<ReturnType<typeof fs.unlink>>;
     });
+
+    // Lock is active when present — never stale during normal contention
+    vi.mocked(fs.stat).mockResolvedValue({
+      mtimeMs: Date.now(),
+    } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
     const context: ToolContext = {
       sessionId,
