@@ -46,6 +46,7 @@ import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
 import { checkForUpdate } from './updateChecker';
 import { HOST_CHANNEL } from './channels';
+import type { PanelKind } from './menu';
 
 interface PendingConfirmation {
   resolve: (decision: PermissionDecision) => void;
@@ -128,6 +129,12 @@ export class DesktopHost {
 
   private updateCheckTriggered = false;
   private lastIsAuthenticated = false;
+
+  /** Latest panel toggle state reported by each pane's webview (drives the 面板 menu, FR-042). */
+  private panePanelState = new Map<string, PanelKind[]>();
+
+  /** Fired when the focused pane's panel state (or the focus itself) changes — rebuilds the app menu. */
+  onPanelStateChanged: ((checked: PanelKind[]) => void) | null = null;
 
   /** PTY terminals keyed by webview termId (one per pane, FR-044/045). */
   private terminalManager = new TerminalManager({
@@ -260,6 +267,15 @@ export class DesktopHost {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(HOST_CHANNEL, message);
     }
+  }
+
+  /** Toggle a panel on the focused pane — menu items and shortcuts share this path (FR-042). */
+  toggleFocusedPanePanel(kind: PanelKind): void {
+    this.postMessage({ command: 'desktopTogglePanel', paneId: this.focusedPaneId, kind });
+  }
+
+  private emitPanelState(): void {
+    this.onPanelStateChanged?.(this.panePanelState.get(this.focusedPaneId) ?? []);
   }
 
   /** Insert a host-generated system message into a pane's chat stream (focused pane by default). */
@@ -576,6 +592,7 @@ export class DesktopHost {
       this.sendWorkdirState();
     }
     this.pushPanes();
+    this.emitPanelState();
   }
 
   /**
@@ -603,6 +620,7 @@ export class DesktopHost {
     this.panes.push({ paneId, agent: null, width: 1 / (count + 1) });
     this.focusedPaneId = paneId;
     this.pushPanes();
+    this.emitPanelState();
     await this.bindSessionToPane(paneId, workdir, sessionId);
   }
 
@@ -669,6 +687,7 @@ export class DesktopHost {
         this.panes.forEach((p, i) => { p.width = (remaining[i] ?? 0) / sum; });
       }
     }
+    this.panePanelState.delete(paneId);
     if (this.focusedPaneId === paneId) {
       const neighbor = this.panes[Math.min(idx, this.panes.length - 1)];
       this.focusedPaneId = neighbor.paneId;
@@ -678,6 +697,7 @@ export class DesktopHost {
         this.sendWorkdirState();
       }
       this.postMessage({ command: 'focusInput', paneId: neighbor.paneId });
+      this.emitPanelState();
     }
     this.pushPanes();
   }
@@ -1326,6 +1346,13 @@ export class DesktopHost {
       case 'desktopTerminalKill':
         this.terminalManager.kill(msg.termId as string);
         break;
+
+      // Pane panel toggle state — drives the 面板 menu checkboxes (FR-042).
+      case 'desktopPanelState': {
+        this.panePanelState.set(pid, (msg.checked as PanelKind[]) ?? []);
+        if (pid === this.focusedPaneId) this.emitPanelState();
+        break;
+      }
 
       case 'desktopOpenPane':
         await this.handleOpenPane(msg.workdir as string, msg.sessionId as string);

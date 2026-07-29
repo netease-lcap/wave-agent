@@ -73,7 +73,7 @@ describe('matchSessionSwitchInput', () => {
 });
 
 describe('buildApplicationMenuTemplate', () => {
-  const actions = { nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), closePane: vi.fn() };
+  const actions = { nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), closePane: vi.fn(), togglePanel: vi.fn() };
 
   function sessionMenuItems(isMac: boolean): MenuItemConstructorOptions[] {
     const template = buildApplicationMenuTemplate(actions, isMac);
@@ -169,7 +169,7 @@ describe('updateMenuState', () => {
 
 describe('installApplicationMenu', () => {
   it('builds and sets the application menu', () => {
-    installApplicationMenu({ nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), closePane: vi.fn() });
+    installApplicationMenu({ nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), closePane: vi.fn(), togglePanel: vi.fn() });
     expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(1);
     expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(1);
   });

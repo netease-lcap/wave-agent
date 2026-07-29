@@ -61,6 +61,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const panelHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const checkedPanelsRef = useRef(checkedPanels);
   const panelWidthsRef = useRef(panelWidths);
+  // Mirrors so the stable message listener can reach the panel toggle logic
+  // (defined below) without re-subscribing.
+  const togglePanelRef = useRef<(kind: DesktopPanelKind) => void>(() => {});
+  const panelDisabledRef = useRef<DesktopPanelKind[]>([]);
   const messageInputRef = useRef<MessageInputHandle>(null);
   const messageListRef = useRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }>(null);
   const stateRef = useRef(state);
@@ -241,6 +245,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           break;
         case 'desktopThemeChange':
           document.documentElement.setAttribute('data-theme', message.effective);
+          break;
+        case 'desktopTogglePanel':
+          if (!forThisPane(message)) break;
+          togglePanelRef.current(message.kind as DesktopPanelKind);
           break;
         case 'showConfiguration':
           if (!forThisPane(message)) break;
@@ -615,12 +623,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [showPanelHint]);
 
   const handleTogglePanel = useCallback((kind: DesktopPanelKind) => {
+    if (panelDisabledRef.current.includes(kind)) return;
     if (checkedPanelsRef.current.includes(kind)) {
       setCheckedPanels((prev) => prev.filter((k) => k !== kind));
     } else {
       tryOpenPanel(kind);
     }
   }, [tryOpenPanel]);
+
+  useEffect(() => {
+    togglePanelRef.current = handleTogglePanel;
+  }, [handleTogglePanel]);
 
   // Authoritative clamp at drag time: keep the panel within [320, container -
   // other checked panels - conversation minimum].
@@ -650,6 +663,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const effectiveWorkdir = state.workdir ?? (isDesktop ? host?.workdir : undefined);
   // Diff/terminal need a workdir; preview only needs a URL.
   const panelDisabled: DesktopPanelKind[] = effectiveWorkdir ? [] : ['diff', 'terminal'];
+
+  useEffect(() => {
+    panelDisabledRef.current = panelDisabled;
+  }, [panelDisabled]);
+
+  // Report this pane's toggle state so the desktop app menu's 面板 checkboxes
+  // reflect the focused pane (FR-042).
+  useEffect(() => {
+    if (!isDesktop) return;
+    postToHost({ command: 'desktopPanelState', checked: checkedPanels });
+  }, [checkedPanels, isDesktop, postToHost]);
 
   // Width ceiling for one panel: container minus the other checked panels and
   // the conversation-area minimum. Render-time estimate — the drag handler

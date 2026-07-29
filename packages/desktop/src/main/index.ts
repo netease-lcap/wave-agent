@@ -13,7 +13,7 @@ import { WEBVIEW_CHANNEL } from './channels';
 import { ConfigStore } from './configStore';
 import { DesktopHost } from './desktopHost';
 import { isLocalhostUrl } from './isLocalhostUrl';
-import { attachSessionSwitchKeys, installApplicationMenu, updateMenuState, type SessionSwitchActions } from './menu';
+import { attachDesktopShortcutKeys, installApplicationMenu, updateMenuState, type DesktopMenuActions } from './menu';
 
 /**
  * GUI-launched apps (Finder/Spotlight) get a bare system PATH without the
@@ -51,9 +51,9 @@ let mainWindow: BrowserWindow | null = null;
 let host: DesktopHost | null = null;
 
 // Session-switch shortcuts (Ctrl+Tab / Ctrl+Shift+Tab, macOS also
-// Cmd+Shift+] / [) plus 新对话 Cmd+N / 关闭分屏 Cmd+W — shared by the
-// application menu and before-input-event.
-const sessionSwitchActions: SessionSwitchActions = {
+// Cmd+Shift+] / [), 新对话 Cmd+N / 关闭分屏 Cmd+W, and panel-toggle
+// shortcuts — shared by the application menu and before-input-event.
+const menuActions: DesktopMenuActions = {
   nextSession: () => {
     void host?.activateAdjacentSession(1);
   },
@@ -62,6 +62,9 @@ const sessionSwitchActions: SessionSwitchActions = {
   },
   newSession: () => host?.newSessionInFocusedPane(),
   closePane: () => host?.closeFocusedPane(),
+  togglePanel: (kind) => {
+    host?.toggleFocusedPanePanel(kind);
+  },
 };
 
 const gotLock = app.requestSingleInstanceLock();
@@ -86,7 +89,9 @@ if (!gotLock) {
     const configStore = new ConfigStore();
     host = new DesktopHost(configStore);
     host.onMenuStateChange = updateMenuState;
-    installApplicationMenu(sessionSwitchActions);
+    installApplicationMenu(menuActions);
+    // 面板 menu checkboxes mirror the focused pane's toggle state (FR-042).
+    host.onPanelStateChanged = (checked) => installApplicationMenu(menuActions, checked);
 
     ipcMain.on(WEBVIEW_CHANNEL, (_event, message: Record<string, unknown>) => {
       void host?.handleWebviewMessage(message).catch((error) => {
@@ -139,7 +144,7 @@ function createWindow(): void {
   });
 
   host?.setMainWindow(mainWindow);
-  attachSessionSwitchKeys(mainWindow.webContents, sessionSwitchActions);
+  attachDesktopShortcutKeys(mainWindow.webContents, menuActions);
 
   // External links always open in the system browser (FR-008).
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -172,8 +177,9 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.on('did-attach-webview', (_event, guest) => {
-    // The session-switch keys must also work while the preview pane has focus.
-    attachSessionSwitchKeys(guest, sessionSwitchActions);
+    // The session-switch/panel-toggle keys must also work while the preview
+    // pane has focus.
+    attachDesktopShortcutKeys(guest, menuActions);
     // Guest pages must never spawn windows — open them externally instead.
     // (The <webview> `new-window` DOM event was removed in Electron 39.)
     guest.setWindowOpenHandler(({ url }) => {

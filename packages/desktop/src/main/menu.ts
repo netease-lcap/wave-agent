@@ -1,9 +1,10 @@
 /**
  * Application menu + session-switch shortcuts (FR-038) + 新对话/关闭分屏
- * shortcuts (CmdOrCtrl+N / CmdOrCtrl+W).
+ * shortcuts (CmdOrCtrl+N / CmdOrCtrl+W) + panel-toggle shortcuts.
  *
  * The switch keys — Ctrl+Tab / Ctrl+Shift+Tab on every platform, plus
- * Cmd+Shift+] / Cmd+Shift+[ on macOS (aligned with Claude Code Desktop) — are
+ * Cmd+Shift+] / Cmd+Shift+[ on macOS (aligned with Claude Code Desktop) — and
+ * the panel-toggle keys (Shift+Cmd+P / Shift+Cmd+D / Ctrl+` on macOS) are
  * handled via `before-input-event`, NOT registered menu accelerators:
  * Chromium never delivers Ctrl+Tab to the page, and before-input-event is the
  * single interception point that works identically across platforms and
@@ -26,11 +27,14 @@
 
 import { Menu, type Input, type MenuItemConstructorOptions, type WebContents } from 'electron';
 
-export interface SessionSwitchActions {
+export type PanelKind = 'preview' | 'diff' | 'terminal';
+
+export interface DesktopMenuActions {
   nextSession: () => void;
   prevSession: () => void;
   newSession: () => void;
   closePane: () => void;
+  togglePanel: (kind: PanelKind) => void;
 }
 
 export interface SessionMenuState {
@@ -60,10 +64,31 @@ export function matchSessionSwitchInput(input: Input, isMac: boolean): SwitchDir
   return null;
 }
 
-/** Full application menu: platform defaults + the 会话 menu with the switch items. */
+/**
+ * Map a before-input-event Input to a panel kind, or null when unrelated.
+ * macOS: Shift+Cmd+P (preview) / Shift+Cmd+D (diff); Windows/Linux:
+ * Ctrl+Shift+P / Ctrl+Shift+D; terminal is Ctrl+` on every platform.
+ * Letters match on `code` because Shift uppercases them in `key`.
+ */
+export function matchPanelToggleInput(input: Input, isMac: boolean): PanelKind | null {
+  if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') return null;
+  if (input.control && !input.meta && !input.alt && !input.shift && input.code === 'Backquote') {
+    return 'terminal';
+  }
+  const primary = isMac ? input.meta : input.control;
+  const secondary = isMac ? input.control : input.meta;
+  if (primary && input.shift && !secondary && !input.alt) {
+    if (input.code === 'KeyP') return 'preview';
+    if (input.code === 'KeyD') return 'diff';
+  }
+  return null;
+}
+
+/** Full application menu: platform defaults + 会话/面板 menus. */
 export function buildApplicationMenuTemplate(
-  actions: SessionSwitchActions,
+  actions: DesktopMenuActions,
   isMac: boolean,
+  panelChecked: PanelKind[] = [],
 ): MenuItemConstructorOptions[] {
   return [
     ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
@@ -104,6 +129,35 @@ export function buildApplicationMenuTemplate(
         },
       ],
     },
+    {
+      label: '面板',
+      submenu: [
+        {
+          label: '预览',
+          type: 'checkbox',
+          checked: panelChecked.includes('preview'),
+          accelerator: isMac ? 'Shift+Cmd+P' : 'Ctrl+Shift+P',
+          registerAccelerator: false,
+          click: () => actions.togglePanel('preview'),
+        },
+        {
+          label: '差异',
+          type: 'checkbox',
+          checked: panelChecked.includes('diff'),
+          accelerator: isMac ? 'Shift+Cmd+D' : 'Ctrl+Shift+D',
+          registerAccelerator: false,
+          click: () => actions.togglePanel('diff'),
+        },
+        {
+          label: '终端',
+          type: 'checkbox',
+          checked: panelChecked.includes('terminal'),
+          accelerator: 'Ctrl+`',
+          registerAccelerator: false,
+          click: () => actions.togglePanel('terminal'),
+        },
+      ],
+    },
     { role: 'viewMenu' },
     // Off macOS windowMenu ends with Close (Cmd+W) — same conflict, so keep
     // only Minimize / Zoom. The macOS windowMenu has no Close item.
@@ -113,8 +167,8 @@ export function buildApplicationMenuTemplate(
   ];
 }
 
-export function installApplicationMenu(actions: SessionSwitchActions): void {
-  const template = buildApplicationMenuTemplate(actions, process.platform === 'darwin');
+export function installApplicationMenu(actions: DesktopMenuActions, panelChecked: PanelKind[] = []): void {
+  const template = buildApplicationMenuTemplate(actions, process.platform === 'darwin', panelChecked);
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
@@ -127,13 +181,21 @@ export function updateMenuState(state: SessionMenuState): void {
   if (closeItem) closeItem.enabled = state.canClosePane;
 }
 
-/** Wire the switch keys onto a webContents (main window or preview guest). */
-export function attachSessionSwitchKeys(contents: WebContents, actions: SessionSwitchActions): void {
+/** Wire the switch/toggle keys onto a webContents (main window or preview guest). */
+export function attachDesktopShortcutKeys(contents: WebContents, actions: DesktopMenuActions): void {
   contents.on('before-input-event', (event, input) => {
-    const direction = matchSessionSwitchInput(input, process.platform === 'darwin');
-    if (!direction) return;
-    event.preventDefault();
-    if (direction === 'next') actions.nextSession();
-    else actions.prevSession();
+    const isMac = process.platform === 'darwin';
+    const direction = matchSessionSwitchInput(input, isMac);
+    if (direction) {
+      event.preventDefault();
+      if (direction === 'next') actions.nextSession();
+      else actions.prevSession();
+      return;
+    }
+    const kind = matchPanelToggleInput(input, isMac);
+    if (kind) {
+      event.preventDefault();
+      actions.togglePanel(kind);
+    }
   });
 }
