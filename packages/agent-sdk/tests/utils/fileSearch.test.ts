@@ -185,4 +185,29 @@ describe("searchFiles", () => {
     const results = await searchFiles("query");
     expect(results).toEqual([]);
   });
+
+  it("should keep partial results when ripgrep exits with code 2", async () => {
+    // rg exit 2 = some files were unreadable (e.g. a file named "nul" on
+    // Windows), but stdout still holds the files it could walk.
+    const mockProcess = new EventEmitter() as unknown as ReturnType<
+      typeof spawn
+    >;
+    const mockStdout = new EventEmitter();
+    const mockStderr = new EventEmitter();
+    Object.defineProperty(mockProcess, "stdout", { value: mockStdout });
+    Object.defineProperty(mockProcess, "stderr", { value: mockStderr });
+    vi.mocked(spawn).mockReturnValue(mockProcess);
+
+    setTimeout(() => {
+      mockStdout.emit("data", Buffer.from("src/index.ts\nsrc/utils.ts"));
+      mockStderr.emit(
+        "data",
+        Buffer.from("rg: .\\nul: Incorrect function. (os error 1)"),
+      );
+      mockProcess.emit("close", 2);
+    }, 10);
+
+    const results = await searchFiles("index");
+    expect(results.some((r) => r.path === "src/index.ts")).toBe(true);
+  });
 });
