@@ -309,6 +309,9 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   }, [panes, vscode]);
 
   const focusedSessionId = panes.find((p) => p.paneId === focusedPaneId)?.sessionId;
+  // Every session shown in a pane is highlighted in the sidebar — the focused
+  // one strongly (current), the rest weakly. New-session panes carry no id.
+  const visibleSessionIds = panes.map((p) => p.sessionId).filter((id): id is string => id != null);
 
   return (
     <div className="desktop-layout" data-testid="desktop-shell">
@@ -324,6 +327,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         sessionTree={host.sessionTree}
         currentWorkdir={host.workdir}
         currentSessionId={focusedSessionId}
+        visibleSessionIds={visibleSessionIds}
         onSelectSession={host.onSelectSession}
         onOpenPane={handleOpenPane}
         onDeleteSession={host.onDeleteSession}

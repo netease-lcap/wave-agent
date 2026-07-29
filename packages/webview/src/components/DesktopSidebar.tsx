@@ -25,6 +25,8 @@ export interface DesktopSidebarProps {
   currentWorkdir?: string;
   /** Active session id — its group defaults to expanded; gets the running dot while streaming. */
   currentSessionId?: string;
+  /** Sessions shown in panes — those other than currentSessionId get a weak highlight. */
+  visibleSessionIds?: string[];
   onSelectSession: (workdir: string, sessionId: string) => void;
   /** Cmd/Ctrl+Click: open the session in an additional pane to the right. */
   onOpenPane: (workdir: string, sessionId: string) => void;
@@ -56,6 +58,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   sessionTree,
   currentWorkdir,
   currentSessionId,
+  visibleSessionIds,
   onSelectSession,
   onOpenPane,
   onDeleteSession,
@@ -90,10 +93,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     // meaningfully "running", and it needs attention more than the running dot.
     const waiting = session.waitingConfirmation ?? false;
     const isCurrent = session.sessionId === currentSessionId;
+    // A session displayed in a non-focused pane gets the weak highlight.
+    const isVisible = !isCurrent && (visibleSessionIds?.includes(session.sessionId) ?? false);
     return (
       <li
         key={session.sessionId}
-        className={`desktop-session-item${isCurrent ? ' desktop-session-item--current' : ''}`}
+        className={`desktop-session-item${isCurrent ? ' desktop-session-item--current' : ''}${isVisible ? ' desktop-session-item--visible' : ''}`}
         draggable
         onDragStart={(e) => {
           // Drag into the chat area opens the session in a new pane (drop on a

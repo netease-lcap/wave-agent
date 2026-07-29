@@ -151,6 +151,11 @@
     color: var(--vscode-list-activeSelectionForeground);
 }
 
+/* Weak counterpart of --current: the session is shown in a non-focused pane. */
+.desktop-session-item--visible {
+    background: var(--vscode-list-inactiveSelectionBackground);
+}
+
 .desktop-session-dot {
     width: 6px;
     height: 6px;
