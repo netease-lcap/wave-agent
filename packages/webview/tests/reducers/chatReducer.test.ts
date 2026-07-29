@@ -41,6 +41,82 @@ describe('chatReducer', () => {
       expect(newState.messages).toHaveLength(1);
       expect(newState.messages[0]).toBe(newMessage);
     });
+
+    it('should pin currentSession.firstMessage when the first user message arrives incrementally', () => {
+      const currentSession: SessionMetadata = {
+        id: 's1',
+        sessionType: 'main',
+        workdir: '/w',
+        createdAt: new Date(0),
+        lastActiveAt: new Date(0),
+        latestTotalTokens: 0
+      };
+      const state = { ...initialState, currentSession };
+
+      const newState = chatReducer(state, {
+        type: 'APPEND_MESSAGE',
+        payload: { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '帮我重构登录模块' }] }
+      });
+
+      expect(newState.currentSession?.firstMessage).toBe('帮我重构登录模块');
+    });
+
+    it('should keep the title pinned via APPEND_MESSAGE after compaction truncates the list', () => {
+      // Desktop sequence: session pushed without firstMessage, user/assistant
+      // messages arrive incrementally, then compaction pushes the truncated
+      // list ([assistant(compact), ...assistant-only tail]).
+      const currentSession: SessionMetadata = {
+        id: 's1',
+        sessionType: 'main',
+        workdir: '/w',
+        createdAt: new Date(0),
+        lastActiveAt: new Date(0),
+        latestTotalTokens: 0
+      };
+      let state: typeof initialState = { ...initialState, currentSession };
+
+      state = chatReducer(state, {
+        type: 'APPEND_MESSAGE',
+        payload: { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '帮我重构登录模块' }] }
+      });
+      state = chatReducer(state, {
+        type: 'APPEND_MESSAGE',
+        payload: { id: 'a1', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '好的' }] }
+      });
+
+      const compacted = chatReducer(state, {
+        type: 'SET_MESSAGES',
+        payload: [
+          { id: 'c1', role: 'assistant', timestamp: '0', blocks: [{ type: 'compact', content: '对话摘要' }] },
+          { id: 'a2', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '继续' }] }
+        ]
+      });
+
+      expect(compacted.currentSession?.firstMessage).toBe('帮我重构登录模块');
+    });
+
+    it('should not pin firstMessage from appended assistant or meta messages', () => {
+      const currentSession: SessionMetadata = {
+        id: 's1',
+        sessionType: 'main',
+        workdir: '/w',
+        createdAt: new Date(0),
+        lastActiveAt: new Date(0),
+        latestTotalTokens: 0
+      };
+      let state: typeof initialState = { ...initialState, currentSession };
+
+      state = chatReducer(state, {
+        type: 'APPEND_MESSAGE',
+        payload: { id: 'm1', role: 'user', timestamp: '0', isMeta: true, blocks: [{ type: 'text', content: '系统提醒' }] }
+      });
+      state = chatReducer(state, {
+        type: 'APPEND_MESSAGE',
+        payload: { id: 'a1', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '好的' }] }
+      });
+
+      expect(state.currentSession?.firstMessage).toBeUndefined();
+    });
   });
 
   describe('UPDATE_STREAMING_CONTENT', () => {
@@ -677,6 +753,63 @@ describe('chatReducer', () => {
       const newState = chatReducer(state, { type: 'SET_CURRENT_SESSION', payload: undefined });
 
       expect(newState.currentSession).toBeUndefined();
+    });
+  });
+
+  describe('SET_INITIAL_STATE', () => {
+    it('should pin firstMessage from the initial messages when the pushed session lacks it', () => {
+      // Desktop re-pushes pane state (setInitialState) with a session object
+      // that never carries firstMessage; the title must be re-derived from the
+      // same-snapshot messages so a pane switch does not drop the pinned title.
+      const newState = chatReducer(initialState, {
+        type: 'SET_INITIAL_STATE',
+        payload: {
+          messages: [
+            { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '帮我重构登录模块' }] },
+            { id: 'a1', role: 'assistant', timestamp: '0', blocks: [{ type: 'text', content: '好的' }] }
+          ],
+          sessions: [],
+          currentSession: {
+            id: 's1',
+            sessionType: 'main',
+            workdir: '/w',
+            createdAt: new Date(0),
+            lastActiveAt: new Date(0),
+            latestTotalTokens: 0
+          },
+          configurationData: {} as any,
+          pendingConfirmations: [],
+          isStreaming: false,
+        },
+      });
+
+      expect(newState.currentSession?.firstMessage).toBe('帮我重构登录模块');
+    });
+
+    it('should not overwrite a firstMessage already present on the pushed session', () => {
+      const newState = chatReducer(initialState, {
+        type: 'SET_INITIAL_STATE',
+        payload: {
+          messages: [
+            { id: 'u1', role: 'user', timestamp: '0', blocks: [{ type: 'text', content: '新首条消息' }] }
+          ],
+          sessions: [],
+          currentSession: {
+            id: 's1',
+            sessionType: 'main',
+            firstMessage: '原始标题',
+            workdir: '/w',
+            createdAt: new Date(0),
+            lastActiveAt: new Date(0),
+            latestTotalTokens: 0
+          },
+          configurationData: {} as any,
+          pendingConfirmations: [],
+          isStreaming: false,
+        },
+      });
+
+      expect(newState.currentSession?.firstMessage).toBe('原始标题');
     });
   });
 
