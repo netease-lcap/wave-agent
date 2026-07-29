@@ -24,7 +24,7 @@ describe('Clear Chat Functionality', () => {
         expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
     });
 
-    it('should trigger clear chat via header button', () => {
+    it('should request a new chat tab via header button', () => {
         const { vscode } = renderChatApp();
 
         act(() => {
@@ -40,15 +40,58 @@ describe('Clear Chat Functionality', () => {
         // Clear message log to track new commands
         vscode.postMessage.mockClear();
 
-        // Click the clear chat button
-        const clearBtn = screen.getByTestId('clear-chat-btn');
+        // Click the new session button
+        const newSessionBtn = screen.getByTestId('new-session-btn');
         act(() => {
-            fireEvent.click(clearBtn);
+            fireEvent.click(newSessionBtn);
         });
 
-        // Verify clear command was sent to extension
+        // Verify new tab command was sent to the host, not an in-place clear
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'newChatTab' })
+        );
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'clearChat' })
+        );
+
+        // Current conversation stays untouched in this panel
+        const messages = document.querySelectorAll('.messages-container .message');
+        expect(messages.length).toBe(3);
+    });
+
+    it('should still send clearChat via the /clear slash command', async () => {
+        const { vscode } = renderChatApp();
+
+        act(() => {
+            sendCommand('updateMessages', {
+                messages: [
+                    MockDataGenerator.createUserMessage('Hello'),
+                    MockDataGenerator.createAssistantMessage('Hi!')
+                ]
+            });
+        });
+
+        vscode.postMessage.mockClear();
+
+        const input = screen.getByTestId('message-input');
+        act(() => {
+            input.textContent = '/clear';
+        });
+        await fireInput(input, { data: '/clear', inputType: 'insertText' });
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('send-btn'));
+        });
+
+        // /clear keeps its in-place clear semantics and is not sent to the agent as a message
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ command: 'clearChat' })
+        );
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'sendMessage' })
+        );
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'newChatTab' })
         );
     });
 
@@ -86,7 +129,7 @@ describe('Clear Chat Functionality', () => {
         expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
     });
 
-    it('should prevent user from clearing during streaming but allow extension clear', () => {
+    it('should allow new chat tab during streaming while extension can still clear', () => {
         const { vscode } = renderChatApp();
 
         // Start streaming and add a message
@@ -106,20 +149,24 @@ describe('Clear Chat Functionality', () => {
         const abortBtn = screen.getByTestId('abort-btn');
         expect(abortBtn).toBeInTheDocument();
 
-        // Verify clear button is disabled
-        const clearBtn = screen.getByTestId('clear-chat-btn');
-        expect(clearBtn).toBeDisabled();
+        // New session button stays enabled during streaming
+        const newSessionBtn = screen.getByTestId('new-session-btn');
+        expect(newSessionBtn).not.toBeDisabled();
 
         // Clear message log
         vscode.postMessage.mockClear();
 
-        // Clicking clear button during streaming should not send clearChat
+        // Clicking during streaming requests a new tab; the running conversation is untouched
         act(() => {
-            fireEvent.click(clearBtn);
+            fireEvent.click(newSessionBtn);
         });
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'newChatTab' })
+        );
         expect(vscode.postMessage).not.toHaveBeenCalledWith(
             expect.objectContaining({ command: 'clearChat' })
         );
+        expect(document.querySelectorAll('.messages-container .message').length).toBe(1);
 
         // But extension can still clear messages via command
         act(() => {

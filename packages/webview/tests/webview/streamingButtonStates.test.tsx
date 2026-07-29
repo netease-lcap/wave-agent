@@ -14,20 +14,20 @@ describe('Streaming Button States', () => {
         vi.clearAllMocks();
     });
 
-    it('should disable header buttons during streaming', () => {
+    it('should swap send/abort buttons during streaming while new session stays enabled', () => {
         renderChatApp();
 
         // Verify initial state - all buttons should be enabled
-        const clearChatBtn = screen.getByTestId('clear-chat-btn');
-        expect(clearChatBtn).not.toBeDisabled();
+        const newSessionBtn = screen.getByTestId('new-session-btn');
+        expect(newSessionBtn).not.toBeDisabled();
         expect(screen.getByTestId('send-btn')).toBeInTheDocument();
         expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
 
         // Start streaming
         sendCommand('startStreaming');
 
-        // Verify buttons are disabled during streaming
-        expect(clearChatBtn).toBeDisabled();
+        // Send swaps to abort during streaming; new session stays enabled (opens a new tab)
+        expect(newSessionBtn).not.toBeDisabled();
         expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
         expect(screen.queryByTestId('send-btn')).not.toBeInTheDocument();
 
@@ -36,13 +36,13 @@ describe('Streaming Button States', () => {
         expect(input).not.toHaveAttribute('contenteditable', 'false');
     });
 
-    it('should re-enable header buttons after streaming ends', () => {
+    it('should restore send button after streaming ends', () => {
         renderChatApp();
 
         // Start streaming
         sendCommand('startStreaming');
-        const clearChatBtn = screen.getByTestId('clear-chat-btn');
-        expect(clearChatBtn).toBeDisabled();
+        const newSessionBtn = screen.getByTestId('new-session-btn');
+        expect(newSessionBtn).not.toBeDisabled();
 
         // End streaming by updating with final messages
         sendCommand('updateMessages', {
@@ -57,8 +57,8 @@ describe('Streaming Button States', () => {
         // End streaming (simulates agent.sendMessage() completion)
         sendCommand('endStreaming');
 
-        // Verify buttons are re-enabled
-        expect(clearChatBtn).not.toBeDisabled();
+        // Verify buttons are restored
+        expect(newSessionBtn).not.toBeDisabled();
         expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
         expect(screen.getByTestId('send-btn')).toBeInTheDocument();
 
@@ -67,7 +67,7 @@ describe('Streaming Button States', () => {
         expect(input.textContent).toBe('');
     });
 
-    it('should prevent clear chat during streaming', () => {
+    it('should request a new chat tab during streaming without touching current messages', () => {
         const { vscode } = renderChatApp();
 
         // Add some messages first
@@ -102,12 +102,13 @@ describe('Streaming Button States', () => {
         // Clear message log to track new commands
         vscode.postMessage.mockClear();
 
-        // Try to click clear chat (should be disabled)
-        const clearChatBtn = screen.getByTestId('clear-chat-btn');
-        expect(clearChatBtn).toBeDisabled();
+        // New session button stays enabled during streaming; clicking requests a new tab
+        const newSessionBtn = screen.getByTestId('new-session-btn');
+        expect(newSessionBtn).not.toBeDisabled();
+        fireEvent.click(newSessionBtn);
 
-        // Verify that clicking disabled button doesn't send command
         const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
+        expect(sentMessages.filter((msg: Record<string, unknown>) => msg.command === 'newChatTab')).toHaveLength(1);
         expect(sentMessages.filter((msg: Record<string, unknown>) => msg.command === 'clearChat')).toHaveLength(0);
 
         // Messages should still be there
@@ -129,8 +130,8 @@ describe('Streaming Button States', () => {
         });
 
         // Verify buttons are in streaming state
-        const clearChatBtn = screen.getByTestId('clear-chat-btn');
-        expect(clearChatBtn).toBeDisabled();
+        const newSessionBtn = screen.getByTestId('new-session-btn');
+        expect(newSessionBtn).not.toBeDisabled();
         expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Abort the message
@@ -140,7 +141,7 @@ describe('Streaming Button States', () => {
         sendCommand('endStreaming');
 
         // Verify buttons are restored after abort
-        expect(clearChatBtn).not.toBeDisabled();
+        expect(newSessionBtn).not.toBeDisabled();
         expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
 
         // Empty and enabled

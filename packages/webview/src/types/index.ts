@@ -336,9 +336,8 @@ export interface PanelToggleProps {
 }
 
 export interface ChatHeaderProps {
-  onClearChat: () => void;
+  onNewSession: () => void;
   onAbortMessage: () => void;
-  isStreaming: boolean;
   messages: Message[];
   sessions: SessionMetadata[];
   currentSession?: SessionMetadata;
