@@ -13,10 +13,10 @@
 
 | 指标 | 数量 |
 |------|------|
-| 规格文件 | 61 |
-| 用户故事 | 300 |
-| 功能需求 | 1,247 |
-| 测试用例 | 4,430 |
+| 规格文件 | 62 |
+| 用户故事 | 302 |
+| 功能需求 | 1,254 |
+| 测试用例 | 4,434 |
 
 ## 规格列表
 
@@ -67,6 +67,7 @@
 | Stdio 传输层 | 编辑器插件与 `wave --stdio` 子进程的 JSON-RPC 通信，CLI 解析/安装/升级、多会话路由、错误诊断 | 8 | 57 | [规格](ui/stdio-transport.md) |
 | IDE 插件 | VS Code/JetBrains 共享 React webview 的横切关注点：主题变量、共享包与构建产物、生命周期与消息协议、IDE 专属对话框 | 4 | 23 | [规格](ui/ide-plugin.md) |
 | Wave Desktop（Electron 桌面应用） |  | 18 | 49 | [规格](ui/desktop-app.md) |
+| 操作确认对话框 | 共享 webview 居中确认对话框，用于消息回滚、删除会话等破坏性操作二次确认 | 2 | 7 | [规格](ui/action-confirm-dialog.md) |
 
 ### 多 Agent 与并发
 
