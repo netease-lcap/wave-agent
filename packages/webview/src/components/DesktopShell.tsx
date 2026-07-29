@@ -128,7 +128,13 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     if (!rowEl) return;
     dropBoundary.current = boundary;
     const rowRect = rowEl.getBoundingClientRect();
-    setDropIndicatorX(markerX - rowRect.left + rowEl.scrollLeft);
+    // Center the 2px bar on the boundary, clamped inside the content box: an
+    // absolutely positioned child past the right content edge would extend the
+    // row's scrollable overflow, surfacing a horizontal scrollbar and pushing
+    // the bar itself out of view.
+    const x = markerX - rowRect.left + rowEl.scrollLeft - 1;
+    const maxX = rowEl.scrollWidth - 2;
+    setDropIndicatorX(Math.max(0, Math.min(x, maxX)));
   }, []);
 
   const handlePaneDragOver = useCallback((e: React.DragEvent, index: number) => {
