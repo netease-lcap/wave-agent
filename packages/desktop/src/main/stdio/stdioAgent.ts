@@ -48,6 +48,8 @@ export interface InitializeParams {
     disallowedTools?: string[];
     pluginDirs?: string[];
     mcpServers?: Record<string, McpServerConfig>;
+    worktreeName?: string;
+    isNewWorktree?: boolean;
 }
 
 export interface InitializeResult {

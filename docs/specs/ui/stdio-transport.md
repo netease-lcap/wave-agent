@@ -287,8 +287,9 @@
 以下方法为无 session 上下文的 utility 请求（与 `listSessions` 同类），供桌面端等宿主查询 git 状态、创建/清理 worktree，复用 CLI `wave -w` 的创建与命名逻辑。
 
 - **FR-052**：协议必须提供 `listGitBranches` 请求方法：参数 `{workdir}`；响应 `{branches: string[], current: string | null}`（本地分支列表与当前分支）；`workdir` 不是 git 仓库或 git 不可用时必须返回错误（而非空列表），以便宿主隐藏分支相关 UI。
-- **FR-053**：协议必须提供 `createWorktree` 请求方法：参数 `{workdir, baseBranch?, name?}`；未传 `name` 时必须使用与 `wave -w` 相同的双形容词-名词随机命名；worktree 路径为 `<repoRoot>/.wave/worktrees/<name>`、分支名为 `worktree-<name>`；`baseBranch` 缺省时回退到仓库默认远程分支（与 `wave -w` 一致）；响应 `{name, path, branch, repoRoot, baseBranch}`；创建失败必须返回包含原因的错误。
+- **FR-053**：协议必须提供 `createWorktree` 请求方法：参数 `{workdir, baseBranch?, name?}`；未传 `name` 时必须使用与 `wave -w` 相同的双形容词-名词随机命名；worktree 路径为 `<repoRoot>/.wave/worktrees/<name>`、分支名为 `worktree-<name>`；`baseBranch` 缺省时回退到仓库默认远程分支（与 `wave -w` 一致）；响应 `{name, path, branch, repoRoot, baseBranch, isNew}`（`isNew` 表示 worktree 是否为本次新建，复用已存在的同名 worktree 时为 false）；创建失败必须返回包含原因的错误。
 - **FR-054**：协议必须提供 `removeWorktree` 请求方法：参数 `{path, branch, repoRoot}`（`path` 为 worktree 路径，`branch` 为其临时分支名）；必须执行 `git worktree remove --force` 并删除对应 `worktree-<name>` 分支（复用 CLI 既有移除逻辑，含"当前分支已被切换"时的安全处理）；worktree 已被外部删除等清理失败场景不得报错，按幂等成功处理。
+- **FR-055**：`initialize` 请求必须接受可选的 `worktreeName` 与 `isNewWorktree` 参数并透传给 Agent（与 CLI `wave -w` 的语义一致）：`isNewWorktree` 为 true 时 Agent 初始化必须触发 WorktreeCreate 钩子；`updateConfig` 重建 Agent 时必须保留 `worktreeName` 上下文，但不得再次触发 WorktreeCreate 钩子。
 
 ### 关键实体
 

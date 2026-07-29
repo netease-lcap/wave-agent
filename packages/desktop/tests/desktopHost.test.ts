@@ -15,7 +15,7 @@ const h = vi.hoisted(() => ({
   dirSessions: new Map<string, unknown[]>(),
   // FR-052..054: stdio git method stubs. `worktreeError` makes createWorktree
   // reject; `branchesResult: null` simulates a non-git workdir.
-  worktreeResult: null as null | { name: string; path: string; branch: string; baseBranch: string; repoRoot: string },
+  worktreeResult: null as null | { name: string; path: string; branch: string; baseBranch: string; repoRoot: string; isNew: boolean },
   worktreeError: null as Error | null,
   branchesResult: null as null | { branches: string[]; current: string },
   // When set, the removeWorktree RPC awaits this promise (simulates a slow
@@ -1073,6 +1073,7 @@ describe('worktree flow', () => {
     branch: 'worktree-gentle-pike-147',
     baseBranch: 'main',
     repoRoot: '/work/a',
+    isNew: true,
   };
 
   it('desktopListGitBranches pushes the branch list', async () => {
@@ -1112,7 +1113,11 @@ describe('worktree flow', () => {
       params: { workdir: '/work/a', baseBranch: 'dev', name: undefined },
     });
     expect(h.agentInstances).toHaveLength(before + 1);
-    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({
+      workdir: worktree.path,
+      worktreeName: worktree.name,
+      isNewWorktree: true,
+    }));
     expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: worktree.path });
     // FR-023: recents record the repo root, never the ephemeral worktree path.
     expect(store.getRecentWorkdirs()).toContain('/work/a');
@@ -1133,6 +1138,24 @@ describe('worktree flow', () => {
 
     expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
     expect(lastAgent().sendMessage).toHaveBeenCalledWith('hello worktree', undefined, false);
+  });
+
+  it('desktopCreateWorktree on an existing worktree (isNew: false) does not mark it new', async () => {
+    const { host } = await readyHost();
+    h.worktreeResult = { ...worktree, isNew: false };
+    h.existingPaths.add(worktree.path);
+
+    await host.handleWebviewMessage({
+      command: 'desktopCreateWorktree',
+      workdir: '/work/a',
+      name: worktree.name,
+    });
+
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({
+      workdir: worktree.path,
+      worktreeName: worktree.name,
+      isNewWorktree: false,
+    }));
   });
 
   it('new session after a worktree session starts in the repo root, not the worktree path (FR-005)', async () => {

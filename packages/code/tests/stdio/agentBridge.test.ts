@@ -143,6 +143,21 @@ test("initialize passes pluginDirs as PluginConfig[]", async () => {
   ]);
 });
 
+test("initialize forwards worktreeName and isNewWorktree to Agent options", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {
+    workdir: "/repo/.wave/worktrees/feat",
+    worktreeName: "feat",
+    isNewWorktree: true,
+  });
+
+  const options = vi.mocked(Agent.create).mock.calls[0][0];
+  expect(options.worktreeName).toBe("feat");
+  expect(options.isNewWorktree).toBe(true);
+});
+
 // ── Callbacks → Notifications ────────────────────────────────────
 
 test("onMessagesChange emits messagesChange notification", async () => {
@@ -1190,6 +1205,23 @@ test("updateConfig destroys and recreates agent with merged config", async () =>
   expect(secondCall.permissionMode).toBe("plan");
 });
 
+test("updateConfig preserves worktreeName but never re-marks the worktree as new", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  const result = await bridge.handleRequest("initialize", {
+    workdir: "/repo/.wave/worktrees/feat",
+    worktreeName: "feat",
+    isNewWorktree: true,
+  });
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest("updateConfig", { model: "gpt-4" }, sessionId);
+
+  const secondCall = vi.mocked(Agent.create).mock.calls[1][0];
+  expect(secondCall.worktreeName).toBe("feat");
+  expect(secondCall.isNewWorktree).toBeUndefined();
+});
+
 test("destroy without agent is a no-op", async () => {
   const { bridge } = createBridge();
   // Don't initialize — agent is undefined
@@ -1658,6 +1690,7 @@ test("createWorktree creates worktree with default name", async () => {
     branch: string;
     repoRoot: string;
     baseBranch: string;
+    isNew: boolean;
   };
 
   expect(result.name).toBe("random-name");
@@ -1665,6 +1698,7 @@ test("createWorktree creates worktree with default name", async () => {
   expect(result.branch).toBe("worktree-random-name");
   expect(result.repoRoot).toBe("/repo");
   expect(result.baseBranch).toBe("origin/main");
+  expect(result.isNew).toBe(true);
 
   expect(createWorktree).toHaveBeenCalledWith("random-name", "/repo", {
     baseBranch: "origin/main",
