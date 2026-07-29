@@ -15,7 +15,7 @@
 |------|------|
 | 规格文件 | 61 |
 | 用户故事 | 296 |
-| 功能需求 | 1,207 |
+| 功能需求 | 1,208 |
 | 测试用例 | 4,415 |
 
 ## 规格列表
@@ -30,7 +30,7 @@
 | LSP 集成 | Language Server Protocol 代码智能（定义跳转、引用查找、悬停信息） | 3 | 8 | [规格](core/lsp-integration.md) |
 | 自定义工具 buildTool() | buildTool() 工厂方法，供 SDK 用户定义自定义工具 | 3 | 11 | [规格](core/custom-tools.md) |
 | Agent 配置 | 基于构造函数的配置替代环境变量，支持 max output tokens 和自定义 headers | 10 | 40 | [规格](core/agent-config.md) |
-| 消息压缩 | 对话历史和用户输入大小管理 | 7 | 29 | [规格](core/message-compact.md) |
+| 消息压缩 | 对话历史和用户输入大小管理 | 7 | 30 | [规格](core/message-compact.md) |
 | Prompt 工程 | Prompt 构建和管理框架 | 5 | 13 | [规格](core/prompt-engineering.md) |
 | Prompt 缓存控制 | 基于正则匹配的显式缓存标记，支持 Claude、Qwen 等多种模型 | 5 | 8 | [规格](core/prompt-cache-control.md) |
 | 记忆管理 | 通过记忆文件在对话间持久化信息 | 8 | 26 | [规格](core/memory-management.md) |

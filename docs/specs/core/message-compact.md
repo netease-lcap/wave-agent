@@ -106,21 +106,23 @@
 
 ---
 
-### 用户故事 7 - IDE 插件手动压缩与原生通知（优先级：P2）
+### 用户故事 7 - 手动压缩与压缩状态内联提示（优先级：P2）
 
-作为 IDE 插件（VS Code 扩展与 JetBrains 插件）用户，我希望能在 IDE 中手动触发对话压缩（`/compact`），并在压缩过程中收到单个原生通知，压缩完成后该通知自动关闭，以便我主动管理上下文并实时知晓压缩状态，且不被堆叠的通知打扰。
+作为 IDE 插件（VS Code 扩展与 JetBrains 插件）与桌面端用户，我希望能在客户端中手动触发对话压缩（`/compact`），并在压缩过程中于消息列表末尾的闪烁光标后看到"正在压缩对话…"提示，压缩完成后提示自动消失，以便我主动管理上下文并实时知晓压缩状态，且不被通知弹窗或插入的系统消息打扰。
 
-**为什么是这个优先级**：IDE 插件以 stdio 子进程方式运行 Agent，无法直接调用 CLI 内部命令；若不做协议适配，`/compact` 会被当作普通消息发送给模型而失效。压缩可能耗时数秒，单个原生通知让用户明确知道压缩正在进行，完成后自动关闭，避免压缩开始与完成两个通知堆叠。VS Code 扩展与 JetBrains 插件共享同一 webview 包与 stdio 协议，二者行为必须一致。
+**为什么是这个优先级**：IDE 插件与桌面端以 stdio 子进程方式运行 Agent，无法直接调用 CLI 内部命令；若不做协议适配，`/compact` 会被当作普通消息发送给模型而失效。压缩可能耗时数秒，在共享 webview 的闪烁光标后内联展示状态提示，让三端行为一致，避免原生通知、聊天内系统消息等不同形式造成的体验割裂。VS Code 扩展、JetBrains 插件与桌面端共享同一 webview 包，三者行为必须一致。
 
-**独立测试**：在 VS Code 扩展与 JetBrains 插件中分别输入 `/compact`，验证通过 stdio `compact` 请求触发压缩而非发送普通消息；模拟 `compactionStateChange` 通知，验证开始时显示单个进行中通知，完成时关闭该通知而不弹出完成通知。
+**独立测试**：在三端分别输入 `/compact`，验证通过 stdio `compact` 请求触发压缩而非发送普通消息；模拟 `compactionStateChange` 通知，验证开始时 webview 在消息列表末尾的闪烁光标后显示压缩提示，完成时提示消失，且全程不出现原生通知弹窗，消息列表也不新增系统消息。
 
 **验收场景**：
 
-1. **假设**对话中有消息，**当**用户在 IDE 插件中输入 `/compact` 时，**则**插件必须通过 stdio `compact` 请求触发压缩，而非将文本作为普通消息发送给模型
+1. **假设**对话中有消息，**当**用户在 IDE 插件或桌面端中输入 `/compact` 时，**则**客户端必须通过 stdio `compact` 请求触发压缩，而非将文本作为普通消息发送给模型
 2. **假设**用户输入 `/compact focus on the API design`，**当**请求发出时，**则**自定义指令必须作为 `customInstructions` 传递给 `compact` 请求并影响摘要
-3. **假设**压缩开始（手动或自动触发），**当**子进程发送 `compactionStateChange`（`isCompacting=true`）时，**则**IDE 插件必须显示单个原生通知提示压缩进行中
-4. **假设**压缩完成，**当**子进程发送 `compactionStateChange`（`isCompacting=false`）时，**则**IDE 插件必须关闭该进行中通知，而非弹出新的完成通知
+3. **假设**压缩开始（手动或自动触发），**当**子进程发送 `compactionStateChange`（`isCompacting=true`）时，**则**webview 必须在消息列表末尾的闪烁光标后显示"正在压缩对话…"提示，并在压缩期间保持显示
+4. **假设**压缩完成，**当**子进程发送 `compactionStateChange`（`isCompacting=false`）时，**则**webview 必须移除该提示
 5. **假设**压缩已在进行中，**当**用户再次输入 `/compact` 时，**则**第二次压缩必须被跳过（复用 FR-016 熔断器）
+6. **假设**压缩状态变化，**当**宿主收到 `compactionStateChange` 通知时，**则**宿主不得显示原生通知弹窗，也不得向消息列表插入系统消息
+7. **假设**桌面端处于多窗格（分屏）状态，**当**某个会话窗格触发压缩时，**则**压缩提示必须仅显示在该窗格中
 
 ---
 
@@ -162,8 +164,9 @@
 - **FR-025**：当用户在 IDE 插件（VS Code 扩展或 JetBrains 插件）中输入 `/compact [instructions]` 时，插件必须将其识别为本地命令并通过 `compact` 请求触发压缩，而非通过 `sendMessage` 将文本作为普通消息发送
 - **FR-026**：stdio 协议必须支持 `compactionStateChange` 通知，携带 `isCompacting` 布尔参数，在压缩状态变化时由子进程发送给客户端
 - **FR-027**：AgentBridge 必须将 `AgentCallbacks.onCompactionStateChange` 回调转发为 `compactionStateChange` 通知
-- **FR-028**：IDE 插件必须在收到 `compactionStateChange` 通知（`isCompacting=true`）时显示单个原生通知提示压缩进行中（VS Code 扩展使用 `vscode.window` 进度通知 API，JetBrains 插件使用 `NotificationGroupManager`），并在压缩期间保持显示
-- **FR-029**：IDE 插件必须在压缩完成（`isCompacting=false`）时关闭该进行中通知，而非弹出新的完成通知
+- **FR-028**：VS Code 扩展、JetBrains 插件与桌面端宿主必须将 `compactionStateChange` 通知转发给共享 webview；webview 必须在压缩进行中（`isCompacting=true`）于消息列表末尾的闪烁光标后显示"正在压缩对话…"提示，并在压缩期间保持显示
+- **FR-029**：webview 必须在压缩完成（`isCompacting=false`）时移除该提示；宿主不得显示原生通知弹窗，也不得向消息列表插入压缩状态的系统消息
+- **FR-030**：桌面端多窗格（分屏）下，压缩状态提示必须按窗格路由，仅显示在触发压缩的会话窗格中
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

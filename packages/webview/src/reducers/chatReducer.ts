@@ -10,6 +10,7 @@ export const initialState: ChatState = {
   isQueueCollapsed: true,
   editingQueuedId: null,
   isStreaming: false,
+  isCompacting: false,
   isCommandRunning: false,
   shouldClearInput: false,
   sessions: [],
@@ -87,6 +88,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         isStreaming: false
+      };
+    case 'SET_COMPACTING':
+      return {
+        ...state,
+        isCompacting: action.payload
       };
     case 'INPUT_CLEARED':
       return {

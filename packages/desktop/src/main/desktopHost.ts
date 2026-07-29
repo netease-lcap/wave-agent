@@ -318,7 +318,7 @@ export class DesktopHost {
       },
       onCompactionStateChange: (isCompacting: boolean) => {
         const paneId = paneIdOf();
-        if (paneId) this.pushSystemMessage(isCompacting ? '正在压缩对话…' : '对话压缩完成', paneId);
+        if (paneId) this.postMessage({ command: 'compactionStateChange', isCompacting, paneId });
       },
       onUserMessageAdded: (message: Message) => {
         const paneId = paneIdOf();

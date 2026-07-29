@@ -265,6 +265,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           if (!forThisPane(message)) break;
           dispatch({ type: 'APPEND_MESSAGE', payload: message.message });
           break;
+        case 'compactionStateChange':
+          if (!forThisPane(message)) break;
+          dispatch({ type: 'SET_COMPACTING', payload: message.isCompacting === true });
+          break;
         case 'updateStreamingContent':
           if (!forThisPane(message)) break;
           dispatch({
@@ -605,6 +609,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           messages={state.messages}
           queuedMessages={state.queuedMessages}
           isStreaming={state.isStreaming}
+          isCompacting={state.isCompacting}
           vscode={vscode}
           onRewindToMessage={handleRewindToMessage}
           workdir={state.workdir}
