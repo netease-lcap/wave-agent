@@ -25,7 +25,9 @@
     display: flex;
     flex-direction: column;
     background-color: var(--vscode-input-background);
-    border: 1px solid var(--vscode-input-border);
+    /* Some themes (e.g. Visual Studio Light) don't define input.border, which would
+       invalidate the whole shorthand — fall back through other border vars. */
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.4))));
     border-radius: 6px;
     max-height: 176px;
 }

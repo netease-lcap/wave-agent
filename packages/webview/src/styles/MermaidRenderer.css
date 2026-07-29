@@ -116,18 +116,6 @@
   background: transparent;
 }
 
-/* Dark theme adjustments for mermaid diagrams */
-.vscode-dark .mermaid-container svg {
-  filter: invert(1) hue-rotate(180deg);
-}
-
-.vscode-dark .mermaid-container svg .node rect,
-.vscode-dark .mermaid-container svg .node circle,
-.vscode-dark .mermaid-container svg .node ellipse,
-.vscode-dark .mermaid-container svg .node polygon {
-  filter: invert(1) hue-rotate(180deg);
-}
-
 /* Source Tab Styles */
 .mermaid-source {
   padding: 0;

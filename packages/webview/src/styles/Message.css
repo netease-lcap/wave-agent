@@ -826,6 +826,19 @@
     line-height: 1.5;
 }
 
+/* Markdown horizontal rule (---) */
+.markdown-content hr {
+    border: none;
+    border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.35)));
+    margin: 12px 0;
+}
+
+/* Markdown images: keep inside the message bubble */
+.markdown-content img {
+    max-width: 100%;
+    height: auto;
+}
+
 /* Markdown Tables */
 .markdown-content table {
     border-collapse: collapse;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import mermaid from 'mermaid';
+import { isDarkTheme } from '../utils/theme';
 import '../styles/MermaidRenderer.css';
 
 interface MermaidRendererProps {
@@ -16,7 +17,59 @@ interface FullscreenModalProps {
   vscode: { postMessage: (msg: unknown) => void };
 }
 
-let mermaidInitialized = false;
+let currentMermaidTheme: 'default' | 'dark' | null = null;
+
+// (Re-)initialize mermaid for the current host theme. Mermaid colors are baked into the
+// SVG at render time, so the theme must be set before mermaid.render() runs.
+const initMermaidForTheme = () => {
+  const theme = isDarkTheme() ? 'dark' : 'default';
+  if (currentMermaidTheme === theme) return;
+  try {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme,
+      securityLevel: 'strict',
+      htmlLabels: false,
+      fontFamily: 'var(--vscode-font-family, monospace)',
+      deterministicIds: true,
+      deterministicIDSeed: 'wave-vscode',
+      flowchart: {
+        useMaxWidth: true,
+        htmlLabels: false,
+        curve: 'basis'
+      },
+      sequence: {
+        useMaxWidth: true,
+        wrap: true,
+        showSequenceNumbers: true
+      },
+      gantt: {
+        useMaxWidth: true,
+        leftPadding: 75,
+        gridLineStartPadding: 35
+      },
+      class: {
+        useMaxWidth: true
+      },
+      state: {
+        useMaxWidth: true
+      },
+      pie: {
+        useMaxWidth: true
+      },
+      logLevel: 'error',
+      suppressErrorRendering: true,
+      maxTextSize: 50000,
+      maxEdges: 500,
+      dompurifyConfig: {
+        USE_PROFILES: { html: true }
+      }
+    });
+    currentMermaidTheme = theme;
+  } catch (err) {
+    console.error('Failed to initialize mermaid:', err);
+  }
+};
 
 // Clean and validate mermaid syntax
 const cleanMermaidSyntax = (content: string): string => {
@@ -245,56 +298,17 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ content, class
   const renderTimeoutRef = useRef<NodeJS.Timeout>();
   const cleanedContent = useRef<string>('');
   const lastRenderedContent = useRef<string>(''); // Track what was last rendered
+  // Bumped when the host theme flips (VS Code body class, desktop/JB <html data-theme>),
+  // so the diagram re-renders with matching mermaid colors.
+  const [themeVersion, setThemeVersion] = useState(0);
 
-  // Initialize mermaid configuration once
   useEffect(() => {
-    if (!mermaidInitialized) {
-      try {
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: 'default',
-          securityLevel: 'strict',
-          htmlLabels: false,
-          fontFamily: 'var(--vscode-font-family, monospace)',
-          deterministicIds: true,
-          deterministicIDSeed: 'wave-vscode',
-          flowchart: {
-            useMaxWidth: true,
-            htmlLabels: false,
-            curve: 'basis'
-          },
-          sequence: {
-            useMaxWidth: true,
-            wrap: true,
-            showSequenceNumbers: true
-          },
-          gantt: {
-            useMaxWidth: true,
-            leftPadding: 75,
-            gridLineStartPadding: 35
-          },
-          class: {
-            useMaxWidth: true
-          },
-          state: {
-            useMaxWidth: true
-          },
-          pie: {
-            useMaxWidth: true
-          },
-          logLevel: 'error',
-          suppressErrorRendering: true,
-          maxTextSize: 50000,
-          maxEdges: 500,
-          dompurifyConfig: {
-            USE_PROFILES: { html: true }
-          }
-        });
-        mermaidInitialized = true;
-      } catch (err) {
-        console.error('Failed to initialize mermaid:', err);
-      }
+    const observer = new MutationObserver(() => setThemeVersion(v => v + 1));
+    if (document.body) {
+      observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     }
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
   }, []);
 
   // Clean content when it changes
@@ -309,6 +323,7 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ content, class
 
     setIsRendering(true);
     setError(null);
+    initMermaidForTheme();
     
     try {
       // Generate a new unique ID for each render to avoid conflicts
@@ -369,6 +384,12 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ content, class
     }
   }, []);
 
+  // Force re-render when host theme flips
+  useEffect(() => {
+    lastRenderedContent.current = '';
+    setSvgContent('');
+  }, [themeVersion]);
+
   // Render mermaid diagram when switching to preview or content changes
   useEffect(() => {
     if (activeTab === 'preview' && cleanedContent.current.trim()) {
@@ -405,7 +426,7 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({ content, class
         clearTimeout(renderTimeoutRef.current);
       }
     };
-  }, [activeTab, content, svgContent, renderMermaid]);
+  }, [activeTab, content, svgContent, themeVersion, renderMermaid]);
 
   // Update DOM when SVG content changes
   useEffect(() => {
