@@ -340,6 +340,29 @@ describe("TaskList", () => {
     expect(lastFrame()).toBeFalsy();
   });
 
+  it("should hide immediately when restored tasks arrive all completed after mount", () => {
+    vi.useFakeTimers();
+    // Mount with no tasks yet (agent/session still initializing)
+    vi.mocked(useTasks).mockReturnValue([]);
+    const { lastFrame, rerender } = render(<TaskList />);
+    expect(lastFrame()).toBeFalsy();
+
+    // Restored session's tasks arrive, all completed
+    vi.mocked(useTasks).mockReturnValue([
+      makeTask({ id: "1", subject: "Done 1", status: "completed" }),
+      makeTask({ id: "2", subject: "Done 2", status: "completed" }),
+    ]);
+    rerender(<TaskList />);
+    // Should hide immediately, never flashing the list
+    expect(lastFrame()).toBeFalsy();
+
+    vi.advanceTimersByTime(10000);
+    rerender(<TaskList />);
+    expect(lastFrame()).toBeFalsy();
+
+    vi.useRealTimers();
+  });
+
   it("should reappear when new task added after auto-hide", () => {
     vi.useFakeTimers();
     // Start with in-progress so list is visible initially

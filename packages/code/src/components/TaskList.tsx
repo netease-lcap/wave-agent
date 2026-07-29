@@ -99,12 +99,9 @@ export const TaskList: React.FC = () => {
   const autoHideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const [autoHidden, setAutoHidden] = React.useState(() => {
-    // If all tasks are already completed on mount (e.g. session restore),
-    // start hidden immediately instead of flashing for 5 seconds.
-    const active = tasks.filter((t) => t.status !== "deleted");
-    return active.length > 0 && active.every((t) => t.status === "completed");
-  });
+  const [autoHidden, setAutoHidden] = React.useState(false);
+  // 是否在当前展示期间观察到过未完成任务；用于区分“任务在眼前完成”与“加载时已全部完成”
+  const hadIncompleteRef = React.useRef(false);
   const [, forceUpdate] = React.useState(0);
 
   const now = Date.now();
@@ -155,14 +152,30 @@ export const TaskList: React.FC = () => {
     activeTasks.length > 0 &&
     activeTasks.every((t) => t.status === "completed");
 
+  // 观察到任务从“存在未完成”变为“全部完成”时保留 5 秒再隐藏；
+  // 加载或恢复到已全部完成的会话时立即隐藏，避免先闪现再消失
   React.useEffect(() => {
-    if (allCompleted && !autoHidden) {
+    if (activeTasks.length === 0) {
+      hadIncompleteRef.current = false;
+      return;
+    }
+    if (!allCompleted) {
+      hadIncompleteRef.current = true;
+      if (autoHidden) {
+        setAutoHidden(false);
+      }
+      return;
+    }
+    if (!hadIncompleteRef.current) {
+      if (!autoHidden) {
+        setAutoHidden(true);
+      }
+      return;
+    }
+    if (!autoHidden) {
       autoHideTimerRef.current = setTimeout(() => {
         setAutoHidden(true);
       }, AUTO_HIDE_DELAY_MS);
-    }
-    if (!allCompleted && autoHidden) {
-      setAutoHidden(false);
     }
     return () => {
       if (autoHideTimerRef.current) {
@@ -170,9 +183,14 @@ export const TaskList: React.FC = () => {
         autoHideTimerRef.current = null;
       }
     };
-  }, [allCompleted, autoHidden]);
+  }, [allCompleted, autoHidden, activeTasks.length]);
 
-  if (tasks.length === 0 || !isTaskListVisible || autoHidden) {
+  if (
+    tasks.length === 0 ||
+    !isTaskListVisible ||
+    autoHidden ||
+    (allCompleted && !hadIncompleteRef.current)
+  ) {
     return null;
   }
 
