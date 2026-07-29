@@ -1623,6 +1623,29 @@ describe('split-view panes (FR-032~036)', () => {
     expect(init?.paneId).toBe(layout.panes[1].paneId);
   });
 
+  it('desktopOpenPane with insertionIndex inserts the pane at that position and focuses it', async () => {
+    const { host, sent } = await readyHost(1600);
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3', insertionIndex: 1 });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => p.sessionId)).toEqual(['sess-1', 'sess-3', 'sess-2']);
+    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+  });
+
+  it('desktopOpenPane clamps an out-of-range insertionIndex and appends on a non-number', async () => {
+    const { host, sent } = await readyHost(1600);
+    seedActiveSession('sess-1');
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', insertionIndex: 99 });
+    expect(panePushes(sent).at(-1)!.panes.map((p) => p.sessionId)).toEqual(['sess-1', 'sess-2']);
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3', insertionIndex: 'bogus' });
+    expect(panePushes(sent).at(-1)!.panes.map((p) => p.sessionId)).toEqual(['sess-1', 'sess-2', 'sess-3']);
+  });
+
   it('desktopOpenPane for an already-visible session focuses its pane instead of duplicating', async () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
