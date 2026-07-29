@@ -12,6 +12,13 @@
     height: 100%;
 }
 
+/* xterm.css hardcodes the viewport to #000 and never re-themes it; the
+   partial-row remainder below the canvas would show as a black bar. Keep it
+   opaque (scrollbar rendering) but matched to the terminal theme background. */
+.terminal-pane-body .xterm .xterm-viewport {
+    background-color: var(--vscode-panel-background, var(--vscode-editor-background));
+}
+
 /* Loading / exited overlays sit above the (possibly dead) xterm element. */
 .terminal-pane-body > .desktop-panel-placeholder {
     position: absolute;
