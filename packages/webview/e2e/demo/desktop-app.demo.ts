@@ -67,9 +67,9 @@ test.describe('Desktop App Screenshots', () => {
         await webviewPage.setViewportSize({ width: 960, height: 640 });
 
         // ── 1. First launch: no workdir selected ─────────────────────
-        // Sidebar renders with collapsed recent-directory groups; the input
-        // area (including +/slash/permission/send buttons) is disabled until
-        // the user picks a directory.
+        // Sidebar renders the session tree with all directory groups
+        // expanded by default; the input area (including +/slash/permission/
+        // send buttons) is disabled until the user picks a directory.
         await injector.simulateExtensionMessage('setInitialState', initialState);
         await injector.simulateExtensionMessage('desktopWorkdirState', {
             recentWorkdirs: [DIR_A, DIR_B, DIR_C]
@@ -80,9 +80,9 @@ test.describe('Desktop App Screenshots', () => {
         await expect(webviewPage.getByTestId('desktop-workdir')).toContainText('选择工作目录');
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-first-launch.png' });
 
-        // ── 2. Session tree: workdir selected, current group expanded ─
-        // The current directory's group is expanded by default; the active
-        // session shows a running dot while streaming.
+        // ── 2. Session tree: workdir selected, all groups expanded ────
+        // All directory groups are expanded by default; the active session
+        // shows a running dot while streaming.
         await injector.simulateExtensionMessage('desktopWorkdirState', {
             workdir: DIR_A,
             recentWorkdirs: [DIR_A, DIR_B, DIR_C]
@@ -95,14 +95,17 @@ test.describe('Desktop App Screenshots', () => {
 
         await expect(webviewPage.getByTestId('desktop-session-item-sess-a1')).toBeVisible();
         await expect(webviewPage.locator('.desktop-session-dot--running')).toBeVisible();
-        // Other groups stay collapsed by default
-        await expect(webviewPage.getByTestId('desktop-session-item-sess-b1')).toBeHidden();
+        // Other groups are expanded by default too
+        await expect(webviewPage.getByTestId('desktop-session-item-sess-b1')).toBeVisible();
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-session-tree.png' });
 
-        // Expand a second group to show collapse/expand interactivity
+        // Collapse a group to show collapse/expand interactivity
+        await webviewPage.getByText('shop-server').click();
+        await expect(webviewPage.getByTestId('desktop-session-item-sess-b1')).toBeHidden();
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-session-tree-collapsed.png' });
+        // Re-expand so later screenshots show the default all-expanded state
         await webviewPage.getByText('shop-server').click();
         await expect(webviewPage.getByTestId('desktop-session-item-sess-b1')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-session-tree-expanded.png' });
 
         // ── 3. Workdir dropdown in the input area ─────────────────────
         await injector.simulateExtensionMessage('endStreaming');
