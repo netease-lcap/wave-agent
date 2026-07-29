@@ -15,7 +15,7 @@
 |------|------|
 | 规格文件 | 61 |
 | 用户故事 | 300 |
-| 功能需求 | 1,220 |
+| 功能需求 | 1,241 |
 | 测试用例 | 4,418 |
 
 ## 规格列表
@@ -34,10 +34,10 @@
 | Prompt 工程 | Prompt 构建和管理框架 | 5 | 13 | [规格](core/prompt-engineering.md) |
 | Prompt 缓存控制 | 基于正则匹配的显式缓存标记，支持 Claude、Qwen 等多种模型 | 5 | 8 | [规格](core/prompt-cache-control.md) |
 | 记忆管理 | 通过记忆文件在对话间持久化信息 | 8 | 26 | [规格](core/memory-management.md) |
-| 流式输出 | 助手消息和工具参数的实时内容流式传输 | 6 | 26 | [规格](core/stream-content-updates.md) |
-| AI 错误处理 | 处理输出 token 限制超限，提示 agent 将工作拆分为更小的块 | 6 | 10 | [规格](core/ai-error-handling.md) |
-| 工具权限系统 | 权限系统，支持模式、通配符、拒绝规则、信任、acceptEdits、dontAsk、安全区 | 18 | 55 | [规格](core/tool-permission-system.md) |
-| Plan 模式 | Shift+Tab plan 模式，只读分析并增量编辑 plan 文件 | 9 | 29 | [规格](core/plan-mode.md) |
+| 流式输出 | 助手消息和工具参数的实时内容流式传输 | 6 | 31 | [规格](core/stream-content-updates.md) |
+| AI 错误处理 | 处理输出 token 限制超限，提示 agent 将工作拆分为更小的块 | 6 | 13 | [规格](core/ai-error-handling.md) |
+| 工具权限系统 | 权限系统，支持模式、通配符、拒绝规则、信任、acceptEdits、dontAsk、安全区 | 18 | 64 | [规格](core/tool-permission-system.md) |
+| Plan 模式 | Shift+Tab plan 模式，只读分析并增量编辑 plan 文件 | 9 | 33 | [规格](core/plan-mode.md) |
 
 ### 交互与 UI
 
@@ -45,7 +45,7 @@
 |------|------|----------|----------|------|
 | 会话管理 | 高性能、基于项目的会话管理系统 | 4 | 23 | [规格](ui/session-management.md) |
 | Markdown 渲染 | 终端 Markdown 渲染，Ink 组件支持标题、列表、代码块、表格 | 3 | 8 | [规格](ui/markdown-rendering-system.md) |
-| 消息渲染 | 基于 Ink 的消息/块渲染——静态历史 + 动态工具执行 | 5 | 19 | [规格](ui/message-rendering-system.md) |
+| 消息渲染 | 基于 Ink 的消息/块渲染——静态历史 + 动态工具执行 | 5 | 22 | [规格](ui/message-rendering-system.md) |
 | 图片粘贴 | 从剪贴板粘贴图片到聊天输入，支持占位符和附件 | 3 | 10 | [规格](ui/image-pasting.md) |
 | 文件选择器 | 快速文件/目录选择器 UI 组件 | 4 | 18 | [规格](ui/file-selector.md) |
 | 长文本占位符 | 用 `[LongText#ID]` 占位符替换粘贴的长文本，提交时展开 | 1 | 5 | [规格](ui/long-text-placeholder.md) |
@@ -64,7 +64,7 @@
 | Status 命令 | `/status` 显示版本、会话 ID、cwd、模型和运行时信息 | 1 | 9 | [规格](ui/status-command.md) |
 | Update 命令 | `wave update` / `wave-code update` 更新到最新版本 | 2 | 7 | [规格](ui/update-command.md) |
 | 历史搜索 | Ctrl+R 历史搜索，复用 `~/.wave/history.jsonl` 中的历史提示 | 2 | 10 | [规格](ui/history-search-prompt.md) |
-| Stdio 传输层 | 编辑器插件与 `wave --stdio` 子进程的 JSON-RPC 通信，CLI 解析/安装/升级、多会话路由、错误诊断 | 8 | 55 | [规格](ui/stdio-transport.md) |
+| Stdio 传输层 | 编辑器插件与 `wave --stdio` 子进程的 JSON-RPC 通信，CLI 解析/安装/升级、多会话路由、错误诊断 | 8 | 57 | [规格](ui/stdio-transport.md) |
 | IDE 插件 | VS Code/JetBrains 共享 React webview 的横切关注点：主题变量、共享包与构建产物、生命周期与消息协议、IDE 专属对话框 | 4 | 23 | [规格](ui/ide-plugin.md) |
 | Wave Desktop（Electron 桌面应用） |  | 18 | 49 | [规格](ui/desktop-app.md) |
 
@@ -98,7 +98,7 @@
 
 | 功能 | 描述 | 用户故事 | 功能需求 | 链接 |
 |------|------|----------|----------|------|
-| 钩子系统 | 扩展 Wave 行为的事件钩子系统 | 18 | 66 | [规格](automation/hooks.md) |
+| 钩子系统 | 扩展 Wave 行为的事件钩子系统 | 18 | 60 | [规格](automation/hooks.md) |
 | Loop 命令 | `/loop` 通过 cron 调度循环提示（如 `/loop 5m check the build`），支持持久化和多会话调度锁 | 2 | 10 | [规格](automation/loop-slash-command.md) |
 | /goal 命令 | 自主多轮目标追求，快速模型评估和熔断机制 | 3 | 17 | [规格](automation/goal-command.md) |
 
@@ -106,7 +106,7 @@
 
 | 功能 | 描述 | 用户故事 | 功能需求 | 链接 |
 |------|------|----------|----------|------|
-| SSO 认证 | /login 浏览器 SSO 登录、token 存储、自动 API 代理路由 | 5 | 37 | [规格](enterprise/sso-auth.md) |
+| SSO 认证 | /login 浏览器 SSO 登录、token 存储、自动 API 代理路由 | 5 | 38 | [规格](enterprise/sso-auth.md) |
 | 服务端托管配置 | 从 Wave AI 下载并应用托管设置，支持校验和缓存和合并优先级 | 3 | 11 | [规格](enterprise/server-managed-config.md) |
 | OpenTelemetry 集成 | OpenTelemetry 指标、追踪和日志插桩，支持多种导出器（jsonl、OTLP） | 3 | 16 | [规格](enterprise/opentelemetry.md) |
 | 用量追踪 | SDK 用量追踪回调（`onUsagesChange`），用于 AI 调用和压缩 | 4 | 15 | [规格](enterprise/usage-tracking-callback.md) |

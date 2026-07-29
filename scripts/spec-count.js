@@ -49,12 +49,16 @@ for (const file of specFiles) {
   totalSpecs++;
   const content = fs.readFileSync(specFile, "utf-8");
 
-  const usMatches = content.match(/^### 用户故事 \d+/gm);
+  const usMatches = content.match(/^### 用户故事[：:]/gm);
   const usCount = usMatches ? usMatches.length : 0;
   totalUS += usCount;
 
-  const frMatches = content.match(/^- \*\*FR-\d+\*\*/gm);
-  const frCount = frMatches ? frMatches.length : 0;
+  // FR bullets: list items under the 功能需求 section (until the next heading)
+  const frSection = content.match(/^### 功能需求\s*\n([\s\S]*?)(?=^#{1,3} |\s*$(?![\s\S]))/m);
+  const frItems = frSection
+    ? frSection[1].match(/^- /gm)
+    : null;
+  const frCount = frItems ? frItems.length : 0;
   totalFR += frCount;
 
   counts.set(file, { usCount, frCount });
@@ -64,13 +68,8 @@ for (const file of specFiles) {
   const warnings = [];
   if (!content.match(/^## 用户场景与测试/m))
     warnings.push('缺少 "## 用户场景与测试" 章节');
-  if (usCount === 0) warnings.push("未找到用户故事（期望 `### 用户故事 N`）");
-  if (frCount === 0) warnings.push("未找到功能需求（期望 `- **FR-N**`）");
-  for (let i = 1; i <= usCount; i++) {
-    if (!content.includes(`### 用户故事 ${i}`))
-      warnings.push(`用户故事 ${i} 标题缺失（编号不连续）`);
-  }
-  if (!content.match(/\*\*FR-001\*\*/)) warnings.push("FR 编号未从 FR-001 开始");
+  if (usCount === 0) warnings.push('未找到用户故事（期望 `### 用户故事：`）');
+  if (frCount === 0) warnings.push("未找到功能需求条目");
   if (warnings.length) {
     hasWarnings = true;
     console.warn(`  ⚠ ${file}: ${warnings.join("; ")}`);

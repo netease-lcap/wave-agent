@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 后台任务执行（优先级：P1）
+### 用户故事：后台任务执行（优先级：P1）
 
 作为用户，我希望能够在后台运行复杂或长时间运行的任务，以便在任务处理期间继续与 agent 交互。
 
@@ -21,7 +21,7 @@
 
 ---
 
-### 用户故事 2 - 任务输出获取（优先级：P1）
+### 用户故事：任务输出获取（优先级：P1）
 
 作为用户，我希望能够获取后台任务的输出（无论是在运行中还是完成后），以便查看我所请求操作的结果。
 
@@ -36,7 +36,7 @@
 
 ---
 
-### 用户故事 3 - 任务终止（优先级：P2）
+### 用户故事：任务终止（优先级：P2）
 
 作为用户，我希望能够停止正在运行的后台任务，如果我意识到它不再需要或行为异常。
 
@@ -50,7 +50,7 @@
 
 ---
 
-### 用户故事 4 - 任务管理命令（优先级：P2）
+### 用户故事：任务管理命令（优先级：P2）
 
 作为用户，我希望在 CLI 中使用 `/tasks` 命令来列出和管理所有后台任务，以便有一个集中的地方来监控进度。
 
@@ -65,7 +65,7 @@
 
 ---
 
-### 用户故事 5 - 前台工具后台化（优先级：P1）
+### 用户故事：前台工具后台化（优先级：P1）
 
 作为在后台运行长时间 bash 命令或子 agent 任务的用户，我希望能够使用 Ctrl-B 将其移到后台，以便在不等待完成的情况下继续使用 CLI 处理其他任务。
 
@@ -80,7 +80,7 @@
 
 ---
 
-### 用户故事 6 - 任务完成通知（优先级：P1）
+### 用户故事：任务完成通知（优先级：P1）
 
 作为用户，我希望在后台任务完成、失败或被终止时在聊天中自动收到通知，这样我不必手动检查就能知道结果。
 
@@ -102,7 +102,7 @@
 
 ---
 
-### 用户故事 7 - IDE 插件后台任务管理对话框（优先级：P2）
+### 用户故事：IDE 插件后台任务管理对话框（优先级：P2）
 
 作为 IDE 插件（VS Code 扩展与 JetBrains 插件）用户，我希望能在 IDE 中通过 `/tasks` 命令弹出对话框查看和管理后台任务（shell / 子 agent / 工作流），与 CLI 的 `/tasks` 弹窗体验一致，以便集中监控后台运行的长时间任务、查看输出、必要时终止任务。
 
@@ -137,48 +137,48 @@
 
 ### 功能需求
 
-- **FR-001**：`Task` 工具必须支持 `run_in_background` 布尔参数。
-- **FR-002**：当 `run_in_background` 为 true 时，系统必须异步启动任务并立即返回唯一的 `task_id` 和指向实时日志文件的 `outputPath`。任务必须不受任何超时限制——后台任务持续运行直到完成或手动停止。
-- **FR-027**：当前台 Bash 命令超时时，系统必须自动将其后台化（通过 `BackgroundTaskManager.adoptProcess`）而不是终止它，除非命令的基础命令在 `DISALLOWED_AUTO_BACKGROUND_COMMANDS`（当前为 `["sleep"]`）中。自动后台化的任务会收到与显式后台化任务相同的完成通知。
-- **FR-003**：系统不得提供 `TaskOutput` 工具；agent 应该使用 `Read` 工具读取 `outputPath`。
-- **FR-007**：系统必须提供 `TaskStop` 工具来终止正在运行的后台任务。
-- **FR-008**：`TaskStop` 必须支持 `task_id` 参数。
-- **FR-009**：`BashOutput` 和 `KillBash` 工具必须被移除/弃用，以支持统一的 `Read` 和 `TaskStop` 工具。
-- **FR-010**：`Read` 工具必须能够读取后台 shell 任务和异步 agent 任务的 `outputPath`。
-- **FR-011**：后台任务在运行时不得更新其 `shortResult`，以防止不必要的消息更新和 UI 中的"unknown"工具块。
-- **FR-012**：CLI 必须实现 `/tasks` 命令来列出所有活动和最近完成的任务。
-- **FR-013**：遗留的 `/bashes` 命令必须从 CLI 中移除。
-- **FR-014**：`/tasks` 命令输出必须包含任务 ID、状态和任务类型。
-- **FR-015**：对于后台 shell 任务，系统必须将 `stdout` 和 `stderr` 实时管道到 `outputPath` 日志文件。
-- **FR-016**：对于后台子 agent 任务，系统必须将工具执行详情（工具名称和紧凑参数）实时记录到 `outputPath` 日志文件。
-- **FR-017**：当任务完成或停止时，`outputPath` 日志文件必须被正确关闭。
-- **FR-018**：当可后台化的工具（Bash 或 Task）在前台运行时，CLI 必须显示 UI 提示（例如 `[Ctrl-B] Background`）。
-- **FR-019**：当工具在前台执行时，CLI 必须监听 Ctrl-B 组合键。
-- **FR-020**：当在 Bash 或 Task 工具执行期间按下 Ctrl-B 时，系统必须将工具的前台阶段转换为"结束"并在后台继续。
-- **FR-021**：后台化工具的结果必须设置为"Command was manually backgrounded by user with ID [ID]"。
-- **FR-022**：当按下 Ctrl-B 时，系统不得后台化用户使用 `!` 前缀直接启动的 bash 命令。
-- **FR-023**：当后台任务完成、失败或被终止时，系统必须将任务完成通知入队到统一消息队列（与用户消息、bang 命令共用同一队列），而非独立的通知队列。
-- **FR-024**：任务完成通知必须在聊天中渲染为结构化块（非原始 XML），带有颜色指示器：绿色表示完成，红色表示失败，黄色表示被终止。
-- **FR-025**：AI 必须以原始 XML 格式（`<task-notification>...`）接收任务完成通知，以便其可以解析并响应。
-- **FR-026**：任务完成通知在 agent 空闲时必须立即处理，在 agent 忙碌时排队。
-- **FR-028**：用户消息、bang 命令和后台任务通知必须统一进入同一消息队列，由单一调度路径（`tryDispatch` + 状态机）串行出队处理，确保任意时刻最多只有一个 AI turn 运行，避免并发 `sendAIMessage` 导致重复 stream。
-- **FR-029**：`sendAIMessage` 入口必须以 generation 计数器保护的互斥守卫防止并发进入：新 turn 递增 generation 并记录自身 generation；turn 结束时仅当 generation 匹配才释放 loading 状态；`abortAIMessage` 递增 generation 使被中断的旧 turn 末尾释放失效。
-- **FR-030**：`setIsLoading(false)` 必须在 `sendAIMessage` 的所有清理逻辑（session 保存、Stop hooks、通知排空）完成后才执行，而非清理逻辑中间，消除"已 idle 但 turn 未结束"的窗口。
-- **FR-031**：用户中断（`abortMessage`）不得丢弃已入队的后台任务通知（clear 仅移除用户消息和 bang 命令，保留 notification 项），确保后台任务结果不会因中断而丢失。
-- **FR-032**：stdio 协议必须支持 `backgroundTasksChange` 服务端→客户端通知，携带后台任务摘要列表；每个摘要含 `id`、`type`、`status`、`startTime`、`endTime?`、`command?`、`description?`、`exitCode?`、`runtime?`、`outputPath?`，**不含** `stdout`/`stderr` 全文与不可序列化的 `process`/`onStop`，以控制通知体积。
-- **FR-033**：AgentBridge 必须将 `AgentCallbacks.onBackgroundTasksChange` 回调转发为 `backgroundTasksChange` 通知，并对每个任务做序列化裁剪（移除 `process`/`onStop`，剥离 `stdout`/`stderr` 全文）。
-- **FR-034**：stdio 协议必须支持 `getBackgroundTaskOutput` 请求方法，携带 `taskId` 参数，调用 `Agent.getBackgroundTaskOutput(taskId)`，返回 `{ stdout, stderr, status, outputPath?, type, exitCode? } | null`，供详情视图按需获取输出。
-- **FR-035**：stdio 协议必须支持 `stopBackgroundTask` 请求方法，携带 `taskId` 参数，调用 `Agent.stopBackgroundTask(taskId)`，返回 `{ success: boolean }`。
-- **FR-036**：当用户在 IDE 输入 `/tasks` 时，插件必须将其识别为本地命令并打开后台任务管理对话框，而非通过 `sendMessage` 将文本作为普通消息发送给模型。
-- **FR-037**：IDE 插件（VS Code 扩展与 JetBrains 插件）的 stdio 客户端必须订阅 `backgroundTasksChange` 通知，缓存任务列表，并通过 webview 消息 `updateBackgroundTasks` 推送给 webview。
-- **FR-038**：webview 必须实现 `BackgroundTaskManager` 对话框组件，包含列表视图（id/类型/状态/描述/运行时长）与详情视图（stdout/stderr/退出码/日志路径），交互与字段与 CLI `BackgroundTaskManager.tsx` 保持一致（选择→详情、停止、关闭）。
-- **FR-039**：webview 详情视图必须通过 `getBackgroundTaskOutput` 请求按需获取输出，不在列表通知中携带全文 stdout/stderr。
-- **FR-040**：webview 必须提供停止按钮，通过 `stopBackgroundTask` 请求终止选中的运行中任务。
-- **FR-041**：前台工具后台化（CLI 的 Ctrl-B）不在本迭代范围；IDE 插件仅支持查看与终止已有后台任务。
-- **FR-042**：每个 Agent 与 subagent 的 DI 容器必须注册独立、会话级的 `MessageQueue` 实例。`SubagentManager.createInstance()` 创建子容器时必须为该 subagent 注册独立的 `MessageQueue`，子容器不得通过 `Container.get()`/`has()` 的 parent 回退继承主 Agent 的 `MessageQueue`。
-- **FR-043**：subagent 的 AIManager 回合末通知排空（`drainNotifications`）必须仅作用于其自身容器的 `MessageQueue`；不得抽干主 Agent 的 `MessageQueue`，不得将兄弟 subagent 的完成通知注入自身会话、不得因此重新唤起自身回合（`shouldRestart`）。
-- **FR-044**：后台 subagent 完成通知必须投递到创建它的主 Agent 的 `MessageQueue`（由 `SubagentManager` 使用主容器入队），并仅由主 Agent 的 AIManager 回合末排空消费；兄弟 subagent 不得消费该通知。
-- **FR-045**：必须提供并发集成测试：并行启动至少 5 个后台 subagent，断言每个 `taskId` 恰好一次出现在主 Agent transcript、且不出现在任何兄弟 subagent transcript；并断言 print 模式（`wave -p`）在收齐全部通知并生成最终响应后才退出（exit 0）。
+- `Task` 工具必须支持 `run_in_background` 布尔参数。
+- 当 `run_in_background` 为 true 时，系统必须异步启动任务并立即返回唯一的 `task_id` 和指向实时日志文件的 `outputPath`。任务必须不受任何超时限制——后台任务持续运行直到完成或手动停止。
+- 当前台 Bash 命令超时时，系统必须自动将其后台化（通过 `BackgroundTaskManager.adoptProcess`）而不是终止它，除非命令的基础命令在 `DISALLOWED_AUTO_BACKGROUND_COMMANDS`（当前为 `["sleep"]`）中。自动后台化的任务会收到与显式后台化任务相同的完成通知。
+- 系统不得提供 `TaskOutput` 工具；agent 应该使用 `Read` 工具读取 `outputPath`。
+- 系统必须提供 `TaskStop` 工具来终止正在运行的后台任务。
+- `TaskStop` 必须支持 `task_id` 参数。
+- `BashOutput` 和 `KillBash` 工具必须被移除/弃用，以支持统一的 `Read` 和 `TaskStop` 工具。
+- `Read` 工具必须能够读取后台 shell 任务和异步 agent 任务的 `outputPath`。
+- 后台任务在运行时不得更新其 `shortResult`，以防止不必要的消息更新和 UI 中的"unknown"工具块。
+- CLI 必须实现 `/tasks` 命令来列出所有活动和最近完成的任务。
+- 遗留的 `/bashes` 命令必须从 CLI 中移除。
+- `/tasks` 命令输出必须包含任务 ID、状态和任务类型。
+- 对于后台 shell 任务，系统必须将 `stdout` 和 `stderr` 实时管道到 `outputPath` 日志文件。
+- 对于后台子 agent 任务，系统必须将工具执行详情（工具名称和紧凑参数）实时记录到 `outputPath` 日志文件。
+- 当任务完成或停止时，`outputPath` 日志文件必须被正确关闭。
+- 当可后台化的工具（Bash 或 Task）在前台运行时，CLI 必须显示 UI 提示（例如 `[Ctrl-B] Background`）。
+- 当工具在前台执行时，CLI 必须监听 Ctrl-B 组合键。
+- 当在 Bash 或 Task 工具执行期间按下 Ctrl-B 时，系统必须将工具的前台阶段转换为"结束"并在后台继续。
+- 后台化工具的结果必须设置为"Command was manually backgrounded by user with ID [ID]"。
+- 当按下 Ctrl-B 时，系统不得后台化用户使用 `!` 前缀直接启动的 bash 命令。
+- 当后台任务完成、失败或被终止时，系统必须将任务完成通知入队到统一消息队列（与用户消息、bang 命令共用同一队列），而非独立的通知队列。
+- 任务完成通知必须在聊天中渲染为结构化块（非原始 XML），带有颜色指示器：绿色表示完成，红色表示失败，黄色表示被终止。
+- AI 必须以原始 XML 格式（`<task-notification>...`）接收任务完成通知，以便其可以解析并响应。
+- 任务完成通知在 agent 空闲时必须立即处理，在 agent 忙碌时排队。
+- 用户消息、bang 命令和后台任务通知必须统一进入同一消息队列，由单一调度路径（`tryDispatch` + 状态机）串行出队处理，确保任意时刻最多只有一个 AI turn 运行，避免并发 `sendAIMessage` 导致重复 stream。
+- `sendAIMessage` 入口必须以 generation 计数器保护的互斥守卫防止并发进入：新 turn 递增 generation 并记录自身 generation；turn 结束时仅当 generation 匹配才释放 loading 状态；`abortAIMessage` 递增 generation 使被中断的旧 turn 末尾释放失效。
+- `setIsLoading(false)` 必须在 `sendAIMessage` 的所有清理逻辑（session 保存、Stop hooks、通知排空）完成后才执行，而非清理逻辑中间，消除"已 idle 但 turn 未结束"的窗口。
+- 用户中断（`abortMessage`）不得丢弃已入队的后台任务通知（clear 仅移除用户消息和 bang 命令，保留 notification 项），确保后台任务结果不会因中断而丢失。
+- stdio 协议必须支持 `backgroundTasksChange` 服务端→客户端通知，携带后台任务摘要列表；每个摘要含 `id`、`type`、`status`、`startTime`、`endTime?`、`command?`、`description?`、`exitCode?`、`runtime?`、`outputPath?`，**不含** `stdout`/`stderr` 全文与不可序列化的 `process`/`onStop`，以控制通知体积。
+- AgentBridge 必须将 `AgentCallbacks.onBackgroundTasksChange` 回调转发为 `backgroundTasksChange` 通知，并对每个任务做序列化裁剪（移除 `process`/`onStop`，剥离 `stdout`/`stderr` 全文）。
+- stdio 协议必须支持 `getBackgroundTaskOutput` 请求方法，携带 `taskId` 参数，调用 `Agent.getBackgroundTaskOutput(taskId)`，返回 `{ stdout, stderr, status, outputPath?, type, exitCode? } | null`，供详情视图按需获取输出。
+- stdio 协议必须支持 `stopBackgroundTask` 请求方法，携带 `taskId` 参数，调用 `Agent.stopBackgroundTask(taskId)`，返回 `{ success: boolean }`。
+- 当用户在 IDE 输入 `/tasks` 时，插件必须将其识别为本地命令并打开后台任务管理对话框，而非通过 `sendMessage` 将文本作为普通消息发送给模型。
+- IDE 插件（VS Code 扩展与 JetBrains 插件）的 stdio 客户端必须订阅 `backgroundTasksChange` 通知，缓存任务列表，并通过 webview 消息 `updateBackgroundTasks` 推送给 webview。
+- webview 必须实现 `BackgroundTaskManager` 对话框组件，包含列表视图（id/类型/状态/描述/运行时长）与详情视图（stdout/stderr/退出码/日志路径），交互与字段与 CLI `BackgroundTaskManager.tsx` 保持一致（选择→详情、停止、关闭）。
+- webview 详情视图必须通过 `getBackgroundTaskOutput` 请求按需获取输出，不在列表通知中携带全文 stdout/stderr。
+- webview 必须提供停止按钮，通过 `stopBackgroundTask` 请求终止选中的运行中任务。
+- 前台工具后台化（CLI 的 Ctrl-B）不在本迭代范围；IDE 插件仅支持查看与终止已有后台任务。
+- 每个 Agent 与 subagent 的 DI 容器必须注册独立、会话级的 `MessageQueue` 实例。`SubagentManager.createInstance()` 创建子容器时必须为该 subagent 注册独立的 `MessageQueue`，子容器不得通过 `Container.get()`/`has()` 的 parent 回退继承主 Agent 的 `MessageQueue`。
+- subagent 的 AIManager 回合末通知排空（`drainNotifications`）必须仅作用于其自身容器的 `MessageQueue`；不得抽干主 Agent 的 `MessageQueue`，不得将兄弟 subagent 的完成通知注入自身会话、不得因此重新唤起自身回合（`shouldRestart`）。
+- 后台 subagent 完成通知必须投递到创建它的主 Agent 的 `MessageQueue`（由 `SubagentManager` 使用主容器入队），并仅由主 Agent 的 AIManager 回合末排空消费；兄弟 subagent 不得消费该通知。
+- 必须提供并发集成测试：并行启动至少 5 个后台 subagent，断言每个 `taskId` 恰好一次出现在主 Agent transcript、且不出现在任何兄弟 subagent transcript；并断言 print 模式（`wave -p`）在收齐全部通知并生成最终响应后才退出（exit 0）。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

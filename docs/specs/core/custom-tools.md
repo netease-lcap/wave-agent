@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 使用 buildTool() 定义自定义工具（优先级：P1）
+### 用户故事：使用 buildTool() 定义自定义工具（优先级：P1）
 
 作为 SDK 用户，我希望使用简单的 `buildTool()` 工厂函数定义自定义工具，以便扩展 agent 的能力而无需编写 MCP 服务器或修改内部代码。
 
@@ -21,7 +21,7 @@
 
 ---
 
-### 用户故事 2 - 高级工具功能（优先级：P2）
+### 用户故事：高级工具功能（优先级：P2）
 
 作为 SDK 用户，我希望高级控制我的自定义工具（参数格式化、动态提示），以便我的工具与 Wave 现有工具生态系统无缝集成。
 
@@ -36,7 +36,7 @@
 
 ---
 
-### 用户故事 3 - 选择性工具启用（优先级：P2）
+### 用户故事：选择性工具启用（优先级：P2）
 
 作为 SDK 用户，我希望通过 `tools` 白名单控制哪些自定义工具被启用，以便按会话选择性地禁用自定义工具。
 
@@ -63,17 +63,17 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须导出 `buildTool()` 工厂函数，接受 `ToolDef` 并返回 `ToolPlugin`。
-- **FR-002**：`ToolDef` 必须包含必填字段：`name`、`description`、`parameters`、`execute`。
-- **FR-003**：`ToolDef` 必须支持可选字段：`required`、`prompt`、`formatCompactParams`、`additionalProperties`。
-- **FR-004**：`buildTool()` 必须从提供的 `name`、`description`、`parameters`、`required` 和 `additionalProperties` 自动构建 `ChatCompletionFunctionTool` 配置。
-- **FR-005**：当 `prompt` 是字符串时，`buildTool()` 必须将其规范化为零参数返回该字符串的函数。
-- **FR-006**：`AgentOptions` 必须接受 `customTools?: ToolPlugin[]` 字段。
-- **FR-007**：自定义工具必须在 `initializeBuiltInTools()` 期间与内置工具一起注册到 `ToolManager`。
-- **FR-008**：自定义工具必须遵守 `tools` 白名单——只有名称出现在白名单中的自定义工具被启用。
-- **FR-009**：自定义工具必须遵守权限规则（`allowedTools`、`disallowedTools`）。
-- **FR-010**：`buildTool`、`ToolPlugin`、`ToolResult` 和 `ToolContext` 必须从 SDK 的公共 API（`index.ts`）导出。
-- **FR-011**：默认值必须为：`additionalProperties: false`。
+- 系统必须导出 `buildTool()` 工厂函数，接受 `ToolDef` 并返回 `ToolPlugin`。
+- `ToolDef` 必须包含必填字段：`name`、`description`、`parameters`、`execute`。
+- `ToolDef` 必须支持可选字段：`required`、`prompt`、`formatCompactParams`、`additionalProperties`。
+- `buildTool()` 必须从提供的 `name`、`description`、`parameters`、`required` 和 `additionalProperties` 自动构建 `ChatCompletionFunctionTool` 配置。
+- 当 `prompt` 是字符串时，`buildTool()` 必须将其规范化为零参数返回该字符串的函数。
+- `AgentOptions` 必须接受 `customTools?: ToolPlugin[]` 字段。
+- 自定义工具必须在 `initializeBuiltInTools()` 期间与内置工具一起注册到 `ToolManager`。
+- 自定义工具必须遵守 `tools` 白名单——只有名称出现在白名单中的自定义工具被启用。
+- 自定义工具必须遵守权限规则（`allowedTools`、`disallowedTools`）。
+- `buildTool`、`ToolPlugin`、`ToolResult` 和 `ToolContext` 必须从 SDK 的公共 API（`index.ts`）导出。
+- 默认值必须为：`additionalProperties: false`。
 
 ### 关键实体
 

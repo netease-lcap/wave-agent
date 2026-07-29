@@ -6,7 +6,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 一致的状态显示（优先级：P1）
+### 用户故事：一致的状态显示（优先级：P1）
 
 作为开发者，我希望状态栏逻辑封装在其自己的组件中，以便 `InputBox.tsx` 更易于维护，状态栏可以独立重用或修改。
 
@@ -21,7 +21,7 @@
 3. **假设** CLI 正在运行，**当**用户使用 Shift+Tab 切换模式时，**则**状态栏中的 `permissionMode` 更新并相应改变颜色。
 4. **假设** CLI 正在运行，**当**用户处于 BTW 模式时，**则**输入区域显示独立的 `BtwDisplay` 组件，状态栏不显示。
 
-### 用户故事 2 - 上下文使用百分比（优先级：P1）
+### 用户故事：上下文使用百分比（优先级：P1）
 
 作为用户，我希望看到上下文窗口已消耗了多少，以便我可以预判自动压缩何时触发并有效管理长对话。
 
@@ -43,16 +43,16 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须在 `packages/code/src/components/StatusLine.tsx` 中拥有专用的 `StatusLine` 组件。
-- **FR-002**：`StatusLine` 组件必须接受 `permissionMode`（字符串）、`isShellCommand`（布尔值）、`isGoalActive`（可选布尔值）和 `goalElapsed`（可选字符串）作为 props。
-- **FR-003**：BTW 模式必须由独立的 `BtwDisplay` 组件渲染；BTW 激活时 `StatusLine` 随输入区域一起隐藏，`StatusLine` 自身不负责 BTW 显示。
-- **FR-004**：`InputBox.tsx` 必须使用 `StatusLine` 组件替代内联渲染逻辑。
-- **FR-005**：`StatusLine` 组件必须接受 `latestTotalTokens`（数字）和 `maxInputTokens`（数字）作为可选 props。
-- **FR-006**：`StatusLine` 组件必须在 `latestTotalTokens > 0` 时显示右对齐的 "X% context" 文本。
-- **FR-007**：`StatusLine` 组件必须为百分比着色：灰色（<80%）、黄色（80-95%）、红色（>95%）。
-- **FR-008**：`LoadingIndicator` 组件必须接受 `maxInputTokens` 作为可选 prop，并在 token 计数旁显示百分比，格式为 "1,234 tokens (X%)"。
-- **FR-009**：`ChatContextType` 必须暴露从 `Agent.getMaxInputTokens()` 派生的 `maxInputTokens`（数字）。
-- **FR-010**：百分比计算必须使用 `Math.min(Math.round((latestTotalTokens / maxInputTokens) * 100), 100)`，上限为 100%。
+- 系统必须在 `packages/code/src/components/StatusLine.tsx` 中拥有专用的 `StatusLine` 组件。
+- `StatusLine` 组件必须接受 `permissionMode`（字符串）、`isShellCommand`（布尔值）、`isGoalActive`（可选布尔值）和 `goalElapsed`（可选字符串）作为 props。
+- BTW 模式必须由独立的 `BtwDisplay` 组件渲染；BTW 激活时 `StatusLine` 随输入区域一起隐藏，`StatusLine` 自身不负责 BTW 显示。
+- `InputBox.tsx` 必须使用 `StatusLine` 组件替代内联渲染逻辑。
+- `StatusLine` 组件必须接受 `latestTotalTokens`（数字）和 `maxInputTokens`（数字）作为可选 props。
+- `StatusLine` 组件必须在 `latestTotalTokens > 0` 时显示右对齐的 "X% context" 文本。
+- `StatusLine` 组件必须为百分比着色：灰色（<80%）、黄色（80-95%）、红色（>95%）。
+- `LoadingIndicator` 组件必须接受 `maxInputTokens` 作为可选 prop，并在 token 计数旁显示百分比，格式为 "1,234 tokens (X%)"。
+- `ChatContextType` 必须暴露从 `Agent.getMaxInputTokens()` 派生的 `maxInputTokens`（数字）。
+- 百分比计算必须使用 `Math.min(Math.round((latestTotalTokens / maxInputTokens) * 100), 100)`，上限为 100%。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

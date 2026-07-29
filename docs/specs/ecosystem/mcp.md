@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *(必填)*
 
-### 用户故事 1 - 通过 MCP 使用外部工具（优先级：P1）
+### 用户故事：通过 MCP 使用外部工具（优先级：P1）
 
 作为开发者，我希望将代理连接到外部 MCP 服务器，以便使用代理未内置的专用工具（如天气、数据库访问或自定义脚本）。
 
@@ -21,7 +21,7 @@
 
 ---
 
-### 用户故事 2 - 管理 MCP 服务器生命周期（优先级：P2）
+### 用户故事：管理 MCP 服务器生命周期（优先级：P2）
 
 作为用户，我希望手动连接或断开 MCP 服务器并检查其状态，以便排查连接问题或管理资源。
 
@@ -36,7 +36,7 @@
 
 ---
 
-### 用户故事 3 - 通过 Agent 构造函数传递 MCP 服务器（优先级：P2）
+### 用户故事：通过 Agent 构造函数传递 MCP 服务器（优先级：P2）
 
 作为集成 SDK 的开发者，我希望直接将 MCP 服务器配置传递给 `Agent` 构造函数，以便以编程方式配置服务器而不依赖 `.mcp.json` 文件。
 
@@ -51,7 +51,7 @@
 
 ---
 
-### 用户故事 4 - IDE 插件 MCP 管理对话框（优先级：P2）
+### 用户故事：IDE 插件 MCP 管理对话框（优先级：P2）
 
 作为 IDE 插件用户，我希望通过 `/mcp` 打开 MCP 管理对话框，查看各服务器的连接状态并手动连接或断开，以便在不切换到 CLI 的情况下排查连接问题。
 
@@ -86,32 +86,32 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须支持从工作目录中的 `.mcp.json` 加载 MCP 服务器配置。
-- **FR-002**：系统必须根据 `McpServerConfig` 中的 `type` 字段使用 `StdioClientTransport`、`SSEClientTransport` 或 `StreamableHTTPClientTransport` 与 MCP 服务器通信。
-- **FR-010**：系统必须支持通过配置中提供 `url` 来使用 SSE（Server-Sent Events）或 Streamable HTTP 的远程 MCP 服务器。传输方式由 `type` 字段（`"sse"` 或 `"http"`）决定。当省略 `type` 且提供了 `url` 时，默认为 `"http"`（Streamable HTTP）。
-- **FR-003**：MCP 工具必须在 `ToolManager` 中以 `mcp__[serverName]__[toolName]` 前缀注册。
-- **FR-004**：MCP 工具 schema 必须清除不支持的字段（`$schema`、`exclusiveMinimum`、`exclusiveMaximum`）。
-- **FR-005**：`McpManager` 必须跟踪每个服务器的状态（已连接、已断开、错误）。
-- **FR-006**：`Agent` 类必须提供获取服务器状态和手动管理连接的方法。
-- **FR-007**：MCP 工具执行结果必须支持文本、图片和资源。
-- **FR-008**：MCP 工具必须在执行前触发权限请求，与内置受限工具一致。
-- **FR-009**：系统必须支持 MCP 工具的持久 "始终允许" 规则，以 `mcp__[serverName]__[toolName]` 格式存储。
-- **FR-011**：`AgentOptions` 必须接受可选的 `mcpServers` 字段，以在构造时直接传递 MCP 服务器配置。
-- **FR-012**：当存在多个配置源（构造函数 `mcpServers`、`.mcp.json`、插件添加的服务器）时，它们必须按以下优先级合并：构造函数 > 工作区 > 插件。
-- **FR-016**：当 EventSource 连接意外关闭时，系统必须使用指数退避自动重连 SSE MCP 服务器。
-- **FR-017**：在 SSE 重连尝试期间，系统必须为 MCP 服务器显示 "reconnecting" 状态。
-- **FR-018**：当 SSO 认证完成后（`/login` 之后），系统必须重新连接所有 MCP 服务器。
-- **FR-019**：MCP 工具执行结果必须截断为 50,000 个字符。多余输出必须通过共享的 `toolResultStorage` 工具持久化到文件，结果必须包含 `<persisted-output>` 引用。
-- **FR-020**：系统必须存储配置了 URL 的 MCP 服务器的解析前 `originalUrl`，以防止敏感令牌出现在 UI 状态显示中。
-- **FR-021**：`McpServerConfig` 必须包含可选的 `type` 字段（`"stdio"`、`"sse"`、`"http"`）以显式指定传输方式。当省略 `type` 时，根据其他字段推断：URL → `"http"`，命令 → `"stdio"`。系统不得从 HTTP 回退到 SSE；SSE 服务器的 `type` 必须是显式的。
-- **FR-023**：MCP 管理器 UI 必须在服务器详情视图中显示传输 `type`（如果存在）。
-- **FR-024**：IDE 插件必须提供 `/mcp` 斜杠命令打开 MCP 管理对话框。
-- **FR-025**：IDE 插件 MCP 对话框必须列出每个服务器的名称、连接状态（已连接/连接中/重连中/错误/未连接，以不同颜色标识）、工具数量，以及上次连接时间的相对时间显示；错误状态的服务器必须额外显示错误原因。
-- **FR-026**：IDE 插件 MCP 对话框必须在未配置任何服务器时显示空状态引导文案，提示用户在项目根目录创建 `.mcp.json`。
-- **FR-027**：IDE 插件 MCP 对话框必须为每个服务器提供连接/断开操作按钮；操作进行中按钮必须显示进行中文案并禁用；错误状态的服务器按钮文案必须为"重连"。
-- **FR-028**：服务器状态在后台发生变化时，IDE 插件必须实时向对话框推送最新服务器列表；对话框必须忽略比当前列表更旧的快照。
-- **FR-029**：IDE 插件 MCP 对话框必须支持通过点击对话框外区域、按下 Escape 或点击关闭按钮关闭。
-- **FR-030**：IDE 插件 MCP 对话框中显示的服务器 URL 必须为解析前的原始地址（见 FR-020），不得泄露敏感令牌。
+- 系统必须支持从工作目录中的 `.mcp.json` 加载 MCP 服务器配置。
+- 系统必须根据 `McpServerConfig` 中的 `type` 字段使用 `StdioClientTransport`、`SSEClientTransport` 或 `StreamableHTTPClientTransport` 与 MCP 服务器通信。
+- 系统必须支持通过配置中提供 `url` 来使用 SSE（Server-Sent Events）或 Streamable HTTP 的远程 MCP 服务器。传输方式由 `type` 字段（`"sse"` 或 `"http"`）决定。当省略 `type` 且提供了 `url` 时，默认为 `"http"`（Streamable HTTP）。
+- MCP 工具必须在 `ToolManager` 中以 `mcp__[serverName]__[toolName]` 前缀注册。
+- MCP 工具 schema 必须清除不支持的字段（`$schema`、`exclusiveMinimum`、`exclusiveMaximum`）。
+- `McpManager` 必须跟踪每个服务器的状态（已连接、已断开、错误）。
+- `Agent` 类必须提供获取服务器状态和手动管理连接的方法。
+- MCP 工具执行结果必须支持文本、图片和资源。
+- MCP 工具必须在执行前触发权限请求，与内置受限工具一致。
+- 系统必须支持 MCP 工具的持久 "始终允许" 规则，以 `mcp__[serverName]__[toolName]` 格式存储。
+- `AgentOptions` 必须接受可选的 `mcpServers` 字段，以在构造时直接传递 MCP 服务器配置。
+- 当存在多个配置源（构造函数 `mcpServers`、`.mcp.json`、插件添加的服务器）时，它们必须按以下优先级合并：构造函数 > 工作区 > 插件。
+- 当 EventSource 连接意外关闭时，系统必须使用指数退避自动重连 SSE MCP 服务器。
+- 在 SSE 重连尝试期间，系统必须为 MCP 服务器显示 "reconnecting" 状态。
+- 当 SSO 认证完成后（`/login` 之后），系统必须重新连接所有 MCP 服务器。
+- MCP 工具执行结果必须截断为 50,000 个字符。多余输出必须通过共享的 `toolResultStorage` 工具持久化到文件，结果必须包含 `<persisted-output>` 引用。
+- 系统必须存储配置了 URL 的 MCP 服务器的解析前 `originalUrl`，以防止敏感令牌出现在 UI 状态显示中。
+- `McpServerConfig` 必须包含可选的 `type` 字段（`"stdio"`、`"sse"`、`"http"`）以显式指定传输方式。当省略 `type` 时，根据其他字段推断：URL → `"http"`，命令 → `"stdio"`。系统不得从 HTTP 回退到 SSE；SSE 服务器的 `type` 必须是显式的。
+- MCP 管理器 UI 必须在服务器详情视图中显示传输 `type`（如果存在）。
+- IDE 插件必须提供 `/mcp` 斜杠命令打开 MCP 管理对话框。
+- IDE 插件 MCP 对话框必须列出每个服务器的名称、连接状态（已连接/连接中/重连中/错误/未连接，以不同颜色标识）、工具数量，以及上次连接时间的相对时间显示；错误状态的服务器必须额外显示错误原因。
+- IDE 插件 MCP 对话框必须在未配置任何服务器时显示空状态引导文案，提示用户在项目根目录创建 `.mcp.json`。
+- IDE 插件 MCP 对话框必须为每个服务器提供连接/断开操作按钮；操作进行中按钮必须显示进行中文案并禁用；错误状态的服务器按钮文案必须为"重连"。
+- 服务器状态在后台发生变化时，IDE 插件必须实时向对话框推送最新服务器列表；对话框必须忽略比当前列表更旧的快照。
+- IDE 插件 MCP 对话框必须支持通过点击对话框外区域、按下 Escape 或点击关闭按钮关闭。
+- IDE 插件 MCP 对话框中显示的服务器 URL 必须为解析前的原始地址（见上文 originalUrl 存储条目），不得泄露敏感令牌。
 
 ### 关键实体
 

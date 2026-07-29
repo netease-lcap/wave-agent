@@ -5,7 +5,7 @@
 
 ## 用户场景与测试 *（必填）*
 
-### 用户故事 1 - 使用 OTLP 导出器的远程遥测（优先级：P1）
+### 用户故事：使用 OTLP 导出器的远程遥测（优先级：P1）
 
 作为开发者，我希望将 Wave 遥测数据发送到 OTLP 收集器（例如 Jaeger、Grafana Tempo、Honeycomb），以便观察 agent 行为、调试性能问题和分析会话模式。
 
@@ -21,7 +21,7 @@
 
 ---
 
-### 用户故事 2 - JSONL 文件导出器（优先级：P2）
+### 用户故事：JSONL 文件导出器（优先级：P2）
 
 作为开发者，我希望遥测数据写入专用的 JSONL 文件（`~/.wave/telemetry.jsonl`），以便通过 tail 文件观察 span 和 metric，而无需外部收集器。
 
@@ -37,7 +37,7 @@
 
 ---
 
-### 用户故事 3 - 通过事件日志的会话诊断（优先级：P2）
+### 用户故事：通过事件日志的会话诊断（优先级：P2）
 
 作为开发者，我希望关键会话生命周期事件（开始、结束、压缩、工具决策、错误）有结构化事件日志，以便无需解析原始 JSONL 文件即可重建会话期间发生的事情。
 
@@ -66,22 +66,22 @@
 
 ### 功能需求
 
-- **FR-001**：系统必须支持使用 MeterProvider、TracerProvider 和 LoggerProvider 进行 OpenTelemetry SDK 初始化。
-- **FR-002**：系统必须支持每种信号类型的多个导出器：metrics（`jsonl`、`otlp`）、traces（`jsonl`、`otlp`）、logs（`jsonl`、`otlp`）。
-- **FR-003**：系统必须从标准 `OTEL_*` 环境变量（端点、协议、headers、导出器）读取 OTEL 配置。
-- **FR-004**：系统必须创建包裹每个用户消息 → 完整响应周期的交互 span。
-- **FR-005**：系统必须为每次 API 调用创建 LLM 请求 span，包含属性：model、输入/输出/缓存 token、TTFT、TTLT、成功/错误状态。
-- **FR-006**：系统必须为每次工具调用创建工具执行 span，包含属性：工具名称、成功/错误、持续时间、输入（可选）。
-- **FR-007**：系统必须在并行工具执行期间使用 AsyncLocalStorage 维护正确的父子 span 关系。
-- **FR-008**：系统必须为以下事件记录结构化事件：`session_start`、`session_end`、`user_prompt`、`tool_decision`、`compaction`、`error`。
-- **FR-009**：系统默认不得在遥测中包含用户提示文本或工具内容；这些由 `OTEL_LOG_USER_PROMPTS=1` 和 `OTEL_LOG_TOOL_CONTENT=1` 控制。
-- **FR-010**：系统必须优雅地处理遥测失败而不影响 agent 操作。
-- **FR-011**：系统必须在关闭时刷新所有遥测数据，使用可配置超时（默认 2 秒）。
-- **FR-012**：系统必须清理超过 30 分钟的陈旧 span 以防止内存泄漏。
-- **FR-013**：系统必须包含资源属性：`service.name: 'wave'`、`service.version`、`os.type`、`host.arch`。
-- **FR-014**：系统必须支持通过环境变量和 `settings.json` 进行配置，环境变量优先。
-- **FR-015**：不支持控制台导出器。相反，自定义 JSONL 文件导出器将遥测记录（每行一个 JSON）写入 `~/.wave/telemetry.jsonl`。
-- **FR-016**：当 SSO 未认证时，系统必须使用匿名 ID 作为 `user.id` 遥测属性的回退。匿名 ID 必须是存储在 `~/.wave/config.json` 中的 32 字节十六进制字符串，在首次使用时创建。当 SSO 已认证时，`user.id` 必须使用 SSO 用户 ID。
+- 系统必须支持使用 MeterProvider、TracerProvider 和 LoggerProvider 进行 OpenTelemetry SDK 初始化。
+- 系统必须支持每种信号类型的多个导出器：metrics（`jsonl`、`otlp`）、traces（`jsonl`、`otlp`）、logs（`jsonl`、`otlp`）。
+- 系统必须从标准 `OTEL_*` 环境变量（端点、协议、headers、导出器）读取 OTEL 配置。
+- 系统必须创建包裹每个用户消息 → 完整响应周期的交互 span。
+- 系统必须为每次 API 调用创建 LLM 请求 span，包含属性：model、输入/输出/缓存 token、TTFT、TTLT、成功/错误状态。
+- 系统必须为每次工具调用创建工具执行 span，包含属性：工具名称、成功/错误、持续时间、输入（可选）。
+- 系统必须在并行工具执行期间使用 AsyncLocalStorage 维护正确的父子 span 关系。
+- 系统必须为以下事件记录结构化事件：`session_start`、`session_end`、`user_prompt`、`tool_decision`、`compaction`、`error`。
+- 系统默认不得在遥测中包含用户提示文本或工具内容；这些由 `OTEL_LOG_USER_PROMPTS=1` 和 `OTEL_LOG_TOOL_CONTENT=1` 控制。
+- 系统必须优雅地处理遥测失败而不影响 agent 操作。
+- 系统必须在关闭时刷新所有遥测数据，使用可配置超时（默认 2 秒）。
+- 系统必须清理超过 30 分钟的陈旧 span 以防止内存泄漏。
+- 系统必须包含资源属性：`service.name: 'wave'`、`service.version`、`os.type`、`host.arch`。
+- 系统必须支持通过环境变量和 `settings.json` 进行配置，环境变量优先。
+- 不支持控制台导出器。相反，自定义 JSONL 文件导出器将遥测记录（每行一个 JSON）写入 `~/.wave/telemetry.jsonl`。
+- 当 SSO 未认证时，系统必须使用匿名 ID 作为 `user.id` 遥测属性的回退。匿名 ID 必须是存储在 `~/.wave/config.json` 中的 32 字节十六进制字符串，在首次使用时创建。当 SSO 已认证时，`user.id` 必须使用 SSO 用户 ID。
 
 ### 关键实体
 
