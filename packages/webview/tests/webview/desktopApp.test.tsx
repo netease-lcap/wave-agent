@@ -635,10 +635,17 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopClosePane', paneId: 'pane-1' });
         });
 
-        it('does not make sidebar session items draggable', () => {
+        it('makes sidebar session items draggable and seeds the drag payload on dragstart', () => {
             renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
 
-            expect(screen.getByTestId('desktop-session-item-s2')).not.toHaveAttribute('draggable');
+            const item = screen.getByTestId('desktop-session-item-s2');
+            expect(item).toHaveAttribute('draggable', 'true');
+
+            const dataTransfer = makeDataTransfer();
+            fireEvent.dragStart(item, { dataTransfer });
+            expect(dataTransfer.getData('application/x-wave-session')).toBe(
+                JSON.stringify({ workdir: '/work/a', sessionId: 's2' }),
+            );
         });
 
         it('posts desktopSelectSession on a plain click of a sidebar session', () => {
@@ -732,6 +739,113 @@ describe('DesktopApp', () => {
                 expect.objectContaining({ command: 'desktopOpenPane' }),
             );
             expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口宽度不足');
+        });
+
+        // jsdom lacks DragEvent, so fireEvent's dragOver drops clientX — build
+        // the event manually to pin the pointer position (same pattern as the
+        // pane-reorder drag tests below).
+        function dragOverRow(dataTransfer: ReturnType<typeof makeDataTransfer>, clientX: number, target?: Element) {
+            const el = target ?? screen.getByTestId('desktop-pane-row');
+            const event = createEvent.dragOver(el, { dataTransfer });
+            Object.defineProperty(event, 'clientX', { value: clientX });
+            fireEvent(el, event);
+        }
+
+        it('shows the insertion indicator only when a dragged session hovers a pane gap', () => {
+            renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            mockPaneRect('pane-0', 0, 400);
+            mockPaneRect('pane-1', 400, 400);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's3' }, 'application/x-wave-session');
+
+            // Middle of pane-0 — no gap nearby, no indicator.
+            dragOverRow(dataTransfer, 200);
+            expect(screen.queryByTestId('desktop-pane-drop-indicator')).not.toBeInTheDocument();
+
+            // Near the boundary between the two panes — indicator appears.
+            dragOverRow(dataTransfer, 405);
+            expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
+
+            // Near the right edge of the last pane — indicator stays (append gap).
+            dragOverRow(dataTransfer, 795);
+            expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
+        });
+
+        it('posts desktopOpenPane with insertionIndex when a dragged session drops on a pane gap', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            mockRowWidth(1200);
+            mockPaneRect('pane-0', 0, 400);
+            mockPaneRect('pane-1', 400, 400);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's3' }, 'application/x-wave-session');
+
+            // Drag over the pane element itself — the row handler picks it up
+            // via bubbling (pane-level handlers ignore the session MIME).
+            dragOverRow(dataTransfer, 405, screen.getByTestId('desktop-pane-pane-1'));
+            expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer, clientX: 405 });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's3',
+                insertionIndex: 1,
+            });
+            expect(screen.queryByTestId('desktop-pane-drop-indicator')).not.toBeInTheDocument();
+        });
+
+        it('posts desktopOpenPane without insertionIndex when a dragged session drops away from any gap', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                'pane-0',
+            );
+            mockRowWidth(1200);
+            mockPaneRect('pane-0', 0, 400);
+            mockPaneRect('pane-1', 400, 400);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's3' }, 'application/x-wave-session');
+
+            // Hover the pane middle (clears any boundary), then drop there.
+            dragOverRow(dataTransfer, 200);
+            vscode.postMessage.mockClear();
+            fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer, clientX: 200 });
+
+            const call = vscode.postMessage.mock.calls.find(([message]) => message.command === 'desktopOpenPane');
+            expect(call?.[0]).toMatchObject({ workdir: '/work/a', sessionId: 's3' });
+            expect(call?.[0].insertionIndex).toBeUndefined();
+        });
+
+        it('refuses a sidebar drop with a hint when the row is too narrow for another pane', () => {
+            const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+            mockRowWidth(500);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' }, 'application/x-wave-session');
+            vscode.postMessage.mockClear();
+
+            fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer, clientX: 100 });
+
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopOpenPane' }),
+            );
+            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口宽度不足');
+        });
+
+        it('skips the width gate when the dropped session is already visible (host focuses its pane)', () => {
+            const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+            mockRowWidth(500);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's1' }, 'application/x-wave-session');
+            vscode.postMessage.mockClear();
+
+            fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer, clientX: 100 });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 's1' }),
+            );
+            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
         });
 
         it('posts desktopMovePane when a pane header is dragged onto another pane edge', () => {

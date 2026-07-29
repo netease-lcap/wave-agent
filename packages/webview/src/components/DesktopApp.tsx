@@ -78,8 +78,8 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     vscode.postMessage({ command: 'desktopDeleteSession', sessionId });
   }, [vscode]);
 
-  const handleOpenPane = useCallback((workdir: string, sessionId: string) => {
-    vscode.postMessage({ command: 'desktopOpenPane', workdir, sessionId });
+  const handleOpenPane = useCallback((workdir: string, sessionId: string, insertionIndex?: number) => {
+    vscode.postMessage({ command: 'desktopOpenPane', workdir, sessionId, insertionIndex });
   }, [vscode]);
 
   // Waiting for the main process to answer `desktopReady`.

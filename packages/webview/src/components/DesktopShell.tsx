@@ -1,12 +1,14 @@
-import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChatApp } from './ChatApp';
-import { DesktopSidebar } from './DesktopSidebar';
+import { DesktopSidebar, SESSION_DRAG_MIME } from './DesktopSidebar';
 import type { DesktopHostProps, DesktopPane, VsCodeApi } from '../types';
 import '../styles/DesktopApp.css';
 
 const MIN_PANE_WIDTH = 360;
 const HINT_DURATION_MS = 2400;
 const PANE_DRAG_MIME = 'application/x-wave-pane';
+/** Cursor distance from a pane edge that counts as hovering its insertion gap. */
+const SESSION_GAP_PX = 12;
 
 interface DesktopShellProps {
   vscode: VsCodeApi;
@@ -28,7 +30,8 @@ interface DesktopShellProps {
  * filters host pushes by paneId and tags outgoing commands with it.
  *
  * The layout itself is host-authoritative: Cmd/Ctrl+Click on a sidebar session
- * appends a pane (`desktopOpenPane`), dragging a pane header reorders
+ * appends a pane (`desktopOpenPane`), dragging a sidebar session onto a pane
+ * gap inserts there (anywhere else appends), dragging a pane header reorders
  * (`desktopMovePane`), and dragging a separator resizes the adjacent pair
  * (`desktopResizePanes`, with a live local preview). The webview never applies
  * the new order or widths on its own — it waits for the next `desktopPanes`.
@@ -66,15 +69,17 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     return rowWidth / (panes.length + 1) >= MIN_PANE_WIDTH;
   }, [panes.length]);
 
-  // Cmd/Ctrl+Click on a sidebar session — guarded by the same min-width rule
-  // the host applies, so the refusal hint shows without a round trip.
-  const handleOpenPane = useCallback((workdir: string, sessionId: string) => {
-    if (!canAddPane()) {
+  // Cmd/Ctrl+Click on a sidebar session or a sidebar drag-drop — guarded by
+  // the same min-width rule the host applies, so the refusal hint shows
+  // without a round trip. An already-visible session skips the width gate:
+  // the host just focuses its pane instead of adding one.
+  const handleOpenPane = useCallback((workdir: string, sessionId: string, insertionIndex?: number) => {
+    if (!panes.some((p) => p.sessionId === sessionId) && !canAddPane()) {
       showHint('窗口宽度不足，无法添加更多分屏');
       return;
     }
-    host.onOpenPane(workdir, sessionId);
-  }, [canAddPane, host, showHint]);
+    host.onOpenPane(workdir, sessionId, insertionIndex);
+  }, [canAddPane, host, panes, showHint]);
 
   const handleFocusPane = useCallback((paneId: string) => {
     if (paneId === focusedPaneId) return;
@@ -175,6 +180,79 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     }
   }, [vscode]);
 
+  // Sidebar session drags are handled at row level (pane/separator dragovers
+  // ignore the session MIME and let the event bubble up here). Hovering near
+  // a pane edge shows the insertion indicator at that boundary; anywhere else
+  // clears it, and the drop then appends at the right end.
+  const handleSessionDragOver = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(SESSION_DRAG_MIME)) return;
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = 'copy';
+    } catch {
+      // jsdom's DataTransfer polyfill exposes a read-only dropEffect.
+    }
+    let boundary: number | null = null;
+    let markerX = 0;
+    for (let i = 0; i < panes.length; i += 1) {
+      const el = paneNodes.current.get(panes[i].paneId);
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (Math.abs(e.clientX - rect.left) <= SESSION_GAP_PX) {
+        boundary = i;
+        markerX = rect.left;
+        break;
+      }
+      if (i === panes.length - 1 && Math.abs(e.clientX - rect.right) <= SESSION_GAP_PX) {
+        boundary = i + 1;
+        markerX = rect.right;
+        break;
+      }
+    }
+    if (boundary == null) {
+      dropBoundary.current = null;
+      setDropIndicatorX(null);
+    } else {
+      showDropIndicator(boundary, markerX);
+    }
+  }, [panes, showDropIndicator]);
+
+  const handleSessionDrop = useCallback((e: React.DragEvent) => {
+    const raw = e.dataTransfer.getData(SESSION_DRAG_MIME);
+    if (!raw) return;
+    e.preventDefault();
+    setDropIndicatorX(null);
+    const boundary = dropBoundary.current;
+    dropBoundary.current = null;
+    try {
+      const { workdir, sessionId } = JSON.parse(raw);
+      if (!workdir || !sessionId) return;
+      handleOpenPane(workdir, sessionId, boundary ?? undefined);
+    } catch {
+      // Not a session payload — ignore.
+    }
+  }, [handleOpenPane]);
+
+  // Clear the indicator when the drag leaves the row entirely.
+  const handleRowDragLeave = useCallback((e: React.DragEvent) => {
+    const next = e.relatedTarget;
+    if (next instanceof Node && rowRef.current?.contains(next)) return;
+    dropBoundary.current = null;
+    setDropIndicatorX(null);
+  }, []);
+
+  // Sidebar drags end on the sidebar item (no drop on the row) — clear the
+  // indicator from anywhere. The pane-header dragend does the same for its
+  // own drag; this is the backstop for every source.
+  useEffect(() => {
+    const clear = () => {
+      dropBoundary.current = null;
+      setDropIndicatorX(null);
+    };
+    document.addEventListener('dragend', clear);
+    return () => document.removeEventListener('dragend', clear);
+  }, []);
+
   const handleSeparatorMouseDown = useCallback((e: React.MouseEvent, separatorIndex: number) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -231,7 +309,14 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onOpenPane={handleOpenPane}
         onDeleteSession={host.onDeleteSession}
       />
-      <div ref={rowRef} className="desktop-pane-row" data-testid="desktop-pane-row">
+      <div
+        ref={rowRef}
+        className="desktop-pane-row"
+        data-testid="desktop-pane-row"
+        onDragOver={handleSessionDragOver}
+        onDrop={handleSessionDrop}
+        onDragLeave={handleRowDragLeave}
+      >
         {panes.map((pane, index) => {
           const paneStyle: React.CSSProperties = { minWidth: MIN_PANE_WIDTH };
           if (resizePreview && resizePreview[index] != null) {

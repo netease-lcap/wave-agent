@@ -596,12 +596,13 @@ export class DesktopHost {
   }
 
   /**
-   * Open a session in a new right-hand pane (drag & drop from the sidebar).
-   * A session already visible in a pane focuses that pane instead of
+   * Open a session in a new pane (Cmd/Ctrl+Click on a sidebar session, or a
+   * sidebar drag-drop — a drop on a pane gap passes `insertionIndex`). A
+   * session already visible in a pane focuses that pane instead of
    * duplicating it. Existing panes shrink proportionally so the layout keeps
    * the user's manual ratios.
    */
-  private async handleOpenPane(workdir: string, sessionId: string): Promise<void> {
+  private async handleOpenPane(workdir: string, sessionId: string, insertionIndex?: unknown): Promise<void> {
     if (!sessionId) return;
     const existing = this.panes.find((p) => p.agent?.sessionId === sessionId);
     if (existing) {
@@ -617,7 +618,10 @@ export class DesktopHost {
     const count = this.panes.length;
     const widths = this.effectiveWidths();
     this.panes.forEach((p, i) => { p.width = widths[i] * (count / (count + 1)); });
-    this.panes.push({ paneId, agent: null, width: 1 / (count + 1) });
+    const at = typeof insertionIndex === 'number' && Number.isFinite(insertionIndex)
+      ? Math.max(0, Math.min(this.panes.length, Math.trunc(insertionIndex)))
+      : this.panes.length;
+    this.panes.splice(at, 0, { paneId, agent: null, width: 1 / (count + 1) });
     this.focusedPaneId = paneId;
     this.pushPanes();
     this.emitPanelState();
@@ -1355,7 +1359,7 @@ export class DesktopHost {
       }
 
       case 'desktopOpenPane':
-        await this.handleOpenPane(msg.workdir as string, msg.sessionId as string);
+        await this.handleOpenPane(msg.workdir as string, msg.sessionId as string, msg.insertionIndex);
         break;
 
       case 'desktopClosePane':

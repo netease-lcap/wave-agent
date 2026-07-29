@@ -183,11 +183,13 @@ export interface DesktopHostProps {
   /** Delete a session from the index; also removes worktree+branch if applicable. */
   onDeleteSession: (sessionId: string) => void;
   /**
-   * Open a session in a new right-hand pane (Cmd/Ctrl+Click on a sidebar
-   * session). Always appends — never replaces an existing pane; when the
-   * session is already shown, the host focuses that pane instead.
+   * Open a session in a new pane (Cmd/Ctrl+Click on a sidebar session, or drag
+   * one into the chat area). When the session is already shown, the host
+   * focuses that pane instead. `insertionIndex` (0..pane count) inserts the
+   * new pane at that position — from a sidebar drop on a pane gap; omitted
+   * means append at the right end.
    */
-  onOpenPane: (workdir: string, sessionId: string) => void;
+  onOpenPane: (workdir: string, sessionId: string, insertionIndex?: number) => void;
   /**
    * Git branches of the current workdir (FR-022), pushed via the
    * `desktopGitBranches` message. `null` = not a git repo / git unavailable —

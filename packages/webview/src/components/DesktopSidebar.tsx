@@ -5,6 +5,9 @@ import { MoreMenu } from './MoreMenu';
 import type { DesktopSessionGroup, DesktopSessionEntry } from '../types';
 import '../styles/DesktopApp.css';
 
+/** dataTransfer MIME carrying { workdir, sessionId } while a sidebar session drags. */
+export const SESSION_DRAG_MIME = 'application/x-wave-session';
+
 export interface DesktopSidebarProps {
   onNewSession: () => void;
   isStreaming: boolean;
@@ -91,6 +94,17 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       <li
         key={session.sessionId}
         className={`desktop-session-item${isCurrent ? ' desktop-session-item--current' : ''}`}
+        draggable
+        onDragStart={(e) => {
+          // Drag into the chat area opens the session in a new pane (drop on a
+          // pane gap inserts there, anywhere else appends at the right end).
+          e.dataTransfer.setData(SESSION_DRAG_MIME, JSON.stringify({ workdir: group.workdir, sessionId: session.sessionId }));
+          try {
+            e.dataTransfer.effectAllowed = 'copy';
+          } catch {
+            // jsdom's DataTransfer polyfill exposes a read-only effectAllowed.
+          }
+        }}
         onClick={(e) => {
           // Cmd on macOS / Ctrl elsewhere opens the session in a new pane to
           // the right; a plain click keeps the replace-focused-pane behavior.
