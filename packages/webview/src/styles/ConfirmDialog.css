@@ -14,7 +14,8 @@
 
 .confirm-dialog {
     width: 360px;
-    max-width: calc(100vw - 32px);
+    /* Keep at least 32px gutters on each side in narrow (sidebar) panels. */
+    max-width: calc(100vw - 64px);
     background-color: var(--vscode-panel-background, #131415);
     border: 1px solid var(--vscode-widget-border, #1f2021);
     border-radius: 6px;
