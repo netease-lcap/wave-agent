@@ -535,6 +535,16 @@
     min-width: 0;
 }
 
+/* The pane header is the reorder drag handle; advertise it. Interactive
+   children (buttons, popup menu items) keep their own cursor. */
+.desktop-pane .chat-header {
+    cursor: grab;
+}
+
+.desktop-pane .chat-header:active {
+    cursor: grabbing;
+}
+
 /* Focused pane indicator: a 2px top accent bar, matching editor tab styling. */
 .desktop-pane--focused::before {
     content: '';
