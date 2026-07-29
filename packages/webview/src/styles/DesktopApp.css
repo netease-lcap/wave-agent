@@ -483,6 +483,18 @@
 
 /* ---- Split-view panes (FR-032~036) ---- */
 
+/* Vertical stack of pane rows (at most two); fills the chat area next to the
+   sidebar and anchors the drop-zone overlay. */
+.desktop-pane-rows {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
 /* Row of chat panes; each pane flex-shares the width, floored at its inline
    min-width (360px) — the row scrolls horizontally rather than squeezing. */
 .desktop-pane-row {
@@ -490,8 +502,44 @@
     display: flex;
     flex: 1;
     min-width: 0;
+    min-height: 0;
     overflow-x: auto;
     overflow-y: hidden;
+}
+
+/* Resize handle between the two pane rows; overlays the row border. */
+.desktop-row-separator {
+    position: relative;
+    z-index: 6;
+    flex: 0 0 5px;
+    margin: -2px 0;
+    cursor: row-resize;
+}
+
+.desktop-row-separator:hover,
+.desktop-row-separator--active {
+    background: var(--vscode-focusBorder, #007fd4);
+}
+
+/* VS Code-style translucent overlay over the half of a single-row layout
+   where a drop would split it into two rows. */
+.desktop-pane-dropzone {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 50%;
+    z-index: 7;
+    pointer-events: none;
+    background: var(--vscode-editorGroup-dropBackground, rgba(0, 122, 204, 0.18));
+    border: 1px dashed var(--vscode-focusBorder, #007fd4);
+}
+
+.desktop-pane-dropzone--above {
+    top: 0;
+}
+
+.desktop-pane-dropzone--below {
+    bottom: 0;
 }
 
 /* Resize handle between adjacent panes; overlays the pane border. */
@@ -606,11 +654,16 @@
 
 /* ---- Conversation-level panel group: message column + side panels ----
    The header spans the full pane width; below it the message column sits
-   left of the checked panels (preview → diff → terminal). */
+   left of the checked panels (preview → diff → terminal). Panels can also be
+   dragged into a second row below the message area: the container wraps, the
+   full-width separator forces the line break, and `order` places each slot on
+   its line — slots never change parents, so panel content survives row moves. */
 
 .desktop-chat-body {
     position: relative;
     display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
     flex: 1;
     min-height: 0;
 }
@@ -620,6 +673,8 @@
     flex-direction: column;
     flex: 1;
     min-width: 0;
+    order: 0;
+    height: 100%;
 }
 
 /* Wrapper that keeps an unchecked panel mounted (display:none) so its content
@@ -627,6 +682,71 @@
 .desktop-panel-slot {
     display: flex;
     min-height: 0;
+    height: 100%;
+}
+
+.desktop-panel-slot--row-1 {
+    order: 1;
+}
+
+.desktop-panel-slot--row-2 {
+    order: 3;
+}
+
+/* Two-row mode: the first line (message area + first-row panels) takes the
+   height left by the second row and the separator; second-row slots take the
+   configured row height. */
+.desktop-chat-body--two-rows .desktop-chat-main,
+.desktop-chat-body--two-rows .desktop-panel-slot--row-1 {
+    height: calc(100% - var(--panel-row-height, 200px) - 5px);
+}
+
+.desktop-chat-body--two-rows .desktop-panel-slot--row-2 {
+    height: var(--panel-row-height, 200px);
+}
+
+/* No first-row panels: the message area must claim the entire first line so
+   the separator wraps below it. */
+.desktop-chat-body--two-rows.desktop-chat-body--row1-empty .desktop-chat-main {
+    flex-basis: 100%;
+}
+
+/* Horizontal resize handle between the message row and the panel second row.
+   Its 100% flex basis forces the wrap that forms the second line. */
+.desktop-panel-row-separator {
+    order: 2;
+    flex: 0 0 100%;
+    height: 5px;
+    z-index: 6;
+    cursor: row-resize;
+}
+
+.desktop-panel-row-separator:hover,
+.desktop-panel-row-separator--active {
+    background: var(--vscode-focusBorder, #007fd4);
+}
+
+/* VS Code-style translucent overlay over the row a dragged panel would land
+   in; geometry (top/height) is set inline from the dragover hit-test. */
+.desktop-panel-dropzone {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 7;
+    pointer-events: none;
+    background: var(--vscode-editorGroup-dropBackground, rgba(0, 122, 204, 0.18));
+    border: 1px dashed var(--vscode-focusBorder, #007fd4);
+}
+
+/* While a panel toolbar drags, keep dragover firing over the preview guest. */
+.desktop-chat-body--panel-dragging .preview-pane webview,
+.desktop-chat-body--panel-dragging .preview-pane iframe {
+    pointer-events: none;
+}
+
+/* The toolbar's blank area is the panel drag source. */
+.desktop-chat-body .preview-pane-toolbar {
+    cursor: grab;
 }
 
 /* Shared empty/placeholder body for panel stubs. */

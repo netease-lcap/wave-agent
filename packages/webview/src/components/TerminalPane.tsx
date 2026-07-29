@@ -73,6 +73,9 @@ export interface TerminalPaneProps {
   visible: boolean;
   /** Session identity change → rebuild (visible) or kill (hidden). */
   sessionId?: string;
+  /** Second-row layout: panels pack from the left, so the width drag anchors
+   * the (fixed) left edge instead of the right edge. */
+  widthFromLeft?: boolean;
 }
 
 /** Embedded PTY terminal panel: xterm.js frontend + node-pty in the desktop host. */
@@ -86,6 +89,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   visible,
   sessionId,
   workdir,
+  widthFromLeft,
 }) => {
   const [status, setStatus] = useState<PaneStatus>({ kind: 'loading' });
   const asideRef = useRef<HTMLElement | null>(null);
@@ -134,8 +138,10 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     createPty();
   }, [killPty, createPty]);
 
-  // Mount: load the xterm chunk, build the terminal, wire IO. Unmount (pane
-  // close / panel-set teardown) kills the PTY — hiding never unmounts.
+  // Mount: load the xterm chunk, build the terminal, wire IO. Unmount does
+  // NOT kill the PTY — the host owns its lifecycle (pane close, session
+  // switch, app quit) — so a pane moved across rows remounts this component
+  // and reattaches to the live PTY (host replays the scrollback buffer).
   useEffect(() => {
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
@@ -205,7 +211,6 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       disposed = true;
       resizeObserver?.disconnect();
       window.removeEventListener('message', onMessage);
-      killPty();
       termRef.current?.dispose();
       termRef.current = null;
       fitRef.current = null;
@@ -231,9 +236,11 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
 
   const onDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
-    const right = asideRef.current?.getBoundingClientRect().right ?? 0;
-    const onMove = (ev: MouseEvent) =>
-      onWidthChange(Math.min(Math.max(right - ev.clientX, MIN_WIDTH), maxWidth));
+    const rect = asideRef.current?.getBoundingClientRect();
+    const onMove = (ev: MouseEvent) => {
+      const next = widthFromLeft ? ev.clientX - (rect?.left ?? 0) : (rect?.right ?? 0) - ev.clientX;
+      onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
+    };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);

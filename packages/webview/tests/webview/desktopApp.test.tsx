@@ -844,6 +844,7 @@ describe('DesktopApp', () => {
                 command: 'desktopOpenPane',
                 workdir: '/work/a',
                 sessionId: 's3',
+                row: 0,
                 insertionIndex: 1,
             });
             expect(screen.queryByTestId('desktop-pane-drop-indicator')).not.toBeInTheDocument();
@@ -868,6 +869,7 @@ describe('DesktopApp', () => {
                 command: 'desktopOpenPane',
                 workdir: '/work/a',
                 sessionId: 's3',
+                row: 0,
                 insertionIndex: 2,
             });
         });
@@ -913,7 +915,7 @@ describe('DesktopApp', () => {
             const dataTransfer = makeDataTransfer();
             fireEvent.dragStart(header, { dataTransfer });
             expect(dataTransfer.getData('application/x-wave-pane')).toBe(
-                JSON.stringify({ paneId: 'pane-2', fromIndex: 2 }),
+                JSON.stringify({ paneId: 'pane-2' }),
             );
 
             // Left half of pane-0 → insert before it; the indicator shows.
@@ -931,6 +933,7 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).toHaveBeenCalledWith({
                 command: 'desktopMovePane',
                 paneId: 'pane-2',
+                toRow: 0,
                 toIndex: 0,
             });
             expect(screen.queryByTestId('desktop-pane-drop-indicator')).not.toBeInTheDocument();
@@ -987,7 +990,7 @@ describe('DesktopApp', () => {
             const second = makeDataTransfer();
             fireEvent.dragStart(header, { dataTransfer: second });
             expect(second.getData('application/x-wave-pane')).toBe(
-                JSON.stringify({ paneId: 'pane-1', fromIndex: 1 }),
+                JSON.stringify({ paneId: 'pane-1' }),
             );
         });
 
@@ -1020,6 +1023,7 @@ describe('DesktopApp', () => {
 
             expect(vscode.postMessage).toHaveBeenCalledWith({
                 command: 'desktopResizePanes',
+                row: 0,
                 widths: [0.55, 0.45],
             });
             // The local preview is cleared — the host pushes the authoritative widths.
@@ -1045,6 +1049,7 @@ describe('DesktopApp', () => {
 
             expect(vscode.postMessage).toHaveBeenCalledWith({
                 command: 'desktopResizePanes',
+                row: 0,
                 widths: [0.7, 0.3],
             });
         });
@@ -1086,6 +1091,282 @@ describe('DesktopApp', () => {
                 .filter((m: Record<string, unknown>) => m.command === 'sendMessage');
             expect(sent).toHaveLength(1);
             expect(sent[0]).toMatchObject({ paneId: 'pane-1', text: 'from pane two' });
+        });
+    });
+
+    describe('pane rows (two-row layout)', () => {
+        const session = (sessionId: string, title: string) => ({
+            sessionId,
+            title,
+            lastActiveAt: Date.now(),
+            hasWorktree: false,
+        });
+
+        function renderWithRows(
+            panes: Array<{ paneId: string; sessionId?: string; width?: number; row?: 0 | 1 }>,
+            rowHeights: number[] | undefined,
+            focusedPaneId: string | null,
+        ) {
+            const result = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopSessionTree', {
+                groups: [{ workdir: '/work/a', sessions: [session('s1', 'chat one'), session('s2', 'chat two')] }],
+            });
+            sendCommand('desktopPanes', { panes, rowHeights, focusedPaneId });
+            return result;
+        }
+
+        function makeDataTransfer(payload?: Record<string, unknown>, mime = 'application/x-wave-pane') {
+            const store: Record<string, string> = {};
+            if (payload) store[mime] = JSON.stringify(payload);
+            return {
+                get types() { return Object.keys(store); },
+                setData: (type: string, value: string) => { store[type] = value; },
+                getData: (type: string) => store[type] ?? '',
+                effectAllowed: '',
+                dropEffect: '',
+            };
+        }
+
+        // jsdom reports 0 rects; pin real sizes where the layout measures.
+        function mockRowsContainerHeight(height: number) {
+            const el = screen.getByTestId('desktop-pane-rows');
+            vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+                width: 1200, height, top: 0, left: 0, bottom: height, right: 1200, x: 0, y: 0, toJSON: () => ({}),
+            });
+        }
+
+        function mockRowRect(testid: string, top: number, height: number) {
+            const el = screen.getByTestId(testid);
+            vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+                width: 1200, height, top, left: 0, bottom: top + height, right: 1200, x: 0, y: top, toJSON: () => ({}),
+            });
+        }
+
+        function mockPaneRect(paneId: string, left: number, width: number) {
+            const el = screen.getByTestId(`desktop-pane-${paneId}`);
+            vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+                width, height: 600, top: 0, left, bottom: 600, right: left + width, x: left, y: 0, toJSON: () => ({}),
+            });
+        }
+
+        // jsdom lacks DragEvent, so fireEvent's dragOver drops clientX/clientY —
+        // build the event manually to pin the pointer position.
+        function dragOverAt(target: Element, dataTransfer: ReturnType<typeof makeDataTransfer>, pos: { clientX?: number; clientY?: number }) {
+            const event = createEvent.dragOver(target, { dataTransfer });
+            if (pos.clientX !== undefined) Object.defineProperty(event, 'clientX', { value: pos.clientX });
+            if (pos.clientY !== undefined) Object.defineProperty(event, 'clientY', { value: pos.clientY });
+            fireEvent(target, event);
+        }
+
+        it('renders two rows with a row separator and applies the host row heights', () => {
+            renderWithRows(
+                [{ paneId: 'pane-0', sessionId: 's1', row: 0 }, { paneId: 'pane-1', sessionId: 's2', row: 1 }],
+                [0.6, 0.4],
+                'pane-0',
+            );
+
+            expect(screen.getByTestId('desktop-row-separator')).toBeInTheDocument();
+            expect(screen.getByTestId('desktop-pane-row').style.flex).toContain('60%');
+            expect(screen.getByTestId('desktop-pane-row-1').style.flex).toContain('40%');
+            expect(within(screen.getByTestId('desktop-pane-row')).getByTestId('desktop-pane-pane-0')).toBeInTheDocument();
+            expect(within(screen.getByTestId('desktop-pane-row-1')).getByTestId('desktop-pane-pane-1')).toBeInTheDocument();
+        });
+
+        it('previews heights while dragging the row separator and posts desktopResizePaneRows on mouseup', () => {
+            const { vscode } = renderWithRows(
+                [{ paneId: 'pane-0', sessionId: 's1', row: 0 }, { paneId: 'pane-1', sessionId: 's2', row: 1 }],
+                [0.5, 0.5],
+                'pane-0',
+            );
+            mockRowsContainerHeight(800);
+
+            fireEvent.mouseDown(screen.getByTestId('desktop-row-separator'), { clientY: 400 });
+            fireEvent.mouseMove(window, { clientY: 500 });
+
+            expect(screen.getByTestId('desktop-pane-row').style.flex).toContain('500px');
+            expect(screen.getByTestId('desktop-pane-row-1').style.flex).toContain('300px');
+
+            vscode.postMessage.mockClear();
+            fireEvent.mouseUp(window, { clientY: 500 });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopResizePaneRows',
+                heights: [500, 300],
+            });
+            // The local preview is cleared — the host pushes the authoritative heights.
+            expect(screen.getByTestId('desktop-pane-row').style.flex).toContain('50%');
+        });
+
+        it('clamps the row separator drag at the minimum row height', () => {
+            const { vscode } = renderWithRows(
+                [{ paneId: 'pane-0', sessionId: 's1', row: 0 }, { paneId: 'pane-1', sessionId: 's2', row: 1 }],
+                [0.5, 0.5],
+                'pane-0',
+            );
+            mockRowsContainerHeight(800);
+
+            fireEvent.mouseDown(screen.getByTestId('desktop-row-separator'), { clientY: 400 });
+            fireEvent.mouseMove(window, { clientY: -10000 });
+            vscode.postMessage.mockClear();
+            fireEvent.mouseUp(window, { clientY: -10000 });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopResizePaneRows',
+                heights: [280, 520],
+            });
+        });
+
+        it('shows the drop zone on the bottom edge band and posts desktopOpenPane with newRow on drop', () => {
+            const { vscode } = renderWithRows([{ paneId: 'pane-0', sessionId: 's1' }], undefined, 'pane-0');
+            mockRowsContainerHeight(800);
+            mockRowRect('desktop-pane-row', 0, 600);
+            mockPaneRect('pane-0', 0, 400);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' }, 'application/x-wave-session');
+
+            dragOverAt(screen.getByTestId('desktop-pane-row'), dataTransfer, { clientX: 200, clientY: 590 });
+
+            const zone = screen.getByTestId('desktop-pane-dropzone');
+            expect(zone.className).toContain('desktop-pane-dropzone--below');
+            expect(screen.queryByTestId('desktop-pane-drop-indicator')).not.toBeInTheDocument();
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's2',
+                newRow: 'below',
+            });
+            expect(screen.queryByTestId('desktop-pane-dropzone')).not.toBeInTheDocument();
+        });
+
+        it('shows the drop zone on the top edge band and posts newRow: above', () => {
+            const { vscode } = renderWithRows([{ paneId: 'pane-0', sessionId: 's1' }], undefined, 'pane-0');
+            mockRowsContainerHeight(800);
+            mockRowRect('desktop-pane-row', 0, 600);
+            mockPaneRect('pane-0', 0, 400);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' }, 'application/x-wave-session');
+
+            dragOverAt(screen.getByTestId('desktop-pane-row'), dataTransfer, { clientX: 200, clientY: 10 });
+
+            expect(screen.getByTestId('desktop-pane-dropzone').className).toContain('desktop-pane-dropzone--above');
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's2',
+                newRow: 'above',
+            });
+        });
+
+        it('refuses the edge-band split with a hint when the window is too short', () => {
+            const { vscode } = renderWithRows([{ paneId: 'pane-0', sessionId: 's1' }], undefined, 'pane-0');
+            mockRowsContainerHeight(400);
+            mockRowRect('desktop-pane-row', 0, 380);
+            mockPaneRect('pane-0', 0, 400);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' }, 'application/x-wave-session');
+
+            dragOverAt(screen.getByTestId('desktop-pane-row'), dataTransfer, { clientX: 200, clientY: 370 });
+
+            expect(screen.queryByTestId('desktop-pane-dropzone')).not.toBeInTheDocument();
+            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口高度不足');
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer });
+
+            // No newRow split — the drop falls back to an in-row insertion.
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopOpenPane', newRow: 'below' }),
+            );
+        });
+
+        it('posts desktopMovePane with newRow when a pane header drops on the bottom edge band', () => {
+            const { vscode } = renderWithRows(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1', sessionId: 's2' }],
+                undefined,
+                'pane-0',
+            );
+            mockRowsContainerHeight(800);
+            mockRowRect('desktop-pane-row', 0, 600);
+            mockPaneRect('pane-0', 0, 400);
+            mockPaneRect('pane-1', 400, 400);
+
+            const header = within(screen.getByTestId('desktop-pane-pane-1')).getByTestId('chat-header');
+            const dataTransfer = makeDataTransfer();
+            fireEvent.dragStart(header, { dataTransfer });
+
+            const target = screen.getByTestId('desktop-pane-pane-0');
+            dragOverAt(target, dataTransfer, { clientX: 100, clientY: 590 });
+            expect(screen.getByTestId('desktop-pane-dropzone').className).toContain('desktop-pane-dropzone--below');
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(target, { dataTransfer });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopMovePane',
+                paneId: 'pane-1',
+                newRow: 'below',
+            });
+        });
+
+        it('posts desktopMovePane with toRow/toIndex when a pane header drops on a second-row pane', () => {
+            const { vscode } = renderWithRows(
+                [{ paneId: 'pane-0', sessionId: 's1', row: 0 }, { paneId: 'pane-1', sessionId: 's2', row: 1 }],
+                [0.5, 0.5],
+                'pane-0',
+            );
+            mockPaneRect('pane-1', 0, 400);
+
+            const header = within(screen.getByTestId('desktop-pane-pane-0')).getByTestId('chat-header');
+            const dataTransfer = makeDataTransfer();
+            fireEvent.dragStart(header, { dataTransfer });
+
+            // Left half of pane-1 (the only second-row pane) → insert before it.
+            const target = screen.getByTestId('desktop-pane-pane-1');
+            dragOverAt(target, dataTransfer, { clientX: 100, clientY: 500 });
+            expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(target, { dataTransfer });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopMovePane',
+                paneId: 'pane-0',
+                toRow: 1,
+                toIndex: 0,
+            });
+        });
+
+        it('posts desktopOpenPane with row: 1 when a dragged session drops on the second row', () => {
+            const { vscode } = renderWithRows(
+                [{ paneId: 'pane-0', sessionId: 's1', row: 0 }, { paneId: 'pane-1', sessionId: 's2', row: 1 }],
+                [0.5, 0.5],
+                'pane-0',
+            );
+            // canAddPane measures the row element; give it a real width (jsdom reports 0).
+            mockRowRect('desktop-pane-row-1', 300, 300);
+            mockPaneRect('pane-1', 0, 400);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's3' }, 'application/x-wave-session');
+
+            // Right half of the only second-row pane → append after it.
+            dragOverAt(screen.getByTestId('desktop-pane-pane-1'), dataTransfer, { clientX: 300, clientY: 500 });
+            expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(screen.getByTestId('desktop-pane-row-1'), { dataTransfer });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's3',
+                row: 1,
+                insertionIndex: 1,
+            });
         });
     });
 

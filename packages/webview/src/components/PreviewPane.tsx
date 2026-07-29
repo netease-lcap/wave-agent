@@ -66,9 +66,12 @@ export interface PreviewPaneProps {
   maxWidth: number;
   /** Split-view pane this preview belongs to; tags picker comments for routing. */
   paneId?: string;
+  /** Second-row layout: panels pack from the left, so the width drag anchors
+   * the (fixed) left edge instead of the right edge. */
+  widthFromLeft?: boolean;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, paneId }) => {
+export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, paneId, widthFromLeft }) => {
   const [displayUrl, setDisplayUrl] = useState(url);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pickerActive, setPickerActive] = useState(false);
@@ -217,13 +220,16 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
   };
 
   const asideRef = useRef<HTMLElement | null>(null);
-  // Dragging the left edge resizes this panel; panels to its right keep their
-  // widths, so the aside's right edge is fixed for the duration of the drag.
+  // Dragging the left edge resizes this panel. In the first row the panels to
+  // the right keep their widths, so the aside's right edge is fixed for the
+  // drag; in the second row the left edge is fixed instead.
   const onDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
-    const right = asideRef.current?.getBoundingClientRect().right ?? 0;
-    const onMove = (ev: MouseEvent) =>
-      onWidthChange(Math.min(Math.max(right - ev.clientX, MIN_WIDTH), maxWidth));
+    const rect = asideRef.current?.getBoundingClientRect();
+    const onMove = (ev: MouseEvent) => {
+      const next = widthFromLeft ? ev.clientX - (rect?.left ?? 0) : (rect?.right ?? 0) - ev.clientX;
+      onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
+    };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);

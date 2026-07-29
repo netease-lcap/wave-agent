@@ -69,8 +69,10 @@ interface WorktreeInfo {
 interface Pane {
   paneId: string;
   agent: StdioAgent | null;
-  /** Width as a ratio of the chat area (sidebar/preview excluded); undefined = equal split. */
+  /** Width as a ratio of its row (sidebar/preview excluded); undefined = equal split. */
   width?: number;
+  /** Pane row: 0 = top, 1 = bottom. Undefined = row 0. At most two rows. */
+  row?: 0 | 1;
 }
 
 interface PaneThrottle {
@@ -84,6 +86,8 @@ interface PaneThrottle {
 }
 /** Minimum chat-pane width — mirrors the webview DesktopShell MIN_PANE_WIDTH. */
 const MIN_PANE_WIDTH_PX = 360;
+/** Minimum height of a pane row — mirrors the webview DesktopShell MIN_ROW_HEIGHT. */
+const MIN_PANE_ROW_HEIGHT_PX = 280;
 /** Fixed sidebar width — mirrors DesktopApp.css .desktop-sidebar. */
 const SIDEBAR_WIDTH_PX = 240;
 /** Float tolerance for ratio-vs-minimum comparisons. */
@@ -112,6 +116,8 @@ export class DesktopHost {
   // Preview-pane width as last reported by the webview (0 = closed). Used to
   // deduct the preview from the chat area in min-pane-width checks.
   private previewWidthPx = 0;
+  /** Top row's height as a fraction of the pane area; undefined while there is a single row. */
+  private topRowHeight?: number;
   private inputDrafts = new Map<string, string>(); // keyed by paneId
   private agentWorktreeInfo = new Map<StdioAgent, WorktreeInfo>();
   private workdir: string | undefined;
@@ -559,11 +565,12 @@ export class DesktopHost {
     this.postMessage({ command: 'focusInput', paneId });
   }
 
-  /** Push the pane layout (order, session bindings, widths, focus) to the webview. */
+  /** Push the pane layout (rows, order, session bindings, widths, focus) to the webview. */
   private pushPanes(): void {
     this.postMessage({
       command: 'desktopPanes',
-      panes: this.panes.map((p) => ({ paneId: p.paneId, sessionId: p.agent?.sessionId, width: p.width })),
+      panes: this.panes.map((p) => ({ paneId: p.paneId, sessionId: p.agent?.sessionId, width: p.width, row: p.row ?? 0 })),
+      rowHeights: this.topRowHeight != null ? [this.topRowHeight, 1 - this.topRowHeight] : undefined,
       focusedPaneId: this.focusedPaneId,
     });
     this.emitMenuState();
@@ -597,12 +604,15 @@ export class DesktopHost {
 
   /**
    * Open a session in a new pane (Cmd/Ctrl+Click on a sidebar session, or a
-   * sidebar drag-drop — a drop on a pane gap passes `insertionIndex`). A
-   * session already visible in a pane focuses that pane instead of
-   * duplicating it. Existing panes shrink proportionally so the layout keeps
-   * the user's manual ratios.
+   * sidebar drag-drop). `opts.insertionIndex` inserts at a position within the
+   * target row (drop on a pane gap); `opts.row` picks the row (default: the
+   * focused pane's row); `opts.newRow` ('above'|'below') splits the single row
+   * into two and puts the new pane alone in the fresh row. A session already
+   * visible in a pane focuses that pane instead of duplicating it. Existing
+   * panes in the target row shrink proportionally so the layout keeps the
+   * user's manual ratios.
    */
-  private async handleOpenPane(workdir: string, sessionId: string, insertionIndex?: unknown): Promise<void> {
+  private async handleOpenPane(workdir: string, sessionId: string, opts?: unknown): Promise<void> {
     if (!sessionId) return;
     const existing = this.panes.find((p) => p.agent?.sessionId === sessionId);
     if (existing) {
@@ -610,61 +620,180 @@ export class DesktopHost {
       this.postMessage({ command: 'focusInput', paneId: existing.paneId });
       return;
     }
-    if (!this.canAddPane()) {
-      this.pushSystemMessage('窗口宽度不足，无法添加更多分屏', this.focusedPaneId);
-      return;
-    }
+    const o = (opts ?? {}) as { insertionIndex?: unknown; row?: unknown; newRow?: unknown };
+    const insertionIndex = typeof o.insertionIndex === 'number' && Number.isFinite(o.insertionIndex)
+      ? Math.trunc(o.insertionIndex) : undefined;
+    const optRow = o.row === 0 || o.row === 1 ? o.row : undefined;
+    const newRow = o.newRow === 'above' || o.newRow === 'below' ? o.newRow : undefined;
+    const hasSecondRow = this.panes.some((p) => p.row === 1);
     const paneId = `pane-${++this.paneCounter}`;
-    const count = this.panes.length;
-    const widths = this.effectiveWidths();
-    this.panes.forEach((p, i) => { p.width = widths[i] * (count / (count + 1)); });
-    const at = typeof insertionIndex === 'number' && Number.isFinite(insertionIndex)
-      ? Math.max(0, Math.min(this.panes.length, Math.trunc(insertionIndex)))
-      : this.panes.length;
-    this.panes.splice(at, 0, { paneId, agent: null, width: 1 / (count + 1) });
+
+    if (newRow && !hasSecondRow) {
+      // Split the single row into two; the new pane is alone in its fresh row.
+      if (!this.canSplitRows()) {
+        this.pushSystemMessage('窗口高度不足，无法拆分为两行', this.focusedPaneId);
+        return;
+      }
+      if (newRow === 'above') this.panes.forEach((p) => { p.row = 1; });
+      this.panes.push({ paneId, agent: null, row: newRow === 'above' ? 0 : 1 });
+    } else {
+      const targetRow = optRow ?? (newRow === 'above' ? 0 : newRow === 'below' ? 1 : this.rowOfPane(this.focusedPaneId));
+      if (!this.canAddPane(targetRow)) {
+        this.pushSystemMessage('窗口宽度不足，无法添加更多分屏', this.focusedPaneId);
+        return;
+      }
+      const rowPanes = this.panes.filter((p) => (p.row ?? 0) === targetRow);
+      const count = rowPanes.length;
+      const widths = rowPanes.map((p) => p.width ?? 1 / count);
+      rowPanes.forEach((p, i) => { p.width = widths[i] * (count / (count + 1)); });
+      const at = insertionIndex === undefined ? count : Math.max(0, Math.min(count, insertionIndex));
+      rowPanes.splice(at, 0, { paneId, agent: null, width: 1 / (count + 1), row: targetRow });
+      const others = this.panes.filter((p) => (p.row ?? 0) !== targetRow);
+      this.panes = targetRow === 0 ? [...rowPanes, ...others] : [...others, ...rowPanes];
+    }
     this.focusedPaneId = paneId;
+    this.normalizePaneRows();
     this.pushPanes();
     this.emitPanelState();
     await this.bindSessionToPane(paneId, workdir, sessionId);
   }
 
   /**
-   * Min-width gate for adding a pane: every pane (current + new) must fit at
-   * MIN_PANE_WIDTH_PX within the chat area (window minus sidebar and the
-   * preview pane). The webview applies the same rule on its measured row, so
-   * this is the authoritative backstop.
+   * Min-width gate for adding a pane to a row: every pane in that row (current
+   * + new) must fit at MIN_PANE_WIDTH_PX within the chat area (window minus
+   * sidebar and the preview pane). The webview applies the same rule on its
+   * measured row, so this is the authoritative backstop.
    */
-  private canAddPane(): boolean {
+  private canAddPane(row: 0 | 1): boolean {
     if (!this.mainWindow) return true;
     const [windowWidth] = this.mainWindow.getContentSize();
     if (!windowWidth) return true;
     const chatArea = windowWidth - SIDEBAR_WIDTH_PX - this.previewWidthPx;
-    return chatArea / (this.panes.length + 1) >= MIN_PANE_WIDTH_PX - WIDTH_EPSILON;
+    const rowCount = this.panes.filter((p) => (p.row ?? 0) === row).length;
+    return chatArea / (rowCount + 1) >= MIN_PANE_WIDTH_PX - WIDTH_EPSILON;
   }
 
-  /** Current pane widths as ratios; unset width means an equal share. */
-  private effectiveWidths(): number[] {
-    return this.panes.map((p) => p.width ?? 1 / this.panes.length);
+  /** Min-height gate for splitting into two rows (each at least MIN_PANE_ROW_HEIGHT_PX). */
+  private canSplitRows(): boolean {
+    if (!this.mainWindow) return true;
+    const [, windowHeight] = this.mainWindow.getContentSize();
+    if (!windowHeight) return true;
+    return windowHeight / 2 >= MIN_PANE_ROW_HEIGHT_PX;
   }
 
-  /** Reorder a pane (drag the pane header onto another slot). */
-  private handleMovePane(paneId: string, toIndex: number): void {
+  /** The row a pane sits in; unknown panes report the top row. */
+  private rowOfPane(paneId: string): 0 | 1 {
+    return this.panes.find((p) => p.paneId === paneId)?.row ?? 0;
+  }
+
+  /**
+   * Keep the layout invariant: panes sequenced row-major (row 0 first), a row
+   * 1 without any row-0 pane is promoted to row 0, and the top-row height
+   * fraction exists exactly while two rows do.
+   */
+  private normalizePaneRows(): void {
+    let row0 = this.panes.filter((p) => (p.row ?? 0) === 0);
+    const row1 = this.panes.filter((p) => p.row === 1);
+    if (row0.length === 0 && row1.length > 0) {
+      row1.forEach((p) => { p.row = 0; });
+      row0 = row1;
+    }
+    this.panes = row1.length > 0 && row1 !== row0 ? [...row0, ...row1] : row0;
+    if (this.panes.some((p) => p.row === 1)) {
+      if (this.topRowHeight == null) this.topRowHeight = 0.5;
+    } else {
+      this.topRowHeight = undefined;
+    }
+  }
+
+  /** Redistribute a row's widths so they sum to 1 (after a pane leaves it). */
+  private renormalizeRowWidths(row: 0 | 1): void {
+    const rowPanes = this.panes.filter((p) => (p.row ?? 0) === row);
+    if (rowPanes.length === 0 || rowPanes.every((p) => p.width === undefined)) return;
+    const sum = rowPanes.reduce<number>((total, p) => total + (p.width ?? 0), 0);
+    if (sum > WIDTH_EPSILON) rowPanes.forEach((p) => { p.width = (p.width ?? 0) / sum; });
+  }
+
+  /**
+   * Move a pane (drag the pane header). `toRow`+`toIndex` inserts it at a
+   * position within the target row (cross-row moves shrink the target row and
+   * re-expand the source row proportionally); `newRow` ('above'|'below')
+   * splits the single row into two with the pane alone in the fresh row.
+   */
+  private handleMovePane(paneId: string, opts: { toRow?: unknown; toIndex?: unknown; newRow?: unknown }): void {
     const from = this.panes.findIndex((p) => p.paneId === paneId);
-    if (from === -1 || !Number.isFinite(toIndex)) return;
-    const target = Math.max(0, Math.min(this.panes.length - 1, Math.trunc(toIndex)));
-    if (target === from) return;
-    const [pane] = this.panes.splice(from, 1);
-    this.panes.splice(target, 0, pane);
+    if (from === -1) return;
+    const fromRow = this.panes[from].row ?? 0;
+    const newRow = opts.newRow === 'above' || opts.newRow === 'below' ? opts.newRow : undefined;
+    const toRow = opts.toRow === 0 || opts.toRow === 1 ? opts.toRow : undefined;
+    const toIndex = typeof opts.toIndex === 'number' && Number.isFinite(opts.toIndex)
+      ? Math.trunc(opts.toIndex) : undefined;
+    const hasSecondRow = this.panes.some((p) => p.row === 1);
+
+    // Split into two rows: the moved pane becomes the sole member of its row.
+    const wantsSplit = (newRow != null && !hasSecondRow)
+      || (toRow != null && toRow !== fromRow && !this.panes.some((p) => (p.row ?? 0) === toRow));
+    if (wantsSplit) {
+      if (this.panes.length <= 1) return;
+      if (!this.canSplitRows()) {
+        this.pushSystemMessage('窗口高度不足，无法拆分为两行', this.focusedPaneId);
+        return;
+      }
+      const targetRow = newRow != null ? (newRow === 'above' ? 0 : 1) : toRow!;
+      const [moved] = this.panes.splice(from, 1);
+      moved.row = targetRow;
+      moved.width = undefined;
+      this.panes.forEach((p) => { p.row = targetRow === 0 ? 1 : 0; });
+      this.renormalizeRowWidths(targetRow === 0 ? 1 : 0);
+      this.panes.push(moved);
+      this.normalizePaneRows();
+      this.pushPanes();
+      return;
+    }
+    if (toIndex === undefined) return;
+
+    const targetRow = toRow ?? fromRow;
+    const [moved] = this.panes.splice(from, 1);
+    if (targetRow === fromRow) {
+      const rowPanes = this.panes.filter((p) => (p.row ?? 0) === fromRow);
+      const at = Math.max(0, Math.min(rowPanes.length, toIndex));
+      rowPanes.splice(at, 0, moved);
+      const others = this.panes.filter((p) => (p.row ?? 0) !== fromRow);
+      this.panes = fromRow === 0 ? [...rowPanes, ...others] : [...others, ...rowPanes];
+    } else {
+      this.renormalizeRowWidths(fromRow);
+      const rowPanes = this.panes.filter((p) => (p.row ?? 0) === targetRow);
+      const count = rowPanes.length;
+      rowPanes.forEach((p) => { p.width = (p.width ?? 1 / count) * (count / (count + 1)); });
+      moved.row = targetRow;
+      moved.width = 1 / (count + 1);
+      const at = Math.max(0, Math.min(count, toIndex));
+      rowPanes.splice(at, 0, moved);
+      const others = this.panes.filter((p) => (p.row ?? 0) !== targetRow);
+      this.panes = targetRow === 0 ? [...rowPanes, ...others] : [...others, ...rowPanes];
+    }
     this.pushPanes();
   }
 
-  /** Apply separator-drag widths (ratios in pane order, normalized here). */
-  private handleResizePanes(widths: unknown): void {
-    if (!Array.isArray(widths) || widths.length !== this.panes.length) return;
+  /** Apply separator-drag widths for one row (ratios in that row's order, normalized here). */
+  private handleResizePanes(widths: unknown, row: unknown): void {
+    const r = row === 1 ? 1 : 0;
+    const rowPanes = this.panes.filter((p) => (p.row ?? 0) === r);
+    if (!Array.isArray(widths) || widths.length !== rowPanes.length) return;
     if (widths.some((w) => typeof w !== 'number' || !Number.isFinite(w) || w <= 0)) return;
     const sum = widths.reduce((total: number, w: number) => total + w, 0);
     if (sum <= WIDTH_EPSILON) return;
-    this.panes.forEach((p, i) => { p.width = widths[i] / sum; });
+    rowPanes.forEach((p, i) => { p.width = widths[i] / sum; });
+    this.pushPanes();
+  }
+
+  /** Apply row-separator drag heights ([top, bottom] px or ratios, normalized here). */
+  private handleResizePaneRows(heights: unknown): void {
+    if (!Array.isArray(heights) || heights.length !== 2) return;
+    if (heights.some((h) => typeof h !== 'number' || !Number.isFinite(h) || h <= 0)) return;
+    if (!this.panes.some((p) => p.row === 1)) return;
+    const sum = heights[0] + heights[1];
+    this.topRowHeight = heights[0] / sum;
     this.pushPanes();
   }
 
@@ -679,18 +808,14 @@ export class DesktopHost {
     if (idx === -1) return;
     this.terminalManager.killForPane(paneId);
     this.clearThrottleState(paneId);
+    const closedRow = this.panes[idx].row ?? 0;
     this.panes.splice(idx, 1);
     this.inputDrafts.delete(paneId);
     this.workflowRuns.delete(paneId);
-    // The closed pane's width returns to the survivors proportionally; an
-    // untouched equal-split layout (no explicit widths) stays equal-split.
-    const remaining = this.panes.map((p) => p.width);
-    if (remaining.some((w) => w !== undefined)) {
-      const sum = remaining.reduce<number>((total, w) => total + (w ?? 0), 0);
-      if (sum > WIDTH_EPSILON) {
-        this.panes.forEach((p, i) => { p.width = (remaining[i] ?? 0) / sum; });
-      }
-    }
+    // The closed pane's width returns to its row-mates proportionally; an
+    // untouched equal-split row (no explicit widths) stays equal-split.
+    this.renormalizeRowWidths(closedRow);
+    this.normalizePaneRows();
     this.panePanelState.delete(paneId);
     if (this.focusedPaneId === paneId) {
       const neighbor = this.panes[Math.min(idx, this.panes.length - 1)];
@@ -1369,7 +1494,11 @@ export class DesktopHost {
       }
 
       case 'desktopOpenPane':
-        await this.handleOpenPane(msg.workdir as string, msg.sessionId as string, msg.insertionIndex);
+        await this.handleOpenPane(msg.workdir as string, msg.sessionId as string, {
+          insertionIndex: msg.insertionIndex,
+          row: msg.row,
+          newRow: msg.newRow,
+        });
         break;
 
       case 'desktopClosePane':
@@ -1381,11 +1510,15 @@ export class DesktopHost {
         break;
 
       case 'desktopMovePane':
-        this.handleMovePane(msg.paneId as string, msg.toIndex as number);
+        this.handleMovePane(msg.paneId as string, { toRow: msg.toRow, toIndex: msg.toIndex, newRow: msg.newRow });
         break;
 
       case 'desktopResizePanes':
-        this.handleResizePanes(msg.widths);
+        this.handleResizePanes(msg.widths, msg.row);
+        break;
+
+      case 'desktopResizePaneRows':
+        this.handleResizePaneRows(msg.heights);
         break;
 
       case 'desktopPreviewState':

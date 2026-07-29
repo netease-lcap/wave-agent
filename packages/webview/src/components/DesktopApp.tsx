@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChatApp } from './ChatApp';
-import { VsCodeApi, DesktopWorkdirState, DesktopSessionGroup, DesktopPane } from '../types';
+import { ChatApp, prunePanelGroupCache } from './ChatApp';
+import { VsCodeApi, DesktopWorkdirState, DesktopSessionGroup, DesktopPane, OpenPaneOptions } from '../types';
 import '../styles/DesktopApp.css';
 
 interface DesktopAppProps {
@@ -22,6 +22,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   const [sessionTree, setSessionTree] = useState<DesktopSessionGroup[]>([]);
   const [gitBranches, setGitBranches] = useState<{ branches: string[]; current: string } | null>(null);
   const [panes, setPanes] = useState<DesktopPane[]>([]);
+  const [rowHeights, setRowHeights] = useState<number[] | undefined>(undefined);
   const [focusedPaneId, setFocusedPaneId] = useState<string | null>(null);
   // Current workdir in a ref so the message handler can drop stale
   // desktopGitBranches responses from a previous workdir.
@@ -49,7 +50,11 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
           setGitBranches(message.result ?? null);
         }
       } else if (message.command === 'desktopPanes') {
-        setPanes(message.panes ?? []);
+        const nextPanes: DesktopPane[] = message.panes ?? [];
+        setPanes(nextPanes);
+        // Closed panes lose their cached panel group with the pane itself.
+        prunePanelGroupCache(nextPanes.map((p) => p.paneId));
+        setRowHeights(message.rowHeights);
         setFocusedPaneId(message.focusedPaneId ?? null);
       }
     };
@@ -78,8 +83,8 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     vscode.postMessage({ command: 'desktopDeleteSession', sessionId });
   }, [vscode]);
 
-  const handleOpenPane = useCallback((workdir: string, sessionId: string, insertionIndex?: number) => {
-    vscode.postMessage({ command: 'desktopOpenPane', workdir, sessionId, insertionIndex });
+  const handleOpenPane = useCallback((workdir: string, sessionId: string, opts?: OpenPaneOptions) => {
+    vscode.postMessage({ command: 'desktopOpenPane', workdir, sessionId, ...opts });
   }, [vscode]);
 
   // Waiting for the main process to answer `desktopReady`.
@@ -105,6 +110,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         onOpenPane: handleOpenPane,
         gitBranches,
         panes,
+        rowHeights,
         focusedPaneId,
       }}
     />
