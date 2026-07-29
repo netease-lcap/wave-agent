@@ -436,7 +436,7 @@ export class DesktopHost {
   }
 
   /** Create + initialize a fresh agent, register it in the pool, enforce the LRU cap. */
-  private async spawnAgent(opts: { workdir?: string; worktreeInfo?: WorktreeInfo }): Promise<StdioAgent> {
+  private async spawnAgent(opts: { workdir?: string; worktreeInfo?: WorktreeInfo; worktreeName?: string; isNewWorktree?: boolean }): Promise<StdioAgent> {
     await this.ensureClient();
     const config = this.configStore.getConfiguration();
     const agent = this.createAgent(opts);
@@ -448,6 +448,8 @@ export class DesktopHost {
       model: config.model,
       fastModel: config.fastModel,
       language: config.language,
+      worktreeName: opts.worktreeName,
+      isNewWorktree: opts.isNewWorktree,
     });
     if (agent.sessionId) {
       this.agents.set(agent.sessionId, agent);
@@ -995,6 +997,7 @@ export class DesktopHost {
       branch: string;
       baseBranch: string;
       repoRoot: string;
+      isNew: boolean;
     };
     try {
       result = (await this.utilityClient.request('createWorktree', { workdir, baseBranch, name })) as typeof result;
@@ -1006,6 +1009,10 @@ export class DesktopHost {
     try {
       agent = await this.spawnAgent({
         workdir: result.path,
+        // Only a genuinely new worktree fires the WorktreeCreate hook during
+        // agent initialization (same as `wave -w`).
+        worktreeName: result.name,
+        isNewWorktree: result.isNew,
         worktreeInfo: {
           path: result.path,
           branch: result.branch,

@@ -156,6 +156,7 @@ desktop 还支持**并排多对话**：将侧边栏中的会话拖拽到窗口�
 2. **假设**用户勾选了 worktree，**当**开始会话，**则**主进程必须基于所选分支创建随机命名的临时分支与 worktree（命名方案与 `wave -w` 一致），会话实际工作目录为该 worktree 路径。
 3. **假设**用户未勾选 worktree，**当**开始会话，**则**会话必须直接在所选工作目录中进行（与现状一致）。
 4. **假设**用户选择的工作目录不是 git 仓库或 git 命令不可用，**当**处于新会话状态，**则**不得显示分支选择器与 worktree 勾选项。
+5. **假设**项目配置了 WorktreeCreate 钩子，**当**勾选 worktree 开始会话且 worktree 为本次新建，**则**必须在新 worktree 目录中执行该钩子（与 `wave -w` 行为一致）；复用已存在的同名 worktree 时不执行。
 
 ---
 
@@ -342,6 +343,7 @@ desktop 还支持**并排多对话**：将侧边栏中的会话拖拽到窗口�
     - **循环顺序**：侧边栏会话树的展平顺序（分组顺序与组内顺序均与 FR-020 的派生规则一致），跨目录循环，到达边界回卷；折叠分组的会话照常参与循环。当前处于未入索引的新会话状态时，「下一个」激活树中第一条，「上一个」激活最末一条。
     - **切换语义**：与点击会话条目完全一致（FR-020 点击行为、FR-024 索引驱动），不中止任何后台生成中的会话（FR-031）。
     - **菜单入口**：应用菜单栏必须提供「下一个会话」「上一个会话」菜单项并显示快捷键（desktop 当前无自定义菜单，本特性引入自定义应用菜单，须保留平台默认菜单能力——macOS 应用菜单与编辑菜单的复制/粘贴等）；菜单项点击与快捷键等效。
+- **FR-039**：desktop 勾选 worktree 创建新会话时，必须触发与 `wave -w` 和 EnterWorktree 工具一致的 WorktreeCreate 钩子：主进程在 stdio `createWorktree` 返回后，必须将 `worktreeName`（worktree 名）与 `isNewWorktree`（取自响应的 `isNew`）随 initialize 请求传给 CLI 子进程，由 Agent 初始化流程在 `isNew` 为 true 时触发钩子（在新 worktree 目录中执行、stdin JSON 含 `name` 字段，语义见 hooks 规格）；复用已存在 worktree（`isNew` 为 false）时不得触发。配置更新（updateConfig）重建 agent 时必须保留 `worktreeName` 上下文，但不得再次触发 WorktreeCreate 钩子。
 
 ### 关键实体 *（如果功能涉及数据则包含）*
 

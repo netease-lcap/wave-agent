@@ -76,6 +76,8 @@ interface InitializeParams {
   disallowedTools?: string[];
   pluginDirs?: string[];
   mcpServers?: Record<string, McpServerConfig>;
+  worktreeName?: string;
+  isNewWorktree?: boolean;
 }
 
 interface UpdateConfigParams {
@@ -369,6 +371,8 @@ export class AgentBridge {
       disallowedTools: params.disallowedTools,
       plugins: params.pluginDirs?.map((path) => ({ type: "local", path })),
       mcpServers: params.mcpServers,
+      worktreeName: params.worktreeName,
+      isNewWorktree: params.isNewWorktree,
       canUseTool: (context: ToolPermissionContext) =>
         this.canUseTool(context, ctx),
     };
@@ -478,6 +482,7 @@ export class AgentBridge {
     branch: string;
     repoRoot: string;
     baseBranch: string;
+    isNew: boolean;
   }> {
     if (!params.workdir) {
       throw new RpcError(PROTOCOL_INTERNAL_ERROR, "workdir is required");
@@ -493,6 +498,7 @@ export class AgentBridge {
         branch: session.branch,
         repoRoot: session.repoRoot,
         baseBranch: params.baseBranch ?? getDefaultRemoteBranch(params.workdir),
+        isNew: session.isNew,
       };
     } catch (e) {
       throw new RpcError(PROTOCOL_INTERNAL_ERROR, (e as Error).message);
@@ -568,6 +574,9 @@ export class AgentBridge {
         path: p,
       })),
       mcpServers: entry.storedConfig.mcpServers,
+      // Keep worktree context (permission safety) across recreation, but never
+      // re-fire WorktreeCreate — the hook ran at initial creation.
+      worktreeName: entry.storedConfig.worktreeName,
       canUseTool: (context: ToolPermissionContext) =>
         this.canUseTool(context, ctx),
     };
