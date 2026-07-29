@@ -365,7 +365,6 @@ describe('DesktopApp', () => {
         });
 
         it('posts desktopDeleteSession after the user confirms', () => {
-            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
             const { vscode } = renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
@@ -375,15 +374,22 @@ describe('DesktopApp', () => {
 
             fireEvent.click(screen.getByTestId('desktop-session-delete-s1'));
 
+            // Deletion only proceeds after confirming the in-webview dialog
+            expect(screen.getByTestId('confirm-dialog-overlay')).toBeInTheDocument();
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopDeleteSession' }),
+            );
+
+            fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+
+            expect(screen.queryByTestId('confirm-dialog-overlay')).not.toBeInTheDocument();
             expect(vscode.postMessage).toHaveBeenCalledWith({
                 command: 'desktopDeleteSession',
                 sessionId: 's1',
             });
-            confirmSpy.mockRestore();
         });
 
         it('does not delete when the user cancels the confirm dialog', () => {
-            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
             const { vscode } = renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
@@ -392,13 +398,15 @@ describe('DesktopApp', () => {
             vscode.postMessage.mockClear();
 
             fireEvent.click(screen.getByTestId('desktop-session-delete-s1'));
+            fireEvent.click(screen.getByTestId('confirm-dialog-cancel'));
 
-            expect(vscode.postMessage).not.toHaveBeenCalled();
-            confirmSpy.mockRestore();
+            expect(screen.queryByTestId('confirm-dialog-overlay')).not.toBeInTheDocument();
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopDeleteSession' }),
+            );
         });
 
         it('warns about worktree + temp branch cleanup when deleting a worktree session', () => {
-            const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
             renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
@@ -414,10 +422,9 @@ describe('DesktopApp', () => {
 
             fireEvent.click(screen.getByTestId('desktop-session-delete-wt'));
 
-            expect(confirmSpy).toHaveBeenCalledWith(
-                expect.stringContaining('worktree 目录与临时分支将一并删除'),
+            expect(screen.getByTestId('confirm-dialog-overlay')).toHaveTextContent(
+                'worktree 目录与临时分支将一并删除',
             );
-            confirmSpy.mockRestore();
         });
     });
 

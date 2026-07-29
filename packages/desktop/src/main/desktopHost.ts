@@ -1834,15 +1834,7 @@ export class DesktopHost {
     const pid = paneId ?? this.focusedPaneId;
     const agent = this.agentForPane(pid);
     if (!agent || !this.mainWindow) return;
-    const { response } = await dialog.showMessageBox(this.mainWindow, {
-      type: 'warning',
-      message: '确定要回滚到此消息吗？这将删除之后的所有消息并撤销相关的文件更改。',
-      buttons: ['取消', '确定'],
-      defaultId: 0,
-      cancelId: 0,
-    });
-    if (response !== 1) return;
-
+    // The webview already showed the confirmation dialog — execute directly.
     try {
       const { inputContent } = await agent.rewindToMessage(messageId);
       this.inputDrafts.set(pid, inputContent);

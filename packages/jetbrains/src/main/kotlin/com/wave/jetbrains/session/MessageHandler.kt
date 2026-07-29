@@ -4,15 +4,12 @@ import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
 import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.WavePanelHolder
 import com.wave.jetbrains.config.WavePluginService
 import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.StdioClientException
 import com.wave.jetbrains.update.UpdateChecker
-import com.wave.jetbrains.util.Edt
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -516,14 +513,8 @@ class MessageHandler(
         }
     }
 
-    // ── Rewind: modal confirm → rewind → setInitialState + focusInput + scrollToBottom ──
+    // ── Rewind: webview already confirmed → rewind → setInitialState + focusInput + scrollToBottom ──
     private suspend fun handleRewindToMessage(messageId: String) {
-        // VSCE uses a modal warning dialog; mirror with Messages.showOkCancelDialog on the EDT.
-        val confirmed = confirmOnEdt(
-            "确定要回滚到此消息吗？这将删除之后的所有消息并撤销相关的文件更改。",
-            "回滚确认",
-        )
-        if (!confirmed) return
         try {
             val inputContent = session.agent?.rewindToMessage(messageId) ?: ""
             session.inputContent = inputContent
@@ -535,23 +526,6 @@ class MessageHandler(
             LOG.warn("rewindToMessage failed: ${e.message}", e)
             IdeService.showError(project, "回滚失败: ${e.message}")
         }
-    }
-
-    /** Show a modal OK/Cancel dialog on the EDT and await the result. */
-    private suspend fun confirmOnEdt(message: String, title: String): Boolean {
-        val deferred = CompletableDeferred<Boolean>()
-        Edt.invokeLater {
-            val rc = Messages.showOkCancelDialog(
-                project,
-                message,
-                title,
-                Messages.getOkButton(),
-                Messages.getCancelButton(),
-                Messages.getWarningIcon(),
-            )
-            deferred.complete(rc == Messages.OK)
-        }
-        return deferred.await()
     }
 
     /**

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Tooltip } from './Tooltip';
+import { ConfirmDialog } from './ConfirmDialog';
 import { MoreIcon } from './HeaderIcons';
 import { MoreMenu } from './MoreMenu';
 import type { DesktopSessionGroup, DesktopSessionEntry } from '../types';
@@ -65,6 +66,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // state is not persisted).
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  // Session awaiting delete confirmation; non-null shows the ConfirmDialog.
+  const [pendingDelete, setPendingDelete] = useState<{ sessionId: string; title: string; description?: string } | null>(null);
 
   const isExpanded = (group: DesktopSessionGroup): boolean =>
     overrides[group.workdir] ?? true;
@@ -123,15 +126,16 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           title="删除会话"
           onClick={(e) => {
             e.stopPropagation();
-            // FR-025: confirm before deleting; worktree sessions warn about the
-            // worktree dir + temp branch and the loss of uncommitted changes.
+            // Worktree sessions warn about the worktree dir + temp branch and
+            // the loss of uncommitted changes.
             const label = session.title || '新对话';
-            const message = session.hasWorktree
-              ? `确定删除会话「${label}」？\n该会话的 worktree 目录与临时分支将一并删除，未提交的改动将丢失。`
-              : `确定删除会话「${label}」？`;
-            if (window.confirm(message)) {
-              onDeleteSession(session.sessionId);
-            }
+            setPendingDelete({
+              sessionId: session.sessionId,
+              title: `确定删除会话「${label}」？`,
+              description: session.hasWorktree
+                ? '该会话的 worktree 目录与临时分支将一并删除，未提交的改动将丢失。'
+                : undefined,
+            });
           }}
           data-testid={`desktop-session-delete-${session.sessionId}`}
         >
@@ -206,6 +210,17 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           );
         })}
       </div>
+      {pendingDelete && (
+        <ConfirmDialog
+          title={pendingDelete.title}
+          description={pendingDelete.description}
+          onConfirm={() => {
+            onDeleteSession(pendingDelete.sessionId);
+            setPendingDelete(null);
+          }}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   );
 };
