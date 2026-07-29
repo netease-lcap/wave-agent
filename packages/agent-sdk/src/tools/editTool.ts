@@ -114,9 +114,14 @@ Usage:
 
     // Enforce read-before-edit: the file must have been read or written first.
     // readFileState is populated by Read, Write, and Edit tools — single source
-    // of truth, aligned with Claude Code's readFileState approach.
+    // of truth, aligned with Claude Code's readFileState approach. Skipped in
+    // plan mode: permissionManager enforces a plan-file-only gate whose denial
+    // message must surface instead of being masked by a read-state rejection.
     const resolvedPath = resolvePath(filePath, context.workdir);
-    if (!context.readFileState?.has(resolvedPath)) {
+    if (
+      context.permissionMode !== "plan" &&
+      !context.readFileState?.has(resolvedPath)
+    ) {
       return {
         success: false,
         content: "",
@@ -141,8 +146,9 @@ Usage:
       // newer since last read. For full reads, a content-hash fallback avoids
       // false positives when mtime changed but content didn't (git checkout,
       // editor round-trip save, cloud sync, antivirus). Partial reads get no
-      // fallback since only a slice was cached.
-      if (context.readFileState) {
+      // fallback since only a slice was cached. Skipped in plan mode (see
+      // read-before-edit note above) so the plan-file-only denial wins.
+      if (context.permissionMode !== "plan" && context.readFileState) {
         const state = context.readFileState.get(resolvedPath);
         if (state) {
           const currentStats = await stat(resolvedPath);
