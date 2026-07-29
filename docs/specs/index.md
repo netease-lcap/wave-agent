@@ -15,8 +15,8 @@
 |------|------|
 | 规格文件 | 60 |
 | 用户故事 | 282 |
-| 功能需求 | 1,165 |
-| 测试用例 | 4,366 |
+| 功能需求 | 1,167 |
+| 测试用例 | 4,406 |
 
 ## 规格列表
 
@@ -24,7 +24,7 @@
 
 | 功能 | 描述 | 用户故事 | 功能需求 | 链接 |
 |------|------|----------|----------|------|
-| 文件系统工具 | Read, Write, Edit, Glob, Grep 文件操作工具 | 3 | 19 | [规格](core/fs-tools.md) |
+| 文件系统工具 | Read, Write, Edit, Glob, Grep 文件操作工具 | 3 | 21 | [规格](core/fs-tools.md) |
 | Bash 工具 | Bash, BashOutput, KillBash shell 命令执行工具 | 5 | 29 | [规格](core/bash-tools.md) |
 | WebFetch 工具 | 获取 URL 内容，HTML 转 markdown，AI 模型处理，支持缓存 | 5 | 14 | [规格](core/web-fetch-tool.md) |
 | LSP 集成 | Language Server Protocol 代码智能（定义跳转、引用查找、悬停信息） | 3 | 8 | [规格](core/lsp-integration.md) |

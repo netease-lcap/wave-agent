@@ -86,6 +86,42 @@ Usage:
         isExistingFile = false;
       }
 
+      // Read-before-write + staleness guards (aligned with Claude Code).
+      // Only enforced for existing files when readFileState is available
+      // (production always injects it; new-file creation always bypasses).
+      // Grep does not register a file as read, so Grep-then-Write on an
+      // existing file is still rejected. Staleness uses the same `>` + full-
+      // read content-hash fallback as editTool to avoid false positives from
+      // git checkout / editor round-trip save / cloud sync / antivirus.
+      if (isExistingFile && context.readFileState) {
+        const state = context.readFileState.get(resolvedPath);
+        if (!state) {
+          return {
+            success: false,
+            content: "",
+            error:
+              "File has not been read yet. Read it first before writing to it.",
+          };
+        }
+        const currentStats = await stat(resolvedPath);
+        if (currentStats.mtime.getTime() > state.mtime) {
+          const isFullRead =
+            state.offset === undefined && state.limit === undefined;
+          const contentUnchanged =
+            isFullRead &&
+            createHash("sha256").update(originalContent).digest("hex") ===
+              state.hash;
+          if (!contentUnchanged) {
+            return {
+              success: false,
+              content: "",
+              error:
+                "File has been unexpectedly modified since last read. Read it again before writing to it.",
+            };
+          }
+        }
+      }
+
       // Check if overwriting existing file but content is the same
       if (isExistingFile && originalContent === content) {
         return {
