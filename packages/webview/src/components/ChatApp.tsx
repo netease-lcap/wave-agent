@@ -965,7 +965,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onLogout={handleLogout}
           isAuthenticated={state.isAuthenticated}
           sessionTree={host.sessionTree}
-          currentWorkdir={host.workdir}
           currentSessionId={state.currentSession?.id}
           onSelectSession={host.onSelectSession}
           onOpenPane={host.onOpenPane}
