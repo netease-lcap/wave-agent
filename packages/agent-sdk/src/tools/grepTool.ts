@@ -2,6 +2,7 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { spawn } from "child_process";
 import { rgPath } from "../utils/ripgrep.js";
 import { getDisplayPath } from "../utils/path.js";
+import { logger } from "../utils/globalLogger.js";
 import {
   GREP_TOOL_NAME,
   BASH_TOOL_NAME,
@@ -235,13 +236,21 @@ export const grepTool: ToolPlugin = {
 
       const result = await executeCommand(rgPath, rgArgs, workdir);
 
-      if (result.error && result.exitCode !== 1) {
-        // rg returns 1 for no matches, not an error
+      // Only a process-level spawn failure (exitCode null) is a hard error.
+      // rg exit 2 means some files were unreadable (e.g. device-name files
+      // like "nul" on Windows); stdout still holds usable partial results.
+      if (result.exitCode === null) {
         return {
           success: false,
           content: "",
           error: `ripgrep failed: ${result.stderr}`,
         };
+      }
+
+      if (result.exitCode !== 0 && result.exitCode !== 1) {
+        logger.debug(
+          `ripgrep exited with code ${result.exitCode}, keeping partial results: ${result.stderr.trim()}`,
+        );
       }
 
       const output = result.stdout.trim();

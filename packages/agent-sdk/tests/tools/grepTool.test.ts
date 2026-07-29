@@ -463,6 +463,48 @@ src/index.ts-3-  return new Application();
     expect(result.shortResult).toBe("No matches found");
   });
 
+  it("should return partial results when ripgrep exits with code 2", async () => {
+    // rg exit 2 = some files were unreadable (e.g. a file named "nul" on
+    // Windows), but stdout still holds matches from the remaining files.
+    const stdout = "src/index.ts\nsrc/utils.ts\n";
+    const stderr = "rg: .\\nul: Incorrect function. (os error 1)";
+    mockSpawn.mockReturnValueOnce(
+      createMockProcess(stdout, stderr, 2) as ChildProcess,
+    );
+
+    const result = await grepTool.execute(
+      {
+        pattern: "export",
+        output_mode: "files_with_matches",
+      },
+      testContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("src/index.ts");
+    expect(result.content).toContain("src/utils.ts");
+  });
+
+  it("should report no matches when ripgrep exits with code 2 and empty output", async () => {
+    mockSpawn.mockReturnValueOnce(
+      createMockProcess(
+        "",
+        "rg: .\\nul: Incorrect function. (os error 1)",
+        2,
+      ) as ChildProcess,
+    );
+
+    const result = await grepTool.execute(
+      {
+        pattern: "export",
+      },
+      testContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.shortResult).toBe("No matches found");
+  });
+
   it("should return error for missing pattern", async () => {
     const result = await grepTool.execute({}, testContext);
 

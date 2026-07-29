@@ -34,9 +34,13 @@ async function getAllFiles(workingDirectory: string): Promise<string[]> {
     });
 
     child.on("close", (code) => {
+      // Exit 2 = some files were unreadable (e.g. device-name files like
+      // "nul" on Windows); stdout still holds usable partial results.
+      // Spawn failures surface via the 'error' listener instead.
       if (code !== 0 && code !== 1) {
-        reject(new Error(`ripgrep failed: ${stderr}`));
-        return;
+        logger.warn(
+          `ripgrep exited with code ${code}, keeping partial results: ${stderr.trim()}`,
+        );
       }
       const files = stdout
         .trim()
