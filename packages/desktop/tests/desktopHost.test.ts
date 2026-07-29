@@ -1928,14 +1928,20 @@ describe('native menu actions', () => {
     expect(layout.panes[0].sessionId).not.toBe('sess-1');
   });
 
-  it('newSessionInFocusedPane is a no-op while the active agent streams', async () => {
-    const { host } = await readyHost();
-    lastAgent().isStreaming = true;
+  it('newSessionInFocusedPane spawns a new session even while the active agent streams', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    const streaming = lastAgent();
+    streaming.isStreaming = true;
     const agentsBefore = h.agentInstances.length;
 
     await host.newSessionInFocusedPane();
 
-    expect(h.agentInstances.length).toBe(agentsBefore);
+    expect(h.agentInstances.length).toBe(agentsBefore + 1);
+    expect(streaming.destroy).not.toHaveBeenCalled();
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(1);
+    expect(layout.panes[0].sessionId).not.toBe('sess-1');
   });
 
   it('closeFocusedPane closes the focused pane and keeps its agent alive', async () => {
@@ -1981,18 +1987,21 @@ describe('native menu actions', () => {
     expect(panePushes(sent).length).toBe(pushesBefore);
   });
 
-  it('onMenuStateChange fires on pushPanes and stream toggles with enabled states', async () => {
+  it('onMenuStateChange fires on pushPanes with enabled states, not on stream toggles', async () => {
     const { host } = await readyHost();
     const fn = vi.fn();
     host.onMenuStateChange = fn;
 
+    // Stream toggles don't change menu enablement — 新对话 stays available
+    // while streaming, same as the sidebar button.
     const agent = lastAgent();
     agent.isStreaming = true;
     agent.callbacks.onLoadingChange(true);
-    expect(fn).toHaveBeenLastCalledWith({ canNewSession: false, canClosePane: true });
-
     agent.isStreaming = false;
     agent.callbacks.onLoadingChange(false);
+    expect(fn).not.toHaveBeenCalled();
+
+    seedActiveSession('sess-1');
     expect(fn).toHaveBeenLastCalledWith({ canNewSession: true, canClosePane: true });
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
