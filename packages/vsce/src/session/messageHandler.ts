@@ -251,24 +251,17 @@ export class MessageHandler {
     }
 
     private async handleRewindToMessage(messageId: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        // The webview already showed the confirmation dialog — execute directly.
         const session = this.context.getChatSession(viewType || 'tab', windowId);
-        const result = await vscode.window.showWarningMessage(
-            '确定要回滚到此消息吗？这将删除之后的所有消息并撤销相关的文件更改。',
-            { modal: true },
-            '确定'
-        );
-        
-        if (result === '确定') {
-            try {
-                await session.rewindToMessage(messageId);
-                // Notify frontend to update state (including inputContent)
-                await this.handleWebviewReady(viewType, windowId);
-                this.context.postMessage({ command: 'focusInput' }, viewType, windowId);
-                this.context.postMessage({ command: 'scrollToBottom' }, viewType, windowId);
-            } catch (error) {
-                console.error(`回滚 ${viewType} 会话失败:`, error);
-                vscode.window.showErrorMessage('回滚失败: ' + error);
-            }
+        try {
+            await session.rewindToMessage(messageId);
+            // Notify frontend to update state (including inputContent)
+            await this.handleWebviewReady(viewType, windowId);
+            this.context.postMessage({ command: 'focusInput' }, viewType, windowId);
+            this.context.postMessage({ command: 'scrollToBottom' }, viewType, windowId);
+        } catch (error) {
+            console.error(`回滚 ${viewType} 会话失败:`, error);
+            vscode.window.showErrorMessage('回滚失败: ' + error);
         }
     }
 

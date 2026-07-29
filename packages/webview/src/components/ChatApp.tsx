@@ -6,6 +6,7 @@ import { ChatHeader } from './ChatHeader';
 import { TaskList } from './TaskList';
 import { QueuedMessageList } from './QueuedMessageList';
 import { ConfirmationDialog } from './ConfirmationDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 import ConfigDialog from './ConfigDialog';
 import PluginDialog from './PluginDialog';
 import McpDialog from './McpDialog';
@@ -42,6 +43,8 @@ const PANEL_HINT_DURATION_MS = 2400;
 export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
+  // Message id awaiting rewind confirmation; non-null shows the ConfirmDialog.
+  const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
   const [worktreeChecked, setWorktreeChecked] = useState(true);
@@ -604,12 +607,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
   const handleRewindToMessage = useCallback((messageId: string) => {
     if (state.isStreaming) return;
+    setPendingRewindId(messageId);
+  }, [state.isStreaming]);
 
-    postToHost({
-      command: 'rewindToMessage',
-      messageId
-    });
-  }, [state.isStreaming, postToHost]);
+  const handleRewindConfirm = useCallback(() => {
+    const messageId = pendingRewindId;
+    setPendingRewindId(null);
+    if (messageId) {
+      postToHost({
+        command: 'rewindToMessage',
+        messageId
+      });
+    }
+  }, [pendingRewindId, postToHost]);
 
   const showPanelHint = useCallback((text: string) => {
     if (panelHintTimer.current) clearTimeout(panelHintTimer.current);
@@ -937,6 +947,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           runs={state.workflowRuns}
           vscode={vscode}
           onCancel={handleDialogClose}
+        />
+      )}
+      {pendingRewindId && (
+        <ConfirmDialog
+          title="确定要回滚到此消息吗？"
+          description="这将删除之后的所有消息并撤销相关的文件更改。"
+          onConfirm={handleRewindConfirm}
+          onCancel={() => setPendingRewindId(null)}
         />
       )}
     </div>

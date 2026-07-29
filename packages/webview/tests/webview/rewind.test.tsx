@@ -7,7 +7,7 @@ describe('Rewind Feature', () => {
         vi.clearAllMocks();
     });
 
-    it('should send rewindToMessage command when clicking rewind button', async () => {
+    it('should send rewindToMessage command only after confirming the dialog', async () => {
         const { vscode } = renderChatApp();
 
         const messages = [
@@ -37,14 +37,60 @@ describe('Rewind Feature', () => {
             fireEvent.click(rewindButtons[0] as HTMLElement);
         });
 
-        // Verify rewindToMessage command was sent to extension
-        const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
+        // Clicking rewind only opens the confirmation dialog — no command yet
+        expect(screen.getByTestId('confirm-dialog-overlay')).toBeInTheDocument();
+        expect(screen.getByText('确定要回滚到此消息吗？')).toBeInTheDocument();
+        let sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
+        expect(sentMessages.find(m => m.command === 'rewindToMessage')).toBeUndefined();
+
+        // Confirm the dialog
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+        });
+
+        // Dialog closes and the command is sent to the extension
+        expect(screen.queryByTestId('confirm-dialog-overlay')).not.toBeInTheDocument();
+        sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
         const rewindCommand = sentMessages.find(m => m.command === 'rewindToMessage');
         expect(rewindCommand).toBeDefined();
         expect(rewindCommand).toEqual({
             command: 'rewindToMessage',
             messageId: 'msg-1'
         });
+    });
+
+    it('should not send rewindToMessage when the dialog is cancelled', async () => {
+        const { vscode } = renderChatApp();
+
+        const messages = [
+            MockDataGenerator.createUserMessage('Message 1', 'msg-1'),
+            MockDataGenerator.createAssistantMessage('Response 1', 'msg-2')
+        ];
+
+        act(() => {
+            sendCommand('updateMessages', { messages });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Message 1')).toBeInTheDocument();
+        });
+
+        vscode.postMessage.mockClear();
+
+        const rewindButtons = document.querySelectorAll('.message-action-btn');
+        await act(async () => {
+            fireEvent.click(rewindButtons[0] as HTMLElement);
+        });
+
+        expect(screen.getByTestId('confirm-dialog-overlay')).toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('confirm-dialog-cancel'));
+        });
+
+        expect(screen.queryByTestId('confirm-dialog-overlay')).not.toBeInTheDocument();
+        const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
+        expect(sentMessages.find(m => m.command === 'rewindToMessage')).toBeUndefined();
     });
 
     it('should remove selected message and put its content back to input after rewind', async () => {
@@ -71,6 +117,11 @@ describe('Rewind Feature', () => {
 
         await act(async () => {
             fireEvent.click(rewindButtons[1] as HTMLElement);
+        });
+
+        // Confirm the dialog so the command is dispatched
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
         });
 
         // Simulate backend response after rewind — setInitialState with truncated messages + inputContent
