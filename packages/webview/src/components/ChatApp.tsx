@@ -738,10 +738,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     if (!qm) return;
 
     const text = qm.content || qm.text || '';
-    const images = qm.images?.map(img => ({ data: img.path || '', mediaType: img.mimeType || '' }));
 
-    // Load content into the input (reuse the window-message insertion mechanism)
-    window.postMessage({ command: 'loadQueuedEditContent', text, images }, '*');
+    // Load content into this pane's input via the imperative ref (scoped to this
+    // pane only; window.postMessage would be received by all split-view panes).
+    messageInputRef.current?.loadQueuedEditContent(text);
     dispatch({ type: 'SET_EDITING_QUEUED_ID', payload: id });
   }, [state.queuedMessages]);
 

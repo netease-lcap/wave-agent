@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { renderChatApp, screen, fireEvent, sendCommand, fireInput, waitFor } from './test-utils';
+import { renderChatApp, render, screen, within, fireEvent, sendCommand, fireInput, waitFor, createMockVscode } from './test-utils';
+import { ChatApp } from '../../src/components/ChatApp';
 
 /**
  * Helper: set contenteditable text and fire input event
@@ -263,5 +264,39 @@ describe('Message Queue Features', () => {
         const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
         const sendMsg = sentMessages.find((m: Record<string, unknown>) => m.command === 'sendMessage' && m.text === 'New Message');
         expect(sendMsg).toBeDefined();
+    });
+
+    it('editing a queued message should not leak the edit chip into sibling panes', async () => {
+        // Simulate a split-view layout: two ChatApp instances sharing the same window.
+        // Both panes receive the same queued message. Clicking edit in pane A must only
+        // insert the "编辑队列消息" chip into pane A's input — pane B's input must stay
+        // untouched. (Previously loadQueuedEditContent used window.postMessage, which is
+        // received by every pane's MessageInput listener.)
+        const containerA = document.createElement('div');
+        const containerB = document.createElement('div');
+        document.body.append(containerA, containerB);
+        render(<ChatApp vscode={createMockVscode()} />, { container: containerA });
+        render(<ChatApp vscode={createMockVscode()} />, { container: containerB });
+
+        sendCommand('authStatusResponse', { isAuthenticated: true });
+        sendCommand('startStreaming');
+        sendCommand('updateQueue', { queue: [{ id: 'q1', content: 'Editable text' }] });
+
+        const inputA = within(containerA).getByTestId('message-input');
+        const inputB = within(containerB).getByTestId('message-input');
+        expect(inputA.querySelector('.queued-edit-chip')).toBeNull();
+        expect(inputB.querySelector('.queued-edit-chip')).toBeNull();
+
+        // Click edit in pane A only.
+        fireEvent.click(within(containerA).getByTestId('queued-edit-q1'));
+
+        // Pane A enters edit mode (chip + body loaded)...
+        await waitFor(() => {
+            expect(inputA.querySelector('.queued-edit-chip')).not.toBeNull();
+        });
+        expect(inputA.textContent).toContain('Editable text');
+
+        // ...but pane B's input must remain untouched.
+        expect(inputB.querySelector('.queued-edit-chip')).toBeNull();
     });
 });
