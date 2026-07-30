@@ -62,6 +62,7 @@ const permissionModeIcon = (m?: PermissionMode): React.ReactNode => {
 export interface MessageInputHandle {
   focus: () => void;
   triggerShortcut: (name: string) => void;
+  appendText: (text: string) => void;
 }
 
 export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((props, ref) => {
@@ -165,6 +166,39 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
     triggerShortcut: (name: string) => {
       if (name === 'history-search') {
         openHistorySearch();
+      }
+    },
+    // Appends text at the end of the input, keeping any existing content
+    // (including @file chips and images) intact. Used by the desktop preview
+    // element picker to batch element comments before sending.
+    appendText: (text: string) => {
+      const div = textareaRef.current;
+      if (!div || !text) return;
+      if ((div.textContent ?? '').trim() === '') {
+        div.replaceChildren();
+      } else {
+        div.appendChild(document.createElement('br'));
+        div.appendChild(document.createElement('br'));
+      }
+      text.split('\n').forEach((line, i) => {
+        if (i > 0) div.appendChild(document.createElement('br'));
+        div.appendChild(document.createTextNode(line));
+      });
+      // jsdom lacks a real innerText, so fall back to textContent for the
+      // state mirror (only its trim() emptiness check is consumed).
+      const mirror = div.innerText ?? div.textContent ?? '';
+      setMessage(mirror);
+      inputContentRef.current = mirror;
+      vscode.postMessage({ command: 'updateInputContent', content: mirror });
+      div.focus();
+      // Caret to the end so the user can keep typing seamlessly.
+      const sel = window.getSelection();
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(div);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
       }
     }
   }));

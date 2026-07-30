@@ -4,7 +4,7 @@ import type { VsCodeApi } from '../types';
 /**
  * Desktop-only preview pane: renders a localhost dev server in a
  * sandboxed <webview> next to the chat, with an element picker whose comments
- * are sent back to the agent as ordinary user messages.
+ * are appended to the chat input so several can be edited and sent together.
  *
  * Communication with the picker preload inside the guest:
  *   host → guest : wv.send('wave-picker', { action, palette? })
@@ -28,7 +28,7 @@ export interface PreviewComment {
   comment?: string;
 }
 
-/** User-visible markdown for a picker comment — sent as a plain user message. */
+/** User-visible markdown for a picker comment — appended to the chat input. */
 export function formatPreviewComment(msg: PreviewComment): string {
   const location = [msg.summary ? `\`${msg.summary}\`` : '', msg.text ? `「${msg.text}」` : '']
     .filter(Boolean)
@@ -64,14 +64,14 @@ export interface PreviewPaneProps {
   onWidthChange: (width: number) => void;
   /** Upper bound so the conversation area keeps its minimum width. */
   maxWidth: number;
-  /** Split-view pane this preview belongs to; tags picker comments for routing. */
-  paneId?: string;
+  /** Receives a formatted picker comment; appended to this pane's chat input. */
+  onAddComment?: (text: string) => void;
   /** Second-row layout: panels pack from the left, so the width drag anchors
    * the (fixed) left edge instead of the right edge. */
   widthFromLeft?: boolean;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, paneId, widthFromLeft }) => {
+export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, onAddComment, widthFromLeft }) => {
   const [displayUrl, setDisplayUrl] = useState(url);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pickerActive, setPickerActive] = useState(false);
@@ -86,6 +86,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
   const pickerReadyRef = useRef(false);
   const pickerActiveRef = useRef(pickerActive);
   pickerActiveRef.current = pickerActive;
+  const onAddCommentRef = useRef(onAddComment);
+  onAddCommentRef.current = onAddComment;
 
   const sendPicker = useCallback((action: 'activate' | 'deactivate') => {
     const wv = webviewRef.current;
@@ -148,11 +150,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
         return;
       }
       if (msg?.type === 'submit' && msg.comment) {
-        const outgoing: Record<string, unknown> = { command: 'sendMessage', text: formatPreviewComment(msg), images: [] };
-        if (paneId !== undefined) outgoing.paneId = paneId;
-        vscode.postMessage(outgoing);
-        pickerActiveRef.current = false;
-        setPickerActive(false);
+        // Append to the chat input instead of sending: the user batches
+        // several element comments and sends them together. The picker
+        // stays active for the next pick.
+        onAddCommentRef.current?.(formatPreviewComment(msg));
       }
     };
 

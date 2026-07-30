@@ -201,9 +201,9 @@ function showCard(el: Element): void {
   const send = document.createElement('button');
   send.type = 'button';
   send.className = 'send';
-  send.title = '发送';
+  send.title = '添加到输入框';
   send.innerHTML =
-    '<svg viewBox="0 0 16 16"><path transform="translate(2.65 2)" d="M10.7071 4.99999L5.70711 0H5L0 4.99999L0.707108 5.7071L4.85355 1.56066V12H5.85355V1.56066L9.99998 5.7071L10.7071 4.99999Z"/></svg>';
+    '<svg viewBox="0 0 16 16"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg>';
   footer.append(tag, send);
   input.append(textarea, footer);
 
@@ -221,7 +221,9 @@ function showCard(el: Element): void {
       text: snippet(el),
       comment,
     });
-    deactivate();
+    // Back to hover-pick state (like cancel): the picker stays active so the
+    // user can keep picking elements and batch several comments.
+    deselect();
   };
 
   send.addEventListener('click', submit);

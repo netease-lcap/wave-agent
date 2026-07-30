@@ -106,8 +106,11 @@ describe('pickerPreload', () => {
     expect(tag.textContent).toBe('button');
     expect(tag.title).toBe('#app > div > button');
     expect(root.querySelector('textarea')).toBeTruthy();
-    // Send disabled until the user types.
-    expect((root.querySelector('.send') as HTMLButtonElement).disabled).toBe(true);
+    // Submit button: plus ("add to input") icon, disabled until the user types.
+    const send = root.querySelector('.send') as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    expect(send.title).toBe('添加到输入框');
+    expect(send.querySelector('svg path')?.getAttribute('d')).toBe('M14 7v1H8v6H7V8H1V7h6V1h1v6h6z');
   });
 
   it('intercepts page clicks and form submits while active', () => {
@@ -129,8 +132,8 @@ describe('pickerPreload', () => {
     expect(submitEvent.defaultPrevented).toBe(true);
   });
 
-  it('Enter submits a structured comment and deactivates', () => {
-    const { button } = renderPage();
+  it('Enter submits a structured comment and returns to hover-pick state', () => {
+    const { button, container } = renderPage();
     activate({ accent: '#ff0000' });
     click(button);
 
@@ -147,9 +150,15 @@ describe('pickerPreload', () => {
       text: '立即购买',
       comment: '这个按钮颜色太淡了',
     });
-    // Auto-exit: highlight gone, card removed.
+    // Selection cleared: highlight gone, card removed.
     expect(button.classList.contains('__wave-picker-highlight')).toBe(false);
     expect(document.body.lastElementChild?.shadowRoot ?? null).toBeNull();
+    // Picker stays active for the next pick: hover highlights again and a
+    // second element can be selected for another comment.
+    mouseOver(container);
+    expect(container.classList.contains('__wave-picker-highlight')).toBe(true);
+    click(container);
+    expect(shadowRoot().querySelector('.tag')?.textContent).toBe('div');
   });
 
   it('send button is an equivalent submit entry once text is present', () => {

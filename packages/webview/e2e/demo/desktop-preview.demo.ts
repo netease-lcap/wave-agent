@@ -9,8 +9,10 @@ import { MockDataGenerator } from '../fixtures/mockData.js';
  * the test stubs the element's IPC surface (send/loadURL/reload), dispatches
  * dom-ready + picker-ready events so the toggle can activate, and overlays a
  * hand-built mock prototype page inside .preview-pane-body. The mock comment
- * card mirrors pickerPreload.ts's real card (280px, panel background, head
- * with element summary + ×, textarea + accent send button).
+ * card mirrors pickerPreload.ts's real card (280px, panel background, footer
+ * with element tag + accent "add to input" button). The submit ipc event,
+ * however, flows through the real PreviewPane → MessageInput path so the
+ * "comment lands in the chat input" shot shows the actual behavior.
  */
 const DIR_A = '/Users/dev/projects/wave-agent';
 
@@ -73,7 +75,7 @@ const mockCardHtml = (comment: string) => `
     <div style="display:flex;align-items:center;">
       <div style="flex:1;color:var(--vscode-button-background);font-family:monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="#mock-prototype button">button</div>
       <div style="background:var(--vscode-foreground);color:var(--vscode-panel-background,var(--vscode-editor-background));border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <svg viewBox="0 0 16 16" style="width:12px;height:12px;fill:currentColor;"><path transform="translate(2.65 2)" d="M10.7071 4.99999L5.70711 0H5L0 4.99999L0.707108 5.7071L4.85355 1.56066V12H5.85355V1.56066L9.99998 5.7071L10.7071 4.99999Z"/></svg>
+        <svg viewBox="0 0 16 16" style="width:12px;height:12px;fill:currentColor;"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg>
       </div>
     </div>
   </div>
@@ -159,5 +161,28 @@ test.describe('Desktop Preview Pane Screenshots', () => {
         }, mockCardHtml('这里改成主要按钮样式，并加上加载中状态'));
         await expect(webviewPage.locator('#mock-picker-card')).toBeVisible();
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-preview-comment.png' });
+
+        // ── 4. Submit dismisses the card; the comment lands in the chat ─
+        // input (nothing sent to the agent yet) so several can be batched.
+        await webviewPage.evaluate(() => {
+            document.querySelector('#mock-picker-card')?.remove();
+            const wv = document.querySelector('webview') as HTMLElement & {
+                dispatchEvent: (e: Event) => boolean;
+            };
+            const ipc = new Event('ipc-message') as Event & { channel: string; args: unknown[] };
+            ipc.channel = 'wave-picker';
+            ipc.args = [{
+                type: 'submit',
+                url: 'http://localhost:5173',
+                selector: '#mock-prototype button',
+                summary: 'button#mock-pay-btn',
+                text: '去支付',
+                comment: '这里改成主要按钮样式，并加上加载中状态',
+            }];
+            wv.dispatchEvent(ipc);
+        });
+        // The real MessageInput now carries the formatted comment.
+        await expect(webviewPage.getByTestId('message-input')).toContainText('这里改成主要按钮样式');
+        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-preview-comment-input.png' });
     });
 });
