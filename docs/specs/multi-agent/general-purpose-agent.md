@@ -1,3 +1,9 @@
+---
+name: "通用代理"
+description: "内置子代理，用于复杂研究、代码搜索和多步骤任务"
+order: 30
+---
+
 # 功能规格说明：通用 Agent
 
 **特性分支**：`general-purpose-agent`

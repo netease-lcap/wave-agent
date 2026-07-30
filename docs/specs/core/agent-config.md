@@ -1,3 +1,9 @@
+---
+name: "Agent 配置"
+description: "基于构造函数的配置替代环境变量，支持 max output tokens 和自定义 headers"
+order: 60
+---
+
 # 功能规格说明：Agent 配置
 
 **特性分支**：`agent-config`  

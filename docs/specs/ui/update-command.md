@@ -1,3 +1,9 @@
+---
+name: "Update 命令"
+description: "`wave update` / `wave-code update` 更新到最新版本"
+order: 200
+---
+
 # 功能规格说明：更新命令
 
 **特性分支**：`update-command`

@@ -1,3 +1,9 @@
+---
+name: "自定义工具 buildTool()"
+description: "buildTool() 工厂方法，供 SDK 用户定义自定义工具"
+order: 50
+---
+
 # 功能规格说明：通过 buildTool() 自定义工具
 
 **特性分支**：`custom-tools`

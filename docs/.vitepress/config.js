@@ -1,8 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { SPEC_GROUPS, SPECS_DIR, specTitle } from './spec-stats.mjs';
 
 const nav = [
   { text: '首页', link: '/' },
@@ -15,34 +13,18 @@ const nav = [
 ];
 
 // specs sidebar: generated from docs/specs/<group>/*.md
-const specsDir = path.join(__dirname, '..', 'specs');
-
-const specGroups = [
-  { dir: 'core', text: 'Agent 核心' },
-  { dir: 'ui', text: '交互与 UI' },
-  { dir: 'multi-agent', text: '多 Agent 与并发' },
-  { dir: 'ecosystem', text: '扩展与生态' },
-  { dir: 'automation', text: '自动化' },
-  { dir: 'enterprise', text: '企业管控' },
-];
-
-function specTitle(filePath) {
-  const content = fs.readFileSync(filePath, 'utf-8');
-  const m = content.match(/^#\s+功能规格说明：(.+)$/m);
-  if (m) return m[1].trim();
-  const h1 = content.match(/^#\s+(.+)$/m);
-  return h1 ? h1[1].trim() : path.basename(filePath, '.md');
-}
-
-const specsSidebar = specGroups.map(({ dir, text }) => ({
+const specsSidebar = SPEC_GROUPS.map(({ dir, text }) => ({
   text,
   collapsed: true,
   items: fs
-    .readdirSync(path.join(specsDir, dir))
+    .readdirSync(path.join(SPECS_DIR, dir))
     .filter((f) => f.endsWith('.md'))
     .sort()
     .map((f) => ({
-      text: specTitle(path.join(specsDir, dir, f)),
+      text: specTitle(
+        fs.readFileSync(path.join(SPECS_DIR, dir, f), 'utf-8'),
+        f.replace(/\.md$/, ''),
+      ),
       link: `/specs/${dir}/${f.replace(/\.md$/, '')}`,
     })),
 }));

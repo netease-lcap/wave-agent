@@ -1,3 +1,9 @@
+---
+name: "Plan 模式"
+description: "Shift+Tab plan 模式，只读分析并增量编辑 plan 文件"
+order: 140
+---
+
 # 功能规格说明：支持计划模式
 
 **特性分支**：`plan-mode`

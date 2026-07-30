@@ -1,3 +1,9 @@
+---
+name: "会话管理"
+description: "高性能、基于项目的会话管理系统"
+order: 10
+---
+
 # 功能规格说明：会话管理
 
 **规格文件**：`docs/specs/ui/session-management.md`

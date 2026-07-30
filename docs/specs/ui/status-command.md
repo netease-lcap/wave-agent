@@ -1,3 +1,9 @@
+---
+name: "Status 命令"
+description: "`/status` 显示版本、会话 ID、cwd、模型和运行时信息"
+order: 190
+---
+
 # 功能规格说明：Status 命令
 
 **特性分支**：`status-command`

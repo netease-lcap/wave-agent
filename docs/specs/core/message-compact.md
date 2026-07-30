@@ -1,3 +1,9 @@
+---
+name: "消息压缩"
+description: "对话历史和用户输入大小管理"
+order: 70
+---
+
 # 功能规格说明：消息压缩
 
 **特性分支**：`message-compact`  

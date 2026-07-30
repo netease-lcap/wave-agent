@@ -1,3 +1,9 @@
+---
+name: "AI 错误处理"
+description: "处理输出 token 限制超限，提示 agent 将工作拆分为更小的块"
+order: 120
+---
+
 # 功能规格说明：AI 错误处理
 
 **特性分支**：`ai-error-handling`  

@@ -1,3 +1,9 @@
+---
+name: "内置子代理"
+description: "Explore agent 内置子代理支持"
+order: 20
+---
+
 # 功能规格说明：内置子 Agent 支持
 
 **特性分支**：`builtin-subagent`

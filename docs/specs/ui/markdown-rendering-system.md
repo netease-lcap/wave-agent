@@ -1,3 +1,9 @@
+---
+name: "Markdown 渲染"
+description: "终端 Markdown 渲染，Ink 组件支持标题、列表、代码块、表格"
+order: 20
+---
+
 # 功能规格说明：Markdown 渲染系统
 
 **特性分支**：`markdown-rendering-system`  

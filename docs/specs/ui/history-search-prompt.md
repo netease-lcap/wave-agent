@@ -1,3 +1,9 @@
+---
+name: "历史搜索"
+description: "Ctrl+R 历史搜索，复用 `~/.wave/history.jsonl` 中的历史提示"
+order: 210
+---
+
 # 功能规格说明：历史搜索提示
 
 **特性分支**：`history-search-prompt`

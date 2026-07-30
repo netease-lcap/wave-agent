@@ -1,3 +1,9 @@
+---
+name: "任务管理工具"
+description: "TaskCreate/TaskGet/TaskUpdate/TaskList，`~/.wave/tasks/` 存储和任务列表 UI"
+order: 70
+---
+
 # 功能规格说明：任务管理工具与 UI
 
 **特性分支**：`task-management-tools`

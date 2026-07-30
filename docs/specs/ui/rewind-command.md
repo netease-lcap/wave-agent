@@ -1,3 +1,9 @@
+---
+name: "Rewind 命令"
+description: "`/rewind` 回退对话到上一条用户消息，同时回退文件变更"
+order: 100
+---
+
 # 功能规格说明：Rewind 命令
 
 **特性分支**：`rewind-command`

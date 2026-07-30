@@ -1,3 +1,9 @@
+---
+name: "LSP 集成"
+description: "Language Server Protocol 代码智能（定义跳转、引用查找、悬停信息）"
+order: 40
+---
+
 # 功能规格说明：LSP 集成支持
 
 **特性分支**：`lsp-integration`

@@ -1,3 +1,9 @@
+---
+name: "Clear 命令"
+description: "`/clear` 命令重置对话历史和会话"
+order: 90
+---
+
 # 功能规格说明：清除命令
 
 **特性分支**：`clear-command`

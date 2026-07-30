@@ -1,3 +1,9 @@
+---
+name: "Plan 子代理"
+description: "内置 Plan 子代理，在编码前设计实现方案"
+order: 40
+---
+
 # 功能规格说明：Plan 子 Agent 支持
 
 **特性分支**：`plan-subagent`

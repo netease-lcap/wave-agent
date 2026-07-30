@@ -1,3 +1,9 @@
+---
+name: "AskUserQuestion 工具"
+description: "结构化用户交互工具，支持选项"
+order: 80
+---
+
 # 功能规格说明：支持 AskUserQuestion 工具
 
 **特性分支**：`ask-user-tool`

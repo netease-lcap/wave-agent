@@ -1,3 +1,9 @@
+---
+name: "钩子系统"
+description: "扩展 Wave 行为的事件钩子系统"
+order: 10
+---
+
 # 功能规格说明：Hooks 支持
 
 **特性分支**：`hooks`  

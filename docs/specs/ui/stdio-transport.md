@@ -1,3 +1,9 @@
+---
+name: "Stdio 传输层"
+description: "编辑器插件与 `wave --stdio` 子进程的 JSON-RPC 通信，CLI 解析/安装/升级、多会话路由、错误诊断"
+order: 220
+---
+
 # 功能规格说明：Stdio 传输层
 
 **特性分支**：`stdio-transport`

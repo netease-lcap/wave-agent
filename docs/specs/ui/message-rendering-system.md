@@ -1,3 +1,9 @@
+---
+name: "消息渲染"
+description: "基于 Ink 的消息/块渲染——静态历史 + 动态工具执行"
+order: 30
+---
+
 # 功能规格说明：消息渲染系统
 
 **特性分支**：`message-rendering-system`

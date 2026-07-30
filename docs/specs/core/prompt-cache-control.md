@@ -1,3 +1,9 @@
+---
+name: "Prompt 缓存控制"
+description: "基于正则匹配的显式缓存标记，支持 Claude、Qwen 等多种模型"
+order: 90
+---
+
 # 功能规格说明：提示缓存控制
 
 **特性分支**：`prompt-cache-control`  

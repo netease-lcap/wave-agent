@@ -1,3 +1,9 @@
+---
+name: "Bash 子代理"
+description: "内置 Bash 子代理，执行 shell 命令"
+order: 50
+---
+
 # 功能规格说明：添加 Bash 内置子 Agent
 
 **特性分支**：`bash-subagent`

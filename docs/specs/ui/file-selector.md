@@ -1,3 +1,9 @@
+---
+name: "文件选择器"
+description: "快速文件/目录选择器 UI 组件"
+order: 50
+---
+
 # 功能规格说明：文件选择器
 
 **特性分支**：`file-selector`  
