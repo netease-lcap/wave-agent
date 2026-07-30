@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { callAgent, compactMessages } from "@/services/aiService.js";
+import { callAgent } from "@/services/aiService.js";
 import * as fs from "fs";
 import { logger } from "@/utils/globalLogger.js";
 
@@ -170,54 +170,6 @@ describe("AI Service - Branch Coverage", () => {
         expect.stringContaining("Failed to save 400 error debug files"),
         expect.any(Error),
       );
-    });
-  });
-
-  describe("compactMessages", () => {
-    it("should throw error on failure", async () => {
-      mockCreate.mockRejectedValue(new Error("API Error"));
-
-      await expect(
-        compactMessages({
-          gatewayConfig: TEST_GATEWAY_CONFIG,
-          modelConfig: TEST_MODEL_CONFIG,
-          messages: [],
-        }),
-      ).rejects.toThrow("API Error");
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to compact messages"),
-        expect.any(Error),
-      );
-    });
-
-    it("should throw specific error on AbortError", async () => {
-      const abortError = new Error("AbortError");
-      abortError.name = "AbortError";
-      mockCreate.mockRejectedValue(abortError);
-
-      await expect(
-        compactMessages({
-          gatewayConfig: TEST_GATEWAY_CONFIG,
-          modelConfig: TEST_MODEL_CONFIG,
-          messages: [],
-        }),
-      ).rejects.toThrow("Compaction request was aborted");
-    });
-
-    it("should handle response without usage", async () => {
-      mockCreate.mockResolvedValue({
-        choices: [{ message: { content: "Summary" } }],
-      });
-
-      const result = await compactMessages({
-        gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: TEST_MODEL_CONFIG,
-        messages: [],
-      });
-
-      expect(result.content).toBe("Summary");
-      expect(result.usage).toBeUndefined();
     });
   });
 

@@ -199,9 +199,6 @@ describe("AIManager - Coverage", () => {
   });
 
   it("should handle compaction error", async () => {
-    vi.mocked(aiService.compactMessages).mockRejectedValueOnce(
-      new Error("fail"),
-    );
     const mm = mockMsgManager({
       getMessages: vi.fn().mockReturnValue([
         { role: "user", blocks: [{ type: "text", content: "hello" }] },

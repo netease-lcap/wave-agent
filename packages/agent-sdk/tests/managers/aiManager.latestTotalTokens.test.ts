@@ -342,16 +342,6 @@ describe("AIManager - latestTotalTokens calculation", () => {
         },
       ] as unknown as Message[]);
 
-      // Mock compactMessages to return successful compaction
-      vi.mocked(aiService.compactMessages).mockResolvedValue({
-        content: "Compacted content",
-        usage: {
-          prompt_tokens: 50,
-          completion_tokens: 25,
-          total_tokens: 75,
-        },
-      });
-
       // Mock callAgent to return usage that triggers compaction
       vi.mocked(aiService.callAgent).mockResolvedValue({
         content: "Test response",

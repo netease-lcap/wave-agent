@@ -301,7 +301,6 @@ describe("Agent Usage Tracking", () => {
 
     it("should track compaction usage when it occurs", async () => {
       const mockCallAgent = vi.mocked(aiService.callAgent);
-      const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
       // Set up an agent instance with initial messages to have enough content for compaction
       const initialMessages = [
@@ -384,15 +383,6 @@ describe("Agent Usage Tracking", () => {
           prompt_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS - 20000,
           completion_tokens: 30000,
           total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 10000, // Exceeds default token limit
-        },
-      });
-
-      mockCompactMessages.mockResolvedValue({
-        content: "Compacted summary",
-        usage: {
-          prompt_tokens: 1000,
-          completion_tokens: 500,
-          total_tokens: 1500,
         },
       });
 
