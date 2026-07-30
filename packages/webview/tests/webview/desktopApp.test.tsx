@@ -721,6 +721,47 @@ describe('DesktopApp', () => {
             );
         });
 
+        it('keeps a new-session pane on its own workdir/branch when focus moves to a sibling pane', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1' }],
+                'pane-1',
+            );
+            // pane-1 is a fresh (empty) session on its own workdir; pane-0 is an
+            // existing session in a different workdir.
+            sendCommand('setInitialState', {
+                paneId: 'pane-1',
+                messages: [],
+                workdir: '/home/user/project-b',
+                isAuthenticated: true,
+            });
+            sendCommand('setInitialState', {
+                paneId: 'pane-0',
+                messages: [{ id: 'm1', role: 'user', blocks: [{ type: 'text', content: 'hi' }], timestamp: '2026-01-01T00:00:00.000Z' } as any],
+                workdir: '/home/user/project-a',
+                isAuthenticated: true,
+            });
+
+            // The host-level workdir follows the focused pane (handleFocusPane rewires
+            // it on click); focus now moves to pane-0. pane-1 must keep its OWN dir.
+            sendCommand('desktopWorkdirState', { workdir: '/home/user/project-a', recentWorkdirs: ['/home/user/project-a', '/home/user/project-b'] });
+            sendCommand('desktopPanes', { panes: [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1' }], focusedPaneId: 'pane-0' });
+
+            const pane1 = () => within(screen.getByTestId('desktop-pane-pane-1'));
+            expect(pane1().getByTestId('desktop-workdir')).toHaveTextContent('project-b');
+
+            // pane-1 queries branches for its OWN workdir (per-pane isolation) and
+            // renders its own branch after the reply — not pane-0's.
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListGitBranches', workdir: '/home/user/project-b', paneId: 'pane-1' }),
+            );
+            sendCommand('desktopGitBranches', {
+                paneId: 'pane-1',
+                workdir: '/home/user/project-b',
+                result: { branches: ['b-branch', 'main'], current: 'b-branch' },
+            });
+            expect(pane1().getByTestId('desktop-branch-selector')).toHaveTextContent('b-branch');
+        });
+
         it('posts desktopOpenPane on Ctrl+Click of a sidebar session (non-mac platform)', () => {
             const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
             mockRowWidth(1200);

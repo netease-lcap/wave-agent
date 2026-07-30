@@ -1342,13 +1342,15 @@ export class DesktopHost {
     }
   }
 
-  /** FR-052 proxy: branch list for the new-session worktree selector. */
-  private async handleListGitBranches(workdir: string): Promise<void> {
+  /** FR-052 proxy: branch list for the new-session worktree selector. The
+   * reply carries paneId so each pane consumes only its own branch list — a
+   * sibling pane focusing and re-querying must not overwrite this pane. */
+  private async handleListGitBranches(workdir: string, paneId?: string): Promise<void> {
     try {
       const result = await this.utilityClient.request('listGitBranches', { workdir });
-      this.postMessage({ command: 'desktopGitBranches', workdir, result });
+      this.postMessage({ command: 'desktopGitBranches', workdir, paneId, result });
     } catch {
-      this.postMessage({ command: 'desktopGitBranches', workdir, result: null });
+      this.postMessage({ command: 'desktopGitBranches', workdir, paneId, result: null });
     }
   }
 
@@ -1509,7 +1511,7 @@ export class DesktopHost {
         break;
 
       case 'desktopListGitBranches':
-        await this.handleListGitBranches(msg.workdir as string);
+        await this.handleListGitBranches(msg.workdir as string, msg.paneId as string | undefined);
         break;
 
       // Read-only workspace diff for the diff panel — runs git directly in
