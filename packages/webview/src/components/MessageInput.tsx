@@ -63,6 +63,7 @@ export interface MessageInputHandle {
   focus: () => void;
   triggerShortcut: (name: string) => void;
   appendText: (text: string) => void;
+  loadQueuedEditContent: (text: string) => void;
 }
 
 export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((props, ref) => {
@@ -200,7 +201,11 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
         sel.removeAllRanges();
         sel.addRange(range);
       }
-    }
+    },
+    // Loads a queued message's content into the input for editing (chip + body).
+    // Called via ref from ChatApp so it only affects this pane's input, not every
+    // pane in a split-view layout (window.postMessage would be received by all panes).
+    loadQueuedEditContent
   }));
 
   // Auto-focus input on component mount
@@ -615,14 +620,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
         // Could show an error notification here if needed
       } else if (data.command === 'addSelectionToInput') {
         insertSelectionTag(data.selection);
-      } else if (data.command === 'loadQueuedEditContent') {
-        loadQueuedEditContent(typeof data.text === 'string' ? data.text : '');
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [insertUploadedFilePaths, insertSelectionTag, closeDropdown, loadQueuedEditContent]);
+  }, [insertUploadedFilePaths, insertSelectionTag, closeDropdown]);
 
   // Handle image preview
   const handleImagePreview = useCallback((url: string, name: string) => {
