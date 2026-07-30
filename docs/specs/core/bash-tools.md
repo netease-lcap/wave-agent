@@ -1,3 +1,9 @@
+---
+name: "Bash 工具"
+description: "Bash, BashOutput, KillBash shell 命令执行工具"
+order: 20
+---
+
 # 功能规格说明：Bash 工具
 
 **规格文件**：`docs/specs/core/bash-tools.md`

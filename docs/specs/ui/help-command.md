@@ -1,3 +1,9 @@
+---
+name: "Help 命令"
+description: "`/help` 交互式帮助，显示快捷键、内置命令和插件命令"
+order: 150
+---
+
 # 功能规格说明：帮助命令
 
 **特性分支**：`help-command`

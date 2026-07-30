@@ -1,3 +1,9 @@
+---
+name: "Loop 命令"
+description: "`/loop` 通过 cron 调度循环提示（如 `/loop 5m check the build`），支持持久化和多会话调度锁"
+order: 20
+---
+
 # 功能规格说明：/loop 斜杠命令
 
 **特性分支**：`loop-slash-command`

@@ -1,3 +1,9 @@
+---
+name: "Wave Desktop（Electron 桌面应用）"
+description: ""
+order: 240
+---
+
 # 功能规格说明：Wave Desktop（Electron 桌面应用）
 
 **特性分支**：`desktop-electron-app`

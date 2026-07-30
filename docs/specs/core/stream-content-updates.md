@@ -1,3 +1,9 @@
+---
+name: "流式输出"
+description: "助手消息和工具参数的实时内容流式传输"
+order: 110
+---
+
 # 功能规格说明：实时内容流式传输
 
 **特性分支**：`stream-content-updates`  

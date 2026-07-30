@@ -1,3 +1,9 @@
+---
+name: "IDE 插件"
+description: "VS Code/JetBrains 共享 React webview 的横切关注点：主题变量、共享包与构建产物、生命周期与消息协议、IDE 专属对话框"
+order: 230
+---
+
 # 功能规格说明：IDE 插件
 
 **规格文件**：`docs/specs/ui/ide-plugin.md`

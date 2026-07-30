@@ -1,3 +1,9 @@
+---
+name: "SSO 认证"
+description: "/login 浏览器 SSO 登录、token 存储、自动 API 代理路由"
+order: 10
+---
+
 # 功能规格说明：SSO 认证
 
 **特性分支**：`sso-auth`

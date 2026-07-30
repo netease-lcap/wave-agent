@@ -1,3 +1,9 @@
+---
+name: "Simplify 技能"
+description: "审查已变更代码的质量问题（重复、低效）并通过 `/simplify` 自动修复"
+order: 50
+---
+
 # 功能规格说明：Simplify Skill
 
 **特性分支**：`simplify-skill`

@@ -1,3 +1,9 @@
+---
+name: "确认 UI"
+description: "工具权限审批的确认对话框 UI 组件"
+order: 70
+---
+
 # 功能规格说明：确认 UI
 
 **特性分支**：`confirm-ui`

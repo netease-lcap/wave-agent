@@ -1,3 +1,9 @@
+---
+name: "状态栏"
+description: "提取的 StatusLine 组件，用于模式和 shell 命令状态显示"
+order: 180
+---
+
 # 功能规格说明：状态栏组件重构
 
 **特性分支**：`status-line`

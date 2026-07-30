@@ -1,3 +1,9 @@
+---
+name: "服务端托管配置"
+description: "从 Wave AI 下载并应用托管设置，支持校验和缓存和合并优先级"
+order: 20
+---
+
 # 功能规格说明：服务器托管配置下载
 
 **特性分支**：`server-managed-config`

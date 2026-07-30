@@ -1,3 +1,9 @@
+---
+name: "OpenTelemetry 集成"
+description: "OpenTelemetry 指标、追踪和日志插桩，支持多种导出器（jsonl、OTLP）"
+order: 30
+---
+
 # 功能规格说明：OpenTelemetry 集成
 
 **特性分支**：`opentelemetry`

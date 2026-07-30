@@ -1,3 +1,9 @@
+---
+name: "MCP"
+description: "Model Context Protocol 外部工具和上下文源支持"
+order: 60
+---
+
 # 功能规格说明：MCP 支持
 
 **规格文件**：`docs/specs/ecosystem/mcp.md`

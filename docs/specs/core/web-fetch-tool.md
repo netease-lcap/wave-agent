@@ -1,3 +1,9 @@
+---
+name: "WebFetch 工具"
+description: "获取 URL 内容，HTML 转 markdown，AI 模型处理，支持缓存"
+order: 30
+---
+
 # 功能规格说明：WebFetch 工具
 
 **特性分支**：`web-fetch-tool`  

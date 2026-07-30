@@ -1,3 +1,9 @@
+---
+name: "Bang Shell 命令"
+description: "`!` 前缀直接从聊天输入执行 shell 命令"
+order: 140
+---
+
 # 功能规格说明：Bang Shell 命令
 
 **特性分支**：`bang-shell-command`

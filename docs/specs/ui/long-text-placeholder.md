@@ -1,3 +1,9 @@
+---
+name: "长文本占位符"
+description: "用 `[LongText#ID]` 占位符替换粘贴的长文本，提交时展开"
+order: 60
+---
+
 # 功能规格说明：长文本占位符
 
 **特性分支**：`long-text-placeholder`

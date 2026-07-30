@@ -1,3 +1,9 @@
+---
+name: "Agent 技能"
+description: "可发现的技能包，通过 SKILL.md 文件提供模型可调用的能力"
+order: 10
+---
+
 # 功能规格说明：Agent 技能支持
 
 **特性分支**：`agent-skills`  

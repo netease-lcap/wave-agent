@@ -1,3 +1,9 @@
+---
+name: "记忆管理"
+description: "通过记忆文件在对话间持久化信息"
+order: 100
+---
+
 # 功能规格说明：记忆管理
 
 **特性分支**：`memory-management`  

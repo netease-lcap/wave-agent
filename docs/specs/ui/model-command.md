@@ -1,3 +1,9 @@
+---
+name: "Model 命令"
+description: "`/model` 交互式 UI 切换已配置的 AI 模型"
+order: 160
+---
+
 # 功能规格说明：/model 命令
 
 **特性分支**：`model-command`

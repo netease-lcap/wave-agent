@@ -1,3 +1,9 @@
+---
+name: "文件系统工具"
+description: "Read, Write, Edit, Glob, Grep 文件操作工具"
+order: 10
+---
+
 # 功能规格说明：文件系统工具
 
 **规格文件**：`docs/specs/core/fs-tools.md`

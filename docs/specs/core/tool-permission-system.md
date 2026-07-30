@@ -1,3 +1,9 @@
+---
+name: "工具权限系统"
+description: "权限系统，支持模式、通配符、拒绝规则、信任、acceptEdits、dontAsk、安全区"
+order: 130
+---
+
 # 功能规格说明：工具权限系统
 
 **特性分支**：`tool-permission-system`

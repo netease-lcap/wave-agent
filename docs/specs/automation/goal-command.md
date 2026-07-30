@@ -1,3 +1,9 @@
+---
+name: "/goal 命令"
+description: "自主多轮目标追求，快速模型评估和熔断机制"
+order: 30
+---
+
 # 功能规格说明：/goal 命令
 
 **特性分支**：`goal-command`

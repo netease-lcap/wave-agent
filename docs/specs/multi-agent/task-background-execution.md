@@ -1,3 +1,9 @@
+---
+name: "任务后台执行"
+description: "`run_in_background`、`TaskOutput`/`TaskStop` 工具，`/tasks` 命令替代 `/bashes`"
+order: 60
+---
+
 # 功能规格说明：任务后台执行与管理
 
 **特性分支**：`task-background-execution`

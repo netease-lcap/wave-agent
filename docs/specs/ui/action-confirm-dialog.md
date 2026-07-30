@@ -1,3 +1,9 @@
+---
+name: "操作确认对话框"
+description: ""
+order: 250
+---
+
 # 功能规格说明：操作确认对话框
 
 **特性分支**：`action-confirm-dialog`

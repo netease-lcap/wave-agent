@@ -1,3 +1,9 @@
+---
+name: "工具选择"
+description: "CLI `--tools` 标志限制 agent 使用特定工具集"
+order: 120
+---
+
 # 功能规格说明：工具选择
 
 **特性分支**：`tools-selection`

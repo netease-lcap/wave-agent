@@ -1,3 +1,9 @@
+---
+name: "Prompt 工程"
+description: "Prompt 构建和管理框架"
+order: 80
+---
+
 # 功能规格说明：提示工程框架
 
 **特性分支**：`prompt-engineering`  

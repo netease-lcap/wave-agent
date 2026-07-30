@@ -1,3 +1,9 @@
+---
+name: "Init 命令"
+description: "`/init` 斜杠命令，使用 init-prompt.md 进行项目初始化"
+order: 30
+---
+
 # 功能规格说明：Init 斜杠命令
 
 **特性分支**：`init-slash-command`

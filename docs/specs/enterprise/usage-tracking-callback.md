@@ -1,3 +1,9 @@
+---
+name: "用量追踪"
+description: "SDK 用量追踪回调（`onUsagesChange`），用于 AI 调用和压缩"
+order: 40
+---
+
 # 功能规格说明：SDK 用量追踪与回调系统
 
 **特性分支**：`usage-tracking-callback`

@@ -1,3 +1,9 @@
+---
+name: "BTW 命令"
+description: "`/btw` 旁路问题，绕过主消息队列"
+order: 170
+---
+
 # 功能规格说明：BTW 命令
 
 **特性分支**：`btw-command`

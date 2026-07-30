@@ -1,3 +1,9 @@
+---
+name: "Workflow 编排"
+description: "确定性多子代理编排，支持 pipeline、parallel 和 phase 控制流"
+order: 80
+---
+
 # 功能规格说明：Workflow — 确定性多子 Agent 编排
 
 **特性分支**：`workflow`

@@ -1,3 +1,9 @@
+---
+name: "插件系统"
+description: "插件系统，支持 marketplace、作用域、技能、LSP、MCP、钩子、代理"
+order: 70
+---
+
 # 功能规格说明：插件支持与市场
 
 **特性分支**：`plugin`

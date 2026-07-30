@@ -1,3 +1,9 @@
+---
+name: "Code Review 技能"
+description: "审查当前 `git diff` 的正确性 bug，附带文件/行号引用"
+order: 40
+---
+
 # 功能规格说明：Code Review Skill
 
 **特性分支**：`code-review-skill`
