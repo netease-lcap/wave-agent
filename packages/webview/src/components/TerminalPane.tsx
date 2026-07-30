@@ -39,6 +39,11 @@ function loadTerminalLib(): Promise<NonNullable<Window['WaveTerminal']>> {
   return terminalLibPromise;
 }
 
+/** Preload the xterm chunk so the first terminal open skips the fetch+parse. */
+export function prefetchTerminalLib(): void {
+  loadTerminalLib().catch(() => {});
+}
+
 /** Terminal colors follow the app theme via --vscode-* variables. */
 const readTerminalTheme = () => {
   const styles = getComputedStyle(document.documentElement);
@@ -199,7 +204,12 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         });
         resizeObserver.observe(containerRef.current);
         fit.fit();
-        if (visibleRef.current) createPty();
+        if (visibleRef.current) {
+          createPty();
+          // 首次打开走这条路径（chunk 异步加载完成后才建终端）——聚焦，
+          // 对齐 VS Code 打开终端面板的行为。
+          term.focus();
+        }
       })
       .catch((err) => {
         if (!disposed) {
@@ -229,8 +239,10 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
     if (contextChanged) {
       killPty();
       if (visible) createPty();
-    } else if (becameVisible && !liveRef.current) {
-      createPty();
+    } else if (becameVisible) {
+      // 用户主动打开终端面板（勾选/快捷键）——聚焦终端，对齐 VS Code 行为。
+      if (!liveRef.current) createPty();
+      termRef.current?.focus();
     }
   }, [visible, sessionId, workdir, killPty, createPty]);
 
