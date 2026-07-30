@@ -1294,6 +1294,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // With no first-row panels the message area must claim the full first line,
   // otherwise the row separator would share its line (flex-wrap line packing).
   const panelRow1Empty = !checkedPanels.some((k) => panelRows[k] === 1);
+  // The last checked second-row panel (by the fixed Preview→Diff→Terminal
+  // order) grows to fill the remaining width so the second row spans the full
+  // pane width instead of leaving a gap to the right of a lone panel.
+  const row2CheckedKinds = PANEL_ORDER.filter(
+    (k) => checkedPanels.includes(k) && panelRows[k] === 2,
+  );
+  const row2FillKind = row2CheckedKinds[row2CheckedKinds.length - 1];
 
   const chatContainer = (
     <div className="chat-container" data-testid="chat-container" ref={isDesktop ? chatContainerRef : undefined}>
@@ -1353,7 +1360,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                 if (el) panelSlotNodes.current.set(kind, el);
                 else panelSlotNodes.current.delete(kind);
               }}
-              className={`desktop-panel-slot desktop-panel-slot--row-${panelRows[kind]}`}
+              className={`desktop-panel-slot desktop-panel-slot--row-${panelRows[kind]}${
+                kind === row2FillKind ? ' desktop-panel-slot--row-2-fill' : ''
+              }`}
               style={{ display: checkedPanels.includes(kind) ? undefined : 'none' }}
             >
               {renderPanelSlot(kind)}
