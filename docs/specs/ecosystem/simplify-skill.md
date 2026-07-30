@@ -6,7 +6,6 @@ order: 50
 
 # 功能规格说明：Simplify Skill
 
-**特性分支**：`simplify-skill`
 **创建日期**：2026-06-29
 
 ## 用户场景与测试 *（必填）*
@@ -68,34 +67,3 @@ order: 50
 - **如果 AI 尝试自动触发 skill 会怎样？** frontmatter 中的 `disable-model-invocation: true` 阻止自动调用；它仅通过 `/simplify` 由用户调用。
 - **如果发现是误报会怎样？** skill 记录并继续——它不与发现争论，直接跳过。
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须提供通过 `/simplify` 调用的内置 `simplify` skill。
-- skill 必须通过 `git diff` 收集更改，如果有已暂存更改则使用 `git diff HEAD`。
-- 当没有 git 更改时，skill 必须回退到审查最近修改的文件（用户提到的或 agent 较早编辑的）。
-- skill 必须在单条消息中并发启动三个审查 agent，每个接收完整 diff。
-- skill 必须包含 Code Reuse Review agent，搜索现有工具/辅助函数并标记重复和可以被现有工具替代的内联逻辑。
-- skill 必须包含 Code Quality Review agent，标记：冗余状态、参数膨胀、有变化的复制粘贴、泄漏的抽象、字符串类型代码、不必要的 JSX 嵌套和不必要的注释（仅保留非显而易见的 WHY 注释）。
-- skill 必须包含 Efficiency Review agent，标记：不必要的工作、错过的并发、热路径膨胀、重复的无操作更新（包括相同引用返回违规）、不必要的存在性检查（TOCTOU）、内存问题（无界结构、缺少清理、监听器泄漏）和过于宽泛的操作。
-- skill 必须等待所有三个 agent 完成后再修复。
-- skill 必须在第 3 阶段汇总发现并直接修复每个问题。
-- skill 必须跳过误报或不值得处理的发现而不争论。
-- skill 必须在完成时总结修复了什么（或确认代码已经是整洁的）。
-- skill 必须设置 `disable-model-invocation: true` 以防止 AI 自动触发。
-- skill 必须仅专注于质量——不得寻找正确性错误（使用 `/code-review`）。
-- skill 描述必须声明"Quality only — it does not hunt for bugs; use /code-review for that."
-
-### 关键实体
-
-- **ReviewAgent**：分配了质量维度（重用、质量、效率）的并行子 agent。接收完整 diff。
-- **Finding**：审查 agent 识别的质量问题，在第 3 阶段修复。
-- **Fix**：主 agent 应用的直接代码更改以解决发现。
-
-### 假设
-
-- skill 作为内置 skill 在 `packages/agent-sdk/builtin/skills/simplify/SKILL.md` 下实现。
-- Agent 工具对 skill 可用于启动并行审查子 agent。
-- skill 可以直接编辑文件（Write/Edit 工具）以应用修复。
-- `disable-model-invocation: true` 由现有 skill 系统处理（spec 006）。

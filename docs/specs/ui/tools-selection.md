@@ -6,7 +6,6 @@ order: 120
 
 # 功能规格说明：工具选择
 
-**特性分支**：`tools-selection`
 **创建日期**：2026-02-25
 
 ## 用户场景与测试 *（必填）*
@@ -77,20 +76,3 @@ order: 120
 - **冗余输入**：`--tools "Read,Read,Edit"` 会怎样？
   - *假设*：重复项应被去重。
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- CLI 必须支持 `--tools` 命令行参数。
-- 如果 `--tools` 设置为空字符串（`""`），agent 必须初始化为无工具。
-- 如果 `--tools` 设置为 `"default"`，agent 必须使用标准工具集初始化。
-- 如果 `--tools` 是逗号分隔的名称列表（例如 `"Bash,Edit"`），agent 必须只能访问这些特定工具。
-- Agent SDK 必须更新以接受 `tools` 参数，可以是 `string[]` 或 `undefined`。
-- CLI 必须在将 `--tools` 字符串传递给 Agent SDK 之前将其解析为 `string[]`。
-- 如果省略 `--tools` 参数，系统必须默认为"default"工具集。
-- 如果没有可用工具（例如 `--tools ""`），系统提示不得包含"Tool usage policy"部分。
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **Tool Configuration**：代表特定 agent 会话启用的能力集。
-  - 属性：`enabledTools`（工具标识符列表）。

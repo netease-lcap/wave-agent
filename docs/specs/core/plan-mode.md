@@ -6,7 +6,6 @@ order: 140
 
 # 功能规格说明：支持计划模式
 
-**特性分支**：`plan-mode`
 **创建日期**：2026-01-19
 
 ## 用户场景与测试 *（必填）*
@@ -165,66 +164,3 @@ order: 140
 
 ---
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须支持 "plan" 权限状态。
-- 用户必须能够使用 Shift+Tab 键盘快捷键按以下顺序切换权限模式：default -> acceptEdits -> bypassPermissions -> plan -> default。
-- `bypassPermissions` 必须仅在会话以 `--dangerously-skip-permissions` 或 `--permission-mode bypassPermissions` 启动时才包含在循环中。
-- 在计划模式时，系统必须将 LLM 限制为对所有文件的只读操作，指定计划文件除外。
-- 在计划模式时，系统必须允许 LLM 执行命令。
-- 当计划模式激活时，系统必须在 `~/.wave/plans/` 中确定计划文件路径，使用人类可读的名称（形容词-名词格式）。此名称必须通过使用 `rootSessionId` 作为种子在会话链中保持确定性，确保即使消息压缩或会话恢复后也重用相同的计划文件。
-- 当计划模式活动时，系统必须将 `<system-reminder>` 包装的用户消息（isMeta: true）注入对话消息中。这通过保持系统提示跨模式变化不变来保护提示缓存。提醒内容取决于接收者：
-  - **主 agent**：提醒必须包含计划文件信息并指示 agent 通过写入或编辑计划文件来增量构建计划：
-    ```text
-    Plan mode is active. ... you MUST NOT make any edits (with the exception of the plan file mentioned below) ...
-
-    ## Plan File Info:
-    ${planFileInfo}
-    You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this is the only allowed to take READ-ONLY actions.
-    ```
-  - **子 agent**：提醒不得指示子 agent 写入或编辑计划文件，因为子 agent（特别是 Plan 子 agent）无法访问 Write/Edit 工具。相反，它必须告诉子 agent 以文本输出形式返回发现，父 agent 将写入计划文件。子 agent 提醒可以在文件已存在时包含计划文件路径以供读取上下文：
-    ```text
-    Plan mode is active. ... your role is to explore the codebase and return your findings as text output. Do NOT attempt to write or edit any files — the parent agent will write the plan file based on your text response.
-
-    ## Plan File Info:
-    ${subagentPlanFileInfo}
-    ```
-- 系统必须确保在创建计划文件之前 `~/.wave/plans/` 目录存在。
-- 系统必须向用户提供指示当前权限模式的视觉反馈。
-- 系统必须提供名为 `ExitPlanMode` 的工具。
-- 工具描述必须包含："Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval."
-- 工具文档必须解释 agent 应该已经将计划写入系统消息中指定的文件，并且该工具不接受计划内容作为参数。
-- `ExitPlanMode` 工具必须触发向用户的确认请求，提供三个特定选择：
-    - **选项 1：Default**：退出计划模式并以标准执行继续。
-    - **选项 2：Accept Edits**：退出计划模式并以编辑自动接受的模式继续。
-    - **选项 3：Feedback**：向 agent 提供指令/反馈并保持在计划模式中。
-- 确认请求必须重用现有的 `canUseTool` 机制，必要时扩展它以支持这三种特定响应类型。
-- 系统必须在确认过程中向用户显示计划文件的内容。
-- 用户选择 "Default" 或 "Accept Edits" 后，系统必须将 agent 从 "plan mode" 转换到相应的目标模式。
-- 用户选择 "Feedback" 后，agent 必须保持在 "plan mode" 中并接收用户输入作为工具的输出。
-- `ExitPlanMode` 工具必须始终在工具列表中可见，无论当前权限模式如何。当 agent 不在计划模式时，工具通过运行时守卫返回错误信息。
-- 当 `permissionMode` 设置为 `bypassPermissions` 时，`ExitPlanMode` 不得可用。
-- 系统必须跟踪 `hasExitedPlanMode` 状态。当 agent 退出计划模式（通过 ExitPlanMode 或模式转换）时，此标志必须设置为 true。
-- 当进入计划模式且 `hasExitedPlanMode` 为 true 且计划文件已存在时，系统必须注入重新进入 `<system-reminder>` 消息，指示模型：(a) 读取现有计划文件，(b) 评估用户请求是新任务还是继续，(c) 在调用 ExitPlanMode 之前始终编辑计划文件。标志必须在注入后清除（一次性）。
-- 当计划模式活动时，系统必须在每次进入时恰好注入一次计划模式提醒——在进入计划模式后的第一次 AI 调用时。`PlanManager` 跟踪 `planEntryReminderPending` 标志，在进入计划模式时设置为 `true`，在提醒注入后消费（设置为 `false`）。后续轮次不注入重复或节流提醒。
-- 退出计划模式时，系统必须在下一个轮次注入一次性"已退出计划模式" `<system-reminder>` 消息，通知模型现在可以进行编辑和执行操作。如果计划文件存在，消息必须包含计划文件路径以供参考。
-- 所有计划模式 `<system-reminder>` 消息必须使用 `isMeta: true` 且不得在 UI 中渲染。
-- 压缩后，如果计划模式活动，初始提醒中的计划模式指令保留在压缩摘要中。不需要重新注入，因为提醒是每次进入一次性的。
-- `hasExitedPlanMode` 标志必须在 `PermissionManager` 中跟踪，并在同一会话内的模式转换中持久化。
-- "需要计划模式退出附件"标志（`needsPlanModeExitAttachment`）必须在离开计划模式时设置，并在退出 `<system-reminder>` 注入后清除（一次性）。
-- 系统必须提供名为 `EnterPlanMode` 的工具，允许 agent 主动请求进入计划模式。
-- `EnterPlanMode` 工具必须通过 `canUseTool` 机制触发用户确认请求。确认请求不得显示"始终允许"选项（`hidePersistentOption = true`）。
-- 用户批准 `EnterPlanMode` 后，系统必须通过 `requestPermissionModeChange("plan")` 执行完整的模式转换，包括：(a) 更新权限模式容器注册，(b) 调用 `planManager.handlePlanModeTransition()` 管理计划文件生命周期，(c) 触发 UI 回调通知界面更新。
-- `EnterPlanMode` 工具必须始终在工具列表中可见（不在 plan mode 时通过运行时守卫拒绝执行），而非根据模式动态添加/移除。
-- 当 agent 已在计划模式中调用 `EnterPlanMode` 时，工具必须返回错误而非重复进入。
-- 权限模式转换必须通过 `requestPermissionModeChange()` 方法执行（而非直接调用 `setPermissionMode()`），以确保计划模式生命周期管理（计划文件创建/清理、提醒注入标志）和 UI 通知的完整性。
-
-### 关键实体
-
-- **权限模式**：表示系统当前的限制级别（如 default、plan）。
-- **计划文件**：位于 `~/.wave/plans/` 中的 Markdown 文件，LLM 在计划模式期间用于记录其计划。
-- **计划模式状态**：agent 生命周期中生成或提议一系列操作的状态。
-- **ExitPlanMode 工具**：用于从计划模式状态转换出来的特定工具。
-- **EnterPlanMode 工具**：允许 agent 主动请求进入计划模式的特定工具。

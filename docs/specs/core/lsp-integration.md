@@ -6,7 +6,6 @@ order: 40
 
 # 功能规格说明：LSP 集成支持
 
-**特性分支**：`lsp-integration`
 **创建日期**：2025-12-24
 
 ## 用户场景与测试 *（必填）*
@@ -60,26 +59,6 @@ order: 40
 - **服务器崩溃**：如果 LSP 服务器进程死亡，`LspManager` 应该优雅地处理并可能重启它。
 - **大型响应**：某些 LSP 响应（如 `findReferences`）可能非常大；工具必须将结果截断为最多 1000 项和 100 个文件，以防止过多的 token 使用，同时在头部报告总数。
 - **慢速服务器**：实现超时以防止 agent 无限等待慢速语言服务器。
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须从 `.lsp.json` 加载 LSP 配置。
-- 系统必须管理 LSP 服务器子进程的生命周期。
-- 系统必须通过 stdio 实现 JSON-RPC 与服务器通信。
-- 系统必须使用 `textDocument/didOpen` 同步文件状态。
-- 系统必须为 agent 提供内置的 `lsp` 工具。
-- 系统必须支持 `goToDefinition`、`hover`、`findReferences`、`documentSymbol`、`workspaceSymbol`、`goToImplementation` 和调用层次操作。
-- 系统必须将 LSP URI 转换为本地文件路径。
-- 系统必须确保所有 LSP 进程在 agent 关闭时被终止。
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **LspManager**：管理服务器进程和通信。
-- **LspTool**：面向 agent 的工具接口。
-- **LspServerConfig**：特定语言服务器的配置。
-- **LspProcess**：运行中服务器的内部状态。
 
 ## 假设
 

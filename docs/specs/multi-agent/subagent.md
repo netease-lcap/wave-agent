@@ -6,7 +6,6 @@ order: 10
 
 # 功能规格说明：子代理支持
 
-**特性分支**：`subagent`
 **创建日期**：2024-12-19
 
 ## 用户场景与测试 *（必填）*
@@ -105,46 +104,6 @@ order: 10
 - 系统如何处理存在但没有内容或缺少必需字段的子代理文件？
 - 用户请求的子代理存在但缺少访问所需工具的权限时会怎样？
 - 子代理尝试访问 Task 管理工具（TaskCreate/TaskGet/TaskUpdate/TaskList）时会怎样？→ 系统必须拒绝：这些工具不注册到子代理的 ToolManager，子代理无法调用，防止其修改主代理的共享任务列表。
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- SDK 必须从 `.wave/agents/`（项目级）和 `~/.wave/agents/`（用户级）目录发现和加载用户创建的子代理配置
-- SDK 必须解析带有 YAML frontmatter 的用户创建子代理配置文件，包含必需的 name 和 description 字段，可选的 tools 和 model 字段，后跟 markdown 系统提示内容
-- SDK 不得提供子代理创建功能 - 用户使用首选文本编辑器手动创建配置
-- 当名称冲突时，系统必须优先使用项目级子代理而非用户级子代理
-- 系统必须验证子代理配置文件并为无效配置提供清晰的错误消息
-- 系统必须通过 Agent 工具自动将用户任务匹配到合适的子代理，LLM 根据提供的子代理名称和描述列表选择最合适的子代理
-- 当用户在请求中提及子代理名称时，系统必须支持通过 Agent 工具显式调用子代理
-- 系统必须隔离每个子代理的上下文窗口与主对话和其他子代理
-- 系统必须将子代理限制为仅在其配置中指定的工具，如果未指定则继承所有工具（但为防止无限委托循环而被禁的工具始终被排除）
-- 系统必须支持按子代理配置模型，未指定时回退到系统默认值
-- 系统必须提供关于哪个子代理正在处理任务的清晰反馈
-- 系统必须在子代理执行工具时实时更新 `Agent` 工具块的 `shortResult`
-- 系统必须在完成的 `Agent` 工具任务的最终 `shortResult` 中包含使用的 token 和执行的工具的摘要
-- 系统必须将子代理的最终助手消息内容作为工具结果返回给主代理
-- 系统必须隔离每个子代理的消息历史并在任务完成时清理实例以防止内存泄漏
-- 系统必须支持通过 `Agent` 工具中的 `run_in_background` 参数后台运行子代理任务
-- 系统必须处理子代理任务完成并将结果返回主对话上下文
-- 系统必须将子代理实现为标准 `Agent` 工具调用，将工具结果返回给主代理
-- 系统必须通过禁止子代理调用 `Agent` 工具来防止无限委托循环
-- 系统必须支持子代理配置文件中的 markdown 内容作为系统提示
-- 系统必须验证子代理配置中指定的工具存在且可用
-- 系统必须优雅处理没有子代理匹配任务的情况并回退到主代理处理
-- 系统不得在任务完成后将子代理消息历史存储在 CLI 层的持久状态中（OOM 保护）
-- 子代理实例必须接收从父级 `subagentHeaders[type]` 合并的 `defaultHeaders`，类型特定请求头覆盖父级 `defaultHeaders`
-- 系统必须在子代理的 PermissionManager `instanceDeniedRules` 中始终拒绝 Task 管理工具（`TaskCreate`、`TaskGet`、`TaskUpdate`、`TaskList`），无论子代理配置中是否显式列出这些工具。子代理共享主代理的 TaskManager 实例，允许其访问将导致子代理能并发修改主代理的任务列表（创建/更新/删除任务、解析依赖），构成数据竞争隐患。此拒绝与禁止 `Agent` 工具的条目采用同一机制（`instanceDeniedRules`），`shouldEnableTool` 对被拒绝工具返回 `false`，使其不会注册到子代理的 ToolManager。
-
-### 关键实体
-
-- **Subagent Configuration**：表示用户创建的子代理，YAML frontmatter 中有必需的 name 和 description 字段，可选 tools 列表，可选 model 规格，和 markdown 系统提示内容
-- **Subagent Instance**：处理特定任务的活跃子代理，有自己的上下文窗口和工具访问权限
-- **Agent Delegation**：通过 Agent 工具基于专业领域和可用性将用户请求匹配到合适子代理的过程
-- **Agent Context**：为每个子代理和主代理分别维护的隔离对话上下文
-- **SubagentManagerCallbacks**：包含细粒度子代理特定事件处理器的接口（与 MessageManagerCallbacks 分离）
-- **SubagentManager**：负责管理子代理生命周期并将事件转发给父回调处理器的组件
-- **AgentCallbacks**：扩展以包含 SubagentManagerCallbacks 实现端到端回调支持
 
 ## 子代理生命周期（2025-01-10 添加）
 

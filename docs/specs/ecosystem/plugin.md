@@ -6,8 +6,6 @@ order: 70
 
 # 功能规格说明：插件支持与市场
 
-**特性分支**：`plugin`
-
 ## 背景
 本规格说明合并并统一了本地插件支持、扩展插件能力（Skills、LSP、MCP、Hooks、Agents）、插件作用域管理以及插件市场生态系统（包括本地、GitHub 和内置市场支持，以及交互式 CLI 管理界面）的需求。它为 Wave 生态系统内插件的发现、安装和管理提供了单一事实来源。
 
@@ -86,64 +84,6 @@ order: 70
 6. **假设**用户安装或卸载插件完成，**当**操作成功后，**则**插件变更即刻在当前会话中生效（如插件命令立即可用或移除）。
 7. **假设**某操作失败（如网络错误），**当**失败发生时，**则**通过 IDE 原生错误提示告知用户失败原因。
 8. **假设**对话框已打开，**当**用户点击对话框外区域、按下 Escape 或点击关闭按钮时，**则**对话框关闭。
-
-## 需求
-
-### 功能需求
-- 系统必须识别 `.wave-plugin/plugin.json` 为插件清单文件。
-- 插件清单必须包含 `name`、`description` 和 `version`。
-- 系统必须支持插件根目录下的以下组件目录：
-    - `commands/`：Markdown 格式的斜杠命令。
-    - `skills/`：带有 `SKILL.md` 文件的 Agent 技能。
-    - `agents/`：自定义 agent 定义。
-    - `hooks/`：`hooks.json` 中的事件处理器。
-- 系统必须支持插件根目录下的以下配置文件：
-    - `.lsp.json`：LSP 服务器配置。
-    - `.mcp.json`：MCP 服务器配置。
-- 系统必须强制只有 `plugin.json` 位于 `.wave-plugin/` 目录内。
-- 斜杠命令必须使用插件名称和冒号进行命名空间化（如 `/plugin-name:command-name`）。
-- 插件提供的 Agent 技能必须使用插件名称和冒号进行命名空间化（如 `/plugin-name:skill-name`）。
-- 系统必须支持三个安装作用域：`user`（全局）、`project`（通过仓库共享）和 `local`（用户在仓库特定）。
-- 插件加载逻辑必须从所有适用作用域聚合 `enabledPlugins` 并按优先级应用：`local` > `project` > `user`。
-- `wave plugin install` 必须自动将插件添加到指定作用域的 `enabledPlugins` 中。
-- 系统必须支持 `--plugin-dir` 标志以从特定目录加载插件。
-- 系统必须提供由 `wave plugin` 触发的独立基于 Ink 的 CLI 界面。
-- 系统必须支持三个主要导航区域：发现、已安装和市场。
-- 系统必须允许通过 GitHub 简写（`owner/repo`）、Git URL（带可选 `ref` 指定分支/标签）和本地文件系统路径添加市场。
-- 系统必须包含 `wave-plugins-official`（github 上的 netease-lcap/wave-plugins-official）作为默认注册市场。
-- 系统必须支持 `marketplace.json` 中定义为相对路径或 Git URL 的插件来源。
-- 系统必须在本地缓存市场清单以避免冗余网络请求。
-- 系统必须支持通过 `wave plugin marketplace update [name]` 或 UI 更新市场。
-- 系统必须支持已注册市场的自动更新（内置市场默认启用）。
-- 系统必须在执行任何 GitHub 或 Git 相关操作之前检查 Git 可用性。
-- 系统必须跟踪并显示每个已注册市场的最后更新时间。
-- 系统必须在启动期间在后台执行市场自动更新以避免阻塞 CLI。
-- 系统必须实现基于文件的锁定机制，以确保对插件注册表和缓存的安全并发访问。
-- 系统必须对所有 Git 操作强制执行超时（默认 120 秒，可通过 `WAVE_PLUGIN_GIT_TIMEOUT_MS` 配置），以防止在慢速网络或大型仓库上挂起。
-- 系统必须专门通过 `git clone --depth 1`（浅克隆）获取远程插件和市场。没有直接的 HTTP 文件下载机制。
-- `marketplace.json` 中带有 Git URL 来源（`http://`、`https://`、`git@`、`ssh://`）的插件条目在安装时必须单独克隆，而不是从市场检出中复制。
-- `PluginManager.loadPlugins()` 必须先加载显式配置的插件（来自 `AgentOptions.plugins`），然后加载从 `installed_plugins.json` 中市场安装的插件。
-- `PluginCore` 必须为所有插件和市场操作提供统一的高级 API（安装、卸载、启用、禁用、更新、列表、添加/移除市场、切换自动更新）。
-- IDE 插件必须提供 `/plugin` 斜杠命令打开插件管理对话框。
-- IDE 插件管理对话框必须提供"探索"、"已安装"、"市场"三个标签页，与 CLI 界面的三个导航区域对应。
-- "探索"页必须支持按插件名称和描述实时搜索过滤，并在点击插件后显示详情视图，详情视图必须提供项目作用域（默认）、用户作用域、仅此仓库三个安装按钮（作用域语义见上文安装作用域条目）。
-- "已安装"页必须仅列出已安装插件（含作用域、来源市场、版本），并为每个插件提供"更新"和"卸载"操作。
-- "市场"页必须列出已注册市场的名称、来源地址和上次更新时间，提供添加市场输入框，并为每个市场提供"更新"和"移除"操作。
-- 插件安装或卸载完成后，IDE 插件必须使变更在当前会话中即刻生效（重建会话能力，如插件命令、技能的注册或移除）。
-- IDE 插件管理对话框中的操作失败时，必须通过 IDE 原生错误提示展示失败原因，而非对话框内联错误。
-- IDE 插件管理对话框必须支持通过点击对话框外区域、按下 Escape 或点击关闭按钮关闭。
-
-### 关键实体
-- **Plugin**：包含元数据和功能扩展的自包含目录。在顶层扩展 `PluginManifest` 并带有组件字段（无嵌套 `components` 包装器）。
-- **Plugin Manifest**：包含插件身份和元数据的 JSON 文件（`.wave-plugin/plugin.json`）（`name`、`description`、`version`、可选 `author`）。
-- **PluginConfig**：加载插件的配置。当前支持 `type: "local"` 和 `path` 字段。
-- **Skill**：由 `SKILL.md` 文件定义的模型调用能力。
-- **Scope**：确定设置存储位置及其优先级的配置级别（用户、项目或本地）。
-- **Marketplace**：插件的来源。属性包括名称、来源（目录、GitHub 或 Git URL）和可用插件列表。
-- **MarketplaceSource**：判别联合类型：`{ source: "directory"; path }` | `{ source: "github"; repo; ref? }` | `{ source: "git"; url; ref? }`。
-- **MarketplacePluginEntry**：`marketplace.json` 中的插件列表，包含 `name`、`source`（相对路径或 Git URL）和 `description`。
-- **InstalledPlugin**：记录已安装的插件，包含 `name`、`marketplace`、`version`、`cachePath`、可选 `scope` 和可选 `projectPath`。
-- **Installation**：表示插件在用户系统上的状态。启用状态通过设置中的 `enabledPlugins` 跟踪，而不是在 `InstalledPlugin` 记录本身上。
 
 ## 假设
 - **A-001**：已安装的插件如果未在任何 `enabledPlugins` 配置中明确提及，则默认**禁用**。

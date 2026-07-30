@@ -6,7 +6,6 @@ order: 20
 
 # 功能规格说明：Markdown 渲染系统
 
-**特性分支**：`markdown-rendering-system`  
 **创建日期**：2024-12-01  
 
 ## 用户场景与测试 *（必填）*
@@ -54,22 +53,3 @@ order: 20
 
 ---
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须使用 `marked` 库将 Markdown 字符串解析为 token
-- 系统必须渲染内联元素：text、strong（粗体）、em（斜体）、codespan（内联代码）、link（同时显示文本和 URL）、br（换行）和 del（删除线）
-- 系统必须渲染块元素：标题（H1-H6）、段落、围栏代码块、列表（有序和无序）、引用块和水平线
-- 系统必须渲染带边框和表头的表格
-- 系统必须基于内容自动计算表格的列宽
-- 如果总宽度超过终端宽度，系统必须按比例缩放表格列
-- 系统必须通过反转义处理 markdown 中的 HTML 实体（如 `&lt;` 转为 `<`）
-- 系统必须支持嵌套元素（如列表项中的粗体文本）
-
-### 关键实体
-
-- **Markdown 组件**：渲染 markdown 字符串的主入口点
-- **BlockRenderer**：负责渲染块级 markdown token 的组件
-- **InlineRenderer**：负责渲染内联 markdown token 的组件
-- **TableRenderer**：专门用于渲染带响应式宽度计算的 markdown 表格的组件

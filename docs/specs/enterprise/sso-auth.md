@@ -6,7 +6,6 @@ order: 10
 
 # 功能规格说明：SSO 认证
 
-**特性分支**：`sso-auth`
 **创建日期**：2026-05-12
 
 ## 用户场景与测试 *（必填）*
@@ -104,7 +103,6 @@ order: 10
 
 ### 边界情况
 
-
 - **如果 SSO 回调服务器端口已被占用会怎样？** 服务器使用 `localhost:0`（系统分配的随机端口），避免端口冲突。
 - **如果 Wave AI 上没有配置 SSO 提供程序会怎样？** 登录失败并显示清晰的错误消息（"No SSO providers available"）。
 - **如果登录时 `WAVE_SERVER_URL` 未设置会怎样？** 登录失败并显示清晰的错误，指示用户设置环境变量。
@@ -113,57 +111,3 @@ order: 10
 - **如果 token 过期（JWT 默认 8 小时）会怎样？** 系统在过期前 5 分钟使用存储的 refresh token 主动刷新 token。如果 refresh token 被撤销（400/401），认证被清除，用户必须重新运行 `/login`。在刷新期间的瞬时网络错误中，保留现有 token，重试在下次请求时进行。
 - **如果 SSO 登录超时（5 分钟）会怎样？** 认证服务器关闭并显示错误。用户可以重试 `/login`。
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须在 CLI 中提供 `/login` 和 `/logout` 斜杠命令。
-- 系统必须在 `127.0.0.1` 上使用随机端口启动本地 HTTP 服务器以接收 SSO 回调。
-- 系统必须从回调 URL 中提取 `code` 查询参数，并通过 `POST /api/auth/token` 使用 `{ grant_type: "authorization_code", code }` 交换 JWT。
-- 系统必须从 `WAVE_SERVER_URL/api/auth/sso-providers` 获取可用的 SSO 提供程序并使用第一个提供程序。
-- 当浏览器可用时，系统必须在默认浏览器中打开 SSO 登录 URL。
-- 当浏览器回调不可用时（远程服务器），系统必须接受通过 CLI 手动输入授权码，并交换 JWT。
-- 系统必须将 SSO token 保存到 `~/.wave/auth.json`，文件权限为 `0o600`。
-- 保存时系统必须保留 `auth.json` 中的非 SSO_TOKEN 字段（合并，而非覆盖）。
-- 解析网关配置时，系统必须将 SSO 模式优先于直接 LLM 模式。
-- 在 SSO 模式下，系统必须将 LLM API 请求路由到 `${WAVE_SERVER_URL}/api/v1`。
-- 系统不得在日志、错误消息或 UI 中暴露 SSO token（仅显示截断的前缀/后缀）。
-- 收到 token 或超时后，系统必须关闭 localhost 回调服务器。
-- 系统必须在 5 分钟后超时登录流程并显示清晰的错误消息。
-- 系统必须允许用户随时按 Escape 取消登录流程。
-- 系统必须使用 `execFile`（而非 `exec`）打开浏览器以防止命令注入。
-- SSO 模式和直接 LLM 模式必须共存——移除 SSO token 恢复直接 LLM 行为。
-- 当 SSO token 距过期不足 5 分钟时，系统必须使用存储的 refresh token 通过 `POST /api/auth/token` 使用 `{ grant_type: "refresh_token", refresh_token }` 主动刷新。
-- 系统必须通过尝试 token 刷新并重试请求一次来响应式恢复 401/403 API 错误。
-- 系统必须去重并发 token 刷新调用，使只发出一个网络请求。
-- 系统必须检测磁盘上其他进程已刷新 token（通过文件 mtime），并使用新鲜 token 而不是进行冗余刷新请求。
-- 当 refresh token 被撤销（400/401 响应）时，系统必须清除认证（注销），但在刷新期间的瞬时网络错误时保留认证。
-- 系统必须将没有 `SSO_TOKEN_EXPIRES_AT` 的 token 视为永不过期（向后兼容）。
-- 系统必须使用 `POST /api/auth/token` 和 `{ grant_type: "authorization_code", code }` 进行初始 code 交换（替代 `POST /api/auth/exchange`）。
-- 系统必须将 `SSO_REFRESH_TOKEN` 和 `SSO_TOKEN_EXPIRES_AT` 与 `SSO_TOKEN` 一起保存在 `~/.wave/auth.json` 中，并在注销时删除它们。
-- 系统必须在 SSO 模式下使用 `createAuthAwareFetch` 包装 fetch，以透明地处理所有 API 调用的 token 刷新。
-- 系统必须在 token 刷新操作期间记录 info 级别的 `[Auth]` 消息（主动刷新、响应式 401 恢复、基于 mtime 的去重）用于审计和调试。
-- 即使 `resolveGatewayConfig()` 在没有显式 `fetch` 参数的情况下被调用，当 SSO 模式活跃时系统必须始终创建 `authAwareFetch` 包装器。
-- `AuthService.login()` 必须接受可选的 `serverUrl` 参数，优先级为：`login({serverUrl})` → `authService._serverUrl` → `WAVE_SERVER_URL` 环境变量。
-
-#### IDE 插件侧（VS Code 扩展 + JetBrains 插件，共用 webview）
-
-- IDE 插件聊天头部"更多"菜单必须根据当前认证状态互斥显示单一认证入口——已认证时显示"退出登录"、未认证时显示"登录"，二者不共存。此处"已认证"特指 SSO 登录（`isAuthenticated` 来源于 `AuthService.isSSOAuthenticated()`，即 `~/.wave/auth.json` 中存在未过期的 `SSO_TOKEN`），不含仅配置 Base URL + API Key 的直接连接场景；因此仅配置直接连接（无 SSO）的用户在"更多"菜单中仍显示"登录"入口，与欢迎页对这类用户隐藏登录按钮的行为有意区分。
-- 在"更多"菜单点击"退出登录"时，系统必须清除 SSO token（`logoutResponse { success: true }`）并将认证状态置为未认证，但不得清空当前会话消息——前端通过 `restoreSessionId` 重建 agent 时从磁盘恢复并回推消息，欢迎页门控仅依据 `messages.length === 0`，故已有对话退出登录后保留在对话视图、不跳欢迎页。
-- 在"更多"菜单点击"登录"时，系统必须发起与 CLI `/login` 相同的 SSO 登录流程，登录成功后（`loginResponse { success: true }`）将认证状态置为已认证，菜单认证入口随之切换为"退出登录"。
-- 欢迎页的"登录"按钮与"更多"菜单的"登录"项必须复用同一 `handleLogin` 处理逻辑（`vscode.postMessage({ command: 'login' })`），行为一致。
-- IDE 插件"更多"菜单必须包含"设置"项，点击必须打开插件配置对话框（见 agent-config.md「IDE 插件配置对话框」用户故事）。
-- IDE 插件"更多"菜单必须包含"企业控制台"项，点击必须在系统浏览器中打开当前服务端地址对应的控制台页面。
-- 当前会话无消息且初始化完成时，IDE 插件必须显示欢迎页；初始化未完成时必须显示加载动画。
-- 欢迎页必须仅在用户未 SSO 登录且未配置 apiKey + baseURL 直连时显示登录引导文案与"登录"按钮（两者同时满足才隐藏）。
-- 欢迎页必须在用户发送第一条消息后切换为正常对话视图。
-- 欢迎页门控必须仅依据"当前会话是否有消息"，与认证状态解耦（与「退出登录不跳欢迎页」行为一致）。
-
-### 关键实体
-
-- **AuthService**：管理 SSO 认证生命周期的单例服务（登录、注销、token 存储、token 刷新、认证感知 fetch）。在 `login()` 中接受可选的 `serverUrl` 参数并带有优先级链。
-- **AuthConfig**：存储在 `~/.wave/auth.json` 中的配置对象，包含 `SSO_TOKEN`、`SSO_REFRESH_TOKEN`、`SSO_TOKEN_EXPIRES_AT` 和 `user`。
-- **LoginCommand**：`/login` 斜杠命令的 Ink UI 组件，处理浏览器和手动输入流程。
-- **GatewayConfig（SSO 模式）**：解析的配置，其中 `apiKey` 是 SSO token，`baseURL` 是 `${WAVE_SERVER_URL}/api/v1`，`fetch` 使用 `createAuthAwareFetch` 包装。
-- **TokenResponse**：来自 `POST /api/auth/token` 的响应，包含 `token`、`refreshToken?`、`expiresIn?` 和 `user`。
-- **MoreMenu（IDE 插件侧）**：VS Code 扩展与 JetBrains 插件共用 webview 中聊天头部"更多"菜单，按认证状态互斥渲染"登录"/"退出登录"入口，分别派发 `login`/`logout` 命令；欢迎页门控 `showWelcome = messages.length === 0` 与认证状态解耦，保证退出登录不跳欢迎页。

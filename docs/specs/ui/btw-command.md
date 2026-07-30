@@ -6,7 +6,6 @@ order: 170
 
 # 功能规格说明：BTW 命令
 
-**特性分支**：`btw-command`
 **创建日期**：2026-04-15
 **更新日期**：2026-06-16
 
@@ -43,17 +42,3 @@ order: 170
 - **用户提出通常会触发工具的 `/btw` 问题怎么办？** 专门的 `BTW_SYSTEM_PROMPT` 阻止工具调用；AI 仅使用其知识回答。
 - **附带问题不会被添加到主聊天历史或用户输入历史中。**
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- SDK 必须提供 `AiService.btw()` 方法，使用阻止工具使用的专门系统提示调用 AI。
-- `Agent` 类必须暴露委托到 `AiService.btw()` 的 `askBtw()` 方法。
-- `/btw` 命令必须绕过主消息队列并立即处理。
-- 附带问题和答案不得添加到主聊天历史或用户输入历史中。
-- CLI 必须渲染 `BtwDisplay` 组件，显示问题并带有状态指示器（加载时黄色，完成时绿色）。
-- 当附带问题活动时，InputBox 必须被隐藏。
-- 答案显示后，`BtwDisplay` 必须显示"ESC to dismiss"提示。
-- 按下 **ESC** 必须关闭 `BtwDisplay` 并恢复 InputBox。
-- `inputReducer` 必须跟踪 `btwState`，包含 `question`、`answer` 和 `isLoading` 字段。
-- `/btw <question>` 命令必须是单步流程；不带问题的 `/btw` 被忽略。

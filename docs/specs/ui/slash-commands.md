@@ -6,7 +6,6 @@ order: 130
 
 # 功能规格说明：自定义斜杠命令
 
-**特性分支**：`slash-commands`
 **创建日期**：2024-12-19
 
 ## 用户场景与测试 *（必填）*
@@ -119,44 +118,6 @@ order: 130
 - **无效模式语法**：如果 `allowed-tools` 模式语法无效，系统应忽略该特定模式并对匹配工具默认使用手动确认
 - **会话持久性**：如果用户开始新任务或切换上下文，之前斜杠命令的任何活跃 `allowed-tools` 权限必须被撤销
 - **重叠模式**：如果多个模式匹配工具执行，最宽松的一个（自动批准）优先
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须自动从项目根目录和用户主目录的 `.wave/commands/` 目录发现和加载自定义命令
-- 系统必须支持带有 YAML frontmatter 的 markdown 文件用于命令配置，包括模型选择
-- 系统必须提供使用 `$ARGUMENTS` 替换所有参数和 `$1`、`$2` 等替换位置参数的功能
-- 系统必须正确解析引号参数，将引号字符串视为单个参数，即使包含空格
-- 系统必须执行命令内容中嵌入的 bash 命令并用其原始 stdout 替换
-- 系统必须提供通过输入 `/` 触发的命令选择器界面，具有搜索过滤功能
-- 当名称冲突时，系统必须优先使用项目级命令而非用户级命令
-- 系统必须在界面中将 CLI 内部命令（如 `clear`、`compact`、`goal`）与自定义命令一起包含。这些命令通过 CLI 层的 `AVAILABLE_COMMANDS` 注册，由 `Agent` 公共方法（`clearMessages()`、`compact()`、`setGoal()`、`clearGoal()`、`showGoalStatus()`）支持，而非 `SlashCommandManager`。`SlashCommandManager` 仅管理自定义/文件命令和插件命令
-- 系统必须在文件修改时重新加载自定义命令，无需重启应用
-- 系统必须验证斜杠命令语法并为格式错误的命令提供适当的错误处理
-- 系统必须支持长时间运行操作的命令中止/取消
-- 系统必须记录命令执行状态和错误以供调试
-- 如果命令 markdown 不包含参数占位符（$ARGUMENTS 或 $1、$2 等），系统必须自动将用户参数追加到命令内容
-- 系统必须从斜杠命令头中解析 `allowed-tools` 元数据
-- 系统必须在命令的 AI 响应周期内临时授予 `allowed-tools` 中列出工具的权限
-- AI 响应周期完成后，系统必须撤销临时权限
-- 系统不得将斜杠命令的 `allowed-tools` 持久化到持久设置中
-- 系统必须扫描 `.wave/commands/` 目录以发现根级别的所有 markdown 文件
-- 系统必须将每个发现的 markdown 文件注册为可用的斜杠命令，使用简单语法（例如 `/help`）
-- 系统必须在发现过程中忽略非 markdown 文件
-- 系统必须在 TextBlock 中使用 `customCommandContent` 存储完整的 markdown 正文作为 AI 上下文，而 `content` 仅存储用户友好的命令名称用于 UI 显示
-- 在 `convertMessagesForAPI` 中为 API 调用转换消息时，系统必须优先使用 `customCommandContent` 而非 `content`
-
-### 关键实体
-
-- **SlashCommand**：表示任何可执行命令，包含 id、name、description 和 handler 函数
-- **CustomSlashCommand**：扩展 SlashCommand，包含文件路径、markdown 内容和配置元数据
-- **CustomSlashCommandConfig**：配置选项，包括 AI 模型偏好和自定义描述
-- **SlashCommandManager**：命令注册、发现、执行和生命周期管理的中央协调器
-- **CommandSelector**：用于命令发现和选择的界面组件，具有搜索功能
-- **Allowed Tool Pattern**：表示允许的工具及其允许参数模式的字符串（例如 `Bash(git status *)`）
-- **Privileged Session**：跟踪自动批准当前是否活跃以及哪些工具被允许的状态上下文
-- **Command Path**：从 `.wave/commands/` 到 markdown 文件的层次路径，转换为冒号分隔的命令调用语法（例如 `openspec:apply`）
 
 ## 成功标准 *（必填）*
 

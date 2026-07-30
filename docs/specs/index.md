@@ -9,7 +9,7 @@ const specHref = (p) => withBase(`/specs/${p.replace(/\.md$/, '.html')}`)
 
 本目录包含功能规格说明文件，作为功能设计和实现的唯一真实来源。
 
-每个规格是一个独立的 markdown 文件（按主题分组存放于子目录），包含用户故事、验收标准和功能需求。
+每个规格是一个独立的 markdown 文件（按主题分组存放于子目录），包含用户故事与验收场景。
 
 ## 为什么没有 Plan？
 
@@ -28,8 +28,8 @@ const specHref = (p) => withBase(`/specs/${p.replace(/\.md$/, '.html')}`)
 <template v-for="group in data.groups" :key="group.dir">
 <h3>{{ group.text }}</h3>
 <table>
-<thead><tr><th>功能</th><th>描述</th><th>用户故事</th><th>功能需求</th><th>链接</th></tr></thead>
-<tbody><tr v-for="spec in group.specs" :key="spec.path"><td>{{ spec.name }}</td><td>{{ spec.description }}</td><td>{{ spec.usCount }}</td><td>{{ spec.frCount }}</td><td><a :href="specHref(spec.path)">规格</a></td></tr></tbody>
+<thead><tr><th>功能</th><th>描述</th><th>用户故事</th><th>验收场景</th><th>链接</th></tr></thead>
+<tbody><tr v-for="spec in group.specs" :key="spec.path"><td>{{ spec.name }}</td><td>{{ spec.description }}</td><td>{{ spec.usCount }}</td><td>{{ spec.acCount }}</td><td><a :href="specHref(spec.path)">规格</a></td></tr></tbody>
 </table>
 </template>
 

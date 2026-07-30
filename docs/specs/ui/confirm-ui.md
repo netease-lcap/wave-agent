@@ -6,7 +6,6 @@ order: 70
 
 # 功能规格说明：确认 UI
 
-**特性分支**：`confirm-ui`
 **创建日期**：2026-04-06
 
 ## 用户场景与测试 *（必填）*
@@ -114,31 +113,3 @@ order: 70
 - **选择了"Other"但未输入文本怎么办？** 答案应为空，或 UI 应在提供文本之前阻止提交。
 - **确认期间终端调整大小怎么办？** UI 应重新渲染并适应新尺寸，如果发生溢出则可能切换到静态模式。
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须在调用受限工具（Bash、Write、Edit、ExitPlanMode、AskUserQuestion）时显示确认 UI。
-- 系统必须在确认详情中显示工具名称、操作描述和相关详情（命令、文件路径、差异预览）。
-- 系统必须提供允许、带反馈拒绝或设置持久权限的选项。
-- 系统必须支持选项选择的键盘导航（方向键、Tab）。
-- 系统必须支持替代/拒绝反馈的文本输入。
-- 系统必须支持 ESC 键取消当前确认。
-- 系统必须排队多个确认并按顺序处理。
-- 系统必须为 AskUserQuestion 工具提供带有单选/多选选项和"Other"文本输入的专用 UI。
-- 系统必须支持问题之间状态保留的多问题流程。
-- 系统必须在 ExitPlanMode 确认中显示计划内容。
-- 当确认 UI 超出终端高度时，系统必须切换到静态渲染模式以防止闪烁。
-- 当所有确认解决后退出静态模式时，系统必须触发终端重新挂载（清除屏幕并重新渲染）。
-- 系统必须根据工具类型建议权限规则（如 Bash 的命令前缀、MCP 工具的工具名称）。
-- Bash 工具的确认 UI 必须提供 bypass permissions 选项（CLI 中为 "Yes, and bypass permissions" 列表项，IDE webview 中为独立按钮），CLI 中位于持久权限选项（"不再询问"）之后、替代输入选项之前。
-- 当用户选择 bypass permissions 选项时，系统必须允许当前命令并将权限模式设置为 `bypassPermissions`（通过 `PermissionDecision.newPermissionMode`，CLI 与 IDE 共用同一套决策应用管道）。
-- 即使持久权限选项因危险命令检测被隐藏，bypass permissions 选项仍必须显示——用户本就可以随时切换到 bypassPermissions 模式，该选项不提供超出已有能力的权限提升。
-- ExitPlanMode 工具的确认 UI 必须提供 bypass permissions 选项（CLI 中为 "Yes, and bypass permissions" 列表项，位于自动接受编辑选项之后、替代输入选项之前；IDE webview 中为独立按钮），选择后批准计划执行并将权限模式设置为 `bypassPermissions`（决策载荷与上文 Bash 确认 bypass permissions 条目相同）。
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **PermissionDecision**：用户的决定（允许/拒绝），带有可选的反馈、模式更改或规则持久化。
-- **ConfirmationState**：确认 UI 的当前状态（选中选项、输入文本、光标位置）。
-- **QuestionState**：AskUserQuestion 流程的状态（当前问题索引、选中选项、答案）。
-- **ConfirmationQueue**：等待用户解决的待处理确认队列。

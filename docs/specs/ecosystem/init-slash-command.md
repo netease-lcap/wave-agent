@@ -6,7 +6,6 @@ order: 30
 
 # 功能规格说明：Init 斜杠命令
 
-**特性分支**：`init-slash-command`
 **创建日期**：2026-01-27
 
 ## 用户场景与测试 *（必填）*
@@ -46,24 +45,6 @@ order: 30
 - **代码库为空或没有可识别的结构怎么办？** agent 应该提供带有必需前缀的最小 `AGENTS.md`，并注明未检测到特定架构，而不是失败或臆造。
 - **系统如何处理只读文件系统？** agent 应该通知用户由于权限问题无法创建或修改 `AGENTS.md`。
 - **如果内置 init skill 的 `SKILL.md` 在预期位置缺失怎么办？** 命令应该使用提示的硬编码版本，因为它是内置命令。
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须在 agent 界面中支持 `/init` 斜杠命令。
-- 系统必须使用内置 init skill（`builtin/skills/init/SKILL.md`）的内容作为 `/init` 调用时 agent 的基础指令。
-- 系统必须分析当前仓库以识别构建/测试/lint 命令和高级架构。
-- 系统必须在仓库根目录中创建或更新名为 `AGENTS.md` 的文件。
-- 系统必须确保 `AGENTS.md` 以内置 init skill 中指定的必需前缀开头。
-- 系统必须不包含通用开发实践、冗余指令或 `.wave/rules/` 中的规则，如提示指南中所指定。
-- 系统必须纳入 `.cursor/rules/`、`.cursorrules` 或 `.github/copilot-instructions.md` 中的现有规则（如果它们存在）。
-
-### 关键实体
-
-- **AGENTS.md**：包含未来 agent 实例指导的输出文件。
-- **init skill（`SKILL.md`）**：定义 `/init` 命令应如何行为的内置 skill 指令文件。
-- **Repository Context**：用于生成指导而分析的文件集（README、配置文件、规则文件）。
 
 ## 假设
 

@@ -6,7 +6,6 @@ order: 70
 
 # 功能规格说明：消息压缩
 
-**特性分支**：`message-compact`  
 **创建日期**：2026-01-22  
 
 ## 用户场景与测试 *（必填）*
@@ -138,49 +137,6 @@ order: 70
 - **图片处理**：图片必须在压缩 API 调用之前从消息中剥离以减少 token 使用
 - **Token 限制边缘**：如果摘要本身太长（不太可能但有可能），系统应该优雅处理
 - **API 轮次边界**：压缩绝对不能将 tool_use/tool_result 对分割在压缩边界两侧
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须在每次 AI 响应后监控 token 使用
-- 系统必须在达到 token 限制时用单个延续摘要和旧消息列表的最后 2 个 API 轮次替换对话历史
-- 系统必须使用 AI 生成被识别用于压缩的消息的摘要
-- 系统必须用 `compress` 块替换会话历史中的压缩消息
-- 系统必须将 `compress` 块转换为 API 调用的 user 角色消息
-- 系统必须在 3 次连续压缩失败后跳过压缩（熔断器）
-- 系统必须将压缩后上下文（最近文件读取、工作目录、计划模式、技能、后台任务）重新注入压缩摘要。当计划模式活跃时，系统还必须在压缩后重新注入完整的计划模式 `<system-reminder>` 作为用户消息
-- 系统必须在压缩 API 调用之前从消息中剥离图片
-- 系统必须使用快速模型进行压缩 API 调用
-- 系统在确定压缩后要保留哪些消息时必须按 API 轮次边界（非固定数量）分组消息
-- 系统必须追踪最近的 `read` 工具结果用于压缩后上下文恢复
-- 当计划模式活跃时，系统必须在压缩后重新注入计划模式 `<system-reminder>` 指令。这确保模型在对话历史被摘要替换后不会丢失其只读约束和工作流指导
-- 系统必须支持 `/compact` 斜杠命令，手动触发对话压缩并提供可选的自定义指令
-- 系统必须将 `/compact [instructions]` 的自定义指令传递给压缩 API 调用以影响生成的摘要
-- 系统必须在处理 `/compact` 之前中止任何运行中的 AI 响应
-- 如果压缩已在进行中，系统必须跳过压缩（并发压缩的熔断器）
-- 系统必须支持在对话压缩之前执行的 PreCompact 钩子
-- 系统必须支持在成功的对话压缩之后执行的 PostCompact 钩子
-- 当提供自定义指令时，系统必须在 PreCompact 事件的 JSON 数据中提供 `compact_instructions` 字段
-- 系统必须在 PostCompact 事件的 JSON 数据中提供 `compact_summary` 字段，包含 AI 生成的摘要
-- 系统必须将 PreCompact 钩子的 stdout 与用户提供的自定义指令合并作为额外的压缩指令
-- 系统必须将 PreCompact 和 PostCompact 钩子的退出码 2 视为非阻塞（压缩继续）
-- 系统不得要求 PreCompact 和 PostCompact 钩子配置使用匹配器
-- stdio 协议必须支持 `compact` 请求方法，携带可选的 `customInstructions` 参数，调用 `Agent.compact(customInstructions)`
-- 当用户在 IDE 插件（VS Code 扩展或 JetBrains 插件）中输入 `/compact [instructions]` 时，插件必须将其识别为本地命令并通过 `compact` 请求触发压缩，而非通过 `sendMessage` 将文本作为普通消息发送
-- stdio 协议必须支持 `compactionStateChange` 通知，携带 `isCompacting` 布尔参数，在压缩状态变化时由子进程发送给客户端
-- AgentBridge 必须将 `AgentCallbacks.onCompactionStateChange` 回调转发为 `compactionStateChange` 通知
-- VS Code 扩展、JetBrains 插件与桌面端宿主必须将 `compactionStateChange` 通知转发给共享 webview；webview 必须在压缩进行中（`isCompacting=true`）于消息列表末尾的闪烁光标后显示"正在压缩对话…"提示，并在压缩期间保持显示
-- webview 必须在压缩完成（`isCompacting=false`）时移除该提示；宿主不得显示原生通知弹窗，也不得向消息列表插入压缩状态的系统消息
-- 桌面端多窗格（分屏）下，压缩状态提示必须按窗格路由，仅显示在触发压缩的会话窗格中
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **CompressBlock**：包含摘要的消息块
-    - `type`："compress"
-    - `content`：摘要文本，增强 `[Context Restoration]` 部分
-- **ToolBlock**：扩展了 `timestamp` 字段（Unix 毫秒，在工具结果确定时设置）
-- **ApiRound**：表示一个 API 调用-响应周期的消息组，包含 `messages: Message[]` 和 `estimatedTokens: number`
 
 ## 假设
 

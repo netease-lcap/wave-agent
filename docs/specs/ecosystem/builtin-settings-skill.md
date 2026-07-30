@@ -6,7 +6,6 @@ order: 20
 
 # 功能规格说明：内置 Settings Skill
 
-**特性分支**：`builtin-settings-skill`
 **创建日期**：2026-03-18
 
 ## 用户场景与测试 *（必填）*
@@ -60,33 +59,3 @@ order: 20
 - 当同一设置在多个作用域中定义时，系统如何处理冲突？
 - 如果用户尝试为设置设置无效值（例如无效的 `permissionMode`）会怎样？
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须提供内置的 `settings` skill。
-- `settings` skill 必须能够读取和显示来自用户、项目和本地作用域的合并配置。
-- `settings` skill 必须允许用户在特定作用域（用户、项目或本地）中更新设置。
-- `settings` skill 必须提供关于如何配置 Wave 的指南，涵盖 `settings.json` 中所有支持的字段（`hooks`、`env`、`permissions`、`enabledPlugins`、`language`、`autoMemoryEnabled`、`autoMemoryFrequency`、`models`）以及其他配置文件（`.mcp.json` 用于 MCP 服务器包括 `type` 传输字段、`.wave/rules/` 用于内存规则、`.wave/skills/` 用于自定义 skill、`.wave/agents/` 用于子 agent）。
-- 系统必须包含 `settings` skill 的 `SKILL.md`。
-- 系统必须为复杂配置创建单独的 markdown 文件（例如 `HOOKS.md`、`ENV.md`、`MCP.md`、`MEMORY.md`、`SKILLS.md`、`SUBAGENTS.md`、`MODELS.md`）并从 `SKILL.md` 链接。
-- `settings` skill 必须提供关于如何创建和管理自定义 skill 和子 agent 的指导。
-- `settings` skill 必须在保存更改之前验证配置。
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **WaveConfiguration**：代表所有设置的根对象。
-- **Scope**：定义设置的存储位置（`user`、`project` 或 `local`）。
-- **HookEvent**：触发 hook 的事件（例如 `on_tool_call`）。
-- **PermissionRule**：定义允许或拒绝操作的字符串。
-
-### 假设
-
-- `settings` skill 将作为内置 skill 实现。
-- 该 skill 将使用现有的 `ConfigurationService` 来读取和写入设置。
-- "复杂 hook 配置"指的是 `settings.json` 中 `hooks` 字段的高级用法。
-
-### 模板占位符
-
-- **`${WAVE_SKILL_DIR}`**：模板占位符，解析为 skill 的目录路径。在所有 skill（内置、个人、项目、插件）中可用。
-- **`${WAVE_PLUGIN_ROOT}`**：模板占位符，解析为插件的根目录。在插件来源的 skill、hook、MCP 服务器和 LSP 服务器中可用。Wave 在加载时替换此值，并将 `WAVE_PLUGIN_ROOT` 作为真实环境变量注入到生成的进程中。

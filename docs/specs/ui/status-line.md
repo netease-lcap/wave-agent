@@ -6,7 +6,6 @@ order: 180
 
 # 功能规格说明：状态栏组件重构
 
-**特性分支**：`status-line`
 **创建日期**：2026-03-31
 **更新日期**：2026-06-01
 
@@ -45,22 +44,3 @@ order: 180
 
 ---
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须在 `packages/code/src/components/StatusLine.tsx` 中拥有专用的 `StatusLine` 组件。
-- `StatusLine` 组件必须接受 `permissionMode`（字符串）、`isShellCommand`（布尔值）、`isGoalActive`（可选布尔值）和 `goalElapsed`（可选字符串）作为 props。
-- BTW 模式必须由独立的 `BtwDisplay` 组件渲染；BTW 激活时 `StatusLine` 随输入区域一起隐藏，`StatusLine` 自身不负责 BTW 显示。
-- `InputBox.tsx` 必须使用 `StatusLine` 组件替代内联渲染逻辑。
-- `StatusLine` 组件必须接受 `latestTotalTokens`（数字）和 `maxInputTokens`（数字）作为可选 props。
-- `StatusLine` 组件必须在 `latestTotalTokens > 0` 时显示右对齐的 "X% context" 文本。
-- `StatusLine` 组件必须为百分比着色：灰色（<80%）、黄色（80-95%）、红色（>95%）。
-- `LoadingIndicator` 组件必须接受 `maxInputTokens` 作为可选 prop，并在 token 计数旁显示百分比，格式为 "1,234 tokens (X%)"。
-- `ChatContextType` 必须暴露从 `Agent.getMaxInputTokens()` 派生的 `maxInputTokens`（数字）。
-- 百分比计算必须使用 `Math.min(Math.round((latestTotalTokens / maxInputTokens) * 100), 100)`，上限为 100%。
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **StatusLineProps**：定义传递给 `StatusLine` 组件的属性的接口。
-- **LoadingIndicatorProps**：定义传递给 `LoadingIndicator` 组件的属性的接口（扩展了 `maxInputTokens`）。

@@ -12,18 +12,18 @@ export default {
       stats: [
         { label: "规格文件", value: fmt(totals.specs) },
         { label: "用户故事", value: fmt(totals.us) },
-        { label: "功能需求", value: fmt(totals.fr) },
+        { label: "验收场景", value: fmt(totals.ac) },
         { label: "测试用例", value: fmt(tests.cases) },
       ],
       groups: groups.map(({ dir, text, specs }) => ({
         dir,
         text,
-        specs: specs.map(({ path, name, description, usCount, frCount }) => ({
+        specs: specs.map(({ path, name, description, usCount, acCount }) => ({
           path,
           name,
           description,
           usCount,
-          frCount,
+          acCount,
         })),
       })),
     };

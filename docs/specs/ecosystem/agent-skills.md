@@ -6,7 +6,6 @@ order: 10
 
 # 功能规格说明：Agent 技能支持
 
-**特性分支**：`agent-skills`  
 **创建日期**：2024-12-19  
 
 ## 用户场景与测试 *（必填）*
@@ -150,45 +149,6 @@ Wave 需要根据用户请求和技能描述自主发现何时使用可用技能
 - 当引用的辅助文件（脚本、模板）缺失或不可访问时会发生什么？
 - Wave 如何处理辅助文件中有循环引用的技能？
 - 当技能名称超过 64 个字符或包含无效字符时会发生什么？
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- Wave 必须支持存储在 `~/.wave/skills/` 目录结构中的个人技能
-- Wave 必须支持存储在项目内 `.wave/skills/` 目录结构中的项目技能
-- Wave 必须解析包含 name 和 description 字段的 YAML frontmatter 的 SKILL.md 文件
-- Wave 必须验证技能名称仅使用小写字母、数字和连字符（最多 64 个字符）
-- Wave 必须验证技能描述在 1024 个字符限制内
-- Wave 必须基于用户请求和技能描述自主决定何时调用技能
-- Wave 必须支持辅助文件的渐进式加载（reference.md、examples.md、脚本、模板）
-- Wave 必须在同名技能和项目技能同时存在时优先使用项目技能
-- Wave 必须为格式错误或无效的技能定义提供清晰的错误消息
-- Wave 必须在 SKILL.md 文件被修改时重新加载技能定义
-- Wave 必须优雅地处理缺失或不可访问的辅助文件
-- Wave 必须支持具有多种辅助文件类型的技能（markdown、脚本、模板）
-- Wave 必须支持通过斜杠命令语法（如 `/skill-name args`）调用的用户技能
-- Wave 必须支持技能中使用 `$1`、`$2`... 和 `$ARGUMENTS` 的参数替换
-- Wave 必须支持技能中使用 `!`command``（内联）和 ```! command ```（块）语法的 bash 命令执行，用命令执行的原始 stdout 替换占位符，每个命令上限为 30,000 字符
-- Wave 必须支持技能 frontmatter 中的 `allowed-tools` 以在技能执行期间限制工具访问
-- Wave 必须支持技能 frontmatter 中的 `context: fork` 和 `agent:` 以在专门子代理中执行技能
-- Wave 必须支持技能 frontmatter 中的 `disable-model-invocation: true` 以防止 AI 自动触发技能
-- Wave 必须支持技能 frontmatter 中的 `user-invocable: boolean`（默认：`true`）以控制在斜杠命令菜单中的可见性
-- Wave 必须支持技能 frontmatter 中的 `model:` 以覆盖技能执行（包括派生子代理）的模型配置
-- Wave 必须支持技能内容中的 `${WAVE_SKILL_DIR}` 占位符，在执行时替换为技能的绝对目录路径
-- Wave 必须支持技能中 bash 替换的块语法：```! command ```（多行代码块）
-- Wave 必须将技能 bash 输出上限设为每个命令 30,000 字符；截断的输出包含 2,048 字符预览和完整输出的临时文件路径
-- Wave 必须在 `String.replace` 中使用函数替换器以避免 bash 输出替换时 `$$`、`$&`、`$'` 的损坏
-- Wave 必须将内联 bash 模式扫描置于 `content.includes('!`')` 检查之后以提高性能
-- Wave 必须支持从 `.agents/skills/` 目录发现技能（个人级 `~/.agents/skills/` 和项目级 `{workdir}/.agents/skills/`），作为跨工具共享技能目录的最低优先级来源。在个人级和项目级中，`.wave/skills` 优先于 `.claude/skills`，`.claude/skills` 优先于 `.agents/skills`
-
-### 关键实体
-
-- **Skill**：可发现的能力包，由带有 YAML frontmatter（name、description、可选的 allowed-tools、disable-model-invocation、user-invocable、model）的 SKILL.md 文件和可选辅助文件组成
-- **个人技能**：全局存储在用户主目录（`~/.wave/skills/`）中的技能，跨所有项目可用
-- **项目技能**：存储在项目目录（`.wave/skills/`）中的技能，与团队成员共享并进行版本控制
-- **技能目录**：包含 SKILL.md 和可选辅助文件（reference.md、examples.md、scripts/、templates/）的容器
-- **辅助文件**：技能引用的额外资源，用于渐进式展示（文档、示例、工具、模板）
 
 ## 成功标准 *（必填）*
 
