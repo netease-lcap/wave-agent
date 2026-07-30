@@ -22,7 +22,10 @@ import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
-import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
+import {
+  ChatCompletionMessageFunctionToolCall,
+  type ChatCompletionMessageParam,
+} from "openai/resources.js";
 
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
@@ -31,11 +34,16 @@ import type { PermissionManager } from "./permissionManager.js";
 import type { SubagentManager } from "./subagentManager.js";
 import type { CronManager } from "./cronManager.js";
 import type { SkillManager } from "./skillManager.js";
-import { buildSystemPrompt } from "../prompts/index.js";
+import {
+  buildSystemPrompt,
+  formatCompactSummary,
+  getCompactPrompt,
+} from "../prompts/index.js";
 import {
   buildPlanModeReminder,
   buildPlanModeReEntryReminder,
   buildExitedPlanModeReminder,
+  wrapInSystemReminder,
 } from "../prompts/planModeReminders.js";
 import { Container } from "../utils/container.js";
 import type { WorktreeSession } from "../utils/worktreeSession.js";
@@ -537,36 +545,47 @@ export class AIManager {
 
     this.setIsCompacting(true);
     try {
-      const recentChatMessages = convertMessagesForAPI(messagesToCompact);
-
-      // 4. Call compactMessages with optional custom instructions
-      const compactResult = await aiService.compactMessages({
-        gatewayConfig: this.getGatewayConfig(),
-        modelConfig: this.getModelConfig(),
-        messages: recentChatMessages,
-        abortSignal: options.abortSignal,
-        model: this.getModelConfig().fastModel,
-        customInstructions: mergedInstructions,
+      const modelConfig = this.getModelConfig();
+      const recentChatMessages = convertMessagesForAPI(messagesToCompact, {
+        supportsVision: supportsVision(modelConfig.capabilities),
       });
+      const compactPrompt = getCompactPrompt(mergedInstructions);
+
+      // 4. Fork path: fork the conversation with the same system prompt,
+      // tools, model, and generation params as the main loop so the forked
+      // request prefix matches exactly and the prompt cache is reused.
+      const forkResult = await this.runCompactFork(
+        recentChatMessages,
+        compactPrompt,
+        options.abortSignal,
+      );
+      const summaryContent = forkResult.content;
+      const compactTokens = forkResult.usage;
+      if (!summaryContent) {
+        throw new Error(
+          "Compaction failed: the model produced no summary output",
+        );
+      }
+      const compactModel = modelConfig.model;
 
       // 5. Handle usage tracking
       let compactUsage: Usage | undefined;
-      if (compactResult.usage) {
+      if (compactTokens) {
         compactUsage = {
-          prompt_tokens: compactResult.usage.prompt_tokens,
-          completion_tokens: compactResult.usage.completion_tokens,
-          total_tokens: compactResult.usage.total_tokens,
-          model: this.getModelConfig().fastModel,
+          ...compactTokens,
+          model: compactModel,
           operation_type: "compact",
         };
       }
 
-      // 6. Build post-compact context restoration
-      const enhancedSummary = await this.buildPostCompactContext(
-        compactResult.content,
-      );
+      // 6. Strip the <analysis> scratchpad and extract the <summary> body
+      const formattedSummary = formatCompactSummary(summaryContent);
 
-      // 7. Execute message reconstruction
+      // 7. Build post-compact context restoration
+      const enhancedSummary =
+        await this.buildPostCompactContext(formattedSummary);
+
+      // 8. Execute message reconstruction
       await this.messageManager.compactMessagesAndUpdateSession(
         enhancedSummary,
         compactUsage,
@@ -591,7 +610,7 @@ export class AIManager {
         }
       }
 
-      // 8. Track usage
+      // 9. Track usage
       if (compactUsage && this.callbacks?.onUsageAdded) {
         this.callbacks.onUsageAdded(compactUsage);
       }
@@ -601,14 +620,14 @@ export class AIManager {
       // Reset incremental tracing state after compaction
       resetTracingState();
 
-      // 9. Log OTEL event
+      // 10. Log OTEL event
       logOTelEvent("compaction", {
         beforeTokens: String(messagesToCompact.length),
         afterTokens: "1",
-        model: this.getModelConfig().fastModel,
+        model: compactModel,
       }).catch(() => {});
 
-      // 10. Run SessionStart hooks (existing behavior)
+      // 11. Run SessionStart hooks (existing behavior)
       if (this.hookManager) {
         try {
           const newSessionId = this.messageManager.getSessionId();
@@ -638,13 +657,13 @@ export class AIManager {
         }
       }
 
-      // 11. Run PostCompact hooks
+      // 12. Run PostCompact hooks
       if (this.hookManager) {
         try {
           await this.hookManager.executePostCompactHooks(
             this.messageManager.getSessionId(),
             this.messageManager.getTranscriptPath(),
-            compactResult.content,
+            formattedSummary,
           );
         } catch (error) {
           logger?.warn(`PostCompact hooks failed: ${(error as Error).message}`);
@@ -666,6 +685,154 @@ export class AIManager {
     } finally {
       this.setIsCompacting(false);
     }
+  }
+
+  /**
+   * Build the system prompt used by the main agent loop. Extracted so the
+   * compaction fork can mirror it exactly — the forked request prefix must
+   * match the main conversation's for the prompt cache to be reused.
+   */
+  private async buildMainSystemPrompt(
+    filteredToolPlugins: ReturnType<ToolManager["getTools"]>,
+  ) {
+    let autoMemoryOptions: { directory: string; content: string } | undefined;
+
+    if (this.getAutoMemoryEnabled()) {
+      const directory = this.memoryService.getAutoMemoryDirectory(
+        this.getWorkdir(),
+      );
+      const content = await this.memoryService.getAutoMemoryContent(
+        this.getWorkdir(),
+      );
+      autoMemoryOptions = { directory, content };
+    }
+
+    return buildSystemPrompt(this.systemPrompt, filteredToolPlugins, {
+      workdir: this.getWorkdir(),
+      originalWorkdir: this.getOriginalWorkdir(),
+      language: this.getLanguage(),
+      isSubagent: !!this.subagentType,
+      worktreeSession: this.getWorktreeSession(),
+      autoMemory: autoMemoryOptions,
+    });
+  }
+
+  private resolveFilteredTools() {
+    const toolsConfig = this.getFilteredToolsConfig();
+    const toolNames = new Set(toolsConfig.map((t) => t.function.name));
+    const filteredToolPlugins = this.toolManager
+      .getTools()
+      .filter((t) => toolNames.has(t.name));
+    return { toolsConfig, toolNames, filteredToolPlugins };
+  }
+
+  /**
+   * Fork-path compaction: run a bounded agent loop over a copy of the
+   * conversation using the same system prompt, tools, model, and generation
+   * params as the main loop, so the forked request prefix matches exactly
+   * and the prompt cache is reused. Tool calls are denied locally (the model
+   * is told to summarize, not act) and their rejections are fed back for
+   * another turn. Returns undefined content when the model never produces
+   * text; the caller treats that as a compaction failure.
+   */
+  private async runCompactFork(
+    historyMessages: ChatCompletionMessageParam[],
+    compactPrompt: string,
+    abortSignal?: AbortSignal,
+  ): Promise<{
+    content?: string;
+    usage?: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    };
+  }> {
+    const MAX_FORK_TURNS = 3;
+    const modelConfig = this.getModelConfig();
+    const gatewayConfig = this.getGatewayConfig();
+    const sessionId = this.messageManager.getSessionId();
+    const workdir = this.getWorkdir();
+
+    const forkMessages: ChatCompletionMessageParam[] = [...historyMessages];
+
+    // Mirror the main loop's memory injection so the request prefix matches.
+    const { prependContent } =
+      await this.messageManager.getMemoryForInjection();
+    if (prependContent.trim()) {
+      forkMessages.unshift({
+        role: "user",
+        content: wrapInSystemReminder(prependContent),
+      });
+    }
+
+    forkMessages.push({ role: "user", content: compactPrompt });
+
+    const { toolsConfig, filteredToolPlugins } = this.resolveFilteredTools();
+    const systemPrompt = await this.buildMainSystemPrompt(filteredToolPlugins);
+
+    let totalUsage:
+      | {
+          prompt_tokens: number;
+          completion_tokens: number;
+          total_tokens: number;
+        }
+      | undefined;
+    let content: string | undefined;
+
+    for (let turn = 0; turn < MAX_FORK_TURNS; turn++) {
+      const result = await aiService.callAgent({
+        gatewayConfig,
+        modelConfig,
+        messages: forkMessages,
+        sessionId,
+        abortSignal,
+        workdir,
+        tools: toolsConfig,
+        systemPrompt,
+        toolChoice: this.toolChoiceOverride,
+      });
+
+      if (result.usage) {
+        totalUsage = {
+          prompt_tokens:
+            (totalUsage?.prompt_tokens ?? 0) + result.usage.prompt_tokens,
+          completion_tokens:
+            (totalUsage?.completion_tokens ?? 0) +
+            result.usage.completion_tokens,
+          total_tokens:
+            (totalUsage?.total_tokens ?? 0) + result.usage.total_tokens,
+        };
+      }
+
+      if (result.content?.trim()) {
+        content = result.content;
+        break;
+      }
+
+      if (result.tool_calls && result.tool_calls.length > 0) {
+        // Deny all tool calls locally and feed the rejections back so the
+        // model gets another turn to produce the summary text.
+        forkMessages.push({
+          role: "assistant",
+          content: result.content ?? null,
+          tool_calls: result.tool_calls,
+        });
+        for (const toolCall of result.tool_calls) {
+          forkMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: "Tool use is not allowed during compaction",
+          });
+        }
+        continue;
+      }
+
+      // Neither text nor tool calls: retrying the identical request is
+      // pointless, bail out and let the caller fail the compaction.
+      break;
+    }
+
+    return { content, usage: totalUsage };
   }
 
   /**
@@ -938,29 +1105,15 @@ export class AIManager {
 
           logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
-          const toolsConfig = this.getFilteredToolsConfig();
-          const toolNames = new Set(toolsConfig.map((t) => t.function.name));
-          const filteredToolPlugins = this.toolManager
-            .getTools()
-            .filter((t) => toolNames.has(t.name));
-
-          let autoMemoryOptions:
-            | { directory: string; content: string }
-            | undefined;
-
-          if (this.getAutoMemoryEnabled()) {
-            const directory = this.memoryService.getAutoMemoryDirectory(
-              this.getWorkdir(),
-            );
-            const content = await this.memoryService.getAutoMemoryContent(
-              this.getWorkdir(),
-            );
-            autoMemoryOptions = { directory, content };
-          }
+          const { toolsConfig, toolNames, filteredToolPlugins } =
+            this.resolveFilteredTools();
 
           // Get memory for message-array injection (not system prompt)
           const { prependContent } =
             await this.messageManager.getMemoryForInjection();
+
+          const mainSystemPrompt =
+            await this.buildMainSystemPrompt(filteredToolPlugins);
 
           // Call AI service with streaming callbacks if enabled
           const callAgentOptions: CallAgentOptions = {
@@ -972,18 +1125,7 @@ export class AIManager {
             workdir: this.getWorkdir(), // Pass working directory
             tools: toolsConfig, // Pass filtered tool configuration
             model: model, // Use passed model
-            systemPrompt: buildSystemPrompt(
-              this.systemPrompt,
-              filteredToolPlugins,
-              {
-                workdir: this.getWorkdir(),
-                originalWorkdir: this.getOriginalWorkdir(),
-                language: this.getLanguage(),
-                isSubagent: !!this.subagentType,
-                worktreeSession: this.getWorktreeSession(),
-                autoMemory: autoMemoryOptions,
-              },
-            ), // Pass custom system prompt
+            systemPrompt: mainSystemPrompt, // Pass custom system prompt
             maxTokens: maxTokens, // Pass max tokens override
             toolChoice: this.toolChoiceOverride, // Pass tool_choice override
           };
@@ -992,7 +1134,7 @@ export class AIManager {
           if (prependContent.trim()) {
             callAgentOptions.messages.unshift({
               role: "user",
-              content: `<system-reminder>\n${prependContent}\n</system-reminder>`,
+              content: wrapInSystemReminder(prependContent),
             });
           }
 

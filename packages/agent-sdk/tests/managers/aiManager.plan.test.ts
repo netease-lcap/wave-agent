@@ -3,7 +3,7 @@ import { Container } from "../../src/utils/container.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { existsSync } from "node:fs";
-import { callAgent, compactMessages } from "../../src/services/aiService.js";
+import { callAgent } from "../../src/services/aiService.js";
 import { DEFAULT_SYSTEM_PROMPT } from "../../src/prompts/index.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
@@ -156,14 +156,6 @@ describe("AIManager Plan Mode Prompt", () => {
     vi.mocked(callAgent).mockResolvedValue({
       content: "hello",
       finish_reason: "stop",
-    });
-    vi.mocked(compactMessages).mockResolvedValue({
-      content: "compacted summary",
-      usage: {
-        prompt_tokens: 100,
-        completion_tokens: 50,
-        total_tokens: 150,
-      },
     });
   });
 

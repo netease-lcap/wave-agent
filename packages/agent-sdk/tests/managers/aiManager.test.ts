@@ -191,7 +191,6 @@ describe("AIManager", () => {
 
     // Reset mocks
     vi.mocked(aiService.callAgent).mockClear();
-    vi.mocked(aiService.compactMessages).mockClear();
   });
 
   it("should call callAgent", async () => {

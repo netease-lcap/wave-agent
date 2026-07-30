@@ -66,6 +66,20 @@ describe("Agent Message Compaction Tests", () => {
     return messages;
   };
 
+  // Compaction runs a fork loop via callAgent: the forked request appends the
+  // compact prompt as the final user message. Detect fork calls by it so
+  // mocks can respond differently to the main loop vs the compaction fork.
+  const isCompactForkCall = (params: {
+    messages?: ChatCompletionMessageParam[];
+  }): boolean => {
+    const last = params.messages?.[params.messages.length - 1];
+    return (
+      last?.role === "user" &&
+      typeof last.content === "string" &&
+      last.content.includes("detailed summary of the conversation")
+    );
+  };
+
   it("should trigger compaction when token usage exceeds 96k", async () => {
     // Create message history with enough messages (generate 8 pairs of messages, total 16)
     const messages = generateMessages(8);
@@ -89,14 +103,25 @@ describe("Agent Message Compaction Tests", () => {
       messages: [...messages, newUserMessage],
     });
 
-    let compactMessagesCalled = false;
-
-    // Mock AI service
+    // Mock AI service: the compaction fork reuses callAgent, so respond
+    // differently to the main loop vs the fork (detected by the compact
+    // prompt appended as the final user message).
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
-    mockCallAgent.mockImplementation(async () => {
-      // Return high token usage to trigger compaction
+    mockCallAgent.mockImplementation(async (params) => {
+      if (isCompactForkCall(params)) {
+        // Compaction fork: return the summary text
+        return {
+          content:
+            "Compacted content: Previous conversations involved multiple task requests and corresponding processing.",
+          usage: {
+            prompt_tokens: 1000,
+            completion_tokens: 500,
+            total_tokens: 1500,
+          },
+        };
+      }
+      // Main loop: return high token usage to trigger compaction
       return {
         content: "I understand your request. Let me help you with that.",
         usage: {
@@ -107,34 +132,18 @@ describe("Agent Message Compaction Tests", () => {
       };
     });
 
-    mockCompactMessages.mockImplementation(async () => {
-      compactMessagesCalled = true;
-      return {
-        content:
-          "Compacted content: Previous conversations involved multiple task requests and corresponding processing.",
-        usage: {
-          prompt_tokens: 1000,
-          completion_tokens: 500,
-          total_tokens: 1500,
-        },
-      };
-    });
-
     // Call sendMessage to trigger AI call (this will trigger compaction)
     await agent.sendMessage("Test message");
 
-    // Verify AI service was called
-    expect(mockCallAgent).toHaveBeenCalledTimes(1);
+    // Verify AI service was called: main loop + compaction fork
+    expect(mockCallAgent).toHaveBeenCalledTimes(2);
+    expect(isCompactForkCall(mockCallAgent.mock.calls[1][0])).toBe(true);
 
-    // Verify compaction function was called (because token usage exceeded 96k)
-    expect(compactMessagesCalled).toBe(true);
-    expect(mockCompactMessages).toHaveBeenCalledTimes(1);
-
-    // Verify compaction function parameters when called
-    const compactCall = mockCompactMessages.mock.calls[0];
-    expect(compactCall[0]).toHaveProperty("messages");
-    expect(Array.isArray(compactCall[0].messages)).toBe(true);
-    expect(compactCall[0].messages.length).toBeGreaterThan(0);
+    // Verify fork call parameters when called
+    const forkCall = mockCallAgent.mock.calls[1];
+    expect(forkCall[0]).toHaveProperty("messages");
+    expect(Array.isArray(forkCall[0].messages)).toBe(true);
+    expect(forkCall[0].messages.length).toBeGreaterThan(0);
 
     // Verify that the compacted assistant message includes usage field
     const messagesAfterCompaction = agent.messages;
@@ -152,8 +161,8 @@ describe("Agent Message Compaction Tests", () => {
       operation_type: "compact",
     });
 
-    // Verify compactCall messages should include user1 to user6
-    const messagesToCompact = compactCall[0].messages;
+    // Verify fork-call messages should include user1 to user6
+    const messagesToCompact = forkCall[0].messages;
     const userMessages = messagesToCompact.filter((msg) => msg.role === "user");
 
     // Verify contains user1 to user6 message content
@@ -195,11 +204,8 @@ describe("Agent Message Compaction Tests", () => {
       messages: [...messages, newUserMessage],
     });
 
-    let compactMessagesCalled = false;
-
     // Mock AI service returns low token usage
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
     mockCallAgent.mockImplementation(async () => {
       return {
@@ -212,20 +218,11 @@ describe("Agent Message Compaction Tests", () => {
       };
     });
 
-    mockCompactMessages.mockImplementation(async () => {
-      compactMessagesCalled = true;
-      return {
-        content: "This should not be called",
-      };
-    });
-
     // Call sendMessage
     await agent.sendMessage("Test message");
 
     // Verify AI service was called but compaction function was not called
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
-    expect(compactMessagesCalled).toBe(false);
-    expect(mockCompactMessages).toHaveBeenCalledTimes(0);
   });
 
   it("should handle compaction errors gracefully", async () => {
@@ -255,9 +252,11 @@ describe("Agent Message Compaction Tests", () => {
 
     // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
-    mockCallAgent.mockImplementation(async () => {
+    mockCallAgent.mockImplementation(async (params) => {
+      if (isCompactForkCall(params)) {
+        throw new Error("Fork failed");
+      }
       return {
         content: "Response",
         usage: {
@@ -268,15 +267,11 @@ describe("Agent Message Compaction Tests", () => {
       };
     });
 
-    // Mock compaction function throws error
-    mockCompactMessages.mockRejectedValue(new Error("Compaction failed"));
-
     // Call sendMessage to trigger compaction
     await agent.sendMessage("Test message");
 
-    // Verify call details
-    expect(mockCallAgent).toHaveBeenCalledTimes(1);
-    expect(mockCompactMessages).toHaveBeenCalledTimes(1);
+    // Verify call details: main loop + failed fork attempt (no fallback)
+    expect(mockCallAgent).toHaveBeenCalledTimes(2);
 
     // Verify that an error block was added to the messages
     const lastMessage = agent.messages[agent.messages.length - 1];
@@ -290,7 +285,7 @@ describe("Agent Message Compaction Tests", () => {
       content: string;
     };
     expect(errorBlock.content).toContain(
-      "Failed to compact conversation history: Compaction failed",
+      "Failed to compact conversation history: Fork failed",
     );
 
     // Verify session ID remains unchanged (no reset)
@@ -350,9 +345,19 @@ describe("Agent Message Compaction Tests", () => {
 
     // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
-    mockCallAgent.mockImplementation(async () => {
+    mockCallAgent.mockImplementation(async (params) => {
+      if (isCompactForkCall(params)) {
+        // Compaction fork: return the summary text
+        return {
+          content: "New compacted content: Contains summary of more messages",
+          usage: {
+            prompt_tokens: 800,
+            completion_tokens: 400,
+            total_tokens: 1200,
+          },
+        };
+      }
       return {
         content: "I understand your request.",
         usage: {
@@ -363,31 +368,22 @@ describe("Agent Message Compaction Tests", () => {
       };
     });
 
-    mockCompactMessages.mockImplementation(async () => {
-      return {
-        content: "New compacted content: Contains summary of more messages",
-        usage: {
-          prompt_tokens: 800,
-          completion_tokens: 400,
-          total_tokens: 1200,
-        },
-      };
-    });
-
     // Call sendMessage to trigger compaction
     await agent.sendMessage("Test message");
 
-    // Verify compaction function was called
-    expect(mockCompactMessages).toHaveBeenCalledTimes(1);
+    // Verify the compaction fork was called
+    const forkCall = mockCallAgent.mock.calls.find((call) =>
+      isCompactForkCall(call[0]),
+    );
+    expect(forkCall).toBeDefined();
 
-    // Verify compaction function parameters when called
-    const compactCall = mockCompactMessages.mock.calls[0];
-    expect(compactCall[0]).toHaveProperty("messages");
-    expect(Array.isArray(compactCall[0].messages)).toBe(true);
-    expect(compactCall[0].messages.length).toBeGreaterThan(0);
+    // Verify fork call parameters when called
+    expect(forkCall![0]).toHaveProperty("messages");
+    expect(Array.isArray(forkCall![0].messages)).toBe(true);
+    expect(forkCall![0].messages.length).toBeGreaterThan(0);
 
-    // Verify compactCall messages should include all messages
-    const messagesToCompact = compactCall[0].messages;
+    // Verify fork-call messages should include all messages
+    const messagesToCompact = forkCall![0].messages;
 
     const userMessages = messagesToCompact.filter((msg) => msg.role === "user");
 
@@ -419,7 +415,7 @@ describe("Agent Message Compaction Tests", () => {
     expect(hasUser13).toBe(true);
 
     // Verify that the previous compacted message should be included as context
-    const hasCompactedMessage = compactCall[0].messages.some(
+    const hasCompactedMessage = forkCall![0].messages.some(
       (msg) =>
         msg.role === "user" &&
         typeof msg.content === "string" &&
@@ -466,7 +462,6 @@ describe("Agent Message Compaction Tests", () => {
 
     // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
     let callAgentCallCount = 0;
     let messagesPassedToCallAgent: ChatCompletionMessageParam[] = [];
@@ -474,6 +469,19 @@ describe("Agent Message Compaction Tests", () => {
     mockCallAgent.mockImplementation(async (params) => {
       callAgentCallCount++;
       messagesPassedToCallAgent = params.messages || [];
+
+      if (isCompactForkCall(params)) {
+        // Compaction fork: return the summary text
+        return {
+          content:
+            "Compacted content: This contains summary information of previous multi-round conversations.",
+          usage: {
+            prompt_tokens: 1200,
+            completion_tokens: 600,
+            total_tokens: 1800,
+          },
+        };
+      }
 
       if (callAgentCallCount === 1) {
         // First call returns high token usage to trigger compaction
@@ -486,7 +494,7 @@ describe("Agent Message Compaction Tests", () => {
           },
         };
       } else {
-        // Second call returns normal response
+        // Subsequent main-loop calls return normal responses
         return {
           content: "Here's my response to your second message.",
           usage: {
@@ -498,24 +506,11 @@ describe("Agent Message Compaction Tests", () => {
       }
     });
 
-    mockCompactMessages.mockImplementation(async () => {
-      return {
-        content:
-          "Compacted content: This contains summary information of previous multi-round conversations.",
-        usage: {
-          prompt_tokens: 1200,
-          completion_tokens: 600,
-          total_tokens: 1800,
-        },
-      };
-    });
-
     // First call to sendMessage triggers compaction
     await agent.sendMessage("Test message");
 
-    // Verify compaction is triggered
-    expect(mockCompactMessages).toHaveBeenCalledTimes(1);
-    expect(callAgentCallCount).toBe(1);
+    // Verify compaction is triggered: main loop + compaction fork, no fallback
+    expect(callAgentCallCount).toBe(2);
 
     // Get compacted message list
     const messagesAfterCompaction = agent.messages;
@@ -541,8 +536,8 @@ describe("Agent Message Compaction Tests", () => {
     // Second call to sendMessage
     await agent.sendMessage("Second message after compaction");
 
-    // Verify parameters of the second call
-    expect(callAgentCallCount).toBe(2);
+    // Verify parameters of the second main-loop call
+    expect(callAgentCallCount).toBe(3);
 
     // Verify that messages passed to callAgent include the compacted message plus the 3 preserved messages plus the new message
     // Plus 1 prepend memory message (system-reminder with AGENTS.md + user memory)
@@ -599,7 +594,6 @@ describe("Agent Message Compaction Tests", () => {
 
     // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
     mockCallAgent.mockImplementation(async () => {
       // Return high token usage to trigger compaction
@@ -613,18 +607,6 @@ describe("Agent Message Compaction Tests", () => {
       };
     });
 
-    mockCompactMessages.mockImplementation(async () => {
-      return {
-        content:
-          "Compacted content: Previous conversations involved multiple task requests and corresponding processing.",
-        usage: {
-          prompt_tokens: 900,
-          completion_tokens: 450,
-          total_tokens: 1350,
-        },
-      };
-    });
-
     // Call sendMessage to trigger AI call (this will trigger compaction)
     await agent.sendMessage("Test message");
 
@@ -634,15 +616,15 @@ describe("Agent Message Compaction Tests", () => {
     // 2. At the end of sendAIMessage (normal session save)
     expect(saveSessionSpy).toHaveBeenCalledTimes(3);
 
-    // Verify the order: saveSession should be called before compactMessages
+    // Verify the order: the pre-compaction saveSession should happen after
+    // the main-loop callAgent call and before the compaction fork call
     const saveSessionCalls = saveSessionSpy.mock.invocationCallOrder;
-    const compactMessagesCalls = mockCompactMessages.mock.invocationCallOrder;
+    const callAgentCalls = mockCallAgent.mock.invocationCallOrder;
 
-    // At least one saveSession call should happen before compaction
-    expect(saveSessionCalls[0]).toBeLessThan(compactMessagesCalls[0]);
-
-    // Verify compaction function was called
-    expect(mockCompactMessages).toHaveBeenCalledTimes(1);
+    expect(mockCallAgent).toHaveBeenCalledTimes(2);
+    expect(isCompactForkCall(mockCallAgent.mock.calls[1][0])).toBe(true);
+    expect(saveSessionCalls[1]).toBeGreaterThan(callAgentCalls[0]);
+    expect(saveSessionCalls[1]).toBeLessThan(callAgentCalls[1]);
   });
 
   it("should skip compaction after 3 consecutive failures (circuit breaker)", async () => {
@@ -668,44 +650,40 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
-    // First three calls trigger compaction but fail
-    for (let i = 0; i < 3; i++) {
-      mockCallAgent.mockImplementation(async () => ({
+    // The main loop always returns high token usage to trigger compaction;
+    // the fork always fails, driving consecutiveCompactionFailures upward.
+    mockCallAgent.mockImplementation(async (params) => {
+      if (isCompactForkCall(params)) {
+        throw new Error("Fork failed");
+      }
+      return {
         content: "Response",
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
           total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
         },
-      }));
-      mockCompactMessages.mockRejectedValue(new Error("Compaction failed"));
+      };
+    });
 
+    // First three calls trigger compaction but the fork fails each time
+    for (let i = 0; i < 3; i++) {
       await agent.sendMessage(`Message ${i + 1}`);
     }
 
-    // Verify compaction was attempted 3 times
-    expect(mockCompactMessages).toHaveBeenCalledTimes(3);
+    // Verify the compaction fork was attempted 3 times (no fallback path)
+    const forkAttemptsAfterFailures = mockCallAgent.mock.calls.filter((call) =>
+      isCompactForkCall(call[0]),
+    ).length;
+    expect(forkAttemptsAfterFailures).toBe(3);
 
-    // Reset call count for the 4th call
-    mockCompactMessages.mockClear();
-
-    // Fourth call: should still trigger high token usage but compaction should be skipped
-    mockCallAgent.mockImplementation(async () => ({
-      content: "Response",
-      usage: {
-        prompt_tokens: 50000,
-        completion_tokens: 20000,
-        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      },
-    }));
-    mockCompactMessages.mockResolvedValue({ content: "should not reach" });
-
+    // Fourth call: circuit breaker trips, compaction is skipped entirely
+    const callCountBefore = mockCallAgent.mock.calls.length;
     await agent.sendMessage("Message 4");
 
-    // Compaction should NOT be called due to circuit breaker
-    expect(mockCompactMessages).not.toHaveBeenCalled();
+    // Only one additional (main-loop) call — no fork attempt
+    expect(mockCallAgent.mock.calls.length).toBe(callCountBefore + 1);
   });
 
   it("should reset circuit breaker counter on successful compaction", async () => {
@@ -723,102 +701,83 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
-    // First call: compaction fails (counter = 1)
-    mockCallAgent.mockImplementation(async () => ({
-      content: "Response",
-      usage: {
-        prompt_tokens: 50000,
-        completion_tokens: 20000,
-        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      },
-    }));
-    mockCompactMessages.mockRejectedValue(new Error("Fail 1"));
-    await agent.sendMessage("Message 1");
-    expect(mockCompactMessages).toHaveBeenCalledTimes(1);
-
-    // Reset mock for second call
-    mockCompactMessages.mockClear();
-
-    // Second call: compaction fails again (counter = 2)
-    mockCallAgent.mockImplementation(async () => ({
-      content: "Response",
-      usage: {
-        prompt_tokens: 50000,
-        completion_tokens: 20000,
-        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      },
-    }));
-    mockCompactMessages.mockRejectedValue(new Error("Fail 2"));
-    await agent.sendMessage("Message 2");
-    expect(mockCompactMessages).toHaveBeenCalledTimes(1);
-
-    // Reset mock for third call
-    mockCompactMessages.mockClear();
-
-    // Third call: compaction succeeds (counter reset to 0)
-    mockCallAgent.mockImplementation(async () => ({
-      content: "Response",
-      usage: {
-        prompt_tokens: 50000,
-        completion_tokens: 20000,
-        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      },
-    }));
-    mockCompactMessages.mockResolvedValue({
-      content: "Success",
-      usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
-    });
-    await agent.sendMessage("Message 3");
-    expect(mockCompactMessages).toHaveBeenCalledTimes(1);
-
-    // Reset mock for subsequent calls
-    mockCompactMessages.mockClear();
-
-    // Next 3 calls: compaction fails — circuit breaker should NOT trip
-    // because the successful compaction reset the counter
-    for (let i = 0; i < 3; i++) {
-      mockCallAgent.mockImplementation(async () => ({
+    // Toggle whether the compaction fork fails or succeeds. The main loop
+    // always returns high token usage so each message triggers compaction.
+    let forkShouldFail = true;
+    mockCallAgent.mockImplementation(async (params) => {
+      if (isCompactForkCall(params)) {
+        if (forkShouldFail) throw new Error("Fork failed");
+        return {
+          content: "Compacted summary",
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+          },
+        };
+      }
+      return {
         content: "Response",
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
           total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
         },
-      }));
-      mockCompactMessages.mockRejectedValue(new Error(`Fail ${i + 1}`));
+      };
+    });
+
+    const forkAttemptCount = () =>
+      mockCallAgent.mock.calls.filter((call) => isCompactForkCall(call[0]))
+        .length;
+
+    // First two calls: fork fails (counter 1, then 2)
+    await agent.sendMessage("Message 1");
+    await agent.sendMessage("Message 2");
+    expect(forkAttemptCount()).toBe(2);
+
+    // Third call: fork succeeds (counter reset to 0)
+    forkShouldFail = false;
+    await agent.sendMessage("Message 3");
+    expect(forkAttemptCount()).toBe(3);
+
+    // Next 3 calls: fork fails again — circuit breaker should NOT trip
+    // because the successful compaction reset the counter to 0.
+    forkShouldFail = true;
+    for (let i = 0; i < 3; i++) {
       await agent.sendMessage(`Message after reset ${i + 1}`);
     }
 
-    // All 3 calls should have attempted compaction (circuit breaker not tripped)
-    expect(mockCompactMessages).toHaveBeenCalledTimes(3);
+    // All 3 calls should have attempted the fork (counter was reset)
+    expect(forkAttemptCount()).toBe(6);
   });
 
   // Helper to set up compaction-triggering mocks
   const setupCompactionMocks = () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompactMessages = vi.mocked(aiService.compactMessages);
 
-    mockCallAgent.mockImplementation(async () => ({
-      content: "Response",
-      usage: {
-        prompt_tokens: 50000,
-        completion_tokens: 20000,
-        total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      },
-    }));
+    mockCallAgent.mockImplementation(async (params) => {
+      if (isCompactForkCall(params)) {
+        return {
+          content: "Compacted summary",
+          usage: {
+            prompt_tokens: 500,
+            completion_tokens: 250,
+            total_tokens: 750,
+          },
+        };
+      }
+      return {
+        content: "Response",
+        usage: {
+          prompt_tokens: 50000,
+          completion_tokens: 20000,
+          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+        },
+      };
+    });
 
-    mockCompactMessages.mockImplementation(async () => ({
-      content: "Compacted summary",
-      usage: {
-        prompt_tokens: 500,
-        completion_tokens: 250,
-        total_tokens: 750,
-      },
-    }));
-
-    return { mockCallAgent, mockCompactMessages };
+    return { mockCallAgent };
   };
 
   // Helper to get the BackgroundTaskManager from an Agent instance

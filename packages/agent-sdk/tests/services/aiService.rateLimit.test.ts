@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type {
-  CallAgentOptions,
-  CompactMessagesOptions,
-} from "@/services/aiService.js";
+import type { CallAgentOptions } from "@/services/aiService.js";
 import type { GatewayConfig, ModelConfig } from "@/types/index.js";
 
 // Test configuration constants
@@ -37,9 +34,6 @@ describe("AI Service - Rate Limiting", () => {
   let callAgent: (
     options: CallAgentOptions,
   ) => Promise<import("@/services/aiService.js").CallAgentResult>;
-  let compactMessages: (
-    options: CompactMessagesOptions,
-  ) => Promise<import("@/services/aiService.js").CompactMessagesResult>;
   let resetRateLimiter: () => void;
 
   beforeEach(async () => {
@@ -64,7 +58,6 @@ describe("AI Service - Rate Limiting", () => {
 
     const aiService = await import("@/services/aiService.js");
     callAgent = aiService.callAgent;
-    compactMessages = aiService.compactMessages;
     resetRateLimiter = aiService.resetRateLimiter;
 
     resetRateLimiter();
@@ -158,27 +151,5 @@ describe("AI Service - Rate Limiting", () => {
 
     await expect(p2).rejects.toThrow("Request was aborted");
     expect(mockCreate).toHaveBeenCalledTimes(1); // Only the first call should have reached OpenAI
-  });
-
-  it("should share rate limit between callAgent and compactMessages", async () => {
-    const start = Date.now();
-
-    await callAgent({
-      gatewayConfig: TEST_GATEWAY_CONFIG,
-      modelConfig: TEST_MODEL_CONFIG,
-      messages: [{ role: "user", content: "Call 1" }],
-      workdir: "/test/workdir",
-    });
-
-    const p2 = compactMessages({
-      gatewayConfig: TEST_GATEWAY_CONFIG,
-      modelConfig: TEST_MODEL_CONFIG,
-      messages: [{ role: "user", content: "Compact 1" }],
-    });
-
-    await vi.advanceTimersByTimeAsync(1000);
-    await p2;
-
-    expect(Date.now()).toBe(start + 1000);
   });
 });

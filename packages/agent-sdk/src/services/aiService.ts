@@ -24,7 +24,6 @@ import * as fs from "fs";
 import * as path from "path";
 
 import {
-  COMPACT_MESSAGES_SYSTEM_PROMPT,
   WEB_CONTENT_SYSTEM_PROMPT,
   BTW_SYSTEM_PROMPT,
   type SystemPromptBlock,
@@ -785,128 +784,6 @@ async function processStreamingResponse(
   }
 
   return result;
-}
-
-export interface CompactMessagesOptions {
-  // Resolved configuration
-  gatewayConfig: GatewayConfig;
-  modelConfig: ModelConfig;
-
-  // Existing parameters
-  messages: ChatCompletionMessageParam[];
-  abortSignal?: AbortSignal;
-  model?: string;
-  customInstructions?: string;
-}
-
-export interface CompactMessagesResult {
-  content: string;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
-}
-
-export async function compactMessages(
-  options: CompactMessagesOptions,
-): Promise<CompactMessagesResult> {
-  const { gatewayConfig, modelConfig, messages, abortSignal } = options;
-
-  // Validate model config at call time
-  validateModelConfig(modelConfig);
-
-  // Apply global 1 QPS rate limit
-  if (
-    process.env.NODE_ENV !== "test" ||
-    modelConfig.model === "rate-limit-test"
-  ) {
-    await acquireSlot(abortSignal);
-  }
-
-  // Strip images from messages before compact API call to reduce token usage
-  const cleanedMessages = messages.map((msg) => {
-    // Handle user/assistant messages with array content
-    if (Array.isArray(msg.content)) {
-      const textParts = msg.content.filter(
-        (part) => part.type === "text",
-      ) as import("openai/resources.js").ChatCompletionContentPartText[];
-      const text = textParts.map((p) => p.text).join("\n");
-      return { ...msg, content: text || "(empty message)" };
-    }
-    return msg;
-  });
-
-  // Create OpenAI client with injected configuration
-  const openai = new OpenAIClient({
-    apiKey: gatewayConfig.apiKey,
-    baseURL: gatewayConfig.baseURL,
-    defaultHeaders: gatewayConfig.defaultHeaders,
-    fetchOptions: gatewayConfig.fetchOptions,
-    fetch: gatewayConfig.fetch,
-  });
-
-  // When a fast model override is provided, use the fast model's options
-  // (if configured); otherwise fall back to the agent model's options.
-  const activeExtraParams = options.model
-    ? modelConfig.fastModelOptions || {}
-    : modelConfig.options || {};
-
-  const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
-    temperature: 0.1,
-    max_tokens: 8192,
-    ...activeExtraParams,
-  });
-
-  try {
-    const response = await openai.chat.completions.create(
-      {
-        ...openaiModelConfig,
-        messages: [
-          {
-            role: "system",
-            content: COMPACT_MESSAGES_SYSTEM_PROMPT,
-          },
-          ...cleanedMessages,
-          {
-            role: "user",
-            content: options.customInstructions
-              ? `Please create a detailed summary of the conversation so far. Pay special attention to these instructions: ${options.customInstructions}`
-              : `Please create a detailed summary of the conversation so far.`,
-          },
-        ],
-      },
-      {
-        signal: abortSignal,
-      },
-    );
-
-    const content = response.choices[0]?.message?.content?.trim();
-    if (!content) {
-      throw new Error(
-        "Failed to compact conversation history: Empty response from AI",
-      );
-    }
-    const usage = response.usage
-      ? {
-          prompt_tokens: response.usage.prompt_tokens,
-          completion_tokens: response.usage.completion_tokens,
-          total_tokens: response.usage.total_tokens,
-        }
-      : undefined;
-
-    return {
-      content,
-      usage,
-    };
-  } catch (error) {
-    if ((error as Error).name === "AbortError") {
-      logger.info("Compaction request was aborted");
-      throw new Error("Compaction request was aborted");
-    }
-    logger.error("Failed to compact messages:", error);
-    throw error;
-  }
 }
 
 export interface ProcessWebContentOptions {
