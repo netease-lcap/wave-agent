@@ -460,7 +460,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   return (
     <div className="desktop-layout" data-testid="desktop-shell">
       <DesktopSidebar
-        onNewSession={() => vscode.postMessage({ command: 'clearChat' })}
+        onNewSession={() => vscode.postMessage({ command: 'newSession' })}
         isStreaming={false}
         disabled={!host.workdir}
         onOpenSettings={onOpenSettings}

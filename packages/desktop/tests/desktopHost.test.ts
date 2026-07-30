@@ -136,7 +136,18 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
     sendMessage = vi.fn(async () => undefined);
     bang = vi.fn(async () => undefined);
     abortMessage = vi.fn(async () => undefined);
-    clearMessages = vi.fn(async () => undefined);
+    // Mirror the real flow: messages clear first, then a fresh sessionId fires
+    // through the sessionIdChange notification.
+    clearMessages = vi.fn(async function (this: {
+      messages: unknown[];
+      sessionId?: string;
+      callbacks: Record<string, (id: string) => void>;
+    }) {
+      this.messages = [];
+      const newId = `sess-${++h.agentCounter}`;
+      this.sessionId = newId;
+      this.callbacks.onSessionIdChange(newId);
+    });
     compact = vi.fn(async () => undefined);
     rewindToMessage = vi.fn(async () => ({ inputContent: 'rewound draft' }));
     listRewindCheckpoints = vi.fn(async () => ({ checkpoints: [{ id: 'u1', content: 'hello' }] }));
@@ -682,13 +693,13 @@ describe('checkForUpdates', () => {
 // ---------------------------------------------------------------------------
 
 describe('misc commands', () => {
-  it('clearChat spawns a fresh session without clearing the old one (FR-031)', async () => {
+  it('newSession spawns a fresh session without clearing the old one (FR-031)', async () => {
     const { host } = await readyHost();
     lastAgent().messages = [{ id: 'm1' }]; // make the active session non-empty
     const oldAgent = lastAgent();
     const before = h.agentInstances.length;
 
-    await host.handleWebviewMessage({ command: 'clearChat' });
+    await host.handleWebviewMessage({ command: 'newSession' });
 
     expect(h.agentInstances).toHaveLength(before + 1);
     expect(oldAgent.clearMessages).not.toHaveBeenCalled();
@@ -696,11 +707,52 @@ describe('misc commands', () => {
     expect(oldAgent.abortMessage).not.toHaveBeenCalled();
   });
 
-  it('clearChat on an empty active session is a no-op', async () => {
+  it('newSession on an empty active session is a no-op', async () => {
     const { host } = await readyHost();
     const before = h.agentInstances.length;
-    await host.handleWebviewMessage({ command: 'clearChat' });
+    await host.handleWebviewMessage({ command: 'newSession' });
     expect(h.agentInstances).toHaveLength(before);
+  });
+
+  it('clearChat clears the active session in place instead of spawning a new agent', async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.messages = [{ id: 'm1' }];
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'clearChat' });
+
+    expect(agent.clearMessages).toHaveBeenCalled();
+    expect(h.agentInstances).toHaveLength(before);
+    // The pane gets the cleared list pushed and follows the new session id.
+    expect(sent('updateMessages').at(-1)?.messages).toEqual([]);
+    expect(sent('updateCurrentSession').at(-1)).toMatchObject({ session: { id: agent.sessionId } });
+  });
+
+  it('clearChat does not register the cleared empty session in the sidebar index', async () => {
+    const { host, store } = await readyHost();
+    const agent = lastAgent();
+    agent.messages = [{ id: 'm1' }];
+
+    await host.handleWebviewMessage({ command: 'clearChat' });
+
+    expect(agent.sessionId).toBeDefined();
+    expect(store.getSessionIndex().find((e) => e.sessionId === agent.sessionId)).toBeUndefined();
+  });
+
+  it('registers the cleared session in the index on the first user message after clear', async () => {
+    const { host, store } = await readyHost();
+    const agent = lastAgent();
+    agent.messages = [{ id: 'm1' }];
+    await host.handleWebviewMessage({ command: 'clearChat' });
+    const newId = agent.sessionId;
+    expect(store.getSessionIndex().find((e) => e.sessionId === newId)).toBeUndefined();
+
+    const userMessage = { id: 'u1', role: 'user', blocks: [{ type: 'text', content: '清空后的第一条消息' }] };
+    agent.messages = [userMessage];
+    agent.callbacks.onUserMessageAdded(userMessage);
+
+    expect(store.getSessionIndex().find((e) => e.sessionId === newId)).toBeDefined();
   });
 
   it('restoreSession forwards to the agent and refreshes the session tree', async () => {
@@ -870,7 +922,9 @@ describe('session tree', () => {
   it('refreshes the tree when a turn ends (touchSessionInIndex)', async () => {
     const { sent } = await readyHost();
     // readyHost leaves the index empty -> no tree posts yet. Seed a session so
-    // refreshSessionTree actually emits (an empty index is a no-op post).
+    // refreshSessionTree actually emits (an empty index is a no-op post). The
+    // sessionIdChange registration only fires for sessions with content.
+    lastAgent().messages = [{ id: 'm1' }];
     lastAgent().callbacks.onSessionIdChange('sess-1');
     await vi.waitFor(() => {
       expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
@@ -889,6 +943,7 @@ describe('session tree', () => {
     // readyHost leaves the index empty -> no tree posts yet.
     expect(sent('desktopSessionTree')).toHaveLength(0);
 
+    lastAgent().messages = [{ id: 'm1' }];
     lastAgent().callbacks.onSessionIdChange('sess-2');
 
     await vi.waitFor(() => {
@@ -1194,9 +1249,9 @@ describe('worktree flow', () => {
     h.worktreeResult = worktree;
     h.existingPaths.add(worktree.path);
     await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a' });
-    lastAgent().messages = [{ id: 'm1' }]; // non-empty so clearChat is not a no-op
+    lastAgent().messages = [{ id: 'm1' }]; // non-empty so newSession is not a no-op
 
-    await host.handleWebviewMessage({ command: 'clearChat' });
+    await host.handleWebviewMessage({ command: 'newSession' });
 
     expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/a' }));
     expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: '/work/a' });
@@ -1226,6 +1281,7 @@ describe('worktree flow', () => {
     h.existingPaths.add(worktree.path);
 
     await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a' });
+    lastAgent().messages = [{ id: 'm1' }];
     lastAgent().callbacks.onSessionIdChange('sess-wt');
 
     const entry = store.getSessionIndex().find((e) => e.sessionId === 'sess-wt');
@@ -1380,6 +1436,7 @@ describe('worktree flow', () => {
     h.worktreeResult = worktree;
     h.existingPaths.add(worktree.path);
     await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a', baseBranch: 'main' });
+    lastAgent().messages = [{ id: 'm1' }];
     lastAgent().callbacks.onSessionIdChange('live-wt');
 
     await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'live-wt' });
@@ -1458,7 +1515,7 @@ describe('multi-session parallel (FR-031)', () => {
   it('desktopSelectSession on a live agent activates it without spawning or restoring', async () => {
     const { host, sent } = await readyHost();
     const agent1 = seedActiveSession('sess-1');
-    await host.handleWebviewMessage({ command: 'clearChat' });
+    await host.handleWebviewMessage({ command: 'newSession' });
     seedActiveSession('sess-2');
     const before = h.agentInstances.length;
 
@@ -1501,7 +1558,7 @@ describe('multi-session parallel (FR-031)', () => {
     agent1.isStreaming = true;
     agent1.callbacks.onLoadingChange(true);
 
-    await host.handleWebviewMessage({ command: 'clearChat' });
+    await host.handleWebviewMessage({ command: 'newSession' });
     expect(agent1.destroy).not.toHaveBeenCalled();
     const agent2 = seedActiveSession('sess-2');
     agent2.isStreaming = true;
@@ -1523,7 +1580,7 @@ describe('multi-session parallel (FR-031)', () => {
   it('flags a background session waiting-confirmation in the tree until resolved', async () => {
     const { host, sent } = await readyHost();
     const agent1 = seedActiveSession('sess-1');
-    await host.handleWebviewMessage({ command: 'clearChat' });
+    await host.handleWebviewMessage({ command: 'newSession' });
     seedActiveSession('sess-2');
 
     // Background permission request: no dialog, but the tree flags the session.
@@ -1568,7 +1625,7 @@ describe('multi-session parallel (FR-031)', () => {
   it('gates background agent view callbacks until the session is activated', async () => {
     const { host, sent } = await readyHost();
     const agent1 = seedActiveSession('sess-1');
-    await host.handleWebviewMessage({ command: 'clearChat' });
+    await host.handleWebviewMessage({ command: 'newSession' });
     seedActiveSession('sess-2');
 
     const appends = sent('appendMessage').length;
@@ -1585,7 +1642,7 @@ describe('multi-session parallel (FR-031)', () => {
     const agents = [seedActiveSession('sess-1')];
     // Spawn well beyond the old pool cap; each new session needs a non-empty active one.
     for (let i = 2; i <= 10; i++) {
-      await host.handleWebviewMessage({ command: 'clearChat' });
+      await host.handleWebviewMessage({ command: 'newSession' });
       agents.push(seedActiveSession(`sess-${i}`));
     }
 
@@ -1601,7 +1658,7 @@ describe('multi-session parallel (FR-031)', () => {
   it('dispose destroys every live agent in the pool', async () => {
     const { host } = await readyHost();
     const agent1 = seedActiveSession('sess-1');
-    await host.handleWebviewMessage({ command: 'clearChat' });
+    await host.handleWebviewMessage({ command: 'newSession' });
     const agent2 = seedActiveSession('sess-2');
 
     await host.dispose();
@@ -1783,7 +1840,7 @@ describe('split-view panes (FR-032~036)', () => {
     // sess-2 pane bound.
     await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: firstPane.paneId });
     for (let i = 3; i <= 10; i++) {
-      await host.handleWebviewMessage({ command: 'clearChat' });
+      await host.handleWebviewMessage({ command: 'newSession' });
       seedActiveSession(`sess-${i}`);
     }
 
@@ -2221,7 +2278,7 @@ describe('input focus on conversation switch', () => {
   it('desktopSelectSession on a live session focuses the input', async () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
-    await host.handleWebviewMessage({ command: 'clearChat' });
+    await host.handleWebviewMessage({ command: 'newSession' });
     seedActiveSession('sess-2');
     const paneId = panePushes(sent).at(-1)!.focusedPaneId;
     const before = sent('focusInput').length;
