@@ -188,6 +188,10 @@ describe("AIManager - compactConversation", () => {
       );
       // The fork must NOT use the fast model — that would bust the cache.
       expect(callAgentMock.mock.calls[0][0].model).toBeUndefined();
+      // The fork must stream so a slow reasoning model emits first bytes
+      // before the gateway idle timeout fires (non-streaming waits for the
+      // full summary on the largest context and gets killed).
+      expect(callAgentMock.mock.calls[0][0].stream).toBe(true);
       expect(
         mockMessageManager.compactMessagesAndUpdateSession,
       ).toHaveBeenCalled();

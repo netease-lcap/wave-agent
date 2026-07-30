@@ -168,6 +168,12 @@ export interface CallAgentOptions {
     | "required"
     | { type: "function"; function: { name: string } }; // Force tool selection
 
+  // Force SSE streaming independent of callback presence. Long-running
+  // non-interactive calls (e.g. the compaction fork) need streaming so a
+  // slow reasoning model isn't killed by a gateway idle timeout before the
+  // first byte arrives.
+  stream?: boolean;
+
   // NEW: Streaming callbacks
   onContentUpdate?: (content: string) => void;
   onToolUpdate?: (toolCall: {
@@ -318,11 +324,9 @@ export async function callAgent(
     });
 
     // Determine if streaming is needed
-    const isStreaming = !!(
-      onContentUpdate ||
-      onToolUpdate ||
-      onReasoningUpdate
-    );
+    const isStreaming =
+      options.stream === true ||
+      !!(onContentUpdate || onToolUpdate || onReasoningUpdate);
 
     // Prepare API call parameters
     createParams = {
