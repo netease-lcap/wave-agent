@@ -121,7 +121,8 @@ describe('StdioClient', () => {
     /** Mock spawn that enforces Node's Windows `.cmd` guard. */
     function spawnWithCmdGuard(proc: MockProc) {
         mockSpawn.mockImplementation((cmd: string, _args: string[], options: { shell?: boolean } | undefined) => {
-            const isCmdShim = /\.cmd$/i.test(cmd);
+            // (The executable may be pre-quoted for the shell command line.)
+            const isCmdShim = /\.cmd"?$/i.test(cmd);
             if (isCmdShim && options?.shell !== true) {
                 const err = new Error('spawn wave.cmd ERR_CHILD_PROCESS_INVALID_COMMAND_FILE');
                 (err as Error & { code?: string }).code = 'ERR_CHILD_PROCESS_INVALID_COMMAND_FILE';
@@ -131,7 +132,7 @@ describe('StdioClient', () => {
         });
     }
 
-    it('spawns wave.cmd with shell:true on Windows', () => {
+    it('spawns wave.cmd quoted with shell:true on Windows', () => {
         withPlatform('win32', () => {
             const proc = createMockProc();
             const rl = new EventEmitter();
@@ -142,7 +143,9 @@ describe('StdioClient', () => {
             expect(() => new StdioClient('C:\\nodejs\\wave.cmd', ['--stdio'])).not.toThrow();
 
             const call = mockSpawn.mock.calls[0];
-            expect(call[0]).toBe('C:\\nodejs\\wave.cmd');
+            // Pre-quoted for the cmd.exe `shell:true` command line so paths
+            // containing spaces are not split at the space.
+            expect(call[0]).toBe('"C:\\nodejs\\wave.cmd"');
             expect(call[2].shell).toBe(true);
         });
     });
