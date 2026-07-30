@@ -156,11 +156,35 @@ describe('ChatApp desktop panel framework', () => {
         expect(screen.queryByTestId('terminal-pane')).not.toBeInTheDocument();
     });
 
-    it('refuses to open a panel that would squeeze the conversation below its minimum', () => {
+    it('opens the panel in a fresh second row when the first row would squeeze the conversation below its minimum', () => {
         window.waveHostType = 'desktop';
+        // 500px fits the 420px panel only without the 360px conversation
+        // minimum beside it → row 1 refuses, row 2 takes it. The rect mock
+        // reports no height, so the row-creation height gate is skipped.
         const rectSpy = vi
             .spyOn(Element.prototype, 'getBoundingClientRect')
             .mockReturnValue({ width: 500, right: 500 } as DOMRect);
+        try {
+            renderDesktop({ workdir: '/work/a' });
+            fireEvent.click(screen.getByTestId('panel-toggle-btn'));
+            fireEvent.click(screen.getByTestId('panel-toggle-item-diff'));
+            expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
+            expect(screen.getByTestId('diff-pane').closest('.desktop-panel-slot')).toHaveClass(
+                'desktop-panel-slot--row-2',
+            );
+            expect(screen.queryByTestId('desktop-panel-hint')).not.toBeInTheDocument();
+        } finally {
+            rectSpy.mockRestore();
+        }
+    });
+
+    it('refuses to open a panel that fits in neither row', () => {
+        window.waveHostType = 'desktop';
+        // 300px is below the 420px default panel width even on a full-width
+        // second row → nothing to overflow into.
+        const rectSpy = vi
+            .spyOn(Element.prototype, 'getBoundingClientRect')
+            .mockReturnValue({ width: 300, right: 300 } as DOMRect);
         try {
             renderDesktop({ workdir: '/work/a' });
             fireEvent.click(screen.getByTestId('panel-toggle-btn'));

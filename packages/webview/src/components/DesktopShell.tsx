@@ -101,14 +101,18 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     return height / 2 >= MIN_ROW_HEIGHT;
   }, []);
 
-  const rowOfPane = useCallback((paneId: string): number => {
+  const rowOfPane = useCallback((paneId: string): 0 | 1 => {
     return panes.find((p) => p.paneId === paneId)?.row === 1 ? 1 : 0;
   }, [panes]);
 
   // Cmd/Ctrl+Click on a sidebar session or a sidebar drag-drop — guarded by
   // the same min-size rules the host applies, so the refusal hint shows
   // without a round trip. An already-visible session skips the gates: the
-  // host just focuses its pane instead of adding one.
+  // host just focuses its pane instead of adding one. A drag drop names its
+  // target row and is honored like a pane move (the row scrolls horizontally
+  // below the min width). A click (no explicit target) spills into the other
+  // row when the focused row is full — creating the second row when only one
+  // exists — and refuses only when nothing fits.
   const handleOpenPane = useCallback((workdir: string, sessionId: string, opts?: OpenPaneOptions) => {
     if (!panes.some((p) => p.sessionId === sessionId)) {
       if (opts?.newRow && !hasTwoRows) {
@@ -116,8 +120,22 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
           showHint('窗口高度不足，无法拆分为两行');
           return;
         }
-      } else if (!canAddPane(opts?.row ?? rowOfPane(focusedPaneId ?? ''))) {
-        showHint('窗口宽度不足，无法添加更多分屏');
+      } else if (opts?.row === undefined && opts?.newRow === undefined && !canAddPane(rowOfPane(focusedPaneId ?? ''))) {
+        const focusedRow = rowOfPane(focusedPaneId ?? '');
+        if (!hasTwoRows) {
+          if (!canSplitRows()) {
+            showHint('空间不足，无法添加更多分屏');
+            return;
+          }
+          host.onOpenPane(workdir, sessionId, { ...opts, newRow: 'below' });
+          return;
+        }
+        const otherRow = focusedRow === 0 ? 1 : 0;
+        if (!canAddPane(otherRow)) {
+          showHint('窗口宽度不足，无法添加更多分屏');
+          return;
+        }
+        host.onOpenPane(workdir, sessionId, { ...opts, row: otherRow });
         return;
       }
     }

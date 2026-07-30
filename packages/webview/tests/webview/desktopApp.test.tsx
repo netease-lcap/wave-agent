@@ -576,6 +576,13 @@ describe('DesktopApp', () => {
             });
         }
 
+        function mockRowsContainerHeight(height: number) {
+            const el = screen.getByTestId('desktop-pane-rows');
+            vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+                width: 1200, height, top: 0, left: 0, bottom: height, right: 1200, x: 0, y: 0, toJSON: () => ({}),
+            });
+        }
+
         function mockPaneRect(paneId: string, left: number, width: number) {
             const el = screen.getByTestId(`desktop-pane-${paneId}`);
             vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
@@ -778,9 +785,27 @@ describe('DesktopApp', () => {
             });
         });
 
-        it('refuses Cmd/Ctrl+Click with a hint when the row is too narrow for another pane', () => {
+        it('spills Cmd/Ctrl+Click into a fresh second row when the single row is too narrow for another pane', () => {
             const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
             mockRowWidth(500);
+            mockRowsContainerHeight(800);
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByTestId('desktop-session-item-s2'), { ctrlKey: true });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's2',
+                newRow: 'below',
+            });
+            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
+        });
+
+        it('refuses Cmd/Ctrl+Click with a hint when the row is too narrow and the window too short to split', () => {
+            const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
+            mockRowWidth(500);
+            mockRowsContainerHeight(400);
             vscode.postMessage.mockClear();
 
             fireEvent.click(screen.getByTestId('desktop-session-item-s2'), { ctrlKey: true });
@@ -788,7 +813,7 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).not.toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'desktopOpenPane' }),
             );
-            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口宽度不足');
+            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('空间不足');
         });
 
         // jsdom lacks DragEvent, so fireEvent's dragOver drops clientX — build
@@ -874,7 +899,7 @@ describe('DesktopApp', () => {
             });
         });
 
-        it('refuses a sidebar drop with a hint when the row is too narrow for another pane', () => {
+        it('honors a sidebar drop into a narrow row like a pane move (no width refusal)', () => {
             const { vscode } = renderWithPanes([{ paneId: 'pane-0', sessionId: 's1' }], 'pane-0');
             mockRowWidth(500);
             const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' }, 'application/x-wave-session');
@@ -882,10 +907,10 @@ describe('DesktopApp', () => {
 
             fireEvent.drop(screen.getByTestId('desktop-pane-row'), { dataTransfer, clientX: 100 });
 
-            expect(vscode.postMessage).not.toHaveBeenCalledWith(
-                expect.objectContaining({ command: 'desktopOpenPane' }),
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 's2', row: 0 }),
             );
-            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口宽度不足');
+            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
         });
 
         it('skips the width gate when the dropped session is already visible (host focuses its pane)', () => {
@@ -1110,7 +1135,7 @@ describe('DesktopApp', () => {
             const result = renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
-                groups: [{ workdir: '/work/a', sessions: [session('s1', 'chat one'), session('s2', 'chat two')] }],
+                groups: [{ workdir: '/work/a', sessions: [session('s1', 'chat one'), session('s2', 'chat two'), session('s3', 'chat three')] }],
             });
             sendCommand('desktopPanes', { panes, rowHeights, focusedPaneId });
             return result;
@@ -1264,6 +1289,31 @@ describe('DesktopApp', () => {
             });
         });
 
+        it('shows the drop zone when a session dragover bubbles up from inside a pane', () => {
+            const { vscode } = renderWithRows([{ paneId: 'pane-0', sessionId: 's1' }], undefined, 'pane-0');
+            mockRowsContainerHeight(800);
+            mockRowRect('desktop-pane-row', 0, 600);
+            mockPaneRect('pane-0', 0, 400);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's2' }, 'application/x-wave-session');
+
+            // The real event targets an element inside the pane (the pane's own
+            // onDragOver ignores the session MIME) and bubbles to the row.
+            const header = within(screen.getByTestId('desktop-pane-pane-0')).getByTestId('chat-header');
+            dragOverAt(header, dataTransfer, { clientX: 200, clientY: 10 });
+
+            expect(screen.getByTestId('desktop-pane-dropzone').className).toContain('desktop-pane-dropzone--above');
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(header, { dataTransfer });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's2',
+                newRow: 'above',
+            });
+        });
+
         it('refuses the edge-band split with a hint when the window is too short', () => {
             const { vscode } = renderWithRows([{ paneId: 'pane-0', sessionId: 's1' }], undefined, 'pane-0');
             mockRowsContainerHeight(400);
@@ -1367,6 +1417,79 @@ describe('DesktopApp', () => {
                 row: 1,
                 insertionIndex: 1,
             });
+        });
+
+        it('honors a dragged session drop onto a narrow second row like a pane move', () => {
+            const { vscode } = renderWithRows(
+                [
+                    { paneId: 'pane-0', sessionId: 's1', row: 0 },
+                    { paneId: 'pane-1', sessionId: 's2', row: 1 },
+                    { paneId: 'pane-2', sessionId: 's3', row: 1 },
+                ],
+                [0.5, 0.5],
+                'pane-0',
+            );
+            // Second row: 2 panes in 500px → a third would be ~166px, below the
+            // min width. Drops squeeze in like pane moves — no refusal.
+            const narrow = { width: 500, height: 300, top: 300, left: 0, bottom: 600, right: 500, x: 0, y: 300, toJSON: () => ({}) };
+            vi.spyOn(screen.getByTestId('desktop-pane-row-1'), 'getBoundingClientRect').mockReturnValue(narrow as DOMRect);
+            mockPaneRect('pane-2', 250, 250);
+            const dataTransfer = makeDataTransfer({ workdir: '/work/a', sessionId: 's4' }, 'application/x-wave-session');
+
+            dragOverAt(screen.getByTestId('desktop-pane-pane-2'), dataTransfer, { clientX: 400, clientY: 500 });
+            expect(screen.getByTestId('desktop-pane-drop-indicator')).toBeInTheDocument();
+
+            vscode.postMessage.mockClear();
+            fireEvent.drop(screen.getByTestId('desktop-pane-row-1'), { dataTransfer });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 's4', row: 1 }),
+            );
+            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
+        });
+
+        it('spills Cmd/Ctrl+Click into the other row when the focused row is full', () => {
+            const { vscode } = renderWithRows(
+                [{ paneId: 'pane-0', sessionId: 's1', row: 0 }, { paneId: 'pane-1', sessionId: 's2', row: 1 }],
+                [0.5, 0.5],
+                'pane-0',
+            );
+            // Row 0: one pane in 500px → 250px each after adding, below the
+            // minimum. Row 1: one pane in 1200px → fits.
+            vi.spyOn(screen.getByTestId('desktop-pane-row'), 'getBoundingClientRect').mockReturnValue({
+                width: 500, height: 300, top: 0, left: 0, bottom: 300, right: 500, x: 0, y: 0, toJSON: () => ({}),
+            });
+            mockRowRect('desktop-pane-row-1', 300, 300);
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByTestId('desktop-session-item-s3'), { ctrlKey: true });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                command: 'desktopOpenPane',
+                workdir: '/work/a',
+                sessionId: 's3',
+                row: 1,
+            });
+            expect(screen.queryByTestId('desktop-pane-hint')).not.toBeInTheDocument();
+        });
+
+        it('refuses Cmd/Ctrl+Click with a hint when both rows are full', () => {
+            const { vscode } = renderWithRows(
+                [{ paneId: 'pane-0', sessionId: 's1', row: 0 }, { paneId: 'pane-1', sessionId: 's2', row: 1 }],
+                [0.5, 0.5],
+                'pane-0',
+            );
+            const narrow = { width: 500, height: 300, top: 0, left: 0, bottom: 300, right: 500, x: 0, y: 0, toJSON: () => ({}) };
+            vi.spyOn(screen.getByTestId('desktop-pane-row'), 'getBoundingClientRect').mockReturnValue(narrow as DOMRect);
+            vi.spyOn(screen.getByTestId('desktop-pane-row-1'), 'getBoundingClientRect').mockReturnValue(narrow as DOMRect);
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByTestId('desktop-session-item-s3'), { ctrlKey: true });
+
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopOpenPane' }),
+            );
+            expect(screen.getByTestId('desktop-pane-hint')).toHaveTextContent('窗口宽度不足');
         });
     });
 
