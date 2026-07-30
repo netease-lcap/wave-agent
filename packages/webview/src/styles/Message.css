@@ -157,6 +157,7 @@
 .message.assistant .error {
     color: var(--vscode-descriptionForeground);
     font-style: italic;
+    padding-top: 10px;
     max-height: 200px;
     overflow-y: auto;
     white-space: pre-wrap;
