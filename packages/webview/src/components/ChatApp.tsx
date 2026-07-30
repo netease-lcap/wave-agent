@@ -1192,6 +1192,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         />
         <div style={{ display: state.pendingConfirmations.length === 0 ? 'block' : 'none' }}>
           <TaskList
+            // 按会话 id 重挂载：切换会话时重置“观察过未完成任务”的跟踪，
+            // 使全部已完成的新会话立即隐藏，而不是沿用上一会话的 5 秒宽限
+            key={state.currentSession?.id}
             tasks={state.tasks}
             isCollapsed={state.isTaskListCollapsed}
             onToggleCollapse={() => dispatch({ type: 'TOGGLE_TASK_LIST_COLLAPSE' })}
