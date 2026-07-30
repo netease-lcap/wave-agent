@@ -762,3 +762,31 @@
     font-size: 12px;
     color: var(--vscode-descriptionForeground, #999);
 }
+
+/* Two-row mode compresses the message row; an inline ConfirmationDialog
+   (plan preview / permission / AskUserQuestions) can grow taller than the
+   compressed first row. Let the input area shrink within the flex column and
+   the dialog body scroll, instead of overflowing onto the second-row panels.
+   Scoped under .desktop-chat-main so VSCE/JB (single-row, full-height) stay
+   on the inline auto-height path. */
+.desktop-chat-main .input-area-container--confirm {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.desktop-chat-main .input-area-container--confirm .confirmation-dialog {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.desktop-chat-main .input-area-container--confirm .confirmation-dialog-inner {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}

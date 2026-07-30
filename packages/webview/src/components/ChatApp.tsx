@@ -1205,7 +1205,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         />
       )}
 
-      <div className="input-area-container">
+      <div className={`input-area-container${isDesktop && state.pendingConfirmations.length > 0 ? ' input-area-container--confirm' : ''}`}>
         <RewindPopup
           isVisible={rewindPopupOpen}
           isLoading={rewindCheckpointsLoading}
