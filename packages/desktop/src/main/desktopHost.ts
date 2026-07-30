@@ -1109,6 +1109,7 @@ export class DesktopHost {
       inputContent: this.inputDrafts.get(paneId) ?? '',
       isStreaming: agent?.isStreaming ?? false,
       isCommandRunning: agent?.isCommandRunning ?? false,
+      isCompacting: agent?.isCompacting ?? false,
       session: agent?.sessionId ? {
         id: agent.sessionId,
         sessionType: 'main',
