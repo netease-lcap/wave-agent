@@ -128,6 +128,12 @@ export class MessageHandler {
             case 'disablePlugin':
                 await this.handleDisablePlugin(msg.pluginId as string, msg.scope as string, viewType, windowId);
                 break;
+            case 'getProjectSettings':
+                await this.handleGetProjectSettings(viewType, windowId);
+                break;
+            case 'setBuiltinPluginEnabled':
+                await this.handleSetBuiltinPluginEnabled(msg.pluginId as string, msg.enabled as boolean, msg.scope as string, viewType, windowId);
+                break;
             case 'uninstallPlugin':
                 await this.handleUninstallPlugin(msg.pluginId as string, viewType, windowId);
                 break;
@@ -374,12 +380,30 @@ export class MessageHandler {
         try {
             await this.pluginService.disablePlugin(pluginId, scope as Scope);
             await this.handleListPlugins(viewType, windowId);
-            
+
             // Reload config and recreate agents to apply plugin changes
             const config = await this.configService.loadConfiguration();
             this.context.updateAllSessionsConfig(config);
         } catch (error) {
             vscode.window.showErrorMessage('禁用插件失败: ' + error);
+        }
+    }
+
+    private async handleGetProjectSettings(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        try {
+            const result = await this.pluginService.getProjectSettings();
+            this.context.postMessage({ command: 'projectSettings', enabledPlugins: result.enabledPlugins }, viewType, windowId);
+        } catch (error) {
+            vscode.window.showErrorMessage('获取项目设置失败: ' + error);
+        }
+    }
+
+    private async handleSetBuiltinPluginEnabled(pluginId: string, enabled: boolean, scope: string, viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        try {
+            const result = await this.pluginService.setBuiltinPluginEnabled(pluginId, enabled, scope as Scope);
+            this.context.postMessage({ command: 'projectSettings', enabledPlugins: result.enabledPlugins }, viewType, windowId);
+        } catch (error) {
+            vscode.window.showErrorMessage('修改项目设置失败: ' + error);
         }
     }
 

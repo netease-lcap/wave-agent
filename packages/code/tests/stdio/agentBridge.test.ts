@@ -673,12 +673,10 @@ test("listRewindCheckpoints filters to real user messages and flattens content",
     { role: "user", id: "u3", blocks: [{ type: "text", content: "second" }] },
   ] as unknown as Message[];
   const mockAgent = createMockAgent({
-    getFullMessageThread: vi
-      .fn()
-      .mockResolvedValue({
-        messages: threadMessages,
-        sessionIds: ["test-session-id"],
-      }),
+    getFullMessageThread: vi.fn().mockResolvedValue({
+      messages: threadMessages,
+      sessionIds: ["test-session-id"],
+    }),
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
@@ -1099,6 +1097,76 @@ test("disablePlugin delegates to PluginCore", async () => {
   });
 
   expect(disablePlugin).toHaveBeenCalledWith("test@official", "project");
+});
+
+test("getProjectSettings returns merged enabledPlugins from PluginCore", async () => {
+  const { bridge } = createBridge();
+  const getMergedEnabledPlugins = vi.fn().mockReturnValue({
+    "sdd@builtin": true,
+    "other@official": false,
+  });
+  mockPluginCore({ getMergedEnabledPlugins });
+
+  const result = (await bridge.handleRequest("getProjectSettings", {
+    workdir: "/repo",
+  })) as { enabledPlugins: Record<string, boolean> };
+
+  expect(getMergedEnabledPlugins).toHaveBeenCalled();
+  expect(result).toEqual({
+    enabledPlugins: { "sdd@builtin": true, "other@official": false },
+  });
+});
+
+test("setBuiltinPluginEnabled enables plugin with project scope when enabled", async () => {
+  const { bridge } = createBridge();
+  const enablePlugin = vi.fn().mockResolvedValue("project");
+  const getMergedEnabledPlugins = vi.fn().mockReturnValue({
+    "sdd@builtin": true,
+  });
+  mockPluginCore({ enablePlugin, getMergedEnabledPlugins });
+
+  const result = (await bridge.handleRequest("setBuiltinPluginEnabled", {
+    pluginId: "sdd@builtin",
+    enabled: true,
+  })) as { enabledPlugins: Record<string, boolean> };
+
+  expect(enablePlugin).toHaveBeenCalledWith("sdd@builtin", "project");
+  expect(result).toEqual({ enabledPlugins: { "sdd@builtin": true } });
+});
+
+test("setBuiltinPluginEnabled disables plugin with project scope when disabled", async () => {
+  const { bridge } = createBridge();
+  const disablePlugin = vi.fn().mockResolvedValue("project");
+  const getMergedEnabledPlugins = vi.fn().mockReturnValue({
+    "sdd@builtin": false,
+  });
+  mockPluginCore({ disablePlugin, getMergedEnabledPlugins });
+
+  const result = (await bridge.handleRequest("setBuiltinPluginEnabled", {
+    pluginId: "sdd@builtin",
+    enabled: false,
+    scope: "project",
+  })) as { enabledPlugins: Record<string, boolean> };
+
+  expect(disablePlugin).toHaveBeenCalledWith("sdd@builtin", "project");
+  expect(result).toEqual({ enabledPlugins: { "sdd@builtin": false } });
+});
+
+test("setBuiltinPluginEnabled forwards explicit scope", async () => {
+  const { bridge } = createBridge();
+  const enablePlugin = vi.fn().mockResolvedValue("user");
+  const getMergedEnabledPlugins = vi.fn().mockReturnValue({
+    "sdd@builtin": true,
+  });
+  mockPluginCore({ enablePlugin, getMergedEnabledPlugins });
+
+  await bridge.handleRequest("setBuiltinPluginEnabled", {
+    pluginId: "sdd@builtin",
+    enabled: true,
+    scope: "user",
+  });
+
+  expect(enablePlugin).toHaveBeenCalledWith("sdd@builtin", "user");
 });
 
 test("listMarketplaces delegates to PluginCore", async () => {

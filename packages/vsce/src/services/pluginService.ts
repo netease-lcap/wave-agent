@@ -30,6 +30,14 @@ export class PluginService {
         await this.utilityClient.request('disablePlugin', { pluginId, scope, workdir: this.getWorkdir() });
     }
 
+    public async getProjectSettings() {
+        return await this.utilityClient.request('getProjectSettings', { workdir: this.getWorkdir() }) as { enabledPlugins: Record<string, boolean> };
+    }
+
+    public async setBuiltinPluginEnabled(pluginId: string, enabled: boolean, scope?: Scope) {
+        return await this.utilityClient.request('setBuiltinPluginEnabled', { pluginId, enabled, scope, workdir: this.getWorkdir() }) as { enabledPlugins: Record<string, boolean> };
+    }
+
     public async updatePlugin(pluginId: string) {
         return await this.utilityClient.request('updatePlugin', { pluginId, workdir: this.getWorkdir() });
     }

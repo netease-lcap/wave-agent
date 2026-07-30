@@ -412,6 +412,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             payload: message.configurationData
           });
           break;
+        case 'projectSettings':
+          // Project settings (.wave/settings.json merged enabledPlugins) are
+          // per-workdir, so on Desktop each pane may hold a different value —
+          // must be pane-guarded (unlike the shared global configurationResponse).
+          if (!forThisPane(message)) break;
+          dispatch({
+            type: 'SET_PROJECT_SETTINGS',
+            payload: { enabledPlugins: message.enabledPlugins }
+          });
+          break;
         case 'setInitialState':
           if (!forThisPane(message)) break;
           dispatch({
@@ -1431,6 +1441,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           error={state.configurationError}
           onSave={handleConfigurationSave}
           onCancel={handleDialogClose}
+          projectSettings={state.projectSettings}
+          onLoadProjectSettings={() => postToHost({ command: 'getProjectSettings' })}
+          onToggleBuiltinPlugin={(pluginId, enabled) =>
+            postToHost({ command: 'setBuiltinPluginEnabled', pluginId, enabled, scope: 'project' })
+          }
           vscode={vscode}
         />
       )}

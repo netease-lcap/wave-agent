@@ -259,6 +259,19 @@ export class AgentBridge {
           p.workdir as string | undefined,
           sessionId,
         );
+      case "getProjectSettings":
+        return this.getProjectSettings(
+          p.workdir as string | undefined,
+          sessionId,
+        );
+      case "setBuiltinPluginEnabled":
+        return this.setBuiltinPluginEnabled(
+          p.pluginId as string,
+          p.enabled as boolean,
+          p.scope as Scope | undefined,
+          p.workdir as string | undefined,
+          sessionId,
+        );
       case "updatePlugin":
         return this.updatePlugin(
           p.pluginId as string,
@@ -979,6 +992,35 @@ export class AgentBridge {
       pluginId,
       scope,
     );
+  }
+
+  private async getProjectSettings(
+    workdir?: string,
+    sessionId?: string,
+  ): Promise<{ enabledPlugins: Record<string, boolean> }> {
+    return {
+      enabledPlugins: this.getPluginCore(
+        workdir,
+        sessionId,
+      ).getMergedEnabledPlugins(),
+    };
+  }
+
+  private async setBuiltinPluginEnabled(
+    pluginId: string,
+    enabled: boolean,
+    scope: Scope | undefined,
+    workdir?: string,
+    sessionId?: string,
+  ): Promise<{ enabledPlugins: Record<string, boolean> }> {
+    const core = this.getPluginCore(workdir, sessionId);
+    const targetScope = scope ?? "project";
+    if (enabled) {
+      await core.enablePlugin(pluginId, targetScope);
+    } else {
+      await core.disablePlugin(pluginId, targetScope);
+    }
+    return { enabledPlugins: core.getMergedEnabledPlugins() };
   }
 
   private async updatePlugin(

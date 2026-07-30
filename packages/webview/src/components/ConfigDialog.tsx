@@ -11,7 +11,7 @@ import { ConfigDialogProps, ConfigurationData, VsCodeApi } from '../types';
 import { InfoIcon, CloseIcon } from './HeaderIcons';
 import '../styles/ConfigurationDialog.css';
 
-type ConfigTab = 'global' | 'model';
+type ConfigTab = 'global' | 'model' | 'project';
 
 const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
   configurationData,
@@ -19,11 +19,17 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
   error,
   onSave,
   onCancel,
+  projectSettings,
+  onLoadProjectSettings,
+  onToggleBuiltinPlugin,
 }) => {
   const [formData, setFormData] = useState<ConfigurationData>({
     language: 'Chinese'
   });
   const [activeTab, setActiveTab] = useState<ConfigTab>('global');
+  // Pending state while a builtin-plugin toggle round-trips; prevents a
+  // double-flip before the refreshed projectSettings arrives.
+  const [toggling, setToggling] = useState(false);
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -61,6 +67,21 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
       document.removeEventListener('keydown', handleEscapeKey);
     };
   }, [onCancel]);
+
+  // Lazy-load project settings when the 项目设置 tab is activated (and re-fetch
+  // on each entry so external edits to .wave/settings.json are picked up).
+  useEffect(() => {
+    if (activeTab === 'project') {
+      onLoadProjectSettings?.();
+    }
+  }, [activeTab, onLoadProjectSettings]);
+
+  // Clear the pending-toggle state once the refreshed projectSettings arrives.
+  useEffect(() => {
+    if (projectSettings) {
+      setToggling(false);
+    }
+  }, [projectSettings]);
 
   const handleInputChange = (field: keyof ConfigurationData, value: string) => {
     setFormData(prev => ({
@@ -111,6 +132,15 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
             onClick={() => setActiveTab('model')}
           >
             模型设置
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'project'}
+            className={`config-tab${activeTab === 'project' ? ' active' : ''}`}
+            onClick={() => setActiveTab('project')}
+          >
+            项目设置
           </button>
         </div>
 
@@ -189,6 +219,45 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
               </>
             )}
 
+            {activeTab === 'project' && (
+              <div className="configuration-field config-project-field">
+                <div className="config-project-row">
+                  <div className="config-project-label">
+                    <span className="config-project-title">SDD</span>
+                    <span className="config-project-desc">
+                      Spec-driven development 插件（/sdd:specify 等命令与技能）
+                    </span>
+                  </div>
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      data-testid="sdd-toggle"
+                      checked={
+                        projectSettings?.enabledPlugins?.['sdd@builtin'] ===
+                        true
+                      }
+                      disabled={toggling || !projectSettings}
+                      onChange={() => {
+                        const current =
+                          projectSettings?.enabledPlugins?.[
+                            'sdd@builtin'
+                          ] === true;
+                        setToggling(true);
+                        onToggleBuiltinPlugin?.('sdd@builtin', !current);
+                      }}
+                    />
+                    <span className="slider round"></span>
+                  </label>
+                </div>
+                <div className="config-model-hint config-project-hint">
+                  <InfoIcon className="config-model-hint-icon" />
+                  <span>
+                    写入项目 .wave/settings.json；修改后需重启会话或新建会话生效。
+                  </span>
+                </div>
+              </div>
+            )}
+
             {error && (
               <div className="configuration-error">
                 {error}
@@ -205,13 +274,15 @@ const ConfigDialog: React.FC<ConfigDialogProps & { vscode: VsCodeApi }> = ({
             >
               取消
             </button>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="configuration-save-btn"
-            >
-              {isLoading ? '保存中...' : '保存'}
-            </button>
+            {activeTab !== 'project' && (
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="configuration-save-btn"
+              >
+                {isLoading ? '保存中...' : '保存'}
+              </button>
+            )}
           </div>
         </form>
       </div>
