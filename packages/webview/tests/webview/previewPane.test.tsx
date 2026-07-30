@@ -4,6 +4,7 @@ import React from 'react';
 import { PreviewPane, formatPreviewComment } from '../../src/components/PreviewPane';
 import type { WebviewTagElement } from '../../src/components/PreviewPane';
 import { DesktopApp } from '../../src/components/DesktopApp';
+import { convertToMarkdown } from '../../src/utils/messageUtils';
 import { createMockVscode, sendCommand } from './test-utils';
 import { MockDataGenerator } from '../fixtures/mockData';
 
@@ -16,14 +17,15 @@ type MockWebview = Omit<WebviewTagElement, 'send' | 'loadURL' | 'reload' | 'getU
     getURL: ReturnType<typeof vi.fn>;
 };
 
-function renderPane(options?: { url?: string; onClose?: () => void }) {
+function renderPane(options?: { url?: string; onClose?: () => void; onAddComment?: (text: string) => void }) {
     const vscode = createMockVscode();
     const url = options?.url ?? 'http://localhost:5173/app';
     const onClose = options?.onClose ?? vi.fn();
+    const onAddComment = options?.onAddComment ?? vi.fn();
     // Controlled-width harness: PreviewPane no longer owns its width state.
     const Harness = ({ url: u }: { url: string }) => {
         const [width, setWidth] = React.useState(420);
-        return <PreviewPane url={u} vscode={vscode} onClose={onClose} width={width} onWidthChange={setWidth} maxWidth={716} />;
+        return <PreviewPane url={u} vscode={vscode} onClose={onClose} width={width} onWidthChange={setWidth} maxWidth={716} onAddComment={onAddComment} />;
     };
     const result = render(<Harness url={url} />);
     const wv = result.container.querySelector('webview') as unknown as MockWebview;
@@ -32,7 +34,7 @@ function renderPane(options?: { url?: string; onClose?: () => void }) {
     wv.reload = vi.fn();
     wv.getURL = vi.fn(() => url);
     const rerenderWithUrl = (u: string) => result.rerender(<Harness url={u} />);
-    return { ...result, rerenderWithUrl, vscode, wv, url, onClose };
+    return { ...result, rerenderWithUrl, vscode, wv, url, onClose, onAddComment };
 }
 
 const fireDomReady = (wv: MockWebview) => fireEvent(wv, new Event('dom-ready'));
@@ -194,8 +196,8 @@ describe('PreviewPane', () => {
         fireEvent.mouseUp(window);
     });
 
-    it('picker submit posts a formatted user message and exits picker mode', () => {
-        const { vscode, wv } = renderPane();
+    it('picker submit appends a formatted comment via onAddComment and keeps the picker active', () => {
+        const { vscode, wv, onAddComment } = renderPane();
         fireDomReady(wv);
         firePickerReady(wv);
         fireEvent.click(screen.getByTestId('preview-picker-toggle'));
@@ -210,17 +212,16 @@ describe('PreviewPane', () => {
             comment: '这个按钮颜色太淡了',
         });
 
-        expect(vscode.postMessage).toHaveBeenCalledWith({
-            command: 'sendMessage',
-            text: [
-                '**预览评论** · http://localhost:5173/login',
-                '`button.primary`「立即购买」 · `#app > div > button.primary`',
-                '',
-                '这个按钮颜色太淡了',
-            ].join('\n'),
-            images: [],
-        });
-        expect(screen.getByTestId('preview-picker-toggle')).toHaveAttribute('aria-pressed', 'false');
+        expect(onAddComment).toHaveBeenCalledWith([
+            '**预览评论** · http://localhost:5173/login',
+            '`button.primary`「立即购买」 · `#app > div > button.primary`',
+            '',
+            '这个按钮颜色太淡了',
+        ].join('\n'));
+        // Nothing is sent to the agent directly — comments batch in the input.
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'sendMessage' }));
+        // Picker stays active so the user can keep picking elements.
+        expect(screen.getByTestId('preview-picker-toggle')).toHaveAttribute('aria-pressed', 'true');
     });
 
     it('ignores ipc messages on other channels', () => {
@@ -268,5 +269,55 @@ describe('PreviewPane integration (DesktopApp)', () => {
         const slot = screen.getByTestId('preview-pane').parentElement;
         expect(slot).toHaveClass('desktop-panel-slot');
         expect(slot).toHaveStyle({ display: 'none' });
+    });
+
+    it('picker comments land in the chat input (batched), nothing sent directly', () => {
+        window.waveHostType = 'desktop';
+        const vscode = createMockVscode();
+        render(<DesktopApp vscode={vscode} />);
+        sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+        sendCommand('authStatusResponse', { isAuthenticated: true });
+        sendCommand('updateMessages', {
+            messages: [MockDataGenerator.createAssistantMessage('原型在 [这里](http://localhost:5173/proto)')],
+        });
+        fireEvent.click(screen.getByText('这里'));
+
+        const wv = screen.getByTestId('preview-pane').querySelector('webview') as unknown as MockWebview;
+        wv.send = vi.fn();
+        wv.loadURL = vi.fn().mockResolvedValue(undefined);
+        wv.reload = vi.fn();
+        wv.getURL = vi.fn(() => 'http://localhost:5173/proto');
+        fireDomReady(wv);
+        firePickerReady(wv);
+        fireEvent.click(screen.getByTestId('preview-picker-toggle'));
+
+        const comment1 = {
+            type: 'submit',
+            url: 'http://localhost:5173/proto',
+            selector: '#app > div > button.primary',
+            summary: 'button.primary',
+            text: '去支付',
+            comment: '这里改成主要按钮样式',
+        };
+        firePickerSubmit(wv, comment1);
+
+        const input = screen.getByTestId('message-input') as HTMLElement;
+        expect(input.textContent).toContain('**预览评论** · http://localhost:5173/proto');
+        expect(input.textContent).toContain('这里改成主要按钮样式');
+        expect(document.activeElement).toBe(input);
+        // Round-trip through the markdown the send path actually consumes.
+        expect(convertToMarkdown(input).markdown).toBe(formatPreviewComment(comment1));
+
+        // A second pick appends after the first instead of replacing it.
+        firePickerSubmit(wv, { ...comment1, selector: '#app > div > input', summary: 'input', text: '', comment: '占位文字再明显一点' });
+        expect(convertToMarkdown(input).markdown).toBe(
+            formatPreviewComment(comment1) + '\n\n' + formatPreviewComment({ ...comment1, selector: '#app > div > input', summary: 'input', text: '', comment: '占位文字再明显一点' }),
+        );
+
+        // No direct sendMessage — the user reviews the batch and sends manually.
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'sendMessage' }));
+        expect(vscode.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'updateInputContent' }));
+        // Picker stays active for continuous picking.
+        expect(screen.getByTestId('preview-picker-toggle')).toHaveAttribute('aria-pressed', 'true');
     });
 });
