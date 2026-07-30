@@ -865,7 +865,7 @@ describe('session tree', () => {
     expect(h.agentInstances).toHaveLength(0);
   });
 
-  it('caps each group at 5 sessions from the index', async () => {
+  it('shows every session in a group, not a capped subset', async () => {
     const { host, store, sent } = createHost();
     store.addRecentWorkdir('/work/a');
     for (let i = 0; i < 7; i++) {
@@ -879,8 +879,8 @@ describe('session tree', () => {
       expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
     });
     const groups = sent('desktopSessionTree').at(-1)?.groups as Array<{ sessions: Array<{ sessionId: string }> }>;
-    expect(groups[0].sessions).toHaveLength(5);
-    // Sorted by createdAt desc — the 5 most recently created.
+    expect(groups[0].sessions).toHaveLength(7);
+    // Sorted by createdAt desc — the newest first.
     expect(groups[0].sessions[0].sessionId).toBe('s6');
   });
 

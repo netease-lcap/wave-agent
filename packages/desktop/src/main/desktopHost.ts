@@ -512,7 +512,7 @@ export class DesktopHost {
     return agentRef;
   }
 
-  /** Create + initialize a fresh agent, register it in the pool, enforce the LRU cap. */
+  /** Create + initialize a fresh agent and register it in the pool. */
   private async spawnAgent(opts: { workdir?: string; worktreeInfo?: WorktreeInfo; worktreeName?: string; isNewWorktree?: boolean }): Promise<StdioAgent> {
     await this.ensureClient();
     const config = this.configStore.getConfiguration();
@@ -1130,18 +1130,15 @@ export class DesktopHost {
     });
   }
 
-  /** Last N sessions shown per directory in the sidebar session tree (FR-020). */
-  private static readonly SESSION_TREE_LIMIT = 5;
-
   /**
    * Refresh the sidebar session tree (FR-020). Data comes entirely from the
    * desktop session index (FR-024) — no stdio listSessions calls and no
    * recent-workdirs involvement. Groups are derived by clustering index
    * entries on `workdir`, ordered by each group's latest `createdAt`
    * descending; sessions within each group are sorted by `createdAt`
-   * descending and capped at SESSION_TREE_LIMIT. The order is stable — only
-   * creating or deleting a session moves entries — so the keyboard cycle
-   * order always matches what the sidebar shows.
+   * descending. The order is stable — only creating or deleting a session
+   * moves entries — so the keyboard cycle order always matches what the
+   * sidebar shows.
    */
   private refreshSessionTree(): void {
     const index = this.configStore.getSessionIndex();
@@ -1171,7 +1168,7 @@ export class DesktopHost {
     );
     this.sessionTree = sortedGroups.map(({ workdir, sorted }) => ({
       workdir,
-      sessions: sorted.slice(0, DesktopHost.SESSION_TREE_LIMIT).map((s) => {
+      sessions: sorted.map((s) => {
         const agent = this.agents.get(s.sessionId);
         return {
           sessionId: s.sessionId,
