@@ -215,6 +215,9 @@ class StdioAgent(
         return result?.jsonObject?.get("inputContent")?.jsonPrimitive?.content ?: ""
     }
 
+    suspend fun listRewindCheckpoints(): JsonElement =
+        client.request("listRewindCheckpoints", sessionId = sessionId) ?: JsonObject(emptyMap())
+
     suspend fun getMcpServers(): JsonElement =
         client.request("getMcpServers", sessionId = sessionId) ?: JsonObject(emptyMap())
 

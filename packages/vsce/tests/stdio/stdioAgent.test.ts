@@ -345,6 +345,29 @@ describe('StdioAgent', () => {
         });
     });
 
+    // ── listRewindCheckpoints ──────────────────────────────────
+
+    it('returns checkpoints with sessionId in request', async () => {
+        const { agent, client } = createAgent();
+        client.request.mockResolvedValue({
+            sessionId: 'session-123',
+            workingDirectory: '/w',
+            permissionMode: 'default',
+            latestTotalTokens: 0,
+        });
+        await agent.initialize({ workdir: '/w' });
+        client.request.mockResolvedValue({
+            checkpoints: [{ id: 'u1', content: 'hello' }],
+        });
+
+        const result = await agent.listRewindCheckpoints();
+
+        expect(client.request).toHaveBeenCalledWith('listRewindCheckpoints', undefined, 'session-123');
+        expect(result).toEqual({
+            checkpoints: [{ id: 'u1', content: 'hello' }],
+        });
+    });
+
     // ── updateConfig ───────────────────────────────────────────
 
     it('sends updateConfig with sessionId and re-registers router when sessionId changes', async () => {

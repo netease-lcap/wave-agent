@@ -156,6 +156,7 @@ class MessageHandler(
                 val messageId = msg["messageId"]?.jsonPrimitive?.content ?: return
                 handleRewindToMessage(messageId)
             }
+            "listRewindCheckpoints" -> handleListRewindCheckpoints()
 
             // ── Prompt history ─────────────────────────────────────────
             // VSCE :137/:171 → historyResponse { history }
@@ -513,6 +514,16 @@ class MessageHandler(
         }
     }
 
+    private suspend fun handleListRewindCheckpoints() {
+        val checkpoints = try {
+            session.agent?.listRewindCheckpoints()?.jsonObject?.get("checkpoints") ?: JsonArray(emptyList())
+        } catch (e: StdioClientException) {
+            LOG.warn("listRewindCheckpoints failed: ${e.message}")
+            JsonArray(emptyList())
+        }
+        postMessage("rewindCheckpoints", buildJsonObject { put("checkpoints", checkpoints) })
+    }
+
     // ── Rewind: webview already confirmed → rewind → setInitialState + focusInput + scrollToBottom ──
     private suspend fun handleRewindToMessage(messageId: String) {
         try {
@@ -722,6 +733,7 @@ class MessageHandler(
             triple("workflows", "workflows", "查看工作流运行"),
             triple("clear", "clear", "清除对话历史并重置会话"),
             triple("compact", "compact", "手动压缩对话历史"),
+            triple("rewind", "rewind", "回滚到之前的用户消息"),
         )
         val all = sdkCommands + local
         // VSCE messageHandler.ts:618-624: filter by id/name (case-insensitive includes)

@@ -1403,6 +1403,10 @@ export class DesktopHost {
         await this.handleRewindToMessage(msg.messageId as string, pid);
         break;
 
+      case 'listRewindCheckpoints':
+        await this.handleListRewindCheckpoints(pid);
+        break;
+
       case 'confirmationResponse':
         this.handleConfirmationResponse(
           msg.confirmationId as string,
@@ -1979,6 +1983,20 @@ export class DesktopHost {
     if (workdir) await this.handleSelectSession(workdir, sessionId);
   }
 
+  private async handleListRewindCheckpoints(paneId?: string): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    let checkpoints: Array<{ id: string; content: string }> = [];
+    try {
+      if (agent) {
+        checkpoints = (await agent.listRewindCheckpoints()).checkpoints;
+      }
+    } catch (error) {
+      console.error('[DesktopHost] 获取回滚点失败:', error);
+    }
+    this.postMessage({ command: 'rewindCheckpoints', paneId: pid, checkpoints });
+  }
+
   private async handleRewindToMessage(messageId: string, paneId?: string): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
     const agent = this.agentForPane(pid);
@@ -2322,6 +2340,7 @@ export class DesktopHost {
         { id: 'compact', name: 'compact', description: '手动压缩对话历史' },
         { id: 'tasks', name: 'tasks', description: '查看后台任务' },
         { id: 'workflows', name: 'workflows', description: '查看工作流运行' },
+        { id: 'rewind', name: 'rewind', description: '回滚到之前的用户消息' },
       ];
 
       const allCommands = [...sdkCommands, ...localCommands];

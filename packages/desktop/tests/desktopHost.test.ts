@@ -139,6 +139,7 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
     clearMessages = vi.fn(async () => undefined);
     compact = vi.fn(async () => undefined);
     rewindToMessage = vi.fn(async () => ({ inputContent: 'rewound draft' }));
+    listRewindCheckpoints = vi.fn(async () => ({ checkpoints: [{ id: 'u1', content: 'hello' }] }));
     removeQueuedMessage = vi.fn(async () => undefined);
     updateQueuedMessageById = vi.fn(async () => true);
     removeQueuedMessageById = vi.fn(async () => undefined);
@@ -753,6 +754,13 @@ describe('misc commands', () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({ command: 'getMcpServers' });
     expect(sent('mcpServersResponse')[0]).toMatchObject({ servers: [] });
+  });
+
+  it('listRewindCheckpoints replies with the agent checkpoints', async () => {
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({ command: 'listRewindCheckpoints' });
+    expect(lastAgent().listRewindCheckpoints).toHaveBeenCalled();
+    expect(sent('rewindCheckpoints')[0]).toMatchObject({ checkpoints: [{ id: 'u1', content: 'hello' }] });
   });
 
   it('dispose destroys the agent and the client', async () => {

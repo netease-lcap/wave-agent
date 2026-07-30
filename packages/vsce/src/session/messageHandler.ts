@@ -158,6 +158,9 @@ export class MessageHandler {
             case 'rewindToMessage':
                 await this.handleRewindToMessage(msg.messageId as string, viewType, windowId);
                 break;
+            case 'listRewindCheckpoints':
+                await this.handleListRewindCheckpoints(viewType, windowId);
+                break;
             case 'requestHistory':
                 await this.handleRequestHistory(viewType, windowId);
                 break;
@@ -262,6 +265,23 @@ export class MessageHandler {
         } catch (error) {
             console.error(`回滚 ${viewType} 会话失败:`, error);
             vscode.window.showErrorMessage('回滚失败: ' + error);
+        }
+    }
+
+    private async handleListRewindCheckpoints(viewType?: 'sidebar' | 'tab' | 'window', windowId?: string) {
+        const session = this.context.getChatSession(viewType || 'tab', windowId);
+        try {
+            const { checkpoints } = await session.agent?.listRewindCheckpoints() ?? { checkpoints: [] };
+            this.context.postMessage({
+                command: 'rewindCheckpoints',
+                checkpoints
+            }, viewType, windowId);
+        } catch (error) {
+            console.error(`获取 ${viewType} 回退检查点失败:`, error);
+            this.context.postMessage({
+                command: 'rewindCheckpoints',
+                checkpoints: []
+            }, viewType, windowId);
         }
     }
 
@@ -723,7 +743,8 @@ export class MessageHandler {
                 { id: 'clear', name: 'clear', description: '清除对话历史并重置会话' },
                 { id: 'compact', name: 'compact', description: '手动压缩对话历史' },
                 { id: 'tasks', name: 'tasks', description: '查看后台任务' },
-                { id: 'workflows', name: 'workflows', description: '查看工作流运行' }
+                { id: 'workflows', name: 'workflows', description: '查看工作流运行' },
+                { id: 'rewind', name: 'rewind', description: '回退到之前的用户消息' }
             ];
 
             const allCommands = [...sdkCommands, ...localCommands];

@@ -7,6 +7,7 @@
 }
 
 .input-area-container {
+    position: relative;
     background-color: var(--vscode-panel-background);
     display: flex;
     flex-direction: column;
