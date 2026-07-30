@@ -1234,13 +1234,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       )}
 
       <div className={`input-area-container${isDesktop && state.pendingConfirmations.length > 0 ? ' input-area-container--confirm' : ''}`}>
-        <RewindPopup
-          isVisible={rewindPopupOpen}
-          isLoading={rewindCheckpointsLoading}
-          checkpoints={rewindCheckpoints}
-          onSelect={handleRewindCheckpointSelect}
-          onClose={handleRewindPopupClose}
-        />
         <div style={{ display: state.pendingConfirmations.length === 0 ? 'block' : 'none' }}>
           <TaskList
             // 按会话 id 重挂载：切换会话时重置“观察过未完成任务”的跟踪，
@@ -1300,6 +1293,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                   )}
                 </>
               ) : undefined
+            }
+            rewindPopup={
+              <RewindPopup
+                isVisible={rewindPopupOpen}
+                isLoading={rewindCheckpointsLoading}
+                checkpoints={rewindCheckpoints}
+                onSelect={handleRewindCheckpointSelect}
+                onClose={handleRewindPopupClose}
+              />
             }
           />
         </div>

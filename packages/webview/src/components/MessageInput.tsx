@@ -82,6 +82,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
     permissionMode,
     initialAttachedImages,
     workdirSelector,
+    rewindPopup,
     disabled
   } = props;
   const [message, setMessage] = useState('');
@@ -1441,6 +1442,9 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
           position={historyPopupPosition}
           vscode={vscode}
         />
+
+        {/* /rewind 检查点弹窗，与历史记录弹窗共用 .input-wrapper 定位上下文 */}
+        {rewindPopup}
       </div>
     </div>
   );
