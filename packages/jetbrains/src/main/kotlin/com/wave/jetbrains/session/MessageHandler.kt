@@ -288,6 +288,33 @@ class MessageHandler(
             "disablePlugin" -> handlePluginMutation(msg) { id, scope ->
                 session.agent?.disablePlugin(id, currentWorkdir(), scope)
             }
+            // Read merged enabledPlugins (.wave/settings.json) for the 项目设置 tab.
+            // Unlike enable/disable, this persists-only and does NOT reload the agent.
+            "getProjectSettings" -> {
+                val enabledPlugins = try {
+                    session.agent?.getProjectSettings(currentWorkdir())?.jsonObject?.get("enabledPlugins") ?: JsonObject(emptyMap())
+                } catch (e: StdioClientException) {
+                    LOG.warn("getProjectSettings failed: ${e.message}")
+                    JsonObject(emptyMap())
+                }
+                postMessage("projectSettings", buildJsonObject { put("enabledPlugins", enabledPlugins) })
+            }
+            // Toggle a builtin plugin (e.g. SDD) in project settings — persist-only, no rebuild.
+            "setBuiltinPluginEnabled" -> {
+                val pluginId = msg["pluginId"]?.jsonPrimitive?.content ?: return
+                val enabled = msg["enabled"]?.jsonPrimitive?.content?.toBoolean() ?: false
+                val scope = msg["scope"]?.jsonPrimitive?.content
+                val enabledPlugins = try {
+                    session.agent?.setBuiltinPluginEnabled(pluginId, enabled, currentWorkdir(), scope)?.jsonObject?.get("enabledPlugins")
+                } catch (e: StdioClientException) {
+                    LOG.warn("setBuiltinPluginEnabled failed: ${e.message}")
+                    IdeService.showError(project, "修改项目设置失败: ${e.message}")
+                    null
+                }
+                if (enabledPlugins != null) {
+                    postMessage("projectSettings", buildJsonObject { put("enabledPlugins", enabledPlugins) })
+                }
+            }
             // VSCE :110/:302
             "uninstallPlugin" -> handlePluginMutation(msg) { id, _ ->
                 session.agent?.uninstallPlugin(id, currentWorkdir())

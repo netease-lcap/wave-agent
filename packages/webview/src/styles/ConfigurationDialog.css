@@ -440,6 +440,39 @@ input:checked + .slider:before {
     border-radius: 50%;
 }
 
+/* 项目设置 tab — builtin plugin toggle row */
+.config-project-field {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+}
+
+.config-project-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.config-project-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.config-project-title {
+    font-weight: 500;
+}
+
+.config-project-desc {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.config-project-hint {
+    margin-top: 4px;
+}
+
 /* Configuration Form */
 .configuration-form {
     display: flex;

@@ -1675,6 +1675,19 @@ export class DesktopHost {
         await this.handlePluginMutation('disablePlugin', { pluginId: msg.pluginId, scope: msg.scope as Scope | undefined });
         break;
 
+      case 'getProjectSettings':
+        await this.handleGetProjectSettings(pid);
+        break;
+
+      case 'setBuiltinPluginEnabled':
+        await this.handleSetBuiltinPluginEnabled(
+          pid,
+          msg.pluginId as string,
+          msg.enabled as boolean,
+          msg.scope as Scope | undefined,
+        );
+        break;
+
       case 'uninstallPlugin':
         await this.handlePluginMutation('uninstallPlugin', { pluginId: msg.pluginId });
         break;
@@ -2215,6 +2228,38 @@ export class DesktopHost {
       await this.updateAgentConfig(this.configStore.getConfiguration());
     } catch (error) {
       this.pushSystemMessage(`插件操作失败: ${error}`);
+    }
+  }
+
+  private async handleGetProjectSettings(paneId: string): Promise<void> {
+    try {
+      const workdir = this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
+      const result = (await this.utilityClient.request('getProjectSettings', { workdir })) as {
+        enabledPlugins: Record<string, boolean>;
+      };
+      this.postMessage({ command: 'projectSettings', paneId, enabledPlugins: result.enabledPlugins });
+    } catch (error) {
+      this.pushSystemMessage(`获取项目设置失败: ${error}`, paneId);
+    }
+  }
+
+  private async handleSetBuiltinPluginEnabled(
+    paneId: string,
+    pluginId: string,
+    enabled: boolean,
+    scope?: Scope,
+  ): Promise<void> {
+    try {
+      const workdir = this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
+      const result = (await this.utilityClient.request('setBuiltinPluginEnabled', {
+        pluginId,
+        enabled,
+        scope,
+        workdir,
+      })) as { enabledPlugins: Record<string, boolean> };
+      this.postMessage({ command: 'projectSettings', paneId, enabledPlugins: result.enabledPlugins });
+    } catch (error) {
+      this.pushSystemMessage(`修改项目设置失败: ${error}`, paneId);
     }
   }
 

@@ -17,9 +17,14 @@ function renderDialog(overrides?: {
   error?: string;
   onSave?: (config: ConfigurationData) => void;
   onCancel?: () => void;
+  projectSettings?: { enabledPlugins: Record<string, boolean> };
+  onLoadProjectSettings?: () => void;
+  onToggleBuiltinPlugin?: (pluginId: string, enabled: boolean) => void;
 }) {
   const onSave = overrides?.onSave ?? vi.fn();
   const onCancel = overrides?.onCancel ?? vi.fn();
+  const onLoadProjectSettings = overrides?.onLoadProjectSettings ?? vi.fn();
+  const onToggleBuiltinPlugin = overrides?.onToggleBuiltinPlugin ?? vi.fn();
   const result = render(
     <ConfigDialog
       configurationData={overrides?.configurationData ?? { language: 'Chinese' }}
@@ -27,10 +32,13 @@ function renderDialog(overrides?: {
       error={overrides?.error}
       onSave={onSave}
       onCancel={onCancel}
+      projectSettings={overrides?.projectSettings}
+      onLoadProjectSettings={onLoadProjectSettings}
+      onToggleBuiltinPlugin={onToggleBuiltinPlugin}
       vscode={mockVscode}
     />
   );
-  return { ...result, onSave, onCancel };
+  return { ...result, onSave, onCancel, onLoadProjectSettings, onToggleBuiltinPlugin };
 }
 
 describe('ConfigDialog', () => {
@@ -157,5 +165,54 @@ describe('ConfigDialog', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // ── 项目设置 tab ─────────────────────────────────────────────────
+  it('switches to the 项目设置 tab and renders the SDD toggle', () => {
+    renderDialog({ projectSettings: { enabledPlugins: { 'sdd@builtin': false } } });
+
+    fireEvent.click(screen.getByRole('tab', { name: '项目设置' }));
+    expect(screen.getByRole('tab', { name: '项目设置' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByTestId('sdd-toggle')).toBeTruthy();
+    expect(screen.getByText('SDD')).toBeTruthy();
+  });
+
+  it('reflects the SDD toggle checked state from projectSettings', () => {
+    renderDialog({ projectSettings: { enabledPlugins: { 'sdd@builtin': true } } });
+    fireEvent.click(screen.getByRole('tab', { name: '项目设置' }));
+    expect((screen.getByTestId('sdd-toggle') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('loads project settings when the 项目设置 tab is activated', () => {
+    const { onLoadProjectSettings } = renderDialog();
+    fireEvent.click(screen.getByRole('tab', { name: '项目设置' }));
+    expect(onLoadProjectSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('flips the SDD toggle value via onToggleBuiltinPlugin', () => {
+    const { onToggleBuiltinPlugin } = renderDialog({
+      projectSettings: { enabledPlugins: { 'sdd@builtin': false } },
+    });
+    fireEvent.click(screen.getByRole('tab', { name: '项目设置' }));
+    fireEvent.click(screen.getByTestId('sdd-toggle'));
+    expect(onToggleBuiltinPlugin).toHaveBeenCalledWith('sdd@builtin', true);
+  });
+
+  it('hides the save button on the 项目设置 tab (toggle persists immediately)', () => {
+    renderDialog({ projectSettings: { enabledPlugins: { 'sdd@builtin': false } } });
+    fireEvent.click(screen.getByRole('tab', { name: '项目设置' }));
+    expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
+    expect(screen.getByRole('button', { name: '取消' })).toBeTruthy();
+  });
+
+  it('keeps the save button visible on the global/model tabs', () => {
+    renderDialog();
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+  });
+
+  it('disables the SDD toggle while projectSettings is still loading', () => {
+    renderDialog(); // no projectSettings prop
+    fireEvent.click(screen.getByRole('tab', { name: '项目设置' }));
+    expect((screen.getByTestId('sdd-toggle') as HTMLInputElement).disabled).toBe(true);
   });
 });

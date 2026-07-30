@@ -304,6 +304,17 @@ class StdioAgent(
             put("workdir", workdir)
         }) ?: JsonObject(emptyMap())
 
+    suspend fun getProjectSettings(workdir: String): JsonElement =
+        client.request("getProjectSettings", buildJsonObject { put("workdir", workdir) }) ?: JsonObject(emptyMap())
+
+    suspend fun setBuiltinPluginEnabled(pluginId: String, enabled: Boolean, workdir: String, scope: String? = null): JsonElement =
+        client.request("setBuiltinPluginEnabled", buildJsonObject {
+            put("pluginId", pluginId)
+            put("enabled", enabled)
+            if (scope != null) put("scope", scope)
+            put("workdir", workdir)
+        }) ?: JsonObject(emptyMap())
+
     suspend fun updatePlugin(pluginId: String, workdir: String): JsonElement =
         client.request("updatePlugin", buildJsonObject {
             put("pluginId", pluginId)
