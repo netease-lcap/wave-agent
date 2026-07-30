@@ -503,7 +503,14 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                   // Live preview while a separator drags (pixel widths).
                   paneStyle.flex = `0 0 ${resizePreview.widths[index]}px`;
                 } else if (pane.width != null) {
-                  paneStyle.flex = `0 0 ${pane.width * 100}%`;
+                  // flex-shrink:1 lets panes absorb the few px of overflow that
+                  // otherwise accumulates from each pane's border-right (content-
+                  // box, not counted in the % basis) plus the separators' net
+                  // width — and triggers an overflow-x scrollbar by ~5px even
+                  // when every pane is far above MIN_PANE_WIDTH. Grow stays 0
+                  // (sizes are authoritative ratios); shrink bottoms out at the
+                  // min-width above.
+                  paneStyle.flex = `0 1 ${pane.width * 100}%`;
                 }
                 return (
                   <React.Fragment key={pane.paneId}>
