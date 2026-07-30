@@ -3,6 +3,7 @@ import { render, fireEvent, screen, createEvent, within, act } from '@testing-li
 import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
 import { ChatApp, prunePanelGroupCache } from '../../src/components/ChatApp';
+import { EXIT_PLAN_MODE_TOOL_NAME } from 'wave-agent-sdk';
 import { createMockVscode, sendCommand, renderChatApp, fireInput } from './test-utils';
 
 vi.mock('../../src/styles/DesktopApp.css', () => ({}));
@@ -494,6 +495,33 @@ describe('ChatApp desktop panel framework', () => {
             const bodyA2 = paneA2.querySelector('.desktop-chat-body') as HTMLElement;
             expect(bodyA2.className).toContain('desktop-chat-body--two-rows');
             expect(bodyA2.style.getPropertyValue('--panel-row-height')).toBe('280px');
+        });
+
+        // Two-row mode compresses the message row; an inline ConfirmationDialog
+        // (plan preview / permission / AskUserQuestions) can grow taller than the
+        // compressed first row. The input area must clamp and the dialog body must
+        // scroll instead of overflowing onto the second-row panels.
+        it('two-row mode clamps an over-tall inline ConfirmationDialog with an inner scroller', async () => {
+            window.waveHostType = 'desktop';
+            renderDesktop({ workdir: '/work/a' });
+            openDiffPanel();
+            dragDiffToRow2();
+            expect(bodyOf().className).toContain('desktop-chat-body--two-rows');
+
+            await act(async () => {
+                sendCommand('showConfirmation', {
+                    confirmationId: 'confirm_two_row',
+                    toolName: EXIT_PLAN_MODE_TOOL_NAME,
+                    confirmationType: '计划待确认',
+                    planContent: '## Plan\n' + '- step\n'.repeat(120),
+                });
+            });
+
+            const inputArea = document.querySelector('.input-area-container') as HTMLElement;
+            expect(inputArea).not.toBeNull();
+            expect(inputArea.className).toContain('input-area-container--confirm');
+            const inner = document.querySelector('.confirmation-dialog-inner') as HTMLElement;
+            expect(inner).toBeInTheDocument();
         });
     });
 });
