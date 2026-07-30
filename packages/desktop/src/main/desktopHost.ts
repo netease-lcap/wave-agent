@@ -1133,9 +1133,11 @@ export class DesktopHost {
    * Refresh the sidebar session tree (FR-020). Data comes entirely from the
    * desktop session index (FR-024) — no stdio listSessions calls and no
    * recent-workdirs involvement. Groups are derived by clustering index
-   * entries on `workdir`, ordered by each group's latest `lastActiveAt`
-   * descending; sessions within each group are sorted by `lastActiveAt`
-   * descending and capped at SESSION_TREE_LIMIT.
+   * entries on `workdir`, ordered by each group's latest `createdAt`
+   * descending; sessions within each group are sorted by `createdAt`
+   * descending and capped at SESSION_TREE_LIMIT. The order is stable — only
+   * creating or deleting a session moves entries — so the keyboard cycle
+   * order always matches what the sidebar shows.
    */
   private refreshSessionTree(): void {
     const index = this.configStore.getSessionIndex();
@@ -1156,10 +1158,10 @@ export class DesktopHost {
       return;
     }
     const sortedGroups = [...byWorkdir.values()].map((entries) => {
-      const sorted = entries.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+      const sorted = entries.sort((a, b) => b.createdAt - a.createdAt);
       return { workdir: sorted[0].workdir, sorted };
     });
-    sortedGroups.sort((a, b) => b.sorted[0].lastActiveAt - a.sorted[0].lastActiveAt);
+    sortedGroups.sort((a, b) => b.sorted[0].createdAt - a.sorted[0].createdAt);
     const agentsWithPendingConfirmation = new Set(
       [...this.pendingConfirmations.values()].map((p) => p.agent),
     );
@@ -1196,6 +1198,9 @@ export class DesktopHost {
       title: title || existing?.title || '',
       workdir: worktreeInfo?.repoRoot ?? cwd,
       cwd,
+      // First registration pins the creation time; re-registrations keep it so
+      // sidebar order only changes when a session is created or deleted.
+      createdAt: existing?.createdAt ?? Date.now(),
       lastActiveAt: Date.now(),
       worktree: worktreeInfo,
     });
@@ -1925,11 +1930,11 @@ export class DesktopHost {
    * last. Empty tree or cycling onto the current session is a no-op (the
    * handleSelectSession early-return).
    *
-   * The order is frozen in a snapshot at cycle start: activation bumps the
-   * session's lastActiveAt, so the MRU-derived tree re-sorts mid-cycle and a
-   * re-derived order would ping-pong between entries. The snapshot is dropped
-   * as soon as anything outside the cycle changes the current session (click,
-   * new session, delete…), falling back to a fresh MRU-derived order.
+   * The order is frozen in a snapshot at cycle start and dropped as soon as
+   * anything outside the cycle changes the current session (click, new
+   * session, delete…), falling back to a fresh derivation. The tree itself is
+   * creation-ordered and stable, so the snapshot only guards against sessions
+   * being created or deleted mid-cycle.
    */
   private sessionCycleSnapshot: Array<{ workdir: string; sessionId: string }> | null = null;
   private sessionCycleIndex = -1;

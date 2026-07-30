@@ -500,7 +500,7 @@ describe('agent notifications', () => {
 
   it('restoring a historical session backfills its sidebar title from history (FR-024)', async () => {
     const { host, store, sent } = await readyHost();
-    store.upsertSession({ sessionId: 'hist-1', title: '', workdir: '/work/a', cwd: '/work/a', lastActiveAt: 1 });
+    store.upsertSession({ sessionId: 'hist-1', title: '', workdir: '/work/a', cwd: '/work/a', createdAt: 1, lastActiveAt: 1 });
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'hist-1' });
 
@@ -757,7 +757,7 @@ describe('misc commands', () => {
 
   it('restoreSession forwards to the agent and refreshes the session tree', async () => {
     const { host, store, sent } = await readyHost();
-    store.upsertSession({ sessionId: 'sess-x', title: 'x', workdir: '/work/a', cwd: '/work/a', lastActiveAt: 1000 });
+    store.upsertSession({ sessionId: 'sess-x', title: 'x', workdir: '/work/a', cwd: '/work/a', createdAt: 1000, lastActiveAt: 1000 });
 
     await host.handleWebviewMessage({ command: 'restoreSession', sessionId: 'sess-x' });
 
@@ -832,6 +832,7 @@ describe('session tree', () => {
     title: `Session ${sessionId}`,
     workdir,
     cwd: workdir,
+    createdAt: Date.now(),
     lastActiveAt: Date.now(),
     ...overrides,
   });
@@ -841,9 +842,9 @@ describe('session tree', () => {
     // /work/only-recent is in recents but has no sessions -> must NOT appear as a group.
     // /work/only-index has sessions but is not in recents -> still a group.
     store.addRecentWorkdir('/work/only-recent');
-    store.upsertSession(makeIndexEntry('s1', '/work/a', { lastActiveAt: 1000 }));
-    store.upsertSession(makeIndexEntry('s2', '/work/a', { lastActiveAt: 2000 }));
-    store.upsertSession(makeIndexEntry('s3', '/work/only-index', { lastActiveAt: 3000 }));
+    store.upsertSession(makeIndexEntry('s1', '/work/a', { createdAt: 1000 }));
+    store.upsertSession(makeIndexEntry('s2', '/work/a', { createdAt: 2000 }));
+    store.upsertSession(makeIndexEntry('s3', '/work/only-index', { createdAt: 3000 }));
 
     await host.handleWebviewMessage({ command: 'desktopReady' });
     await host.handleWebviewMessage({ command: 'webviewReady' });
@@ -852,7 +853,7 @@ describe('session tree', () => {
       expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
     });
     const tree = sent('desktopSessionTree').at(-1);
-    // Groups ordered by latest session lastActiveAt desc; sessions within a group desc.
+    // Groups ordered by latest session createdAt desc; sessions within a group desc.
     expect(tree?.groups).toEqual([
       { workdir: '/work/only-index', sessions: [expect.objectContaining({ sessionId: 's3' })] },
       {
@@ -868,7 +869,7 @@ describe('session tree', () => {
     const { host, store, sent } = createHost();
     store.addRecentWorkdir('/work/a');
     for (let i = 0; i < 7; i++) {
-      store.upsertSession(makeIndexEntry(`s${i}`, '/work/a', { lastActiveAt: Date.now() + i }));
+      store.upsertSession(makeIndexEntry(`s${i}`, '/work/a', { createdAt: Date.now() + i }));
     }
 
     await host.handleWebviewMessage({ command: 'desktopReady' });
@@ -879,8 +880,44 @@ describe('session tree', () => {
     });
     const groups = sent('desktopSessionTree').at(-1)?.groups as Array<{ sessions: Array<{ sessionId: string }> }>;
     expect(groups[0].sessions).toHaveLength(5);
-    // Sorted by lastActiveAt desc — the 5 most recent.
+    // Sorted by createdAt desc — the 5 most recently created.
     expect(groups[0].sessions[0].sessionId).toBe('s6');
+  });
+
+  it('keeps creation order when activity bumps lastActiveAt', async () => {
+    const { host, store, sent } = createHost();
+    store.upsertSession(makeIndexEntry('s1', '/work/a', { createdAt: 1000, lastActiveAt: 1000 }));
+    store.upsertSession(makeIndexEntry('s2', '/work/a', { createdAt: 2000, lastActiveAt: 2000 }));
+
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+    await vi.waitFor(() => {
+      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Activity on the older session must not move it above the newer one.
+    store.touchSession('s1', Date.now() + 5000);
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+
+    await vi.waitFor(() => {
+      expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(2);
+    });
+    const groups = sent('desktopSessionTree').at(-1)?.groups as Array<{ sessions: Array<{ sessionId: string }> }>;
+    expect(groups[0].sessions.map((s) => s.sessionId)).toEqual(['s2', 's1']);
+  });
+
+  it('re-registering an existing session keeps its original createdAt', async () => {
+    const { store } = await readyHost();
+    store.upsertSession(makeIndexEntry('sess-x', '/work/a', { createdAt: 1000, lastActiveAt: 1000 }));
+
+    // The live agent re-registers the same session (sessionIdChange after
+    // restore) — creation time must survive while activity time still bumps.
+    lastAgent().messages = [{ id: 'm1' }];
+    lastAgent().callbacks.onSessionIdChange('sess-x');
+
+    const entry = store.getSessionIndex().find((e) => e.sessionId === 'sess-x');
+    expect(entry?.createdAt).toBe(1000);
+    expect(entry?.lastActiveAt).toBeGreaterThan(1000);
   });
 
   it('desktopSelectSession on a historical session spawns a fresh agent and restores (FR-031)', async () => {
@@ -1024,17 +1061,18 @@ describe('session tree', () => {
 // ---------------------------------------------------------------------------
 
 describe('session switch shortcut (FR-038)', () => {
-  const entry = (sessionId: string, workdir: string, lastActiveAt: number) => ({
+  const entry = (sessionId: string, workdir: string, createdAt: number) => ({
     sessionId,
     title: `Session ${sessionId}`,
     workdir,
     cwd: workdir,
-    lastActiveAt,
+    createdAt,
+    lastActiveAt: createdAt,
   });
 
   // Seeds s1/s2 in /work/a + s3 in /work/b (all dirs exist), then runs the
   // ready flow so the tree is derived. Flattened order: s3 (the /work/b group
-  // leads — its latest session is the most recent overall), then s2, s1.
+  // leads — its session is the latest created overall), then s2, s1.
   async function hostWithTree() {
     const ctx = createHost();
     ctx.store.addRecentWorkdir('/work/a');
@@ -1082,11 +1120,12 @@ describe('session switch shortcut (FR-038)', () => {
     const { host } = await hostWithTree();
     await host.activateAdjacentSession(1); // s3, snapshot frozen at [s3, s2, s1]
 
-    // Clicking s2 (outside the cycle) bumps it to the front of the MRU tree.
+    // Clicking s2 (outside the cycle) drops the frozen snapshot — the next
+    // press re-derives from the (creation-ordered, stable) tree.
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 's2' });
 
     // The stale snapshot would cycle onto the already-current s2 (a no-op);
-    // the fresh order [s2, s1, s3] lands on s1 instead.
+    // the fresh order [s3, s2, s1] starts after s2 and lands on s1 instead.
     await host.activateAdjacentSession(1);
     expect(lastAgent().restoreSession).toHaveBeenCalledWith('s1');
   });
@@ -1304,6 +1343,7 @@ describe('worktree flow', () => {
       title: 'wt',
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
     });
@@ -1328,6 +1368,7 @@ describe('worktree flow', () => {
       title: 'wt',
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
     });
@@ -1355,6 +1396,7 @@ describe('worktree flow', () => {
       title: 'wt',
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
     });
@@ -1381,6 +1423,7 @@ describe('worktree flow', () => {
       title: 'wt',
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
     });
@@ -1401,6 +1444,7 @@ describe('worktree flow', () => {
       title: 'wt',
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
     });
@@ -1411,6 +1455,7 @@ describe('worktree flow', () => {
       title: 'keep',
       workdir: worktree.repoRoot,
       cwd: worktree.repoRoot,
+      createdAt: Date.now(),
       lastActiveAt: Date.now(),
     });
     // Block the removeWorktree RPC — the delete must not wait for it. If the
@@ -1725,6 +1770,7 @@ describe('split-view panes (FR-032~036)', () => {
       title: 'wt',
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: { path: worktree.path, branch: worktree.branch, baseBranch: 'main', repoRoot: worktree.repoRoot },
     });
@@ -2436,8 +2482,8 @@ describe('input focus on conversation switch', () => {
     const { host, sent, store } = createHost();
     store.addRecentWorkdir('/work/a');
     h.existingPaths.add('/work/a');
-    store.upsertSession({ sessionId: 's1', title: 'Session s1', workdir: '/work/a', cwd: '/work/a', lastActiveAt: 1000 });
-    store.upsertSession({ sessionId: 's2', title: 'Session s2', workdir: '/work/a', cwd: '/work/a', lastActiveAt: 2000 });
+    store.upsertSession({ sessionId: 's1', title: 'Session s1', workdir: '/work/a', cwd: '/work/a', createdAt: 1000, lastActiveAt: 1000 });
+    store.upsertSession({ sessionId: 's2', title: 'Session s2', workdir: '/work/a', cwd: '/work/a', createdAt: 2000, lastActiveAt: 2000 });
     await host.handleWebviewMessage({ command: 'desktopReady' });
     await host.handleWebviewMessage({ command: 'webviewReady' });
     const before = sent('focusInput').length;

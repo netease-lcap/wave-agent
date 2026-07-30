@@ -24,6 +24,8 @@ export interface SessionIndexEntry {
   workdir: string;
   /** Actual working directory (worktree path for worktree sessions). */
   cwd: string;
+  /** Creation time — the sidebar tree sorts by it, so activity never reorders sessions. */
+  createdAt: number;
   lastActiveAt: number;
   worktree?: {
     path: string;
@@ -60,10 +62,14 @@ export class ConfigStore {
           ? parsed.recentWorkdirs.filter((d): d is string => typeof d === 'string')
           : [],
         sessions: Array.isArray(parsed.sessions)
-          ? parsed.sessions.filter(
-              (s): s is SessionIndexEntry =>
-                typeof s === 'object' && s !== null && typeof s.sessionId === 'string',
-            )
+          ? parsed.sessions
+              .filter(
+                (s): s is SessionIndexEntry =>
+                  typeof s === 'object' && s !== null && typeof s.sessionId === 'string',
+              )
+              // Entries persisted before createdAt existed fall back to their
+              // last activity time, preserving the previously visible order.
+              .map((s) => ({ ...s, createdAt: typeof s.createdAt === 'number' ? s.createdAt : s.lastActiveAt }))
           : [],
       };
     } catch {
