@@ -207,12 +207,6 @@ export interface DesktopHostProps {
    */
   onOpenPane: (workdir: string, sessionId: string, opts?: OpenPaneOptions) => void;
   /**
-   * Git branches of the current workdir (FR-022), pushed via the
-   * `desktopGitBranches` message. `null` = not a git repo / git unavailable —
-   * branch selector and worktree checkbox stay hidden.
-   */
-  gitBranches: { branches: string[]; current: string } | null;
-  /**
    * Split-view panes (FR-032) grouped into up to two rows, pushed via
    * `desktopPanes`. Empty until the first layout push; the layout renders a
    * single pane in that case.

@@ -20,13 +20,9 @@ interface DesktopAppProps {
 export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   const [workdirState, setWorkdirState] = useState<DesktopWorkdirState | null>(null);
   const [sessionTree, setSessionTree] = useState<DesktopSessionGroup[]>([]);
-  const [gitBranches, setGitBranches] = useState<{ branches: string[]; current: string } | null>(null);
   const [panes, setPanes] = useState<DesktopPane[]>([]);
   const [rowHeights, setRowHeights] = useState<number[] | undefined>(undefined);
   const [focusedPaneId, setFocusedPaneId] = useState<string | null>(null);
-  // Current workdir in a ref so the message handler can drop stale
-  // desktopGitBranches responses from a previous workdir.
-  const workdirRef = useRef<string | undefined>(undefined);
   // Latest panes/session tree for the panel-group prune below (the message
   // handler closes over refs, not state, so both messages see fresh values).
   const panesRef = useRef<DesktopPane[]>([]);
@@ -50,25 +46,14 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
       if (message.command === 'desktopWorkdirState') {
-        workdirRef.current = message.workdir;
         setWorkdirState({
           workdir: message.workdir,
           recentWorkdirs: message.recentWorkdirs ?? [],
         });
-        // Workdir changed — re-query branches (FR-022); clear stale list first.
-        setGitBranches(null);
-        if (message.workdir) {
-          vscode.postMessage({ command: 'desktopListGitBranches', workdir: message.workdir });
-        }
       } else if (message.command === 'desktopSessionTree') {
         sessionTreeRef.current = message.groups ?? [];
         setSessionTree(sessionTreeRef.current);
         prunePanels();
-      } else if (message.command === 'desktopGitBranches') {
-        // Ignore responses that raced a workdir switch.
-        if (message.workdir === workdirRef.current) {
-          setGitBranches(message.result ?? null);
-        }
       } else if (message.command === 'desktopPanes') {
         const nextPanes: DesktopPane[] = message.panes ?? [];
         panesRef.current = nextPanes;
@@ -128,7 +113,6 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         onSelectSession: handleSelectSession,
         onDeleteSession: handleDeleteSession,
         onOpenPane: handleOpenPane,
-        gitBranches,
         panes,
         rowHeights,
         focusedPaneId,

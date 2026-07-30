@@ -106,6 +106,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
   const [worktreeChecked, setWorktreeChecked] = useState(true);
+  // Per-pane git branches for this pane's OWN workdir (FR-022). The host-level
+  // workdir follows the focused pane — sharing it would bleed one pane's
+  // directory/branch into a sibling new-session pane, so each new-session pane
+  // queries branches against its own session workdir.
+  const [paneGitBranches, setPaneGitBranches] = useState<{ branches: string[]; current: string } | null>(null);
+  // The pane's effective cwd: its own session workdir wins over the host-level
+  // current workdir (which follows the focused pane and must not leak here).
+  const effectiveWorkdir = state.workdir ?? (host?.type === 'desktop' ? host?.workdir : undefined);
+  const gitBranches = host?.type === 'desktop' ? paneGitBranches : null;
+  const effectiveWorkdirRef = useRef(effectiveWorkdir);
   // Desktop only: the panel group follows the session bound to this pane. The
   // cache key is the session id from the host-authoritative `desktopPanes`
   // push, or the pane's new-session bucket while no session is bound.
@@ -186,6 +196,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    effectiveWorkdirRef.current = effectiveWorkdir;
+  }, [effectiveWorkdir]);
 
   useEffect(() => {
     checkedPanelsRef.current = checkedPanels;
@@ -277,7 +291,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
   // Desktop: reset the worktree controls when the branch list changes (i.e. the
   // workdir was re-queried). Default to the repo's current branch, checked.
-  const gitBranches = host?.type === 'desktop' ? host.gitBranches : null;
   useEffect(() => {
     setWorktreeBranch(gitBranches?.current ?? '');
     setWorktreeChecked(true);
@@ -326,6 +339,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         case 'updateWorkdir':
           if (!forThisPane(message)) break;
           dispatch({ type: 'SET_WORKDIR', payload: message.workdir });
+          break;
+        case 'desktopGitBranches':
+          // Per-pane branch list reply (FR-052). Routed by paneId so a sibling
+          // pane's reply never overwrites this pane's selector.
+          if (!forThisPane(message)) break;
+          setPaneGitBranches(message.result ?? null);
           break;
         case 'updateQueue':
           if (!forThisPane(message)) break;
@@ -558,6 +577,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     vscode.postMessage(pid === undefined ? message : { ...message, paneId: pid });
   }, [vscode]);
 
+  // Desktop: query this pane's own workdir for its git branches (FR-052). Each
+  // pane asks independently so a new-session pane keeps its workdir/branch even
+  // when focus moves to a sibling pane (which would otherwise rewire the host's
+  // global workdir). Clear stale branches first so the selector hides until the
+  // fresh reply lands.
+  useEffect(() => {
+    if (host?.type !== 'desktop') return;
+    setPaneGitBranches(null);
+    if (!effectiveWorkdir) return;
+    postToHost({ command: 'desktopListGitBranches', workdir: effectiveWorkdir, paneId });
+  }, [effectiveWorkdir, host, postToHost, paneId]);
+
   const handleClearChat = useCallback(() => {
     // /clear 斜杠命令：三端统一为"原地清空当前会话"，streaming 期间忽略。
     if (stateRef.current.isStreaming) return;
@@ -655,13 +686,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       host?.type === 'desktop' &&
       stateRef.current.messages.length === 0 &&
       worktreeChecked &&
-      host.workdir &&
-      host.gitBranches
+      effectiveWorkdirRef.current &&
+      gitBranches
     ) {
       postToHost({
         command: 'desktopCreateWorktree',
-        workdir: host.workdir,
-        baseBranch: worktreeBranch || host.gitBranches.current,
+        workdir: effectiveWorkdirRef.current,
+        baseBranch: worktreeBranch || gitBranches.current,
         text: trimmedText,
         images: images,
       });
@@ -675,7 +706,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       images: images,
       force: force
     });
-  }, [handleClearChat, host, worktreeChecked, worktreeBranch, postToHost, paneId]);
+  }, [handleClearChat, host, worktreeChecked, worktreeBranch, postToHost, paneId, gitBranches]);
 
   const handleAbortMessage = useCallback(() => {
     if (!state.isStreaming) return;
@@ -1102,9 +1133,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setPreviewUrl(url);
   }, [tryOpenPanel]);
 
-  // The pane's effective cwd: the session's own workdir (per-pane on desktop)
-  // wins over the host-level current workdir.
-  const effectiveWorkdir = state.workdir ?? (isDesktop ? host?.workdir : undefined);
   // Diff/terminal need a workdir; preview only needs a URL.
   const panelDisabled: DesktopPanelKind[] = effectiveWorkdir ? [] : ['diff', 'terminal'];
 
@@ -1250,21 +1278,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             inputContent={state.inputContent}
             permissionMode={state.permissionMode}
             initialAttachedImages={state.attachedImages}
-            disabled={host?.type === 'desktop' && !host.workdir}
+            disabled={host?.type === 'desktop' && !effectiveWorkdir}
             workdirSelector={
               host?.type === 'desktop' && state.messages.length === 0 ? (
                 <>
                   <DesktopWorkdirSelector
-                    workdir={host.workdir}
+                    workdir={effectiveWorkdir}
                     recentWorkdirs={host.recentWorkdirs}
                     onSelectWorkdir={host.onSelectWorkdir}
                     onSelectRecentWorkdir={host.onSelectRecentWorkdir}
                     onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
                   />
-                  {host.workdir && host.gitBranches && (
+                  {effectiveWorkdir && gitBranches && (
                     <DesktopWorktreeControls
-                      branches={host.gitBranches.branches}
-                      branch={worktreeBranch || host.gitBranches.current}
+                      branches={gitBranches.branches}
+                      branch={worktreeBranch || gitBranches.current}
                       worktreeChecked={worktreeChecked}
                       onBranchChange={setWorktreeBranch}
                       onWorktreeChange={setWorktreeChecked}
