@@ -695,6 +695,18 @@
     order: 3;
 }
 
+/* The last second-row panel grows to span the full pane width (the spec's
+   "第二行横贯分屏宽度"); earlier second-row panels keep their set widths.
+   basis:auto keeps the panel's pixel width as the line-break hypothetical so
+   the slot lands on its own line, then flex-grow stretches it to fill. */
+.desktop-panel-slot--row-2-fill {
+    flex: 1 1 auto;
+}
+
+.desktop-panel-slot--row-2-fill > * {
+    flex: 1 1 auto;
+}
+
 /* Two-row mode: the first line (message area + first-row panels) takes the
    height left by the second row and the separator; second-row slots take the
    configured row height. */

@@ -177,6 +177,11 @@ describe('ChatApp desktop panel framework', () => {
             expect(screen.getByTestId('diff-pane').closest('.desktop-panel-slot')).toHaveClass(
                 'desktop-panel-slot--row-2',
             );
+            // A lone second-row panel must fill the pane width (spec: 第二行
+            // 横贯分屏宽度), so the slot stretches instead of leaving a gap.
+            expect(screen.getByTestId('diff-pane').closest('.desktop-panel-slot')).toHaveClass(
+                'desktop-panel-slot--row-2-fill',
+            );
             expect(screen.queryByTestId('desktop-panel-hint')).not.toBeInTheDocument();
         } finally {
             rectSpy.mockRestore();
@@ -258,16 +263,18 @@ describe('ChatApp desktop panel framework', () => {
         }
 
         // Starts a toolbar drag, targets the bottom band, and drops there.
-        function dragDiffToRow2(bodyHeight = 800) {
+        function dragToRow2(testid: string, bodyHeight = 800) {
             const body = bodyOf();
             mockChatBodyHeight(body, bodyHeight);
-            const toolbar = toolbarOf('diff-pane');
+            const toolbar = toolbarOf(testid);
             const dataTransfer = makeDataTransfer();
             fireEvent.dragStart(toolbar, { dataTransfer });
             dragOverBody(body, dataTransfer, bodyHeight - 10);
             fireEvent.drop(body, { dataTransfer });
             fireEvent.dragEnd(toolbar, { dataTransfer });
         }
+
+        const dragDiffToRow2 = (bodyHeight = 800) => dragToRow2('diff-pane', bodyHeight);
 
         it('dragging a panel toolbar into the bottom band creates the second row', () => {
             window.waveHostType = 'desktop';
@@ -391,6 +398,24 @@ describe('ChatApp desktop panel framework', () => {
 
             expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-1');
             expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
+        });
+
+        it('only the last second-row panel grows to fill the row width', () => {
+            window.waveHostType = 'desktop';
+            renderDesktop({ workdir: '/work/a' });
+            fireEvent.click(screen.getByTestId('panel-toggle-btn'));
+            fireEvent.click(screen.getByTestId('panel-toggle-item-diff'));
+            fireEvent.click(screen.getByTestId('panel-toggle-item-terminal'));
+            // Drag both into the second row; the fixed order is Preview→Diff→Terminal,
+            // so terminal is the last and should absorb the remaining width.
+            dragToRow2('diff-pane');
+            dragToRow2('terminal-pane');
+            const diffSlot = slotOf('diff-pane');
+            const termSlot = slotOf('terminal-pane');
+            expect(diffSlot.className).toContain('desktop-panel-slot--row-2');
+            expect(termSlot.className).toContain('desktop-panel-slot--row-2');
+            expect(diffSlot.className).not.toContain('desktop-panel-slot--row-2-fill');
+            expect(termSlot.className).toContain('desktop-panel-slot--row-2-fill');
         });
 
         it('the second-row layout is remembered per session across switches', () => {
