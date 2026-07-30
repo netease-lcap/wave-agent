@@ -190,8 +190,8 @@ export interface DesktopHostProps {
   onSelectRecentWorkdir: (path: string) => void;
   onRemoveRecentWorkdir: (path: string) => void;
   /**
-   * Sidebar session tree (FR-020): one group per recent directory, up to 5
-   * sessions each. Pushed via the `desktopSessionTree` message.
+   * Sidebar session tree (FR-020): one group per recent directory with all of
+   * its sessions. Pushed via the `desktopSessionTree` message.
    */
   sessionTree: DesktopSessionGroup[];
   /** Open a historical session; switches workdir first when needed. */
