@@ -68,12 +68,21 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   const [state, setState] = useState<DiffState>({ kind: 'loading' });
   // Collapsed paths survive refreshes; files are expanded by default.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // True while a refresh request is in flight; drives the toolbar spinner.
+  const [refreshing, setRefreshing] = useState(false);
   const asideRef = useRef<HTMLElement | null>(null);
 
-  const refresh = useCallback(() => {
-    setState({ kind: 'loading' });
-    vscode.postMessage({ command: 'desktopGetWorkspaceDiff', ...(paneId ? { paneId } : {}) });
-  }, [vscode, paneId]);
+  // Hard refresh clears current content to the loading placeholder (used when
+  // the session/workdir context changes); soft refresh keeps showing the old
+  // content until the new diff arrives, so auto-refreshes don't flicker.
+  const refresh = useCallback(
+    (hard = false) => {
+      if (hard) setState({ kind: 'loading' });
+      setRefreshing(true);
+      vscode.postMessage({ command: 'desktopGetWorkspaceDiff', ...(paneId ? { paneId } : {}) });
+    },
+    [vscode, paneId],
+  );
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -81,6 +90,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       if (msg?.command !== 'desktopWorkspaceDiff') return;
       if (paneId !== undefined && msg.paneId !== paneId) return;
       const result = msg.result;
+      setRefreshing(false);
       setState(result?.kind === 'ok' ? { kind: 'ok', files: result.files } : { kind: 'not-a-repo' });
     };
     window.addEventListener('message', onMessage);
@@ -96,7 +106,8 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     const becameVisible = visible && !prev.visible;
     const contextChanged = visible && (prev.sessionId !== sessionId || prev.workdir !== workdir);
     const generationEnded = visible && prev.isStreaming && !isStreaming;
-    if (becameVisible || contextChanged || generationEnded) refresh();
+    if (contextChanged) refresh(true);
+    else if (becameVisible || generationEnded) refresh();
   }, [visible, sessionId, workdir, isStreaming, refresh]);
 
   const toggleFile = (path: string) => {
@@ -211,9 +222,9 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
             className="preview-pane-button"
             title="刷新"
             data-testid="diff-refresh"
-            onClick={refresh}
+            onClick={() => refresh()}
           >
-            <i className="codicon codicon-refresh" />
+            <i className={`codicon codicon-refresh${refreshing ? ' codicon-modifier-spin' : ''}`} />
           </button>
           <button
             className="preview-pane-button"

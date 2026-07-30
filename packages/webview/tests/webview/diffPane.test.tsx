@@ -179,6 +179,37 @@ describe('DiffPane', () => {
         expect(lastDiffRequest(vscode)).toHaveLength(2);
     });
 
+    it('keeps current files visible while the generation-end refresh is in flight', () => {
+        const { rerenderWith } = renderPane({ isStreaming: true });
+        sendDiffResult([makeFile()]);
+        expect(screen.getByText('src/a.ts')).toBeInTheDocument();
+        rerenderWith({ isStreaming: false });
+        expect(screen.queryByText('加载中…')).not.toBeInTheDocument();
+        expect(screen.getByText('src/a.ts')).toBeInTheDocument();
+        sendDiffResult([makeFile({ path: 'src/b.ts' })]);
+        expect(screen.queryByText('src/a.ts')).not.toBeInTheDocument();
+        expect(screen.getByText('src/b.ts')).toBeInTheDocument();
+    });
+
+    it('keeps current files visible on manual refresh and spins the refresh icon until the response arrives', () => {
+        renderPane();
+        sendDiffResult([makeFile()]);
+        fireEvent.click(screen.getByTestId('diff-refresh'));
+        expect(screen.queryByText('加载中…')).not.toBeInTheDocument();
+        expect(screen.getByText('src/a.ts')).toBeInTheDocument();
+        expect(screen.getByTestId('diff-refresh').querySelector('.codicon-modifier-spin')).not.toBeNull();
+        sendDiffResult([makeFile()]);
+        expect(screen.getByTestId('diff-refresh').querySelector('.codicon-modifier-spin')).toBeNull();
+    });
+
+    it('resets to the loading state when the session context changes', () => {
+        const { rerenderWith } = renderPane({ sessionId: 's1', workdir: '/w/a' });
+        sendDiffResult([makeFile()]);
+        rerenderWith({ sessionId: 's2', workdir: '/w/b' });
+        expect(screen.getByText('加载中…')).toBeInTheDocument();
+        expect(screen.queryByText('src/a.ts')).not.toBeInTheDocument();
+    });
+
     it('does not refresh on generation end while hidden', () => {
         const { vscode, rerenderWith } = renderPane({ visible: false, isStreaming: true });
         rerenderWith({ visible: false, isStreaming: false });
