@@ -221,3 +221,85 @@ describe('auto-hide when all tasks completed', () => {
     expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
   });
 });
+
+describe('desktop session switch via setInitialState', () => {
+  const mixed = [
+    { id: '1', subject: '任务一', description: '', status: 'in_progress', blocks: [], blockedBy: [], metadata: {} },
+    { id: '2', subject: '任务二', description: '', status: 'pending', blocks: [], blockedBy: [], metadata: {} },
+  ];
+  const allCompleted = [
+    { id: '1', subject: '任务一', description: '', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
+    { id: '2', subject: '任务二', description: '', status: 'completed', blocks: [], blockedBy: [], metadata: {} },
+  ];
+  const makeSession = (id: string) => ({
+    id,
+    sessionType: 'main',
+    workdir: '/test/project',
+    firstMessage: `Session ${id}`,
+    lastActiveAt: new Date('2023-12-01T10:00:00Z'),
+    latestTotalTokens: 100
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('stays hidden when switching from a session with incomplete tasks to an all-completed one', async () => {
+    renderChatApp();
+    // 桌面端会话 A：存在未完成任务，任务列表可见
+    act(() => {
+      sendCommand('setInitialState', {
+        messages: [],
+        tasks: mixed,
+        session: makeSession('session-a'),
+        isAuthenticated: true
+      });
+    });
+    expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+    // 桌面端侧边栏切换到会话 B：宿主一次性推送 setInitialState（不经过清空任务）
+    act(() => {
+      sendCommand('setInitialState', {
+        messages: [],
+        tasks: allCompleted,
+        session: makeSession('session-b'),
+        isAuthenticated: true
+      });
+    });
+    // 会话 B 任务全部完成：立即隐藏，不经历 5 秒展示
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+  });
+
+  it('keeps the 5s grace when tasks complete within the same session', async () => {
+    renderChatApp();
+    act(() => {
+      sendCommand('setInitialState', {
+        messages: [],
+        tasks: mixed,
+        session: makeSession('session-a'),
+        isAuthenticated: true
+      });
+    });
+    expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+    // 同一会话内任务完成（会话 id 不变）：保留 5 秒宽限
+    act(() => {
+      sendCommand('updateTasks', { tasks: allCompleted });
+    });
+    expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+  });
+});
