@@ -4,6 +4,13 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 10px;
+    /* Cap the conversation column at 800px and center it, mirroring .input-wrapper
+       so messages line up with the input box instead of spanning the full pane
+       width. The panel-background gutters come from .chat-container (see
+       ChatApp.css) so they match this list exactly. */
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
     align-items: flex-start;

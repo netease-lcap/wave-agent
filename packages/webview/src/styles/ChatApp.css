@@ -4,6 +4,12 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    /* Paint the whole chat column (header + message gutters + input) in
+       panel-background so the gutters on either side of the 800px message
+       column match the message list. Hosts set body to editor-background
+       (the editor-area chrome), which would otherwise bleed through the
+       transparent wrappers around .messages-container. */
+    background-color: var(--vscode-panel-background);
 }
 
 .input-area-container {

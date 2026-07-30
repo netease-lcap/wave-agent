@@ -92,6 +92,10 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 ![核心交互](/screenshots/desktop-chat.png)
 
+消息列表与输入框共用同一套最大宽度（800px）并居中显示，窗口越宽两侧留白越明显，对话内容始终与输入框左右对齐，避免消息拉满整行显得松散：
+
+![居中的对话列](/screenshots/desktop-chat-centered.png)
+
 详细说明请移步：
 
 - [基础对话与 AI 思考过程](/vsce#basic-chat)
