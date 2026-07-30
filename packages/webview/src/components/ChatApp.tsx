@@ -23,7 +23,7 @@ import { DesktopWorkdirSelector } from './DesktopWorkdirSelector';
 import { DesktopWorktreeControls } from './DesktopWorktreeControls';
 import { PreviewPane } from './PreviewPane';
 import { DiffPane } from './DiffPane';
-import { TerminalPane } from './TerminalPane';
+import { TerminalPane, prefetchTerminalLib } from './TerminalPane';
 import type {
   ChatAppProps,
   ConfigurationData,
@@ -772,6 +772,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, []);
 
   const isDesktop = host?.type === 'desktop';
+
+  // Desktop: idle-preload the lazily injected xterm chunk so the first
+  // terminal open doesn't pay the fetch+parse cost.
+  useEffect(() => {
+    if (!isDesktop) return;
+    const id = window.requestIdleCallback?.(() => prefetchTerminalLib());
+    return () => {
+      if (id !== undefined) window.cancelIdleCallback?.(id);
+    };
+  }, [isDesktop]);
 
   // Check a panel on: when its assigned row lacks the width, a first-row panel
   // spills into the second row (creating it when the body is tall enough);

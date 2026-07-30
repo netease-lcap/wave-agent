@@ -18,6 +18,7 @@ class MockTerminal {
     }
     loadAddon() {}
     open() {}
+    focus = vi.fn();
     onData(cb: (data: string) => void) {
         this.dataCb = cb;
     }
@@ -115,6 +116,21 @@ describe('TerminalPane', () => {
         rerenderWith({ visible: true });
         await act(async () => {});
         expect(postsOf(vscode, 'desktopTerminalCreate')).toHaveLength(1);
+    });
+
+    it('focuses the terminal on first open (visible mount after chunk load)', async () => {
+        renderPane();
+        await act(async () => {});
+        expect(mockTerminals[0].focus).toHaveBeenCalledTimes(1);
+    });
+
+    it('focuses the terminal when the panel becomes visible, not on hidden mount', async () => {
+        const { rerenderWith } = renderPane({ visible: false });
+        await act(async () => {});
+        expect(mockTerminals[0].focus).not.toHaveBeenCalled();
+        rerenderWith({ visible: true });
+        await act(async () => {});
+        expect(mockTerminals[0].focus).toHaveBeenCalledTimes(1);
     });
 
     it('relays host output into xterm and keystrokes back to the host', async () => {
