@@ -6,7 +6,6 @@ order: 60
 
 # 功能规格说明：Agent 配置
 
-**特性分支**：`agent-config`  
 **创建日期**：2025-01-27  
 
 ## 用户场景与测试 *（必填）*
@@ -182,60 +181,6 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 - 当文件监视器在系统启动时初始化失败会发生什么？
 - IDE 插件配置对话框只填写部分字段（如仅 API Key、无 API 地址）时如何生效？（未填写的字段保持原值或回退到环境变量）
 - IDE 插件配置对话框加载已保存配置失败时如何展示？（对话框内显示错误，表单仍可填写重试）
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- Agent 构造函数必须接受可选的 `apiKey` 字符串参数，回退到 `WAVE_API_KEY` 环境变量
-- Agent 构造函数必须接受可选的 `baseURL` 字符串参数，回退到 `WAVE_BASE_URL` 环境变量
-- Agent 构造函数必须接受可选的 `model` 字符串参数，回退到 `WAVE_MODEL` 环境变量
-- Agent 构造函数必须接受可选的 `fastModel` 字符串参数，回退到 `WAVE_FAST_MODEL` 环境变量
-- Agent 构造函数必须接受可选的 `maxInputTokens` 数字参数，回退到 `WAVE_MAX_INPUT_TOKENS` 环境变量
-- 系统必须验证已解析配置的必需值（`apiKey` 或替代认证）。模型（`WAVE_MODEL`）和快速模型（`WAVE_FAST_MODEL`）完全可选——如果未提供，系统必须使用合理默认值
-- 系统必须在两者都存在时优先使用构造函数提供的值而非环境变量
-- 系统必须保留与测试相关的环境变量的现有行为（`NODE_ENV`、`VITEST`、`WAVE_TEST_HOOKS_EXECUTION`）
-- 服务必须使用已解析的配置而非直接 `process.env` 访问
-- 系统必须为可选配置值提供合理默认值，当构造函数和环境变量都不存在时
-- `callAgent` 必须在其选项参数中接受 `maxTokens` 参数，默认为 32000
-- 系统必须读取 `WAVE_MAX_OUTPUT_TOKENS` 环境变量作为默认最大输出 token
-- `maxTokens` 的优先级必须为：`callAgent` 参数 > `Agent.create` 选项 > `WAVE_MAX_OUTPUT_TOKENS` > 默认值（32000）
-- SDK 必须读取 `WAVE_CUSTOM_HEADERS` 环境变量，按换行符分割并解析为 `Key: Value` 对
-- 如果通过自定义请求头提供了替代认证，SDK 不得在初始化时强制要求 `apiKey`
-- 系统必须支持通过 `AgentOptions` 或 `settings.json` 设置 `language`
-- 系统必须在配置了语言时向系统提示注入语言指令，遵循指定格式
-- `AgentOptions` 和 `ModelConfig` 必须支持 `options` 字段用于传递模型特定的生成参数（如 `temperature`、`reasoning_effort`、`thinking`）
-- 系统必须支持通过 `settings.json` 的 `models` 字段进行模型特定覆盖，生成参数嵌套在 `options` 子对象中
-- 系统必须允许通过在 `options` 字段中设置为 `null` 来取消设置默认生成参数
-- settings.json 必须支持可选的 "env" 字段，包含环境变量的键值对
-- 系统必须合并用户级和项目级 env 配置，项目级优先
-- 系统必须验证 env 字段格式并对无效配置显示清晰错误
-- 系统必须监视 settings.json 文件的更改并自动重新加载配置
-- 系统必须在检测到无效更改时继续使用之前的有效配置
-- 系统必须适当记录配置重载事件和错误
-- 文件监视器必须处理文件删除、创建和修改事件
-- 系统必须通过抛出描述性错误并阻止 SDK 启动来处理文件监视器初始化失败
-- 系统必须在重载时新配置中缺少 permissions（allow、deny、additionalDirectories）时将其重置为空数组，并将 permissionMode 重置为 undefined
-- `AgentOptions` 必须接受可选的 `subagentHeaders?: Record<string, Record<string, string>>` 参数，按子代理类型名称为键
-- 创建子代理时，其 `defaultHeaders` 必须是父级 `defaultHeaders` 与 `subagentHeaders[type]` 的合并（类型特定值覆盖父级）
-- 合并后的子代理请求头必须通过 `init.headers` 在 `customFetch` 中可用，实现请求级路由/速率限制/可观测性
-- IDE 插件必须提供 `/config` 斜杠命令和聊天头部设置按钮两个入口打开配置对话框。
-- IDE 插件配置对话框必须提供"全局"和"模型"两个标签页；"全局"页提供界面语言选择（中文 / English），"模型"页提供 API Key（密码式隐藏输入）、自定义请求头、API 地址、模型名称、快速模型名称输入项。
-- IDE 插件配置对话框保存的配置必须存储在 IDE 侧（VS Code 与 JetBrains 插件各自的原生存储），不经由 CLI 子进程，两类 IDE 中行为一致。
-- IDE 插件配置保存成功后必须立即对所有活跃会话生效，无需重启 IDE 或重开会话。
-- IDE 插件配置对话框打开时必须载入当前已保存的配置供用户编辑。
-- 保存进行中，IDE 插件配置对话框必须禁用所有输入与按钮并显示"保存中..."，防止重复提交；保存成功后对话框必须自动关闭。
-- 配置加载或保存失败时，IDE 插件配置对话框必须在对话框内显示错误原因。
-- IDE 插件配置对话框必须在未完成配置时显示引导文案"保存后，优先使用此配置，无需登录即可正常使用插件。"
-
-### 关键实体 *（涉及数据的功能包含此项）*
-
-- **AgentConfig**：直接放在 `AgentOptions` 中的扁平化配置参数（apiKey、baseURL、model、fastModel、maxInputTokens、maxTokens、language）
-- **GatewayConfig**：网关服务的已解析配置，包括认证、端点详情和自定义请求头
-- **ModelConfig**：已解析的模型选择配置，指定不同操作使用的模型；包含 `options` 字段用于携带模型特定的生成参数（如 `temperature`、`reasoning_effort`、`thinking`）
-- **设置配置**：包含 hooks、环境变量和其他配置选项，监视更改
-- **文件监视器**：监视配置文件并触发重载事件
-- **环境上下文**：从用户和项目设置合并的环境变量，传递给代理进程
 
 ## 成功标准 *（必填）*
 

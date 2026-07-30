@@ -6,7 +6,6 @@ order: 40
 
 # 功能规格说明：Code Review Skill
 
-**特性分支**：`code-review-skill`
 **创建日期**：2026-06-29
 
 ## 用户场景与测试 *（必填）*
@@ -106,51 +105,3 @@ order: 40
 - **如果 `gh` 或 `glab` 已安装但未认证怎么办？** 发布评论的 CLI 命令将失败；skill 将其视为"PR/MR 不存在"并静默跳过。
 - **如果发布评论失败怎么办？** skill 回退到直接终端输出，确保不丢失信息。
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须提供通过 `/code-review [effort]` 调用的内置 `code-review` skill。
-- skill 必须使用 `git diff` 相对于 `HEAD` 和 `main` 的 merge-base 收集 diff，当 `main` 不可用时回退到 `HEAD~1`。不依赖 `gh`。
-- 当没有可审查的更改时，skill 必须停止并通知用户。
-- skill 必须从 `$ARGUMENTS` 解析努力级别：`low`、`medium`（默认）、`high`、`max`。
-- 每个努力级别必须映射到固定的 agent 数量和置信度阈值：low→2 个 agent/90、medium→3 个 agent/80、high→4 个 agent/70、max→5 个 agent/60。
-- skill 必须在单条消息中并发启动所有审查 agent，每个传递完整 diff。
-- skill 必须在所有努力级别包含 Bug Scanner agent，执行聚焦于大型错误的浅层扫描。
-- skill 必须在所有努力级别包含 AGENTS.md 合规 agent，审计根目录和修改目录的 AGENTS.md 文件。
-- skill 必须在 `medium` 及以上级别包含 Git History Context agent，使用 `git blame` 和历史。
-- skill 必须在 `high` 及以上级别包含 Code Reuse & Quality agent。
-- skill 必须仅在 `max` 级别包含 Efficiency Review agent。
-- skill 必须为每个发现启动单独的并行评分 agent，返回根据固定评分标准的 0-100 置信度评分。
-- skill 必须过滤掉置信度评分低于努力级别阈值的发现。
-- skill 必须以固定格式报告发现：带描述、可选 AGENTS.md 引用和 `<file>:<line range>` 引用的编号列表。
-- 当没有发现通过阈值时，skill 必须报告"no issues"并停止——不发布评论，不输出发现。
-- skill 必须为每个发现引用文件和行范围。
-- skill 必须设置 `disable-model-invocation: true` 以防止 AI 自动触发。
-- skill 必须通过 `allowed-tools` 限制自己的工具为：git diff/status/log/show/blame/remote、command -v、gh pr comment/view、glab mr note/view、Read、Glob、Grep 和 Agent。
-- skill 不得检查构建信号或尝试构建或类型检查应用——这些单独运行。
-- skill 必须在执行审查阶段之前先创建 todo 列表。
-- skill 必须排除误报类别：预先存在的问题、非错误外观的问题、学究式挑剔、linter/类型检查器级别的问题、一般质量差距（除非 AGENTS.md 要求）、被静默的问题、有意更改和未修改行上的问题。
-- skill 必须通过检查远程 URL（`git remote get-url origin`）检测仓库平台——URL 中的 `github` → GitHub，URL 中的 `gitlab` → GitLab。
-- skill 必须在尝试发布评论之前检测相应的 CLI 是否已安装（`command -v gh` / `command -v glab`）。
-- skill 必须在发布之前检查当前分支是否有 PR/MR 存在（`gh pr view` / `glab mr view`）。
-- 当平台为 GitHub 且安装了 `gh` 且有 PR 时，skill 必须通过 `gh pr comment --body` 将审查作为 PR 评论发布（首选）——且不得在此情况下将发现输出到终端。
-- 当平台为 GitLab 且安装了 `glab` 且有 MR 时，skill 必须通过 `glab mr note --message` 将审查作为 MR 注释发布（首选）——且不得在此情况下将发现输出到终端。
-- 当没有安装 CLI、没有 PR/MR 存在、平台无法识别或评论发布失败时，skill 必须将发现直接输出到终端（回退）。
-
-### 关键实体
-
-- **EffortLevel**：`low`、`medium`、`high`、`max` 之一——控制 agent 数量和置信度阈值。
-- **ReviewAgent**：分配了审查维度（bug 扫描、合规、历史、重用、效率）的并行子 agent。接收完整 diff。
-- **ScoringAgent**：独立的子 agent，使用固定评分标准为单个发现分配 0-100 置信度评分。
-- **Finding**：带有描述、可选 AGENTS.md 引用、文件和行范围的报告问题。
-- **ConfidenceScore**：0-100 的整数，在 0、25、50、75、100 处有固定评分标准锚点。
-- **Platform**：检测到的仓库平台——`github` 或 `gitlab` 或 `unknown`（从远程 URL 推断）。
-- **CommentTarget**：接收审查评论的 PR 或 MR，如果 CLI 可用且 PR/MR 存在。
-
-### 假设
-
-- skill 作为内置 skill 在 `packages/agent-sdk/builtin/skills/code-review/SKILL.md` 下实现。
-- Agent 工具对 skill 可用（列在 `allowed-tools` 中）用于启动并行审查/评分子 agent。
-- `$ARGUMENTS` 替换由现有 skill 参数系统处理（spec 006）。
-- Bash 命令执行（`!`git diff``）由现有 skill bash 替换系统处理（spec 006）。

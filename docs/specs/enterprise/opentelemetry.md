@@ -6,7 +6,6 @@ order: 30
 
 # 功能规格说明：OpenTelemetry 集成
 
-**特性分支**：`opentelemetry`
 **创建日期**：2026-05-09
 
 ## 用户场景与测试 *（必填）*
@@ -68,32 +67,3 @@ order: 30
 - **在 100+ 轮的长时间运行会话中会怎样？** 超过 30 分钟的活动 span 必须被清理以防止内存泄漏。
 - **如果遥测初始化失败会怎样？** agent 必须在没有遥测的情况下正常启动；记录警告但不崩溃。
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须支持使用 MeterProvider、TracerProvider 和 LoggerProvider 进行 OpenTelemetry SDK 初始化。
-- 系统必须支持每种信号类型的多个导出器：metrics（`jsonl`、`otlp`）、traces（`jsonl`、`otlp`）、logs（`jsonl`、`otlp`）。
-- 系统必须从标准 `OTEL_*` 环境变量（端点、协议、headers、导出器）读取 OTEL 配置。
-- 系统必须创建包裹每个用户消息 → 完整响应周期的交互 span。
-- 系统必须为每次 API 调用创建 LLM 请求 span，包含属性：model、输入/输出/缓存 token、TTFT、TTLT、成功/错误状态。
-- 系统必须为每次工具调用创建工具执行 span，包含属性：工具名称、成功/错误、持续时间、输入（可选）。
-- 系统必须在并行工具执行期间使用 AsyncLocalStorage 维护正确的父子 span 关系。
-- 系统必须为以下事件记录结构化事件：`session_start`、`session_end`、`user_prompt`、`tool_decision`、`compaction`、`error`。
-- 系统默认不得在遥测中包含用户提示文本或工具内容；这些由 `OTEL_LOG_USER_PROMPTS=1` 和 `OTEL_LOG_TOOL_CONTENT=1` 控制。
-- 系统必须优雅地处理遥测失败而不影响 agent 操作。
-- 系统必须在关闭时刷新所有遥测数据，使用可配置超时（默认 2 秒）。
-- 系统必须清理超过 30 分钟的陈旧 span 以防止内存泄漏。
-- 系统必须包含资源属性：`service.name: 'wave'`、`service.version`、`os.type`、`host.arch`。
-- 系统必须支持通过环境变量和 `settings.json` 进行配置，环境变量优先。
-- 不支持控制台导出器。相反，自定义 JSONL 文件导出器将遥测记录（每行一个 JSON）写入 `~/.wave/telemetry.jsonl`。
-- 当 SSO 未认证时，系统必须使用匿名 ID 作为 `user.id` 遥测属性的回退。匿名 ID 必须是存储在 `~/.wave/config.json` 中的 32 字节十六进制字符串，在首次使用时创建。当 SSO 已认证时，`user.id` 必须使用 SSO 用户 ID。
-
-### 关键实体
-
-- **Interaction Span**：包裹完整用户消息 → agent 响应周期的顶级 span。
-- **LLM Request Span**：交互 span 的子 span，代表对模型的单次 API 调用。
-- **Tool Span**：交互 span 的子 span，代表单次工具执行。
-- **OTel Event**：会话生命周期事件的结构化日志记录。
-- **TelemetryConfig**：从环境变量 + settings.json 解析的配置，控制导出器、端点和 PII 控制。
-- **AnonymousId**：持久化在 `~/.wave/config.json` 中的 32 字节十六进制字符串，当 SSO 未认证时用作 `user.id`。通过 `getOrCreateAnonymousId()` 创建。

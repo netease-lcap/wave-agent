@@ -6,7 +6,6 @@ order: 50
 
 # 功能规格说明：通过 buildTool() 自定义工具
 
-**特性分支**：`custom-tools`
 **创建日期**：2026-05-15
 
 ## 用户场景与测试 *（必填）*
@@ -65,25 +64,3 @@ order: 50
 - **如果 `buildTool()` 缺少必填字段（name、description、parameters、execute）调用会怎样？** TypeScript 的类型系统在编译时阻止这种情况；不需要运行时验证。
 - **如果 `customTools` 是空数组会怎样？** 不注册自定义工具；行为与不传递 `customTools` 相同。
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须导出 `buildTool()` 工厂函数，接受 `ToolDef` 并返回 `ToolPlugin`。
-- `ToolDef` 必须包含必填字段：`name`、`description`、`parameters`、`execute`。
-- `ToolDef` 必须支持可选字段：`required`、`prompt`、`formatCompactParams`、`additionalProperties`。
-- `buildTool()` 必须从提供的 `name`、`description`、`parameters`、`required` 和 `additionalProperties` 自动构建 `ChatCompletionFunctionTool` 配置。
-- 当 `prompt` 是字符串时，`buildTool()` 必须将其规范化为零参数返回该字符串的函数。
-- `AgentOptions` 必须接受 `customTools?: ToolPlugin[]` 字段。
-- 自定义工具必须在 `initializeBuiltInTools()` 期间与内置工具一起注册到 `ToolManager`。
-- 自定义工具必须遵守 `tools` 白名单——只有名称出现在白名单中的自定义工具被启用。
-- 自定义工具必须遵守权限规则（`allowedTools`、`disallowedTools`）。
-- `buildTool`、`ToolPlugin`、`ToolResult` 和 `ToolContext` 必须从 SDK 的公共 API（`index.ts`）导出。
-- 默认值必须为：`additionalProperties: false`。
-
-### 关键实体
-
-- **ToolDef**：用户定义的接口，用于定义自定义工具的形状和行为。
-- **ToolPlugin**：代表已注册工具的内部接口（由 `buildTool()` 返回）。
-- **buildTool()**：将 `ToolDef` 转换为 `ToolPlugin` 的工厂函数。
-- **customTools**：传递给 `Agent.create()` 以注册自定义工具的 `ToolPlugin` 数组。

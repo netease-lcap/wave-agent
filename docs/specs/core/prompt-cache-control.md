@@ -6,7 +6,6 @@ order: 90
 
 # 功能规格说明：提示缓存控制
 
-**特性分支**：`prompt-cache-control`  
 **创建日期**：2025-12-02  
 
 ## 用户场景与测试 *（必填）*
@@ -113,24 +112,3 @@ order: 90
 - **边界情况 7**：当动态块为空（无 workdir、无权限模式、无 auto memory 等动态内容）时，`buildSystemPrompt` 只返回静态块，不添加空的动态块
 - **边界情况 8**：`transformMessagesForExplicitCache` 的幂等性检查（检测系统消息是否已有 cache_control）必须正确处理 `SystemPromptBlock[]` 映射产生的内容部分数组，避免重复标记
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须使用声明式 `capabilities.promptCaching` 字段（位于 `ModelConfig` 中）检测支持缓存的模型以进行 cache_control 标记注入。门控检查 `modelConfig.capabilities?.promptCaching`（默认 `false`）。此门控仅控制 `cache_control: {type: "ephemeral"}` 标记到消息中的注入——它不门控从 usage 响应中提取缓存 token，后者适用于所有模型
-- 系统必须将系统提示拆分为静态块和动态块。静态块（`cacheable: true`）包含 base prompt + DOING_TASKS + EXECUTING_ACTIONS + TOOL_POLICY + OUTPUT_EFFICIENCY + TONE_AND_STYLE，这些内容在会话期间不变。动态块（`cacheable: false`）包含权限模式、语言、环境信息（workdir、isGitRepo、platform、shell、OS version、date、worktree session）、auto memory 指令和 MEMORY.md 内容，这些内容可能随时间或交互变化。`buildSystemPrompt` 返回 `SystemPromptBlock[]` 而非字符串。系统提示必须在计划模式切换间保持不变——计划模式指令作为 `<system-reminder>` 用户消息注入而非系统提示更改以保持缓存的系统提示前缀。`<env>` 部分的 `Primary working directory` 字段必须使用不可变的 `originalWorkdir`（在会话开始时设置一次）而非动态的 `workdir`（追踪 `cd` 更改），以便 CWD 更改不会失效缓存的系统提示
-- 系统必须维护两个缓存标记：(1) 系统消息的静态块（通过 `callAgent` 中的块映射获得 cache_control），和 (2) 最后一条有内容的消息（user 或 assistant，不区分角色，由 `transformMessagesForExplicitCache` 标记）。策略完全无状态——无模块级状态、无桥接追踪、无 tools 参数。`transformMessagesForExplicitCache` 函数仅接收消息和模型名称。`transformMessagesForExplicitCache` 的幂等性检查检测到系统消息已有 cache_control（来自块映射）时跳过重新标记，避免重复。最后消息标记每轮前进约 2 个块，因为新消息被添加，但由于 API 从每个标记向后扫描 20 个块窗口且正常对话每轮添加少于 20 个块，之前的缓存位置始终在扫描窗口内，导致缓存命中。工具作为最后消息标记覆盖的前缀的一部分被隐式缓存。内容块被精确计数：字符串内容 = 1 块，数组内容 = 元素计数，null/undefined 内容 = 0 块
-- 系统在不支持缓存的模型（即 `capabilities.promptCaching` 未设为 `true` 的模型，由 `supportsPromptCaching(capabilities)` 返回 `false` 确定）时不得添加 cache_control 标记。当传入 `SystemPromptBlock[]` 时，不支持缓存的模型将所有块文本以 `\n\n` 拼接为单个字符串。但是，从 usage 中提取缓存 token（见下文用量追踪条目）适用于所有模型，不受此门控限制
-- 系统必须扩展用量追踪以包含所有模型（不受 `supportsPromptCaching` 门控）的缓存相关指标。缓存 token 从两个来源按优先级提取：(1) Claude 顶层字段（cache_read_input_tokens、cache_creation_input_tokens、cache_creation 对象）优先，(2) OpenAI 标准 prompt_tokens_details 字段（cached_tokens → cache_read_input_tokens，cache_creation_input_tokens → cache_creation_input_tokens）作为通过 prompt_tokens_details 返回缓存数据的非 Claude 模型的后备
-- 系统必须在消息准备阶段对流式和非流式请求相同地应用 cache_control 标记
-- 系统必须保持与现有消息处理逻辑的向后兼容性：`CallAgentOptions.systemPrompt` 类型为 `string | SystemPromptBlock[]`，纯字符串输入按原有逻辑处理（向后兼容）
-- `SystemPromptBlock` 接口定义为 `{ text: string; cacheable: boolean }`。`callAgent` 在处理 `SystemPromptBlock[]` 输入时，对于 Claude 模型将每个块映射为 `ClaudeChatCompletionContentPartText` 内容部分，cacheable 块添加 `cache_control: {type: "ephemeral"}`，非 cacheable 块不添加；对于非 Claude 模型将所有块文本以 `\n\n` 拼接为字符串。当动态块内容为空时，`buildSystemPrompt` 不添加动态块，仅返回包含静态块的数组
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **对话线程**：表示用户和 AI 代理之间的消息序列，属性包括消息计数和会话上下文
-- **消息上下文**：表示为 AI 代理响应提供上下文的系统提示和工具的组合
-- **增强用量指标**：扩展的用量对象，包括缓存相关 token 计数和创建明细
-- **Prompt caching 能力检测**：基于声明式 `capabilities.promptCaching` 字段的布尔判定，而非模型名称匹配。仅门控 cache_control 标记注入——缓存 token 提取适用于所有模型
-- **结构化消息内容**：基于数组的消息内容格式，支持在单个内容部分上的 cache_control
-- **SystemPromptBlock**：系统提示分块结构 `{ text: string; cacheable: boolean }`。`cacheable: true` 的块在 Claude 模型下获得 `cache_control: {type: "ephemeral"}` 标记，`cacheable: false` 的块不获得标记。`buildSystemPrompt` 返回 `SystemPromptBlock[]`，`callAgent` 根据模型类型决定映射方式

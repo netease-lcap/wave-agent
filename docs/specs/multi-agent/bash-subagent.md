@@ -6,7 +6,6 @@ order: 50
 
 # 功能规格说明：添加 Bash 内置子 Agent
 
-**特性分支**：`bash-subagent`
 **创建日期**：2026-02-12
 
 ## 用户场景与测试 *（必填）*
@@ -26,19 +25,3 @@ order: 50
 
 ---
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须包含一个名为"Bash"的新内置子 agent。
-- Bash 子 agent 必须被描述为"Command execution specialist for running bash commands"。
-- Bash 子 agent 必须被推荐用于 git 操作、命令执行和其他终端任务。
-- Bash 子 agent 必须使用特定的系统提示，强调精确性、安全性、清晰的报告和正确的路径引用。
-- Bash 子 agent 必须继承主 agent 的模型配置。
-- Bash 子 agent 必须能够访问标准 bash 执行工具（相当于参考中的 `S4`）。
-- Bash 子 agent 必须注册为"built-in"来源。
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **Subagent Configuration**：代表子 agent 的元数据和行为（名称、类型、提示、工具）。
-- **System Prompt**：定义 Bash 子 agent 角色和约束的专门指令。

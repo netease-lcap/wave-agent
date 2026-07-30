@@ -6,7 +6,6 @@ order: 40
 
 # 功能规格说明：Plan 子 Agent 支持
 
-**特性分支**：`plan-subagent`
 **创建日期**：2026-02-12
 
 ## 用户场景与测试 *（必填）*
@@ -80,27 +79,6 @@ Plan 子 agent 识别并列出实现其提议计划最关键的 3-5 个文件，
 - 当 Plan 子 agent 引用的文件在计划期间被移动或删除时会发生什么？
 - 系统如何处理多个 Plan 子 agent 同时尝试探索相同文件？
 - 当 Plan 子 agent 系统提示太大超出 token 限制时会发生什么？
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须提供内置的"Plan"子 agent，无需用户配置即可使用
-- Plan 子 agent 必须限制为只读工具（Glob、Grep、Read、LSP 和只读 Bash 命令）
-- Plan 子 agent 不得有文件修改工具的访问权限（Write、Edit、NotebookEdit）
-- Plan 子 agent 必须包含系统提示，明确说明只读限制和规划职责
-- 系统必须允许并行生成多个具有不同视角的 Plan 子 agent
-- Plan 子 agent 必须生成包含"Critical Files for Implementation"部分的输出
-- Plan 子 agent 必须与计划模式工作流集成（见 plan-mode.md 的计划模式提醒行为）
-- 当 Plan 子 agent 尝试禁止的操作时，系统必须提供清晰的错误消息
-- Plan 子 agent 必须支持使用 Glob、Grep 和 Read 工具不受限制地探索代码库
-- Plan 子 agent 必须能够执行只读 Bash 命令（ls、git status、git log、git diff、find、cat、head、tail）
-- 系统必须在 Plan 子 agent 提示中包含强调只读模式的关键提醒
-- Plan 子 agent 必须默认使用"inherit"模型以匹配父 agent 的模型
-- 系统必须在 Task 工具描述中列出 Plan 子 agent 并附带适当的"whenToUse"指导
-- Plan 子 agent 必须可被具有相同名称的用户配置子 agent 覆盖
-- 系统必须验证 Plan 子 agent 在运行时仅接收只读工具访问
-- 当 Plan 子 agent 收到计划模式提醒时，提醒不得指示子 agent 写入或编辑计划文件。相反，它必须告诉子 agent 以文本输出形式返回发现，由父 agent 写入计划文件。提醒可以包含计划文件路径以便在文件已存在时读取上下文。
 
 ## 成功标准
 

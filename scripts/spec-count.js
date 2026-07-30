@@ -7,13 +7,13 @@ const { groups, totals, warnings } = collectSpecs();
 
 for (const group of groups) {
   for (const s of group.specs) {
-    console.log(`${s.path}  用户故事: ${s.usCount}  功能需求: ${s.frCount}`);
+    console.log(`${s.path}  用户故事: ${s.usCount}  验收场景: ${s.acCount}`);
   }
 }
 for (const w of warnings) console.warn(`  ⚠ ${w}`);
 
 console.log("---");
-console.log(`规格: ${totals.specs}  用户故事: ${totals.us}  功能需求: ${totals.fr}`);
+console.log(`规格: ${totals.specs}  用户故事: ${totals.us}  验收场景: ${totals.ac}`);
 if (warnings.length) console.warn("⚠ 部分规格有模板警告——见上方。");
 
 const tests = collectTests();

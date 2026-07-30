@@ -6,7 +6,6 @@ order: 20
 
 # 功能规格说明：内置子 Agent 支持
 
-**特性分支**：`builtin-subagent`
 **创建日期**：2025-12-08
 
 ## 用户场景与测试 *（必填）*
@@ -49,23 +48,3 @@ order: 20
 - 当源文件缺失或损坏时，系统如何处理加载内置子 agent？
 - 当内置子 agent 引用不存在的工具时会发生什么？
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须从内部源代码而非外部文件加载内置子 agent 配置
-- 系统必须使内置子 agent 立即可用，无需用户配置
-- 内置子 agent 必须与现有的 SubagentManager 和 Task 工具无缝集成
-- 系统必须包含用于代码库探索任务的 "Explore" 内置子 agent
-- 内置子 agent 必须支持与基于文件的子 agent 相同的配置选项（tools、model、systemPrompt）
-- 系统必须处理内置、用户和项目子 agent 之间的优先级排序
-- 内置子 agent 必须出现在 Task 工具描述中，以及在提供无效子 agent 类型时的错误消息中
-- 系统必须允许内置子 agent 名称被更高优先级的用户配置覆盖
-- 内置子 agent 必须支持工具过滤和模型指定，如同标准子 agent
-- 系统必须优雅地处理缺失或无效的内置子 agent 定义
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **BuiltinSubagentDefinition**：表示硬编码的子 agent 配置，包含 name、description、systemPrompt、允许的工具和模型偏好
-- **SubagentSource**：枚举，标识子 agent 来自内置定义、用户文件还是项目文件
-- **SubagentPriority**：排序系统，确保内置子 agent 具有适当的优先级（通常低于项目/用户配置）

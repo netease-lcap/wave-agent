@@ -56,12 +56,9 @@ export function countUserStories(content) {
   return m ? m.length : 0;
 }
 
-export function countFunctionalRequirements(content) {
-  const frSection = content.match(
-    /^### 功能需求\s*\n([\s\S]*?)(?=^#{1,3} |\s*$(?![\s\S]))/m,
-  );
-  const items = frSection ? frSection[1].match(/^- /gm) : null;
-  return items ? items.length : 0;
+export function countAcceptanceScenarios(content) {
+  const m = content.match(/^\d+\.\s+\*\*假设\*\*/gm);
+  return m ? m.length : 0;
 }
 
 // Scan docs/specs/<group>/*.md. Returns groups (rows sorted by frontmatter
@@ -69,7 +66,7 @@ export function countFunctionalRequirements(content) {
 export function collectSpecs() {
   const groups = [];
   const warnings = [];
-  const totals = { specs: 0, us: 0, fr: 0 };
+  const totals = { specs: 0, us: 0, ac: 0 };
 
   for (const { dir, text } of SPEC_GROUPS) {
     const dirPath = path.join(SPECS_DIR, dir);
@@ -83,22 +80,23 @@ export function collectSpecs() {
       const content = fs.readFileSync(path.join(dirPath, f), "utf-8");
       const fm = parseFrontmatter(content);
       const usCount = countUserStories(content);
-      const frCount = countFunctionalRequirements(content);
+      const acCount = countAcceptanceScenarios(content);
       totals.specs++;
       totals.us += usCount;
-      totals.fr += frCount;
+      totals.ac += acCount;
       if (!content.match(/^## 用户场景与测试/m))
         warnings.push(`${rel}: 缺少 "## 用户场景与测试" 章节`);
       if (usCount === 0)
         warnings.push(`${rel}: 未找到用户故事（期望 \`### 用户故事：\`）`);
-      if (frCount === 0) warnings.push(`${rel}: 未找到功能需求条目`);
+      if (acCount === 0)
+        warnings.push(`${rel}: 未找到验收场景（期望 \`N. **假设** … **当** … **则** …\`）`);
       specs.push({
         path: rel,
         name: fm.name || specTitle(content, f.replace(/\.md$/, "")),
         description: fm.description || "",
         order: fm.order !== undefined ? Number(fm.order) : null,
         usCount,
-        frCount,
+        acCount,
       });
     }
     specs.sort(

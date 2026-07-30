@@ -6,7 +6,6 @@ order: 160
 
 # 功能规格说明：/model 命令
 
-**特性分支**：`model-command`
 **创建日期**：2026-04-16
 
 ## 用户场景与测试 *（必填）*
@@ -51,20 +50,3 @@ order: 160
 - **只配置了一个模型怎么办？** 选择器仍然打开但显示单个项。
 - **没有配置模型怎么办？** 选择器显示空列表或提示没有可用模型的消息。
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- CLI 必须提供打开 `ModelSelector` UI 组件的 `/model` 斜杠命令。
-- `ModelSelector` 必须显示 `ConfigurationService.getConfiguredModels()` 返回的所有模型。
-- `ModelSelector` 必须以绿色 `(current)` 高亮当前活动模型，并在焦点项上显示光标 `▶`。
-- 用户必须能够使用 Up/Down 方向键导航模型列表并用 Enter 确认。
-- 按下 Escape 必须关闭 `ModelSelector` 而不更改模型。
-- 选择模型后，`ConfigurationService.setModel()` 必须更新会话的活动模型。
-- `AgentCallbacks` 必须包含 `onModelChange?: (model: string) => void` 以通知 UI 模型更新。
-- `AgentCallbacks` 必须包含 `onConfiguredModelsChange?: (models: string[]) => void` 以在模型列表变化时通知 UI。
-- `Agent` 必须暴露 `setModel(model: string)`，更新配置并触发 `onModelChange` 回调。
-- `Agent` 必须暴露 `getConfiguredModels()` 以提供可选模型列表。
-- `StatusCommand` 必须在 "Model:" 字段下显示活动模型名称。
-- 当用户通过 `/model` 选择模型时，系统必须将所选模型持久化到 `~/.wave/settings.json`。
-- 模型解析优先级必须为：内存覆盖 > `settings.json` 持久化模型 > `WAVE_MODEL` 环境变量。远程管理的 `model` 标量字段在合并时覆盖本地；远程 `env.WAVE_MODEL` 作为管理员默认值，用户的 `settings.json` `model` 字段可以覆盖它。

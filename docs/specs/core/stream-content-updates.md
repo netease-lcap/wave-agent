@@ -6,7 +6,6 @@ order: 110
 
 # 功能规格说明：实时内容流式传输
 
-**特性分支**：`stream-content-updates`  
 **创建日期**：2025-11-19  
 
 ## 用户场景与测试 *（必填）*
@@ -118,44 +117,6 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 如果流式传输因 API 速率限制或错误而中断，界面行为如何？
 - 当非常长的内容流超过终端显示限制时会发生什么？
 - 当推理块的开始时间存在但结束时间缺失（流被中止）时，耗时如何展示？
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- Agent-SDK 必须向 `MessageManagerCallbacks` 接口添加 `onAssistantContentUpdated` 回调，接收 chunk（增量内容）和 accumulated（到目前为止构建的完整消息内容）作为两个独立参数，供第三方集成、扩展和示例使用
-- Agent-SDK 必须增强现有的 `onToolBlockUpdated` 回调以支持流式参数更新和生命周期追踪，添加：
-    - 新的 `stage` 字段，允许值：`start`、`streaming`、`running`、`end`
-    - 新的 `parametersChunk` 字段（在 `streaming` 阶段使用）与现有的累积参数数据并存
-- Agent-SDK 必须修改 `onAssistantMessageAdded` 回调使其不接收参数，因为内容和工具更新由专用流式回调处理
-- Agent-SDK 必须从所有 `onToolBlockUpdated` 有效载荷中移除已弃用的 `isRunning` 字段
-- 在 `start` 阶段，有效载荷必须包含工具的标识符和人类可读名称
-- `end` 阶段必须在每次工具执行中恰好出现一次，并包含最终结果数据或错误摘要
-- CLI 包必须仅使用 `onMessagesChange` 进行所有内容更新，Agent SDK 在流式传输期间管理内部状态更新并适当触发 `onMessagesChange`。第三方集成和示例（如 `packages/code/src/print-cli.ts`）可以出于直接日志记录或外部集成目的使用流式回调
-- Agent SDK 必须在每次流式内容更新（每个处理的块）和每次流式参数更新（每个处理的参数块）后触发 `onMessagesChange` 回调以确保 UI 同步
-- CLI 包必须通过 Agent SDK 在流式传输期间触发的 `onMessagesChange` 显示增量内容和工具参数更新，不引起折叠视图模式下的视觉闪烁或布局偏移
-- 系统必须通过增强的 `onToolBlockUpdated` 回调处理流式工具参数，Agent SDK 管理内部状态更新
-- CLI 必须在参数流式传输期间处于折叠视图模式时实时更新 `compactParams` 显示
-- CLI 必须将内容和参数显示为切换到展开视图模式时捕获的静态快照，在流式传输期间不应用进一步更新
-- 系统必须继续在内部接收流式回调，但仅在处于折叠视图模式时应用视觉更新
-- 在折叠视图模式下，`compactParams` 必须在每个参数块被处理时实时更新，显示最新的可用参数。在展开视图模式下，`compactParams` 必须保持静态，显示切换到展开模式时捕获的参数状态
-- Agent-SDK 必须向 `ToolContext` 接口添加 `onResultUpdate` 回调，接收最新的累积结果用于实时流式传输
-- Agent-SDK 必须向 `ToolContext` 接口添加 `onShortResultUpdate` 回调，接收最新的短结果用于实时流式传输
-- AIManager 必须在 `sendAIMessage` 中实现 `onResultUpdate` 和 `onShortResultUpdate` 回调，用最新结果更新 UI 中的工具块并将阶段设置为 `running`
-- 工具（如 `bash`）应该使用 `onResultUpdate` 和 `onShortResultUpdate` 回调为长时间运行的操作提供实时反馈
-- 实时结果更新必须被节流以避免压倒 UI
-- TextBlock 和 ReasoningBlock 必须包含 `stage` 字段，值为 `"streaming"` 或 `"end"` 以追踪流式状态
-- BangBlock 必须使用 `stage: "running" | "end"` 而非已弃用的 `isRunning` 布尔字段
-- MessageManager 必须在添加或更新工具块之前调用 `finalizeCurrentStreamingBlocks()` 以确保流式文本/推理块被终结
-- MessageList 必须过滤掉流式文本/推理块以避免流式传输期间的频繁高度变化
-- 当消息中的任何块处于运行/流式状态时，该消息中的所有块必须被渲染为动态的
-- ToolDisplay 必须在 `compactParams` 不可用时内联显示流式参数的最后 30 个字符，换行符被展平（`\n` → `\\n`）
-- Agent 在 useChat 上下文中必须默认以 `stream: true` 创建
-- useChat 必须使用 300ms 前导+尾随节流模式节流 `onLatestTotalTokensChange` 回调（与 `throttledSetMessages` 相同）以防止过多的 React 重渲染
-- `ReasoningBlock` 必须包含起止时间字段，用于记录本次思考的真实耗时：Agent SDK 在推理块创建（首个推理内容到达）时记录开始时间，在推理块 `stage` 变为 `"end"` 时记录结束时间
-- 起止时间必须由 Agent SDK 记录并随消息状态一起持久化，以保证历史会话重新加载后仍能得到确定的最终耗时（不依赖前端渲染时机）
-- UI 在推理块处于 `stage="streaming"`（结束时间尚未记录）时，必须基于开始时间每秒动态递增显示已用时间；在 `stage="end"` 时必须停止动态计时并显示由起止时间算出的固定最终耗时
-- 当推理块缺少开始时间，或结束时间早于开始时间等异常情况时，UI 必须不显示耗时，而非显示负值或错误值
 
 ### 状态管理架构
 

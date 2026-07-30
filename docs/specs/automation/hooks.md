@@ -6,7 +6,6 @@ order: 10
 
 # 功能规格说明：Hooks 支持
 
-**特性分支**：`hooks`  
 **创建日期**：2024-12-19  
 
 ## Hook 输出
@@ -342,71 +341,6 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - 如何管理极大的 stdout/stderr 输出？
 - 当 stderr 包含非 UTF-8 或二进制内容时会发生什么？
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须支持在用户级（~/.wave/settings.json）和项目级（.wave/settings.json）设置文件中配置 hook
-- 系统必须支持在工具处理开始前执行的 PreToolUse hook
-- 系统必须支持在工具成功完成后执行的 PostToolUse hook
-- 系统必须支持在用户提交提示时执行的 UserPromptSubmit hook
-- 系统必须支持在 Wave 完成响应周期（无更多工具调用可生成）时执行的 Stop hook
-- 系统必须支持在 Wave 请求使用工具权限时执行的 PermissionRequest hook
-- 系统必须支持在子代理完成响应周期时执行的 SubagentStop hook
-- 系统必须支持在创建新 worktree 时执行的 WorktreeCreate hook
-- 系统必须支持工具名称模式匹配，包括精确字符串（不区分大小写）、glob 模式（使用 minimatch）和管道分隔的替代项（如 "Edit|Write"）
-- 系统必须向 hook 命令提供 WAVE_PROJECT_DIR 环境变量以支持项目相对脚本执行
-- 系统必须按配置顺序执行同一事件的多个 hook
-- 系统必须记录 hook 执行结果和错误而不中断主工具操作
-- 系统必须支持带有可配置 bash 命令的 command 类型 hook
-- 系统必须通过 stdin 向 hook 进程提供 JSON 数据，包含所有 hook 事件的 session_id、transcript_path、cwd 和 hook_event_name 字段
-- 系统必须向 hook 进程提供环境变量：`HOOK_EVENT`、`HOOK_TOOL_NAME`（如适用）和 `WAVE_PROJECT_DIR`
-- 系统必须为 hook 执行继承父进程的环境变量，包括配置 `env` 设置中的变量
-- 系统必须在 PreToolUse、PostToolUse 和 PermissionRequest 事件的 JSON 数据中包含 tool_name 和 tool_input 字段
-- 系统必须在 PostToolUse 事件的 JSON 数据中包含包含工具执行结果的 tool_response 字段
-- 系统必须在 UserPromptSubmit 事件的 JSON 数据中包含包含用户提交文本的 prompt 字段
-- 系统必须在 hook 由子代理执行时在 JSON 数据中包含 subagent_type 字段
-- 系统必须在 WorktreeCreate 事件的 JSON 数据中包含 name 字段
-- 系统必须将 transcript_path 设置为存储会话数据的实际文件路径（格式：~/.wave/projects/[project-slug]/[sessionId].jsonl）
-- 系统必须在 hook 被调用时将 cwd 设置为当前工作目录
-- 系统必须确保 JSON 数据在发送到 hook 进程之前格式正确且有效
-- 系统必须处理 hook 进程不从 stdin 读取的情况，不阻止或导致错误
-- 系统必须维护与不期望 JSON 输入的现有 hook 的向后兼容性
-- 系统必须按照 Constitution VII 组织 hook 组件：HookManager 在 managers/，executor 和 settings 作为 services/hook.ts 中的函数，matcher 在 utils/hookMatcher.ts，类型在 types/hooks.ts
-- 系统必须确保测试文件结构反映源代码结构
-- 系统必须支持 hook 配置中的 `async` 字段以允许后台执行
-- 系统必须支持 hook 配置中的 `timeout` 字段（以秒为单位）以覆盖默认的 10 分钟超时
-- 系统必须不将异步 hook 的 stdout/stderr 传递到对话中，以防止后台任务的意外消息注入
-- 系统必须将 hook 退出码 0 解释为成功状态
-- 系统必须将 hook 退出码 2 解释为阻止性错误状态
-- 系统必须将任何其他 hook 退出码解释为非阻止性错误状态
-- 系统必须在退出码为 0 时捕获 `UserPromptSubmit` hook 的 stdout 并注入到 Wave Agent 上下文中
-- 系统必须忽略所有非 `UserPromptSubmit` hook 的 stdout，无论退出码如何
-- 系统必须在 `PreToolUse` hook 返回退出码 2 时阻止工具执行
-- 系统必须在 `PreToolUse` hook 返回退出码 2 时向 Wave Agent 显示 stderr
-- 系统必须在 `PostToolUse` hook 返回退出码 2 时通过用户角色消息向 Wave Agent 显示 stderr，并允许 AI 继续处理（工具已执行）
-- 系统必须在 `UserPromptSubmit` hook 返回退出码 2 时阻止提示处理
-- 系统必须在 `UserPromptSubmit` hook 返回退出码 2 时清除当前提示
-- 系统必须在 `UserPromptSubmit` hook 返回退出码 2 时仅向用户（非 Wave Agent）显示 stderr
-- 系统必须在 `Stop` hook 返回退出码 2 时阻止停止
-- 系统必须在 `Stop` hook 返回退出码 2 时向 Wave Agent 显示 stderr
-- 系统必须对非阻止性错误（除 0 或 2 以外的退出码）向用户显示 stderr 并继续执行
-- 系统必须区分不同的 hook 事件类型（`PreToolUse`、`PostToolUse`、`UserPromptSubmit`、`Stop`）以实现适当的行为
-- 系统必须支持 `AgentOptions` 中的 `hooks` 选项以在 `Agent.create()` 时以编程方式注入 hook 配置
-- 系统必须将 `AgentOptions.hooks` 的 hook 与基于文件的 hook 连接，使编程式和基于文件的 hook 对同一事件共存
-- 系统必须使用与基于文件的 hook 配置相同的验证规则验证通过 `AgentOptions.hooks` 提供的 hook
-- 系统必须支持在对话压缩之前执行的 PreCompact hook
-- 系统必须将 PreCompact hook 的 stdout 与用户提供的自定义指令合并并传递到压缩摘要提示
-- 系统必须支持在对话压缩成功之后执行的 PostCompact hook
-- 系统必须在 PreCompact 事件的 JSON 数据中包含包含任何自定义指令的 `compact_instructions` 字段
-- 系统必须在 PostCompact 事件的 JSON 数据中包含包含 AI 生成摘要的 `compact_summary` 字段
-- 系统在压缩失败时不得执行 PostCompact hook
-- 系统不得要求 PreCompact 或 PostCompact hook 配置使用 matcher
-- 系统必须在 Stop 事件的 JSON 数据中包含 `background_tasks` 数组字段，对齐 Claude Code（v2.1.145+）的 Stop hook 输入格式。数组数据源为 `BackgroundTaskManager` 中所有 `status === "running"` 的任务（涵盖三种后台任务：bash 工具 `run_in_background`/超时自动后台产生的 `shell`、后台 subagent 产生的 `subagent`、后台 workflow 产生的 `workflow`）。每个元素包含公共字段 `id`、`type`（`"shell"` | `"subagent"` | `"workflow"`）、`status`（`"running"`）、`description`（≤1000 字符，超出以 `… [+N chars]` 标记）；并按 `type` 附带条件字段：`shell` 附带 `command`（≤1000 字符，同截断规则）、`subagent` 附带 `agent_type`（通过 `subagentId` 在 `SubagentManager` 中查到的 subagent 类型）、`workflow` 附带 `name`（从 description 中提取的 workflow 名称）。无运行中后台任务时为空数组 `[]`。字段始终存在（非 undefined）
-- 系统必须在 Stop 事件的 JSON 数据中包含 `session_crons` 数组字段，对齐 Claude Code（v2.1.145+）的 Stop hook 输入格式。数组数据源为 `CronManager.listJobs()`，每个元素描述一个会话级 cron 任务，包含以下字段：`id`、`schedule`（cron 表达式）、`recurring`（布尔）、`prompt`（触发时注入的提示文本）。无 cron 任务时为空数组 `[]`。字段始终存在（非 undefined）
-- 系统必须在除 Stop 以外的其他 hook 事件（PreToolUse、PostToolUse、UserPromptSubmit、PermissionRequest、SubagentStop、WorktreeCreate、PreCompact、PostCompact）的 JSON 数据中**不**包含 `background_tasks` 和 `session_crons` 字段
-- 系统必须在 Stop 和 SubagentStop 事件的 JSON 数据中包含 `last_assistant_message` 字段（可选字符串），对齐 Claude Code 的 Stop/SubagentStop hook 输入格式。字段数据源为停止前最后一条 `role === "assistant"` 的消息：提取其所有 `type === "text"` 块的 `content`，以换行符拼接，去除首尾空白；若结果为空字符串则字段省略（不包含在 JSON 中）。该字段仅出现在 Stop 和 SubagentStop 事件中，其他事件不包含
-
 ### 测试验证需求
 
 - 系统必须通过检查 `agent.sendMessage()` 使 `agent.messages` 包含两条用户角色消息（第二条包含 hook stdout 内容）来验证 `UserPromptSubmit` 成功
@@ -415,30 +349,6 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - 系统必须通过检查 `agent.messages` 不包含用户角色消息且助手消息中包含以 stderr 为内容的 `ErrorBlock` 来验证 `UserPromptSubmit` 阻止性错误
 - 系统必须确保 `ErrorBlock` 内容不被 `packages/agent-sdk/src/utils/convertMessagesForAPI.ts` 处理，使其仅用户可见且不发送给代理
 - 系统必须通过检查 `agent.messages` 包含带有 stderr 内容的用户角色消息来验证 `Stop` hook 阻止行为
-
-### 关键实体
-
-- **Hook 配置**：包含事件映射、匹配器和命令定义的设置结构
-- **Hook 事件**：Wave 执行周期中的特定触发点（PreToolUse、PostToolUse、UserPromptSubmit、Stop、PermissionRequest、SubagentStop、WorktreeCreate、PreCompact、PostCompact）
-- **Hook 匹配器**：用于确定哪些 hook 适用于特定工具操作的模式匹配系统（位于 utils/hookMatcher.ts）
-- **Hook 执行器**：用于执行 hook 命令的函数服务（位于 services/hook.ts）
-- **Hook 设置**：用于加载和合并 hook 配置的服务（位于 services/hook.ts）
-- **Hook 命令**：可访问 Wave 环境变量的可执行 bash 命令
-- **Hook 输入 JSON**：包含会话上下文（session_id、transcript_path、cwd）、事件信息（hook_event_name）和事件特定数据（工具详情、提示、响应）
-- **会话数据**：通过 transcript_path 可访问的完整对话历史和元数据
-- **工具上下文**：关于工具执行的信息，包括名称、输入参数和工具相关事件的结果
-- **Hook 输出**：包含 hook 执行的退出码、stdout 内容和 stderr 内容
-- **错误上下文**：根据 hook 类型和错误严重程度确定错误消息的接收者（Wave Agent 或用户）
-- **ToolBlock**：代理消息中包含工具执行结果和 PreToolUse 及 PostToolUse hook 错误信息的数据结构
-- **ErrorBlock**：助手消息中包含 UserPromptSubmit hook 用户可见错误信息的数据结构，从 API 转换中排除
-- **代理消息集合**：`agent.messages` 数组，作为测试 hook 行为正确性的主要验证点
-- **编程式 Hook 配置**：`AgentOptions.hooks` 字段，类型为 `PartialHookConfiguration`，允许 SDK 用户在创建时注入 hook，补充基于文件的配置
-- **PreCompact Hook**：在对话压缩之前触发的生命周期 hook，通过 stdin JSON 接收自定义指令并通过 stdout 返回额外指令
-- **PostCompact Hook**：在成功压缩之后触发的生命周期 hook，通过 stdin JSON 接收压缩摘要
-- **压缩指令**：引导 AI 在压缩期间进行摘要的自定义文本，从用户输入和 PreCompact hook stdout 合并
-- **后台工作状态**：Stop 事件 JSON 输入中的 `background_tasks` 数组字段，对齐 Claude Code（v2.1.145+）。数据源为 `BackgroundTaskManager` 中所有 `status === "running"` 的任务，涵盖三种后台任务类型：`shell`（bash 工具后台运行，含 `command`）、`subagent`（后台子代理，含 `agent_type`）、`workflow`（后台工作流，含 `name`）。每个元素含公共字段 `id`/`type`/`status`/`description`，供 hook 决定是否通过退出码 2 阻止停止以等待后台任务完成
-- **会话定时任务状态**：Stop 事件 JSON 输入中的 `session_crons` 数组字段，对齐 Claude Code（v2.1.145+）。每个元素描述一个会话级 cron 任务（含 `id`/`schedule`/`recurring`/`prompt`），让 hook 区分"session 真结束了"与"session 暂停等待定时唤醒"
-- **末条助手消息**：Stop 和 SubagentStop 事件 JSON 输入中的 `last_assistant_message` 可选字符串字段，对齐 Claude Code。值为停止前最后一条助手消息的文本块内容拼接（换行分隔、去首尾空白），让 hook 无需读取 transcript 文件即可检查最终回复内容；为空时字段省略
 
 ## 成功标准 *（必填）*
 

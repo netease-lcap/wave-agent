@@ -6,7 +6,6 @@ order: 30
 
 # 功能规格说明：/goal 命令
 
-**特性分支**：`goal-command`
 **创建日期**：2026-06-07
 
 ## 用户场景与测试 *（必填）*
@@ -70,34 +69,3 @@ order: 30
 - **/clear 清除目标**：运行 `/clear` 也会清除任何活动目标。
 - **条件长度限制**：超过 4000 字符的目标条件被拒绝。
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须支持 `/goal <condition>` 设置自治目标。agent 立即开始工作。
-- 系统必须支持 `/goal`（无参数）显示当前目标状态，包括条件、经过时间、轮次计数和最后评估原因。
-- 系统必须支持 `/goal clear|stop|off|reset|none|cancel` 停用活动目标。
-- 每次 AI 轮次后（在 recursionDepth=0），如果有活动目标且不在子 agent 中，系统必须使用快速模型评估目标。
-- 目标评估必须绕过 1 QPS 速率限制器（直接非流式调用，不使用 `acquireSlot`）。
-- 目标评估必须通过 `convertMessagesForAPI()` 传递对话消息（与 compact 相同），剥离图像以减少 token 使用。
-- 系统必须使用 `operation_type: "goal_evaluation"` 单独跟踪评估 token，不与 agent token 混合。
-- 系统必须实现断路器：最多 50 轮、最多 30 分钟持续时间、最多 3 次连续评估失败。
-- 当目标活动时，目标评估必须替代 Stop hooks。在目标达成或强制清除时，Stop hooks 正常运行。
-- 系统必须拒绝在计划模式中设置目标。
-- 系统必须拒绝超过 4000 字符的目标条件。
-- `/clear` 必须同时清除任何活动目标。
-- 目标状态仅保存在内存中。不跨进程重启持久化。
-- 当目标活动时，UI 状态行必须以青色显示 `◎ /goal active (<elapsed>)`。
-- 目标评估必须在评估前排空待处理通知，以便评估器看到新鲜结果。
-- 在目标轮次之间，加载状态必须保持活动以防止 UI 闪烁。
-- UI 必须在目标评估期间显示加载指示器（`✻ Evaluating goal...`）。
-
-### 关键实体
-
-- **GoalState**：活动目标的内存状态。
-    - **condition**：`string` — 用户的目标条件（最多 4000 字符）。
-    - **startedAt**：`number` — 目标设置时的时间戳。
-    - **turnCount**：`number` — 每个评估周期递增。
-    - **tokenBaseline**：`number` — 目标开始时的总 token 数。
-    - **lastReason**：`string | undefined` — 评估器的最后原因。
-    - **consecutiveEvalFailures**：`number` — 断路器计数器。

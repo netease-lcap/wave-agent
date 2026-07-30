@@ -6,8 +6,6 @@ order: 130
 
 # 功能规格说明：工具权限系统
 
-**特性分支**：`tool-permission-system`
-
 ## 概述
 
 工具权限系统为 Wave agent 提供了强大的安全层，确保潜在的破坏性或敏感操作经过用户授权。它支持多种权限模式、带通配符的细粒度规则匹配、Shell 管道的安全分解、对特定工具或路径的显式拒绝、跨用户和项目作用域的持久化配置、交互式信任机制，以及文件操作的"安全区域"。
@@ -175,92 +173,6 @@ order: 130
 ### ~~用户故事：Bash Heredoc 写入重定向到专用工具（优先级：P1）~~
 
 *已移除。基于 Heredoc 的 bash 命令不再被自动拒绝。用户应依赖工具权限规则和软提示引导来鼓励使用专用的 Write/Edit 工具。*
-
-## 需求
-
-### 功能需求
-
-#### 权限模式与 UI
-- Agent 必须支持 `permissionMode` 值："default"、"bypassPermissions"、"acceptEdits"、"plan"、"dontAsk"。
-- Wave CLI 必须支持 `--dangerously-skip-permissions` 将模式设置为 "bypassPermissions"。
-- CLI 必须为 "default" 模式下的受限工具提供确认组件。
-- 确认组件必须支持"是"、"是，不再询问"、"是，并自动接受编辑"（用于文件系统工具）、"是，并跳过权限确认"（用于 Bash 工具，切换到 bypassPermissions 模式），以及通过文本输入的替代指令。
-- 系统必须支持 Agent SDK 中的 `canUseTool` 回调用于自定义权限逻辑。
-- 系统必须支持通过 `Shift+Tab` 切换权限模式（default -> acceptEdits -> bypassPermissions -> plan）。
-- 系统必须对识别为危险或越界的命令隐藏"不再询问"选项。
-- 系统必须检测 bash 命令中的写入重定向（`>`、`>>` 等）并将其视为危险操作，隐藏"不再询问"选项。
-- 系统在检测写入重定向时必须忽略文件描述符重定向（如 `2>&1`）。
-- 选择"是，并自动接受编辑"必须将当前会话的权限模式设置为 `acceptEdits`。
-- 选择"是，并在此工作目录中不再为此命令询问"必须将规则 `Bash([command])` 保存到 `.wave/settings.local.json` 的 `permissions.allow` 数组中。
-- 在 `acceptEdits` 模式下，系统必须自动授予安全区域内 `Edit`、`Delete` 和 `Write` 操作的权限。
-- 在 `dontAsk` 模式下，系统必须自动拒绝任何不匹配 `permissions.allow` 或 `temporaryRules` 中规则的受限工具调用。
-- 在 `dontAsk` 模式下，系统不得对未批准的受限工具调用 `canUseToolCallback`（通常会触发用户提示）。
-- `dontAsk` 模式不得包含在 "Shift+Tab" 快捷键触发的权限模式循环中。
-- ~~当 `dontAsk` 模式激活时，系统必须向 agent 的系统提示中注入一条消息，说明："工具在'用户选择的权限模式'下执行。权限可以通过 settings.json 和 settings.local.json 配置。"~~ *已移除：代码中不存在此提示注入。*
-
-#### 安全区域与安全文件访问
-- 系统必须将"安全区域"识别为当前工作目录和 `permissions.additionalDirectories` 中列出的所有路径的并集。
-- 系统必须拦截所有文件修改操作（Write、Edit、Delete 以及通过 Bash 的 `mkdir`）。
-- 系统必须验证修改操作的目标文件路径是否在安全区域内。
-- 系统必须对任何针对安全区域之外文件的修改操作显示确认提示，无论 `permissionMode` 设置如何（`bypassPermissions` 除外）。
-- 系统必须支持 `permissions.additionalDirectories` 中的绝对路径和相对于工作目录的路径。
-- 系统必须在执行安全区域检查之前将符号链接解析为其绝对真实路径。
-
-#### 配置与持久化
-- 系统必须支持 `settings.json` 中 `permissions` 对象的 `permissionMode` 设置。
-- 当未提供命令行权限标志时，系统必须将配置的 `permissionMode` 应用为默认权限行为。
-- 命令行权限标志必须覆盖任何已配置的 `permissionMode` 设置（仅针对该次执行）。
-- 系统必须验证 `permissionMode` 值，并对无效配置回退到标准默认行为。
-- `permissionMode` 设置必须在用户级、项目级和本地项目设置文件中生效，优先级为：`settings.local.json` > `settings.json`（项目）> `settings.json`（用户）。
-- 启动时，系统必须从所有适用的 `settings.json` 文件中加载 `permissions.allow`。
-- 保存本地权限规则时，如果 `.wave` 目录和 `settings.local.json` 文件不存在，系统必须创建它们。
-
-#### MCP 工具权限
-- 系统必须将任何以 `mcp__` 开头的工具名称视为受限工具。
-- 系统必须在执行任何 MCP 工具之前触发权限检查。
-- 系统必须支持 MCP 工具的持久权限规则，格式为 `mcp__server__tool`。
-- 系统必须将 `ToolContext` 传播到 MCP 工具执行函数以启用权限执行。
-
-#### 匹配逻辑与通配符
-- 系统必须支持 `permissions.allow` 和 `permissions.deny` 中规则的精确字符串匹配和 `*` 通配符匹配。
-- 通配符（`*`）必须支持在模式中的任何位置。
-- 系统必须实现"智能通配符"启发式算法来建议 bash 命令的模式（如 `npm install *`）。
-- 系统不得对高度敏感的命令（如 `rm`、`sudo`、`chmod`）允许通配符匹配。这些命令始终需要精确匹配或手动批准。
-- 当用户选择"不再询问"时，系统必须将链式命令拆分为单独的简单命令。
-- 拆分链式命令时，系统不得将内置安全命令保存到 `permissions.allow` 数组中。
-
-#### 安全管道验证
-- 系统必须解析复杂的 bash 命令并识别所有通过操作符（`&&`、`||`、`;`、`|`）连接的单独"简单命令"。
-- 复杂命令必须仅在每个组成的简单命令都匹配已允许的规则时才被自动允许。所有允许规则的来源（实例规则、临时规则、持久化 `permissions.allow`、内置默认允许规则）须以**并集**形式参与逐段匹配：每一段只需命中并集中至少一条规则即视为已允许，不要求单一规则来源覆盖所有段。
-- 系统必须在匹配之前剥离内联环境变量赋值（如 `VAR=val cmd`）。
-- 系统必须确保带有写入重定向的 bash 命令不被默认规则（如 `Bash(echo*)`）自动允许。
-- 内置默认允许规则参与并集匹配时仍须遵守危险变体拦截：含写重定向、命令替换、进程替换、`sed -i` 或危险 `find` 标志的命令段不得通过默认规则放行；此类段仅可被非默认来源（实例规则、临时规则、持久化 `permissions.allow`）中显式匹配的规则放行。
-
-#### 拒绝规则与基于路径的权限
-- 系统必须支持设置中的 `permissions.deny` 字段。
-- `permissions.deny` 必须优先于 `permissions.allow`。
-- 系统必须支持 `ToolName(path_pattern)` 格式的路径规则（如 `Read(**/*.env)`），用于以单一路径作为主要输入的工具。
-- 如果请求匹配 `permissions.deny` 中的任何规则，则必须立即被拒绝。
-
-#### 内置安全命令
-- 系统必须维护内置安全命令列表（`cd`、`ls`、`pwd`、`mkdir`、`find`），在满足安全条件时允许。
-- 尝试访问 CWD 之外路径的内置安全命令（如 `cd ..`、`ls /etc`）必须要求明确许可。
-- `find` 只有在不包含 `-exec`、`-execdir`、`-ok`、`-okdir`、`-delete`、`-fprint`、`-fprint0` 或 `-fprintf` 等危险标志时才应被视为安全。
-- 系统必须维护一份只读命令集，并在命令被判定为只读时自动放行（`behavior: allow`），无需调用 `canUseToolCallback`。只读命令集至少包括：`ls`、`cat`、`head`、`tail`、`wc`、`sort`、`uniq`、`grep`/`egrep`/`fgrep`/`rg`、`find`、`which`、`whereis`、`file`、`stat`、`du`、`df`、`free`、`uptime`、`uname`、`hostname`、`whoami`、`id`、`groups`、`env`、`printenv`、`echo`、`printf`、`date`、`true`、`false`、`pwd`、`tree`、`diff`、`cmp`、`md5sum`、`sha256sum`、`sha1sum`、`xxd`、`od`、`hexdump`、`strings`、`readlink`、`realpath`、`basename`、`dirname`、`seq`、`column`、`jq`、`yq`、`cut`、`paste`、`tr`、`awk`、`sed`、`test`、`expr`、`bc`。该集合对齐 Claude Code 的只读命令分类。
-- 只读判定必须先剥离内联环境变量赋值（`VAR=val cmd`）与重定向，再取首个命令名进行匹配；对链式命令（`&&`、`||`、`;`、`|`）须逐段判定，仅当所有段均为只读时整条命令才自动放行。
-- 含写重定向（`>`、`>>`、`&>`、`2>` 等，`/dev/null` 与文件描述符重定向如 `2>&1` 除外）的命令不得被只读判定自动放行。
-- `sed` 带 `-i` 或 `--in-place`（含 `--in-place=` 形式）时不得被只读判定自动放行（原地编辑等同于写操作）。
-- 含命令替换（`$(...)`）、反引号、或进程替换（`<(...)`、`>(...)`）的命令不得被只读判定自动放行——即使外层命令名属于只读集，以防隐藏的破坏性执行（如 `cat $(rm x)`）。此类命令回退到常规权限流程（提示确认）。
-- 交互式分页器（`less`、`more`、`man`、`info`）、命令执行器（`xargs`）以及会产生无限输出的命令（`yes`）不得纳入只读集，须始终提示确认。
-- 只读自动放行不影响拒绝规则的优先级——若命令匹配 `permissions.deny`，即使命令名为只读集成员，仍须被拒绝。
-
-#### 编程式和会话特定权限
-- SDK 中的 `AgentOptions` 接口必须包含可选的 `allowedTools` 和 `disallowedTools` 属性，类型为 `string[]`。
-- CLI 必须支持 `--allowedTools` 和 `--disallowedTools` 标志，接受逗号分隔的规则字符串。
-- 通过 SDK 或 CLI 提供的规则必须是实例特定或会话特定的，不得自动持久化到 `settings.json`。
-- `tools` 和权限规则必须独立运作：`tools` 过滤可用的工具定义（可见性），而 `allowedTools`/`disallowedTools` 定义执行权限。
-- 如果工具调用同时匹配两者，`disallowedTools` 必须优先于 `allowedTools`。
-- 如果 `disallowedTools` 或 `permissions.deny` 包含仅由工具名称组成的规则（如 `"Bash"`、`"Write"`），系统必须从提供给 AI 的可用工具列表中过滤掉这些工具，有效地将可见性和执行控制结合起来。
 
 ## 关键实体
 

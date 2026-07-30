@@ -6,7 +6,6 @@ order: 120
 
 # 功能规格说明：AI 错误处理
 
-**特性分支**：`ai-error-handling`  
 **创建日期**：2026-03-03  
 
 ## 用户场景与测试 *（必填）*
@@ -92,27 +91,3 @@ order: 120
 - **后台工具**：如果工具在截断响应期间被放到后台会发生什么？
   - *假设*：代理应该停止递归，就像正常工具调用一样
 
-## 需求 *（必填）*
-
-### 功能需求
-
-- 系统必须检测 AI 响应何时因输出 token 限制被截断（`finish_reason: "length"`）
-- 如果响应被截断，系统必须添加隐藏的用户消息（带 `isMeta: true`）："Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."
-- 如果响应被截断，系统必须自动发起递归 AI 调用以继续响应
-- 系统必须从 UI 渲染中过滤掉 `isMeta: true` 的消息
-- 系统必须使用指数退避重试 429 和 5xx 服务器错误（HTTP 500、502、503、504，不含 501）。重试参数：最多 10 次重试，基准延迟 500ms，延迟计算 `min(500 * 2^(attempt-1), 32000) + 25% jitter`。如果响应包含 `Retry-After` 头，则优先使用该头指定的秒数作为延迟（不受 32 秒上限约束）
-- 系统必须在发生 400 错误时将调试数据（消息、错误详情）保存到临时目录
-- 系统必须处理工具参数的 JSON 解析错误。如果响应被截断，错误消息必须包含：`"(output truncated, please reduce your output)"`
-- 系统必须在失败前尝试通过闭合未闭合的字符串（`"`）和大括号（`}`）来恢复截断的工具参数 JSON。当检测到未闭合的 `[` 方括号时不得尝试恢复（无法猜测数组内容）
-- 当恢复的 JSON 解析成功时，系统必须执行工具并在工具结果中追加警告：`"\n\n⚠️ Tool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls."`
-- `convertMessagesForAPI.ts` 中的 `safeToolArguments()` 函数也必须在回退到 `{"invalid_arguments": args}` 之前尝试 `recoverTruncatedJson()`
-- 系统必须尊重中止信号和后台工具，即使发生截断也停止递归
-- 系统必须检测新工具调用是否与上一轮的工具调用相同（相同工具名称和参数）。如果是，必须添加用户消息提醒代理避免循环并考虑改变方法
-- 5xx 服务器错误（500、502、503、504）与 429 共用上文指数退避重试策略
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **AI 响应**：来自 AI 服务的结果，包括内容、工具调用和完成原因
-- **消息历史**：当前会话中的消息列表，现在包括自动继续提示和错误块
-- **调试数据**：在 400 错误期间保存的信息，包括原始消息、模型配置和错误详情
-- **恢复的工具参数**：截断 JSON 被成功修复的工具参数（未闭合的字符串/大括号已闭合）。`jsonRecovered` 标志追踪是否发生了恢复，警告被追加到工具结果中

@@ -6,7 +6,6 @@ order: 40
 
 # 功能规格说明：SDK 用量追踪与回调系统
 
-**特性分支**：`usage-tracking-callback`
 **创建日期**：2025-11-11
 
 ## 澄清
@@ -94,32 +93,6 @@ CLI 用户需要在 CLI 应用退出时查看按模型分类的总 token 用量�
 - 会话消息存储满或写保护时会怎样？
 - 用量追踪在并发代理操作下的行为如何？
 - 长时间运行的会话中用量数据变得非常大时会怎样？
-
-## 需求 *（必填）*
-
-### 功能需求
-
-- SDK 必须复用现有回调系统提供 onUsagesChange 回调注册机制
-- SDK 必须在每次 callAgent() 操作完成后立即触发 onUsagesChange 回调，传递包含所有会话用量数据的 Usage[] 数组
-- SDK 必须在每次 compressMessages() 操作完成后立即触发 onUsagesChange 回调，传递包含所有会话用量数据的 Usage[] 数组
-- SDK 必须提供 `public get usages()` 方法，按需返回当前累计用量统计
-- SDK 必须追踪代理调用和压缩操作的 token 用量（prompt tokens、completion tokens、total tokens）
-- SDK 必须分别追踪代理调用和压缩操作的操作计数
-- SDK 必须在 Message 类型中添加 usage 字段，并在每次操作后将用量数据嵌入保存到会话文件的助手消息中
-- SDK 必须通过聚合当前会话中所有助手消息的用量数据来计算累计用量统计
-- SDK 必须优雅处理回调错误，记录错误并继续正常操作不中断
-- SDK 必须使用 OpenAI Usage 类型格式作为 Usage[] 数组，在回调和 `public get usages()` 方法中保持一致
-- SDK 必须在消息元数据嵌入失败时继续正常操作
-- SDK 不得追踪未发生 AI 服务消费的失败操作的用量数据
-- CLI 必须在退出时按模型名称显示总 token 用量，显示会话期间使用的每个模型的 prompt tokens、completion tokens 和 total tokens
-- CLI 必须从会话用量数据计算 token 摘要，并在进程终止前通过 console.log 显示
-- CLI 必须优雅处理退出 token 摘要，即使摘要生成失败也继续正常退出流程
-
-### 关键实体 *（如果功能涉及数据则包含）*
-
-- **用量统计**：OpenAI Usage 对象数组，表示每次操作的用量数据（嵌入消息中）和累计会话用量，包括 token 计数（prompt_tokens、completion_tokens、total_tokens）
-- **用量回调**：函数接口，在操作完成时接收用量统计作为 Usage[] 数组
-- **消息用量元数据**：嵌入在会话助手消息中的每次操作的 OpenAI Usage 数据
 
 ## 成功标准 *（必填）*
 
