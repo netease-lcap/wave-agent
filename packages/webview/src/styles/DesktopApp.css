@@ -634,13 +634,15 @@
     background: var(--vscode-list-hoverBackground);
 }
 
-/* Transient hint (e.g. min-width refusal), centered at the top of the row. */
+/* Transient hint (e.g. min-width refusal), centered at the top of the row.
+   Sits above dropdown menus (z-index 1000) like the panel toggle so a refusal
+   hint fired from a menu click is not covered by the still-open menu. */
 .desktop-pane-hint {
     position: absolute;
     top: 12px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 20;
+    z-index: 2000;
     padding: 6px 14px;
     border-radius: 4px;
     background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
