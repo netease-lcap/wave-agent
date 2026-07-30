@@ -19,14 +19,22 @@ vi.mock("child_process", () => ({
   }),
 }));
 
-// Mock fs
-vi.mock("fs", () => ({
-  createWriteStream: vi.fn(() => ({
+// Mock fs. Both named exports (namespace-imported by backgroundTaskManager)
+// and a default export (default-imported by shellResolver) are required —
+// on a real win32 runner resolveShellPath() probes Git Bash via fs.existsSync.
+vi.mock("fs", () => {
+  const createWriteStream = vi.fn(() => ({
     writable: true,
     write: vi.fn(),
     end: vi.fn(),
-  })),
-}));
+  }));
+  const existsSync = vi.fn(() => false);
+  return {
+    createWriteStream,
+    existsSync,
+    default: { createWriteStream, existsSync },
+  };
+});
 
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { MessageQueue } from "../../src/managers/messageQueue.js";
