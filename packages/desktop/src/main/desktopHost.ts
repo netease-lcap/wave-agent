@@ -538,6 +538,10 @@ export class DesktopHost {
   private bindAgentToPane(paneId: string, agent: StdioAgent | null): void {
     const pane = this.panes.find((p) => p.paneId === paneId);
     if (!pane) return;
+    // Panel groups follow the session, so the outgoing session's PTY dies with
+    // the switch — the webview respawns one when the incoming session's group
+    // has the terminal checked. A same-agent rebind keeps it alive.
+    if (pane.agent !== agent) this.terminalManager.killForPane(paneId);
     this.clearThrottleState(paneId);
     pane.agent = agent;
     this.focusedPaneId = paneId;
