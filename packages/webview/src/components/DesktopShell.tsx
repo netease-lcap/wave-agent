@@ -521,7 +521,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                         if (el) paneNodes.current.set(pane.paneId, el);
                         else paneNodes.current.delete(pane.paneId);
                       }}
-                      className={`desktop-pane${pane.paneId === focusedPaneId ? ' desktop-pane--focused' : ''}`}
+                      className={`desktop-pane${pane.paneId === focusedPaneId ? ' desktop-pane--focused' : ''}${panes.length > 1 ? ' desktop-pane--closable' : ''}`}
                       style={paneStyle}
                       onMouseDown={() => handleFocusPane(pane.paneId)}
                       onDragOver={(e) => handlePaneDragOver(e, rowIdx, index)}
