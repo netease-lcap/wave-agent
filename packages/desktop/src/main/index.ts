@@ -8,7 +8,6 @@
 
 import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron';
 import { execFileSync } from 'child_process';
-import * as crypto from 'crypto';
 import * as path from 'path';
 import { WEBVIEW_CHANNEL } from './channels';
 import { ConfigStore } from './configStore';
@@ -41,13 +40,11 @@ function adoptLoginShellPath(): void {
 
 adoptLoginShellPath();
 
-// Dev instances get a per-worktree userData (keyed by a hash of the app
-// path): the single-instance lock is scoped to the userData directory, so
-// worktrees run side by side without focus-stealing and never touch the
-// installed app's config/session index.
+// Dev instances get their own userData so they can run alongside an installed
+// app (the single-instance lock is scoped to the userData directory) and never
+// touch the real config/session index.
 if (!app.isPackaged) {
-  const worktreeHash = crypto.createHash('sha256').update(app.getAppPath()).digest('hex').slice(0, 8);
-  app.setPath('userData', path.join(app.getPath('appData'), `wave-desktop-dev-${worktreeHash}`));
+  app.setPath('userData', path.join(app.getPath('appData'), 'wave-desktop-dev'));
 }
 
 let mainWindow: BrowserWindow | null = null;
