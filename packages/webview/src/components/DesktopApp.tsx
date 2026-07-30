@@ -27,8 +27,26 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   // Current workdir in a ref so the message handler can drop stale
   // desktopGitBranches responses from a previous workdir.
   const workdirRef = useRef<string | undefined>(undefined);
+  // Latest panes/session tree for the panel-group prune below (the message
+  // handler closes over refs, not state, so both messages see fresh values).
+  const panesRef = useRef<DesktopPane[]>([]);
+  const sessionTreeRef = useRef<DesktopSessionGroup[]>([]);
 
   useEffect(() => {
+    // Panel groups are remembered per session: keep entries for live pane
+    // buckets, pane-bound sessions, and sessions still in the sidebar tree —
+    // a deleted session forgets its panel group here.
+    const prunePanels = () => {
+      const keep = new Set<string>();
+      for (const p of panesRef.current) {
+        keep.add(`new:${p.paneId}`);
+        if (p.sessionId) keep.add(p.sessionId);
+      }
+      for (const g of sessionTreeRef.current) {
+        for (const s of g.sessions) keep.add(s.sessionId);
+      }
+      prunePanelGroupCache(keep);
+    };
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
       if (message.command === 'desktopWorkdirState') {
@@ -43,7 +61,9 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
           vscode.postMessage({ command: 'desktopListGitBranches', workdir: message.workdir });
         }
       } else if (message.command === 'desktopSessionTree') {
-        setSessionTree(message.groups ?? []);
+        sessionTreeRef.current = message.groups ?? [];
+        setSessionTree(sessionTreeRef.current);
+        prunePanels();
       } else if (message.command === 'desktopGitBranches') {
         // Ignore responses that raced a workdir switch.
         if (message.workdir === workdirRef.current) {
@@ -51,9 +71,9 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         }
       } else if (message.command === 'desktopPanes') {
         const nextPanes: DesktopPane[] = message.panes ?? [];
+        panesRef.current = nextPanes;
         setPanes(nextPanes);
-        // Closed panes lose their cached panel group with the pane itself.
-        prunePanelGroupCache(nextPanes.map((p) => p.paneId));
+        prunePanels();
         setRowHeights(message.rowHeights);
         setFocusedPaneId(message.focusedPaneId ?? null);
       }

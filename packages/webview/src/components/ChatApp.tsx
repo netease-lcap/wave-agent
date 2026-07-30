@@ -65,10 +65,12 @@ function canCreatePanelRow(bodyH: number): boolean {
 }
 
 /**
- * Per-pane panel group snapshot. A pane moved across window rows unmounts and
- * remounts its ChatApp (React cannot reparent); the cache carries the panel
- * group across that remount so the group migrates with the pane. Entries are
- * pruned by DesktopApp when a pane disappears from the host push.
+ * Panel group snapshot, remembered per session. Keys are session ids, plus one
+ * `new:<paneId>` bucket per pane for the new-session state (no session bound
+ * yet); the bucket migrates to the session id once the first message binds
+ * one. The cache also carries a pane's group across the unmount/remount a
+ * move between window rows forces (React cannot reparent) — the remount reads
+ * the same session's entry. DesktopApp prunes entries whose owner is gone.
  */
 interface PanelGroupState {
   checked: DesktopPanelKind[];
@@ -81,10 +83,14 @@ interface PanelGroupState {
 
 const panelGroupCache = new Map<string, PanelGroupState>();
 
-/** Drop cache entries for panes no longer present (pane closed). */
-export function prunePanelGroupCache(activePaneIds: string[]): void {
+/**
+ * Drop cached panel groups whose owner is gone. The keep-set covers live pane
+ * buckets and the sessions in the sidebar tree / pane bindings, so a deleted
+ * session forgets its panel group while a merely hidden one keeps it.
+ */
+export function prunePanelGroupCache(keepKeys: Set<string>): void {
   for (const key of [...panelGroupCache.keys()]) {
-    if (!activePaneIds.includes(key)) panelGroupCache.delete(key);
+    if (!keepKeys.has(key)) panelGroupCache.delete(key);
   }
 }
 
@@ -100,22 +106,33 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
   const [worktreeChecked, setWorktreeChecked] = useState(true);
+  // Desktop only: the panel group follows the session bound to this pane. The
+  // cache key is the session id from the host-authoritative `desktopPanes`
+  // push, or the pane's new-session bucket while no session is bound.
+  const boundSessionId = paneId ? host?.panes?.find((p) => p.paneId === paneId)?.sessionId : undefined;
+  const groupKey = paneId ? boundSessionId ?? `new:${paneId}` : undefined;
+  const groupKeyRef = useRef(groupKey);
+  // Set when the user sends a message from this pane's new-session state. The
+  // new-session bucket migrates to the session id only when that message binds
+  // one — a sidebar switch to an existing session must not inherit the bucket.
+  const sentFromNewSessionRef = useRef(false);
   // Desktop only: localhost URL shown in the preview pane. Null = never opened.
   const [previewUrl, setPreviewUrl] = useState<string | null>(
-    () => (paneId ? panelGroupCache.get(paneId)?.previewUrl : null) ?? null,
+    () => (groupKey ? panelGroupCache.get(groupKey)?.previewUrl : null) ?? null,
   );
   // Desktop only: conversation-level panel group (checked = visible; mounted =
   // rendered but possibly hidden, so panel content survives unchecking). When
-  // this pane's group was cached (pane moved across window rows), restore it.
+  // this session's group was cached (session revisited, or the pane moved
+  // across window rows), restore it.
   const [checkedPanels, setCheckedPanels] = useState<DesktopPanelKind[]>(
-    () => (paneId ? panelGroupCache.get(paneId)?.checked : undefined) ?? [],
+    () => (groupKey ? panelGroupCache.get(groupKey)?.checked : undefined) ?? [],
   );
   const [mountedPanels, setMountedPanels] = useState<DesktopPanelKind[]>(
-    () => (paneId ? panelGroupCache.get(paneId)?.mounted : undefined) ?? [],
+    () => (groupKey ? panelGroupCache.get(groupKey)?.mounted : undefined) ?? [],
   );
   const [panelWidths, setPanelWidths] = useState<Record<DesktopPanelKind, number>>(
     () =>
-      (paneId ? panelGroupCache.get(paneId)?.widths : undefined) ?? {
+      (groupKey ? panelGroupCache.get(groupKey)?.widths : undefined) ?? {
         preview: PANEL_DEFAULT_WIDTH,
         diff: PANEL_DEFAULT_WIDTH,
         terminal: PANEL_DEFAULT_WIDTH,
@@ -125,7 +142,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // row below it. Unchecking keeps the assignment; the row follows on recheck.
   const [panelRows, setPanelRows] = useState<Record<DesktopPanelKind, PanelRow>>(
     () =>
-      (paneId ? panelGroupCache.get(paneId)?.rows : undefined) ?? {
+      (groupKey ? panelGroupCache.get(groupKey)?.rows : undefined) ?? {
         preview: 1,
         diff: 1,
         terminal: 1,
@@ -133,7 +150,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   );
   // Pixel height of the panel second row; null until a row is first created.
   const [panelRowHeight, setPanelRowHeight] = useState<number | null>(
-    () => (paneId ? panelGroupCache.get(paneId)?.rowHeight : undefined) ?? null,
+    () => (groupKey ? panelGroupCache.get(groupKey)?.rowHeight : undefined) ?? null,
   );
   const [panelHint, setPanelHint] = useState<string | null>(null);
   // VS Code-style translucent overlay over the target row while a panel
@@ -186,11 +203,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     panelRowHeightRef.current = panelRowHeight;
   }, [panelRowHeight]);
 
-  // Cache the whole panel group per pane so it survives this ChatApp being
-  // unmounted/remounted when the pane moves across window rows.
+  // Cache the whole panel group under the current session so it survives this
+  // ChatApp being unmounted/remounted (pane moved across window rows) and so a
+  // later session switch can restore it. Skipped on the render where the key
+  // flips — the swap effect below re-seeds the state from the new key first.
   useEffect(() => {
-    if (!paneId) return;
-    panelGroupCache.set(paneId, {
+    if (!groupKey || groupKey !== groupKeyRef.current) return;
+    panelGroupCache.set(groupKey, {
       checked: checkedPanels,
       mounted: mountedPanels,
       widths: panelWidths,
@@ -198,7 +217,43 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       rowHeight: panelRowHeight,
       previewUrl,
     });
-  }, [paneId, checkedPanels, mountedPanels, panelWidths, panelRows, panelRowHeight, previewUrl]);
+  }, [groupKey, checkedPanels, mountedPanels, panelWidths, panelRows, panelRowHeight, previewUrl]);
+
+  // Session switch: swap in the incoming session's remembered panel group
+  // (empty when it has none — panels never leak across sessions). Only the
+  // layout/check state is restored; panel content rebuilds for the new
+  // context (diff refetches, preview reloads, terminal respawns). A pane's
+  // new-session bucket migrates to the session id once the first message
+  // binds one, keeping the setup made before sending it.
+  useEffect(() => {
+    if (!paneId || !groupKey || groupKey === groupKeyRef.current) return;
+    const prevKey = groupKeyRef.current;
+    groupKeyRef.current = groupKey;
+    let group = panelGroupCache.get(groupKey);
+    if (
+      !group &&
+      prevKey?.startsWith('new:') &&
+      !groupKey.startsWith('new:') &&
+      sentFromNewSessionRef.current
+    ) {
+      group = panelGroupCache.get(prevKey);
+      if (group) {
+        panelGroupCache.set(groupKey, group);
+        panelGroupCache.delete(prevKey);
+      }
+    }
+    sentFromNewSessionRef.current = false;
+    setPreviewUrl(group?.previewUrl ?? null);
+    setCheckedPanels(group?.checked ?? []);
+    setMountedPanels(group?.mounted ?? []);
+    setPanelWidths(group?.widths ?? {
+      preview: PANEL_DEFAULT_WIDTH,
+      diff: PANEL_DEFAULT_WIDTH,
+      terminal: PANEL_DEFAULT_WIDTH,
+    });
+    setPanelRows(group?.rows ?? { preview: 1, diff: 1, terminal: 1 });
+    setPanelRowHeight(group?.rowHeight ?? null);
+  }, [paneId, groupKey]);
 
   useEffect(() => {
     paneIdRef.current = paneId;
@@ -572,6 +627,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     // Desktop worktree flow (FR-023): on the first message of a new session
     // with the worktree checkbox on, create the worktree first — the main
     // process switches into it and forwards this message.
+    if (paneId && groupKeyRef.current?.startsWith('new:')) sentFromNewSessionRef.current = true;
     if (
       host?.type === 'desktop' &&
       stateRef.current.messages.length === 0 &&
@@ -596,7 +652,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       images: images,
       force: force
     });
-  }, [handleClearChat, host, worktreeChecked, worktreeBranch, postToHost]);
+  }, [handleClearChat, host, worktreeChecked, worktreeBranch, postToHost, paneId]);
 
   const handleAbortMessage = useCallback(() => {
     if (!state.isStreaming) return;

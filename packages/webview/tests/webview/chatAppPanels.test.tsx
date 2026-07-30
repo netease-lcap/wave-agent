@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, fireEvent, screen, createEvent, within } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { render, fireEvent, screen, createEvent, within, act } from '@testing-library/react';
 import React from 'react';
 import { DesktopApp } from '../../src/components/DesktopApp';
-import { ChatApp } from '../../src/components/ChatApp';
-import { createMockVscode, sendCommand, renderChatApp } from './test-utils';
+import { ChatApp, prunePanelGroupCache } from '../../src/components/ChatApp';
+import { createMockVscode, sendCommand, renderChatApp, fireInput } from './test-utils';
 
 vi.mock('../../src/styles/DesktopApp.css', () => ({}));
 
@@ -34,6 +34,11 @@ const lastPanelState = (vscode: ReturnType<typeof createMockVscode>) => {
     const posts = panelStatePosts(vscode);
     return posts[posts.length - 1];
 };
+
+beforeEach(() => {
+    // The panel-group cache is module-level — isolate tests from each other.
+    prunePanelGroupCache(new Set());
+});
 
 afterEach(() => {
     delete window.waveHostType;
@@ -388,6 +393,52 @@ describe('ChatApp desktop panel framework', () => {
             expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
         });
 
+        it('the second-row layout is remembered per session across switches', () => {
+            window.waveHostType = 'desktop';
+            renderDesktop({ workdir: '/work/a' });
+            // Sessions must exist in the sidebar tree — the prune keeps panel
+            // groups only for live panes and tree sessions.
+            sendCommand('desktopSessionTree', {
+                groups: [
+                    {
+                        workdir: '/work/a',
+                        sessions: ['s1', 's2'].map((sessionId) => ({
+                            sessionId,
+                            title: sessionId,
+                            lastActiveAt: Date.now(),
+                            hasWorktree: false,
+                        })),
+                    },
+                ],
+            });
+            sendCommand('desktopPanes', {
+                panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0 }],
+                focusedPaneId: 'pane-1',
+            });
+            openDiffPanel();
+            dragDiffToRow2();
+            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-2');
+
+            // Switch to another session: its (empty) group swaps in — no
+            // panels, no second row.
+            sendCommand('desktopPanes', {
+                panes: [{ paneId: 'pane-1', sessionId: 's2', row: 0 }],
+                focusedPaneId: 'pane-1',
+            });
+            expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('desktop-panel-row-separator')).not.toBeInTheDocument();
+
+            // Switching back restores the diff panel in its second row with
+            // the same height.
+            sendCommand('desktopPanes', {
+                panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0 }],
+                focusedPaneId: 'pane-1',
+            });
+            expect(slotOf('diff-pane').className).toContain('desktop-panel-slot--row-2');
+            expect(screen.getByTestId('desktop-panel-row-separator')).toBeInTheDocument();
+            expect(bodyOf().style.getPropertyValue('--panel-row-height')).toBe('280px');
+        });
+
         it('the panel group survives the pane moving across window rows', () => {
             window.waveHostType = 'desktop';
             renderDesktop({ workdir: '/work/a' });
@@ -444,5 +495,128 @@ describe('ChatApp desktop panel framework', () => {
             expect(bodyA2.className).toContain('desktop-chat-body--two-rows');
             expect(bodyA2.style.getPropertyValue('--panel-row-height')).toBe('280px');
         });
+    });
+});
+
+/**
+ * Panel groups follow the session, not the pane: switching the session bound
+ * to a pane swaps the whole panel group (checked set, layout, preview URL),
+ * and switching back restores it. A pane's new-session state has its own
+ * bucket that migrates to the session id once the first message binds one.
+ */
+describe('session-level panel groups', () => {
+    const session = (sessionId: string) => ({
+        sessionId,
+        title: sessionId,
+        lastActiveAt: Date.now(),
+        hasWorktree: false,
+    });
+    const pushPanes = (sessionId?: string) =>
+        sendCommand('desktopPanes', {
+            panes: [{ paneId: 'pane-1', sessionId, row: 0 }],
+            focusedPaneId: 'pane-1',
+        });
+    const pushTree = (ids: string[]) =>
+        sendCommand('desktopSessionTree', {
+            groups: [{ workdir: '/work/a', sessions: ids.map(session) }],
+        });
+    const openPanel = (kind: string) => {
+        fireEvent.click(screen.getByTestId('panel-toggle-btn'));
+        fireEvent.click(screen.getByTestId(`panel-toggle-item-${kind}`));
+        fireEvent.mouseDown(document.body); // dismiss the menu
+    };
+
+    it('switching sessions swaps the panel group; switching back restores it', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        pushTree(['s1', 's2']);
+        pushPanes('s1');
+        openPanel('diff');
+        expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
+        expect(lastPanelState(vscode)).toEqual(['diff']);
+
+        // s2 has no remembered group — the diff panel must not leak into it.
+        pushPanes('s2');
+        expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
+        expect(lastPanelState(vscode)).toEqual([]);
+
+        // s2 gets its own group; the two sessions coexist independently.
+        openPanel('terminal');
+        expect(screen.getByTestId('terminal-pane')).toBeInTheDocument();
+        expect(lastPanelState(vscode)).toEqual(['terminal']);
+
+        pushPanes('s1');
+        expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
+        expect(screen.queryByTestId('terminal-pane')).not.toBeInTheDocument();
+        expect(lastPanelState(vscode)).toEqual(['diff']);
+
+        pushPanes('s2');
+        expect(screen.getByTestId('terminal-pane')).toBeInTheDocument();
+        expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
+        expect(lastPanelState(vscode)).toEqual(['terminal']);
+    });
+
+    it('the new-session bucket migrates to the session id bound by the first message', async () => {
+        window.waveHostType = 'desktop';
+        renderDesktop({ workdir: '/work/a' });
+        pushTree(['s1', 's2']);
+        pushPanes(undefined); // new-session state, no session bound
+        openPanel('diff');
+        expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
+
+        // Send the first message — this is what makes the coming session bind
+        // a continuation of the new-session state (vs a sidebar switch).
+        const input = screen.getByTestId('message-input');
+        act(() => {
+            input.textContent = 'hi';
+        });
+        await fireInput(input, { data: 'hi', inputType: 'insertText' });
+        act(() => {
+            fireEvent.click(screen.getByTestId('send-btn'));
+        });
+
+        // The message binds session s1: the panel setup carries over.
+        pushPanes('s1');
+        expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
+
+        // ...and is remembered under that session from then on.
+        pushPanes('s2');
+        expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
+        pushPanes('s1');
+        expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
+    });
+
+    it('the new-session bucket does not leak into an existing session', () => {
+        window.waveHostType = 'desktop';
+        renderDesktop({ workdir: '/work/a' });
+        pushPanes(undefined);
+        openPanel('diff');
+
+        // Switching to an existing session swaps in its own (empty) group…
+        pushPanes('s2');
+        expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
+
+        // …and returning to the new-session state restores the bucket.
+        pushPanes(undefined);
+        expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
+    });
+
+    it('a deleted session forgets its panel group', () => {
+        window.waveHostType = 'desktop';
+        renderDesktop({ workdir: '/work/a' });
+        pushTree(['s1', 's2']);
+        pushPanes('s1');
+        openPanel('diff');
+
+        // While s1 lives in the sidebar tree its group survives switches.
+        pushPanes('s2');
+        pushPanes('s1');
+        expect(screen.getByTestId('diff-pane')).toBeInTheDocument();
+
+        // Deleting s1 (gone from the tree, no pane bound to it) prunes it.
+        pushPanes('s2');
+        pushTree(['s2']);
+        pushPanes('s1');
+        expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
     });
 });
