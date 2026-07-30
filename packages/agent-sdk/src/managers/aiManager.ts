@@ -790,6 +790,10 @@ export class AIManager {
         tools: toolsConfig,
         systemPrompt,
         toolChoice: this.toolChoiceOverride,
+        // Stream so a slow reasoning model emits first bytes before the
+        // gateway's idle timeout fires (non-streaming waits for the full
+        // summary, which exceeds the timeout on large contexts).
+        stream: true,
       });
 
       if (result.usage) {

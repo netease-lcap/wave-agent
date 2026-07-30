@@ -501,6 +501,49 @@ describe("AI Service - Streaming", () => {
       expect(callArgs.stream).toBeFalsy();
     });
 
+    it("should enable streaming mode when stream option is true without callbacks", async () => {
+      // Mock streaming response
+      const mockStream = (async function* () {
+        yield {
+          choices: [
+            {
+              delta: { content: "Hello" },
+            },
+          ],
+        };
+        yield {
+          choices: [
+            {
+              delta: { content: " world" },
+              finish_reason: "stop",
+            },
+          ],
+        };
+      })();
+
+      const mockWithResponse = vi.fn().mockResolvedValue({
+        data: mockStream,
+        response: {
+          headers: new Map(),
+        },
+      });
+      mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        stream: true,
+      });
+
+      // Should call create with stream: true even though no callbacks
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.stream).toBe(true);
+      // Streamed content is still accumulated into the result
+      expect(result.content).toBe("Hello world");
+    });
+
     it("should include reasoning_content in streaming result even if it is an empty string", async () => {
       // Mock streaming response with an empty reasoning_content delta
       const mockStream = (async function* () {
