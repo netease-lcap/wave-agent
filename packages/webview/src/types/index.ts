@@ -312,6 +312,8 @@ export interface MessageInputProps {
   initialAttachedImages?: AttachedImage[];
   /** Optional slot rendered at the top-left of the input box (desktop workdir selector). */
   workdirSelector?: React.ReactNode;
+  /** Optional /rewind popup rendered above the input box, anchored to .input-wrapper. */
+  rewindPopup?: React.ReactNode;
   /** Disable the whole input area (e.g. desktop host without a workdir). */
   disabled?: boolean;
 }
