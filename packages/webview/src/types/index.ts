@@ -590,6 +590,7 @@ export type ChatAction =
       tasks?: Task[];
       isStreaming: boolean;
       isCommandRunning?: boolean;
+      isCompacting?: boolean;
       isTaskListCollapsed?: boolean;
       sessions: SessionMetadata[];
       currentSession?: SessionMetadata;

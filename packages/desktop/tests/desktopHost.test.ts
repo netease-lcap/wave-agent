@@ -120,6 +120,7 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
     queuedMessages: unknown[] = [];
     isStreaming = false;
     isCommandRunning = false;
+    isCompacting = false;
     callbacks: Record<string, (...args: never[]) => void>;
 
     initialize = vi.fn(async function (this: { workingDirectory?: string; sessionId?: string }, params: { workdir?: string }) {
@@ -1680,6 +1681,28 @@ describe('multi-session parallel (FR-031)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
     expect(sent('setInitialState').at(-1)?.messages).toEqual([{ id: 'm-sess-1' }, { id: 'bg-1' }]);
+  });
+
+  it('pushes isCompacting from the activated session so the compaction hint does not leak across sessions', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'newSession' });
+    seedActiveSession('sess-2');
+    // Switch back to sess-1, then start a compaction on it (active session).
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
+    agent1.isCompacting = true;
+    agent1.callbacks.onCompactionStateChange(true);
+    expect(sent('compactionStateChange').at(-1)).toMatchObject({ isCompacting: true });
+
+    // Switch to sess-2 (not compacting): the pushed initial state must not
+    // inherit sess-1's compaction hint.
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-2' });
+    expect(sent('setInitialState').at(-1)).toMatchObject({ isCompacting: false });
+
+    // Switch back to sess-1 (still compacting): the hint must reappear from
+    // the agent's cached flag.
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-1' });
+    expect(sent('setInitialState').at(-1)).toMatchObject({ isCompacting: true });
   });
 
   it('never evicts idle agents — the pool is unbounded until session deletion', async () => {

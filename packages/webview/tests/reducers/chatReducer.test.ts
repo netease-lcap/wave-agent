@@ -811,6 +811,48 @@ describe('chatReducer', () => {
 
       expect(newState.currentSession?.firstMessage).toBe('原始标题');
     });
+
+    it('SET_INITIAL_STATE clears a stale isCompacting so a session switch does not leak the compaction hint', () => {
+      // Session A is mid-compaction: the view shows "正在压缩对话…".
+      let state = chatReducer(initialState, { type: 'SET_COMPACTING', payload: true });
+      expect(state.isCompacting).toBe(true);
+
+      // User switches to session B, which is not compacting. The host pushes
+      // setInitialState for B (isCompacting absent). The hint must not leak
+      // from A into B.
+      state = chatReducer(state, {
+        type: 'SET_INITIAL_STATE',
+        payload: {
+          messages: [],
+          sessions: [],
+          configurationData: {} as any,
+          pendingConfirmations: [],
+          isStreaming: false,
+        },
+      });
+
+      expect(state.isCompacting).toBe(false);
+    });
+
+    it('SET_INITIAL_STATE preserves isCompacting when the host pushes a still-compacting session', () => {
+      // Switching back to a session that is still compacting must keep the hint.
+      const state = chatReducer(
+        { ...initialState, isCompacting: false },
+        {
+          type: 'SET_INITIAL_STATE',
+          payload: {
+            messages: [],
+            sessions: [],
+            configurationData: {} as any,
+            pendingConfirmations: [],
+            isStreaming: false,
+            isCompacting: true,
+          },
+        },
+      );
+
+      expect(state.isCompacting).toBe(true);
+    });
   });
 
   describe('theme state', () => {

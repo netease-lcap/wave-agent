@@ -128,6 +128,7 @@ export class StdioAgent {
     public backgroundTasks: BackgroundTaskSummary[] = [];
     public isStreaming = false;
     public isCommandRunning = false;
+    public isCompacting = false;
 
     private client: StdioClient;
     private router: NotificationRouter;
@@ -461,6 +462,7 @@ export class StdioAgent {
             }
             case 'compactionStateChange': {
                 const p = params as { isCompacting: boolean };
+                this.isCompacting = p.isCompacting;
                 this.callbacks.onCompactionStateChange?.(p.isCompacting);
                 break;
             }

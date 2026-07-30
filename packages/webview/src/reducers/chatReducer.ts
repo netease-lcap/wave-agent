@@ -173,6 +173,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         isTaskListCollapsed: action.payload.isTaskListCollapsed !== undefined ? action.payload.isTaskListCollapsed : state.isTaskListCollapsed,
         isStreaming: action.payload.isStreaming !== undefined ? action.payload.isStreaming : state.isStreaming,
         isCommandRunning: action.payload.isCommandRunning !== undefined ? action.payload.isCommandRunning : state.isCommandRunning,
+        // A session switch must not inherit the previous session's compaction
+        // hint; the host pushes the activated session's own state (or omits
+        // it, meaning "not compacting").
+        isCompacting: action.payload.isCompacting ?? false,
         sessions: action.payload.sessions || state.sessions || [],
         // Re-pin from the same-snapshot messages: hosts re-push the session
         // object without firstMessage on pane/webview re-init.
