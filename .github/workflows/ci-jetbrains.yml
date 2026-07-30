@@ -6,8 +6,6 @@ name: CI (JetBrains)
 # logic has no merge gate.
 
 on:
-  pull_request:
-    branches: [main, develop]
   workflow_dispatch:
 
 concurrency:
