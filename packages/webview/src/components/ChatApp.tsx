@@ -400,9 +400,32 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           break;
         case 'focusInput':
           if (!forThisPane(message)) break;
-          // Focus the message input
-          if (messageInputRef.current && typeof messageInputRef.current.focus === 'function') {
-            messageInputRef.current.focus();
+          // When a confirm/rewind dialog is open in this pane, focus its
+          // primary action instead of the message input. The input is hidden
+          // (display:none) during a tool-permission confirmation, so focusing it
+          // silently no-ops; a rewind modal also covers it. Landing focus on
+          // the dialog lets the user act on it immediately (Enter to confirm,
+          // Esc to cancel) right after the pane switch. Falls back to the
+          // message input when no dialog is open.
+          {
+            const root = chatContainerRef.current ?? document;
+            const rewindBtn = root.querySelector<HTMLElement>(
+              '.confirm-dialog-btn-confirm:not([disabled])',
+            );
+            if (rewindBtn) {
+              rewindBtn.focus();
+              break;
+            }
+            const applyBtn = root.querySelector<HTMLElement>(
+              '.confirmation-btn-apply:not([disabled])',
+            );
+            if (applyBtn) {
+              applyBtn.focus();
+              break;
+            }
+            if (messageInputRef.current && typeof messageInputRef.current.focus === 'function') {
+              messageInputRef.current.focus();
+            }
           }
           break;
         case 'triggerShortcut':
