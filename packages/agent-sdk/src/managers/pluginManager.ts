@@ -2,6 +2,8 @@ import { logger } from "../utils/globalLogger.js";
 import { Plugin, PluginConfig } from "../types/index.js";
 import { PluginLoader } from "../services/pluginLoader.js";
 import * as path from "path";
+import { existsSync, readdirSync } from "fs";
+import { getBuiltinPluginsDir } from "../utils/configPaths.js";
 import { SkillManager } from "./skillManager.js";
 import { HookManager } from "./hookManager.js";
 import { LspManager } from "./lspManager.js";
@@ -98,6 +100,8 @@ export class PluginManager {
 
         const [name, marketplaceName] = pluginId.split("@");
         if (!name || !marketplaceName) continue;
+        // `@builtin` entries are loaded by loadBuiltinPlugins, not the marketplace.
+        if (marketplaceName === "builtin") continue;
 
         const isInstalled = installedRegistry.plugins.some(
           (p) => p.name === name && p.marketplace === marketplaceName,
@@ -283,6 +287,31 @@ export class PluginManager {
 
     // Load installed plugins from marketplace
     await this.loadInstalledPlugins();
+
+    // Load built-in plugins bundled with the SDK (lowest priority)
+    await this.loadBuiltinPlugins();
+  }
+
+  /**
+   * Load built-in plugins bundled with the SDK (e.g. sdd).
+   * Opt-in via `enabledPlugins`, keyed `<name>@builtin` (default off, consistent
+   * with marketplace plugins). Lowest priority: explicit config and marketplace
+   * plugins win on name conflicts (loadSinglePlugin skips duplicates).
+   */
+  private async loadBuiltinPlugins(): Promise<void> {
+    try {
+      const builtinDir = getBuiltinPluginsDir();
+      if (!existsSync(builtinDir)) return;
+
+      // The builtin plugin directory name is the plugin name by convention.
+      for (const entry of readdirSync(builtinDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        if (this.enabledPlugins[`${entry.name}@builtin`] !== true) continue;
+        await this.loadSinglePlugin(path.join(builtinDir, entry.name));
+      }
+    } catch (error) {
+      logger?.error("Failed to load built-in plugins:", error);
+    }
   }
 
   /**

@@ -1955,7 +1955,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "node scripts/spec-count.js && git diff --stat" },
+        toolInput: { command: "node scripts/version.js && git diff --stat" },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -1971,7 +1971,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "node scripts/spec-count.js && git diff --stat" },
+        toolInput: { command: "node scripts/version.js && git diff --stat" },
       };
 
       const result = await manager.checkPermission(context);
@@ -1986,7 +1986,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "node scripts/spec-count.js && echo $(whoami)" },
+        toolInput: { command: "node scripts/version.js && echo $(whoami)" },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -2002,7 +2002,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "node scripts/spec-count.js && echo $(whoami)" },
+        toolInput: { command: "node scripts/version.js && echo $(whoami)" },
       };
 
       const result = await permissionManager.checkPermission(context);
