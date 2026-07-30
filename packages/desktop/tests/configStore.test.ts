@@ -128,8 +128,23 @@ describe('ConfigStore', () => {
     }));
     const store = new ConfigStore(STORE_PATH);
     expect(store.getSessionIndex()).toEqual([
-      { sessionId: 'ok', title: 'T', workdir: '/a', cwd: '/a', lastActiveAt: 1 },
+      { sessionId: 'ok', title: 'T', workdir: '/a', cwd: '/a', createdAt: 1, lastActiveAt: 1 },
     ]);
+  });
+
+  it('backfills createdAt from lastActiveAt for legacy entries', () => {
+    h.files.set(STORE_PATH, JSON.stringify({
+      configuration: {},
+      recentWorkdirs: [],
+      sessions: [
+        { sessionId: 'legacy', title: 'T', workdir: '/a', cwd: '/a', lastActiveAt: 1234 },
+        { sessionId: 'current', title: 'T', workdir: '/a', cwd: '/a', createdAt: 100, lastActiveAt: 5678 },
+      ],
+    }));
+    const store = new ConfigStore(STORE_PATH);
+    const index = store.getSessionIndex();
+    expect(index.find((e) => e.sessionId === 'legacy')?.createdAt).toBe(1234);
+    expect(index.find((e) => e.sessionId === 'current')?.createdAt).toBe(100);
   });
 
   it('upsertSession adds a new session and persists', () => {
@@ -139,6 +154,7 @@ describe('ConfigStore', () => {
       title: 'Fix the bug',
       workdir: '/repo',
       cwd: '/repo',
+      createdAt: 1000,
       lastActiveAt: 1000,
     };
     store.upsertSession(entry);
@@ -154,6 +170,7 @@ describe('ConfigStore', () => {
       title: 'Old title',
       workdir: '/repo',
       cwd: '/repo',
+      createdAt: 1000,
       lastActiveAt: 1000,
     });
     store.upsertSession({
@@ -161,6 +178,7 @@ describe('ConfigStore', () => {
       title: 'New title',
       workdir: '/repo',
       cwd: '/repo',
+      createdAt: 1000,
       lastActiveAt: 2000,
     });
 
@@ -176,6 +194,7 @@ describe('ConfigStore', () => {
       title: 'WT session',
       workdir: '/repo',
       cwd: '/repo/.wave/worktrees/feat',
+      createdAt: 1000,
       lastActiveAt: 1000,
       worktree: {
         path: '/repo/.wave/worktrees/feat',
@@ -195,6 +214,7 @@ describe('ConfigStore', () => {
       title: 'T',
       workdir: '/a',
       cwd: '/a',
+      createdAt: 100,
       lastActiveAt: 100,
     });
     store.touchSession('s1', 999);
@@ -214,6 +234,7 @@ describe('ConfigStore', () => {
       title: 'T',
       workdir: '/a',
       cwd: '/a',
+      createdAt: 100,
       lastActiveAt: 100,
     };
     store.upsertSession(entry);
@@ -235,6 +256,7 @@ describe('ConfigStore', () => {
       title: 'T',
       workdir: '/a',
       cwd: '/a',
+      createdAt: 100,
       lastActiveAt: 100,
     });
     store.removeSession('s1');
@@ -248,6 +270,7 @@ describe('ConfigStore', () => {
       title: 'Original',
       workdir: '/a',
       cwd: '/a',
+      createdAt: 100,
       lastActiveAt: 100,
     });
     store.getSessionIndex()[0].title = 'tampered';
