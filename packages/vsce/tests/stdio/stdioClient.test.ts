@@ -18,6 +18,11 @@ vi.mock('readline', () => ({
 
 // ── Helpers ────────────────────────────────────────────────────
 
+// On Windows the executable is pre-quoted for the cmd.exe `shell:true`
+// command line; off-Windows it is passed as-is.
+const isWin = process.platform === 'win32';
+const fakeWave = isWin ? '"/fake/wave"' : '/fake/wave';
+
 interface MockProc extends EventEmitter {
     stdin: { write: ReturnType<typeof vi.fn> };
     stdout: EventEmitter;
@@ -73,7 +78,7 @@ describe('StdioClient', () => {
         createClient(['--stdio'], { FOO: 'bar' });
 
         expect(mockSpawn).toHaveBeenCalledWith(
-            '/fake/wave',
+            fakeWave,
             ['--stdio'],
             expect.objectContaining({
                 env: expect.objectContaining({ FOO: 'bar' }),
@@ -86,7 +91,7 @@ describe('StdioClient', () => {
         createClient();
 
         expect(mockSpawn).toHaveBeenCalledWith(
-            '/fake/wave',
+            fakeWave,
             [],
             expect.any(Object),
         );
