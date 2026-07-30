@@ -2264,6 +2264,134 @@ describe('pane rows (two-row layout)', () => {
   });
 });
 
+describe('desktopNewSessionInPane (new session side-by-side)', () => {
+  const seedActiveSession = (sessionId: string) => {
+    const agent = lastAgent();
+    agent.messages = [{ id: `m-${sessionId}` }];
+    fireSessionId(agent, sessionId);
+    return agent;
+  };
+
+  const panePushes = (sent: ReturnType<typeof createHost>['sent']) =>
+    sent('desktopPanes').map(
+      (m) =>
+        m as {
+          panes: Array<{ paneId: string; sessionId?: string; width?: number; row: number }>;
+          rowHeights?: number[];
+          focusedPaneId: string;
+        },
+    );
+
+  const lastSystemMessage = (sent: ReturnType<typeof createHost>['sent']) =>
+    sent('appendMessage')
+      .map((m) => m.message as { role: string; blocks: Array<{ type: string; content: string }> })
+      .filter((msg) => msg.blocks?.[0]?.type === 'text')
+      .at(-1);
+
+  it('opens a fresh session in a new pane next to the current one', async () => {
+    const { host, sent } = await readyHost();
+    const original = seedActiveSession('sess-1');
+    const spawned = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(2);
+    expect(layout.panes[0].sessionId).toBe('sess-1');
+    expect(layout.panes[1].sessionId).not.toBe('sess-1'); // fresh session, its own id
+    expect(layout.panes.map((p) => p.row)).toEqual([0, 0]);
+    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    // The original pane keeps its agent; the new pane gets a fresh empty one.
+    expect(h.agentInstances).toHaveLength(spawned + 1);
+    expect(lastAgent()).not.toBe(original);
+    expect(lastAgent().workingDirectory).toBe('/work/a');
+    expect(lastAgent().messages).toEqual([]);
+  });
+
+  it('focuses the sole empty pane instead of adding another one', async () => {
+    const { host, sent } = await readyHost();
+    const spawned = h.agentInstances.length;
+    const focusBefore = sent('focusInput').length;
+
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+
+    expect(h.agentInstances).toHaveLength(spawned);
+    expect(panePushes(sent).at(-1)!.panes).toHaveLength(1);
+    const focus = sent('focusInput');
+    expect(focus).toHaveLength(focusBefore + 1);
+    expect((focus.at(-1) as { paneId?: string }).paneId).toBe('pane-1');
+  });
+
+  it('reuses an empty non-focused pane instead of opening a third', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    // First call: pane-1 is busy, so a fresh empty pane-2 appears (focused).
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+    const pane1 = panePushes(sent).at(-1)!.panes[0];
+    const pane2 = panePushes(sent).at(-1)!.panes[1];
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: pane1.paneId });
+    const spawned = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+
+    expect(h.agentInstances).toHaveLength(spawned);
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(2);
+    expect(layout.focusedPaneId).toBe(pane2.paneId);
+    expect((sent('focusInput').at(-1) as { paneId?: string }).paneId).toBe(pane2.paneId);
+  });
+
+  it('overflows into a second row when the single row is full', async () => {
+    // chatArea = 900 - 240 = 660px: one pane fits, two would not.
+    const { host, sent } = await readyHost(900, 800);
+    seedActiveSession('sess-1');
+
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(2);
+    expect(layout.panes.map((p) => p.row)).toEqual([0, 1]);
+    expect(layout.rowHeights).toEqual([0.5, 0.5]);
+    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    expect(lastAgent().messages).toEqual([]);
+  });
+
+  it('refuses with a hint when the full single row cannot split', async () => {
+    const { host, sent } = await readyHost(900, 500);
+    seedActiveSession('sess-1');
+    const spawned = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+
+    expect(h.agentInstances).toHaveLength(spawned);
+    expect(panePushes(sent).at(-1)!.panes).toHaveLength(1);
+    expect(lastSystemMessage(sent)?.blocks[0].content).toBe('空间不足，无法添加更多分屏');
+  });
+
+  it('still opens a new pane while the current one is streaming', async () => {
+    const { host, sent } = await readyHost();
+    const agent = seedActiveSession('sess-1');
+    agent.isStreaming = true;
+
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(2);
+    expect(agent.isStreaming).toBe(true); // untouched, keeps generating in the background
+  });
+
+  it('exposes the same flow through newSessionInNewPane() for the menu accelerator', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+
+    await host.newSessionInNewPane();
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(2);
+    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+  });
+});
+
 describe('input focus on conversation switch', () => {
   const seedActiveSession = (sessionId: string) => {
     const agent = lastAgent();

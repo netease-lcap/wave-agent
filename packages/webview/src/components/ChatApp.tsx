@@ -1361,6 +1361,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       <div className="desktop-layout">
         <DesktopSidebar
           onNewSession={handleDesktopNewSession}
+          onNewSessionInPane={() => postToHost({ command: 'desktopNewSessionInPane' })}
           isStreaming={state.isStreaming}
           disabled={!host.workdir}
           onOpenSettings={handleOpenSettings}
