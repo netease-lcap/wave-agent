@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'docs/**'
-      - '.github/workflows/docs-checks.yml'
+      - '.github/workflows/check-docs.yml'
       - 'scripts/check-docs-links.mjs'
       - 'scripts/check-sidebar-anchors.mjs'
   push:
@@ -12,12 +12,12 @@ on:
       - main
     paths:
       - 'docs/**'
-      - '.github/workflows/docs-checks.yml'
+      - '.github/workflows/check-docs.yml'
       - 'scripts/check-docs-links.mjs'
       - 'scripts/check-sidebar-anchors.mjs'
 
 jobs:
-  docs-checks:
+  check-docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
