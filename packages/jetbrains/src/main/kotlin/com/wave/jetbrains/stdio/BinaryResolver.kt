@@ -201,10 +201,27 @@ object BinaryResolver {
     private fun findOnPath(name: String): String? {
         return try {
             val out = runCommand(lookupCmd, name)
-            out.lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+            pickExecutableLine(out)
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * Pick the executable line from `which`/`where` output. On Windows `where`
+     * lists the extensionless bash launcher first (e.g. `C:\Program Files\nodejs\npm`)
+     * followed by `npm.cmd` — CreateProcess cannot execute the bash launcher, so
+     * prefer `.cmd`/`.exe`/`.bat` lines. [windows] is injectable for tests.
+     */
+    internal fun pickExecutableLine(lookupOutput: String, windows: Boolean = isWindows): String? {
+        val lines = lookupOutput.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        if (windows) {
+            lines.firstOrNull {
+                val l = it.lowercase()
+                l.endsWith(".cmd") || l.endsWith(".exe") || l.endsWith(".bat")
+            }?.let { return it }
+        }
+        return lines.firstOrNull()
     }
 
     /**
@@ -266,7 +283,7 @@ object BinaryResolver {
         // which/where npm
         try {
             val out = runCommand(lookupCmd, "npm")
-            out.lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+            pickExecutableLine(out)?.let { return it }
         } catch (_: Exception) {}
         // nvm-installed npm (GUI-launched IDEs don't inherit shell PATH)
         findInNvm("npm")?.let { return it }

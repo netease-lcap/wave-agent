@@ -37,7 +37,14 @@ export class StdioClient {
         // shell, throwing ERR_CHILD_PROCESS_INVALID_COMMAND_FILE. `args` is a
         // fixed flag list (`['--stdio']`) with no metacharacters, so enabling
         // the shell on Windows is safe; Unix behaviour is unchanged.
-        this.proc = spawn(binaryPath, args, {
+        //
+        // With `shell: true`, Node concatenates file+args into the cmd.exe
+        // command line WITHOUT quoting the file — a path containing spaces
+        // (e.g. `C:\Users\a b\...\wave.cmd`) is split at the space and fails
+        // with "'C:\Users\a' is not recognized". Pre-quote it on Windows.
+        const command =
+            process.platform === 'win32' ? `"${binaryPath}"` : binaryPath;
+        this.proc = spawn(command, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: { ...process.env, ...env },
             shell: process.platform === 'win32',

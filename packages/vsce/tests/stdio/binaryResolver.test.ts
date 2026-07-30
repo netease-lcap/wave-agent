@@ -242,7 +242,9 @@ describe('binaryResolver', () => {
         expect(result).toBe(globalWave);
         expect(mockExecFile).toHaveBeenCalledTimes(1);
         const callArgs = mockExecFile.mock.calls[0];
-        expect(callArgs[0]).toBe(npmBin);
+        // On Windows the executable is pre-quoted for the cmd.exe `shell:true`
+        // command line; off-Windows it is passed as-is.
+        expect(callArgs[0]).toBe(isWin ? `"${npmBin}"` : npmBin);
         expect(callArgs[1]).toEqual([
             'install',
             '-g',
@@ -303,9 +305,17 @@ describe('binaryResolver', () => {
     function withPlatform<T>(platform: string, fn: () => Promise<T>): Promise<T> {
         const original = Object.getOwnPropertyDescriptor(process, 'platform');
         Object.defineProperty(process, 'platform', { value: platform });
-        return fn().finally(() => {
+        const restore = () => {
             if (original) Object.defineProperty(process, 'platform', original);
-        });
+        };
+        try {
+            return fn().finally(restore);
+        } catch (e) {
+            // fn threw synchronously (before returning a promise) — restore here
+            // too or the fake platform leaks into every later test.
+            restore();
+            throw e;
+        }
     }
 
     it('upgradeWaveBinary uses shell:true for npm.cmd on Windows', async () => {
@@ -323,7 +333,8 @@ describe('binaryResolver', () => {
                 const cmd = args[0] as string;
                 const opts = args[2] as { shell?: boolean } | undefined;
                 // Enforce Node's Windows guard: refuse npm.cmd without shell.
-                if (/\.cmd$/i.test(cmd) && opts?.shell !== true) {
+                // (The executable may be pre-quoted for the shell command line.)
+                if (/\.cmd"?$/i.test(cmd) && opts?.shell !== true) {
                     throw new Error('ERR_CHILD_PROCESS_INVALID_COMMAND_FILE');
                 }
                 const cb = args[args.length - 1] as (err: Error | null) => void;
@@ -334,8 +345,84 @@ describe('binaryResolver', () => {
 
             expect(result).toBe(waveCmd);
             const callArgs = mockExecFile.mock.calls[0];
-            expect(callArgs[0]).toBe(npmCmd);
+            expect(callArgs[0]).toBe(`"${npmCmd}"`);
             expect((callArgs[2] as { shell?: boolean }).shell).toBe(true);
+        });
+    });
+
+    // ── Windows: `where` multi-line output + path-with-spaces quoting ──
+    // Customer repro: a default Node.js install lives at
+    // `C:\Program Files\nodejs`. `where npm` lists the extensionless bash
+    // launcher FIRST (`...\npm`, then `...\npm.cmd`); with `shell: true`
+    // Node concatenates file+args into the cmd.exe command line WITHOUT
+    // quoting, so cmd splits the path at the space and fails with
+    // "'C:\Program' 不是内部或外部命令" — the auto-upgrade then dies and the
+    // shared stdio client never initializes.
+
+    it('on Windows, resolveWaveBinary prefers the .cmd line from where output', async () => {
+        const nodeBinWin = 'C:\\Program Files\\nodejs\\node.exe';
+        const waveShim = 'C:\\Users\\runneradmin\\AppData\\Roaming\\npm\\wave';
+        const waveCmd = 'C:\\Users\\runneradmin\\AppData\\Roaming\\npm\\wave.cmd';
+
+        await withPlatform('win32', async () => {
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('where wave')) return `${waveShim}\n${waveCmd}\n`;
+                if (cmd.includes('where node')) return `${nodeBinWin}\n`;
+                throw new Error(`unexpected: ${cmd}`);
+            });
+
+            const result = await resolveWaveBinary();
+            // cmd.exe cannot execute the extensionless bash launcher.
+            expect(result).toBe(waveCmd);
+        });
+    });
+
+    it('on Windows, upgradeWaveBinary picks npm.cmd and quotes the space-containing path', async () => {
+        const nodeBinWin = 'C:\\Program Files\\nodejs\\node.exe';
+        const npmShim = 'C:\\Program Files\\nodejs\\npm';
+        const npmCmd = 'C:\\Program Files\\nodejs\\npm.cmd';
+        const waveCmd = 'C:\\Program Files\\nodejs\\wave.cmd';
+
+        await withPlatform('win32', async () => {
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('where npm')) return `${npmShim}\n${npmCmd}\n`;
+                if (cmd.includes('where wave')) return `${waveCmd}\n`;
+                if (cmd.includes('where node')) return `${nodeBinWin}\n`;
+                throw new Error(`unexpected: ${cmd}`);
+            });
+            mockExecFile.mockImplementation((...args: unknown[]) => {
+                const file = args[0] as string;
+                // cmd.exe parses the `shell: true` command line by whitespace:
+                // an unquoted path with spaces breaks at "C:\Program".
+                expect(file.startsWith('"')).toBe(true);
+                const cb = args[args.length - 1] as (err: Error | null) => void;
+                cb(null);
+            });
+
+            const result = await upgradeWaveBinary('0.19.8');
+
+            expect(result).toBe(waveCmd);
+            const callArgs = mockExecFile.mock.calls[0];
+            expect(callArgs[0]).toBe(`"${npmCmd}"`);
+            expect(callArgs[1]).toEqual([
+                'install',
+                '-g',
+                'wave-code@0.19.8',
+                `--registry=${NPM_REGISTRY}`,
+            ]);
+        });
+    });
+
+    it('on Windows, getCliVersion quotes a wave path containing spaces', async () => {
+        const waveCmd = 'C:\\Users\\a b\\AppData\\Roaming\\npm\\wave.cmd';
+
+        await withPlatform('win32', async () => {
+            mockExecFileSync.mockReturnValue('0.19.8\n');
+
+            expect(getCliVersion(waveCmd)).toBe('0.19.8');
+            const call = mockExecFileSync.mock.calls[0];
+            expect(call[0]).toBe(`"${waveCmd}"`);
+            expect((call[2] as { shell?: boolean }).shell).toBe(true);
         });
     });
 
@@ -346,7 +433,7 @@ describe('binaryResolver', () => {
         expect(getCliVersion(globalWave)).toBe('0.18.7');
         expect(mockExecFileSync).toHaveBeenCalledTimes(1);
         const args = mockExecFileSync.mock.calls[0];
-        expect(args[0]).toBe(globalWave);
+        expect(args[0]).toBe(isWin ? `"${globalWave}"` : globalWave);
         expect(args[1]).toEqual(['-v']);
     });
 
@@ -373,9 +460,10 @@ describe('binaryResolver', () => {
             if (cmd.includes(nodeLookup)) return `${nodeBin}\n`;
             throw new Error(`unexpected: ${cmd}`);
         });
-        // Node -v returns v20+; wave -v returns 1.0.0 (>= target)
+        // Node -v returns v20+; wave -v returns 1.0.0 (>= target).
+        // (On Windows the wave path reaches execFileSync pre-quoted.)
         mockExecFileSync.mockImplementation((cmd: string | Buffer) =>
-            String(cmd) === globalWave ? '1.0.0\n' : 'v20.0.0\n',
+            String(cmd).replace(/^"|"$/g, '') === globalWave ? '1.0.0\n' : 'v20.0.0\n',
         );
 
         const result = await ensureCliUpToDate('1.0.0');
@@ -392,7 +480,7 @@ describe('binaryResolver', () => {
         });
         // Node -v returns v20+; wave -v returns 0.18.0 (< target)
         mockExecFileSync.mockImplementation((cmd: string | Buffer) =>
-            String(cmd) === globalWave ? '0.18.0\n' : 'v20.0.0\n',
+            String(cmd).replace(/^"|"$/g, '') === globalWave ? '0.18.0\n' : 'v20.0.0\n',
         );
         mockExecFile.mockImplementation((...args: unknown[]) => {
             const cb = args[args.length - 1] as (err: Error | null) => void;
@@ -416,7 +504,7 @@ describe('binaryResolver', () => {
         });
         // Node -v returns v20+; wave -v fails (corrupt binary)
         mockExecFileSync.mockImplementation((cmd: string | Buffer) => {
-            if (String(cmd) === globalWave) throw new Error('corrupt');
+            if (String(cmd).replace(/^"|"$/g, '') === globalWave) throw new Error('corrupt');
             return 'v20.0.0\n';
         });
         mockExecFile.mockImplementation((...args: unknown[]) => {
@@ -437,7 +525,7 @@ describe('binaryResolver', () => {
         });
         // Node -v returns v20+; wave -v returns 2.0.0 (> target)
         mockExecFileSync.mockImplementation((cmd: string | Buffer) =>
-            String(cmd) === globalWave ? '2.0.0\n' : 'v20.0.0\n',
+            String(cmd).replace(/^"|"$/g, '') === globalWave ? '2.0.0\n' : 'v20.0.0\n',
         );
 
         const result = await ensureCliUpToDate('1.0.0');

@@ -18,6 +18,34 @@ export const NPM_REGISTRY = 'https://registry.npmmirror.com';
 
 let cachedPath: string | undefined;
 
+/**
+ * Pick the executable line from `which`/`where` output. On Windows `where`
+ * lists the extensionless bash launcher first (e.g. `C:\Program Files\nodejs\npm`)
+ * followed by `npm.cmd` — cmd.exe cannot execute the bash launcher, so prefer
+ * `.cmd`/`.exe`/`.bat` lines.
+ */
+function pickExecutableLine(lookupOutput: string): string {
+    const lines = lookupOutput
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+    if (process.platform === 'win32') {
+        const cmdLine = lines.find((l) => /\.(cmd|exe|bat)$/i.test(l));
+        if (cmdLine) return cmdLine;
+    }
+    return lines[0] ?? '';
+}
+
+/**
+ * With `shell: true` on Windows, Node concatenates file+args into the cmd.exe
+ * command line WITHOUT quoting the file — a path containing spaces (e.g.
+ * `C:\Program Files\nodejs\npm.cmd`) is split at the space and fails with
+ * "'C:\Program' is not recognized". Pre-quote it.
+ */
+function quoteForShell(executable: string): string {
+    return process.platform === 'win32' ? `"${executable}"` : executable;
+}
+
 /** Minimum Node.js major version required by `wave --stdio`. */
 const MIN_NODE_MAJOR = 20;
 
@@ -97,7 +125,7 @@ function findNpm(): string {
     const cmd = process.platform === 'win32' ? 'where npm' : 'which npm';
     try {
         const result = execSync(cmd, { encoding: 'utf-8', stdio: 'pipe' }).trim();
-        if (result) return result.split('\n')[0].trim();
+        if (result) return pickExecutableLine(result);
     } catch {
         // not on PATH
     }
@@ -155,7 +183,7 @@ export function resolveWaveBinary(onInstall?: InstallProgressCallback): string {
     try {
         const result = execSync(whichCmd, { encoding: 'utf-8', stdio: 'pipe' }).trim();
         if (result) {
-            cachedPath = result.split('\n')[0].trim();
+            cachedPath = pickExecutableLine(result);
             return cachedPath;
         }
     } catch {
@@ -200,7 +228,7 @@ export function resolveWaveBinary(onInstall?: InstallProgressCallback): string {
     try {
         const result = execSync(whichCmd, { encoding: 'utf-8', stdio: 'pipe' }).trim();
         if (result) {
-            cachedPath = result.split('\n')[0].trim();
+            cachedPath = pickExecutableLine(result);
             return cachedPath;
         }
     } catch {
@@ -219,7 +247,7 @@ export function resolveWaveBinary(onInstall?: InstallProgressCallback): string {
  */
 export function getCliVersion(binaryPath: string): string | null {
     try {
-        const output = execFileSync(binaryPath, ['-v'], {
+        const output = execFileSync(quoteForShell(binaryPath), ['-v'], {
             encoding: 'utf-8',
             stdio: ['ignore', 'pipe', 'ignore'],
             timeout: 5000,
@@ -284,7 +312,7 @@ export async function upgradeWaveBinary(targetVersion: string, onInstall?: Insta
     const npm = findNpm();
     await new Promise<void>((resolve, reject) => {
         execFile(
-            npm,
+            quoteForShell(npm),
             ['install', '-g', `wave-code@${targetVersion}`, `--registry=${NPM_REGISTRY}`],
             // `npm` is `npm.cmd` on Windows; Node refuses to execFile a `.cmd`
             // without a shell (ERR_CHILD_PROCESS_INVALID_COMMAND_FILE). The

@@ -142,6 +142,47 @@ class BinaryResolverTest {
         assertNull(BinaryResolver.getCliVersion(missing))
     }
 
+    // ---- pickExecutableLine --------------------------------------------
+    //
+    // Customer repro: a default Node.js install on Windows lives at
+    // `C:\Program Files\nodejs`, and `where npm` lists the extensionless
+    // bash launcher FIRST (`...\npm`, then `...\npm.cmd`). CreateProcess
+    // cannot execute the bash launcher, so the npm install/upgrade fails
+    // and the stdio client never initializes.
+
+    @Test
+    fun `pickExecutableLine prefers the cmd line from where output on Windows`() {
+        // `where` emits CRLF line endings.
+        val out = "C:\\Program Files\\nodejs\\npm\r\nC:\\Program Files\\nodejs\\npm.cmd\r\n"
+        assertEquals(
+            "C:\\Program Files\\nodejs\\npm.cmd",
+            BinaryResolver.pickExecutableLine(out, windows = true)
+        )
+    }
+
+    @Test
+    fun `pickExecutableLine prefers an exe line on Windows`() {
+        val out = "C:\\tools\\wave\nC:\\tools\\wave.exe\n"
+        assertEquals("C:\\tools\\wave.exe", BinaryResolver.pickExecutableLine(out, windows = true))
+    }
+
+    @Test
+    fun `pickExecutableLine falls back to first line when no cmd or exe on Windows`() {
+        val out = "C:\\tools\\wave\nC:\\other\\wave\n"
+        assertEquals("C:\\tools\\wave", BinaryResolver.pickExecutableLine(out, windows = true))
+    }
+
+    @Test
+    fun `pickExecutableLine takes the first line off-Windows`() {
+        val out = "/usr/bin/npm\n/usr/local/bin/npm\n"
+        assertEquals("/usr/bin/npm", BinaryResolver.pickExecutableLine(out, windows = false))
+    }
+
+    @Test
+    fun `pickExecutableLine returns null for empty output`() {
+        assertNull(BinaryResolver.pickExecutableLine("", windows = true))
+    }
+
     // ---- findInNvm -----------------------------------------------------
 
     @Test
