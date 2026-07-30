@@ -90,7 +90,14 @@ export class ConfigStore {
   }
 
   getConfiguration(): DesktopConfigData {
-    return { ...this.data.configuration };
+    // language defaults to 'Chinese' to match the VSCE extension
+    // (configurationService `|| 'Chinese'`) and the JetBrains plugin
+    // (WavePluginService default). Without this, a fresh desktop install
+    // sends an undefined language, so the system prompt never injects the
+    // `# Language` directive and the model replies in its own default.
+    const config = { ...this.data.configuration };
+    if (!config.language) config.language = 'Chinese';
+    return config;
   }
 
   /**

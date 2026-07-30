@@ -33,17 +33,22 @@ beforeEach(() => {
 });
 
 describe('ConfigStore', () => {
-  it('starts with empty defaults when the file does not exist', () => {
+  it('starts with defaults when the file does not exist', () => {
     const store = new ConfigStore(STORE_PATH);
-    expect(store.getConfiguration()).toEqual({});
+    expect(store.getConfiguration()).toEqual({ language: 'Chinese' });
     expect(store.getRecentWorkdirs()).toEqual([]);
   });
 
   it('starts fresh when the file is corrupt', () => {
     h.files.set(STORE_PATH, 'not-json{{{');
     const store = new ConfigStore(STORE_PATH);
-    expect(store.getConfiguration()).toEqual({});
+    expect(store.getConfiguration()).toEqual({ language: 'Chinese' });
     expect(store.getRecentWorkdirs()).toEqual([]);
+  });
+
+  it('defaults language to Chinese when unset, matching VSCE/JetBrains', () => {
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getConfiguration().language).toBe('Chinese');
   });
 
   it('persists configuration across instances', () => {
@@ -51,7 +56,7 @@ describe('ConfigStore', () => {
     store.setConfiguration({ apiKey: 'k1', model: 'm1' });
 
     const reloaded = new ConfigStore(STORE_PATH);
-    expect(reloaded.getConfiguration()).toEqual({ apiKey: 'k1', model: 'm1' });
+    expect(reloaded.getConfiguration()).toEqual({ apiKey: 'k1', model: 'm1', language: 'Chinese' });
   });
 
   it('merge-updates configuration: absent fields keep their stored value', () => {
@@ -59,7 +64,7 @@ describe('ConfigStore', () => {
     store.setConfiguration({ apiKey: 'k1', model: 'm1', baseURL: 'https://a' });
     store.setConfiguration({ model: 'm2' });
 
-    expect(store.getConfiguration()).toEqual({ apiKey: 'k1', model: 'm2', baseURL: 'https://a' });
+    expect(store.getConfiguration()).toEqual({ apiKey: 'k1', model: 'm2', baseURL: 'https://a', language: 'Chinese' });
   });
 
   it('does not mutate the stored configuration through the returned copy', () => {
