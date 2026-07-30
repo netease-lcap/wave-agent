@@ -51,8 +51,9 @@ let mainWindow: BrowserWindow | null = null;
 let host: DesktopHost | null = null;
 
 // Session-switch shortcuts (Ctrl+Tab / Ctrl+Shift+Tab, macOS also
-// Cmd+Shift+] / [), 新对话 Cmd+N / 关闭分屏 Cmd+W, and panel-toggle
-// shortcuts — shared by the application menu and before-input-event.
+// Cmd+Shift+] / [), 新对话 Cmd+N / 并排新对话 Cmd+Shift+N / 关闭分屏 Cmd+W,
+// and panel-toggle shortcuts — shared by the application menu and
+// before-input-event.
 const menuActions: DesktopMenuActions = {
   nextSession: () => {
     void host?.activateAdjacentSession(1);
@@ -61,6 +62,9 @@ const menuActions: DesktopMenuActions = {
     void host?.activateAdjacentSession(-1);
   },
   newSession: () => host?.newSessionInFocusedPane(),
+  newSessionInPane: () => {
+    void host?.newSessionInNewPane();
+  },
   closePane: () => host?.closeFocusedPane(),
   togglePanel: (kind) => {
     host?.toggleFocusedPanePanel(kind);

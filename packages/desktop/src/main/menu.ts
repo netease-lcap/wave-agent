@@ -1,6 +1,6 @@
 /**
- * Application menu + session-switch + 新对话/关闭分屏
- * (CmdOrCtrl+N / CmdOrCtrl+W) + panel-toggle shortcuts.
+ * Application menu + session-switch + 新对话/并排新对话/关闭分屏
+ * (CmdOrCtrl+N / CmdOrCtrl+Shift+N / CmdOrCtrl+W) + panel-toggle shortcuts.
  *
  * The switch keys — Ctrl+Tab / Ctrl+Shift+Tab on every platform, plus
  * Cmd+Shift+] / Cmd+Shift+[ on macOS (aligned with Claude Code Desktop) — and
@@ -12,10 +12,10 @@
  * therefore carry `registerAccelerator: false` — the displayed shortcut is
  * informational, and clicking the item takes the exact same code path.
  *
- * CmdOrCtrl+N / CmdOrCtrl+W, in contrast, ARE registered accelerators: menu
- * accelerators fire app-wide (even while the preview guest has focus) and
- * preempt the default Electron behavior (new window / close window), which
- * the single-window app must suppress.
+ * CmdOrCtrl+N / CmdOrCtrl+Shift+N / CmdOrCtrl+W, in contrast, ARE registered
+ * accelerators: menu accelerators fire app-wide (even while the preview guest
+ * has focus) and — for Cmd+N / Cmd+W — preempt the default Electron behavior
+ * (new window / close window), which the single-window app must suppress.
  *
  * For that preemption to work, 关闭分屏 must be the ONLY Cmd+W claimant: the
  * default fileMenu role expands to File → Close Window (Cmd+W) on macOS, and
@@ -33,6 +33,7 @@ export interface DesktopMenuActions {
   nextSession: () => void;
   prevSession: () => void;
   newSession: () => void;
+  newSessionInPane: () => void;
   closePane: () => void;
   togglePanel: (kind: PanelKind) => void;
 }
@@ -109,6 +110,12 @@ export function buildApplicationMenuTemplate(
           click: () => actions.newSession(),
         },
         {
+          id: 'new-session-in-pane',
+          label: '并排新对话',
+          accelerator: 'CmdOrCtrl+Shift+N',
+          click: () => actions.newSessionInPane(),
+        },
+        {
           id: 'close-pane',
           label: '关闭分屏',
           accelerator: 'CmdOrCtrl+W',
@@ -177,6 +184,8 @@ export function updateMenuState(state: SessionMenuState): void {
   const menu = Menu.getApplicationMenu();
   const newItem = menu?.getMenuItemById('new-session');
   if (newItem) newItem.enabled = state.canNewSession;
+  const newPaneItem = menu?.getMenuItemById('new-session-in-pane');
+  if (newPaneItem) newPaneItem.enabled = state.canNewSession;
   const closeItem = menu?.getMenuItemById('close-pane');
   if (closeItem) closeItem.enabled = state.canClosePane;
 }

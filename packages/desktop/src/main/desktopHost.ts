@@ -212,6 +212,11 @@ export class DesktopHost {
     await this.handleNewSession(this.focusedPaneId);
   }
 
+  /** 会话 → 并排新对话 (CmdOrCtrl+Shift+N): new session in a fresh pane, same as Cmd/Ctrl+Click on the sidebar button. */
+  async newSessionInNewPane(): Promise<void> {
+    await this.handleNewSessionInNewPane();
+  }
+
   /**
    * 会话 → 关闭分屏 (CmdOrCtrl+W): close the focused pane. With multiple panes
    * this matches the pane close button; on the sole pane it resets that pane
@@ -608,16 +613,11 @@ export class DesktopHost {
 
   /**
    * Open a session in a new pane (Cmd/Ctrl+Click on a sidebar session, or a
-   * sidebar drag-drop). `opts.insertionIndex` inserts at a position within the
-   * target row (drop on a pane gap); `opts.row` picks the row (default: the
-   * focused pane's row); `opts.newRow` ('above'|'below') splits the single row
-   * into two and puts the new pane alone in the fresh row. A session already
-   * visible in a pane focuses that pane instead of duplicating it. A drag drop
-   * names its target row and is always honored — the row scrolls horizontally
-   * below the min width, same as pane moves. A click without a target spills
-   * into the other row (or a fresh second row) when the focused row is full,
-   * and refuses only when nothing fits. Existing panes in the target row
-   * shrink proportionally so the layout keeps the user's manual ratios.
+   * sidebar drag-drop). A session already visible in a pane focuses that pane
+   * instead of duplicating it. Pane placement/overflow rules live in
+   * insertNewPane; a drag drop passes an explicit target row/position and is
+   * always honored — the row scrolls horizontally below the min width, same
+   * as pane moves.
    */
   private async handleOpenPane(workdir: string, sessionId: string, opts?: unknown): Promise<void> {
     if (!sessionId) return;
@@ -632,6 +632,26 @@ export class DesktopHost {
       ? Math.trunc(o.insertionIndex) : undefined;
     const optRow = o.row === 0 || o.row === 1 ? o.row : undefined;
     const newRow = o.newRow === 'above' || o.newRow === 'below' ? o.newRow : undefined;
+    const paneId = this.insertNewPane({ insertionIndex, row: optRow, newRow });
+    if (!paneId) return;
+    await this.bindSessionToPane(paneId, workdir, sessionId);
+  }
+
+  /**
+   * Insert a fresh (unbound) pane into the layout and focus it. Shared by
+   * Cmd/Ctrl+Click session open (handleOpenPane) and new-session-in-pane.
+   * `opts.insertionIndex` inserts at a position within the target row;
+   * `opts.row` picks the row (default: the focused pane's row); `opts.newRow`
+   * ('above'|'below') splits the single row into two and puts the new pane
+   * alone in the fresh row. Without an explicit target the pane spills into
+   * the other row (or a fresh second row) when the focused row is full, and
+   * the insertion is refused only when nothing fits. Existing panes in the
+   * target row shrink proportionally so the layout keeps the user's manual
+   * ratios. Returns the new paneId, or null when refused (a lightweight
+   * system message has already been shown).
+   */
+  private insertNewPane(opts: { insertionIndex?: number; row?: 0 | 1; newRow?: 'above' | 'below' } = {}): string | null {
+    const { insertionIndex, row: optRow, newRow } = opts;
     const hasSecondRow = this.panes.some((p) => p.row === 1);
     const paneId = `pane-${++this.paneCounter}`;
 
@@ -639,7 +659,7 @@ export class DesktopHost {
       // Split the single row into two; the new pane is alone in its fresh row.
       if (!this.canSplitRows()) {
         this.pushSystemMessage('窗口高度不足，无法拆分为两行', this.focusedPaneId);
-        return;
+        return null;
       }
       if (newRow === 'above') this.panes.forEach((p) => { p.row = 1; });
       this.panes.push({ paneId, agent: null, row: newRow === 'above' ? 0 : 1 });
@@ -659,7 +679,7 @@ export class DesktopHost {
             hasSecondRow ? '窗口宽度不足，无法添加更多分屏' : '空间不足，无法添加更多分屏',
             this.focusedPaneId,
           );
-          return;
+          return null;
         }
       }
       const rowPanes = this.panes.filter((p) => (p.row ?? 0) === targetRow);
@@ -675,7 +695,7 @@ export class DesktopHost {
     this.normalizePaneRows();
     this.pushPanes();
     this.emitPanelState();
-    await this.bindSessionToPane(paneId, workdir, sessionId);
+    return paneId;
   }
 
   /**
@@ -1408,6 +1428,10 @@ export class DesktopHost {
         await this.handleNewSession(pid);
         break;
 
+      case 'desktopNewSessionInPane':
+        await this.handleNewSessionInNewPane();
+        break;
+
       case 'compact':
         try {
           await this.agentForPane(pid)?.compact((msg.customInstructions as string) || undefined);
@@ -1981,6 +2005,38 @@ export class DesktopHost {
     } catch (error) {
       console.error('[DesktopHost] 新建会话失败:', error);
       this.pushSystemMessage(`新建会话失败: ${error}`, pid);
+    }
+  }
+
+  /**
+   * New session in a fresh pane (Cmd/Ctrl+Click on the sidebar 新对话 button,
+   * or CmdOrCtrl+Shift+N): same workdir rule as 新对话 (most recently used
+   * real directory), but the session opens side-by-side instead of replacing
+   * the focused pane. An already-empty new-session pane is focused instead of
+   * duplicated; placement/overflow follows insertNewPane's rules.
+   */
+  private async handleNewSessionInNewPane(): Promise<void> {
+    const dir = this.configStore.getRecentWorkdirs()[0] ?? this.workdir;
+    if (!dir) return;
+    const empty = this.panes.find((p) => {
+      const a = p.agent;
+      return !a || (a.messages.length === 0 && !a.isStreaming);
+    });
+    if (empty) {
+      this.handleFocusPane(empty.paneId);
+      this.postMessage({ command: 'focusInput', paneId: empty.paneId });
+      return;
+    }
+    const paneId = this.insertNewPane();
+    if (!paneId) return;
+    try {
+      const agent = await this.spawnAgent({ workdir: dir });
+      // Spawning is slow (agent init) — the pane may have been closed meanwhile.
+      if (!this.panes.some((p) => p.paneId === paneId)) return;
+      await this.activateAgentInPane(paneId, agent);
+    } catch (error) {
+      console.error('[DesktopHost] 新建分屏会话失败:', error);
+      this.pushSystemMessage(`新建会话失败: ${error}`, paneId);
     }
   }
 

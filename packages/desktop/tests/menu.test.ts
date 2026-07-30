@@ -73,7 +73,7 @@ describe('matchSessionSwitchInput', () => {
 });
 
 describe('buildApplicationMenuTemplate', () => {
-  const actions = { nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), closePane: vi.fn(), togglePanel: vi.fn() };
+  const actions = { nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), newSessionInPane: vi.fn(), closePane: vi.fn(), togglePanel: vi.fn() };
 
   function sessionMenuItems(isMac: boolean): MenuItemConstructorOptions[] {
     const template = buildApplicationMenuTemplate(actions, isMac);
@@ -106,6 +106,14 @@ describe('buildApplicationMenuTemplate', () => {
       // app-wide and preempts Electron's new-window / close-window defaults.
       expect(itemByLabel(isMac, '新对话')).toMatchObject({ id: 'new-session', accelerator: 'CmdOrCtrl+N' });
       expect(itemByLabel(isMac, '关闭分屏')).toMatchObject({ id: 'close-pane', accelerator: 'CmdOrCtrl+W' });
+    }
+  });
+
+  it('offers 并排新对话 as a registered CmdOrCtrl+Shift+N accelerator on both platforms', () => {
+    for (const isMac of [true, false]) {
+      // Registered like Cmd+N: fires app-wide, including while the preview
+      // guest or terminal panel has focus.
+      expect(itemByLabel(isMac, '并排新对话')).toMatchObject({ id: 'new-session-in-pane', accelerator: 'CmdOrCtrl+Shift+N' });
     }
   });
 
@@ -143,33 +151,38 @@ describe('buildApplicationMenuTemplate', () => {
     itemByLabel(false, '下一个会话').click?.({} as never, {} as never, {} as never);
     itemByLabel(false, '上一个会话').click?.({} as never, {} as never, {} as never);
     itemByLabel(false, '新对话').click?.({} as never, {} as never, {} as never);
+    itemByLabel(false, '并排新对话').click?.({} as never, {} as never, {} as never);
     itemByLabel(false, '关闭分屏').click?.({} as never, {} as never, {} as never);
     expect(actions.nextSession).toHaveBeenCalledTimes(1);
     expect(actions.prevSession).toHaveBeenCalledTimes(1);
     expect(actions.newSession).toHaveBeenCalledTimes(1);
+    expect(actions.newSessionInPane).toHaveBeenCalledTimes(1);
     expect(actions.closePane).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('updateMenuState', () => {
-  it('toggles the 新对话 / 关闭分屏 items by id', () => {
+  it('toggles the 新对话 / 并排新对话 / 关闭分屏 items by id', () => {
     const items = (Menu as unknown as { __mockMenuItems: Map<string, { enabled: boolean }> }).__mockMenuItems;
     items.set('new-session', { enabled: true });
+    items.set('new-session-in-pane', { enabled: true });
     items.set('close-pane', { enabled: true });
 
     updateMenuState({ canNewSession: false, canClosePane: true });
     expect(items.get('new-session')?.enabled).toBe(false);
+    expect(items.get('new-session-in-pane')?.enabled).toBe(false);
     expect(items.get('close-pane')?.enabled).toBe(true);
 
     updateMenuState({ canNewSession: true, canClosePane: false });
     expect(items.get('new-session')?.enabled).toBe(true);
+    expect(items.get('new-session-in-pane')?.enabled).toBe(true);
     expect(items.get('close-pane')?.enabled).toBe(false);
   });
 });
 
 describe('installApplicationMenu', () => {
   it('builds and sets the application menu', () => {
-    installApplicationMenu({ nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), closePane: vi.fn(), togglePanel: vi.fn() });
+    installApplicationMenu({ nextSession: vi.fn(), prevSession: vi.fn(), newSession: vi.fn(), newSessionInPane: vi.fn(), closePane: vi.fn(), togglePanel: vi.fn() });
     expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(1);
     expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(1);
   });

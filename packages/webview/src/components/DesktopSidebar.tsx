@@ -11,6 +11,8 @@ export const SESSION_DRAG_MIME = 'application/x-wave-session';
 
 export interface DesktopSidebarProps {
   onNewSession: () => void;
+  /** Cmd/Ctrl+Click on the 新对话 button: start the new session in an additional pane. */
+  onNewSessionInPane: () => void;
   isStreaming: boolean;
   /** No workdir picked yet — starting a new session is not possible. */
   disabled: boolean;
@@ -47,6 +49,7 @@ const isMacPlatform = (): boolean =>
  */
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onNewSession,
+  onNewSessionInPane,
   isStreaming,
   disabled,
   onOpenSettings,
@@ -172,10 +175,19 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       )}
       <button
         className="desktop-sidebar-new-chat"
-        onClick={onNewSession}
+        onClick={(e) => {
+          // Cmd on macOS / Ctrl elsewhere opens the new session side-by-side
+          // in a fresh pane; a plain click keeps the replace-focused-pane
+          // behavior (same branching as session items above).
+          if (isMacPlatform() ? e.metaKey : e.ctrlKey) {
+            onNewSessionInPane();
+          } else {
+            onNewSession();
+          }
+        }}
         // 新对话在会话运行（streaming）期间也可用 — 多会话并行，旧会话在后台继续生成（FR-031）。
         disabled={disabled}
-        title="新对话"
+        title={isMacPlatform() ? '新对话（Cmd+Click 并排打开）' : '新对话（Ctrl+Click 并排打开）'}
         data-testid="desktop-new-session"
       >
         <span className="codicon codicon-add"></span>
