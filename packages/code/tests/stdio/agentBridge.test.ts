@@ -8,6 +8,7 @@ import {
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
+  getMessageContent,
 } from "wave-agent-sdk";
 import { execFileSync } from "node:child_process";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
@@ -642,6 +643,67 @@ test("getFullMessageThread returns messages and sessionIds", async () => {
     sessionIds: ["test-session-id"],
   });
   expect(mockAgent.getFullMessageThread).toHaveBeenCalled();
+});
+
+test("listRewindCheckpoints filters to real user messages and flattens content", async () => {
+  const { bridge } = createBridge();
+  // The SDK module is auto-mocked; give getMessageContent a real-ish implementation.
+  vi.mocked(getMessageContent).mockImplementation((m) => {
+    const block = m.blocks.find((b) => b.type === "text");
+    return block && "content" in block ? (block.content as string) : "";
+  });
+  const threadMessages = [
+    {
+      role: "user",
+      id: "u1",
+      blocks: [{ type: "text", content: "first\n  message" }],
+    },
+    {
+      role: "assistant",
+      id: "a1",
+      blocks: [{ type: "text", content: "reply" }],
+    },
+    {
+      role: "user",
+      id: "u2",
+      isMeta: true,
+      blocks: [{ type: "text", content: "meta" }],
+    },
+    { role: "user", blocks: [{ type: "text", content: "no id" }] },
+    { role: "user", id: "u3", blocks: [{ type: "text", content: "second" }] },
+  ] as unknown as Message[];
+  const mockAgent = createMockAgent({
+    getFullMessageThread: vi
+      .fn()
+      .mockResolvedValue({
+        messages: threadMessages,
+        sessionIds: ["test-session-id"],
+      }),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("listRewindCheckpoints", {}, sessionId);
+
+  expect(r).toEqual({
+    checkpoints: [
+      { id: "u1", content: "first message" },
+      { id: "u3", content: "second" },
+    ],
+  });
+});
+
+test("listRewindCheckpoints returns empty list when no user messages", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest("listRewindCheckpoints", {}, sessionId);
+
+  expect(r).toEqual({ checkpoints: [] });
 });
 
 test("getSessionInfo returns session info", async () => {

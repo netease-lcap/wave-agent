@@ -57,6 +57,7 @@ export type RequestMethod =
   | "abortMessage"
   | "clearMessages"
   | "rewindToMessage"
+  | "listRewindCheckpoints"
   | "deleteQueuedMessage"
   | "updateQueuedMessage"
   | "deleteQueuedMessageById"

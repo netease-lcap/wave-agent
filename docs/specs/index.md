@@ -14,8 +14,8 @@
 | 指标 | 数量 |
 |------|------|
 | 规格文件 | 62 |
-| 用户故事 | 304 |
-| 功能需求 | 1,256 |
+| 用户故事 | 305 |
+| 功能需求 | 1,262 |
 | 测试用例 | 4,435 |
 
 ## 规格列表
@@ -52,7 +52,7 @@
 | 确认 UI | 工具权限审批的确认对话框 UI 组件 | 6 | 17 | [规格](ui/confirm-ui.md) |
 | AskUserQuestion 工具 | 结构化用户交互工具，支持选项 | 3 | 11 | [规格](ui/ask-user-tool.md) |
 | Clear 命令 | `/clear` 命令重置对话历史和会话 | 2 | 6 | [规格](ui/clear-command.md) |
-| Rewind 命令 | `/rewind` 回退对话到上一条用户消息，同时回退文件变更 | 3 | 10 | [规格](ui/rewind-command.md) |
+| Rewind 命令 | `/rewind` 回退对话到上一条用户消息，同时回退文件变更 | 4 | 16 | [规格](ui/rewind-command.md) |
 | Print 模式 | `-p` 模式下的纯净响应输出，抑制所有子代理内部信息 | 4 | 10 | [规格](ui/print-mode.md) |
 | 工具选择 | CLI `--tools` 标志限制 agent 使用特定工具集 | 4 | 8 | [规格](ui/tools-selection.md) |
 | 斜杠命令 | 用户可调用的自定义斜杠命令系统 | 6 | 22 | [规格](ui/slash-commands.md) |

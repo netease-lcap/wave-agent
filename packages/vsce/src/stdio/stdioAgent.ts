@@ -282,6 +282,16 @@ export class StdioAgent {
         )) as { messages: Message[]; sessionIds: string[] };
     }
 
+    async listRewindCheckpoints(): Promise<{
+        checkpoints: Array<{ id: string; content: string }>;
+    }> {
+        return (await this.client.request(
+            'listRewindCheckpoints',
+            undefined,
+            this.sessionId,
+        )) as { checkpoints: Array<{ id: string; content: string }> };
+    }
+
     // ── Permissions ───────────────────────────────────────────────
 
     async setPermissionMode(mode: PermissionMode): Promise<void> {

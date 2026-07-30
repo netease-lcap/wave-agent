@@ -36,6 +36,7 @@ import {
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
+  getMessageContent,
   PromptHistoryManager,
   AuthService,
   PluginCore,
@@ -169,6 +170,8 @@ export class AgentBridge {
         return this.clearMessages(sessionId);
       case "rewindToMessage":
         return this.rewindToMessage(p.messageId as string, sessionId);
+      case "listRewindCheckpoints":
+        return this.listRewindCheckpoints(sessionId);
       case "deleteQueuedMessage":
         return this.deleteQueuedMessage(p.index as number, sessionId);
       case "updateQueuedMessage":
@@ -660,6 +663,20 @@ export class AgentBridge {
       | undefined;
     await entry.agent.truncateHistory(index);
     return { inputContent: textBlock?.content || "" };
+  }
+
+  private async listRewindCheckpoints(sessionId?: string): Promise<{
+    checkpoints: Array<{ id: string; content: string }>;
+  }> {
+    const entry = this.requireSession(sessionId);
+    const { messages } = await entry.agent.getFullMessageThread();
+    const checkpoints = messages
+      .filter((m) => m.role === "user" && !m.isMeta && m.id)
+      .map((m) => ({
+        id: m.id as string,
+        content: getMessageContent(m).replace(/\s+/g, " ").trim(),
+      }));
+    return { checkpoints };
   }
 
   private deleteQueuedMessage(index: number, sessionId?: string): null {

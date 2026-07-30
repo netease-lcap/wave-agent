@@ -7,6 +7,8 @@ import { TaskList } from './TaskList';
 import { QueuedMessageList } from './QueuedMessageList';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { ConfirmDialog } from './ConfirmDialog';
+import { RewindPopup } from './RewindPopup';
+import type { RewindCheckpoint } from './RewindPopup';
 import ConfigDialog from './ConfigDialog';
 import PluginDialog from './PluginDialog';
 import McpDialog from './McpDialog';
@@ -91,6 +93,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
   // Message id awaiting rewind confirmation; non-null shows the ConfirmDialog.
   const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
+  // /rewind popup: checkpoint list requested from the host on open.
+  const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
+  const [rewindCheckpoints, setRewindCheckpoints] = useState<RewindCheckpoint[]>([]);
+  const [rewindCheckpointsLoading, setRewindCheckpointsLoading] = useState(false);
   // Desktop new-session worktree controls (FR-022/FR-023).
   const [worktreeBranch, setWorktreeBranch] = useState<string>('');
   const [worktreeChecked, setWorktreeChecked] = useState(true);
@@ -279,6 +285,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         case 'updateCommandRunning':
           if (!forThisPane(message)) break;
           dispatch({ type: 'SET_COMMAND_RUNNING', payload: message.running });
+          break;
+        case 'rewindCheckpoints':
+          if (!forThisPane(message)) break;
+          setRewindCheckpoints(message.checkpoints || []);
+          setRewindCheckpointsLoading(false);
           break;
         // Test-only handlers
         case 'startStreaming':
@@ -543,6 +554,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     }
     if (trimmedText === '/tasks') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'tasks' } }); return; }
     if (trimmedText === '/workflows' || trimmedText === '/workflows ') { dispatch({ type: 'SHOW_DIALOG', payload: { type: 'workflows' } }); return; }
+    if (trimmedText === '/rewind') {
+      if (stateRef.current.isStreaming) return;
+      setRewindPopupOpen(true);
+      setRewindCheckpointsLoading(true);
+      postToHost({ command: 'listRewindCheckpoints' });
+      return;
+    }
 
     // Desktop worktree flow (FR-023): on the first message of a new session
     // with the worktree checkbox on, create the worktree first — the main
@@ -715,6 +733,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     if (state.isStreaming) return;
     setPendingRewindId(messageId);
   }, [state.isStreaming]);
+
+  // /rewind popup selection reuses the same ConfirmDialog flow as the
+  // per-message rewind button.
+  const handleRewindCheckpointSelect = useCallback((messageId: string) => {
+    setRewindPopupOpen(false);
+    setPendingRewindId(messageId);
+    messageInputRef.current?.focus();
+  }, []);
+
+  const handleRewindPopupClose = useCallback(() => {
+    setRewindPopupOpen(false);
+    messageInputRef.current?.focus();
+  }, []);
 
   const handleRewindConfirm = useCallback(() => {
     const messageId = pendingRewindId;
@@ -1073,6 +1104,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       )}
 
       <div className="input-area-container">
+        <RewindPopup
+          isVisible={rewindPopupOpen}
+          isLoading={rewindCheckpointsLoading}
+          checkpoints={rewindCheckpoints}
+          onSelect={handleRewindCheckpointSelect}
+          onClose={handleRewindPopupClose}
+        />
         <div style={{ display: state.pendingConfirmations.length === 0 ? 'block' : 'none' }}>
           <TaskList
             tasks={state.tasks}
