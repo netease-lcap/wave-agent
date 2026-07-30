@@ -142,4 +142,54 @@ describe("MessageManager Single-Session Rewind", () => {
     expect(currentMessages[0].blocks[0].type).toBe("compact");
     expect((currentMessages[1].blocks[0] as TextBlock).content).toBe("user1");
   });
+
+  it("should allow rewinding past the compact boundary to a pre-compact message", async () => {
+    // Full thread as stored on disk: pre-compact messages are still present
+    const messages = [
+      {
+        id: "msg1",
+        role: "user",
+        blocks: [{ type: "text", content: "old_user1" }],
+      },
+      {
+        id: "msg2",
+        role: "assistant",
+        blocks: [{ type: "text", content: "old_assistant1" }],
+      },
+      {
+        id: "msg3",
+        role: "user",
+        blocks: [{ type: "text", content: "old_user2" }],
+      },
+      {
+        id: "msg4",
+        role: "assistant",
+        blocks: [{ type: "compact", content: "summary" }],
+      },
+      {
+        id: "msg5",
+        role: "user",
+        blocks: [{ type: "text", content: "new_user" }],
+      },
+    ];
+
+    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
+      messages: messages as Message[],
+      sessionIds: [messageManager.getSessionId()],
+    });
+
+    messageManager.setMessages(messages as Message[]);
+
+    // Rewind to old_user2 (index 2): drops it, the compact summary, and everything after
+    await messageManager.truncateHistory(2);
+
+    const currentMessages = messageManager.getMessages();
+    expect(currentMessages.length).toBe(2);
+    expect((currentMessages[0].blocks[0] as TextBlock).content).toBe(
+      "old_user1",
+    );
+    expect((currentMessages[1].blocks[0] as TextBlock).content).toBe(
+      "old_assistant1",
+    );
+  });
 });

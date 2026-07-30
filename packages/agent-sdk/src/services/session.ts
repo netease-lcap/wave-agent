@@ -825,7 +825,9 @@ export async function handleSessionRestoration(
 /**
  * Load the full message thread for a session.
  * With append-only compaction, all messages are in a single file.
- * Returns the active messages (post-compact boundary).
+ * Unlike loadSessionFromJsonl, this returns every message in the file,
+ * including those before the last compact boundary — rewind needs the
+ * complete history to allow rewinding past compaction points.
  * @param currentSessionId - The ID of the current session
  * @param workdir - Working directory for the session
  * @returns Promise that resolves to an array of all messages in the thread
@@ -834,7 +836,19 @@ export async function loadFullMessageThread(
   currentSessionId: string,
   workdir: string,
 ): Promise<{ messages: Message[]; sessionIds: string[] }> {
-  const sessionData = await loadSessionFromJsonl(currentSessionId, workdir);
-  if (!sessionData) return { messages: [], sessionIds: [] };
-  return { messages: sessionData.messages, sessionIds: [currentSessionId] };
+  const jsonlHandler = new JsonlHandler();
+  const filePath = await generateSessionFilePath(
+    currentSessionId,
+    workdir,
+    "main",
+  );
+
+  try {
+    await fs.access(filePath);
+  } catch {
+    return { messages: [], sessionIds: [] };
+  }
+
+  const messages = await jsonlHandler.read(filePath);
+  return { messages, sessionIds: [currentSessionId] };
 }

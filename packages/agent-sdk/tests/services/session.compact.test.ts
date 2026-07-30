@@ -210,21 +210,28 @@ describe("Session Append-Only Compaction", () => {
     );
   });
 
-  it("loadFullMessageThread returns current session's active messages only (no session chain)", async () => {
+  it("loadFullMessageThread returns the complete message thread including pre-compact messages", async () => {
     const sessionId = "test-session-5";
-    const messages = [
-      makeCompactMessage("summary"),
-      makeMessage("user", "current msg"),
+
+    // File contains: [old_user, old_assistant, compact1, user1, assistant1, compact2, user2]
+    const allMessagesInFile: Message[] = [
+      makeMessage("user", "old_user"),
+      makeMessage("assistant", "old_assistant"),
+      makeCompactMessage("first summary"),
+      makeMessage("user", "user1"),
+      makeMessage("assistant", "assistant1"),
+      makeCompactMessage("second summary"),
+      makeMessage("user", "user2"),
     ];
 
-    mockRead.mockResolvedValue(messages);
+    mockRead.mockResolvedValue(allMessagesInFile);
 
     const result = await loadFullMessageThread(sessionId, testWorkdir);
 
-    // Returns only this session's active messages, single session ID
-    expect(result.messages.length).toBe(2);
+    // Rewind needs the full thread: every message in the file, unfiltered
+    expect(result.messages.length).toBe(7);
+    expect(result.messages).toEqual(allMessagesInFile);
     expect(result.sessionIds).toEqual([sessionId]);
-    expect(result.sessionIds.length).toBe(1);
   });
 
   it("no sessions-index.json is created or read during listAllSessions", async () => {
