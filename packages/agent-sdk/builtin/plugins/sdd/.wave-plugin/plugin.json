@@ -1,0 +1,8 @@
+{
+  "name": "sdd",
+  "description": "Spec-first workflow: specify skill, SessionStart guidance, and spec-count validation.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Wave Team"
+  }
+}

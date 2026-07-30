@@ -33,7 +33,8 @@
     ]
   },
   "enabledPlugins": {
-    "typescript-lsp@wave-plugins-official": true
+    "typescript-lsp@wave-plugins-official": true,
+    "sdd@builtin": true
   },
   "hooks": {
     "WorktreeCreate": [

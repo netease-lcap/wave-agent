@@ -12,6 +12,7 @@ import {
   PartialHookConfiguration,
 } from "../../src/types/index.js";
 import * as path from "path";
+import { existsSync, readdirSync } from "fs";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { HookManager } from "../../src/managers/hookManager.js";
 import { LspManager } from "../../src/managers/lspManager.js";
@@ -31,6 +32,11 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 
 vi.mock("../../src/services/pluginLoader.js");
 vi.mock("../../src/services/MarketplaceService.js");
+
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs");
+  return { ...actual, existsSync: vi.fn(), readdirSync: vi.fn() };
+});
 
 describe("PluginManager", () => {
   let pluginManager: PluginManager;
@@ -420,6 +426,154 @@ describe("PluginManager", () => {
       expect(pluginManager.getPlugin("p1")).toBeDefined();
       expect(pluginManager.getPlugin("p2")).toBeDefined();
       expect(pluginManager.getPlugin("p3")).toBeUndefined();
+    });
+  });
+
+  describe("loadBuiltinPlugins", () => {
+    const dirEntries = (names: string[], dirs: string[]) =>
+      names.map((name) => ({
+        name,
+        isDirectory: () => dirs.includes(name),
+      })) as unknown as Awaited<ReturnType<typeof readdirSync>>;
+
+    // Helper: enable a set of <name>@builtin plugins via the merged config.
+    const enableBuiltins = (...names: string[]) => {
+      const enabled: Record<string, boolean> = {};
+      for (const n of names) enabled[`${n}@builtin`] = true;
+      (
+        pluginManager as unknown as {
+          mockConfigurationService: {
+            getMergedEnabledPlugins: ReturnType<typeof vi.fn>;
+          };
+        }
+      ).mockConfigurationService.getMergedEnabledPlugins.mockReturnValue(
+        enabled,
+      );
+    };
+
+    beforeEach(() => {
+      // Default: builtin directory absent so existing flows stay isolated.
+      vi.mocked(existsSync).mockReturnValue(false);
+      vi.mocked(readdirSync).mockReturnValue([]);
+    });
+
+    it("should load a built-in plugin when enabled via <name>@builtin", async () => {
+      enableBuiltins("sdd");
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValue(
+        dirEntries(["sdd", "README.md"], ["sdd"]),
+      );
+
+      const manifest = {
+        name: "sdd",
+        version: "1.0.0",
+        description: "Spec-first workflow",
+      };
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue(
+        manifest as PluginManifest,
+      );
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+
+      await pluginManager.loadPlugins([]);
+
+      expect(pluginManager.getPlugins()).toHaveLength(1);
+      expect(pluginManager.getPlugin("sdd")).toBeDefined();
+      // Non-directory entries (e.g. README.md) are skipped.
+      expect(PluginLoader.loadManifest).toHaveBeenCalledTimes(1);
+      expect(existsSync).toHaveBeenCalledWith(
+        expect.stringContaining("builtin/plugins"),
+      );
+    });
+
+    it("should NOT load built-in plugins when not enabled (default off)", async () => {
+      // enabledPlugins is empty by default (getMergedEnabledPlugins returns {})
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValue(dirEntries(["sdd"], ["sdd"]));
+
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue({
+        name: "sdd",
+        version: "1.0.0",
+        description: "d",
+      } as PluginManifest);
+
+      await pluginManager.loadPlugins([]);
+
+      expect(pluginManager.getPlugins()).toHaveLength(0);
+      expect(PluginLoader.loadManifest).not.toHaveBeenCalled();
+    });
+
+    it("should skip loading when builtin directory does not exist", async () => {
+      enableBuiltins("sdd");
+      vi.mocked(existsSync).mockReturnValue(false);
+
+      await pluginManager.loadPlugins([]);
+
+      expect(pluginManager.getPlugins()).toHaveLength(0);
+      expect(readdirSync).not.toHaveBeenCalled();
+    });
+
+    it("should give config plugins priority over enabled builtins on name conflict", async () => {
+      enableBuiltins("sdd");
+      const configs: PluginConfig[] = [{ type: "local", path: "plugins/sdd" }];
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValue(dirEntries(["sdd"], ["sdd"]));
+
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue({
+        name: "sdd",
+        version: "1.0.0",
+        description: "d",
+      } as PluginManifest);
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+
+      await pluginManager.loadPlugins(configs);
+
+      expect(pluginManager.getPlugins()).toHaveLength(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("'sdd' is already loaded"),
+      );
+    });
+
+    it("should log error and continue when an enabled builtin plugin fails to load", async () => {
+      enableBuiltins("broken");
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValue(
+        dirEntries(["broken"], ["broken"]),
+      );
+
+      vi.mocked(PluginLoader.loadManifest).mockRejectedValue(
+        new Error("Manifest not found"),
+      );
+
+      await pluginManager.loadPlugins([]);
+
+      expect(pluginManager.getPlugins()).toHaveLength(0);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to load plugin from"),
+        expect.any(Error),
+      );
+    });
+
+    it("should not treat <name>@builtin entries as unknown marketplaces", async () => {
+      // An enabled builtin must not trip the marketplace auto-install "unknown"
+      // warning in loadInstalledPlugins — @builtin entries are skipped there.
+      enableBuiltins("sdd");
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readdirSync).mockReturnValue(dirEntries(["sdd"], ["sdd"]));
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue({
+        name: "sdd",
+        version: "1.0.0",
+        description: "d",
+      } as PluginManifest);
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+
+      await pluginManager.loadPlugins([]);
+
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("marketplace builtin is unknown"),
+      );
     });
   });
 });

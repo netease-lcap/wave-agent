@@ -59,12 +59,6 @@ Always use `pnpm` as the package manager.
 - **Preview**: `pnpm run docs:dev`
 - **Build**: `pnpm run docs:build` — this first runs Playwright demo tests to regenerate screenshots into `docs/public/screenshots/` (gitignored). A bare `vitepress build docs` fails on missing screenshot imports.
 
-## 📋 Spec-First Workflow
-
-- **需求增加或变更时，优先更新 spec**：任何功能需求的新增或变更，必须先更新对应的 `docs/specs/` 下的规格说明（新增用户故事、验收场景等），**待用户确认 spec 后再进行代码实现**。spec 是功能设计的权威来源，不是实现的 changelog。
-- **不确定是否算需求变更时也先动 spec**：边界模糊时宁可先写 spec 草稿请用户确认，不要直接改代码。
-- **新增或修改 spec 后**：运行 `node scripts/spec-count.js` 校验模板并查看统计（`docs/specs/index.md` 的统计表与规格列表由 VitePress 构建时动态生成，无需手动更新）。新增 spec 时在文件 frontmatter 中设置 `name`/`description`（`order` 可选，控制组内排序）。
-
 ## 🐛 Debugging
 
 - **Prefer temporary console.log/console.trace**: When diagnosing bugs, especially race conditions or complex flows, add temporary `console.log` or `console.trace` statements to trace execution rather than overthinking through static analysis. Run the code/tests, observe the actual output, then remove the logs once the issue is identified.

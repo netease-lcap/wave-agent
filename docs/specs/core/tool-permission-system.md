@@ -52,7 +52,7 @@ order: 130
 **验收场景**：
 1. **假设** `permissions.allow` 包含 `cd /tmp/*` 和 `ls`，**当**用户执行 `cd /tmp/test && ls` 时，**则**系统应该自动允许该命令。
 2. **假设** `permissions.allow` 包含 `cd /tmp/*` 但不包含 `rm *`，**当**用户执行 `cd /tmp/test && rm -rf /` 时，**则**系统不得自动允许，应该提示权限确认。
-3. **假设** `permissions.allow` 包含 `Bash(node scripts*)` 但不含任何 git 规则，且内置默认允许规则包含 `Bash(git diff*)`，**当**用户执行 `node scripts/spec-count.js && git diff --stat` 时，**则**系统应该自动允许该命令——链中各段可分别由不同规则来源（用户规则、内置默认规则等）覆盖，不要求单一规则来源覆盖所有段。
+3. **假设** `permissions.allow` 包含 `Bash(node scripts*)` 但不含任何 git 规则，且内置默认允许规则包含 `Bash(git diff*)`，**当**用户执行 `node scripts/version.js && git diff --stat` 时，**则**系统应该自动允许该命令——链中各段可分别由不同规则来源（用户规则、内置默认规则等）覆盖，不要求单一规则来源覆盖所有段。
 
 ### 用户故事：拒绝规则与优先级（优先级：P1）
 

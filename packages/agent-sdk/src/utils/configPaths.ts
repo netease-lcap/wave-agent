@@ -52,6 +52,13 @@ export function getBuiltinSubagentsDir(): string {
 }
 
 /**
+ * Get the builtin plugins directory path
+ */
+export function getBuiltinPluginsDir(): string {
+  return join(getPackageRoot(), "builtin", "plugins");
+}
+
+/**
  * Get the user-specific configuration file path (legacy function)
  * @deprecated Use getUserConfigPaths() for better priority support
  */
