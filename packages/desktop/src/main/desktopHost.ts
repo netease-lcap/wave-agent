@@ -440,8 +440,12 @@ export class DesktopHost {
           });
           this.pushPanes();
         }
-        this.registerSessionInIndex(agentRef, sessionId);
-        this.refreshSessionTree();
+        // /clear 换来的新空会话不进索引（否则侧边栏出现空标题条目）；与品牌
+        // 新会话一致，待首条用户消息时由 ensureSessionRegistered 登记。
+        if (agentRef.messages.length > 0) {
+          this.registerSessionInIndex(agentRef, sessionId);
+          this.refreshSessionTree();
+        }
       },
       onPermissionModeChange: (mode: PermissionMode) => {
         const paneId = paneIdOf();
@@ -1387,7 +1391,20 @@ export class DesktopHost {
         await this.agentForPane(pid)?.abortMessage();
         break;
 
-      case 'clearChat':
+      case 'clearChat': {
+        // 与 IDE 插件对齐：/clear 原地清空当前会话（agent.clearMessages 会
+        // 中止进行中的生成并换新 sessionId），不 spawn 新 agent。消息列表的
+        // 全量推送走显式 updateMessages（agent 的 messagesChange 缓存不直推）。
+        const agent = this.agentForPane(pid);
+        if (agent) {
+          await agent.clearMessages();
+          this.throttleFor(pid).forceNextUpdateImmediate = true;
+          this.throttledUpdateChatMessages(pid);
+        }
+        break;
+      }
+
+      case 'newSession':
         await this.handleNewSession(pid);
         break;
 

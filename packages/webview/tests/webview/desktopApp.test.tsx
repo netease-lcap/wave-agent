@@ -123,14 +123,14 @@ describe('DesktopApp', () => {
         expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'webviewReady' });
     });
 
-    it('should post clearChat from the sidebar new-chat button', () => {
+    it('should post newSession from the sidebar new-chat button', () => {
         const { vscode } = renderDesktopApp();
         sendCommand('desktopWorkdirState', { workdir: '/home/user/project', recentWorkdirs: [] });
         vscode.postMessage.mockClear();
 
         fireEvent.click(screen.getByTestId('desktop-new-session'));
 
-        expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'clearChat' });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'newSession' });
     });
 
     it('should update the workdir name and enable new-chat when a new workdir state arrives', () => {
