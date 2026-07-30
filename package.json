@@ -35,7 +35,7 @@
     "desktop:dev": "pnpm -F wave-webview build && pnpm -F wave-desktop run dev",
     "desktop:build": "pnpm -F wave-webview build && pnpm -F wave-desktop run compile",
     "desktop:package": "pnpm -F wave-webview build && pnpm -F wave-desktop run dist",
-    "desktop:install": "pnpm -F wave-webview build && pnpm -F wave-desktop run compile && pnpm -F wave-desktop exec electron-builder --dir && rsync -a --delete packages/desktop/release/mac-arm64/Wave.app/ /Applications/Wave.app/",
+    "desktop:install": "pnpm build && pnpm -F wave-desktop exec electron-builder --dir && rsync -a --delete packages/desktop/release/mac-arm64/Wave.app/ /Applications/Wave.app/",
     "prepare": "husky"
   },
   "devDependencies": {
