@@ -735,25 +735,34 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
   const isDesktop = host?.type === 'desktop';
 
-  // Check a panel on: refuse when the remaining space in its assigned row
-  // would drop below the minimum. Mounting is sticky — unchecking only hides.
+  // Check a panel on: when its assigned row lacks the width, a first-row panel
+  // spills into the second row (creating it when the body is tall enough);
+  // only refuse when no row can take it. Mounting is sticky — unchecking only
+  // hides.
   const tryOpenPanel = useCallback((kind: DesktopPanelKind): boolean => {
-    const row = panelRowsRef.current[kind];
+    const assigned = panelRowsRef.current[kind];
     const containerW = chatContainerRef.current?.getBoundingClientRect().width;
-    if (containerW) {
+    // First-row panels share their line with the message area; second-row
+    // panels may span the full width.
+    const fitsInRow = (row: PanelRow): boolean => {
+      if (!containerW) return true;
       const used =
         checkedPanelsRef.current
           .filter((k) => panelRowsRef.current[k] === row)
           .reduce((sum, k) => sum + panelWidthsRef.current[k], 0) + panelWidthsRef.current[kind];
-      // First-row panels share their line with the message area; second-row
-      // panels may span the full width.
-      if (containerW - used < (row === 1 ? CHAT_MAIN_MIN_WIDTH : 0)) {
+      return containerW - used >= (row === 1 ? CHAT_MAIN_MIN_WIDTH : 0);
+    };
+    let row = assigned;
+    if (!fitsInRow(row)) {
+      if (row === 1 && fitsInRow(2)) {
+        row = 2;
+      } else {
         showPanelHint('空间不足，无法开启面板');
         return false;
       }
     }
-    // Rechecking a second-row panel while no second row is shown re-creates
-    // it — refuse when the body is too short for both row minimums.
+    // Landing in the second row while none is shown (re)creates it — refuse
+    // when the body is too short for both row minimums.
     if (row === 2 && !checkedPanelsRef.current.some((k) => panelRowsRef.current[k] === 2)) {
       const bodyH = chatBodyRef.current?.getBoundingClientRect().height;
       if (bodyH) {
@@ -764,6 +773,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         if (panelRowHeightRef.current == null) setPanelRowHeight(defaultPanelRowHeight(bodyH));
       }
     }
+    if (row !== assigned) setPanelRows((prev) => ({ ...prev, [kind]: row }));
     setCheckedPanels((prev) => (prev.includes(kind) ? prev : [...prev, kind]));
     setMountedPanels((prev) => (prev.includes(kind) ? prev : [...prev, kind]));
     return true;

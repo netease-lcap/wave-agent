@@ -608,9 +608,12 @@ export class DesktopHost {
    * target row (drop on a pane gap); `opts.row` picks the row (default: the
    * focused pane's row); `opts.newRow` ('above'|'below') splits the single row
    * into two and puts the new pane alone in the fresh row. A session already
-   * visible in a pane focuses that pane instead of duplicating it. Existing
-   * panes in the target row shrink proportionally so the layout keeps the
-   * user's manual ratios.
+   * visible in a pane focuses that pane instead of duplicating it. A drag drop
+   * names its target row and is always honored — the row scrolls horizontally
+   * below the min width, same as pane moves. A click without a target spills
+   * into the other row (or a fresh second row) when the focused row is full,
+   * and refuses only when nothing fits. Existing panes in the target row
+   * shrink proportionally so the layout keeps the user's manual ratios.
    */
   private async handleOpenPane(workdir: string, sessionId: string, opts?: unknown): Promise<void> {
     if (!sessionId) return;
@@ -637,10 +640,23 @@ export class DesktopHost {
       if (newRow === 'above') this.panes.forEach((p) => { p.row = 1; });
       this.panes.push({ paneId, agent: null, row: newRow === 'above' ? 0 : 1 });
     } else {
-      const targetRow = optRow ?? (newRow === 'above' ? 0 : newRow === 'below' ? 1 : this.rowOfPane(this.focusedPaneId));
-      if (!this.canAddPane(targetRow)) {
-        this.pushSystemMessage('窗口宽度不足，无法添加更多分屏', this.focusedPaneId);
-        return;
+      // A drag drop names its target row and skips the width gate; a click
+      // overflows into the other row, a fresh second row, or a refusal.
+      const named = optRow !== undefined;
+      let targetRow = optRow ?? (newRow === 'above' ? 0 : newRow === 'below' ? 1 : this.rowOfPane(this.focusedPaneId));
+      if (!named && !this.canAddPane(targetRow)) {
+        const otherRow = targetRow === 0 ? 1 : 0;
+        if (hasSecondRow && this.canAddPane(otherRow)) {
+          targetRow = otherRow;
+        } else if (!hasSecondRow && this.canSplitRows()) {
+          targetRow = 1;
+        } else {
+          this.pushSystemMessage(
+            hasSecondRow ? '窗口宽度不足，无法添加更多分屏' : '空间不足，无法添加更多分屏',
+            this.focusedPaneId,
+          );
+          return;
+        }
       }
       const rowPanes = this.panes.filter((p) => (p.row ?? 0) === targetRow);
       const count = rowPanes.length;

@@ -1923,6 +1923,93 @@ describe('pane rows (two-row layout)', () => {
     expect(lastSystemMessage(sent)?.blocks[0].content).toBe('窗口高度不足，无法拆分为两行');
   });
 
+  it('desktopOpenPane without a target row spills into a fresh second row when the single row is full', async () => {
+    // chatArea = 900 - 240 = 660px: one pane fits (660), two would not (330).
+    const { host, sent } = await readyHost(900, 800);
+    seedActiveSession('sess-1');
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+      ['sess-1', 0],
+      ['sess-2', 1],
+    ]);
+    expect(layout.rowHeights).toEqual([0.5, 0.5]);
+    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+  });
+
+  it('desktopOpenPane without a target row overflows into the other row when the focused row is full', async () => {
+    // chatArea = 1200 - 240 = 960px: row 0 with two panes is full (960/3 =
+    // 320 < 360), row 1 with one pane still fits a second (960/2 = 480).
+    const { host, sent } = await readyHost(1200, 800);
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3', newRow: 'below' });
+    // Layout: row0 [sess-1, sess-2], row1 [sess-3]. Focus the top row.
+    const sess1Pane = panePushes(sent).at(-1)!.panes.find((p) => p.sessionId === 'sess-1')!;
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: sess1Pane.paneId });
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-4' });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+      ['sess-1', 0],
+      ['sess-2', 0],
+      ['sess-3', 1],
+      ['sess-4', 1],
+    ]);
+    // Row 0 keeps its ratios; row 1 splits evenly.
+    expect(layout.panes[0].width).toBeCloseTo(0.5);
+    expect(layout.panes[1].width).toBeCloseTo(0.5);
+    expect(layout.panes[2].width).toBeCloseTo(0.5);
+    expect(layout.panes[3].width).toBeCloseTo(0.5);
+  });
+
+  it('desktopOpenPane without a target row refuses with a hint when the full single row cannot split', async () => {
+    const { host, sent } = await readyHost(900, 500);
+    seedActiveSession('sess-1');
+    const spawned = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+
+    expect(h.agentInstances).toHaveLength(spawned);
+    expect(panePushes(sent).at(-1)!.panes).toHaveLength(1);
+    expect(lastSystemMessage(sent)?.blocks[0].content).toBe('空间不足，无法添加更多分屏');
+  });
+
+  it('desktopOpenPane without a target row refuses with a hint when both rows are full', async () => {
+    // chatArea = 660px: each row fits exactly one pane.
+    const { host, sent } = await readyHost(900, 800);
+    seedActiveSession('sess-1');
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
+    const sess1Pane = panePushes(sent).at(-1)!.panes.find((p) => p.sessionId === 'sess-1')!;
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: sess1Pane.paneId });
+    const spawned = h.agentInstances.length;
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3' });
+
+    expect(h.agentInstances).toHaveLength(spawned);
+    expect(panePushes(sent).at(-1)!.panes).toHaveLength(2);
+    expect(lastSystemMessage(sent)?.blocks[0].content).toBe('窗口宽度不足，无法添加更多分屏');
+  });
+
+  it('desktopOpenPane with a named target row squeezes into a narrow row like a pane move', async () => {
+    // chatArea = 660px: one pane fits, two would be 330px each — below the
+    // min width. A drag drop names its target row and is always honored.
+    const { host, sent } = await readyHost(900, 800);
+    seedActiveSession('sess-1');
+
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', row: 0 });
+
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+      ['sess-1', 0],
+      ['sess-2', 0],
+    ]);
+    expect(lastSystemMessage(sent)).toBeUndefined();
+  });
+
   it('desktopOpenPane with newRow targets the derived row when two rows already exist', async () => {
     const { host, sent } = await readyHost(1600);
     seedActiveSession('sess-1');
