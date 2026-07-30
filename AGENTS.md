@@ -49,7 +49,7 @@ Always use `pnpm` as the package manager.
 - **Test**: `pnpm run jb:test`
 
 ### Desktop App (`packages/desktop`)
-- **Run dev**: `cd packages/desktop && pnpm run dev` (compiles, then launches Electron; dev uses a separate `wave-desktop-dev` userData so it coexists with the installed app)
+- **Run dev**: `cd packages/desktop && pnpm run dev` (compiles, then launches Electron; dev uses a per-worktree `wave-desktop-dev-<hash>` userData keyed by app-path hash, so worktrees and the installed app all run side by side)
 - **Build installer**: `pnpm run dist` (electron-builder → `release/`). **Do not bypass `scripts/afterPack.js`**: electron-builder's bundle mutation breaks the ad-hoc linker seal, and without the re-sign step LaunchServices silently refuses to launch the app.
 - **Test**: `pnpm -F wave-desktop test`
 - **Architecture**: the main process wraps the shared webview and talks JSON-RPC to a `wave --stdio` child process — `src/main/desktopHost.ts` (agent pool: one `StdioAgent` per session for parallel conversations, see FR-031) → `stdio/stdioClient.ts` + `stdio/notificationRouter.ts` (routes notifications by sessionId). Session index/worktree metadata persists in `userData/wave-desktop.json` via `configStore.ts`.
