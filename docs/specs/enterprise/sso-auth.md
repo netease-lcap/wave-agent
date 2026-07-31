@@ -109,6 +109,5 @@ order: 10
 - **如果浏览器无法打开（无头服务器）会怎样？** 认证服务器保持活动，用户可以手动打开 URL 并粘贴授权码。
 - **如果用户将来在 `auth.json` 中保存额外字段会怎样？** `saveAuth` 方法与现有配置合并，保留非 SSO_TOKEN 字段。
 - **如果 token 过期（JWT 默认 8 小时）会怎样？** 系统在过期前 5 分钟使用存储的 refresh token 主动刷新 token。如果 refresh token 被撤销（400/401），认证被清除，用户必须重新运行 `/login`。在刷新期间的瞬时网络错误中，保留现有 token，重试在下次请求时进行。
-- **如果服务端返回 401/403 但本地认为 token 仍在有效期会怎样？**（token 被服务端主动吊销、白名单变更、时钟偏移、`auth.json` 缺失 `SSO_TOKEN_EXPIRES_AT` 等）401/403 是服务端对 token 失效的权威反馈，比本地基于 `SSO_TOKEN_EXPIRES_AT` 的推断更可靠。recovery 分支**不**依赖 `isTokenExpired()` 判断，无条件尝试一次强制刷新（force refresh，绕过本地过期判断，复用 `_refreshPromise` 去重）；刷新成功则用新 token 重试一次原请求，刷新失败（refresh token 被撤销返回 400/401、无 refresh token、或网络错误）则返回原始 401 响应。每次请求的 recovery 只重试一次，不无限循环。
 - **如果 SSO 登录超时（5 分钟）会怎样？** 认证服务器关闭并显示错误。用户可以重试 `/login`。
 
