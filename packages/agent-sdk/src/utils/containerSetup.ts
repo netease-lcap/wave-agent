@@ -227,7 +227,9 @@ export function setupAgentContainer(
             toolInput: context.toolInput,
             planFilePath: permissionManager.getPlanFilePath(),
             env: Object.fromEntries(
-              Object.entries(process.env).filter((e) => e[1] !== undefined),
+              Object.entries(configurationService.getMergedEnv()).filter(
+                (e) => e[1] !== undefined,
+              ),
             ) as Record<string, string>,
           });
 

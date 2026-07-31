@@ -26,6 +26,7 @@ import { executeCommand, isCommandSafe } from "../services/hook.js";
 import { MessageSource } from "../types/index.js";
 import type { MessageManager } from "./messageManager.js";
 import { Container } from "../utils/container.js";
+import type { ConfigurationService } from "../services/configurationService.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -44,6 +45,19 @@ export class HookManager {
   ) {
     this.workdir = workdir;
     this.matcher = matcher;
+  }
+
+  /**
+   * Merged env for this session (OS env overlaid with the per-session settings
+   * snapshot). Hook subprocesses spawn with this env so settings.json `env`
+   * vars reach hooks without polluting other sessions in one stdio process.
+   */
+  private get sessionEnv(): Record<string, string> {
+    return (
+      this.container
+        .get<ConfigurationService>("ConfigurationService")
+        ?.getMergedEnv?.() ?? (process.env as Record<string, string>)
+    );
   }
 
   /**
@@ -935,7 +949,7 @@ export class HookManager {
       source,
       agentType,
       env: Object.fromEntries(
-        Object.entries(process.env).filter((e) => e[1] !== undefined),
+        Object.entries(this.sessionEnv).filter((e) => e[1] !== undefined),
       ) as Record<string, string>,
     };
 
@@ -989,7 +1003,7 @@ export class HookManager {
       cwd: this.workdir,
       endSource: source,
       env: Object.fromEntries(
-        Object.entries(process.env).filter((e) => e[1] !== undefined),
+        Object.entries(this.sessionEnv).filter((e) => e[1] !== undefined),
       ) as Record<string, string>,
     };
 
@@ -1024,7 +1038,7 @@ export class HookManager {
       cwd: this.workdir,
       compactInstructions: customInstructions,
       env: Object.fromEntries(
-        Object.entries(process.env).filter((e) => e[1] !== undefined),
+        Object.entries(this.sessionEnv).filter((e) => e[1] !== undefined),
       ) as Record<string, string>,
     };
 
@@ -1061,7 +1075,7 @@ export class HookManager {
       cwd: this.workdir,
       compactSummary,
       env: Object.fromEntries(
-        Object.entries(process.env).filter((e) => e[1] !== undefined),
+        Object.entries(this.sessionEnv).filter((e) => e[1] !== undefined),
       ) as Record<string, string>,
     };
 

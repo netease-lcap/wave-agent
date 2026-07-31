@@ -128,9 +128,10 @@ export class InitializationService {
 
     // Load remote settings disk cache synchronously.
     // Must happen BEFORE loadMergedConfiguration so cached managed settings
-    // (env, model, disallowedTools) are merged and applied to process.env.
-    // The network fetch is deferred until after loadMergedConfiguration (below)
-    // so settings.json env vars (e.g. WAVE_SERVER_URL) are in process.env first.
+    // (env, model, disallowedTools) are merged into the config. Settings `env`
+    // is stored in the per-session env snapshot (NOT process.env); the network
+    // fetch is deferred until after merge (below) and reads OS-env
+    // WAVE_SERVER_URL via authService.getServerUrl(), so there is no race.
     try {
       const phaseStart = performance.now();
       await remoteSettingsService.initialize();
@@ -193,9 +194,10 @@ export class InitializationService {
       // Don't throw error to prevent app startup failure
     }
 
-    // Start remote settings network fetch + polling now that local env vars
-    // (e.g. WAVE_SERVER_URL) are applied to process.env by loadMergedConfiguration.
-    // Fire-and-forget: failures fall back to the cached/merged settings.
+    // Start remote settings network fetch + polling now that the config is
+    // merged. The fetch reads OS-env WAVE_SERVER_URL via authService.getServerUrl()
+    // (WAVE_SERVER_URL is OS-env-only); fire-and-forget, failures fall back to
+    // the cached/merged settings.
     remoteSettingsService.startBackgroundFetch();
 
     // Execute SessionStart hooks
@@ -245,7 +247,9 @@ export class InitializationService {
           cwd: workdir,
           worktreeName: agentOptions.worktreeName,
           env: Object.fromEntries(
-            Object.entries(process.env).filter((e) => e[1] !== undefined),
+            Object.entries(configurationService.getMergedEnv()).filter(
+              (e) => e[1] !== undefined,
+            ),
           ) as Record<string, string>,
         });
 

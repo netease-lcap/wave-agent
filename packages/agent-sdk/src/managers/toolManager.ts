@@ -253,6 +253,13 @@ class ToolManager {
             "WorkflowManager",
           )
         : undefined,
+      sessionEnv: this.container.has("ConfigurationService")
+        ? this.container
+            .get<
+              import("../services/configurationService.js").ConfigurationService
+            >("ConfigurationService")
+            ?.getMergedEnv?.()
+        : undefined,
       sessionId: context.sessionId,
       toolCallId: context.toolCallId,
     };

@@ -6,6 +6,7 @@ import { Task } from "../types/tasks.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
 import type { MessageManager } from "../managers/messageManager.js";
+import type { ConfigurationService } from "./configurationService.js";
 
 function byIdAsc(a: Task, b: Task) {
   const aNum = parseInt(a.id, 10);
@@ -44,7 +45,15 @@ export class TaskManager extends EventEmitter {
     if (!messageManager) return;
 
     const rootSessionId = messageManager.getRootSessionId();
-    if (this.taskListId !== rootSessionId && !process.env.WAVE_TASK_LIST_ID) {
+    // Read the per-session snapshot (not process.env) so multiple sessions in
+    // one `wave --stdio` process don't cross-pollute this flag.
+    const envSnap =
+      this.container
+        .get<ConfigurationService>("ConfigurationService")
+        ?.getEnvSnapshot() ?? {};
+    const pinnedTaskListId =
+      envSnap.WAVE_TASK_LIST_ID ?? process.env.WAVE_TASK_LIST_ID;
+    if (this.taskListId !== rootSessionId && !pinnedTaskListId) {
       this.setTaskListId(rootSessionId);
       await this.refreshTasks();
     }

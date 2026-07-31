@@ -206,10 +206,11 @@ export function initialize(): void {
 /**
  * Start the fire-and-forget initial network fetch + background polling.
  *
- * Must be called AFTER loadMergedConfiguration() so local settings.json env
- * vars (e.g. WAVE_SERVER_URL) are applied to process.env first — otherwise
- * getServerUrl() falls back to DEFAULT_SERVER_URL (prod) and a test-issued
- * token hits the prod endpoint (401).
+ * Must be called AFTER loadMergedConfiguration() so disk-cached managed
+ * settings are merged before the fetch. The fetch uses authService.getServerUrl(),
+ * which reads OS-env WAVE_SERVER_URL (present at process start) — it does NOT
+ * read the settings env snapshot, so there is no init-ordering race that would
+ * fall back to DEFAULT_SERVER_URL (prod) and hit a test endpoint (401).
  */
 export function startBackgroundFetch(): void {
   fetchRemoteSettings()

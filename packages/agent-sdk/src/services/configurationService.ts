@@ -61,12 +61,38 @@ export class ConfigurationService {
   private currentConfiguration: WaveConfiguration | null = null;
   private options: AgentOptions = {};
   private _configuredEnvKeys = new Set<string>();
+  // Per-session environment snapshot: settings.json `env` is stored here (NOT
+  // written to process.env) so multiple sessions in one `wave --stdio` process
+  // don't cross-pollute. Resolve methods read `this.envSnapshot ?? process.env`.
+  private envSnapshot: Record<string, string> = {};
 
   /**
    * Set agent options for configuration resolution
    */
   setOptions(options: AgentOptions): void {
     this.options = options;
+  }
+
+  /**
+   * Returns a copy of the per-session environment snapshot (settings.json `env`).
+   * Priority over OS env; does NOT include OS env. For subprocess spawning use
+   * {@link getMergedEnv} instead.
+   */
+  getEnvSnapshot(): Record<string, string> {
+    return { ...this.envSnapshot };
+  }
+
+  /**
+   * Returns OS env merged with the session snapshot (snapshot wins). Use this
+   * when spawning user-facing subprocesses (bash, hooks, bang, background, MCP)
+   * so they inherit both OS env and the session's settings env.
+   */
+  getMergedEnv(): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries({ ...process.env, ...this.envSnapshot }).filter(
+        ([, v]) => v !== undefined,
+      ),
+    ) as Record<string, string>;
   }
 
   // Core loading operations
@@ -384,15 +410,20 @@ export class ConfigurationService {
   // Utility operations
 
   /**
-   * Set environment variables from configuration
-   * This replaces direct process.env modification
+   * Store environment variables from configuration into the per-session
+   * snapshot (NOT process.env). Settings `env` shadows OS env for this session
+   * only — multiple sessions in one stdio process stay isolated.
    */
   setEnvironmentVars(env: Record<string, string>): void {
     for (const [key, value] of Object.entries(env)) {
-      if (process.env[key] !== undefined && !this._configuredEnvKeys.has(key)) {
+      if (
+        process.env[key] !== undefined &&
+        !this._configuredEnvKeys.has(key) &&
+        process.env[key] !== value
+      ) {
         logger.warn(`Overriding environment variable: ${key}`);
       }
-      process.env[key] = value;
+      this.envSnapshot[key] = value;
       this._configuredEnvKeys.add(key);
     }
   }
@@ -438,7 +469,11 @@ export class ConfigurationService {
     fetch?: ClientOptions["fetch"],
   ): GatewayConfig {
     // Check for SSO token first - if present and server URL is available, use SSO mode
-    // Server URL resolution: options > process.env > default
+    // Server URL resolution: options.serverUrl > OS env (WAVE_SERVER_URL) > default.
+    // WAVE_SERVER_URL is intentionally OS-env-only (NOT read from the settings env
+    // snapshot): AuthService is a process singleton with one server per process,
+    // and the background remote-settings fetch reads OS env present at process start,
+    // avoiding a startup 401 race. See docs/specs/core/agent-config.md.
     const ssoToken = this.readSSOToken();
     const serverUrl =
       this.options.serverUrl ||
@@ -469,7 +504,8 @@ export class ConfigurationService {
     } else if (this.options.apiKey !== undefined) {
       resolvedApiKey = this.options.apiKey;
     } else {
-      resolvedApiKey = process.env.WAVE_API_KEY;
+      resolvedApiKey =
+        this.envSnapshot.WAVE_API_KEY ?? process.env.WAVE_API_KEY;
     }
 
     // Resolve base URL: override > options > env (settings.json) > process.env
@@ -480,15 +516,18 @@ export class ConfigurationService {
     } else if (this.options.baseURL !== undefined) {
       resolvedBaseURL = this.options.baseURL;
     } else {
-      resolvedBaseURL = process.env.WAVE_BASE_URL;
+      resolvedBaseURL =
+        this.envSnapshot.WAVE_BASE_URL ?? process.env.WAVE_BASE_URL;
     }
 
     // Fallback to process.env if still not resolved (for dynamic updates in tests)
     if (resolvedApiKey === undefined) {
-      resolvedApiKey = process.env.WAVE_API_KEY;
+      resolvedApiKey =
+        this.envSnapshot.WAVE_API_KEY ?? process.env.WAVE_API_KEY;
     }
     if (!resolvedBaseURL) {
-      resolvedBaseURL = process.env.WAVE_BASE_URL;
+      resolvedBaseURL =
+        this.envSnapshot.WAVE_BASE_URL ?? process.env.WAVE_BASE_URL;
     }
 
     // Treat empty string as not provided
@@ -497,7 +536,10 @@ export class ConfigurationService {
     }
 
     // Resolve custom headers from environment: env (settings.json) > process.env
-    const envCustomHeaders = process.env.WAVE_CUSTOM_HEADERS || "";
+    const envCustomHeaders =
+      this.envSnapshot.WAVE_CUSTOM_HEADERS ??
+      process.env.WAVE_CUSTOM_HEADERS ??
+      "";
     const parsedEnvHeaders = parseCustomHeaders(envCustomHeaders);
 
     // Merge headers: env headers < options < override
@@ -539,11 +581,13 @@ export class ConfigurationService {
       model ||
       this.options.model ||
       this.currentConfiguration?.model ||
-      process.env.WAVE_MODEL;
+      (this.envSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
 
     // Resolve fast model: override > options > process.env (includes settings.json env)
     const resolvedFastModel =
-      fastModel || this.options.fastModel || process.env.WAVE_FAST_MODEL;
+      fastModel ||
+      this.options.fastModel ||
+      (this.envSnapshot.WAVE_FAST_MODEL ?? process.env.WAVE_FAST_MODEL);
 
     // Resolve max output tokens
     const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);
@@ -596,8 +640,10 @@ export class ConfigurationService {
       return this.options.maxInputTokens;
     }
 
-    // Try env (settings.json) first, then process.env
-    const envMaxInputTokens = process.env.WAVE_MAX_INPUT_TOKENS;
+    // Try env (settings.json snapshot) first, then process.env
+    const envMaxInputTokens =
+      this.envSnapshot.WAVE_MAX_INPUT_TOKENS ??
+      process.env.WAVE_MAX_INPUT_TOKENS;
     if (envMaxInputTokens) {
       const parsed = parseInt(envMaxInputTokens, 10);
       if (!isNaN(parsed)) {
@@ -645,9 +691,9 @@ export class ConfigurationService {
       return this.currentConfiguration.autoMemoryEnabled;
     }
 
-    // 2. WAVE_DISABLE_AUTO_MEMORY environment variable
+    // 2. WAVE_DISABLE_AUTO_MEMORY environment variable (settings snapshot > OS env)
     const disableAutoMemory =
-      process.env.WAVE_DISABLE_AUTO_MEMORY ||
+      this.envSnapshot.WAVE_DISABLE_AUTO_MEMORY ??
       process.env.WAVE_DISABLE_AUTO_MEMORY;
     if (disableAutoMemory === "1" || disableAutoMemory === "true") {
       return false;
@@ -681,9 +727,9 @@ export class ConfigurationService {
       return this.currentConfiguration.autoMemoryFrequency;
     }
 
-    // 2. WAVE_AUTO_MEMORY_FREQUENCY environment variable
+    // 2. WAVE_AUTO_MEMORY_FREQUENCY environment variable (settings snapshot > OS env)
     const envFrequency =
-      process.env.WAVE_AUTO_MEMORY_FREQUENCY ||
+      this.envSnapshot.WAVE_AUTO_MEMORY_FREQUENCY ??
       process.env.WAVE_AUTO_MEMORY_FREQUENCY;
     if (envFrequency) {
       const parsed = parseInt(envFrequency, 10);
@@ -713,8 +759,10 @@ export class ConfigurationService {
       return this.options.maxTokens;
     }
 
-    // Try env (settings.json) first, then process.env
-    const envMaxOutputTokens = process.env.WAVE_MAX_OUTPUT_TOKENS;
+    // Try env (settings.json snapshot) first, then process.env
+    const envMaxOutputTokens =
+      this.envSnapshot.WAVE_MAX_OUTPUT_TOKENS ??
+      process.env.WAVE_MAX_OUTPUT_TOKENS;
     if (envMaxOutputTokens) {
       const parsed = parseInt(envMaxOutputTokens, 10);
       if (!isNaN(parsed) && parsed > 0) {
@@ -761,8 +809,10 @@ export class ConfigurationService {
   getConfiguredModels(): string[] {
     const models = new Set<string>();
 
-    // Add current model from options or environment
-    const currentModel = this.options.model || process.env.WAVE_MODEL;
+    // Add current model from options or environment (settings snapshot > OS env)
+    const currentModel =
+      this.options.model ||
+      (this.envSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
     if (currentModel) {
       models.add(currentModel);
     }

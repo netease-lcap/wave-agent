@@ -127,4 +127,11 @@ export interface ToolContext {
   originalWorkdir?: string;
   /** Workflow manager instance for workflow orchestration */
   workflowManager?: import("../managers/workflowManager.js").WorkflowManager;
+  /**
+   * Per-session merged environment (OS env overlaid with the settings env
+   * snapshot) for this session. Tools that spawn subprocesses (Bash, hooks)
+   * should merge this on top of `process.env` so settings `env` vars reach
+   * the subprocess without polluting other sessions in one stdio process.
+   */
+  sessionEnv?: Record<string, string>;
 }

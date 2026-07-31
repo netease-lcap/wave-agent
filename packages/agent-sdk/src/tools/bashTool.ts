@@ -285,6 +285,7 @@ The working directory persists between commands. Try to maintain your current wo
         cwd: context.workdir,
         env: {
           ...process.env,
+          ...context.sessionEnv,
         },
       });
 
