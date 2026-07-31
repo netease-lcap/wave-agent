@@ -355,6 +355,7 @@ export interface PanelToggleProps {
 
 export interface ChatHeaderProps {
   onNewSession: () => void;
+  newSessionDisabled?: boolean;
   onAbortMessage: () => void;
   messages: Message[];
   sessions: SessionMetadata[];

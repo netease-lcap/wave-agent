@@ -5,7 +5,6 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
-import com.wave.jetbrains.WavePanelHolder
 import com.wave.jetbrains.config.WavePluginService
 import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.StdioClientException
@@ -80,9 +79,6 @@ class MessageHandler(
                 postMessage("updateMessages", buildJsonObject { put("messages", JsonArray(emptyList())) })
                 postMessage("updateQueue", buildJsonObject { put("queue", JsonArray(emptyList())) })
             }
-            // 顶部"新建会话"按钮：新开工具窗口标签页承载全新会话（与 NewWaveTabAction 同路径），
-            // 当前会话所在标签页不受影响。addChatTab 内部自行切到 EDT。
-            "newChatTab" -> WavePanelHolder.getInstance(project).addChatTab()
             "compact" -> {
                 val customInstructions = msg["customInstructions"]?.jsonPrimitive?.content
                 session.agent?.compact(customInstructions)

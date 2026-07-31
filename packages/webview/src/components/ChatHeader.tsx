@@ -10,6 +10,7 @@ import '../styles/ChatHeader.css';
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onNewSession,
+  newSessionDisabled = false,
   messages,
   sessions,
   currentSession,
@@ -40,6 +41,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               <button
                 className="header-button"
                 onClick={onNewSession}
+                disabled={newSessionDisabled}
                 data-testid="new-session-btn"
                 aria-label="新建会话"
               >

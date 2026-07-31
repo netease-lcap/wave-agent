@@ -14,7 +14,7 @@ describe('Streaming Button States', () => {
         vi.clearAllMocks();
     });
 
-    it('should swap send/abort buttons during streaming while new session stays enabled', () => {
+    it('should swap send/abort buttons during streaming while new session is disabled', () => {
         renderChatApp();
 
         // Verify initial state - all buttons should be enabled
@@ -26,8 +26,8 @@ describe('Streaming Button States', () => {
         // Start streaming
         sendCommand('startStreaming');
 
-        // Send swaps to abort during streaming; new session stays enabled (opens a new tab)
-        expect(newSessionBtn).not.toBeDisabled();
+        // Send swaps to abort during streaming; new session is disabled (prevents clearing mid-generation)
+        expect(newSessionBtn).toBeDisabled();
         expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
         expect(screen.queryByTestId('send-btn')).not.toBeInTheDocument();
 
@@ -42,7 +42,7 @@ describe('Streaming Button States', () => {
         // Start streaming
         sendCommand('startStreaming');
         const newSessionBtn = screen.getByTestId('new-session-btn');
-        expect(newSessionBtn).not.toBeDisabled();
+        expect(newSessionBtn).toBeDisabled();
 
         // End streaming by updating with final messages
         sendCommand('updateMessages', {
@@ -67,7 +67,7 @@ describe('Streaming Button States', () => {
         expect(input.textContent).toBe('');
     });
 
-    it('should request a new chat tab during streaming without touching current messages', () => {
+    it('should keep new session button disabled during streaming without touching current messages', () => {
         const { vscode } = renderChatApp();
 
         // Add some messages first
@@ -102,14 +102,14 @@ describe('Streaming Button States', () => {
         // Clear message log to track new commands
         vscode.postMessage.mockClear();
 
-        // New session button stays enabled during streaming; clicking requests a new tab
+        // New session button is disabled during streaming; clicking does nothing
         const newSessionBtn = screen.getByTestId('new-session-btn');
-        expect(newSessionBtn).not.toBeDisabled();
+        expect(newSessionBtn).toBeDisabled();
         fireEvent.click(newSessionBtn);
 
         const sentMessages = vscode.postMessage.mock.calls.map(c => c[0]);
-        expect(sentMessages.filter((msg: Record<string, unknown>) => msg.command === 'newChatTab')).toHaveLength(1);
         expect(sentMessages.filter((msg: Record<string, unknown>) => msg.command === 'clearChat')).toHaveLength(0);
+        expect(sentMessages.filter((msg: Record<string, unknown>) => msg.command === 'newChatTab')).toHaveLength(0);
 
         // Messages should still be there
         expect(getMessages()).toHaveLength(2); // test message + streaming message
@@ -131,7 +131,7 @@ describe('Streaming Button States', () => {
 
         // Verify buttons are in streaming state
         const newSessionBtn = screen.getByTestId('new-session-btn');
-        expect(newSessionBtn).not.toBeDisabled();
+        expect(newSessionBtn).toBeDisabled();
         expect(screen.getByTestId('abort-btn')).toBeInTheDocument();
 
         // Abort the message
