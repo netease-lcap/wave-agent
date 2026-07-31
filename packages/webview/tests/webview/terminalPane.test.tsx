@@ -11,12 +11,15 @@ class MockTerminal {
     written: string[] = [];
     resetCount = 0;
     disposed = false;
+    addons: unknown[] = [];
     private dataCb: ((data: string) => void) | null = null;
     constructor(options: Record<string, unknown>) {
         this.options = options;
         mockTerminals.push(this);
     }
-    loadAddon() {}
+    loadAddon(addon: unknown) {
+        this.addons.push(addon);
+    }
     open() {}
     focus = vi.fn();
     onData(cb: (data: string) => void) {
@@ -36,6 +39,16 @@ class MockTerminal {
     }
 }
 
+/** Mirrors @xterm/addon-web-links: ctor captures the click handler. */
+class MockWebLinksAddon {
+    handler: ((event: MouseEvent, uri: string) => void) | null;
+    constructor(handler?: (event: MouseEvent, uri: string) => void) {
+        this.handler = handler ?? null;
+    }
+    activate() {}
+    dispose() {}
+}
+
 const mockTerminals: MockTerminal[] = [];
 
 function renderPane(options?: {
@@ -44,9 +57,11 @@ function renderPane(options?: {
     sessionId?: string;
     workdir?: string;
     onClose?: () => void;
+    onOpenPreview?: (url: string) => void;
 }) {
     const vscode = createMockVscode();
     const onClose = options?.onClose ?? vi.fn();
+    const onOpenPreview = options?.onOpenPreview ?? vi.fn();
     const result = render(
         <TerminalPane
             vscode={vscode}
@@ -58,6 +73,7 @@ function renderPane(options?: {
             visible={options?.visible ?? true}
             sessionId={options?.sessionId}
             workdir={options?.workdir}
+            onOpenPreview={onOpenPreview}
         />,
     );
     const rerenderWith = (props: { visible?: boolean; sessionId?: string; workdir?: string }) =>
@@ -72,9 +88,10 @@ function renderPane(options?: {
                 visible={props.visible ?? true}
                 sessionId={props.sessionId}
                 workdir={props.workdir}
+                onOpenPreview={onOpenPreview}
             />,
         );
-    return { ...result, rerenderWith, vscode, onClose };
+    return { ...result, rerenderWith, vscode, onClose, onOpenPreview };
 }
 
 const postsOf = (vscode: ReturnType<typeof createMockVscode>, command: string) =>
@@ -85,6 +102,7 @@ beforeEach(() => {
     window.WaveTerminal = {
         Terminal: MockTerminal,
         FitAddon: class { fit = vi.fn(); },
+        WebLinksAddon: MockWebLinksAddon as unknown as NonNullable<Window['WaveTerminal']>['WebLinksAddon'],
     } as unknown as NonNullable<Window['WaveTerminal']>;
 });
 
@@ -228,6 +246,58 @@ describe('TerminalPane', () => {
         document.documentElement.style.removeProperty('--vscode-panel-background');
     });
 
+    // Clicking a URL printed in the terminal routes the same way Message.tsx
+    // does: localhost → preview pane, everything else → the system browser.
+    const linkHandlerOf = (term: MockTerminal) =>
+        (term.addons.find((a) => a instanceof MockWebLinksAddon) as MockWebLinksAddon | undefined)?.handler;
+
+    it('routes a localhost link in the terminal to the preview pane', async () => {
+        const onOpenPreview = vi.fn();
+        const { vscode } = renderPane({ onOpenPreview });
+        await act(async () => {});
+        const handler = linkHandlerOf(mockTerminals[0]);
+        expect(handler).toBeTruthy();
+
+        act(() => handler!({} as MouseEvent, 'http://localhost:5173/app'));
+
+        expect(onOpenPreview).toHaveBeenCalledWith('http://localhost:5173/app');
+        expect(postsOf(vscode, 'openExternal')).toHaveLength(0);
+    });
+
+    it('routes a non-localhost link in the terminal to the system browser', async () => {
+        const onOpenPreview = vi.fn();
+        const { vscode } = renderPane({ onOpenPreview });
+        await act(async () => {});
+        act(() => linkHandlerOf(mockTerminals[0])!({} as MouseEvent, 'https://example.com/docs'));
+
+        expect(onOpenPreview).not.toHaveBeenCalled();
+        expect(postsOf(vscode, 'openExternal')).toEqual([
+            { command: 'openExternal', url: 'https://example.com/docs' },
+        ]);
+    });
+
+    it('falls back to the system browser for localhost when no onOpenPreview', async () => {
+        // renderPane always wires onOpenPreview, so exercise the fallback by
+        // rendering without the prop — mirrors Message.tsx's no-handler path.
+        const vscode = createMockVscode();
+        render(
+            <TerminalPane
+                vscode={vscode}
+                width={420}
+                onWidthChange={vi.fn()}
+                maxWidth={716}
+                onClose={vi.fn()}
+                visible={true}
+            />,
+        );
+        await act(async () => {});
+        act(() => linkHandlerOf(mockTerminals[0])!({} as MouseEvent, 'http://127.0.0.1:3000'));
+
+        expect(postsOf(vscode, 'openExternal')).toEqual([
+            { command: 'openExternal', url: 'http://127.0.0.1:3000' },
+        ]);
+    });
+
     it('shows an actionable error when the terminal chunk fails to load, and retry rebuilds', async () => {
         delete window.WaveTerminal;
         const vscode = createMockVscode();
@@ -254,6 +324,7 @@ describe('TerminalPane', () => {
         window.WaveTerminal = {
             Terminal: MockTerminal,
             FitAddon: class { fit = vi.fn(); },
+            WebLinksAddon: MockWebLinksAddon as unknown as NonNullable<Window['WaveTerminal']>['WebLinksAddon'],
         } as unknown as NonNullable<Window['WaveTerminal']>;
         fireEvent.click(screen.getByTestId('terminal-retry'));
         await act(async () => {});

@@ -1189,7 +1189,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                 <i className="codicon codicon-close" />
               </button>
             </div>
-            <div className="desktop-panel-placeholder">点击消息中的 localhost 链接加载预览</div>
+            <div className="desktop-panel-placeholder">点击消息或终端中的 localhost 链接加载预览</div>
           </div>
         </aside>
       );
@@ -1214,6 +1214,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         visible={checkedPanels.includes('terminal')}
         sessionId={state.currentSession?.id}
         workdir={effectiveWorkdir}
+        onOpenPreview={handleOpenPreview}
         {...common}
       />
     );
