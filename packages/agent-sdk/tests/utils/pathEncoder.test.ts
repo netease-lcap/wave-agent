@@ -299,16 +299,10 @@ describe("PathEncoder", () => {
     });
 
     it("should handle realpath failure gracefully", async () => {
-      // Mock realpath to fail only for the first call in createProjectDirectory
-      // but succeed for the second call in encode method
-      let callCount = 0;
-      vi.mocked(realpath).mockImplementation((path) => {
-        callCount++;
-        if (callCount === 1) {
-          return Promise.reject(new Error("Permission denied"));
-        }
-        return Promise.resolve(path as string);
-      });
+      // realpath fails for every call (e.g. the directory was deleted) —
+      // createProjectDirectory must still succeed, falling back to the
+      // absolute path.
+      vi.mocked(realpath).mockRejectedValue(new Error("Permission denied"));
 
       const result = await pathEncoder.createProjectDirectory(
         "/protected/path",
@@ -317,6 +311,34 @@ describe("PathEncoder", () => {
 
       // Should use absolute path when realpath fails
       expect(result.originalPath).toMatch(/.*[/\\]protected[/\\]path$/);
+      expect(result.isSymbolicLink).toBe(false);
+    });
+
+    it("should fall back to absolute path when the workdir no longer exists", async () => {
+      // Reproduces the deleted-worktree scenario: the working directory has been
+      // removed (ENOENT) so every realpath call fails. Session files live under
+      // ~/.wave/projects/<encoded>/ — independent of the workdir's existence —
+      // so getProjectDirectory must not throw and must keep a stable encoding.
+      vi.mocked(realpath).mockRejectedValue(
+        Object.assign(new Error("ENOENT: no such file or directory"), {
+          code: "ENOENT",
+        }),
+      );
+
+      const workdir =
+        "/Users/liuyiqi/github/wave-agent/.wave/worktrees/smart-brave-hawk";
+
+      const result = await pathEncoder.getProjectDirectory(
+        workdir,
+        baseSessionDir,
+      );
+
+      // Encoded name must match encodeSync of the absolute path so the session
+      // file remains locatable after the worktree directory is deleted.
+      expect(result.encodedName).toBe(pathEncoder.encodeSync(workdir));
+      expect(result.encodedPath).toBe(
+        path.join(baseSessionDir, result.encodedName),
+      );
       expect(result.isSymbolicLink).toBe(false);
     });
 

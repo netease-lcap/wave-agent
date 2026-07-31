@@ -1496,6 +1496,39 @@ describe('worktree flow', () => {
     });
     expect(store.getSessionIndex().some((e) => e.sessionId === 'live-wt')).toBe(false);
   });
+
+  it('desktopDeleteSession removes the worktree only after the agent is destroyed', async () => {
+    const { host, store } = await readyHost();
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+    await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a', baseBranch: 'main' });
+    const wtAgent = lastAgent();
+    wtAgent.messages = [{ id: 'm1' }];
+    wtAgent.callbacks.onSessionIdChange('live-wt');
+
+    // Gate the agent's destroy so the ordering is observable: removeWorktree
+    // must not be requested until destroy resolves. This reproduces the race
+    // where a fast `git worktree remove` deletes the agent's cwd before the
+    // slow Agent.destroy() reaches saveSession (which realpath's the workdir).
+    let releaseDestroy = () => {};
+    wtAgent.destroy = vi.fn(() => new Promise<void>((resolve) => { releaseDestroy = () => resolve(); }));
+
+    await host.handleWebviewMessage({ command: 'desktopDeleteSession', sessionId: 'live-wt' });
+
+    // destroy is still pending — removeWorktree must NOT have been requested yet.
+    expect(h.clientRequests.some((r) => r.method === 'removeWorktree')).toBe(false);
+
+    releaseDestroy();
+    // destroy resolves → the chained removeWorktree runs now.
+    await vi.waitFor(() => {
+      expect(h.clientRequests).toContainEqual({
+        method: 'removeWorktree',
+        params: { path: worktree.path, branch: worktree.branch, repoRoot: worktree.repoRoot },
+      });
+    });
+
+    expect(store.getSessionIndex().some((e) => e.sessionId === 'live-wt')).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
