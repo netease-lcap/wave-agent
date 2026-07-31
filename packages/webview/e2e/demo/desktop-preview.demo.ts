@@ -72,11 +72,9 @@ const mockCardHtml = (comment: string) => `
 <div id="mock-picker-card" style="position:absolute;width:280px;background:var(--vscode-panel-background,var(--vscode-editor-background));color:var(--vscode-foreground);border:1px solid var(--vscode-panel-border,rgba(128,128,128,0.35));border-radius:6px;padding:6px;font-size:12px;line-height:1.4;box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:20;">
   <div style="display:flex;flex-direction:column;gap:2px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-focusBorder);border-radius:6px;padding:6px;">
     <div style="width:100%;min-height:40px;">${comment}</div>
-    <div style="display:flex;align-items:center;">
+    <div style="display:flex;align-items:center;gap:6px;">
       <div style="flex:1;color:var(--vscode-button-background);font-family:monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="#mock-prototype button">button</div>
-      <div style="background:var(--vscode-foreground);color:var(--vscode-panel-background,var(--vscode-editor-background));border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <svg viewBox="0 0 16 16" style="width:12px;height:12px;fill:currentColor;"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg>
-      </div>
+      <div style="background:transparent;color:var(--vscode-button-background);border:1px solid var(--vscode-panel-border,rgba(128,128,128,0.35));border-radius:3px;font-size:11px;padding:2px 10px;">添加</div>
     </div>
   </div>
 </div>`;

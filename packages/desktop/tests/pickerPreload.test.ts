@@ -106,11 +106,11 @@ describe('pickerPreload', () => {
     expect(tag.textContent).toBe('button');
     expect(tag.title).toBe('#app > div > button');
     expect(root.querySelector('textarea')).toBeTruthy();
-    // Submit button: plus ("add to input") icon, disabled until the user types.
+    // Submit button: "add to input" text button, disabled until the user types.
     const send = root.querySelector('.send') as HTMLButtonElement;
     expect(send.disabled).toBe(true);
     expect(send.title).toBe('添加到输入框');
-    expect(send.querySelector('svg path')?.getAttribute('d')).toBe('M14 7v1H8v6H7V8H1V7h6V1h1v6h6z');
+    expect(send.textContent).toBe('添加');
   });
 
   it('intercepts page clicks and form submits while active', () => {

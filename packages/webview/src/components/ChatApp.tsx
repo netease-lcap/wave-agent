@@ -830,9 +830,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     dispatch({ type: 'INPUT_CLEARED' });
   }, []);
 
-  // Desktop preview element comments land in this pane's input (not sent),
-  // so several can be batched and edited before sending.
-  const handleAddPreviewComment = useCallback((text: string) => {
+  // Desktop panel comments (preview element picks, diff-line comments) land in
+  // this pane's input (not sent), so several can be batched and edited before
+  // sending.
+  const handleAddComment = useCallback((text: string) => {
     messageInputRef.current?.appendText(text);
   }, []);
 
@@ -1179,7 +1180,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     };
     if (kind === 'preview') {
       return previewUrl ? (
-        <PreviewPane url={previewUrl} vscode={vscode} onAddComment={handleAddPreviewComment} {...common} />
+        <PreviewPane url={previewUrl} vscode={vscode} onAddComment={handleAddComment} {...common} />
       ) : (
         <aside className="preview-pane" style={{ width: common.width }} data-testid="preview-pane-empty">
           <div className="preview-pane-inner">
@@ -1203,6 +1204,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           isStreaming={state.isStreaming}
           sessionId={state.currentSession?.id}
           workdir={effectiveWorkdir}
+          onAddComment={handleAddComment}
           {...common}
         />
       );

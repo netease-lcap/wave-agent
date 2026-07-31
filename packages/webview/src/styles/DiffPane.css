@@ -109,3 +109,123 @@
     user-select: none;
     font-style: italic;
 }
+
+/* Inline line-comment button (GitHub/GitLab style): hidden until the line is
+   hovered; opens a comment box under the line. Scoped to .diff-pane so the
+   shared message-rendered diff blocks are unaffected. */
+.diff-pane .diff-line {
+    position: relative;
+}
+
+.diff-line-comment-btn {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    padding: 1px;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s;
+    line-height: 1;
+}
+
+.diff-pane .diff-line:hover .diff-line-comment-btn {
+    opacity: 0.6;
+}
+
+.diff-line-comment-btn:hover {
+    opacity: 1;
+    color: var(--vscode-foreground);
+}
+
+/* Bump specificity to (0,3,0) so it beats the codicons.css baseline
+   `.codicon[class*="codicon-"]` (0,2,0) that otherwise pins icons to 16px. */
+.diff-pane .diff-line-comment-btn .codicon {
+    font-size: 10px;
+}
+
+/* Inline comment box rendered under the commented line. */
+.diff-comment-box {
+    margin: 4px 8px;
+    padding: 6px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.diff-comment-box:focus-within {
+    border-color: var(--vscode-focusBorder);
+}
+
+.diff-comment-input {
+    width: 100%;
+    min-height: 40px;
+    resize: vertical;
+    box-sizing: border-box;
+    background: transparent;
+    color: var(--vscode-input-foreground);
+    border: none;
+    padding: 0;
+    font: inherit;
+    outline: none;
+}
+
+.diff-comment-box-footer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.diff-comment-box-tag {
+    flex: 1;
+    color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+    font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', monospace);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.diff-comment-box-cancel {
+    background: transparent;
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+    font-size: 11px;
+    padding: 2px 10px;
+    cursor: pointer;
+}
+
+.diff-comment-box-cancel:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.diff-comment-box-send {
+    background: transparent;
+    color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+    font-size: 11px;
+    padding: 2px 10px;
+    cursor: pointer;
+}
+
+.diff-comment-box-send:hover:not(:disabled) {
+    background: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.diff-comment-box-send:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
