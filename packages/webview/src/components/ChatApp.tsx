@@ -623,14 +623,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     });
   }, [postToHost]);
 
-  // IDE 宿主（VSCE/JB）顶部"新建会话"按钮：由宿主新开一个标签页承载全新会话，
-  // 当前会话在其标签页中继续运行，因此流式期间保持可用。Desktop 不渲染该按钮。
-  const handleNewChatTab = useCallback(() => {
-    postToHost({
-      command: 'newChatTab'
-    });
-  }, [postToHost]);
-
   const handleLogin = useCallback(() => {
     vscode.postMessage({ command: 'login' });
   }, [vscode]);
@@ -1391,7 +1383,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         </div>
       )}
       <ChatHeader
-        onNewSession={handleNewChatTab}
+        onNewSession={handleClearChat}
+        newSessionDisabled={state.isStreaming}
         onAbortMessage={handleAbortMessage}
         messages={state.messages}
         sessions={state.sessions}

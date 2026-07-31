@@ -298,8 +298,8 @@ describe('Session Management', () => {
             sendCommand('startStreaming');
         });
 
-        // New session button stays enabled during streaming (it opens a new tab, never clears in place)
-        expect(screen.getByTestId('new-session-btn')).not.toBeDisabled();
+        // New session button is disabled during streaming (prevents clearing an in-progress generation)
+        expect(screen.getByTestId('new-session-btn')).toBeDisabled();
 
         // End streaming
         act(() => {

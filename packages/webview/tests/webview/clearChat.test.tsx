@@ -24,7 +24,7 @@ describe('Clear Chat Functionality', () => {
         expect(screen.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeInTheDocument();
     });
 
-    it('should request a new chat tab via header button', () => {
+    it('should request clear chat via header button', () => {
         const { vscode } = renderChatApp();
 
         act(() => {
@@ -46,15 +46,15 @@ describe('Clear Chat Functionality', () => {
             fireEvent.click(newSessionBtn);
         });
 
-        // Verify new tab command was sent to the host, not an in-place clear
+        // Verify clear chat command is sent to the host (in-place clear)
         expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ command: 'newChatTab' })
-        );
-        expect(vscode.postMessage).not.toHaveBeenCalledWith(
             expect.objectContaining({ command: 'clearChat' })
         );
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'newChatTab' })
+        );
 
-        // Current conversation stays untouched in this panel
+        // Webview does not clear messages locally; the host clears via updateMessages
         const messages = document.querySelectorAll('.messages-container .message');
         expect(messages.length).toBe(3);
     });
@@ -129,7 +129,7 @@ describe('Clear Chat Functionality', () => {
         expect(screen.queryByTestId('abort-btn')).not.toBeInTheDocument();
     });
 
-    it('should allow new chat tab during streaming while extension can still clear', () => {
+    it('should disable new session button during streaming while extension can still clear', () => {
         const { vscode } = renderChatApp();
 
         // Start streaming and add a message
@@ -149,23 +149,18 @@ describe('Clear Chat Functionality', () => {
         const abortBtn = screen.getByTestId('abort-btn');
         expect(abortBtn).toBeInTheDocument();
 
-        // New session button stays enabled during streaming
+        // New session button is disabled during streaming (prevents clearing an in-progress generation)
         const newSessionBtn = screen.getByTestId('new-session-btn');
-        expect(newSessionBtn).not.toBeDisabled();
+        expect(newSessionBtn).toBeDisabled();
 
         // Clear message log
         vscode.postMessage.mockClear();
 
-        // Clicking during streaming requests a new tab; the running conversation is untouched
+        // Clicking the disabled button during streaming does nothing
         act(() => {
             fireEvent.click(newSessionBtn);
         });
-        expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ command: 'newChatTab' })
-        );
-        expect(vscode.postMessage).not.toHaveBeenCalledWith(
-            expect.objectContaining({ command: 'clearChat' })
-        );
+        expect(vscode.postMessage).not.toHaveBeenCalled();
         expect(document.querySelectorAll('.messages-container .message').length).toBe(1);
 
         // But extension can still clear messages via command
