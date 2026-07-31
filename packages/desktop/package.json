@@ -12,6 +12,7 @@
     "build": "pnpm run compile",
     "compile": "pnpm run sync:webview && tsup",
     "sync:webview": "node scripts/syncWebview.mjs",
+    "predev": "node scripts/predev.mjs",
     "dev": "pnpm run compile && env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox",
     "dist": "pnpm run compile && electron-builder",
     "clean": "node -e \"import('fs').then(fs => ['dist', 'release', 'webview'].forEach(d => {try{fs.rmSync(d, {recursive:true, force:true})}catch(e){}}))\"",
