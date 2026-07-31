@@ -37,7 +37,7 @@ jobs:
 
       - name: Setup Gradle
         if: steps.filter.outputs.jetbrains == 'true'
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Run tests
         if: steps.filter.outputs.jetbrains == 'true'
