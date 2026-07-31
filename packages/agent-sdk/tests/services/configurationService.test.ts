@@ -394,6 +394,27 @@ describe("ConfigurationService", () => {
       expect(configService.getEnvSnapshot().KEY).toBe("VALUE");
       expect(process.env.KEY).toBeUndefined();
     });
+
+    it("should mirror WAVE_SERVER_URL to process.env (process-singleton consumers)", () => {
+      const origServerUrl = process.env.WAVE_SERVER_URL;
+      delete process.env.WAVE_SERVER_URL;
+      try {
+        configService.setEnvironmentVars({
+          WAVE_SERVER_URL: "https://test.example.com",
+        });
+        // Mirrored to process.env so AuthService / remoteSettings (process
+        // singletons without a per-session snapshot) can read it; also stored
+        // in the session snapshot.
+        expect(configService.getEnvSnapshot().WAVE_SERVER_URL).toBe(
+          "https://test.example.com",
+        );
+        expect(process.env.WAVE_SERVER_URL).toBe("https://test.example.com");
+      } finally {
+        if (origServerUrl !== undefined)
+          process.env.WAVE_SERVER_URL = origServerUrl;
+        else delete process.env.WAVE_SERVER_URL;
+      }
+    });
   });
 
   describe("resolveGatewayConfig", () => {
