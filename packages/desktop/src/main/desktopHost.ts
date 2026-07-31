@@ -565,10 +565,14 @@ export class DesktopHost {
     this.bindAgentToPane(paneId, agent);
     const dir = agent.workingDirectory;
     if (dir && dir !== this.workdir) {
+      // this.workdir follows the focused pane's real cwd (used by the file
+      // list / diff / terminal panels). It is NOT the source for new-session
+      // spawn cwd — that comes exclusively from the user's recents (see
+      // handleNewSession). Session activation must never write recents: the
+      // list reflects only directories the user deliberately opened, so a
+      // session whose cwd drifted into a worktree path (e.g. bash cd) can't
+      // pollute it. See desktop-app.md「会话管理」scenario 9.
       this.workdir = dir;
-      // FR-023: a worktree session records its repo root in recents — the
-      // worktree path itself is ephemeral and must not be listed.
-      this.configStore.addRecentWorkdir(this.agentWorktreeInfo.get(agent)?.repoRoot ?? dir);
     }
     this.sendWorkdirState();
     this.refreshSessionTree();
@@ -1839,7 +1843,12 @@ export class DesktopHost {
         // still work) but skip agent creation until the user picks a workdir
         // from the sidebar dropdown.
         await this.ensureClient();
-      } else if (!this.activeAgent) {
+      } else if (this.panes.every((p) => !p.agent)) {
+        // First-time bootstrap only: spawn at the chosen workdir when NO pane
+        // holds an agent yet. A repeat webviewReady (e.g. a new pane mounting
+        // while another pane still runs a worktree session) must not re-spawn —
+        // this.workdir may be a stale worktree path from the focused pane, and
+        // the new pane's agent is already being spawned by handleNewSessionInNewPane.
         const agent = await this.spawnAgent({ workdir: this.workdir });
         this.bindAgentToPane(this.focusedPaneId, agent);
       }
@@ -2027,10 +2036,12 @@ export class DesktopHost {
   private async handleNewSession(paneId?: string): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
     const active = this.agentForPane(pid);
-    // FR-005: a new session lands on the most recently used real directory.
-    // Recents never contain worktree temp paths (FR-023), so after a worktree
-    // session this falls back to its repo root instead of the worktree path.
-    const dir = this.configStore.getRecentWorkdirs()[0] ?? this.workdir;
+    // New session cwd = the most recently user-selected repo root (recents),
+    // decoupled from the previous session's state (worktree session, bash cd,
+    // etc.). See desktop-app.md「会话管理」scenario 8. No fallback to
+    // this.workdir — it follows the focused pane and could be a worktree path;
+    // if recents is empty the user hasn't picked a dir yet, so this is a no-op.
+    const dir = this.configStore.getRecentWorkdirs()[0];
     if (!dir) return;
     if (active && active.messages.length === 0 && !active.isStreaming) return;
     try {
@@ -2053,7 +2064,7 @@ export class DesktopHost {
    * duplicated; placement/overflow follows insertNewPane's rules.
    */
   private async handleNewSessionInNewPane(): Promise<void> {
-    const dir = this.configStore.getRecentWorkdirs()[0] ?? this.workdir;
+    const dir = this.configStore.getRecentWorkdirs()[0];
     if (!dir) return;
     const empty = this.panes.find((p) => {
       const a = p.agent;

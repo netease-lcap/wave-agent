@@ -111,10 +111,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // directory/branch into a sibling new-session pane, so each new-session pane
   // queries branches against its own session workdir.
   const [paneGitBranches, setPaneGitBranches] = useState<{ branches: string[]; current: string } | null>(null);
-  // The pane's effective cwd: its own session workdir wins over the host-level
-  // current workdir (which follows the focused pane and must not leak here).
-  const effectiveWorkdir = state.workdir ?? (host?.type === 'desktop' ? host?.workdir : undefined);
-  const gitBranches = host?.type === 'desktop' ? paneGitBranches : null;
+  // The pane's effective cwd: its own session workdir wins; a new-session pane
+  // (state.workdir empty during spawn) falls back to the most recently selected
+  // repo root from recents — never to the host-level workdir, which follows the
+  // focused pane and would bleed a sibling worktree session's path/branch into
+  // this new pane until the spawn finishes and setInitialState lands.
+  const effectiveWorkdir = state.workdir ?? (host?.type === 'desktop' ? (host?.recentWorkdirs?.[0] ?? host?.workdir) : undefined);
+  const isDesktop = host?.type === 'desktop';
+  const gitBranches = isDesktop ? paneGitBranches : null;
   const effectiveWorkdirRef = useRef(effectiveWorkdir);
   // Desktop only: the panel group follows the session bound to this pane. The
   // cache key is the session id from the host-authoritative `desktopPanes`
@@ -599,12 +603,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // when focus moves to a sibling pane (which would otherwise rewire the host's
   // global workdir). Clear stale branches first so the selector hides until the
   // fresh reply lands.
+  //
+  // Depend ONLY on effectiveWorkdir (a primitive string) — never on the host
+  // object reference, and never on host.workdir. Rationale: when a new pane
+  // boots, activateAgentInPane sends desktopWorkdirState to update the host's
+  // global workdir from the previously-focused sibling's path to this pane's
+  // repo root. That changes host.workdir even though THIS pane's
+  // effectiveWorkdir is unchanged (spawn-before = recents[0] fallback; spawn-after
+  // = state.workdir = agent.cwd = the same recents[0]). Re-querying on a
+  // host.workdir change would null out the branches and flash the selector
+  // twice. A genuine user workdir switch changes recents[0] (and thus
+  // effectiveWorkdir), which is the only re-query signal we want.
   useEffect(() => {
-    if (host?.type !== 'desktop') return;
+    if (!isDesktop) return;
     setPaneGitBranches(null);
     if (!effectiveWorkdir) return;
     postToHost({ command: 'desktopListGitBranches', workdir: effectiveWorkdir, paneId });
-  }, [effectiveWorkdir, host, postToHost, paneId]);
+  }, [effectiveWorkdir, isDesktop, postToHost, paneId]);
 
   const handleClearChat = useCallback(() => {
     // /clear 斜杠命令：三端统一为"原地清空当前会话"，streaming 期间忽略。
@@ -896,8 +911,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setPanelHint(text);
     panelHintTimer.current = setTimeout(() => setPanelHint(null), PANEL_HINT_DURATION_MS);
   }, []);
-
-  const isDesktop = host?.type === 'desktop';
 
   // Desktop: idle-preload the lazily injected xterm chunk so the first
   // terminal open doesn't pay the fetch+parse cost.

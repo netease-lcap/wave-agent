@@ -21,6 +21,10 @@ const h = vi.hoisted(() => ({
   // When set, the removeWorktree RPC awaits this promise (simulates a slow
   // multi-second git worktree remove in the shared stdio process).
   removeWorktreeGate: null as Promise<void> | null,
+  // When set, agent.initialize awaits this promise (simulates the multi-second
+  // stdio startup so a real webview re-fires webviewReady while the new pane's
+  // agent is still mid-spawn and not yet bound to the pane).
+  initializeGate: null as Promise<void> | null,
   // Multi-agent pool: each StdioAgent instance gets a unique sessionId so the
   // host's agents Map keys don't collapse (FR-031).
   agentCounter: 0,
@@ -126,6 +130,7 @@ vi.mock('../src/main/stdio/stdioAgent', () => ({
     initialize = vi.fn(async function (this: { workingDirectory?: string; sessionId?: string }, params: { workdir?: string }) {
       this.workingDirectory = params.workdir;
       this.sessionId = `sess-${++h.agentCounter}`;
+      if (h.initializeGate) await h.initializeGate;
     });
     destroy = vi.fn(async () => undefined);
     restoreSession = vi.fn(async function (this: { sessionId?: string; messages?: unknown[] }, sessionId: string) {
@@ -249,6 +254,7 @@ beforeEach(() => {
   h.worktreeError = null;
   h.branchesResult = null;
   h.removeWorktreeGate = null;
+  h.initializeGate = null;
   h.agentCounter = 0;
   vi.clearAllMocks();
   nativeTheme.__reset();
@@ -1293,6 +1299,57 @@ describe('worktree flow', () => {
 
     await host.handleWebviewMessage({ command: 'newSession' });
 
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/a' }));
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: '/work/a' });
+  });
+
+  it('new session in a new pane (Cmd/Ctrl+Click) after a worktree session spawns at the repo root', async () => {
+    const { host, sent } = await readyHost();
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+    await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a' });
+    // After the worktree session activates, host.workdir is the worktree path,
+    // but recents[0] is still the repo root — a new pane must spawn at the repo
+    // root, never at the worktree path.
+    lastAgent().messages = [{ id: 'm1' }];
+
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/a' }));
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: '/work/a' });
+  });
+
+  it('a repeat webviewReady while the new pane\'s agent is still mid-spawn does not spawn a worktree-path agent (no leak via this.workdir)', async () => {
+    const { host, sent } = await readyHost();
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+    await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a' });
+    // After the worktree session activates, host.workdir follows it = the worktree path.
+    lastAgent().messages = [{ id: 'm1' }];
+
+    // Real stdio startup takes seconds — gate the next spawn's initialize() so
+    // the new pane stays empty (agent created but not yet bound) while the
+    // webview re-fires webviewReady when the pane mounts.
+    let resolveInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => { resolveInit = r; });
+    const spawnPromise = host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+    // Let handleNewSessionInNewPane progress into the awaiting initialize().
+    await vi.waitFor(() => {
+      expect((h.agentInstances.at(-1) as { initialize?: { mock?: { calls: unknown[][] } } })?.initialize?.mock?.calls?.length).toBeGreaterThan(0);
+    });
+    const agentCountBefore = h.agentInstances.length;
+    // The focused pane is the new empty pane (no agent yet), but pane-1 still
+    // holds the worktree agent — handleWebviewReady must NOT read !this.activeAgent
+    // as "no agent at all" and spawn yet another agent at this.workdir (worktree).
+    // Fire (don't await): a repeat webviewReady's spawn would also hit the gate and hang.
+    void host.handleWebviewMessage({ command: 'webviewReady' });
+    // Flush microtasks so the repeat webviewReady's spawnAgent progresses past the
+    // cached ensureClient to createAgent, which would push a new instance if the leak path fires.
+    await new Promise((r) => setImmediate(r));
+    expect(h.agentInstances).toHaveLength(agentCountBefore);
+
+    resolveInit(); // let the original repo-root spawn finish
+    await spawnPromise;
     expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/a' }));
     expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: '/work/a' });
   });
