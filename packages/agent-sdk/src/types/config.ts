@@ -12,6 +12,8 @@ export interface GatewayConfig {
   defaultHeaders?: Record<string, string>;
   fetchOptions?: OpenAI["fetchOptions"];
   fetch?: OpenAI["fetch"];
+  /** Session identifier, sent as the `x-session-id` request header for backend correlation. */
+  sessionId?: string;
 }
 
 export interface ModelCapabilities {

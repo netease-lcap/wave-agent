@@ -179,7 +179,10 @@ describe("AIManager - compactConversation", () => {
       expect(callAgentMock).toHaveBeenCalledTimes(1);
       expect(callAgentMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          gatewayConfig: mockGatewayConfig,
+          gatewayConfig: expect.objectContaining({
+            ...mockGatewayConfig,
+            sessionId: expect.any(String),
+          }),
           modelConfig: mockModelConfig,
           workdir: "/test/workdir",
           tools: [],

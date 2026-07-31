@@ -97,6 +97,7 @@ export class OpenAIClient {
     const {
       baseURL,
       apiKey,
+      sessionId,
       defaultHeaders,
       fetchOptions,
       fetch: customFetch,
@@ -105,6 +106,7 @@ export class OpenAIClient {
     const headers = {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      ...(sessionId ? { "x-session-id": sessionId } : {}),
       ...defaultHeaders,
     };
 
