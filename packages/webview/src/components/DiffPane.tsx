@@ -183,12 +183,19 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
 
   const onDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    // Keep the handle lit + cursor locked for the whole drag — :hover and the
+    // 6px-only col-resize cursor both flicker as the pointer outruns the handle.
+    handle.style.background = 'var(--vscode-focusBorder, #007fd4)';
+    document.body.classList.add('is-panel-resizing');
     const rect = asideRef.current?.getBoundingClientRect();
     const onMove = (ev: MouseEvent) => {
       const next = widthFromLeft ? ev.clientX - (rect?.left ?? 0) : (rect?.right ?? 0) - ev.clientX;
       onWidthChange(Math.min(Math.max(next, MIN_WIDTH), maxWidth));
     };
     const onUp = () => {
+      handle.style.background = '';
+      document.body.classList.remove('is-panel-resizing');
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };

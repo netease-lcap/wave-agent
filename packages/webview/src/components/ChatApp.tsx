@@ -1178,11 +1178,35 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       onClose: () => handleTogglePanel(kind),
       widthFromLeft: panelRows[kind] === 2,
     };
+
+    // Empty preview (no URL yet) reuses the same left-edge resize handle so it
+    // can be widened like the loaded preview/diff/terminal panels.
+    const onEmptyPreviewDragStart = (e: React.MouseEvent) => {
+      e.preventDefault();
+      const handle = e.currentTarget as HTMLElement;
+      handle.style.background = 'var(--vscode-focusBorder, #007fd4)';
+      document.body.classList.add('is-panel-resizing');
+      const rect = handle.parentElement?.getBoundingClientRect();
+      const onMove = (ev: MouseEvent) => {
+        const next = common.widthFromLeft ? ev.clientX - (rect?.left ?? 0) : (rect?.right ?? 0) - ev.clientX;
+        common.onWidthChange(Math.min(Math.max(next, PANEL_MIN_WIDTH), common.maxWidth));
+      };
+      const onUp = () => {
+        handle.style.background = '';
+        document.body.classList.remove('is-panel-resizing');
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    };
+
     if (kind === 'preview') {
       return previewUrl ? (
         <PreviewPane url={previewUrl} vscode={vscode} onAddComment={handleAddComment} {...common} />
       ) : (
         <aside className="preview-pane" style={{ width: common.width }} data-testid="preview-pane-empty">
+          <div className="preview-pane-drag-handle" onMouseDown={onEmptyPreviewDragStart} />
           <div className="preview-pane-inner">
             <div className="preview-pane-toolbar">
               <span className="preview-pane-url">预览</span>

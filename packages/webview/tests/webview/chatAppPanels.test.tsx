@@ -87,6 +87,34 @@ describe('ChatApp desktop panel framework', () => {
         expect(slots[2].querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
     });
 
+    it('the empty preview pane (no URL) resizes via its left-edge handle', () => {
+        window.waveHostType = 'desktop';
+        // jsdom reports 0 rects; pin a container width so panelMaxWidth stays
+        // positive and the drag can actually widen the panel.
+        const rectSpy = vi
+            .spyOn(Element.prototype, 'getBoundingClientRect')
+            .mockReturnValue({ width: 1024, right: 1024, left: 0 } as DOMRect);
+        try {
+            renderDesktop({ workdir: '/work/a' });
+            fireEvent.click(screen.getByTestId('panel-toggle-btn'));
+            fireEvent.click(screen.getByTestId('panel-toggle-item-preview'));
+
+            const empty = screen.getByTestId('preview-pane-empty');
+            expect(empty.style.width).toBe('420px'); // default width, no URL loaded yet
+            // The empty state must carry the same drag affordance as loaded panels.
+            expect(empty.querySelector('.preview-pane-drag-handle')).not.toBeNull();
+
+            // Row 1 (widthFromLeft=false): width = rect.right - clientX.
+            const handle = empty.querySelector('.preview-pane-drag-handle') as HTMLElement;
+            fireEvent.mouseDown(handle);
+            fireEvent.mouseMove(window, { clientX: 624 }); // 1024 - 624 = 400
+            expect(empty.style.width).toBe('400px');
+            fireEvent.mouseUp(window);
+        } finally {
+            rectSpy.mockRestore();
+        }
+    });
+
     it('unchecking hides the panel (display:none) but keeps it mounted', () => {
         window.waveHostType = 'desktop';
         renderDesktop({ workdir: '/work/a' });

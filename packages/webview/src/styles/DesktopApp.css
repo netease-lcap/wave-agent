@@ -383,6 +383,18 @@
     z-index: 10;
 }
 
+/* Visible affordance on hover, matching the pane separator style. */
+.preview-pane-drag-handle:hover {
+    background: var(--vscode-focusBorder, #007fd4);
+}
+
+/* While dragging a panel handle, lock the cursor globally so it doesn't
+   flicker as the pointer crosses the 6px handle onto adjacent elements. */
+body.is-panel-resizing,
+body.is-panel-resizing * {
+    cursor: col-resize !important;
+}
+
 .preview-pane-inner {
     display: flex;
     flex-direction: column;
