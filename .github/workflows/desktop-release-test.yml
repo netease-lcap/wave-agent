@@ -1,21 +1,19 @@
 name: Desktop Release Test
 
 # 临时测试 workflow：验证桌面 release 发布功能（仅 build-desktop）。
-# 手动触发，上传 .dmg/.zip/.exe 到指定 tag 的 GitHub Release。
-# 测完删除此文件。
+# 用 pull_request 触发（GitHub 限制 workflow_dispatch 必须在默认分支注册），
+# 本分支开 PR 即跑，不碰 main。tag 固定。测完关闭 PR + 删除本文件。
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: '目标 release tag（产物上传到此 tag）'
-        required: true
-        default: 'v0.19.9-desktop-test'
+  pull_request:
+    paths:
+      - '.github/workflows/desktop-release-test.yml'
 
 permissions:
   contents: write  # action-gh-release 创建 tag/release 需要
 
 jobs:
   build-desktop:
+    if: github.event_name == 'pull_request'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -51,7 +49,7 @@ jobs:
       - name: Attach installers to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ inputs.tag }}
+          tag_name: v0.19.9-desktop-test
           files: |
             packages/desktop/release/*.dmg
             packages/desktop/release/*.zip
