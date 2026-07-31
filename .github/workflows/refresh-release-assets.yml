@@ -1,0 +1,157 @@
+name: Refresh Release Assets
+
+# Manually rebuild the IDE plugin (.vsix / .zip) and desktop installers
+# (.dmg / .zip / .exe) from main and overwrite the LATEST GitHub Release
+# assets — WITHOUT publishing to npm, cutting a new tag, or regenerating
+# release notes. Use this for quick IDE/desktop-only fixes (e.g. a webview
+# tweak) that don't warrant a full CLI/stdio release.
+#
+# Target is always the latest release (auto-resolved via `gh release view`),
+# never an older tag — overwriting older tags with main-built artifacts is
+# forbidden. Because the version is NOT bumped here, the latest release tag
+# equals the current package.json version, so the produced asset filenames
+# match the existing release assets and `--clobber` replaces them cleanly.
+#
+# Tests are intentionally skipped for speed; main is already gated by ci.yml
+# on every PR, so a refresh just repackages already-reviewed source.
+#
+# NOTE: workflow_dispatch only fires for workflows on the default branch
+# (main). Merge this file to main before the "Run workflow" button appears.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write  # upload assets to an existing release
+
+concurrency:
+  group: refresh-release-assets
+  # Don't cancel a running refresh — partial asset overwrites would leave
+  # the release in an inconsistent state.
+  cancel-in-progress: false
+
+jobs:
+  refresh-vsce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Cache ripgrep binaries
+        uses: actions/cache@v6
+        with:
+          path: packages/agent-sdk/vendor/ripgrep
+          key: ripgrep-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            ripgrep-${{ runner.os }}-
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm -F wave-vsce run package
+
+      - name: Overwrite .vsix on latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --json tagName -q .tagName)
+          echo "Overwriting assets on latest release: $TAG"
+          gh release upload "$TAG" packages/vsce/releases/*.vsix --clobber
+
+  refresh-jetbrains:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      # The webview bundles from wave-agent-sdk/dist, so build the SDK first.
+      - run: pnpm -F wave-agent-sdk build
+
+      # `compile -- --production` (not `build`) so the bundle is minified and
+      # source maps are omitted — `build` would also trigger postbuild
+      # syncTargets, shipping the unminified dev bundle and bloating the .zip.
+      - run: pnpm -F wave-webview run compile -- --production
+
+      - name: Build plugin distribution (.zip)
+        run: ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon
+
+      - name: Overwrite .zip on latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --json tagName -q .tagName)
+          echo "Overwriting assets on latest release: $TAG"
+          gh release upload "$TAG" packages/jetbrains/build/distributions/*.zip --clobber
+
+  refresh-desktop:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -F wave-agent-sdk build
+
+      # `compile -- --production` so the webview bundle is minified; the
+      # desktop app's syncWebview step copies dist verbatim.
+      - run: pnpm -F wave-webview run compile -- --production
+
+      # `--publish never`: electron-builder only produces the installers;
+      # the release upload is handled below.
+      - run: pnpm -F wave-desktop run dist -- --publish never
+
+      - name: Overwrite desktop installers on latest release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --json tagName -q .tagName)
+          echo "Overwriting assets on latest release: $TAG"
+          # Collect only the files that exist on this OS — macOS produces
+          # .dmg + .zip, Windows produces .exe — so a literal glob list
+          # would error on "no files matched" on the other OS.
+          files=()
+          for f in packages/desktop/release/*.dmg packages/desktop/release/*.zip packages/desktop/release/*.exe; do
+            [ -f "$f" ] && files+=("$f")
+          done
+          if [ ${#files[@]} -gt 0 ]; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            echo "No installer artifacts found — skipping upload."
+          fi
