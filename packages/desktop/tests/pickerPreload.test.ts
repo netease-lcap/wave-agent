@@ -161,6 +161,31 @@ describe('pickerPreload', () => {
     expect(shadowRoot().querySelector('.tag')?.textContent).toBe('div');
   });
 
+  it('Enter does not submit while IME is composing (e.g. pinyin)', () => {
+    // sendToHost is intentionally NOT cleared between tests (the ready
+    // handshake test relies on the import-time call), so scope the assertion
+    // to calls made within this test only.
+    ipcRenderer.sendToHost.mockClear();
+    const { button } = renderPage();
+    activate({ accent: '#ff0000' });
+    click(button);
+
+    const root = shadowRoot();
+    const textarea = root.querySelector('textarea') as HTMLTextAreaElement;
+    textarea.value = '这个按钮颜色太淡了';
+    // Chinese IME uses Enter to confirm the candidate; that keydown fires with
+    // isComposing=true (keyCode 229) and must NOT submit the draft comment.
+    textarea.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true, keyCode: 229 }),
+    );
+    expect(ipcRenderer.sendToHost).not.toHaveBeenCalledWith(
+      'wave-picker',
+      expect.objectContaining({ type: 'submit' }),
+    );
+    // Card stays open so the user can keep composing.
+    expect(document.body.lastElementChild?.shadowRoot ?? null).not.toBeNull();
+  });
+
   it('send button is an equivalent submit entry once text is present', () => {
     const { button } = renderPage();
     activate();

@@ -234,7 +234,9 @@ function showCard(el: Element): void {
     send.disabled = textarea.value.trim() === '';
   });
   textarea.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // IME composing (e.g. Chinese pinyin): Enter confirms the candidate, not a
+    // submit. keyCode 229 covers older engines where isComposing is unset.
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       submit();
     }

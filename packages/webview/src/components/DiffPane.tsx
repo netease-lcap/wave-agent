@@ -260,6 +260,10 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
                 value={commentDraft}
                 onChange={(e) => setCommentDraft(e.target.value)}
                 onKeyDown={(e) => {
+                  // IME composing (e.g. Chinese pinyin): Enter confirms the
+                  // candidate, not a submit. keyCode 229 covers older engines
+                  // where isComposing is unset.
+                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     submitComment();
