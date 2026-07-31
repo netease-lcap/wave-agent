@@ -29,6 +29,21 @@ const STATUS_LABEL: Record<WorkspaceFileStatus, string> = {
   untracked: '未跟踪',
 };
 
+export interface DiffComment {
+  path?: string;
+  prefix?: string;
+  text?: string;
+  comment?: string;
+}
+
+/** User-visible markdown for a diff-line comment — appended to the chat input. */
+export function formatDiffComment(msg: DiffComment): string {
+  const prefixLabel = msg.prefix && msg.prefix !== ' ' ? `\`${msg.prefix}\`` : '';
+  const location = [prefixLabel, msg.text ? `「${msg.text}」` : ''].filter(Boolean).join('');
+  const lines = [`**差异评论** · ${msg.path ?? ''}`, location, '', msg.comment ?? ''];
+  return lines.join('\n');
+}
+
 const MIN_WIDTH = 320;
 
 export interface DiffPaneProps {
@@ -49,6 +64,8 @@ export interface DiffPaneProps {
   /** Second-row layout: panels pack from the left, so the width drag anchors
    * the (fixed) left edge instead of the right edge. */
   widthFromLeft?: boolean;
+  /** Receives a formatted diff-line comment; appended to this pane's chat input. */
+  onAddComment?: (text: string) => void;
 }
 
 /** Workspace git-diff panel: accordion of per-file collapsible diff blocks. */
@@ -64,6 +81,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   sessionId,
   workdir,
   widthFromLeft,
+  onAddComment,
 }) => {
   const [state, setState] = useState<DiffState>({ kind: 'loading' });
   // Collapsed paths survive refreshes; files are expanded by default.
@@ -72,6 +90,47 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const asideRef = useRef<HTMLElement | null>(null);
 
+  // Inline diff-line comment box (GitHub/GitLab style): hovering a line shows a
+  // "+" button; clicking opens a comment box under that line whose contents
+  // are appended to the chat input (not sent) so several can be batched.
+  interface CommentTarget {
+    lineKey: string;
+    file: WorkspaceDiffFile;
+    prefix: string;
+    text: string;
+  }
+  const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
+  const onAddCommentRef = useRef(onAddComment);
+  onAddCommentRef.current = onAddComment;
+  const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const submitComment = useCallback(() => {
+    const target = commentTarget;
+    const comment = commentDraft.trim();
+    if (!target || !comment) return;
+    onAddCommentRef.current?.(
+      formatDiffComment({
+        path: target.file.path,
+        prefix: target.prefix,
+        text: target.text,
+        comment,
+      }),
+    );
+    setCommentTarget(null);
+    setCommentDraft('');
+  }, [commentTarget, commentDraft]);
+
+  const cancelComment = useCallback(() => {
+    setCommentTarget(null);
+    setCommentDraft('');
+  }, []);
+
+  // Auto-focus the textarea when a comment box opens.
+  useEffect(() => {
+    if (commentTarget) commentInputRef.current?.focus();
+  }, [commentTarget]);
+
   // Hard refresh clears current content to the loading placeholder (used when
   // the session/workdir context changes); soft refresh keeps showing the old
   // content until the new diff arrives, so auto-refreshes don't flicker.
@@ -79,6 +138,9 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     (hard = false) => {
       if (hard) setState({ kind: 'loading' });
       setRefreshing(true);
+      // Refresh rewrites the hunks, so any open comment box + draft is stale.
+      setCommentTarget(null);
+      setCommentDraft('');
       vscode.postMessage({ command: 'desktopGetWorkspaceDiff', ...(paneId ? { paneId } : {}) });
     },
     [vscode, paneId],
@@ -134,11 +196,8 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     window.addEventListener('mouseup', onUp);
   };
 
-  const renderHunks = (hunks: string) =>
-    hunks.split('\n').map((line, i) => {
-      let cls = 'diff-line diff-line-context';
-      let prefix = ' ';
-      let content = line;
+  const renderHunks = (file: WorkspaceDiffFile) =>
+    file.hunks.split('\n').map((line, i) => {
       if (line.startsWith('@@')) {
         return (
           <div key={i} className="diff-line-hunk">
@@ -146,6 +205,16 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
           </div>
         );
       }
+      if (line.startsWith('\\')) {
+        return (
+          <div key={i} className="diff-line-ellipsis">
+            {line}
+          </div>
+        );
+      }
+      let cls = 'diff-line diff-line-context';
+      let prefix = ' ';
+      let content = line;
       if (line.startsWith('+')) {
         cls = 'diff-line diff-line-added';
         prefix = '+';
@@ -154,20 +223,67 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
         cls = 'diff-line diff-line-removed';
         prefix = '-';
         content = line.slice(1);
-      } else if (line.startsWith('\\')) {
-        return (
-          <div key={i} className="diff-line-ellipsis">
-            {line}
-          </div>
-        );
       } else if (line.startsWith(' ')) {
         content = line.slice(1);
       }
+      const lineKey = `${file.path}:${i}`;
+      const isOpen = commentTarget?.lineKey === lineKey;
       return (
-        <div key={i} className={cls}>
-          <span className="diff-prefix">{prefix}</span>
-          <span className="diff-content">{content}</span>
-        </div>
+        <React.Fragment key={i}>
+          <div className={cls}>
+            <span className="diff-prefix">{prefix}</span>
+            <span className="diff-content">{content}</span>
+            <button
+              className="diff-line-comment-btn"
+              title="评论这行"
+              aria-label={`评论 ${file.path} 第 ${i + 1} 行`}
+              data-testid={`diff-comment-add-${i}`}
+              onClick={() => setCommentTarget({ lineKey, file, prefix, text: content.slice(0, 30) })}
+            >
+              <i className="codicon codicon-add" />
+            </button>
+          </div>
+          {isOpen && (
+            <div className="diff-comment-box" data-testid="diff-comment-box">
+              <textarea
+                ref={commentInputRef}
+                className="diff-comment-input"
+                data-testid="diff-comment-input"
+                placeholder="评论这行改动…"
+                value={commentDraft}
+                onChange={(e) => setCommentDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    submitComment();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelComment();
+                  }
+                }}
+              />
+              <div className="diff-comment-box-footer">
+                <span className="diff-comment-box-tag" title={file.path}>{file.path}</span>
+                <button
+                  className="diff-comment-box-cancel"
+                  data-testid="diff-comment-cancel"
+                  onClick={cancelComment}
+                >
+                  取消
+                </button>
+                <button
+                  className="diff-comment-box-send"
+                  title="添加到输入框"
+                  data-testid="diff-comment-submit"
+                  disabled={commentDraft.trim() === ''}
+                  onClick={submitComment}
+                >
+                  添加
+                </button>
+              </div>
+            </div>
+          )}
+        </React.Fragment>
       );
     });
 
@@ -197,7 +313,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
             {file.binary ? (
               <div className="diff-line-ellipsis">二进制文件，不显示差异</div>
             ) : file.hunks ? (
-              renderHunks(file.hunks)
+              renderHunks(file)
             ) : (
               <div className="diff-line-ellipsis">
                 {file.status === 'renamed' && file.oldPath

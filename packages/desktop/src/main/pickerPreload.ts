@@ -168,20 +168,24 @@ function showCard(el: Element): void {
       background: transparent; color: inherit;
       border: none; padding: 0; font: inherit; outline: none;
     }
-    .footer { display: flex; align-items: center; }
+    .footer { display: flex; align-items: center; gap: 6px; }
     .tag {
       flex: 1; color: ${palette.accent ?? '#0e639c'}; font-family: monospace; font-size: 11px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .send {
-      background: ${palette.foreground ?? '#cccccc'};
-      color: ${palette.background ?? '#1e1e1e'};
-      border: none; border-radius: 50%; width: 20px; height: 20px; flex-shrink: 0;
-      cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+      background: transparent;
+      color: ${palette.accent ?? '#0e639c'};
+      border: 1px solid ${palette.border ?? 'rgba(128,128,128,0.35)'};
+      border-radius: 3px;
+      font-size: 11px; padding: 2px 10px;
+      cursor: pointer;
     }
-    .send:hover:not(:disabled) { filter: brightness(0.92); }
+    .send:hover:not(:disabled) {
+      background: ${palette.accent ?? '#0e639c'};
+      color: ${palette.accentForeground ?? '#fff'};
+    }
     .send:disabled { opacity: 0.4; cursor: default; }
-    svg { width: 12px; height: 12px; fill: currentColor; }
   `);
   shadow.adoptedStyleSheets = [sheet];
 
@@ -202,8 +206,7 @@ function showCard(el: Element): void {
   send.type = 'button';
   send.className = 'send';
   send.title = '添加到输入框';
-  send.innerHTML =
-    '<svg viewBox="0 0 16 16"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg>';
+  send.textContent = '添加';
   footer.append(tag, send);
   input.append(textarea, footer);
 
