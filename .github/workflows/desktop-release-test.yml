@@ -1,0 +1,60 @@
+name: Desktop Release Test
+
+# 临时测试 workflow：验证桌面 release 发布功能（仅 build-desktop）。
+# 手动触发，上传 .dmg/.zip/.exe 到指定 tag 的 GitHub Release。
+# 测完删除此文件。
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '目标 release tag（产物上传到此 tag）'
+        required: true
+        default: 'v0.19.9-desktop-test'
+
+permissions:
+  contents: write  # action-gh-release 创建 tag/release 需要
+
+jobs:
+  build-desktop:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      # webview 依赖 agent-sdk/dist，先构建 SDK
+      - name: Build agent-sdk dist
+        run: pnpm -F wave-agent-sdk build
+
+      # 生产模式构建 webview（dist 被 desktop syncWebview 原样拷贝）
+      - name: Build webview dist
+        run: pnpm -F wave-webview run compile -- --production
+
+      # --publish never：electron-builder 仅产出安装包，上传交给下方 action-gh-release
+      - name: Build desktop installers
+        run: pnpm -F wave-desktop run dist -- --publish never
+
+      - name: Attach installers to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.zip
+            packages/desktop/release/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
