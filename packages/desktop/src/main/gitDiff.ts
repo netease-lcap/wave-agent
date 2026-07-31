@@ -87,9 +87,9 @@ function truncateHunks(hunks: string): { hunks: string; truncated: boolean } {
   return { hunks: lines.slice(0, MAX_DIFF_LINES).join('\n'), truncated: true };
 }
 
-async function diffForTracked(cwd: string, base: string[], entry: StatusEntry): Promise<WorkspaceDiffFile> {
+async function diffForTracked(repoRoot: string, base: string[], entry: StatusEntry): Promise<WorkspaceDiffFile> {
   // numstat row: additions<TAB>deletions<TAB>path ('-' on both for binary)
-  const num = await git(cwd, ['diff', ...base, '--numstat', '--', entry.path]).catch(() => '');
+  const num = await git(repoRoot, ['diff', ...base, '--numstat', '--', entry.path]).catch(() => '');
   const m = num.split('\n')[0]?.match(/^(\d+|-)\t(\d+|-)\t/);
   const binary = m ? m[1] === '-' : false;
   const additions = m && m[1] !== '-' ? parseInt(m[1], 10) : 0;
@@ -98,7 +98,7 @@ async function diffForTracked(cwd: string, base: string[], entry: StatusEntry): 
   let hunks = '';
   let truncated = false;
   if (!binary) {
-    const patch = await git(cwd, ['diff', ...base, '--', entry.path]).catch(() => '');
+    const patch = await git(repoRoot, ['diff', ...base, '--', entry.path]).catch(() => '');
     const at = patch.indexOf('@@');
     const body = at === -1 ? '' : patch.slice(at).trimEnd();
     ({ hunks, truncated } = truncateHunks(body));
@@ -123,8 +123,8 @@ const UNREADABLE: Omit<WorkspaceDiffFile, 'path' | 'status'> = {
   binary: true,
 };
 
-async function diffForUntracked(cwd: string, entry: StatusEntry): Promise<WorkspaceDiffFile> {
-  const full = path.join(cwd, entry.path);
+async function diffForUntracked(repoRoot: string, entry: StatusEntry): Promise<WorkspaceDiffFile> {
+  const full = path.join(repoRoot, entry.path);
   try {
     const st = await fs.promises.stat(full);
     if (!st.isFile() || st.size > MAX_UNTRACKED_BYTES) {
@@ -160,6 +160,12 @@ export async function getWorkspaceDiff(cwd: string): Promise<WorkspaceDiffResult
     return { kind: 'not-a-repo' };
   }
 
+  // `git status --porcelain` always emits paths relative to the repo root,
+  // but `cwd` may be a subdirectory. Resolving untracked files (path.join)
+  // and matching pathspecs both need root-relative paths, so normalize to
+  // the toplevel; fall back to cwd if rev-parse is unavailable.
+  const root = (await git(cwd, ['rev-parse', '--show-toplevel']).catch(() => '')).trim() || cwd;
+
   // Without commits there is no HEAD to diff against — the staged tree is
   // the whole change set.
   const hasHead = await git(cwd, ['rev-parse', '--verify', 'HEAD']).then(
@@ -175,8 +181,8 @@ export async function getWorkspaceDiff(cwd: string): Promise<WorkspaceDiffResult
   for (const entry of entries) {
     files.push(
       entry.status === 'untracked'
-        ? await diffForUntracked(cwd, entry)
-        : await diffForTracked(cwd, base, entry),
+        ? await diffForUntracked(root, entry)
+        : await diffForTracked(root, base, entry),
     );
   }
   return { kind: 'ok', files };

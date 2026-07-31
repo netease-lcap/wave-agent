@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as fs from 'fs';
 import { getWorkspaceDiff, MAX_DIFF_LINES } from '../src/main/gitDiff';
 
 /**
@@ -223,6 +224,39 @@ describe('getWorkspaceDiff', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.files[0]).toMatchObject({ path: 'gone.txt', status: 'untracked', binary: true });
+  });
+
+  it('resolves untracked paths against the repo root, not a subdirectory cwd', async () => {
+    // `git status --porcelain` always emits paths relative to the repo root,
+    // even when cwd is a subdirectory. A naive path.join(cwd, path) would
+    // double up the prefix, miss the file, and fall back to "binary".
+    const SUBCWD = '/repo/packages/desktop';
+    const ROOT = '/repo';
+    const relPath = 'packages/desktop/scripts/predev.mjs';
+    stubGit({ status: `?? ${relPath}\0` });
+    const inner = h.gitHandler;
+    h.gitHandler = (args) => {
+      if (args.join(' ') === 'rev-parse --show-toplevel') return `${ROOT}\n`;
+      return inner(args);
+    };
+    const correctAbs = `${ROOT}/${relPath}`;
+    vi.mocked(fs.promises.stat).mockImplementationOnce(async (p) => {
+      if (p === correctAbs) return { isFile: () => true, size: 5 } as unknown as Awaited<ReturnType<typeof fs.promises.stat>>;
+      throw new Error('ENOENT');
+    });
+    vi.mocked(fs.promises.readFile).mockImplementationOnce(async (p) => {
+      if (p === correctAbs) return Buffer.from('hello');
+      throw new Error('ENOENT');
+    });
+    const result = await getWorkspaceDiff(SUBCWD);
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.files[0]).toMatchObject({
+      path: relPath,
+      status: 'untracked',
+      binary: false,
+      hunks: '+hello',
+    });
   });
 
   it('truncates per-file hunks beyond MAX_DIFF_LINES', async () => {
