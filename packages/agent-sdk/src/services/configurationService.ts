@@ -413,6 +413,11 @@ export class ConfigurationService {
    * Store environment variables from configuration into the per-session
    * snapshot (NOT process.env). Settings `env` shadows OS env for this session
    * only — multiple sessions in one stdio process stay isolated.
+   *
+   * Exception: `WAVE_SERVER_URL` is also mirrored to `process.env` because the
+   * process-level singletons (AuthService, remoteSettingsService background
+   * fetch) need to read it and don't hold a per-session snapshot. Same value
+   * across sessions ⇒ no cross-pollution. See docs/specs/core/agent-config.md.
    */
   setEnvironmentVars(env: Record<string, string>): void {
     for (const [key, value] of Object.entries(env)) {
@@ -425,6 +430,13 @@ export class ConfigurationService {
       }
       this.envSnapshot[key] = value;
       this._configuredEnvKeys.add(key);
+      // WAVE_SERVER_URL is consumed by process-level singletons (AuthService,
+      // remoteSettingsService) that can't see the per-session snapshot — mirror
+      // it to process.env so they read the settings value. Same value across
+      // sessions ⇒ no last-session-wins cross-pollution.
+      if (key === "WAVE_SERVER_URL") {
+        process.env[key] = value;
+      }
     }
   }
 
@@ -468,12 +480,11 @@ export class ConfigurationService {
     fetchOptions?: ClientOptions["fetchOptions"],
     fetch?: ClientOptions["fetch"],
   ): GatewayConfig {
-    // Check for SSO token first - if present and server URL is available, use SSO mode
-    // Server URL resolution: options.serverUrl > OS env (WAVE_SERVER_URL) > default.
-    // WAVE_SERVER_URL is intentionally OS-env-only (NOT read from the settings env
-    // snapshot): AuthService is a process singleton with one server per process,
-    // and the background remote-settings fetch reads OS env present at process start,
-    // avoiding a startup 401 race. See docs/specs/core/agent-config.md.
+    // Check for SSO token first - if present and server URL is available, use SSO mode.
+    // Server URL resolution: options.serverUrl > process.env.WAVE_SERVER_URL > default.
+    // settings.json `env` WAVE_SERVER_URL is mirrored to process.env by
+    // setEnvironmentVars (so process-level singletons AuthService / remoteSettings
+    // can read it), then read here. See docs/specs/core/agent-config.md.
     const ssoToken = this.readSSOToken();
     const serverUrl =
       this.options.serverUrl ||
