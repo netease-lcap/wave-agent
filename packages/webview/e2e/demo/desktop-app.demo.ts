@@ -94,7 +94,7 @@ test.describe('Desktop App Screenshots', () => {
         await injector.simulateExtensionMessage('startStreaming');
 
         await expect(webviewPage.getByTestId('desktop-session-item-sess-a1')).toBeVisible();
-        await expect(webviewPage.locator('.desktop-session-dot--running')).toBeVisible();
+        await expect(webviewPage.getByTestId('desktop-session-item-sess-a1').locator('.codicon-loading')).toBeVisible();
         // Other groups are expanded by default too
         await expect(webviewPage.getByTestId('desktop-session-item-sess-b1')).toBeVisible();
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-session-tree.png' });
