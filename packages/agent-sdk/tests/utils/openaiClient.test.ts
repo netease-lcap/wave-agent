@@ -143,6 +143,53 @@ describe("OpenAIClient", () => {
     expect(chunks[0].choices[0].delta.content).toBe("hello");
   });
 
+  describe("Session header", () => {
+    it("should send x-session-id header when sessionId is configured", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: "ok" } }] }),
+        headers: new Headers(),
+      });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        sessionId: "sess-123",
+        fetch: mockFetch,
+      });
+
+      await client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit;
+      expect(init.headers).toHaveProperty("x-session-id", "sess-123");
+    });
+
+    it("should not send x-session-id when sessionId is absent", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: "ok" } }] }),
+        headers: new Headers(),
+      });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      await client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit;
+      expect(init.headers).not.toHaveProperty("x-session-id");
+    });
+  });
+
   describe("Retry logic", () => {
     it("should retry on 429 status code and eventually succeed", async () => {
       const mockFetch = vi

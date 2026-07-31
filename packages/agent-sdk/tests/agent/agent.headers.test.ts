@@ -25,6 +25,15 @@ describe("Agent Custom Headers", () => {
     vi.restoreAllMocks();
   });
 
+  it("should expose sessionId in gateway config for backend correlation", async () => {
+    const agent = await Agent.create({});
+    activeAgent = agent;
+    const gatewayConfig = agent.getGatewayConfig();
+
+    expect(gatewayConfig.sessionId).toBe(agent.sessionId);
+    expect(gatewayConfig.sessionId).toBeTruthy();
+  });
+
   it("should include headers from WAVE_CUSTOM_HEADERS environment variable", async () => {
     process.env.WAVE_CUSTOM_HEADERS = "X-Test-Header: value123";
 

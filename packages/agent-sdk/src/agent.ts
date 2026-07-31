@@ -95,7 +95,10 @@ export class Agent {
 
   // Dynamic configuration getter methods
   public getGatewayConfig(): GatewayConfig {
-    return this.configurationService.resolveGatewayConfig();
+    return {
+      ...this.configurationService.resolveGatewayConfig(),
+      sessionId: this.messageManager.getSessionId(),
+    };
   }
 
   public getModelConfig(): ModelConfig {

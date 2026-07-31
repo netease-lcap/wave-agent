@@ -216,7 +216,10 @@ export class AIManager {
 
   // Getter methods for accessing dynamic configuration
   public getGatewayConfig(): GatewayConfig {
-    return this.configurationService.resolveGatewayConfig();
+    return {
+      ...this.configurationService.resolveGatewayConfig(),
+      sessionId: this.messageManager.getSessionId(),
+    };
   }
 
   public getModelConfig(): ModelConfig {
