@@ -1265,7 +1265,19 @@ export class DesktopHost {
         resetSolePane = true;
       }
     }
-    if (target) void target.destroy().catch(() => { /* best-effort */ });
+    // Destroy the agent BEFORE removing its worktree directory. The agent's
+    // cwd is the worktree path, and Agent.destroy() flushes the session file
+    // (which resolves the worktree path via realpath). Previously destroy and
+    // removeWorktree raced as independent fire-and-forget calls — the fast
+    // `git worktree remove` deleted the directory before the slow destroy
+    // reached saveSession, leaving it failing ENOENT and losing the trailing
+    // messages. Keep both backgrounded (no UI block) but sequence them:
+    // removeWorktree runs only after destroy resolves. destroy() does not
+    // dispose the shared stdio client, so the connection stays alive for
+    // removeWorktree to reuse.
+    const destroyPromise = target
+      ? target.destroy().catch(() => { /* best-effort */ })
+      : Promise.resolve();
 
     this.configStore.removeSession(sessionId);
     // Update the sidebar right away — the worktree cleanup below runs in the
@@ -1280,12 +1292,15 @@ export class DesktopHost {
       }
     }
 
-    if (entry?.worktree) {
-      void this.removeWorktree({
-        path: entry.worktree.path,
-        branch: entry.worktree.branch,
-        repoRoot: entry.worktree.repoRoot,
-      });
+    const worktree = entry?.worktree;
+    if (worktree) {
+      void destroyPromise.then(() =>
+        this.removeWorktree({
+          path: worktree.path,
+          branch: worktree.branch,
+          repoRoot: worktree.repoRoot,
+        }),
+      );
     }
   }
 

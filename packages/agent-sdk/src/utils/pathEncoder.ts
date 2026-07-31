@@ -212,8 +212,13 @@ export class PathEncoder {
       resolvedPath = absolutePath;
     }
 
-    // Encode the resolved path
-    const encodedName = await this.encode(resolvedPath);
+    // Encode the resolved path. Use encodeSync (pure string transform) rather
+    // than encode(): realpath was already attempted above with its own fallback,
+    // so re-resolving via encode()->resolvePath() would throw ENOENT again when
+    // the workdir no longer exists (e.g. a deleted worktree during agent
+    // shutdown). Session files live under <baseSessionDir>/<encoded>/ regardless
+    // of the workdir's existence, so encoding must not require it to exist.
+    const encodedName = this.encodeSync(resolvedPath);
     const encodedPath = join(baseSessionDir, encodedName);
 
     // Generate hash if encoding resulted in truncation
