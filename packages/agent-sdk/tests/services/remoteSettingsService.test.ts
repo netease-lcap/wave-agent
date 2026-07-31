@@ -44,6 +44,7 @@ import {
   shutdown,
   refresh,
   initialize,
+  startBackgroundFetch,
   onSettingsUpdate,
   remoteSettingsService,
 } from "../../src/services/remoteSettingsService.js";
@@ -156,13 +157,13 @@ describe("remoteSettingsService", () => {
       );
       await refresh();
 
-      // Now cache is populated. Trigger another fetch via initialize (doesn't clear cache).
+      // Now cache is populated. Trigger another fetch via startBackgroundFetch (doesn't clear cache).
       const fetchSpy = vi.mocked(fetch);
       fetchSpy.mockResolvedValue({
         status: 304,
       } as Response);
 
-      initialize();
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
       // Verify If-None-Match was sent
@@ -207,11 +208,12 @@ describe("remoteSettingsService", () => {
         }),
       );
 
-      // initialize loads cache from disk, then fetches
+      // initialize loads cache from disk, then startBackgroundFetch fetches
       initialize();
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
-      // After initialize + 304, settings should still be available
+      // After fetch + 304, settings should still be available
       expect(getRemoteSettingsSync()).toEqual(settings);
 
       clear();
@@ -282,8 +284,9 @@ describe("remoteSettingsService", () => {
         }),
       );
 
-      // initialize loads cache from disk, then fetches
+      // initialize loads cache from disk, then startBackgroundFetch fetches
       initialize();
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
       // Should fall back to cached settings
@@ -315,6 +318,7 @@ describe("remoteSettingsService", () => {
       );
 
       initialize();
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
       expect(getRemoteSettingsSync()).toEqual(settings);
@@ -388,15 +392,46 @@ describe("remoteSettingsService", () => {
       );
 
       initialize();
-
-      // Synchronous: cache loaded from disk
+      // initialize() only loads the disk cache (no network fetch)
       expect(getRemoteSettingsSync()).toEqual(cachedSettings);
+
+      // startBackgroundFetch triggers the network fetch + polling
+      startBackgroundFetch();
 
       // Wait for async fetch to complete
       await new Promise((r) => setTimeout(r, 50));
 
       // After fetch, settings should be updated
       expect(getRemoteSettingsSync()).toEqual({ language: "en" });
+
+      clear();
+    });
+
+    it("loads cache from disk without triggering a network fetch", async () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+
+      const cachedSettings = { language: "zh" };
+      (fs.existsSync as Mock).mockReturnValue(true);
+      (fs.readFileSync as Mock).mockReturnValue(
+        JSON.stringify({
+          uuid: "u1",
+          checksum: "old",
+          settings: cachedSettings,
+          fetchedAt: "2024-01-01T00:00:00.000Z",
+        }),
+      );
+
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      initialize();
+
+      // Cache loaded synchronously from disk
+      expect(getRemoteSettingsSync()).toEqual(cachedSettings);
+      // No network fetch was triggered (deferred to startBackgroundFetch)
+      expect(fetchSpy).not.toHaveBeenCalled();
 
       clear();
     });
@@ -412,6 +447,7 @@ describe("remoteSettingsService", () => {
       );
 
       initialize();
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
       // Polling should still be started (no crash)
@@ -490,6 +526,7 @@ describe("remoteSettingsService", () => {
       );
 
       initialize();
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
       // Should not throw
@@ -590,7 +627,8 @@ describe("remoteSettingsService", () => {
       const unsubscribe = onSettingsUpdate(callback);
 
       // Second fetch with same checksum — note refresh() clears cache first,
-      // so oldChecksum is undefined. We test via initialize() path instead.
+      // so oldChecksum is undefined. We test via startBackgroundFetch() instead
+      // (it fetches without clearing, so oldChecksum = "same").
       vi.mocked(fetch).mockResolvedValue({
         status: 200,
         ok: true,
@@ -601,10 +639,10 @@ describe("remoteSettingsService", () => {
             settings: { language: "en" },
           }),
       } as Response);
-      initialize();
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
-      // initialize() doesn't clear cache, so oldChecksum = "same", new = "same" → no callback
+      // oldChecksum = "same", new = "same" → no callback
       expect(callback).not.toHaveBeenCalled();
       unsubscribe();
     });
@@ -639,7 +677,7 @@ describe("remoteSettingsService", () => {
         status: 404,
         ok: false,
       } as Response);
-      initialize();
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
       expect(callback).toHaveBeenCalledTimes(1);
@@ -943,6 +981,7 @@ describe("remoteSettingsService", () => {
   describe("remoteSettingsService namespace", () => {
     it("exposes all expected methods", () => {
       expect(remoteSettingsService.initialize).toBeTypeOf("function");
+      expect(remoteSettingsService.startBackgroundFetch).toBeTypeOf("function");
       expect(remoteSettingsService.getRemoteSettingsSync).toBeTypeOf(
         "function",
       );
@@ -1078,7 +1117,7 @@ describe("remoteSettingsService", () => {
   // startPolling — second call is no-op
   // ---------------------------------------------------------------------------
   describe("startPolling idempotency", () => {
-    it("does not start duplicate timers on multiple initialize calls", async () => {
+    it("does not start duplicate timers on multiple startBackgroundFetch calls", async () => {
       (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
       (authService.getSSOToken as Mock).mockReturnValue("token123");
       (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
@@ -1098,10 +1137,11 @@ describe("remoteSettingsService", () => {
       );
 
       initialize();
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
-      // Call initialize again — should not create a second timer
-      initialize();
+      // Call startBackgroundFetch again — should not create a second timer
+      startBackgroundFetch();
       await new Promise((r) => setTimeout(r, 50));
 
       clear();

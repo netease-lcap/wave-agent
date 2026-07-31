@@ -198,8 +198,20 @@ function startPolling(): void {
 }
 
 export function initialize(): void {
+  // Load disk cache synchronously so getRemoteSettingsSync() returns cached
+  // managed settings during loadMergedConfiguration() (must run BEFORE it).
   loadCacheFromDisk();
-  // Fire-and-forget the initial fetch, then start background polling
+}
+
+/**
+ * Start the fire-and-forget initial network fetch + background polling.
+ *
+ * Must be called AFTER loadMergedConfiguration() so local settings.json env
+ * vars (e.g. WAVE_SERVER_URL) are applied to process.env first — otherwise
+ * getServerUrl() falls back to DEFAULT_SERVER_URL (prod) and a test-issued
+ * token hits the prod endpoint (401).
+ */
+export function startBackgroundFetch(): void {
   fetchRemoteSettings()
     .then(() => startPolling())
     .catch((err) => {
@@ -342,6 +354,7 @@ export function mergeRemoteSettings(
  */
 export const remoteSettingsService = {
   initialize,
+  startBackgroundFetch,
   getRemoteSettingsSync,
   refresh,
   clear,

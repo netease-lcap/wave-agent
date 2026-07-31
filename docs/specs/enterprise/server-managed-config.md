@@ -64,4 +64,5 @@ order: 20
 - **如果用户退出 SSO 会怎样？** 后续启动不再下载托管设置，但之前缓存的托管设置保持有效，直到被本地更改覆盖。
 - **如果托管设置与环境变量冲突会怎样？** 用户的 `settings.json` `model` 字段覆盖管理员的 `env.WAVE_MODEL` 默认值。如果管理员想要强制执行，他们使用 `model` 标量字段，在合并期间覆盖本地值。Shell 环境变量（在 Wave 启动前设置）是最低优先级的回退。
 - **设置重新加载期间（文件监视器）会怎样？** 托管设置在文件更改时不会重新下载——它们仅在初始化期间下载。
+- **如果 `WAVE_SERVER_URL` 配置在 `settings.json` 的 `env` 中而非 shell 环境变量会怎样？** 启动时本地 `settings.json` 的 `env` 在 `loadMergedConfiguration` 内才写入 `process.env`，而远程设置的网络请求通过 `getServerUrl()` 读取 `process.env.WAVE_SERVER_URL` 来决定目标端点。因此网络请求必须在 `loadMergedConfiguration` **之后**启动；否则 `WAVE_SERVER_URL` 尚未写入 `process.env`，`getServerUrl()` 回落到 `DEFAULT_SERVER_URL`（生产），用测试环境签发的 token 命中生产端点，必然 401 且无法恢复。磁盘缓存加载（`loadCacheFromDisk`）仍须在 `loadMergedConfiguration` **之前**完成，以便合并时 `getRemoteSettingsSync()` 返回缓存的托管设置。两者职责分离：缓存加载在前，网络刷新在后。
 
