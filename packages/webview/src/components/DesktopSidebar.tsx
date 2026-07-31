@@ -119,10 +119,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         }}
         data-testid={`desktop-session-item-${session.sessionId}`}
       >
-        <span
-          className={`desktop-session-dot${waiting ? ' desktop-session-dot--waiting' : running ? ' desktop-session-dot--running' : ''}`}
-          title={waiting ? '等待确认' : running ? '正在运行' : undefined}
-        />
+        {running || waiting ? (
+          <i
+            className={`codicon codicon-${waiting ? 'bell' : 'loading codicon-modifier-spin'} desktop-session-status-icon`}
+            style={{ color: waiting ? 'var(--vscode-charts-purple, #b180d7)' : 'var(--vscode-charts-blue, #59a4f9)' }}
+            title={waiting ? '等待确认' : '正在运行'}
+          />
+        ) : (
+          <span className="desktop-session-dot" aria-hidden="true" />
+        )}
         <span className="desktop-session-title">{session.title || '新对话'}</span>
         <button
           className="desktop-session-delete"

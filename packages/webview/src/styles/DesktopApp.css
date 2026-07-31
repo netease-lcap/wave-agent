@@ -157,18 +157,20 @@
 }
 
 .desktop-session-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
 }
 
-.desktop-session-dot--running {
-    background: var(--vscode-testing-iconPassed, #73c991);
-}
-
-.desktop-session-dot--waiting {
-    background: var(--vscode-testing-iconQueued, #cca700);
+.desktop-session-status-icon {
+    font-size: 14px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
 }
 
 .desktop-session-title {

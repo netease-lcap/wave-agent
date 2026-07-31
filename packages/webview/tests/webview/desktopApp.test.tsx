@@ -325,9 +325,11 @@ describe('DesktopApp', () => {
             sendCommand('startStreaming', {});
 
             const current = screen.getByTestId('desktop-session-item-s1');
-            expect(current.querySelector('.desktop-session-dot--running')).not.toBeNull();
+            const runningIcon = current.querySelector('.desktop-session-status-icon.codicon-loading');
+            expect(runningIcon).not.toBeNull();
+            expect(runningIcon).toHaveAttribute('title', '正在运行');
             expect(current.className).toContain('desktop-session-item--current');
-            expect(screen.getByTestId('desktop-session-item-s2').querySelector('.desktop-session-dot--running')).toBeNull();
+            expect(screen.getByTestId('desktop-session-item-s2').querySelector('.desktop-session-status-icon')).toBeNull();
         });
 
         it('shows a waiting dot on sessions with a pending confirmation, taking precedence over running', () => {
@@ -346,14 +348,15 @@ describe('DesktopApp', () => {
             sendCommand('startStreaming', {});
 
             const waiting = screen.getByTestId('desktop-session-item-s1');
-            // Both flags set: waiting wins, no running modifier.
-            expect(waiting.querySelector('.desktop-session-dot--waiting')).not.toBeNull();
-            expect(waiting.querySelector('.desktop-session-dot--running')).toBeNull();
-            expect(waiting.querySelector('.desktop-session-dot')).toHaveAttribute('title', '等待确认');
+            // Both flags set: waiting wins — shows a bell, no running loader.
+            const waitingIcon = waiting.querySelector('.desktop-session-status-icon.codicon-bell');
+            expect(waitingIcon).not.toBeNull();
+            expect(waitingIcon).toHaveAttribute('title', '等待确认');
+            expect(waiting.querySelector('.codicon-loading')).toBeNull();
 
             const running = screen.getByTestId('desktop-session-item-s2');
-            expect(running.querySelector('.desktop-session-dot--waiting')).toBeNull();
-            expect(running.querySelector('.desktop-session-dot--running')).not.toBeNull();
+            expect(running.querySelector('.codicon-bell')).toBeNull();
+            expect(running.querySelector('.desktop-session-status-icon.codicon-loading')).not.toBeNull();
         });
 
         it('shows 无会话 for an expanded empty group', () => {
