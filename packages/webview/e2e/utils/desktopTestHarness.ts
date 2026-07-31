@@ -89,8 +89,12 @@ export const test = base.extend<DesktopTestContext>({
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wave 代码智聊</title>
+    <!-- Base resolves relative URLs (e.g. the terminal chunk's ./terminal.js)
+         against the routed vscode-webview scheme so the harness serves them. -->
+    <base href="vscode-webview://mock-extension-id/">
     <link rel="stylesheet" href="vscode-webview://mock-extension-id/codicons/codicon.css">
     <link rel="stylesheet" href="vscode-webview://mock-extension-id/chat.css">
+    <link rel="stylesheet" href="vscode-webview://mock-extension-id/terminal.css">
     <style>
         ${vscodeStyles}
 

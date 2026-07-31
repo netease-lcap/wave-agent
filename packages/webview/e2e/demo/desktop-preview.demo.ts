@@ -86,13 +86,15 @@ test.describe('Desktop Preview Pane Screenshots', () => {
         const injector = new MessageInjector(webviewPage);
         await webviewPage.setViewportSize({ width: 1100, height: 680 });
 
-        await injector.simulateExtensionMessage('setInitialState', initialState);
         await injector.simulateExtensionMessage('desktopWorkdirState', {
             workdir: DIR_A,
             recentWorkdirs: [DIR_A]
         });
-        // ChatApp subscribes to window messages only after it mounts.
-        await webviewPage.waitForSelector('[data-testid="chat-container"]', { timeout: 5000 });
+        // Wait for ChatApp to mount and attach its message listener before
+        // sending setInitialState — otherwise the auth/initialized payload is
+        // lost to the mount race.
+        await injector.waitForChatAppReady();
+        await injector.simulateExtensionMessage('setInitialState', initialState);
 
         await injector.updateMessages([
             MockDataGenerator.createUserMessage('帮我做一个订单管理页面的原型，先跑起来看看效果', 'msg-u1'),

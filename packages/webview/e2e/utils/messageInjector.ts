@@ -132,6 +132,22 @@ export class MessageInjector {
     }
 
     /**
+     * Wait until ChatApp has mounted and attached its window-message listener.
+     *
+     * ChatApp attaches the listener in a passive effect (useEffect ... []) and
+     * posts `webviewReady` in a later effect ([vscode]) defined AFTER it, so
+     * React runs the listener effect first — observing `webviewReady` therefore
+     * guarantees a subsequent `setInitialState` will be received rather than
+     * dropped. Desktop demos MUST send `desktopWorkdirState` first (that mounts
+     * ChatApp) and call this before `setInitialState`; otherwise the auth /
+     * initialized payload is lost to the mount race and a no-messages pane
+     * renders the LoadingLogo sweep instead of the welcome page.
+     */
+    async waitForChatAppReady(timeout = 5000) {
+        await this.waitForMessage('webviewReady', timeout);
+    }
+
+    /**
      * Update sessions list
      */
     async updateSessions(sessions: Record<string, unknown>[]) {
