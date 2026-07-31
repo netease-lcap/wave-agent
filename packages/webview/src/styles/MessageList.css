@@ -1,6 +1,7 @@
 /* Messages */
 .messages-container {
     flex: 1;
+    box-sizing: border-box;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 10px;
