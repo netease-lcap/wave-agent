@@ -544,18 +544,6 @@
     overflow: hidden;
 }
 
-/* Bottom fade for output (matches .write-preview-scrim) */
-.bash-command-unified::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 40px;
-    background: linear-gradient(to bottom, transparent, var(--vscode-terminal-background, var(--vscode-editor-background)));
-    pointer-events: none;
-}
-
 .bash-command-unified .bash-command-input {
     margin-top: 0;
     border: none;
