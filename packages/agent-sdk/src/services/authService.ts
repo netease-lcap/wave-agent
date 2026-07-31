@@ -339,6 +339,19 @@ export class AuthService {
    */
   async checkAndRefreshTokenIfNeeded(): Promise<boolean> {
     if (!this.isTokenExpired()) return true;
+    return this.forceRefreshToken();
+  }
+
+  /**
+   * Force a token refresh regardless of local expiry state.
+   *
+   * Used by the 401/403 recovery path: a server-side rejection is the
+   * authoritative signal that the token is invalid, which is more reliable
+   * than the local `SSO_TOKEN_EXPIRES_AT` heuristic (token may be revoked,
+   * allow-list changed, or expiry info missing). Deduplicates concurrent
+   * refresh calls.
+   */
+  async forceRefreshToken(): Promise<boolean> {
     // Dedup: if a refresh is already in-flight, reuse the same promise
     if (this._refreshPromise) {
       logger.info(
@@ -494,8 +507,9 @@ export function createAuthAwareFetch(innerFetch: typeof fetch): typeof fetch {
         return innerFetch(input, { ...init, headers: retryHeaders });
       }
 
-      // Try force refresh
-      if (await authService.checkAndRefreshTokenIfNeeded()) {
+      // Try force refresh — bypass local expiry check: a server-side 401/403
+      // is the authoritative signal that the token is invalid.
+      if (await authService.forceRefreshToken()) {
         const retryToken = authService.getSSOToken();
         if (retryToken) {
           const retryHeaders = new Headers(init?.headers);
