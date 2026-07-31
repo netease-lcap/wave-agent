@@ -101,7 +101,7 @@ order: 60
 
 ### 用户故事：自定义环境变量（优先级：P1）
 
-开发者需要将自定义环境变量（API 密钥、数据库 URL、功能标志）传递给 Wave Agent SDK，而不需要在代码中硬编码。他们在 settings.json 文件中添加 "env" 字段，并期望这些变量在代理执行上下文中可用。Wave Code CLI 将继承此功能，因为它使用 SDK。
+开发者需要将自定义环境变量（API 密钥、数据库 URL、功能标志）传递给 Wave Agent SDK，而不需要在代码中硬编码。他们在 settings.json 文件中添加 "env" 字段，并期望这些变量在代理执行上下文中可用。这些变量被存入 Agent 的**会话级环境快照**（`ConfigurationService` 实例，每个会话独立），优先级高于 OS 环境变量，但**不写入 `process.env`**——这样在 stdio 多会话模式下，一个进程承载多个会话时不会相互污染。Wave Code CLI 将继承此功能，因为它使用 SDK。
 
 **为什么是这个优先级**：这提供了必要的配置灵活性，并遵循安全最佳实践，将敏感数据保留在配置文件中而非代码中。
 
@@ -109,9 +109,12 @@ order: 60
 
 **验收场景**：
 
-1. **假设**settings.json 文件包含带有键值对的 env 字段，**当**Wave Agent SDK 启动时，**则**这些环境变量对所有代理进程可用
+1. **假设**settings.json 文件包含带有键值对的 env 字段，**当**Wave Agent SDK 启动时，**则**这些环境变量存入该 Agent 的**会话级环境快照**（per-session env snapshot），优先级高于 OS 环境变量；它们**不写入 `process.env`**
 2. **假设**用户级和项目级 settings.json 文件都包含 env 字段，**当**代理运行时，**则**项目级环境变量覆盖同名的用户级变量
 3. **假设**env 字段格式无效，**当**设置被加载时，**则**系统显示关于无效环境变量配置的清晰错误消息
+4. **假设**一个 stdio 进程承载多个会话（不同项目/workdir），且各自的 settings.json `env` 设置了不同的 `WAVE_MODEL`/`WAVE_API_KEY`，**当**任一会话解析网关/模型配置时，**则**只读取本会话的快照，不发生"后启动会话覆盖前一会话"的污染（last-session-wins 污染消除）
+5. **假设**settings.json `env` 中的变量被子进程（bash、hooks、bang、后台任务、MCP 模板替换）读取，**当**这些子进程启动时，**则**其环境为 `OS env + 本会话快照` 的合并（基础设施子进程如 git/worktree/LSP 仍只读 OS env）
+6. **假设**settings.json `env` 中设置了 `WAVE_SERVER_URL`，**当**配置被加载时，**则**该值被忽略——`WAVE_SERVER_URL` 仅从 OS 环境或 `options.serverUrl`/stdio `initialize` 参数读取（详见边界说明）
 
 ---
 
@@ -182,6 +185,13 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 - IDE 插件配置对话框只填写部分字段（如仅 API Key、无 API 地址）时如何生效？（未填写的字段保持原值或回退到环境变量）
 - IDE 插件配置对话框加载已保存配置失败时如何展示？（对话框内显示错误，表单仍可填写重试）
 
+### 边界说明：环境变量作用域与优先级
+
+- **settings.json `env` 与 OS 环境变量的关系**：settings.json `env` 存入会话级快照，优先级高于 OS 环境变量，但**不写入 `process.env`**。优先级从高到低：显式构造参数 / stdio `initialize` 参数 > settings.json `env`（快照）> OS 环境变量 > 默认值。
+- **`WAVE_SERVER_URL` 仅从 OS 环境读取**：它**不从** settings.json `env` 读取。设置服务端地址需通过 OS 环境变量、`options.serverUrl` 或 stdio `initialize` 参数。这样做消除了启动时 401 竞态（OS 环境变量在进程启动时即已就绪，远端设置拉取不需要等待 settings env 应用）。
+- **SSO 认证 / 远端设置轮询为进程级单例**：`authService` 与 `remoteSettingsService` 是进程级单例（一个 `auth.json` / 远端设置缓存——按用户）。因此对于后台 token 刷新/远端设置轮询，**每个进程只有一个 `serverUrl`**；AI 网关/模型/密钥的解析本身仍是按会话进行的。
+- **基础设施子进程保持 OS-env-only**：git/worktree/LSP 等基础设施子进程只读取 OS 环境变量（`PATH`/`HOME`/`LC_ALL` 等），不合并会话快照。`WAVE_PLUGIN_GIT_TIMEOUT_MS`、`WAVE_SHELL`、`WAVE_GIT_BASH_PATH` 等"基础设施级"变量不从 settings.json `env` 读取，需通过 OS 环境设置。
+
 ## 成功标准 *（必填）*
 
 ### 可衡量结果
@@ -191,7 +201,7 @@ SDK 用户需要按子代理类型配置不同的 HTTP 请求头，以便 `custo
 - **SC-003**：当两个来源都缺少必需配置时（自定义请求头存在时的 `apiKey` 除外），Agent 创建失败并带有描述性错误消息
 - **SC-004**：当两者都存在时，构造函数参数覆盖环境变量
 - **SC-005**：与测试相关的环境变量继续像以前一样工作
-- **SC-006**：服务使用已解析的配置而非直接环境变量访问
+- **SC-006**：服务读取已解析的配置 / 会话级环境快照，而非直接访问 `process.env`（settings.json `env` 不写入 `process.env`）
 - **SC-007**：`maxTokens` 以正确的优先级正确应用于 AI 服务调用
 - **SC-008**：来自 `WAVE_CUSTOM_HEADERS` 的自定义请求头包含在发出的请求中
 - **SC-009**：代理以配置的语言响应，同时保留技术术语

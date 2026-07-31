@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import type { MessageManager } from "./messageManager.js";
 import { Container } from "../utils/container.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
+import type { ConfigurationService } from "../services/configurationService.js";
 
 export interface BangManagerOptions {
   workdir: string;
@@ -29,6 +30,19 @@ export class BangManager {
     return this.container.get<MessageManager>("MessageManager")!;
   }
 
+  /**
+   * Merged env (OS env overlaid with this session's settings snapshot) for
+   * bang-command subprocesses, so settings `env` vars reach them without
+   * polluting other sessions in one `wave --stdio` process.
+   */
+  private get sessionEnv(): Record<string, string> {
+    return (
+      this.container
+        .get<ConfigurationService>("ConfigurationService")
+        ?.getMergedEnv?.() ?? (process.env as Record<string, string>)
+    );
+  }
+
   private setCommandRunning(isRunning: boolean): void {
     this.isCommandRunning = isRunning;
     this.onCommandRunningChange?.(isRunning);
@@ -51,6 +65,7 @@ export class BangManager {
         cwd: this.workdir,
         env: {
           ...process.env,
+          ...this.sessionEnv,
         },
       });
 

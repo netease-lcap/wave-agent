@@ -138,7 +138,9 @@ export const enterWorktreeTool: ToolPlugin = {
             cwd: worktreeInfo.path,
             worktreeName: worktreeInfo.name,
             env: Object.fromEntries(
-              Object.entries(process.env).filter((e) => e[1] !== undefined),
+              Object.entries(context.sessionEnv ?? process.env).filter(
+                (e) => e[1] !== undefined,
+              ),
             ) as Record<string, string>,
           },
         );

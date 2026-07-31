@@ -8,6 +8,7 @@ import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
 import { MessageQueue } from "./messageQueue.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
+import type { ConfigurationService } from "../services/configurationService.js";
 
 export interface BackgroundTaskManagerCallbacks {
   onBackgroundTasksChange?: (tasks: BackgroundTask[]) => void;
@@ -30,6 +31,19 @@ export class BackgroundTaskManager {
   ) {
     this.callbacks = options.callbacks || {};
     this.workdir = options.workdir;
+  }
+
+  /**
+   * Merged env (OS env overlaid with this session's settings snapshot) for
+   * background-task subprocesses, so settings `env` vars reach them without
+   * polluting other sessions in one `wave --stdio` process.
+   */
+  private get sessionEnv(): Record<string, string> {
+    return (
+      this.container
+        .get<ConfigurationService>("ConfigurationService")
+        ?.getMergedEnv?.() ?? (process.env as Record<string, string>)
+    );
   }
 
   /**
@@ -73,6 +87,7 @@ export class BackgroundTaskManager {
       cwd: cwd ?? this.workdir,
       env: {
         ...process.env,
+        ...this.sessionEnv,
       },
     });
 

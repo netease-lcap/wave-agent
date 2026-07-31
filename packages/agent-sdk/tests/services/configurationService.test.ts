@@ -110,9 +110,15 @@ describe("ConfigurationService", () => {
       });
       expect(result.configuration?.permissions?.allow).toContain("rule1");
       expect(result.configuration?.permissions?.allow).toContain("rule2");
-      expect(process.env.USER_VAR).toBe("user");
-      expect(process.env.PROJECT_VAR).toBe("project");
-      expect(process.env.WAVE_PROJECT_DIR).toBe(tempDir);
+      // Env vars land in the per-session snapshot (NOT process.env) so multiple
+      // sessions in one stdio process stay isolated.
+      expect(configService.getEnvSnapshot()).toMatchObject({
+        USER_VAR: "user",
+        PROJECT_VAR: "project",
+        WAVE_PROJECT_DIR: tempDir,
+      });
+      expect(process.env.USER_VAR).toBeUndefined();
+      expect(process.env.PROJECT_VAR).toBeUndefined();
     });
 
     it("should merge deny rules from all sources", async () => {
@@ -380,10 +386,13 @@ describe("ConfigurationService", () => {
   });
 
   describe("Environment Variable Management", () => {
-    it("should set environment variables to process.env", () => {
+    it("should set environment variables to the session snapshot (not process.env)", () => {
+      delete process.env.KEY;
       const env = { KEY: "VALUE" };
       configService.setEnvironmentVars(env);
-      expect(process.env.KEY).toBe("VALUE");
+      // Stored in the per-session snapshot, NOT written to process.env.
+      expect(configService.getEnvSnapshot().KEY).toBe("VALUE");
+      expect(process.env.KEY).toBeUndefined();
     });
   });
 

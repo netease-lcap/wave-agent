@@ -9,6 +9,7 @@ import { ChatCompletionFunctionTool } from "openai/resources.js";
 import { createMcpToolPlugin, findToolServer } from "../utils/mcpUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import { Container } from "../utils/container.js";
+import type { ConfigurationService } from "../services/configurationService.js";
 import type {
   Logger,
   McpServerConfig,
@@ -42,7 +43,21 @@ export interface McpManagerOptions {
  */
 const WAVE_TEMPLATE_VARS = ["WAVE_PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT"];
 
-export function expandEnvVars(value: string): string {
+/**
+ * Expand environment variables in a string value.
+ * Supports ${VAR} and ${VAR:-default} patterns.
+ *
+ * @param env - Merged env to resolve against (session snapshot over OS env).
+ *              Defaults to `process.env` for backward compatibility with tests
+ *              and standalone callers.
+ */
+export function expandEnvVars(
+  value: string,
+  env: Record<string, string | undefined> = process.env as Record<
+    string,
+    string | undefined
+  >,
+): string {
   return value.replace(/\$\{([^}]+)\}/g, (_match, expr: string) => {
     const [varName, ...rest] = expr.split(":-");
     const defaultValue = rest.join(":-");
@@ -50,45 +65,53 @@ export function expandEnvVars(value: string): string {
     if (WAVE_TEMPLATE_VARS.includes(varName)) {
       return _match; // return original ${...} string untouched
     }
-    return process.env[varName] ?? defaultValue;
+    return env[varName] ?? process.env[varName] ?? defaultValue;
   });
 }
 
 /**
  * Walk an MCP config and resolve environment variables in all string fields.
- * Only expands ${VAR} from process.env (skipping WAVE_PLUGIN_ROOT which is
- * handled at spawn time).
+ * Expands ${VAR} against the session env snapshot (over OS env); falls back to
+ * process.env. WAVE_PLUGIN_ROOT is skipped — handled at spawn time.
  */
-export function resolveMcpConfig(config: McpConfig): McpConfig {
+export function resolveMcpConfig(
+  config: McpConfig,
+  env: Record<string, string | undefined> = process.env as Record<
+    string,
+    string | undefined
+  >,
+): McpConfig {
   const resolved: McpConfig = { mcpServers: {} };
 
   for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
     const resolvedServer: McpServerConfig = { ...serverConfig };
 
     if (resolvedServer.command) {
-      resolvedServer.command = expandEnvVars(resolvedServer.command);
+      resolvedServer.command = expandEnvVars(resolvedServer.command, env);
     }
 
     if (resolvedServer.args) {
-      resolvedServer.args = resolvedServer.args.map(expandEnvVars);
+      resolvedServer.args = resolvedServer.args.map((a) =>
+        expandEnvVars(a, env),
+      );
     }
 
     if (resolvedServer.env) {
       const resolvedEnv: Record<string, string> = {};
       for (const [key, val] of Object.entries(resolvedServer.env)) {
-        resolvedEnv[key] = expandEnvVars(val);
+        resolvedEnv[key] = expandEnvVars(val, env);
       }
       resolvedServer.env = resolvedEnv;
     }
 
     if (resolvedServer.url) {
-      resolvedServer.url = expandEnvVars(resolvedServer.url);
+      resolvedServer.url = expandEnvVars(resolvedServer.url, env);
     }
 
     if (resolvedServer.headers) {
       const resolvedHeaders: Record<string, string> = {};
       for (const [key, val] of Object.entries(resolvedServer.headers)) {
-        resolvedHeaders[key] = expandEnvVars(val);
+        resolvedHeaders[key] = expandEnvVars(val, env);
       }
       resolvedServer.headers = resolvedHeaders;
     }
@@ -117,6 +140,19 @@ export class McpManager {
   ) {
     this.callbacks = options.callbacks || {};
     this.mcpServers = options.mcpServers;
+  }
+
+  /**
+   * Merged env for this session: OS env overlaid with the per-session settings
+   * snapshot. MCP env-var expansion (${VAR}) resolves against this so multiple
+   * sessions in one `wave --stdio` process don't read each other's settings env.
+   */
+  private get envSnapshot(): Record<string, string> {
+    return (
+      this.container
+        .get<ConfigurationService>("ConfigurationService")
+        ?.getMergedEnv?.() ?? (process.env as Record<string, string>)
+    );
   }
 
   /**
@@ -189,7 +225,7 @@ export class McpManager {
     try {
       const configContent = await fs.readFile(this.configPath, "utf-8");
       const rawConfig: McpConfig = JSON.parse(configContent);
-      const workspaceConfig = resolveMcpConfig(rawConfig);
+      const workspaceConfig = resolveMcpConfig(rawConfig, this.envSnapshot);
 
       // Extract original (pre-resolution) URLs for safe display
       const originalUrls: Record<string, string | undefined> = {};
@@ -284,28 +320,31 @@ export class McpManager {
     // Capture original URL before any resolution for safe display
     const originalUrl = config.url;
 
-    // Expand env vars from process.env (e.g. ${TAVILY_API_KEY})
+    // Expand env vars against the session snapshot (over OS env, e.g. ${TAVILY_API_KEY})
+    const env = this.envSnapshot;
     const resolvedConfig: McpServerConfig = { ...config };
     if (resolvedConfig.command) {
-      resolvedConfig.command = expandEnvVars(resolvedConfig.command);
+      resolvedConfig.command = expandEnvVars(resolvedConfig.command, env);
     }
     if (resolvedConfig.args) {
-      resolvedConfig.args = resolvedConfig.args.map(expandEnvVars);
+      resolvedConfig.args = resolvedConfig.args.map((a) =>
+        expandEnvVars(a, env),
+      );
     }
     if (resolvedConfig.env) {
       const resolvedEnv: Record<string, string> = {};
       for (const [key, val] of Object.entries(resolvedConfig.env)) {
-        resolvedEnv[key] = expandEnvVars(val);
+        resolvedEnv[key] = expandEnvVars(val, env);
       }
       resolvedConfig.env = resolvedEnv;
     }
     if (resolvedConfig.url) {
-      resolvedConfig.url = expandEnvVars(resolvedConfig.url);
+      resolvedConfig.url = expandEnvVars(resolvedConfig.url, env);
     }
     if (resolvedConfig.headers) {
       const resolvedHeaders: Record<string, string> = {};
       for (const [key, val] of Object.entries(resolvedConfig.headers)) {
-        resolvedHeaders[key] = expandEnvVars(val);
+        resolvedHeaders[key] = expandEnvVars(val, env);
       }
       resolvedConfig.headers = resolvedHeaders;
     }
@@ -433,8 +472,11 @@ export class McpManager {
           );
         }
 
+        // Base env = OS env overlaid with this session's settings snapshot, so
+        // custom env vars from settings.json reach the MCP server subprocess
+        // without polluting other sessions sharing one `wave --stdio` process.
         const env: Record<string, string> = {
-          ...(process.env as Record<string, string>),
+          ...this.envSnapshot,
           ...(server.config.env || {}),
         };
 

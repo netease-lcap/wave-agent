@@ -214,6 +214,21 @@ export class AIManager {
     return this.container.get<ConfigurationService>("ConfigurationService")!;
   }
 
+  /**
+   * OS env merged with the per-session env snapshot. Falls back to process.env
+   * when ConfigurationService is absent or its getMergedEnv is missing (e.g. in
+   * unit tests with partial mocks), so hook-context env construction never
+   * throws. Use this (not the non-null `configurationService` getter) when
+   * building hook context env.
+   */
+  private get mergedEnv(): Record<string, string> {
+    return (
+      this.container
+        .get<ConfigurationService>("ConfigurationService")
+        ?.getMergedEnv?.() ?? (process.env as Record<string, string>)
+    );
+  }
+
   // Getter methods for accessing dynamic configuration
   public getGatewayConfig(): GatewayConfig {
     return {
@@ -1742,7 +1757,7 @@ export class AIManager {
         lastAssistantMessage: lastAssistantText, // Stop/SubagentStop: last assistant message text
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
         env: Object.fromEntries(
-          Object.entries(process.env).filter((e) => e[1] !== undefined),
+          Object.entries(this.mergedEnv).filter((e) => e[1] !== undefined),
         ) as Record<string, string>, // Include environment variables
       };
 
@@ -1936,7 +1951,7 @@ export class AIManager {
             const sessionId = this.messageManager.getSessionId();
             const transcriptPath = this.messageManager.getTranscriptPath();
             const env = Object.fromEntries(
-              Object.entries(process.env).filter((e) => e[1] !== undefined),
+              Object.entries(this.mergedEnv).filter((e) => e[1] !== undefined),
             ) as Record<string, string>;
             await this.hookManager.executeCwdChangedHooks(
               oldCwd,
@@ -2031,7 +2046,7 @@ export class AIManager {
         toolInput,
         subagentType: this.subagentType, // Include subagent type in hook context
         env: Object.fromEntries(
-          Object.entries(process.env).filter((e) => e[1] !== undefined),
+          Object.entries(this.mergedEnv).filter((e) => e[1] !== undefined),
         ) as Record<string, string>, // Include environment variables
       };
 
@@ -2107,7 +2122,7 @@ export class AIManager {
         subagentType: this.subagentType, // Include subagent type in hook context
         planFilePath: this.permissionManager?.getPlanFilePath(),
         env: Object.fromEntries(
-          Object.entries(process.env).filter((e) => e[1] !== undefined),
+          Object.entries(this.mergedEnv).filter((e) => e[1] !== undefined),
         ) as Record<string, string>, // Include environment variables
       };
 

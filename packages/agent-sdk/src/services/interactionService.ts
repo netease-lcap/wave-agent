@@ -93,7 +93,9 @@ export class InteractionService {
               cwd: workdir,
               userPrompt: content,
               env: Object.fromEntries(
-                Object.entries(process.env).filter((e) => e[1] !== undefined),
+                Object.entries(
+                  context.configurationService.getMergedEnv(),
+                ).filter((e) => e[1] !== undefined),
               ) as Record<string, string>, // Include environment variables
             },
           );
