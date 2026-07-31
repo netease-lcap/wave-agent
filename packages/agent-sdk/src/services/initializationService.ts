@@ -126,13 +126,16 @@ export class InitializationService {
       // Don't throw error to prevent app startup failure
     }
 
-    // Initialize remote settings (load disk cache synchronously, then fetch in background)
-    // Must happen BEFORE loadMergedConfiguration so remote env vars are available
+    // Load remote settings disk cache synchronously.
+    // Must happen BEFORE loadMergedConfiguration so cached managed settings
+    // (env, model, disallowedTools) are merged and applied to process.env.
+    // The network fetch is deferred until after loadMergedConfiguration (below)
+    // so settings.json env vars (e.g. WAVE_SERVER_URL) are in process.env first.
     try {
       const phaseStart = performance.now();
       await remoteSettingsService.initialize();
       logger?.debug(
-        `Initialization Phase [Remote Settings] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+        `Initialization Phase [Remote Settings Cache] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
       );
     } catch (error) {
       logger?.error("Failed to initialize remote settings:", error);
@@ -189,6 +192,11 @@ export class InitializationService {
       logger?.error("Failed to initialize hooks system:", error);
       // Don't throw error to prevent app startup failure
     }
+
+    // Start remote settings network fetch + polling now that local env vars
+    // (e.g. WAVE_SERVER_URL) are applied to process.env by loadMergedConfiguration.
+    // Fire-and-forget: failures fall back to the cached/merged settings.
+    remoteSettingsService.startBackgroundFetch();
 
     // Execute SessionStart hooks
     try {
