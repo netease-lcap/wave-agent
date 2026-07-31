@@ -52,10 +52,12 @@ test.describe('Desktop message column width', () => {
         await expect(webviewPage.locator('.message.user')).toBeVisible();
         await expect(webviewPage.locator('.message.assistant')).toBeVisible();
 
-        // The conversation column is capped (narrower than the chat area) and
-        // centered, and its content edges line up with the input box. Content
-        // edge = container edge + 10px padding (content-box), matching the
-        // input-wrapper's own 800px column.
+        // The conversation column is capped at 800px (matching .input-wrapper's
+        // own 800px cap) and centered, so the message column's outer edges line
+        // up with the input box's edges exactly. .messages-container is
+        // border-box, so its 10px message padding lives inside the 800px column
+        // (content 780) rather than overflowing it — the column aligns with
+        // .input-wrapper instead of sitting 20px wider.
         const geom = await webviewPage.evaluate(() => {
             const r = (sel: string) => document.querySelector(sel)!.getBoundingClientRect();
             const cs = (sel: string) => getComputedStyle(document.querySelector(sel)!).backgroundColor;
@@ -65,7 +67,7 @@ test.describe('Desktop message column width', () => {
             return {
                 msgCapped: msg.width < main.width,
                 centered: Math.abs((msg.left - main.left) - (main.right - msg.right)) < 1,
-                contentAlignsInput: Math.abs((msg.left + 10) - input.left) < 1 && Math.abs((msg.right - 10) - input.right) < 1,
+                columnAlignsInput: Math.abs(msg.left - input.left) < 1 && Math.abs(msg.right - input.right) < 1,
                 // The gutter (chat-area background showing through the transparent
                 // wrappers around the message column) must match the message list's
                 // own background, not the host's editor-background body.
@@ -75,7 +77,7 @@ test.describe('Desktop message column width', () => {
         });
         expect(geom.msgCapped).toBeTruthy();
         expect(geom.centered).toBeTruthy();
-        expect(geom.contentAlignsInput).toBeTruthy();
+        expect(geom.columnAlignsInput).toBeTruthy();
         expect(geom.gutterBg).toBe(geom.msgBg);
 
         await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-chat-centered.png' });
