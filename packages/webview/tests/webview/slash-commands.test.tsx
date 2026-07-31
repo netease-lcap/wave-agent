@@ -208,6 +208,59 @@ describe('Slash Commands', () => {
         expect(input.textContent).toBe('/init ');
     });
 
+    it('should insert a skill command on mouse click even when selection is on the div', async () => {
+        const { vscode } = renderChatApp();
+
+        const input = screen.getByTestId('message-input');
+        input.focus();
+
+        await typeInInput('/');
+
+        await waitFor(() => {
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'requestSlashCommands' })
+            );
+        }, { timeout: 3000 });
+
+        sendCommand('slashCommandsResponse', {
+            commands: [
+                { id: 'init', name: 'init', description: 'Initialize repository' }
+            ]
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('slash-commands-popup')).toBeInTheDocument();
+        });
+
+        // Real browsers sometimes leave the selection collapsed on the contenteditable
+        // div (nodeType 1) rather than a text node after the slash is typed — the same
+        // mouse-click condition c3404d38 fixed for local commands. Skill commands still
+        // silently no-op here, so the first click fails to insert anything (the user
+        // has to type '/' again to make the second click work).
+        const range = document.createRange();
+        range.selectNodeContents(input);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+
+        const cmdItem = screen.getByTestId('slash-command-init');
+        await act(async () => {
+            fireEvent.mouseDown(cmdItem);
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('slash-commands-popup')).not.toBeInTheDocument();
+        });
+
+        // The skill command must be inserted on the first click (currently the input
+        // stays '/').
+        await waitFor(() => {
+            expect(input.textContent?.trim()).toBe('/init');
+        });
+        expect(input.textContent).toBe('/init ');
+    });
+
     it('should open the local command dialog when clicked even if selection is on the div', async () => {
         const { vscode } = renderChatApp();
 
