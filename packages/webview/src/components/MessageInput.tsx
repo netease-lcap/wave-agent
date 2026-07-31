@@ -33,6 +33,25 @@ interface SlashCommandState {
   endPos: number;
 }
 
+// Map a character offset within the flattened text of `container` back to a
+// {textNode, offset} position in the DOM. The slash-command detection tracks
+// positions in the flattened text (pre-caret Range.toString()), but insertion
+// needs a concrete text node + offset to build a Range around.
+function findTextOffset(container: Node, offset: number): { node: Text; offset: number } | null {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let acc = 0;
+  let textNode = walker.nextNode() as Text | null;
+  while (textNode) {
+    const len = textNode.textContent?.length ?? 0;
+    if (acc + len >= offset) {
+      return { node: textNode, offset: offset - acc };
+    }
+    acc += len;
+    textNode = walker.nextNode() as Text | null;
+  }
+  return null;
+}
+
 // Permission mode options rendered in the custom dropdown. A custom dropdown is used
 // instead of a native <select> so the option list can be forced to expand upward
 // (bottom:100%): the native <select> popup expands downward by default and gets
@@ -835,47 +854,41 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>((p
       return;
     }
 
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
+    // Skill commands replace the '/' plus any filter text with the command name.
+    // Locate the [startPos, endPos) span recorded by detectSlashCommand by walking
+    // the text nodes, instead of relying on window.getSelection()'s startContainer
+    // being a text node — which is not guaranteed when the user picks the command
+    // with the mouse (the selection may collapse onto the contenteditable div
+    // itself, nodeType 1, making the old text-node check silently no-op and the
+    // first click fail to insert anything).
+    textareaRef.current.focus();
 
-    const range = selection.getRangeAt(0);
-    const textNode = range.startContainer;
+    const start = findTextOffset(textareaRef.current, slashCommand.startPos);
+    const end = findTextOffset(textareaRef.current, slashCommand.endPos);
+    if (start && end) {
+      const range = document.createRange();
+      range.setStart(start.node, start.offset);
+      range.setEnd(end.node, end.offset);
+      range.deleteContents();
 
-    if (textNode.nodeType === Node.TEXT_NODE) {
-      const text = textNode.textContent || '';
-      // Find the last '/' before the cursor
-      const lastSlashIndex = text.lastIndexOf('/', range.startOffset - 1);
+      const commandText = `/${command.name} `;
+      const newNode = document.createTextNode(commandText);
+      range.insertNode(newNode);
 
-      if (lastSlashIndex !== -1) {
-        // Check if it's a valid position (start of line or preceded by whitespace)
-        const charBefore = text[lastSlashIndex - 1];
-        const isValidPosition = lastSlashIndex === 0 || /\s/.test(charBefore);
+      // Move cursor after the inserted text
+      range.setStartAfter(newNode);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
 
-        if (isValidPosition) {
-          // Set range to cover the '/' and any filter text
-          range.setStart(textNode, lastSlashIndex);
-          range.deleteContents();
-
-          // Insert the command text
-          const commandText = `/${command.name} `;
-          const newNode = document.createTextNode(commandText);
-          range.insertNode(newNode);
-
-          // Move cursor after the inserted text
-          range.setStartAfter(newNode);
-          range.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(range);
-
-          // Trigger input event to update message state
-          const inputEvent = new Event('input', { bubbles: true });
-          textareaRef.current.dispatchEvent(inputEvent);
-        }
-      }
+      // Trigger input event to update message state
+      const inputEvent = new Event('input', { bubbles: true });
+      textareaRef.current.dispatchEvent(inputEvent);
     }
 
     closeSlashCommandPopup();
-  }, [closeSlashCommandPopup, onSendMessage, vscode]);
+  }, [closeSlashCommandPopup, onSendMessage, vscode, slashCommand]);
 
   const handleSend = useCallback(() => {
     if (disabled) return;
