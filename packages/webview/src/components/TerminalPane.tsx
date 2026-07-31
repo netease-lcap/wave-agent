@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { VsCodeApi } from '../types';
 import type { Terminal as XtermTerminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
+import type { WebLinksAddon } from '@xterm/addon-web-links';
+import { isLocalhostUrl } from '../utils/isLocalhostUrl';
 import '../styles/TerminalPane.css';
 
 declare global {
@@ -10,6 +12,7 @@ declare global {
     WaveTerminal?: {
       Terminal: typeof XtermTerminal;
       FitAddon: typeof FitAddon;
+      WebLinksAddon: typeof WebLinksAddon;
     };
   }
 }
@@ -81,6 +84,9 @@ export interface TerminalPaneProps {
   /** Second-row layout: panels pack from the left, so the width drag anchors
    * the (fixed) left edge instead of the right edge. */
   widthFromLeft?: boolean;
+  /** Desktop only: route localhost links printed in the terminal into the
+   * preview pane, mirroring Message.tsx. Non-localhost links open externally. */
+  onOpenPreview?: (url: string) => void;
 }
 
 /** Embedded PTY terminal panel: xterm.js frontend + node-pty in the desktop host. */
@@ -95,6 +101,7 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   sessionId,
   workdir,
   widthFromLeft,
+  onOpenPreview,
 }) => {
   const [status, setStatus] = useState<PaneStatus>({ kind: 'loading' });
   const asideRef = useRef<HTMLElement | null>(null);
@@ -106,6 +113,10 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
   const termId = `term-${paneId ?? 'main'}`;
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
+  // The terminal is built once on mount; keep the latest callback so the
+  // click handler never sees a stale onOpenPreview closure.
+  const onOpenPreviewRef = useRef(onOpenPreview);
+  onOpenPreviewRef.current = onOpenPreview;
 
   const createPty = useCallback(() => {
     const term = termRef.current;
@@ -181,6 +192,18 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
         });
         const fit = new lib.FitAddon();
         term.loadAddon(fit);
+        // Detect plain-text URLs in the output and route clicks the same way
+        // Message.tsx does: localhost → preview pane, everything else → the
+        // system browser. The handler reads the ref so a changed callback
+        // (e.g. after a session switch) is picked up without rebuilding.
+        const links = new lib.WebLinksAddon((_event, uri) => {
+          if (isLocalhostUrl(uri) && onOpenPreviewRef.current) {
+            onOpenPreviewRef.current(uri);
+          } else {
+            vscode.postMessage({ command: 'openExternal', url: uri });
+          }
+        });
+        term.loadAddon(links);
         term.open(containerRef.current);
         termRef.current = term;
         fitRef.current = fit;
