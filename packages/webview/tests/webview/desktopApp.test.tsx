@@ -463,7 +463,7 @@ describe('DesktopApp', () => {
             sendCommand('desktopGitBranches', { workdir: '/work/a', result: branches });
             expect(screen.getByTestId('desktop-worktree-controls')).toBeInTheDocument();
 
-            sendCommand('desktopWorkdirState', { workdir: '/work/b', recentWorkdirs: ['/work/a', '/work/b'] });
+            sendCommand('desktopWorkdirState', { workdir: '/work/b', recentWorkdirs: ['/work/b', '/work/a'] });
 
             expect(screen.queryByTestId('desktop-worktree-controls')).not.toBeInTheDocument();
         });
@@ -763,6 +763,32 @@ describe('DesktopApp', () => {
                 result: { branches: ['b-branch', 'main'], current: 'b-branch' },
             });
             expect(pane1().getByTestId('desktop-branch-selector')).toHaveTextContent('b-branch');
+        });
+
+        it('a new-session pane empty during spawn resolves its workdir to recents[0], not a sibling worktree path leaked via the host workdir', () => {
+            const { vscode } = renderWithPanes(
+                [{ paneId: 'pane-0', sessionId: 's1' }, { paneId: 'pane-1' }],
+                'pane-0',
+            );
+            // Spawn gap: the host-level workdir is a worktree path left over from a
+            // sibling worktree session (session activation rewired this.workdir),
+            // while recents[0] is the repo root the user last picked. pane-1 is a
+            // fresh new-session pane with no setInitialState yet → state.workdir
+            // is empty, so effectiveWorkdir must come from recents, not host.workdir.
+            const worktreePath = '/work/a/.wave/worktrees/gentle-pike-147';
+            sendCommand('desktopWorkdirState', { workdir: worktreePath, recentWorkdirs: ['/work/a'] });
+
+            const pane1 = () => within(screen.getByTestId('desktop-pane-pane-1'));
+            // effectiveWorkdir must be recents[0] (repo root basename), NOT the
+            // host worktree path basename.
+            expect(pane1().getByTestId('desktop-workdir')).toHaveTextContent('a');
+            expect(pane1().getByTestId('desktop-workdir')).not.toHaveTextContent('gentle-pike-147');
+
+            // Branch query for the new pane goes to the repo root, never the
+            // worktree path.
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListGitBranches', workdir: worktreePath, paneId: 'pane-1' }),
+            );
         });
 
         it('posts desktopOpenPane on Ctrl+Click of a sidebar session (non-mac platform)', () => {
