@@ -311,6 +311,19 @@ describe('DiffPane', () => {
             expect(onAddComment).toHaveBeenCalled();
         });
 
+        it('does not submit on Enter while IME is composing (e.g. pinyin)', () => {
+            const onAddComment = vi.fn();
+            renderPane({ onAddComment });
+            sendDiffResult([makeFile()]);
+            fireEvent.click(screen.getByTestId('diff-comment-add-2'));
+            const input = screen.getByTestId('diff-comment-input');
+            fireEvent.change(input, { target: { value: '改这里' } });
+            // Chinese IME uses Enter to confirm the candidate; that keydown fires
+            // with isComposing=true (keyCode 229) and must NOT submit the draft.
+            fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 });
+            expect(onAddComment).not.toHaveBeenCalled();
+        });
+
         it('does not submit when the comment is empty', () => {
             const onAddComment = vi.fn();
             renderPane({ onAddComment });
