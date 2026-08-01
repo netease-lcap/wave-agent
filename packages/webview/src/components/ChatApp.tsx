@@ -66,6 +66,46 @@ function canCreatePanelRow(bodyH: number): boolean {
 }
 
 /**
+ * Hostname spellings that name the same remote service through an ssh tunnel:
+ * the forward always targets the remote's `localhost:<port>`, so every
+ * loopback and all-interfaces spelling refers to the same endpoint (aligned
+ * with VS Code's LOCALHOST_ADDRESSES / ALL_INTERFACES_ADDRESSES, whose
+ * mapHasAddressLocalhostOrAllInterfaces treats them as one tunnel). Both
+ * bracketed and bare IPv6 forms are covered — URL.hostname serializes the
+ * former, terminal/Markdown links may carry the latter.
+ */
+const LOOPBACK_OR_ALL_INTERFACES_HOSTS = new Set([
+  'localhost',
+  '127.0.0.1',
+  '::1',
+  '[::1]',
+  '0:0:0:0:0:0:0:1',
+  '[0:0:0:0:0:0:0:1]',
+  '0.0.0.0',
+  '::',
+  '[::]',
+  '0:0:0:0:0:0:0:0',
+  '[0:0:0:0:0:0:0:0]',
+]);
+
+/**
+ * Canonical form of a preview URL for same-link comparison: collapses the
+ * loopback/all-interfaces host spellings above to `localhost`, so clicking
+ * `http://127.0.0.1:5173/app` after `http://localhost:5173/app` reuses the
+ * established tunnel instead of release + re-acquire churn. Non-loopback URLs
+ * (external sites) are returned unchanged.
+ */
+function canonicalForwardUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    if (LOOPBACK_OR_ALL_INTERFACES_HOSTS.has(u.hostname.toLowerCase())) u.hostname = 'localhost';
+    return u.href;
+  } catch {
+    return raw;
+  }
+}
+
+/**
  * Panel group snapshot, remembered per session. Keys are session ids, plus one
  * `new:<paneId>` bucket per pane for the new-session state (no session bound
  * yet); the bucket migrates to the session id once the first message binds
@@ -1270,11 +1310,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
   // Remote localhost link handler: open the preview panel (creating it when
   // absent) and forward. A different URL replaces the previous forward; the
-  // same URL is a no-op unless the previous attempt failed (scenario 15/16).
+  // same URL — under any loopback/all-interfaces host spelling — is a no-op
+  // unless the previous attempt failed (scenario 15/16).
   const handleOpenRemotePreview = useCallback((url: string) => {
     if (!checkedPanelsRef.current.includes('preview') && !tryOpenPanel('preview')) return;
     const current = remoteForwardRef.current;
-    if (current && current.originalUrl === url && previewForwardError === null) return;
+    if (current && canonicalForwardUrl(current.originalUrl) === canonicalForwardUrl(url) && previewForwardError === null) return;
     if (current) releaseCurrentForward();
     setPreviewForwardError(null);
     setPreviewUrl(null); // show the connecting stub while the tunnel comes up

@@ -723,10 +723,10 @@ describe('remote preview port forwarding', () => {
             panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod' }],
             focusedPaneId: 'pane-1',
         });
-    const openLink = () => {
+    const openLink = (url = 'http://localhost:5173/app') => {
         sendCommand('updateMessages', {
             paneId: 'pane-1',
-            messages: [MockDataGenerator.createAssistantMessage('服务在 [这里](http://localhost:5173/app)')],
+            messages: [MockDataGenerator.createAssistantMessage(`服务在 [这里](${url})`)],
         });
         fireEvent.click(screen.getByText('这里'));
     };
@@ -795,6 +795,30 @@ describe('remote preview port forwarding', () => {
         fireEvent.click(screen.getByText('这里'));
 
         expect(forwardPosts(vscode)).toHaveLength(1);
+    });
+
+    it('an equivalent loopback spelling of the same link reuses the forward', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+
+        // 127.0.0.1 is the same remote service as localhost — the forward must
+        // not be released and re-established (tunnel churn).
+        openLink('http://127.0.0.1:5173/app');
+
+        expect(forwardPosts(vscode)).toHaveLength(1);
+        expect(releasePosts(vscode)).toHaveLength(0);
+        expect(screen.getByTestId('preview-pane').querySelector('webview')?.getAttribute('src')).toBe(
+            'http://127.0.0.1:5173/app',
+        );
     });
 
     it('a failed forward shows an actionable error; retry re-acquires and loads', () => {
