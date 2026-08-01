@@ -9,6 +9,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
+import { buildSshSpawnArgs, LOCAL_HOST, shellQuote } from './sshHosts';
 
 const execFileAsync = promisify(execFile);
 
@@ -39,12 +40,47 @@ export const MAX_DIFF_LINES = 2000;
 const MAX_UNTRACKED_BYTES = 2 * 1024 * 1024;
 const GIT_BUFFER = 16 * 1024 * 1024;
 
-async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync('git', ['-C', cwd, ...args], {
-    encoding: 'utf-8',
-    maxBuffer: GIT_BUFFER,
-  });
+/**
+ * Run git in `cwd`. Remote hosts run `git -C <cwd> …` through ssh — every
+ * token is shell-quoted because paths come from `status --porcelain -z`
+ * records and may contain spaces or shell metacharacters.
+ */
+async function git(host: string, cwd: string, args: string[]): Promise<string> {
+  const options = { encoding: 'utf-8' as const, maxBuffer: GIT_BUFFER };
+  const { stdout } =
+    host === LOCAL_HOST
+      ? await execFileAsync('git', ['-C', cwd, ...args], options)
+      : await execFileAsync(
+          'ssh',
+          buildSshSpawnArgs(host, ['git', '-C', shellQuote(cwd), ...args.map(shellQuote)].join(' ')),
+          options,
+        );
   return stdout;
+}
+
+/** Remote `stat -c %s` — the byte size, or null when the path is unreadable. */
+async function remoteStatSize(host: string, absPath: string): Promise<number | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      'ssh',
+      buildSshSpawnArgs(host, `stat -c %s ${shellQuote(absPath)}`),
+      { encoding: 'utf-8', maxBuffer: 1024 * 1024 },
+    );
+    const size = Number.parseInt(stdout.trim(), 10);
+    return Number.isInteger(size) && size >= 0 ? size : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remote `cat` — the raw file bytes (throws when unreadable). */
+async function remoteCat(host: string, absPath: string): Promise<Buffer> {
+  const { stdout } = await execFileAsync(
+    'ssh',
+    buildSshSpawnArgs(host, `cat ${shellQuote(absPath)}`),
+    { encoding: 'buffer', maxBuffer: GIT_BUFFER },
+  );
+  return stdout as Buffer;
 }
 
 interface StatusEntry {
@@ -87,9 +123,14 @@ function truncateHunks(hunks: string): { hunks: string; truncated: boolean } {
   return { hunks: lines.slice(0, MAX_DIFF_LINES).join('\n'), truncated: true };
 }
 
-async function diffForTracked(repoRoot: string, base: string[], entry: StatusEntry): Promise<WorkspaceDiffFile> {
+async function diffForTracked(
+  host: string,
+  repoRoot: string,
+  base: string[],
+  entry: StatusEntry,
+): Promise<WorkspaceDiffFile> {
   // numstat row: additions<TAB>deletions<TAB>path ('-' on both for binary)
-  const num = await git(repoRoot, ['diff', ...base, '--numstat', '--', entry.path]).catch(() => '');
+  const num = await git(host, repoRoot, ['diff', ...base, '--numstat', '--', entry.path]).catch(() => '');
   const m = num.split('\n')[0]?.match(/^(\d+|-)\t(\d+|-)\t/);
   const binary = m ? m[1] === '-' : false;
   const additions = m && m[1] !== '-' ? parseInt(m[1], 10) : 0;
@@ -98,7 +139,7 @@ async function diffForTracked(repoRoot: string, base: string[], entry: StatusEnt
   let hunks = '';
   let truncated = false;
   if (!binary) {
-    const patch = await git(repoRoot, ['diff', ...base, '--', entry.path]).catch(() => '');
+    const patch = await git(host, repoRoot, ['diff', ...base, '--', entry.path]).catch(() => '');
     const at = patch.indexOf('@@');
     const body = at === -1 ? '' : patch.slice(at).trimEnd();
     ({ hunks, truncated } = truncateHunks(body));
@@ -123,14 +164,30 @@ const UNREADABLE: Omit<WorkspaceDiffFile, 'path' | 'status'> = {
   binary: true,
 };
 
-async function diffForUntracked(repoRoot: string, entry: StatusEntry): Promise<WorkspaceDiffFile> {
+/**
+ * Read an untracked file's content, or null when it is unreadable or
+ * oversized. Remote files are fetched via ssh (`stat` for the size so
+ * oversized files are never downloaded, then `cat` for the bytes).
+ */
+async function readUntrackedFile(host: string, absPath: string): Promise<{ content: Buffer } | null> {
+  if (host === LOCAL_HOST) {
+    const st = await fs.promises.stat(absPath);
+    if (!st.isFile() || st.size > MAX_UNTRACKED_BYTES) return null;
+    return { content: await fs.promises.readFile(absPath) };
+  }
+  const size = await remoteStatSize(host, absPath);
+  if (size === null || size > MAX_UNTRACKED_BYTES) return null;
+  return { content: await remoteCat(host, absPath) };
+}
+
+async function diffForUntracked(host: string, repoRoot: string, entry: StatusEntry): Promise<WorkspaceDiffFile> {
   const full = path.join(repoRoot, entry.path);
   try {
-    const st = await fs.promises.stat(full);
-    if (!st.isFile() || st.size > MAX_UNTRACKED_BYTES) {
+    const file = await readUntrackedFile(host, full);
+    if (!file) {
       return { path: entry.path, status: 'untracked', ...UNREADABLE };
     }
-    const buf = await fs.promises.readFile(full);
+    const buf = file.content;
     if (buf.subarray(0, 8192).includes(0)) {
       return { path: entry.path, status: 'untracked', ...UNREADABLE };
     }
@@ -153,9 +210,9 @@ async function diffForUntracked(repoRoot: string, entry: StatusEntry): Promise<W
   }
 }
 
-export async function getWorkspaceDiff(cwd: string): Promise<WorkspaceDiffResult> {
+export async function getWorkspaceDiff(cwd: string, host: string = LOCAL_HOST): Promise<WorkspaceDiffResult> {
   try {
-    await git(cwd, ['rev-parse', '--is-inside-work-tree']);
+    await git(host, cwd, ['rev-parse', '--is-inside-work-tree']);
   } catch {
     return { kind: 'not-a-repo' };
   }
@@ -164,25 +221,25 @@ export async function getWorkspaceDiff(cwd: string): Promise<WorkspaceDiffResult
   // but `cwd` may be a subdirectory. Resolving untracked files (path.join)
   // and matching pathspecs both need root-relative paths, so normalize to
   // the toplevel; fall back to cwd if rev-parse is unavailable.
-  const root = (await git(cwd, ['rev-parse', '--show-toplevel']).catch(() => '')).trim() || cwd;
+  const root = (await git(host, cwd, ['rev-parse', '--show-toplevel']).catch(() => '')).trim() || cwd;
 
   // Without commits there is no HEAD to diff against — the staged tree is
   // the whole change set.
-  const hasHead = await git(cwd, ['rev-parse', '--verify', 'HEAD']).then(
+  const hasHead = await git(host, cwd, ['rev-parse', '--verify', 'HEAD']).then(
     () => true,
     () => false,
   );
   const base = hasHead ? ['HEAD'] : ['--cached'];
 
-  const status = await git(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']).catch(() => '');
+  const status = await git(host, cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']).catch(() => '');
   const entries = parsePorcelain(status);
 
   const files: WorkspaceDiffFile[] = [];
   for (const entry of entries) {
     files.push(
       entry.status === 'untracked'
-        ? await diffForUntracked(root, entry)
-        : await diffForTracked(root, base, entry),
+        ? await diffForUntracked(host, root, entry)
+        : await diffForTracked(host, root, base, entry),
     );
   }
   return { kind: 'ok', files };

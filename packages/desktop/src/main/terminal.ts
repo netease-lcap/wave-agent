@@ -10,6 +10,8 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
+import { buildSshSpawnArgs, LOCAL_HOST, shellQuote } from './sshHosts';
 
 export interface TerminalExitInfo {
   exitCode?: number;
@@ -55,6 +57,15 @@ function defaultShell(): { file: string; args: string[] } {
   return { file: '/bin/sh', args: ['-l'] };
 }
 
+/**
+ * Remote command for the ssh PTY (spec scenario 13): jump to the remote cwd,
+ * then exec the remote user's default login shell, falling back to /bin/bash
+ * when $SHELL is unset. The string is expanded by the remote login shell.
+ */
+function remoteShellCommand(cwd: string): string {
+  return `cd ${shellQuote(cwd)} && exec "\${SHELL:-/bin/bash}" -l`;
+}
+
 export interface TerminalManagerCallbacks {
   onData: (termId: string, data: string) => void;
   onExit: (termId: string, info: TerminalExitInfo) => void;
@@ -81,9 +92,12 @@ export class TerminalManager {
    * terminal panel (pane moved across rows) re-sends create — keeping the PTY
    * alive preserves the shell session, so the existing process is resized to
    * the fresh grid and its scrollback replayed instead of respawned.
+   * Local sessions spawn the user's default shell; remote sessions spawn
+   * `ssh <host> -- <shell>` (a PTY bridge, same as VS Code Remote-SSH) with
+   * the remote cwd applied inside the ssh command.
    * Failures report via onExit.
    */
-  async create(termId: string, cwd: string, cols: number, rows: number, paneId?: string): Promise<void> {
+  async create(termId: string, cwd: string, cols: number, rows: number, paneId?: string, host: string = LOCAL_HOST): Promise<void> {
     const existing = this.terminals.get(termId);
     if (existing) {
       try {
@@ -101,18 +115,26 @@ export class TerminalManager {
       return;
     }
     const shell = defaultShell();
+    const env = {
+      ...(process.env as Record<string, string>),
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+    };
     try {
-      const proc = pty.spawn(shell.file, shell.args, {
-        name: 'xterm-256color',
-        cwd,
-        cols,
-        rows,
-        env: {
-          ...(process.env as Record<string, string>),
-          TERM: 'xterm-256color',
-          COLORTERM: 'truecolor',
-        },
-      });
+      const proc =
+        host === LOCAL_HOST
+          ? pty.spawn(shell.file, shell.args, { name: 'xterm-256color', cwd, cols, rows, env })
+          : // `-t` forces TTY allocation so the PTY's cols/rows and TERM reach
+            // the remote shell. The ssh process itself runs locally — its cwd
+            // is irrelevant (any existing directory works); the real working
+            // directory is applied on the remote side by remoteShellCommand.
+            pty.spawn('ssh', ['-t', ...buildSshSpawnArgs(host, remoteShellCommand(cwd))], {
+              name: 'xterm-256color',
+              cwd: os.homedir(),
+              cols,
+              rows,
+              env,
+            });
       const entry: TerminalEntry = { proc, paneId, disposables: [], buffer: '' };
       entry.disposables.push(
         proc.onData((data) => {

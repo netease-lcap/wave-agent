@@ -13,16 +13,59 @@ const h = vi.hoisted(() => ({
   gitHandler: (args: string[]): string => {
     throw new Error(`git not stubbed: ${args.join(' ')}`);
   },
+  // Receives the ssh argv (base options + host + remote command); dispatches
+  // stat/cat/git commands and records every remote command issued.
+  sshHandler: (args: string[]): string | Buffer => {
+    throw new Error(`ssh not stubbed: ${args.join(' ')}`);
+  },
+  sshCommands: [] as string[],
+  // Remote untracked-file fixtures, keyed by absolute remote path.
+  remoteFiles: {} as Record<string, { size: number; content: Buffer }>,
   // Untracked-file fs stubs.
   statResult: null as null | { isFile: boolean; size: number },
   fileContent: null as null | Buffer,
 }));
 
+/** Unwrap a shellQuote'd token (single quotes, no embedded quotes in fixtures). */
+function unquote(t: string): string {
+  return t.length >= 2 && t.startsWith("'") && t.endsWith("'") ? t.slice(1, -1) : t;
+}
+
+/**
+ * Default ssh dispatcher: records the remote command, then routes it like the
+ * real implementation — `stat -c %s` → size, `cat` → content bytes, and
+ * `git -C <cwd> …` → the git handler (reconstructed as local git args).
+ */
+function defaultSshHandler(args: string[]): string | Buffer {
+  const remoteCmd = args[args.length - 1];
+  h.sshCommands.push(remoteCmd);
+  const statM = /^stat -c %s (.+)$/.exec(remoteCmd);
+  if (statM) {
+    const f = h.remoteFiles[unquote(statM[1])];
+    if (!f) throw new Error(`stat: cannot stat ${statM[1]}`);
+    return String(f.size);
+  }
+  const catM = /^cat (.+)$/.exec(remoteCmd);
+  if (catM) {
+    const f = h.remoteFiles[unquote(catM[1])];
+    if (!f) throw new Error(`cat: ${catM[1]}: No such file or directory`);
+    return f.content;
+  }
+  const gitM = /^git -C '([^']*)' (.*)$/.exec(remoteCmd);
+  if (gitM) {
+    const gitArgs = gitM[2].split(' ').map(unquote);
+    return h.gitHandler(gitArgs);
+  }
+  throw new Error(`unexpected ssh command: ${remoteCmd}`);
+}
+
 vi.mock('child_process', async () => {
   const { promisify } = await import('util');
   const execFileMock = Object.assign(vi.fn(), {
-    [promisify.custom]: (_file: string, args: string[]) =>
-      Promise.resolve({ stdout: h.gitHandler(args.slice(2)) }),
+    [promisify.custom]: (file: string, args: string[]) => {
+      if (file === 'ssh') return Promise.resolve({ stdout: h.sshHandler(args) });
+      return Promise.resolve({ stdout: h.gitHandler(args.slice(2)) });
+    },
   });
   return { execFile: execFileMock };
 });
@@ -78,6 +121,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.statResult = null;
   h.fileContent = null;
+  h.sshCommands = [];
+  h.remoteFiles = {};
+  h.sshHandler = defaultSshHandler;
 });
 
 describe('getWorkspaceDiff', () => {
@@ -271,5 +317,89 @@ describe('getWorkspaceDiff', () => {
     if (result.kind !== 'ok') return;
     expect(result.files[0].truncated).toBe(true);
     expect(result.files[0].hunks.split('\n')).toHaveLength(MAX_DIFF_LINES);
+  });
+
+  // -- remote hosts (spec scenario 14) --------------------------------------
+
+  it('runs git over ssh for remote hosts with the quoted remote cwd', async () => {
+    stubGit({
+      status: ' M src/a.ts\0',
+      numstat: { 'src/a.ts': '3\t1\tsrc/a.ts\n' },
+      patch: {
+        'src/a.ts': [
+          'diff --git a/src/a.ts b/src/a.ts',
+          '@@ -1,2 +1,4 @@',
+          '-old',
+          '+new1',
+          '+new2',
+          '+new3',
+        ].join('\n'),
+      },
+    });
+    const result = await getWorkspaceDiff('/remote/repo', 'myhost');
+    expect(result).toEqual({
+      kind: 'ok',
+      files: [
+        {
+          path: 'src/a.ts',
+          status: 'modified',
+          oldPath: undefined,
+          additions: 3,
+          deletions: 1,
+          hunks: '@@ -1,2 +1,4 @@\n-old\n+new1\n+new2\n+new3',
+          truncated: false,
+          binary: false,
+        },
+      ],
+    });
+    expect(h.sshCommands[0]).toBe("git -C '/remote/repo' 'rev-parse' '--is-inside-work-tree'");
+    // Every git invocation went through ssh, never the local `git` executable.
+    expect(h.sshCommands.length).toBeGreaterThan(0);
+  });
+
+  it('returns not-a-repo when the remote ssh probe fails', async () => {
+    h.sshHandler = () => {
+      throw new Error('Connection refused');
+    };
+    expect(await getWorkspaceDiff('/remote/repo', 'dead-host')).toEqual({ kind: 'not-a-repo' });
+  });
+
+  it('reads remote untracked files via ssh stat + cat', async () => {
+    stubGit({ status: '?? notes.txt\0' });
+    h.remoteFiles['/remote/repo/notes.txt'] = { size: 12, content: Buffer.from('hello\nworld\n') };
+    const result = await getWorkspaceDiff('/remote/repo', 'myhost');
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.files[0]).toEqual({
+      path: 'notes.txt',
+      status: 'untracked',
+      oldPath: undefined,
+      additions: 2,
+      deletions: 0,
+      hunks: '+hello\n+world',
+      truncated: false,
+      binary: false,
+    });
+    expect(h.sshCommands).toContain("stat -c %s '/remote/repo/notes.txt'");
+    expect(h.sshCommands).toContain("cat '/remote/repo/notes.txt'");
+  });
+
+  it('treats oversized remote untracked files as binary without downloading them', async () => {
+    stubGit({ status: '?? huge.log\0' });
+    h.remoteFiles['/remote/repo/huge.log'] = { size: 3 * 1024 * 1024, content: Buffer.from('x') };
+    const result = await getWorkspaceDiff('/remote/repo', 'myhost');
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.files[0]).toMatchObject({ path: 'huge.log', binary: true, hunks: '' });
+    expect(h.sshCommands.some((c) => c.startsWith('cat '))).toBe(false);
+  });
+
+  it('keeps a vanished remote untracked file as an unreadable entry', async () => {
+    stubGit({ status: '?? gone.txt\0' });
+    // remoteFiles has no entry → the remote stat rejects.
+    const result = await getWorkspaceDiff('/remote/repo', 'myhost');
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.files[0]).toMatchObject({ path: 'gone.txt', status: 'untracked', binary: true });
   });
 });

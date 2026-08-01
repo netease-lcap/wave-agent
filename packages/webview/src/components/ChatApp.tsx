@@ -1176,12 +1176,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [vscode]);
   const openPreviewHandler = effectiveHost !== 'local' ? handleOpenExternalPreview : handleOpenPreview;
 
-  // Diff/terminal need a workdir; preview only needs a URL. Remote sessions get
-  // none of the three (spec scenario 10) — the panels only inspect the local
-  // host, and a remote agent's localhost is unreachable from this machine.
+  // Diff/terminal need a workdir; preview only needs a URL. Remote sessions
+  // keep diff/terminal (git and the shell run over ssh) but never preview —
+  // it needs local port forwarding, and a remote agent's localhost is
+  // unreachable from this machine (spec scenario 10).
   const panelDisabled: DesktopPanelKind[] =
     effectiveHost !== 'local'
-      ? ['preview', 'diff', 'terminal']
+      ? effectiveWorkdir
+        ? ['preview']
+        : ['preview', 'diff', 'terminal']
       : effectiveWorkdir
         ? []
         : ['diff', 'terminal'];

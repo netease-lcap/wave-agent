@@ -8,7 +8,7 @@
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { buildSshSpawnArgs } from './sshHosts';
+import { buildSshSpawnArgs, shellQuote } from './sshHosts';
 
 const execFileAsync = promisify(execFile);
 
@@ -93,11 +93,6 @@ export async function resolveRemoteWaveBinary(host: string, installIfMissing = t
   throw new Error(
     `远端未安装 wave-code CLI。请手动执行 ssh ${host} "${installCommand}" 后重试`,
   );
-}
-
-/** Single-quote a string for the remote shell (ssh joins argv into one command). */
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
 /**
