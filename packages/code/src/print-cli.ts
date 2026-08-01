@@ -4,6 +4,7 @@ import {
   hasUncommittedChanges,
   hasNewCommits,
   getDefaultRemoteBranch,
+  validateWorktreeRemovalPath,
   type WorktreeSession,
 } from "wave-agent-sdk";
 import { displayUsageSummary } from "./utils/usageSummary.js";
@@ -183,21 +184,40 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     // Display timing information
     displayTimingInfo(startTime, showStats);
 
-    // Destroy agent and exit after sendMessage completes
-    await agent.destroy();
-
-    // Handle worktree cleanup for print mode
+    // Trigger WorktreeRemove hook (before destroy — it needs a live agent) and
+    // decide whether the worktree is clean enough to remove
+    let cleanWorktree = false;
     if (worktreeSession) {
       const cwd = workdir || worktreeSession.path;
       const baseBranch = getDefaultRemoteBranch(cwd);
       const hasChanges = hasUncommittedChanges(cwd);
       const hasCommits = hasNewCommits(cwd, baseBranch);
+      cleanWorktree = !hasChanges && !hasCommits;
 
-      if (!hasChanges && !hasCommits) {
-        await removeWorktree(worktreeSession);
+      if (cleanWorktree) {
+        await agent.triggerWorktreeRemoveHook(worktreeSession.path);
       } else {
         process.stdout.write(
           `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,
+        );
+      }
+    }
+
+    // Destroy agent and exit after sendMessage completes
+    await agent.destroy();
+
+    // Handle worktree cleanup for print mode (git removal stays after destroy)
+    if (worktreeSession && cleanWorktree) {
+      try {
+        validateWorktreeRemovalPath(
+          worktreeSession.path,
+          worktreeSession.repoRoot,
+        );
+        await removeWorktree(worktreeSession);
+      } catch (error) {
+        // Never block print-mode exit on worktree cleanup failures
+        process.stdout.write(
+          `\n⚠️ Skipping worktree removal: ${(error as Error).message}\n`,
         );
       }
     }
@@ -220,20 +240,37 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       // Display timing information even on error
       displayTimingInfo(startTime, showStats);
 
-      await agent.destroy();
-
-      // Handle worktree cleanup for print mode even on error
+      // Trigger WorktreeRemove hook (before destroy) when the worktree is clean
+      let cleanWorktree = false;
       if (worktreeSession) {
         const cwd = workdir || worktreeSession.path;
         const baseBranch = getDefaultRemoteBranch(cwd);
         const hasChanges = hasUncommittedChanges(cwd);
         const hasCommits = hasNewCommits(cwd, baseBranch);
+        cleanWorktree = !hasChanges && !hasCommits;
 
-        if (!hasChanges && !hasCommits) {
-          await removeWorktree(worktreeSession);
+        if (cleanWorktree) {
+          await agent.triggerWorktreeRemoveHook(worktreeSession.path);
         } else {
           process.stdout.write(
             `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,
+          );
+        }
+      }
+
+      await agent.destroy();
+
+      // Handle worktree cleanup for print mode even on error
+      if (worktreeSession && cleanWorktree) {
+        try {
+          validateWorktreeRemovalPath(
+            worktreeSession.path,
+            worktreeSession.repoRoot,
+          );
+          await removeWorktree(worktreeSession);
+        } catch (error) {
+          process.stdout.write(
+            `\n⚠️ Skipping worktree removal: ${(error as Error).message}\n`,
           );
         }
       }

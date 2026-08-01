@@ -122,6 +122,28 @@ order: 90
 
 ---
 
+### 用户故事：WorktreeRemove Hook 清理外部资源（优先级：P2）
+
+作为开发者，我希望无论通过哪个入口删除 worktree，都能自动触发配置的清理 hook，以便自动清理该 worktree 创建的外部资源（如 MySQL 数据库 schema、Redis DB、docker compose 项目等）。
+
+**为什么是这个优先级**：对齐 Claude Code 官方文档（code.claude.com/docs/en/hooks）的 WorktreeRemove 通知型（Notification）钩子设计。官方分类表标注其决策控制为 'None — No decision control. Used for side effects like logging or cleanup'：钩子无决策控制、仅用于副作用，**永不替代 `git worktree remove` 本身**——git 移除照常执行，钩子只是额外通知。这是「worktree 删除后自动清理外部资源」的必要能力。
+
+**独立测试**：settings.json 配置 `WorktreeRemove` hook 为 `bash -c 'jq -r ".hook_event_name, .worktree_path" >> /tmp/wave-hook-test.log'`，分别通过 4 个入口删除 worktree（CLI 退出对话框选 Remove、ExitWorktree 工具 `action: "remove"`、`wave -p` 打印模式、stdio RPC 删除后台会话），验证每个入口都在 git 移除**之前**触发 hook 且日志包含正确字段。
+
+**验收场景**：
+
+1. **假设** settings.json 配置了 `WorktreeRemove` hook，**当** CLI 退出对话框选择 "Remove worktree" 时，**则** hook 在 `git worktree remove --force` 与 `git branch -D` 执行之前触发，stdin JSON 包含 `hook_event_name: "WorktreeRemove"` 与 `worktree_path`（被删 worktree 的绝对路径），git 移除照常执行。
+2. **假设** settings.json 配置了 `WorktreeRemove` hook，**当** AI 调用 `ExitWorktree` 工具且 `action: "remove"` 时，**则** hook 在 git 移除之前触发，此时 worktree 目录仍存在（hook 可读取目录内文件以定位要清理的资源），JSON 输入同场景 1。
+3. **假设** settings.json 配置了 `WorktreeRemove` hook，**当** `wave -p` 打印模式会话结束且无更改/无新提交、自动清理 worktree 时，**则** hook 在移除之前触发，JSON 输入同场景 1。
+4. **假设** settings.json 配置了 `WorktreeRemove` hook，**当** stdio 前端（如桌面应用）通过 RPC 删除后台会话的 worktree 时，**则** hook 在移除之前触发，JSON 输入同场景 1。
+5. **假设** hook 返回退出码 2 或其它非 0 退出码并输出 stderr，**当** worktree 被删除时，**则** stderr 以错误块形式显示给用户，但 worktree 删除**不被阻止**（Notification 语义，无决策控制）。
+6. **假设** 未配置 `WorktreeRemove` hook，**当** 任何入口删除 worktree 时，**则** 删除行为与现状完全一致，无额外开销、无 hook 进程启动。
+7. **假设** hook 需要按 worktree 名称定位要清理的资源，**当** hook 执行时，**则** 它通过 `basename "$worktree_path"` 派生名称（JSON 输入不含 `name` 字段，与 Claude Code 官方输入格式一致：`session_id`、`transcript_path`、`cwd`、`hook_event_name`、`worktree_path`）。
+8. **假设** stdio RPC 删除后台会话时传入的 worktree 路径是符号链接或解析后位于 repo root 之外，**当** 删除操作执行前校验时，**则** 删除被拒绝并返回 RPC 错误，hook 不触发（对齐 Claude Code v2.1.216+ 安全校验）。
+9. **假设** stdio RPC 删除后台会话时传入的 worktree 路径位于 repo root 之内且不是符号链接，**当** 删除操作执行前校验时，**则** 校验通过，hook 触发且 worktree 被删除。
+
+---
+
 ### 用户故事：stdio 多 Agent 并发下的 Worktree 会话隔离（优先级：P1）
 
 作为通过 stdio 后端同时运行多个会话的用户（例如 VS Code 侧边栏 + 多个编辑器标签页 / 多个窗口，或 JetBrains 插件），我希望一个会话进入 worktree 不会影响其它并发会话的工作目录、worktree 状态或工具执行，以便每个会话彼此隔离、互不干扰。
@@ -159,6 +181,8 @@ order: 90
 - **当 worktree 目录已存在时会发生什么？** 系统应该报错或询问是否重用。
 - **系统如何处理 worktree 创建期间的 git 错误？** 应显示清晰的错误消息并优雅退出。
 - **如果用户不在 git 仓库中怎么办？** `-w` 标志应失败并显示错误消息。
+- **当 WorktreeRemove hook 失败或超时时会发生什么？** 非阻塞：stderr 以错误块显示给用户，worktree 删除照常进行。
+- **当 stdio RPC 传入的 worktree 路径为符号链接或逃逸 repo root 时会发生什么？** 删除被拒绝并返回 RPC 错误，hook 不触发。
 
 ## 假设
 
@@ -166,4 +190,7 @@ order: 90
 - 使用 `-w` 时当前工作目录是 git 仓库。
 - 自动生成的名称遵循 `generateRandomName` 工具的 `adjective-adjective-noun` 模式。
 - "Remove worktree"意味着同时执行 `git worktree remove --force` 和 `git branch -D`，以确保即使存在更改或分支未合并也能清理。
+- WorktreeRemove 是通知型钩子（Notification）：无决策控制，永不替代 `git worktree remove --force` + `git branch -D`。
+- WorktreeRemove hook 的 JSON 输入仅包含官方字段（`session_id`、`transcript_path`、`cwd`、`hook_event_name`、`worktree_path`），worktree 名称由 hook 通过 `basename "$worktree_path"` 派生。
+- 删除后台会话（stdio RPC）的 worktree 前会校验路径：拒绝符号链接或解析后位于 repo root 之外的路径。
 

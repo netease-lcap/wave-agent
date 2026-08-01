@@ -9,6 +9,7 @@ import {
   generateRandomName,
   getDefaultRemoteBranch,
   getMessageContent,
+  validateWorktreeRemovalPath,
 } from "wave-agent-sdk";
 import { execFileSync } from "node:child_process";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
@@ -1955,6 +1956,89 @@ test("removeWorktree delegates to removeWorktree (best-effort)", async () => {
   const result = (await bridge.handleRequest("removeWorktree", {
     path: "/nonexistent",
     branch: "gone",
+    repoRoot: "/repo",
+  })) as { ok: true };
+
+  expect(result.ok).toBe(true);
+  expect(removeWorktree).toHaveBeenCalledTimes(1);
+});
+
+test("removeWorktree rejects paths that fail validation", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(validateWorktreeRemovalPath).mockImplementationOnce(() => {
+    throw new Error(
+      "Refusing to remove worktree outside repo root: /etc/passwd",
+    );
+  });
+
+  await expect(
+    bridge.handleRequest("removeWorktree", {
+      path: "/etc/passwd",
+      branch: "worktree-feat",
+      repoRoot: "/repo",
+    }),
+  ).rejects.toThrow("Refusing to remove worktree outside repo root");
+  expect(removeWorktree).not.toHaveBeenCalled();
+});
+
+test("removeWorktree triggers WorktreeRemove hook for the session in that worktree", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({
+    workingDirectory: "/repo/.wave/worktrees/feat",
+  });
+  mockAgent.triggerWorktreeRemoveHook = vi.fn().mockResolvedValue(undefined);
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  await bridge.handleRequest("initialize", {
+    workdir: "/repo/.wave/worktrees/feat",
+  });
+
+  const result = (await bridge.handleRequest("removeWorktree", {
+    path: "/repo/.wave/worktrees/feat",
+    branch: "worktree-feat",
+    repoRoot: "/repo",
+  })) as { ok: true };
+
+  expect(result.ok).toBe(true);
+  expect(mockAgent.triggerWorktreeRemoveHook).toHaveBeenCalledWith(
+    "/repo/.wave/worktrees/feat",
+  );
+  expect(removeWorktree).toHaveBeenCalledTimes(1);
+});
+
+test("removeWorktree skips the hook when no session runs in that worktree", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({ workingDirectory: "/other/dir" });
+  mockAgent.triggerWorktreeRemoveHook = vi.fn().mockResolvedValue(undefined);
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  await bridge.handleRequest("initialize", { workdir: "/other/dir" });
+
+  const result = (await bridge.handleRequest("removeWorktree", {
+    path: "/repo/.wave/worktrees/feat",
+    branch: "worktree-feat",
+    repoRoot: "/repo",
+  })) as { ok: true };
+
+  expect(result.ok).toBe(true);
+  expect(mockAgent.triggerWorktreeRemoveHook).not.toHaveBeenCalled();
+  expect(removeWorktree).toHaveBeenCalledTimes(1);
+});
+
+test("removeWorktree hook failure does not block git removal", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({
+    workingDirectory: "/repo/.wave/worktrees/feat",
+  });
+  mockAgent.triggerWorktreeRemoveHook = vi
+    .fn()
+    .mockRejectedValue(new Error("hook failed"));
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  await bridge.handleRequest("initialize", {
+    workdir: "/repo/.wave/worktrees/feat",
+  });
+
+  const result = (await bridge.handleRequest("removeWorktree", {
+    path: "/repo/.wave/worktrees/feat",
+    branch: "worktree-feat",
     repoRoot: "/repo",
   })) as { ok: true };
 

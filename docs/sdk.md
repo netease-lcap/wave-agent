@@ -1195,7 +1195,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 | `Stop` | Wave 完成响应周期（无更多工具调用）时 |
 | `SubagentStop` | 子代理完成响应周期时 |
 | `WorktreeCreate` | 创建新 worktree 时 |
-| `WorktreeRemove` | 离开或删除 worktree 时 |
+| `WorktreeRemove` | 删除 worktree 之前触发（通知型，非阻塞，可读取 worktree 内文件） |
 | `SessionStart` | 会话开始时（来源：`startup` / `resume` / `compact`） |
 | `SessionEnd` | 会话结束时（来源：`exit` / `stop` / `compact`） |
 

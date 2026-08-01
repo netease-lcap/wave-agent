@@ -13,7 +13,7 @@ Wave supports the following hook events:
 - `Stop`: Triggered when Wave finishes its response cycle (no more tool calls).
 - `SubagentStop`: Triggered when a subagent finishes its response cycle.
 - `WorktreeCreate`: Triggered when a new worktree is created.
-- `WorktreeRemove`: Triggered when a worktree is removed (e.g., via ExitWorktree with `action: "remove"`). Non-blocking. The hook receives `worktree_path` in the JSON input. Useful for cleanup tasks (e.g., `docker compose -p $(basename "$worktree_path") down`) after worktree deletion.
+- `WorktreeRemove`: Triggered before a worktree is removed (e.g., via ExitWorktree with `action: "remove"`). Non-blocking. Fires **before** the worktree directory is deleted so hooks can still read files inside it. The hook receives `worktree_path` in the JSON input. Useful for cleanup tasks (e.g., `docker compose -p $(basename "$worktree_path") down`).
 - `CwdChanged`: Triggered when the working directory changes (e.g., entering/exiting a worktree). Non-blocking.
 - `SessionStart`: Triggered during session initialization. Hooks can inject `additionalContext` and `initialUserMessage` via stdout.
 - `SessionEnd`: Triggered during agent destruction (fire-and-forget, non-blocking). Useful for cleanup, resource teardown, and analytics.
@@ -79,7 +79,7 @@ Wave provides detailed context to hook processes via `stdin` as a JSON object. T
 - `user_prompt`: (UserPromptSubmit) The text submitted by the user.
 - `subagent_type`: (If executed by a subagent) The type of the subagent.
 - `name`: (WorktreeCreate) The name of the new worktree.
-- `worktree_path`: (WorktreeRemove) The absolute path to the removed worktree.
+- `worktree_path`: (WorktreeRemove) The absolute path of the worktree about to be removed. Derive the worktree name with `basename "$worktree_path"`.
 - `old_cwd`: (CwdChanged) The previous working directory.
 - `new_cwd`: (CwdChanged) The new working directory.
 - `compact_instructions`: (PreCompact) Custom instructions for the compaction, if any.
@@ -157,6 +157,31 @@ SessionEnd hooks receive `end_source` in the JSON input indicating how the sessi
             "command": "echo '{\"session_id\": \"$WAVE_SESSION_ID\"}' >> /tmp/session-analytics.log",
             "description": "Log session end for analytics",
             "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## WorktreeRemove Hooks
+
+`WorktreeRemove` hooks fire **before** the worktree directory is deleted, so they can still read files inside it. They are non-blocking (Notification type): the hook never replaces `git worktree remove` itself. Useful for cleaning up external resources that were provisioned for the worktree (databases, containers, etc.).
+
+### Input
+WorktreeRemove hooks receive `worktree_path` in the JSON input (alongside the common fields `session_id`, `transcript_path`, `cwd`, `hook_event_name`). The worktree name can be derived via `basename "$worktree_path"`.
+
+### Example Configuration
+```json
+{
+  "hooks": {
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "command": "worktree_path=$(jq -r '.worktree_path') && docker compose -p \"$(basename \"$worktree_path\")\" down || true",
+            "description": "Tear down the worktree's docker compose project before removal"
           }
         ]
       }

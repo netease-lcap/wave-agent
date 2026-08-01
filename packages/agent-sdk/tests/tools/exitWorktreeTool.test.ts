@@ -217,6 +217,39 @@ describe("exitWorktreeTool", () => {
       );
     });
 
+    it("should trigger WorktreeRemove hooks BEFORE git removal", async () => {
+      const order: string[] = [];
+      const mockExecuteHooks = vi.fn().mockImplementation(async () => {
+        order.push("hook");
+        return [];
+      });
+      vi.mocked(worktreeUtils.removeWorktree).mockImplementation(() => {
+        order.push("remove");
+      });
+      vi.mocked(worktreeUtils.countWorktreeChanges).mockReturnValue({
+        changedFiles: 0,
+        commits: 0,
+      });
+
+      const contextWithHooks: ToolContext = {
+        ...mockContext,
+        hookManager: {
+          executeHooks: mockExecuteHooks,
+          processHookResults: vi.fn(),
+        } as never,
+        messageManager: {} as never,
+      };
+
+      const result = await exitWorktreeTool.execute(
+        { action: "remove" },
+        contextWithHooks,
+      );
+
+      expect(result.success).toBe(true);
+      // Hooks run before git worktree remove so they can read worktree files
+      expect(order).toEqual(["hook", "remove"]);
+    });
+
     it("should NOT trigger hooks when hookManager is not available", async () => {
       const mockExecuteHooks = vi.fn().mockResolvedValue([]);
 

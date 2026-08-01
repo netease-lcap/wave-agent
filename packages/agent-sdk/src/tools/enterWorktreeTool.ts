@@ -134,7 +134,7 @@ export const enterWorktreeTool: ToolPlugin = {
             projectDir: worktreeInfo.path,
             timestamp: new Date(),
             sessionId: context.sessionId ?? "",
-            transcriptPath: context.messageManager?.getTranscriptPath() ?? "",
+            transcriptPath: context.messageManager?.getTranscriptPath?.() ?? "",
             cwd: worktreeInfo.path,
             worktreeName: worktreeInfo.name,
             env: Object.fromEntries(
