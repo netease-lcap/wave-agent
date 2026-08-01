@@ -5,13 +5,93 @@ import * as gitUtils from "@/utils/gitUtils.js";
 import * as fs from "node:fs";
 import { execFileSync } from "node:child_process";
 
-vi.mock("node:child_process");
-vi.mock("node:fs");
+interface GitResult {
+  stdout: string;
+  stderr: string;
+}
+
+const { git } = vi.hoisted(() => {
+  const git = {
+    calls: [] as Array<{ cmd: string; args: string[]; opts: unknown }>,
+    handler: (): GitResult => ({ stdout: "", stderr: "" }) as GitResult,
+  } as {
+    calls: Array<{ cmd: string; args: string[]; opts: unknown }>;
+    handler: (cmd: string, args: string[], opts: unknown) => GitResult;
+  };
+  return { git };
+});
+
+vi.mock("node:child_process", async () => {
+  const { promisify } = await import("node:util");
+  const execFile = vi.fn(() => {
+    throw new Error("execFile must only be used via util.promisify");
+  });
+  // worktreeUtils wraps execFile with util.promisify, which prefers the
+  // promisify.custom symbol — mirror node's { stdout, stderr } result shape.
+  (execFile as unknown as Record<PropertyKey, unknown>)[promisify.custom] = (
+    cmd: string,
+    args: string[],
+    opts?: unknown,
+  ): Promise<GitResult> => {
+    git.calls.push({ cmd, args, opts });
+    try {
+      return Promise.resolve(git.handler(cmd, args, opts));
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  };
+  return { execFile, execFileSync: vi.fn() };
+});
+
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  lstatSync: vi.fn(),
+  realpathSync: vi.fn(),
+  readFileSync: vi.fn(),
+  appendFileSync: vi.fn(),
+  promises: {
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    copyFile: vi.fn(),
+    cp: vi.fn(),
+  },
+}));
+
 vi.mock("@/utils/gitUtils.js");
+
+function gitCallsWith(fragments: string[]) {
+  return git.calls.filter((c) => fragments.every((f) => c.args.includes(f)));
+}
+
+function enoent() {
+  return Object.assign(new Error("ENOENT: no such file or directory"), {
+    code: "ENOENT",
+  });
+}
+
+/** readFile mock that returns content for exact paths and ENOENT otherwise */
+function mockReadFile(map: Record<string, string>) {
+  vi.mocked(fs.promises.readFile).mockImplementation(async (p) => {
+    for (const [filePath, content] of Object.entries(map)) {
+      if (p === filePath) return content;
+    }
+    throw enoent();
+  });
+}
 
 describe("worktreeUtils", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    git.calls.length = 0;
+    git.handler = () => ({ stdout: "", stderr: "" });
+    // Default: neither settings.local.json nor .worktreeinclude exist
+    vi.mocked(fs.promises.readFile).mockRejectedValue(enoent());
+    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.copyFile).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.cp).mockResolvedValue(undefined);
   });
 
   describe("validateWorktreeName", () => {
@@ -493,6 +573,153 @@ describe("worktreeUtils", () => {
       );
 
       expect(result).toEqual({ changedFiles: 0, commits: 0 });
+    });
+  });
+
+  describe("performPostCreationSetup", () => {
+    it("should copy settings.local.json into the worktree when present", async () => {
+      mockReadFile({
+        [path.join("/repo/root", ".wave", "settings.local.json")]:
+          '{"model":"claude"}',
+      });
+
+      await worktreeUtils.performPostCreationSetup(
+        "/repo/root/.wave/worktrees/my-feat",
+        "/repo/root",
+      );
+
+      expect(vi.mocked(fs.promises.writeFile)).toHaveBeenCalledWith(
+        path.join(
+          "/repo/root/.wave/worktrees/my-feat",
+          ".wave",
+          "settings.local.json",
+        ),
+        '{"model":"claude"}',
+      );
+    });
+
+    it("should not copy settings.local.json when the main repo lacks it", async () => {
+      await worktreeUtils.performPostCreationSetup(
+        "/repo/root/.wave/worktrees/my-feat",
+        "/repo/root",
+      );
+
+      expect(vi.mocked(fs.promises.writeFile)).not.toHaveBeenCalled();
+      expect(gitCallsWith(["ls-files"])).toHaveLength(0);
+    });
+
+    it("should copy matched files and skip unmatched ones", async () => {
+      mockReadFile({
+        [path.join("/repo/root", ".worktreeinclude")]:
+          "dist/\n*.env\n!prod.env\nconfig/secret.key\n",
+      });
+      git.handler = (_cmd, args) => {
+        if (args[0] === "ls-files") {
+          return {
+            stdout:
+              "dist/\n.env\nprod.env\nconfig/secret.key\nconfig/other.key\n",
+            stderr: "",
+          };
+        }
+        throw new Error("unexpected git call: " + args.join(" "));
+      };
+
+      await worktreeUtils.performPostCreationSetup(
+        "/repo/root/.wave/worktrees/my-feat",
+        "/repo/root",
+      );
+
+      // dist/ matches the dir-only pattern -> copied wholesale
+      expect(vi.mocked(fs.promises.cp)).toHaveBeenCalledWith(
+        path.join("/repo/root", "dist"),
+        path.join("/repo/root/.wave/worktrees/my-feat", "dist"),
+        { recursive: true },
+      );
+      // .env matches *.env at any level
+      expect(vi.mocked(fs.promises.copyFile)).toHaveBeenCalledWith(
+        path.join("/repo/root", ".env"),
+        path.join("/repo/root/.wave/worktrees/my-feat", ".env"),
+      );
+      // prod.env excluded by the later !prod.env negation
+      expect(vi.mocked(fs.promises.copyFile)).not.toHaveBeenCalledWith(
+        path.join("/repo/root", "prod.env"),
+        expect.anything(),
+      );
+      // config/secret.key matches its literal pattern
+      expect(vi.mocked(fs.promises.copyFile)).toHaveBeenCalledWith(
+        path.join("/repo/root", "config", "secret.key"),
+        path.join("/repo/root/.wave/worktrees/my-feat", "config", "secret.key"),
+      );
+      // config/other.key does not match any pattern
+      expect(vi.mocked(fs.promises.copyFile)).not.toHaveBeenCalledWith(
+        path.join("/repo/root", "config", "other.key"),
+        expect.anything(),
+      );
+      // no dirs needed expansion -> exactly one ls-files call
+      expect(gitCallsWith(["ls-files"])).toHaveLength(1);
+    });
+
+    it("should expand collapsed dirs whose contents match patterns", async () => {
+      mockReadFile({
+        [path.join("/repo/root", ".worktreeinclude")]:
+          "config/secrets/api.key\n",
+      });
+      let lsCalls = 0;
+      git.handler = (_cmd, args) => {
+        if (args[0] === "ls-files") {
+          lsCalls++;
+          if (lsCalls === 1) {
+            return { stdout: "config/secrets/\n", stderr: "" };
+          }
+          return {
+            stdout: "config/secrets/api.key\nconfig/secrets/other.key\n",
+            stderr: "",
+          };
+        }
+        throw new Error("unexpected git call: " + args.join(" "));
+      };
+
+      await worktreeUtils.performPostCreationSetup(
+        "/repo/root/.wave/worktrees/my-feat",
+        "/repo/root",
+      );
+
+      expect(lsCalls).toBe(2);
+      expect(git.calls[1].args).toContain("--");
+      expect(git.calls[1].args).toContain("config/secrets");
+      expect(vi.mocked(fs.promises.copyFile)).toHaveBeenCalledWith(
+        path.join("/repo/root", "config", "secrets", "api.key"),
+        path.join(
+          "/repo/root/.wave/worktrees/my-feat",
+          "config",
+          "secrets",
+          "api.key",
+        ),
+      );
+      expect(vi.mocked(fs.promises.copyFile)).not.toHaveBeenCalledWith(
+        path.join("/repo/root", "config", "secrets", "other.key"),
+        expect.anything(),
+      );
+    });
+
+    it("should copy nothing when no entries match", async () => {
+      mockReadFile({
+        [path.join("/repo/root", ".worktreeinclude")]: "dist/\n",
+      });
+      git.handler = (_cmd, args) => {
+        if (args[0] === "ls-files") {
+          return { stdout: "coverage/\nfoo.ts\n", stderr: "" };
+        }
+        throw new Error("unexpected git call: " + args.join(" "));
+      };
+
+      await worktreeUtils.performPostCreationSetup(
+        "/repo/root/.wave/worktrees/my-feat",
+        "/repo/root",
+      );
+
+      expect(vi.mocked(fs.promises.cp)).not.toHaveBeenCalled();
+      expect(vi.mocked(fs.promises.copyFile)).not.toHaveBeenCalled();
     });
   });
 });

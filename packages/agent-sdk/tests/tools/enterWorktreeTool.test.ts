@@ -18,6 +18,7 @@ vi.mock("@/utils/worktreeUtils.js", async (importOriginal) => {
     generateWorktreeName: vi.fn(),
     removeWorktree: vi.fn(),
     countWorktreeChanges: vi.fn(),
+    performPostCreationSetup: vi.fn(),
   };
 });
 
@@ -387,5 +388,68 @@ describe("enterWorktreeTool", () => {
       "/test/repo",
       { baseRef: undefined },
     );
+  });
+
+  it("should run post-creation setup when a new worktree is created", async () => {
+    vi.mocked(worktreeUtils.generateWorktreeName).mockReturnValue(
+      "auto-name-123",
+    );
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "fresh",
+      path: "/test/repo/.wave/worktrees/fresh",
+      branch: "worktree-fresh",
+      repoRoot: "/test/repo",
+      isNew: true,
+      originalHeadCommit: "abc123",
+    });
+
+    const result = await enterWorktreeTool.execute({}, mockContext);
+
+    expect(result.success).toBe(true);
+    expect(worktreeUtils.performPostCreationSetup).toHaveBeenCalledWith(
+      "/test/repo/.wave/worktrees/fresh",
+      "/test/repo",
+    );
+  });
+
+  it("should NOT run post-creation setup when an existing worktree is reused", async () => {
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "existing",
+      path: "/test/repo/.wave/worktrees/existing",
+      branch: "worktree-existing",
+      repoRoot: "/test/repo",
+      isNew: false,
+      originalHeadCommit: "abc123",
+    });
+
+    const result = await enterWorktreeTool.execute(
+      { name: "existing" },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(worktreeUtils.performPostCreationSetup).not.toHaveBeenCalled();
+  });
+
+  it("should not fail the tool when post-creation setup throws", async () => {
+    vi.mocked(worktreeUtils.generateWorktreeName).mockReturnValue(
+      "auto-name-123",
+    );
+    vi.mocked(worktreeUtils.createWorktree).mockReturnValue({
+      name: "setup-error",
+      path: "/test/repo/.wave/worktrees/setup-error",
+      branch: "worktree-setup-error",
+      repoRoot: "/test/repo",
+      isNew: true,
+      originalHeadCommit: "abc123",
+    });
+    vi.mocked(worktreeUtils.performPostCreationSetup).mockRejectedValue(
+      new Error("setup failed"),
+    );
+
+    const result = await enterWorktreeTool.execute({}, mockContext);
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("Created worktree");
   });
 });

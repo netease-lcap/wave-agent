@@ -3,11 +3,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   createWorktree,
-  performPostCreationSetup,
   removeWorktree,
   validateWorktreeSlug,
 } from "../../src/utils/worktree.js";
-import { getDefaultRemoteBranch, getGitMainRepoRoot } from "wave-agent-sdk";
+import {
+  getDefaultRemoteBranch,
+  getGitMainRepoRoot,
+  performPostCreationSetup,
+} from "wave-agent-sdk";
 
 interface GitResult {
   stdout: string;
@@ -62,6 +65,7 @@ vi.mock("node:fs", () => ({
 vi.mock("wave-agent-sdk", () => ({
   getGitMainRepoRoot: vi.fn(),
   getDefaultRemoteBranch: vi.fn(),
+  performPostCreationSetup: vi.fn(),
 }));
 
 function gitCallsWith(fragments: string[]) {
@@ -75,16 +79,6 @@ function gitError(message: string, stderr: string) {
 function enoent() {
   return Object.assign(new Error("ENOENT: no such file or directory"), {
     code: "ENOENT",
-  });
-}
-
-/** readFile mock that returns content for exact paths and ENOENT otherwise */
-function mockReadFile(map: Record<string, string>) {
-  vi.mocked(fs.promises.readFile).mockImplementation(async (p) => {
-    for (const [filePath, content] of Object.entries(map)) {
-      if (p === filePath) return content;
-    }
-    throw enoent();
   });
 }
 
@@ -294,41 +288,28 @@ describe("worktree utils", () => {
       expect(getGitMainRepoRoot).not.toHaveBeenCalled();
     });
 
-    it("should copy settings.local.json into newly created worktrees", async () => {
+    it("should run post-creation setup for newly created worktrees", async () => {
       vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
       vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
       vi.mocked(fs.existsSync).mockReturnValue(false);
-      mockReadFile({
-        [path.join("/repo/root", ".wave", "settings.local.json")]:
-          '{"model":"claude"}',
-      });
 
       const session = await createWorktree("my-feat", "/repo/root");
 
       expect(session.isNew).toBe(true);
-      expect(vi.mocked(fs.promises.writeFile)).toHaveBeenCalledWith(
-        path.join(
-          "/repo/root",
-          ".wave",
-          "worktrees",
-          "my-feat",
-          ".wave",
-          "settings.local.json",
-        ),
-        '{"model":"claude"}',
+      expect(performPostCreationSetup).toHaveBeenCalledWith(
+        path.join("/repo/root", ".wave", "worktrees", "my-feat"),
+        "/repo/root",
       );
     });
 
     it("should skip post-creation setup for existing worktrees", async () => {
       vi.mocked(getGitMainRepoRoot).mockReturnValue("/repo/root");
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("{}");
 
       const session = await createWorktree("my-feat", "/repo/root");
 
       expect(session.isNew).toBe(false);
-      expect(vi.mocked(fs.promises.readFile)).not.toHaveBeenCalled();
-      expect(vi.mocked(fs.promises.writeFile)).not.toHaveBeenCalled();
+      expect(performPostCreationSetup).not.toHaveBeenCalled();
     });
   });
 
@@ -455,157 +436,6 @@ describe("worktree utils", () => {
       expect(() => validateWorktreeSlug("trailing/")).toThrow(
         "segment must be non-empty",
       );
-    });
-  });
-
-  describe("performPostCreationSetup", () => {
-    it("should copy settings.local.json into the worktree when present", async () => {
-      mockReadFile({
-        [path.join("/repo/root", ".wave", "settings.local.json")]:
-          '{"model":"claude"}',
-      });
-
-      await performPostCreationSetup(
-        "/repo/root/.wave/worktrees/my-feat",
-        "/repo/root",
-      );
-
-      expect(vi.mocked(fs.promises.writeFile)).toHaveBeenCalledWith(
-        path.join(
-          "/repo/root/.wave/worktrees/my-feat",
-          ".wave",
-          "settings.local.json",
-        ),
-        '{"model":"claude"}',
-      );
-    });
-
-    it("should not copy settings.local.json when the main repo lacks it", async () => {
-      await performPostCreationSetup(
-        "/repo/root/.wave/worktrees/my-feat",
-        "/repo/root",
-      );
-
-      expect(vi.mocked(fs.promises.writeFile)).not.toHaveBeenCalled();
-      expect(git.calls.filter((c) => c.args.includes("ls-files"))).toHaveLength(
-        0,
-      );
-    });
-
-    it("should copy matched files and skip unmatched ones", async () => {
-      mockReadFile({
-        [path.join("/repo/root", ".worktreeinclude")]:
-          "dist/\n*.env\n!prod.env\nconfig/secret.key\n",
-      });
-      git.handler = (_cmd, args) => {
-        if (args[0] === "ls-files") {
-          return {
-            stdout:
-              "dist/\n.env\nprod.env\nconfig/secret.key\nconfig/other.key\n",
-            stderr: "",
-          };
-        }
-        throw new Error("unexpected git call: " + args.join(" "));
-      };
-
-      await performPostCreationSetup(
-        "/repo/root/.wave/worktrees/my-feat",
-        "/repo/root",
-      );
-
-      // dist/ matches the dir-only pattern -> copied wholesale
-      expect(vi.mocked(fs.promises.cp)).toHaveBeenCalledWith(
-        path.join("/repo/root", "dist"),
-        path.join("/repo/root/.wave/worktrees/my-feat", "dist"),
-        { recursive: true },
-      );
-      // .env matches *.env at any level
-      expect(vi.mocked(fs.promises.copyFile)).toHaveBeenCalledWith(
-        path.join("/repo/root", ".env"),
-        path.join("/repo/root/.wave/worktrees/my-feat", ".env"),
-      );
-      // prod.env excluded by the later !prod.env negation
-      expect(vi.mocked(fs.promises.copyFile)).not.toHaveBeenCalledWith(
-        path.join("/repo/root", "prod.env"),
-        expect.anything(),
-      );
-      // config/secret.key matches its literal pattern
-      expect(vi.mocked(fs.promises.copyFile)).toHaveBeenCalledWith(
-        path.join("/repo/root", "config", "secret.key"),
-        path.join("/repo/root/.wave/worktrees/my-feat", "config", "secret.key"),
-      );
-      // config/other.key does not match any pattern
-      expect(vi.mocked(fs.promises.copyFile)).not.toHaveBeenCalledWith(
-        path.join("/repo/root", "config", "other.key"),
-        expect.anything(),
-      );
-      // no dirs needed expansion -> exactly one ls-files call
-      expect(git.calls.filter((c) => c.args.includes("ls-files"))).toHaveLength(
-        1,
-      );
-    });
-
-    it("should expand collapsed dirs whose contents match patterns", async () => {
-      mockReadFile({
-        [path.join("/repo/root", ".worktreeinclude")]:
-          "config/secrets/api.key\n",
-      });
-      let lsCalls = 0;
-      git.handler = (_cmd, args) => {
-        if (args[0] === "ls-files") {
-          lsCalls++;
-          if (lsCalls === 1) {
-            return { stdout: "config/secrets/\n", stderr: "" };
-          }
-          return {
-            stdout: "config/secrets/api.key\nconfig/secrets/other.key\n",
-            stderr: "",
-          };
-        }
-        throw new Error("unexpected git call: " + args.join(" "));
-      };
-
-      await performPostCreationSetup(
-        "/repo/root/.wave/worktrees/my-feat",
-        "/repo/root",
-      );
-
-      expect(lsCalls).toBe(2);
-      expect(git.calls[1].args).toContain("--");
-      expect(git.calls[1].args).toContain("config/secrets");
-      expect(vi.mocked(fs.promises.copyFile)).toHaveBeenCalledWith(
-        path.join("/repo/root", "config", "secrets", "api.key"),
-        path.join(
-          "/repo/root/.wave/worktrees/my-feat",
-          "config",
-          "secrets",
-          "api.key",
-        ),
-      );
-      expect(vi.mocked(fs.promises.copyFile)).not.toHaveBeenCalledWith(
-        path.join("/repo/root", "config", "secrets", "other.key"),
-        expect.anything(),
-      );
-    });
-
-    it("should copy nothing when no entries match", async () => {
-      mockReadFile({
-        [path.join("/repo/root", ".worktreeinclude")]: "dist/\n",
-      });
-      git.handler = (_cmd, args) => {
-        if (args[0] === "ls-files") {
-          return { stdout: "coverage/\nfoo.ts\n", stderr: "" };
-        }
-        throw new Error("unexpected git call: " + args.join(" "));
-      };
-
-      await performPostCreationSetup(
-        "/repo/root/.wave/worktrees/my-feat",
-        "/repo/root",
-      );
-
-      expect(vi.mocked(fs.promises.cp)).not.toHaveBeenCalled();
-      expect(vi.mocked(fs.promises.copyFile)).not.toHaveBeenCalled();
     });
   });
 });
