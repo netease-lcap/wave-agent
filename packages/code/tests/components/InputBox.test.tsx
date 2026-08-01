@@ -98,6 +98,52 @@ describe("InputBox Smoke Tests", () => {
       );
     });
 
+    it("should show clear hint on first Esc and clear input on second Esc when idle", async () => {
+      const { stdin, lastFrame } = render(<InputBox />);
+
+      stdin.write("hello world");
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("hello world");
+      });
+
+      // First Esc arms the double-press clear and shows the hint
+      stdin.write("\u001b");
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "再次按 Esc 清空输入",
+        );
+      });
+
+      // Second Esc clears the input
+      stdin.write("\u001b");
+
+      await vi.waitFor(() => {
+        const output = stripAnsiColors(lastFrame() || "");
+        expect(output).not.toContain("hello world");
+        expect(output).not.toContain("再次按 Esc 清空输入");
+      });
+    });
+
+    it("should not show clear hint when Esc is pressed while running (isLoading)", async () => {
+      const { stdin, lastFrame } = render(<InputBox isLoading />);
+
+      stdin.write("hello world");
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("hello world");
+      });
+
+      stdin.write("\u001b");
+
+      // The hint must not appear while busy; Esc keeps abort semantics
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+        "再次按 Esc 清空输入",
+      );
+    });
+
     it("should compact long text (>200 chars) into compacted format", async () => {
       const { stdin, lastFrame } = render(<InputBox />);
 

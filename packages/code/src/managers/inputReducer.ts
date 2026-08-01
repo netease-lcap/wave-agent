@@ -27,11 +27,18 @@ export interface BtwState {
   isLoading: boolean;
 }
 
+export const ESC_DOUBLE_PRESS_TIMEOUT_MS = 1000;
+
 export type PendingEffect =
   | {
       type: "SEND_MESSAGE";
       content: string;
       images?: Array<{ path: string; mimeType: string }>;
+      longTextMap: Record<string, string>;
+    }
+  | {
+      type: "SAVE_PROMPT_HISTORY";
+      content: string;
       longTextMap: Record<string, string>;
     }
   | { type: "ABORT_MESSAGE" }
@@ -88,6 +95,7 @@ export interface InputManagerCallbacks {
   }>;
   logger?: Logger;
   hasQueuedMessages?: boolean;
+  isIdle?: boolean;
   onRecallQueuedMessage?: () => void;
 }
 
@@ -128,6 +136,7 @@ export interface InputState {
   isFileSearching: boolean;
   btwState: BtwState;
   pendingEffect: PendingEffect | null;
+  escClearPending: boolean;
 }
 
 export const initialState: InputState = {
@@ -170,6 +179,7 @@ export const initialState: InputState = {
     isLoading: false,
   },
   pendingEffect: null,
+  escClearPending: false,
 };
 
 export type InputAction =
@@ -225,6 +235,7 @@ export type InputAction =
   | { type: "SELECT_FILE"; payload: string }
   | { type: "SET_BTW_STATE"; payload: Partial<BtwState> }
   | { type: "CLEAR_PENDING_EFFECT" }
+  | { type: "RESET_ESC_CLEAR_PENDING" }
   | {
       type: "HANDLE_KEY";
       payload: {
@@ -232,6 +243,7 @@ export type InputAction =
         key: Key;
         hasSlashCommand: (cmd: string) => boolean;
         hasQueuedMessages?: boolean;
+        isIdle?: boolean;
       };
     };
 
@@ -685,9 +697,98 @@ export function inputReducer(
       };
     case "CLEAR_PENDING_EFFECT":
       return { ...state, pendingEffect: null };
+    case "RESET_ESC_CLEAR_PENDING":
+      return { ...state, escClearPending: false };
     case "HANDLE_KEY": {
       const { input, key } = action.payload;
       const hasQueuedMessages = action.payload.hasQueuedMessages ?? false;
+      const isIdle = action.payload.isIdle ?? false;
+
+      // 0. Raw DEL (\x7f) filtering.
+      // SSH/tmux auto-repeat backspace coalesces multiple DEL bytes into one
+      // chunk (e.g. "\x7f\x7f") that ink cannot parse into a key event, so it
+      // arrives as raw input and would otherwise be treated as a paste and
+      // inserted literally. Treat each DEL as a synchronous backspace instead
+      // (aligned with Claude Code Issue #1853).
+      if (!key.backspace && !key.delete && input.includes("\x7f")) {
+        const delCount = (input.match(/\x7f/g) || []).length;
+
+        if (state.showHistorySearch) {
+          return {
+            ...state,
+            historySearchQuery: state.historySearchQuery.slice(0, -delCount),
+          };
+        }
+
+        if (state.cursorPosition > 0) {
+          const newCursorPosition = Math.max(
+            0,
+            state.cursorPosition - delCount,
+          );
+          const newInputText =
+            state.inputText.substring(0, newCursorPosition) +
+            state.inputText.substring(state.cursorPosition);
+
+          const newState = {
+            ...state,
+            inputText: newInputText,
+            cursorPosition: newCursorPosition,
+            historyIndex: -1,
+          };
+
+          // Deactivate selectors if their trigger character was deleted
+          if (
+            newState.showFileSelector &&
+            newCursorPosition <= newState.atPosition
+          ) {
+            newState.showFileSelector = false;
+            newState.atPosition = -1;
+            newState.fileSearchQuery = "";
+            newState.isFileSearching = false;
+          }
+          if (
+            newState.showCommandSelector &&
+            newCursorPosition <= newState.slashPosition
+          ) {
+            newState.showCommandSelector = false;
+            newState.slashPosition = -1;
+            newState.commandSearchQuery = "";
+          }
+
+          // Reactivate selectors if cursor is within a trigger word
+          const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
+          if (atPos !== -1 && !state.showFileSelector) {
+            newState.showFileSelector = true;
+            newState.atPosition = atPos;
+            newState.isFileSearching = true;
+          }
+          const slashPos = getSlashSelectorPosition(
+            newInputText,
+            newCursorPosition,
+          );
+          if (slashPos !== -1 && !state.showCommandSelector) {
+            newState.showCommandSelector = true;
+            newState.slashPosition = slashPos;
+          }
+
+          // Update queries
+          if (newState.showFileSelector && newState.atPosition >= 0) {
+            newState.fileSearchQuery = newInputText.substring(
+              newState.atPosition + 1,
+              newCursorPosition,
+            );
+          }
+          if (newState.showCommandSelector && newState.slashPosition >= 0) {
+            newState.commandSearchQuery = newInputText.substring(
+              newState.slashPosition + 1,
+              newCursorPosition,
+            );
+          }
+
+          return newState;
+        }
+        return state;
+      }
 
       // 1. Escape Handling
       if (key.escape) {
@@ -754,7 +855,39 @@ export function inputReducer(
             state.showWorkflowManager
           )
         ) {
-          return { ...state, pendingEffect: { type: "ABORT_MESSAGE" } };
+          // While AI is running (or any busy state) Esc keeps the abort
+          // semantics. Only when idle does Esc fall through to the text-level
+          // double-press clear (aligned with Claude Code's mutual-exclusion
+          // design: Esc aborts only when a task is running).
+          if (!isIdle) {
+            return {
+              ...state,
+              escClearPending: false,
+              pendingEffect: { type: "ABORT_MESSAGE" },
+            };
+          }
+          // Idle: double-press Esc clears the input and saves to history.
+          if (state.inputText) {
+            if (state.escClearPending) {
+              const originalText = state.inputText;
+              const originalLongTextMap = state.longTextMap;
+              return {
+                ...state,
+                inputText: "",
+                cursorPosition: 0,
+                historyIndex: -1,
+                longTextMap: {},
+                escClearPending: false,
+                pendingEffect: {
+                  type: "SAVE_PROMPT_HISTORY",
+                  content: originalText,
+                  longTextMap: originalLongTextMap,
+                },
+              };
+            }
+            return { ...state, escClearPending: true };
+          }
+          return state;
         }
         return state;
       }
@@ -795,6 +928,59 @@ export function inputReducer(
           ...state,
           pendingEffect: { type: "BACKGROUND_CURRENT_TASK" },
         };
+      }
+
+      // Emacs-style line editing (aligned with Claude Code): Ctrl+A/E move the
+      // cursor to line start/end, Ctrl+U/K delete to line start/end, Ctrl+W
+      // deletes the word before the cursor. Skipped while a selector is open.
+      if (
+        key.ctrl &&
+        input &&
+        !state.showFileSelector &&
+        !state.showCommandSelector &&
+        !state.showHistorySearch
+      ) {
+        const editKey = input.toLowerCase();
+        if (editKey === "a") {
+          return { ...state, cursorPosition: 0 };
+        }
+        if (editKey === "e") {
+          return { ...state, cursorPosition: state.inputText.length };
+        }
+        if (editKey === "u") {
+          return {
+            ...state,
+            inputText: state.inputText.substring(state.cursorPosition),
+            cursorPosition: 0,
+            historyIndex: -1,
+          };
+        }
+        if (editKey === "k") {
+          return {
+            ...state,
+            inputText: state.inputText.substring(0, state.cursorPosition),
+            historyIndex: -1,
+          };
+        }
+        if (editKey === "w") {
+          // Find the start of the word before the cursor (skip trailing
+          // whitespace, then the word itself).
+          let start = state.cursorPosition - 1;
+          while (start >= 0 && /\s/.test(state.inputText[start])) {
+            start--;
+          }
+          while (start >= 0 && !/\s/.test(state.inputText[start])) {
+            start--;
+          }
+          return {
+            ...state,
+            inputText:
+              state.inputText.substring(0, start + 1) +
+              state.inputText.substring(state.cursorPosition),
+            cursorPosition: start + 1,
+            historyIndex: -1,
+          };
+        }
       }
 
       // 4. History Navigation

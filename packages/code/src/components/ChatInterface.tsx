@@ -100,6 +100,8 @@ export const ChatInterface: React.FC = () => {
           <InputBox
             isLoading={isLoading}
             isCommandRunning={isCommandRunning}
+            isCompacting={isCompacting}
+            isGoalEvaluating={isGoalEvaluating}
             sendMessage={sendMessage}
             abortMessage={abortMessage}
             mcpServers={mcpServers}

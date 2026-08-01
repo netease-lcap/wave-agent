@@ -18,6 +18,11 @@ describe("HelpView", () => {
     expect(output).toContain("Search history");
     expect(output).toContain("Shift+Tab");
     expect(output).toContain("Cycle permission mode");
+    expect(output).toContain("Ctrl+A");
+    expect(output).toContain("Ctrl+U");
+    expect(output).toContain("Delete to line start");
+    expect(output).toContain("Esc ×2");
+    expect(output).toContain("Clear input (idle)");
   });
 
   it("should call onCancel when Escape is pressed", async () => {
