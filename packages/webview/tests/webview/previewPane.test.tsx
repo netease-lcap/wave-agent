@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, screen, act } from '@testing-library/react';
 import React from 'react';
-import { PreviewPane, formatPreviewComment } from '../../src/components/PreviewPane';
+import { PreviewPane, formatPreviewComment, rewriteCommentUrl } from '../../src/components/PreviewPane';
 import type { WebviewTagElement } from '../../src/components/PreviewPane';
 import { DesktopApp } from '../../src/components/DesktopApp';
 import { convertToMarkdown } from '../../src/utils/messageUtils';
@@ -17,15 +17,17 @@ type MockWebview = Omit<WebviewTagElement, 'send' | 'loadURL' | 'reload' | 'getU
     getURL: ReturnType<typeof vi.fn>;
 };
 
-function renderPane(options?: { url?: string; onClose?: () => void; onAddComment?: (text: string) => void }) {
+function renderPane(options?: { url?: string; onClose?: () => void; onAddComment?: (text: string) => void; originalUrl?: string; onRetry?: () => void }) {
     const vscode = createMockVscode();
     const url = options?.url ?? 'http://localhost:5173/app';
     const onClose = options?.onClose ?? vi.fn();
     const onAddComment = options?.onAddComment ?? vi.fn();
+    const originalUrl = options?.originalUrl;
+    const onRetry = options?.onRetry;
     // Controlled-width harness: PreviewPane no longer owns its width state.
     const Harness = ({ url: u }: { url: string }) => {
         const [width, setWidth] = React.useState(420);
-        return <PreviewPane url={u} vscode={vscode} onClose={onClose} width={width} onWidthChange={setWidth} maxWidth={716} onAddComment={onAddComment} />;
+        return <PreviewPane url={u} vscode={vscode} onClose={onClose} width={width} onWidthChange={setWidth} maxWidth={716} onAddComment={onAddComment} originalUrl={originalUrl} onRetry={onRetry} />;
     };
     const result = render(<Harness url={url} />);
     const wv = result.container.querySelector('webview') as unknown as MockWebview;
@@ -230,6 +232,49 @@ describe('PreviewPane', () => {
         fireEvent(wv, Object.assign(new Event('ipc-message'), { channel: 'something-else', args: [{ type: 'submit', comment: 'x' }] }));
         expect(vscode.postMessage).not.toHaveBeenCalled();
     });
+
+    it('rewrites picker comment URLs back to the original address (remote tunnel)', () => {
+        const onAddComment = vi.fn();
+        const onRetry = vi.fn();
+        const { wv } = renderPane({
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+            onRetry,
+            onAddComment,
+        });
+        fireDomReady(wv);
+        firePickerReady(wv);
+        fireEvent.click(screen.getByTestId('preview-picker-toggle'));
+
+        firePickerSubmit(wv, {
+            type: 'submit',
+            url: 'http://127.0.0.1:5173/login?tab=2',
+            selector: '#app > button',
+            summary: 'button',
+            text: '登录',
+            comment: '按钮间距不对',
+        });
+
+        // The comment must reference the remote original URL (localhost:5173),
+        // not the local tunnel address — the tunnel dies with the panel.
+        expect(onAddComment).toHaveBeenCalledWith(expect.stringContaining('http://localhost:5173/login?tab=2'));
+        expect(onAddComment).not.toHaveBeenCalledWith(expect.stringContaining('127.0.0.1'));
+    });
+
+    it('error retry re-establishes the forward when onRetry is provided (remote)', () => {
+        const onRetry = vi.fn();
+        const { wv } = renderPane({ url: 'http://127.0.0.1:5173/app', originalUrl: 'http://localhost:5173/app', onRetry });
+        fireEvent(wv, Object.assign(new Event('did-fail-load'), {
+            errorCode: -105, errorDescription: 'ERR_NAME_NOT_RESOLVED', isMainFrame: true,
+        }));
+        expect(screen.getByTestId('preview-error')).toHaveTextContent('ERR_NAME_NOT_RESOLVED');
+
+        // Remote: retry means re-acquiring the tunnel (a plain reload would
+        // hit the dead tunnel address again).
+        fireEvent.click(screen.getByTestId('preview-retry'));
+        expect(onRetry).toHaveBeenCalled();
+        expect(screen.queryByTestId('preview-error')).not.toBeInTheDocument();
+    });
 });
 
 describe('formatPreviewComment', () => {
@@ -240,6 +285,34 @@ describe('formatPreviewComment', () => {
             summary: 'div.container',
             comment: '间距太大',
         })).toBe('**预览评论** · http://localhost:5173/\n`div.container` · `#app > div`\n\n间距太大');
+    });
+});
+
+describe('rewriteCommentUrl', () => {
+    const tunnelBase = 'http://127.0.0.1:5173/app';
+    const originalBase = 'http://localhost:5173/app';
+
+    it('rewrites a comment on the tunnel origin back to the original host', () => {
+        expect(rewriteCommentUrl('http://127.0.0.1:5173/settings?tab=1#top', tunnelBase, originalBase)).toBe(
+            'http://localhost:5173/settings?tab=1#top',
+        );
+    });
+
+    it('keeps path/query/hash but swaps scheme, host, and port', () => {
+        expect(rewriteCommentUrl('https://127.0.0.1:8443/admin/users', 'https://127.0.0.1:8443/', 'https://10.0.0.5:8443/admin')).toBe(
+            'https://10.0.0.5:8443/admin/users',
+        );
+    });
+
+    it('leaves URLs on other origins untouched', () => {
+        expect(rewriteCommentUrl('http://127.0.0.1:9999/x', tunnelBase, originalBase)).toBe('http://127.0.0.1:9999/x');
+        expect(rewriteCommentUrl('https://example.com/foo', tunnelBase, originalBase)).toBe('https://example.com/foo');
+    });
+
+    it('leaves invalid inputs untouched', () => {
+        expect(rewriteCommentUrl('not a url', tunnelBase, originalBase)).toBe('not a url');
+        expect(rewriteCommentUrl('http://127.0.0.1:5173/x', 'bad base', originalBase)).toBe('http://127.0.0.1:5173/x');
+        expect(rewriteCommentUrl('http://127.0.0.1:5173/x', tunnelBase, 'bad base')).toBe('http://127.0.0.1:5173/x');
     });
 });
 

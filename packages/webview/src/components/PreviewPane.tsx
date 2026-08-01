@@ -37,6 +37,27 @@ export function formatPreviewComment(msg: PreviewComment): string {
   return lines.join('\n');
 }
 
+/**
+ * Rewrite a picker comment's URL from the forwarded address the guest is
+ * actually showing back to the original address the user cares about (scenario
+ * 17). The guest loads `http://127.0.0.1:<localPort>/path` for a tunnel
+ * forwarding `http://localhost:<remotePort>/path`; comments must record the
+ * latter so they read naturally in the chat and stay valid after the tunnel
+ * dies. Only the origin is remapped — path/search/hash pass through unchanged,
+ * and any URL that isn't on the forwarded origin is returned untouched.
+ */
+export function rewriteCommentUrl(commentUrl: string, forwardedBase: string, originalBase: string): string {
+  try {
+    const fwd = new URL(forwardedBase);
+    const orig = new URL(originalBase);
+    const comment = new URL(commentUrl);
+    if (comment.origin !== fwd.origin) return commentUrl;
+    return `${orig.protocol}//${orig.host}${comment.pathname}${comment.search}${comment.hash}`;
+  } catch {
+    return commentUrl;
+  }
+}
+
 const MIN_WIDTH = 320;
 
 /** Colors the guest picker can't read cross-origin — sampled from the host theme. */
@@ -66,12 +87,18 @@ export interface PreviewPaneProps {
   maxWidth: number;
   /** Receives a formatted picker comment; appended to this pane's chat input. */
   onAddComment?: (text: string) => void;
+  /** Remote sessions: the original (pre-forward) URL the pane is showing; picker
+   * comments are rewritten back to it (scenario 17). Undefined for local URLs. */
+  originalUrl?: string;
+  /** Remote sessions: re-establish the port forward on error retry (scenario
+   * 16). Undefined for local URLs, where the retry reloads the guest instead. */
+  onRetry?: () => void;
   /** Second-row layout: panels pack from the left, so the width drag anchors
    * the (fixed) left edge instead of the right edge. */
   widthFromLeft?: boolean;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, onAddComment, widthFromLeft }) => {
+export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, width, onWidthChange, maxWidth, onAddComment, originalUrl, onRetry, widthFromLeft }) => {
   const [displayUrl, setDisplayUrl] = useState(url);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pickerActive, setPickerActive] = useState(false);
@@ -88,6 +115,13 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
   pickerActiveRef.current = pickerActive;
   const onAddCommentRef = useRef(onAddComment);
   onAddCommentRef.current = onAddComment;
+  // Prop mirrors for the []-deps wiring effect below: the ipc handler runs
+  // long after the effect captured its closures, so it reads current values
+  // from refs (same pattern as onAddCommentRef).
+  const urlPropRef = useRef(url);
+  urlPropRef.current = url;
+  const originalUrlRef = useRef(originalUrl);
+  originalUrlRef.current = originalUrl;
 
   const sendPicker = useCallback((action: 'activate' | 'deactivate') => {
     const wv = webviewRef.current;
@@ -152,8 +186,13 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
       if (msg?.type === 'submit' && msg.comment) {
         // Append to the chat input instead of sending: the user batches
         // several element comments and sends them together. The picker
-        // stays active for the next pick.
-        onAddCommentRef.current?.(formatPreviewComment(msg));
+        // stays active for the next pick. The guest reports its actual
+        // (forwarded) address — rewrite back to the original for remote
+        // tunnels so the comment records the URL the user clicked (scenario
+        // 17); local previews pass through unchanged.
+        const originalBase = originalUrlRef.current;
+        const rewritten = originalBase ? rewriteCommentUrl(msg.url ?? '', urlPropRef.current, originalBase) : (msg.url ?? '');
+        onAddCommentRef.current?.(formatPreviewComment({ ...msg, url: rewritten }));
       }
     };
 
@@ -286,7 +325,14 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ url, vscode, onClose, 
           {loadError && (
             <div className="preview-pane-error" data-testid="preview-error">
               <span>页面加载失败：{loadError}</span>
-              <button className="preview-pane-button" data-testid="preview-retry" onClick={handleRefresh}>
+              <button
+                className="preview-pane-button"
+                data-testid="preview-retry"
+                onClick={() => {
+                  setLoadError(null);
+                  (onRetry ?? handleRefresh)();
+                }}
+              >
                 重试
               </button>
             </div>

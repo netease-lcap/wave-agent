@@ -82,6 +82,22 @@ interface PanelGroupState {
   previewUrl: string | null;
 }
 
+/**
+ * The in-flight/established remote port forward owned by this pane. Set when a
+ * remote localhost link is clicked (before the host replies) and kept until the
+ * panel closes, the host switches, or this pane unmounts — mirroring the
+ * reference the main process holds so the ssh tunnel dies with the last
+ * reference (spec scenarios 15/18).
+ */
+interface RemoteForwardRef {
+  host: string;
+  remotePort: number;
+  /** The original remote URL the user clicked (kept for comment rewriting). */
+  originalUrl: string;
+  /** Matches the desktopForwardPortResult reply; stale replies are dropped. */
+  requestId: string;
+}
+
 const panelGroupCache = new Map<string, PanelGroupState>();
 
 /**
@@ -143,6 +159,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     () => (groupKey ? panelGroupCache.get(groupKey)?.previewUrl : null) ?? null,
   );
+  // Desktop remote sessions: port-forward failure shown in the empty-preview
+  // stub with a retry entry (scenario 16). Null = no error.
+  const [previewForwardError, setPreviewForwardError] = useState<string | null>(null);
+  // Bumped when a re-acquire returns the SAME forwarded URL — the [url] effect
+  // in PreviewPane would otherwise early-return and skip the forced reload a
+  // retry after a guest load failure needs. Remounting restarts the webview.
+  const [previewEpoch, setPreviewEpoch] = useState(0);
+  // The pane's current remote port forward (see RemoteForwardRef above).
+  const remoteForwardRef = useRef<RemoteForwardRef | null>(null);
+  const forwardSeqRef = useRef(0);
+  const previewUrlRef = useRef(previewUrl);
+  const prevHostRef = useRef(effectiveHost);
   // Desktop only: conversation-level panel group (checked = visible; mounted =
   // rendered but possibly hidden, so panel content survives unchecking). When
   // this session's group was cached (session revisited, or the pane moved
@@ -219,6 +247,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [effectiveHost]);
 
   useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
+
+  useEffect(() => {
     checkedPanelsRef.current = checkedPanels;
   }, [checkedPanels]);
 
@@ -246,7 +278,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       widths: panelWidths,
       rows: panelRows,
       rowHeight: panelRowHeight,
-      previewUrl,
+      // A remote forwarded URL is ephemeral (the tunnel dies with the pane) —
+      // caching it would restore a dead address after a remount. Local URLs
+      // survive so the restored pane reloads the same dev server.
+      previewUrl: remoteForwardRef.current ? null : previewUrl,
     });
   }, [groupKey, checkedPanels, mountedPanels, panelWidths, panelRows, panelRowHeight, previewUrl]);
 
@@ -362,6 +397,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           // pane's reply never overwrites this pane's selector.
           if (!forThisPane(message)) break;
           setPaneGitBranches(message.result ?? null);
+          break;
+        case 'desktopForwardPortResult':
+          // Remote preview port-forward reply (scenario 15/16). Only the
+          // request this pane last sent counts — a stale reply for a released
+          // or superseded forward is dropped via the requestId match.
+          if (!forThisPane(message)) break;
+          {
+            const fwd = remoteForwardRef.current;
+            if (!fwd || fwd.requestId !== message.requestId) break;
+            if (message.error) {
+              setPreviewForwardError(String(message.error));
+            } else {
+              setPreviewForwardError(null);
+              setPreviewUrl(message.url as string);
+              // Same URL as before (re-acquire after a guest load failure):
+              // remount so the webview actually reloads instead of the [url]
+              // effect early-returning on an unchanged prop.
+              if (message.url === previewUrlRef.current) setPreviewEpoch((e) => e + 1);
+            }
+          }
           break;
         case 'updateQueue':
           if (!forThisPane(message)) break;
@@ -925,6 +980,38 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     panelHintTimer.current = setTimeout(() => setPanelHint(null), PANEL_HINT_DURATION_MS);
   }, []);
 
+  // Desktop remote sessions: request an ssh port forward for the clicked
+  // localhost URL (scenario 15). The main process picks a local port, starts
+  // `ssh -N -L` and replies with the rewritten 127.0.0.1 address, which the
+  // preview pane then loads. Repeated clicks on the SAME link while the forward
+  // is established or connecting are no-ops — the tunnel is reused, not rebuilt.
+  const acquireForward = useCallback((host: string, url: string) => {
+    let remotePort: number;
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        showPanelHint('仅支持 http/https 链接');
+        return;
+      }
+      remotePort = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
+    } catch {
+      showPanelHint('无效的预览链接');
+      return;
+    }
+    const requestId = `fwd-${++forwardSeqRef.current}`;
+    remoteForwardRef.current = { host, remotePort, originalUrl: url, requestId };
+    postToHost({ command: 'desktopForwardPort', host, url, requestId });
+  }, [postToHost, showPanelHint]);
+
+  // Drop this pane's forward reference: the host kills the tunnel when the
+  // refcount reaches zero (scenario 18). Safe to call when none is held.
+  const releaseCurrentForward = useCallback(() => {
+    const fwd = remoteForwardRef.current;
+    if (!fwd) return;
+    remoteForwardRef.current = null;
+    postToHost({ command: 'desktopReleasePort', host: fwd.host, remotePort: fwd.remotePort });
+  }, [postToHost]);
+
   // Desktop: idle-preload the lazily injected xterm chunk so the first
   // terminal open doesn't pay the fetch+parse cost.
   useEffect(() => {
@@ -983,10 +1070,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     if (panelDisabledRef.current.includes(kind)) return;
     if (checkedPanelsRef.current.includes(kind)) {
       setCheckedPanels((prev) => prev.filter((k) => k !== kind));
+      // Closing the preview drops this pane's forward reference — the host
+      // kills the tunnel when the refcount hits zero (scenario 18). Only a
+      // remote tunnel is cleared; a local URL survives so re-checking shows
+      // the same page without reloading the guest.
+      if (kind === 'preview') {
+        const hadForward = remoteForwardRef.current !== null;
+        releaseCurrentForward();
+        if (hadForward) {
+          setPreviewUrl(null);
+          setPreviewForwardError(null);
+        }
+      }
     } else {
       tryOpenPanel(kind);
     }
-  }, [tryOpenPanel]);
+  }, [tryOpenPanel, releaseCurrentForward]);
 
   useEffect(() => {
     togglePanelRef.current = handleTogglePanel;
@@ -1169,25 +1268,48 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setPreviewUrl(url);
   }, [tryOpenPanel]);
 
-  // Remote sessions have no preview pane — a remote localhost link refers to
-  // the remote host, so it opens in the system browser (spec scenario 10).
-  const handleOpenExternalPreview = useCallback((url: string) => {
-    vscode.postMessage({ command: 'openExternal', url });
-  }, [vscode]);
-  const openPreviewHandler = effectiveHost !== 'local' ? handleOpenExternalPreview : handleOpenPreview;
+  // Remote localhost link handler: open the preview panel (creating it when
+  // absent) and forward. A different URL replaces the previous forward; the
+  // same URL is a no-op unless the previous attempt failed (scenario 15/16).
+  const handleOpenRemotePreview = useCallback((url: string) => {
+    if (!checkedPanelsRef.current.includes('preview') && !tryOpenPanel('preview')) return;
+    const current = remoteForwardRef.current;
+    if (current && current.originalUrl === url && previewForwardError === null) return;
+    if (current) releaseCurrentForward();
+    setPreviewForwardError(null);
+    setPreviewUrl(null); // show the connecting stub while the tunnel comes up
+    acquireForward(effectiveHostRef.current, url);
+  }, [tryOpenPanel, releaseCurrentForward, acquireForward, previewForwardError]);
+
+  // Retry after a failed forward (scenario 16): re-request the same tunnel.
+  // The host treats a failed entry as gone, so a fresh forward is established.
+  const handleRemotePreviewRetry = useCallback(() => {
+    const fwd = remoteForwardRef.current;
+    if (!fwd) return;
+    setPreviewForwardError(null);
+    acquireForward(fwd.host, fwd.originalUrl);
+  }, [acquireForward]);
+
+  // Host switch (local ⇄ remote, or remote A ⇄ remote B): the old tunnel is
+  // meaningless on the new host — drop it and clear the preview (scenario 18).
+  useEffect(() => {
+    if (prevHostRef.current === effectiveHost) return;
+    prevHostRef.current = effectiveHost;
+    releaseCurrentForward();
+    setPreviewUrl(null);
+    setPreviewForwardError(null);
+  }, [effectiveHost, releaseCurrentForward]);
+
+  // Unmount (pane moved across window rows / window closed): never leave an
+  // orphan ssh process behind (scenario 18).
+  useEffect(() => () => releaseCurrentForward(), [releaseCurrentForward]);
+
+  const openPreviewHandler = effectiveHost !== 'local' ? handleOpenRemotePreview : handleOpenPreview;
 
   // Diff/terminal need a workdir; preview only needs a URL. Remote sessions
-  // keep diff/terminal (git and the shell run over ssh) but never preview —
-  // it needs local port forwarding, and a remote agent's localhost is
-  // unreachable from this machine (spec scenario 10).
-  const panelDisabled: DesktopPanelKind[] =
-    effectiveHost !== 'local'
-      ? effectiveWorkdir
-        ? ['preview']
-        : ['preview', 'diff', 'terminal']
-      : effectiveWorkdir
-        ? []
-        : ['diff', 'terminal'];
+  // keep diff/terminal (git and the shell run over ssh) and gain preview via
+  // port forwarding (scenario 15); only the workdir requirement remains.
+  const panelDisabled: DesktopPanelKind[] = effectiveWorkdir ? [] : ['diff', 'terminal'];
 
   useEffect(() => {
     panelDisabledRef.current = panelDisabled;
@@ -1245,7 +1367,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
 
     if (kind === 'preview') {
       return previewUrl ? (
-        <PreviewPane url={previewUrl} vscode={vscode} onAddComment={handleAddComment} {...common} />
+        <PreviewPane
+          key={previewEpoch}
+          url={previewUrl}
+          originalUrl={remoteForwardRef.current?.originalUrl}
+          onRetry={remoteForwardRef.current ? handleRemotePreviewRetry : undefined}
+          vscode={vscode}
+          onAddComment={handleAddComment}
+          {...common}
+        />
       ) : (
         <aside className="preview-pane" style={{ width: common.width }} data-testid="preview-pane-empty">
           <div className="preview-pane-drag-handle" onMouseDown={onEmptyPreviewDragStart} />
@@ -1256,7 +1386,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                 <i className="codicon codicon-close" />
               </button>
             </div>
-            <div className="desktop-panel-placeholder">点击消息或终端中的 localhost 链接加载预览</div>
+            <div className="desktop-panel-placeholder">
+              {previewForwardError ? (
+                <>
+                  <span>远程预览加载失败：{previewForwardError}</span>
+                  <button className="preview-pane-button" data-testid="preview-forward-retry" onClick={handleRemotePreviewRetry}>
+                    重试
+                  </button>
+                </>
+              ) : (
+                <>点击消息或终端中的 localhost 链接加载预览</>
+              )}
+            </div>
           </div>
         </aside>
       );
