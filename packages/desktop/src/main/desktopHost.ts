@@ -1678,15 +1678,14 @@ export class DesktopHost {
 
       // Read-only workspace diff for the diff panel — runs git directly in
       // the main process rather than via the stdio CLI (large output, and
-      // the CLI has no reusable implementation). Local-only: remote sessions
-      // have no diff panel (spec scenario 10), so guard defensively.
+      // the CLI has no reusable implementation). Remote sessions run the git
+      // and file reads over ssh (spec scenario 14).
       case 'desktopGetWorkspaceDiff': {
         const paneAgent = this.agentForPane(pid);
         const cwd = paneAgent?.workingDirectory ?? this.workdir;
-        const result =
-          cwd && this.hostForAgent(paneAgent) === LOCAL_HOST
-            ? await getWorkspaceDiff(cwd)
-            : ({ kind: 'not-a-repo' } as const);
+        const result = cwd
+          ? await getWorkspaceDiff(cwd, this.hostForAgent(paneAgent))
+          : ({ kind: 'not-a-repo' } as const);
         this.postMessage({ command: 'desktopWorkspaceDiff', paneId: pid, result });
         break;
       }
@@ -1694,16 +1693,6 @@ export class DesktopHost {
       // -- terminal panel ---------------------------------------------------
       case 'desktopTerminalCreate': {
         const paneAgent = this.agentForPane(pid);
-        if (this.hostForAgent(paneAgent) !== LOCAL_HOST) {
-          // PTYs are local-only — remote sessions have no terminal panel
-          // (spec scenario 10).
-          this.postMessage({
-            command: 'desktopTerminalExit',
-            termId: msg.termId,
-            error: '远程会话不支持终端面板',
-          });
-          break;
-        }
         const cwd = paneAgent?.workingDirectory ?? this.workdir;
         if (!cwd) {
           this.postMessage({
@@ -1719,6 +1708,7 @@ export class DesktopHost {
           (msg.cols as number) || 80,
           (msg.rows as number) || 24,
           pid,
+          this.hostForAgent(paneAgent),
         );
         break;
       }

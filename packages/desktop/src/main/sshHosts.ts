@@ -155,3 +155,12 @@ export function addSshHost(connectionString: string, configPath: string = getSsh
 export function buildSshSpawnArgs(host: string, remoteCommand: string): string[] {
   return [...SSH_BASE_OPTIONS, host, remoteCommand];
 }
+
+/**
+ * Single-quote a string for a remote shell command. ssh joins every argv
+ * after the hostname into one remote command line, so any user-supplied path
+ * (remote cwd, git pathspecs, untracked file paths) must be shell-escaped.
+ */
+export function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}

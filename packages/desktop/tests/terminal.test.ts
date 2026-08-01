@@ -83,6 +83,39 @@ describe('TerminalManager', () => {
     });
   });
 
+  it('spawns an ssh PTY bridge for remote hosts with -t and the quoted remote cwd', async () => {
+    const { manager } = await freshManager();
+    await manager.create('term-1', '/remote/proj', 100, 30, 'pane-1', 'myhost');
+    expect(h.spawn).toHaveBeenCalledWith(
+      'ssh',
+      [
+        '-t',
+        '-o', 'BatchMode=yes',
+        '-o', 'StrictHostKeyChecking=accept-new',
+        '-o', 'ConnectTimeout=15',
+        'myhost',
+        "cd '/remote/proj' && exec \"${SHELL:-/bin/bash}\" -l",
+      ],
+      expect.objectContaining({
+        name: 'xterm-256color',
+        cwd: expect.any(String),
+        cols: 100,
+        rows: 30,
+        env: expect.objectContaining({ TERM: 'xterm-256color', COLORTERM: 'truecolor' }),
+      }),
+    );
+  });
+
+  it('shell-quotes remote cwds containing quotes', async () => {
+    const { manager } = await freshManager();
+    await manager.create('term-1', "/remote/it's dir", 80, 24, 'pane-1', 'myhost');
+    expect(h.spawn).toHaveBeenCalledWith(
+      'ssh',
+      expect.arrayContaining(["cd '/remote/it'\\''s dir' && exec \"${SHELL:-/bin/bash}\" -l"]),
+      expect.anything(),
+    );
+  });
+
   it('relays pty data and exit events through the callbacks', async () => {
     const { manager, callbacks } = await freshManager();
     await manager.create('term-1', '/work/a', 80, 24);
