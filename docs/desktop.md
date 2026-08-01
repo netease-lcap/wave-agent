@@ -8,11 +8,11 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 每次启动都是全新开始 —— 不记住上次的工作目录和会话。未选择工作目录时，输入区（含 +、斜杠、权限、发送按钮）整体禁用，侧边栏展示会话树的目录分组（默认全部展开）：
 
-![首次启动](/screenshots/desktop-first-launch.png)
+![首次启动](/screenshots/desktop-first-launch.webp)
 
 在输入框左上角点击「选择工作目录…」，从最近打开列表中挑选，或点击「浏览…」打开系统目录选择器：
 
-![工作目录下拉](/screenshots/desktop-workdir-dropdown.png)
+![工作目录下拉](/screenshots/desktop-workdir-dropdown.webp)
 
 - 最近打开列表最多保留 10 个目录，按最近使用排序；hover 条目可点 × 移除
 - 选择目录后输入区立即解锁，该目录置顶到最近列表
@@ -22,7 +22,7 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 不满足于本地代码时，可以在工作目录选择器左侧把会话切到任意 SSH 主机上运行——整个 CLI 子进程经 `ssh <host> -- wave --stdio` 在远端执行，agent 的读写、搜索、bash、git 等全部工具天然作用在远端文件系统，体验与 VS Code Remote-SSH 一致：
 
-![主机选择器](/remote-ssh/desktop-ssh-host-selector.png)
+![主机选择器](/screenshots/desktop-ssh-host-selector.webp)
 
 - 主机选择器位于工作目录选择器左侧，仅在新会话（还没有消息）时显示；首项「本地」，其后列出 `~/.ssh/config` 中解析出的主机（顶层 `Host` 块名称，通配符条目除外），末项「添加主机…」
 - 选择主机后，工作目录选择器切换为该主机的远程目录上下文：列出该主机的最近打开远程目录与「输入路径…」项（远端没有目录浏览对话框，路径为文本输入，确认时校验存在性）
@@ -39,11 +39,11 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 - **终端面板**：经本机 ssh 在远端分配 PTY 运行用户默认 shell，工作目录为分屏 agent 的当前工作目录（远端路径）；按键透传、ANSI 渲染、`Ctrl+C` 中断、尺寸调整与本地终端一致
 
-![远程终端面板](/remote-ssh/desktop-ssh-remote-terminal.png)
+![远程终端面板](/screenshots/desktop-ssh-remote-terminal.webp)
 
 - **差异面板**：git 命令与文件读取全部经 ssh 在远端执行，展示远程仓库相对 HEAD 的工作区差异（含未跟踪文件），数据经 ssh 管道回传本机渲染；行评论与本地一致
 
-![远程差异面板](/remote-ssh/desktop-ssh-remote-diff.png)
+![远程差异面板](/screenshots/desktop-ssh-remote-diff.webp)
 
 - **预览面板**：开关项禁用并显示置灰，无法为远程会话打开；远程会话消息中的 localhost 链接改用系统默认浏览器打开
 
@@ -56,11 +56,11 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 - **运行中标识**：正在生成回复的会话前显示绿色圆点，可同时存在多个
 - **待确认标识**：存在等待用户响应的确认请求（工具权限、计划确认、问答等）的会话前显示橙色圆点；待确认与运行中同时成立时优先显示待确认
 
-![会话树](/screenshots/desktop-session-tree.png)
+![会话树](/screenshots/desktop-session-tree.webp)
 
 点击分组标题即可折叠/展开：
 
-![会话树折叠](/screenshots/desktop-session-tree-collapsed.png)
+![会话树折叠](/screenshots/desktop-session-tree-collapsed.webp)
 
 点击会话的行为：
 
@@ -70,13 +70,13 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 悬停会话条目可点击删除图标删除会话，删除前会弹出应用内确认对话框；worktree 会话会额外提示将一并删除 worktree 目录与临时分支：
 
-![删除会话确认对话框](/screenshots/desktop-confirm-delete.png)
+![删除会话确认对话框](/screenshots/desktop-confirm-delete.webp)
 
 ### 侧边栏「更多」菜单
 
 桌面端把设置、企业控制台、登录/登出入口集中到侧边栏头部右侧的「更多」按钮，聊天头部因此保持简洁（头部不再显示「更多」按钮）。点击弹出菜单，按登录态显示「退出登录」或「登录」：
 
-![侧边栏更多菜单](/screenshots/desktop-more-menu.png)
+![侧边栏更多菜单](/screenshots/desktop-more-menu.webp)
 
 菜单项行为与 IDE 插件的「更多」菜单完全一致；点击外部或按 Esc 关闭。即便尚未选择工作目录，菜单也可用。
 
@@ -84,7 +84,7 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 当你选择的工作目录是 git 仓库、且处于新会话状态（消息列表为空）时，工作目录选择器旁会显示分支选择器与「worktree」勾选项，让你在基于所选分支创建的临时 worktree 中开会话，并行试验而不污染主工作区：
 
-![worktree 隔离会话](/screenshots/desktop-worktree-controls.png)
+![worktree 隔离会话](/screenshots/desktop-worktree-controls.webp)
 
 - 分支选择器默认选中当前分支；勾选 worktree（默认勾选）后开始会话，应用会基于所选分支创建随机命名的临时分支与 worktree，会话实际工作目录为该 worktree 路径
 - 取消勾选则在所选目录中直接开会话
@@ -104,7 +104,7 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 `Cmd/Ctrl+Click` 侧边栏里的会话（或把会话条目拖入聊天区），即可在右侧新增一个分屏并排展示该会话——多条会话并排陈列、各自独立输入与流式生成，把多会话并行从后台能力升级为可见的多任务工作台：
 
-![分屏多对话](/screenshots/desktop-split-view.png)
+![分屏多对话](/screenshots/desktop-split-view.webp)
 
 - 普通点击（无修饰键）替换焦点分屏；`Cmd/Ctrl+Click` 新增分屏；目标会话已在某分屏展示时不重复新增，改为聚焦该分屏
 - `Cmd/Ctrl+Shift+N`（macOS 为 `Cmd+Shift+N`）一步并排打开空白新会话；`Cmd+W` 关闭当前分屏（仅剩一个时不提供关闭入口）
@@ -113,13 +113,13 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 横向空间拥挤时，把分屏拖到聊天区上/下边缘可形成上下两行分屏（最多两行），利用垂直空间对照更多会话；拖拽行间分隔条调整行高（最小 280px），把下行分屏拖回上行即消除空行：
 
-![上下两行分屏](/screenshots/desktop-two-row-split.png)
+![上下两行分屏](/screenshots/desktop-two-row-split.webp)
 
 ## 对话级面板开关
 
 每个对话分屏头部右上角有「面板」开关，可同时勾选预览、差异、终端三类面板在该对话内部并排展示，按任务需要组合每个对话的工作区视图：
 
-![面板开关菜单](/screenshots/desktop-panel-toggle.png)
+![面板开关菜单](/screenshots/desktop-panel-toggle.webp)
 
 - 点击开关展开多选菜单，各项显示勾选状态与快捷键；点击切换勾选，菜单不自动关闭（支持连续多选），点击外部或 Esc 关闭
 - 快捷键：预览 `⇧⌘P`、差异 `⇧⌘D`、终端 `⌃\``（Windows 为 `Ctrl+Shift+P` / `Ctrl+Shift+D` / `Ctrl+\``）
@@ -131,7 +131,7 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 勾选「差异」后，面板以手风琴形式逐文件展示该对话工作目录（worktree 会话为 worktree 路径）的未提交 git 改动——含 agent 刚做的修改：
 
-![差异面板](/screenshots/desktop-diff-pane.png)
+![差异面板](/screenshots/desktop-diff-pane.webp)
 
 - 每个文件一个可折叠区块（默认展开，点击标题折叠/展开），头部显示相对路径、状态标识（新增/修改/删除/未跟踪等）与增删行统计，展开区显示差异内容（增删行高亮）
 - 一轮生成结束后自动刷新为最新改动，也提供手动刷新按钮；刷新保留旧内容直至新数据到达，不闪烁
@@ -139,11 +139,11 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 悬停任一差异行，行右侧浮现「+」评论按钮（GitHub / GitLab 风格），点击在该行下方展开内联评论框：
 
-![差异行评论](/screenshots/desktop-diff-comment.png)
+![差异行评论](/screenshots/desktop-diff-comment.webp)
 
 评论框显示所属文件路径，回车或点击右下角「添加」把这条评论连同文件路径、行前缀与行内容追加到下方的输入框（Esc 或「取消」关闭）；评论不会立刻发送给 agent，方便你连续标注多处改动、逐条积累后统一发送：
 
-![差异评论追加到输入框](/screenshots/desktop-diff-comment-input.png)
+![差异评论追加到输入框](/screenshots/desktop-diff-comment-input.webp)
 
 刷新或切换会话时改动行可能被覆盖，评论框与草稿自动清空。
 
@@ -151,7 +151,7 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 勾选「终端」后，面板内嵌一个真正的终端（基于 node-pty），以该对话工作目录为 cwd 启动用户默认 shell，可运行 `vim`、`top` 等交互式程序：
 
-![终端面板](/screenshots/desktop-terminal-pane.png)
+![终端面板](/screenshots/desktop-terminal-pane.webp)
 
 - 按键全量透传、ANSI 颜色正确渲染、`Ctrl+C` 中断前台程序，行为与系统终端一致
 - 调整面板宽度时同步终端行列数，输出按新宽度重排
@@ -164,7 +164,7 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 让 agent 启动本地开发服务器（如 Vite 原型）后，点击消息中的 localhost 链接（`localhost`、`127.0.0.1`、`[::1]`，任意端口）会在窗口右侧打开预览面板，而不是跳转外部浏览器 —— 边对话边看原型：
 
-![原型预览面板](/screenshots/desktop-preview-pane.png)
+![原型预览面板](/screenshots/desktop-preview-pane.webp)
 
 - 非 localhost 的 http(s) 链接仍用系统默认浏览器打开
 - 面板工具栏提供：地址显示、元素拾取开关、刷新、「在浏览器打开」、关闭；面板宽度可拖拽调整
@@ -172,25 +172,25 @@ Wave 桌面版是一个独立的 Electron 应用，无需安装 IDE 即可使用
 
 点击工具栏左侧的「元素拾取」开关进入拾取模式：鼠标悬停的元素显示高亮轮廓，页面自身的点击、跳转、表单提交会被拦截：
 
-![元素拾取](/screenshots/desktop-preview-picker.png)
+![元素拾取](/screenshots/desktop-preview-picker.webp)
 
 点击目标元素后，旁边弹出评论卡片，写下要改什么，回车或点击右下角的添加图标把这条评论连同元素上下文追加到下方的输入框；点击卡片外空白处可取消并重新选择：
 
-![元素评论](/screenshots/desktop-preview-comment.png)
+![元素评论](/screenshots/desktop-preview-comment.webp)
 
 评论不会立刻发送给 agent，而是追加到消息列表下方的输入框，方便你连续拾取多个元素、逐条积累评论后统一编辑、一起发送。拾取模式保持开启，可以继续点选下一个元素；提交内容包含页面 URL、元素 CSS 选择器、元素摘要与你的评论文本，agent 据此精确理解「指的是哪里」并修改原型。再次点击拾取开关退出拾取；页面导航或刷新后拾取自动重置为关闭。
 
-![评论追加到输入框](/screenshots/desktop-preview-comment-input.png)
+![评论追加到输入框](/screenshots/desktop-preview-comment-input.webp)
 
 ## 核心交互
 
 对话体验与 IDE 插件一致 —— 思考过程、工具调用、权限确认、斜杠命令、消息队列、图片粘贴等全部可用：
 
-![核心交互](/screenshots/desktop-chat.png)
+![核心交互](/screenshots/desktop-chat.webp)
 
 消息列表与输入框共用同一套最大宽度（800px）并居中显示，窗口越宽两侧留白越明显，对话内容始终与输入框左右对齐，避免消息拉满整行显得松散：
 
-![居中的对话列](/screenshots/desktop-chat-centered.png)
+![居中的对话列](/screenshots/desktop-chat-centered.webp)
 
 详细说明请移步：
 

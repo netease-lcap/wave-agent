@@ -8,24 +8,24 @@ Wave 代码智聊是一款集成在 VS Code 与 JetBrains IDE（WebStorm、Intel
 
 插件启动后，聊天面板默认展示欢迎页；未登录时欢迎页居中显示登录按钮，点击即可发起 SSO 登录（详见 [第 8.1 节 配置设置](#configuration-settings)）。
 
-![欢迎页](/screenshots/spec-welcome.png)
+![欢迎页](/screenshots/spec-welcome.webp)
 _欢迎页_
 
-![未登录欢迎页](/screenshots/spec-welcome-login.png)
+![未登录欢迎页](/screenshots/spec-welcome-login.webp)
 _未登录欢迎页_
 
 ### 1.1 基础对话 {#basic-chat}
 
 支持 Markdown 格式的文本交互，能够生成带有语法高亮的代码块，方便用户直接阅读和复制。
 
-![基础对话](/screenshots/spec-basic-chat.png)
+![基础对话](/screenshots/spec-basic-chat.webp)
 _基础对话_
 
 ### 1.2 AI 思考过程 {#ai-reasoning}
 
 对于支持推理的模型（如 DeepSeek R1, OpenAI o1），Wave 可以展示 AI 的思考过程，让用户了解 AI 是如何得出结论的。思考过程在生成时默认展开、实时呈现，思考结束后会自动收起以保持界面整洁；用户可随时点击“思考”标题展开或收起，查看完整的推理内容。
 
-![AI 思考过程](/screenshots/spec-reasoning.png)
+![AI 思考过程](/screenshots/spec-reasoning.webp)
 _AI 思考过程_
 
 ### 1.3 用户消息吸顶 (Sticky User Message) {#sticky-user-message}
@@ -38,7 +38,7 @@ _AI 思考过程_
 - **三行截断**：吸顶内容最多展示 3 行，过长时末尾省略，底部带渐变遮罩提示内容被裁切。
 - **点击定位**：点击吸顶条即可平滑滚动回该用户消息的原始位置。
 
-![用户消息吸顶](/screenshots/spec-sticky-user-message.png)
+![用户消息吸顶](/screenshots/spec-sticky-user-message.webp)
 _用户消息吸顶_
 
 ---
@@ -67,13 +67,13 @@ Wave 提供了一个强大的富文本输入框，支持内联标签、指令补
   - **删除**：点击垃圾桶图标可将该条消息从队列中移除。
 - **清空队列**：点击"新建会话"会同时清空当前会话和所有排队消息。注意：手动点击"停止"按钮中止当前任务时，**不会**清空消息队列。
 
-![消息队列（收起）](/screenshots/spec-queue-collapsed.png)
+![消息队列（收起）](/screenshots/spec-queue-collapsed.webp)
 _消息队列面板（收起态，仅露出第一条）_
 
-![消息队列（展开）](/screenshots/spec-queued-message.png)
+![消息队列（展开）](/screenshots/spec-queued-message.webp)
 _消息队列面板（展开态，多条消息）_
 
-![编辑队列消息](/screenshots/spec-queue-editing.png)
+![编辑队列消息](/screenshots/spec-queue-editing.webp)
 _编辑队列消息（内容载入输入框，原消息保留在队列中）_
 
 
@@ -89,10 +89,10 @@ Wave 支持快速搜索并重用之前的 Prompt，提高交互效率。
 - **键盘导航**：支持使用上下箭头键选择记录，按下 `Enter` 键将选中的 Prompt 填入输入框。
 - **智能拦截**：当焦点在聊天输入框时，`Ctrl+R` 等快捷键会被 Webview 优先拦截，防止触发 VS Code 的默认行为，确保流畅的聊天体验。
 
-![通过"+"菜单打开历史提示词](/screenshots/spec-plus-menu.png)
+![通过"+"菜单打开历史提示词](/screenshots/spec-plus-menu.webp)
 _输入框工具栏"+"（添加）菜单中的"历史提示词"入口_
 
-![历史提示词弹窗](/screenshots/spec-history-search.png)
+![历史提示词弹窗](/screenshots/spec-history-search.webp)
 _历史提示词弹窗_
 
 ---
@@ -103,7 +103,7 @@ _历史提示词弹窗_
 用户可以通过编辑器右键菜单中的"添加到 Wave"选项，将选中的代码手动添加到对话上下文中。选中的代码会以蓝色内联标签的形式插入到输入框当前光标位置。在消息历史中，点击该标签可快速跳转回编辑器中的对应文件及行号。
 
 
-![输入框中的代码选中标签](/screenshots/spec-selection-inline-tag.png)
+![输入框中的代码选中标签](/screenshots/spec-selection-inline-tag.webp)
 _输入框中的代码选中标签_
 
 
@@ -118,7 +118,7 @@ _输入框中的代码选中标签_
 
 选择这些指令后会直接弹出对应弹窗，无需按回车发送。
 
-![指令系统](/screenshots/spec-slash-commands.png)
+![指令系统](/screenshots/spec-slash-commands.webp)
 _指令系统_
 
 
@@ -126,16 +126,16 @@ _指令系统_
 
 通过输入 `@`，用户可以轻松地将项目中的文件添加到对话上下文中。标签会内联显示在输入框和消息中。对于图片类型的文件，支持点击标签直接在编辑器中预览。
 
-![文件建议下拉列表](/screenshots/spec-file-suggestions.png)
+![文件建议下拉列表](/screenshots/spec-file-suggestions.webp)
 _文件建议下拉列表_
 
-![输入框中的内联标签](/screenshots/spec-inline-mentions.png)
+![输入框中的内联标签](/screenshots/spec-inline-mentions.webp)
 _输入框中的内联标签_
 
-![图片全屏预览模态框](/screenshots/spec-image-preview.png)
+![图片全屏预览模态框](/screenshots/spec-image-preview.webp)
 _图片全屏预览模态框_
 
-![消息列表中的内联标签](/screenshots/spec-message-inline-tags.png)
+![消息列表中的内联标签](/screenshots/spec-message-inline-tags.webp)
 _消息列表中的内联标签_
 
 
@@ -151,10 +151,10 @@ _消息列表中的内联标签_
 - **状态反馈**：通过图标直观展示命令的运行状态（运行中、退出代码等）。
 - **可中止性**：对于长时间运行的命令，用户可以点击"停止"按钮随时中止执行。
 
-![Bang 命令执行成功](/screenshots/bang-command-success.png)
+![Bang 命令执行成功](/screenshots/bang-command-success.webp)
 _Bang 命令执行成功_
 
-![长输出展示](/screenshots/bang-command-long-output.png)
+![长输出展示](/screenshots/bang-command-long-output.webp)
 _长输出展示_
 
 ### 2.7 输入框外观与状态 {#input-box}
@@ -167,13 +167,13 @@ _长输出展示_
 - **多行自适应**：随内容增高，文本区最多展开约 3 行后内部滚动，容器总高度封顶，底部工具栏始终固定可见。
 - **发送按钮态**：输入为空时发送按钮呈半透明禁用态，有内容时恢复为高亮红色可点击。
 
-![输入框（空态）](/screenshots/spec-input-empty.png)
+![输入框（空态）](/screenshots/spec-input-empty.webp)
 _输入框（空态）_
 
-![输入框（聚焦态）](/screenshots/spec-input-focus.png)
+![输入框（聚焦态）](/screenshots/spec-input-focus.webp)
 _输入框（聚焦态，红色边框）_
 
-![输入框（多行）](/screenshots/spec-input-multiline.png)
+![输入框（多行）](/screenshots/spec-input-multiline.webp)
 _输入框（多行内部滚动）_
 
 ---
@@ -184,7 +184,7 @@ _输入框（多行内部滚动）_
 
 AI 可以执行终端命令并实时展示输入与输出，帮助用户完成自动化任务、运行测试或安装依赖。
 
-![终端工具](/screenshots/spec-bash.png)
+![终端工具](/screenshots/spec-bash.webp)
 _终端工具_
 
 ### 3.2 文件搜索与探索 {#file-exploration}
@@ -196,7 +196,7 @@ AI 可以使用多种工具来探索项目代码库，这些工具的执行过�
 - **Grep**: 在文件中搜索文本内容，标题显示搜索模式、文件类型和路径（如 `interface.*API ts in src`）
 - **Read**: 读取文件内容，标题显示文件路径及读取范围（如 `src/main.ts 1:2000`）
 
-![文件探索](/screenshots/spec-exploration.png)
+![文件探索](/screenshots/spec-exploration.webp)
 _文件探索_
 
 ### 3.3 文件操作工具 {#file-operations}
@@ -206,14 +206,14 @@ _文件探索_
 - **Write**: 创建新文件并写入内容，以纯内容预览的形式呈现——标题显示可点击的文件路径（如 `Write src/new-file.ts`，点击即在编辑器中打开该文件），并附带行数与字符数统计（如 `18 行 · 512 字符`）；下方是可滚动的内容预览区，超出高度部分以底部渐变提示，将鼠标悬停在预览区右上角可点击放大按钮打开完整文件
 - **Edit**: 在文件中进行精确的字符串替换，标题显示文件路径（如 `src/app.tsx`），并以 Diff 视图展示前后变化
 
-![文件操作](/screenshots/spec-file-ops.png)
+![文件操作](/screenshots/spec-file-ops.webp)
 _文件操作_
 
 ### 3.4 文件差异对比 (Diff Viewer) {#diff-viewer}
 
 当 AI 建议修改文件时，会通过直观的 Diff 视图展示更改内容，用户可以清晰地看到每一行代码的变化。
 
-![文件差异对比](/screenshots/spec-diff-viewer.png)
+![文件差异对比](/screenshots/spec-diff-viewer.webp)
 _文件差异对比_
 
 ### 3.5 LSP 代码智能 {#lsp-intelligence}
@@ -225,14 +225,14 @@ Wave 集成了 Language Server Protocol (LSP)，使 AI 能够像 IDE 一样理�
 - **Hover**: 获取类型信息和文档
 - **Call Hierarchy**: 分析函数调用链
 
-![LSP 智能](/screenshots/spec-lsp.png)
+![LSP 智能](/screenshots/spec-lsp.webp)
 _LSP 智能_
 
 ### 3.6 视觉理解 {#vision-understanding}
 
 当用户上传图片后，AI 可以识别图片中的 UI 设计、架构图或错误截图，并结合代码提供针对性的建议。
 
-![视觉理解](/screenshots/spec-vision.png)
+![视觉理解](/screenshots/spec-vision.webp)
 _视觉理解_
 
 ---
@@ -245,21 +245,21 @@ Wave 代码智聊 提供五种权限管理模式，用户可以根据需要灵�
 
 #### 默认模式（修改前询问）
 
-![权限模式 - 默认](/screenshots/spec-permission-mode-default.png)
+![权限模式 - 默认](/screenshots/spec-permission-mode-default.webp)
 _权限模式 - 默认_
 
 在默认模式下，AI 执行任何涉及文件修改或系统操作的工具之前，都会先向用户请求确认。这是最安全的模式，适合初次使用或处理重要项目时使用。
 
 #### 自动接受修改模式
 
-![权限模式 - 自动接受修改](/screenshots/spec-permission-mode-accept.png)
+![权限模式 - 自动接受修改](/screenshots/spec-permission-mode-accept.webp)
 _权限模式 - 自动接受修改_
 
 在此模式下，AI 可以自动执行文件编辑、创建和删除操作，无需每次确认。适合在信任 AI 建议且希望提高效率的场景下使用。
 
 #### 计划模式
 
-![权限模式 - 计划模式](/screenshots/spec-permission-mode-plan.png)
+![权限模式 - 计划模式](/screenshots/spec-permission-mode-plan.webp)
 _权限模式 - 计划模式_
 
 计划模式是一种特殊的工作模式，AI 只能修改计划文件（通常是 `.wave/plans/` 目录下的文件），用于协作制定和完善开发计划，而不会直接修改项目代码。这种模式特别适合项目规划阶段。
@@ -287,7 +287,7 @@ _权限模式 - 计划模式_
 - 支持批准单次修改或设置自动批准规则
 - 提供反馈机制让用户指导修改方向
 
-![代码修改确认](/screenshots/spec-edit-confirm.png)
+![代码修改确认](/screenshots/spec-edit-confirm.webp)
 _代码修改确认_
 
 ### 4.3 命令执行确认 (Bash Command Confirmation) {#bash-command-confirmation}
@@ -300,7 +300,7 @@ _代码修改确认_
 - 支持单次批准或设置持久化规则
 - 可按命令前缀或具体命令设置自动批准
 
-![命令执行确认](/screenshots/spec-bash-confirm.png)
+![命令执行确认](/screenshots/spec-bash-confirm.webp)
 _命令执行确认_
 
 ### 4.4 MCP 工具确认 (MCP Tool Confirmation) {#mcp-tool-confirmation}
@@ -312,7 +312,7 @@ _命令执行确认_
 - **持久化规则**：支持为特定 MCP 工具设置"不再询问"规则（按工具名匹配，如 `mcp__wave_requirements__create_requirement`）。
 - **反馈机制**：支持用户拒绝并提供反馈，指导 AI 调整参数后重新调用。
 
-![MCP 工具确认](/screenshots/spec-mcp-tool-confirm.png)
+![MCP 工具确认](/screenshots/spec-mcp-tool-confirm.webp)
 _MCP 工具确认_
 
 ### 4.5 计划执行确认 (Plan Confirmation) {#plan-confirmation}
@@ -325,7 +325,7 @@ _MCP 工具确认_
 - 提供"批准并继续"和"批准并自动接受后续修改"选项
 - 支持用户反馈和计划修改建议
 
-![计划执行确认](/screenshots/spec-plan-confirm.png)
+![计划执行确认](/screenshots/spec-plan-confirm.webp)
 _计划执行确认_
 
 ### 4.6 进入计划模式确认 (Enter Plan Mode Confirmation) {#enter-plan-mode}
@@ -341,7 +341,7 @@ _计划执行确认_
 - **权限模式切换**：批准后，会话权限模式自动切换为 `plan` 模式。
 - **拒绝处理**：拒绝后，AI 收到"不，现在开始实现"的反馈消息，直接开始执行任务。
 
-![进入计划模式确认](/screenshots/spec-enter-plan-mode.png)
+![进入计划模式确认](/screenshots/spec-enter-plan-mode.webp)
 _进入计划模式确认_
 
 ### 4.7 交互式提问 (Ask User) {#ask-user}
@@ -353,16 +353,16 @@ _进入计划模式确认_
 - **多个问题分页**：当一次提出多个问题时，标题右侧提供 `< N / M >` 分页导航，逐题作答；底部提供"下一个"与"提交回答"按钮。
 - **自定义回答**：每个问题均附带"其他"选项，可输入自定义内容，输入框随内容自动撑高（超出上限后内部滚动）。
 
-![交互式提问表单](/screenshots/spec-ask-user.png)
+![交互式提问表单](/screenshots/spec-ask-user.webp)
 _交互式提问表单（单选）_
 
-![交互式提问（多个问题分页）](/screenshots/spec-ask-user-multi.png)
+![交互式提问（多个问题分页）](/screenshots/spec-ask-user-multi.webp)
 _交互式提问（多个问题，支持分页导航）_
 
-![交互式提问（多选）](/screenshots/spec-ask-user-multiselect.png)
+![交互式提问（多选）](/screenshots/spec-ask-user-multiselect.webp)
 _交互式提问（多选，可勾选多个选项）_
 
-![交互式提问结果（垂直布局）](/screenshots/ask-user-question-vertical.png)
+![交互式提问结果（垂直布局）](/screenshots/ask-user-question-vertical.webp)
 _交互式提问结果（垂直布局）_
 
 ### 4.8 错误消息展示 {#error-message-display}
@@ -375,10 +375,10 @@ _交互式提问结果（垂直布局）_
 - 支持内部垂直滚动，方便查看完整错误信息
 - 保持原始格式（如换行和空格）
 
-![工具执行错误](/screenshots/tool-error-scrollable.png)
+![工具执行错误](/screenshots/tool-error-scrollable.webp)
 _工具执行错误_
 
-![通用错误消息](/screenshots/error-block-scrollable.png)
+![通用错误消息](/screenshots/error-block-scrollable.webp)
 _通用错误消息_
 
 ### 4.9 确认反馈机制 (Confirmation Feedback) {#confirmation-feedback}
@@ -406,10 +406,10 @@ AI 会根据任务目标自动规划并管理任务列表，实时展示任务�
 - **可折叠设计**：点击任务列表 Header（显示任务计数）即可在展开和折叠状态间切换。
 - **状态指示**：Header 的 Chevron 图标直观展示当前折叠状态，每个任务行前的图标展示其状态。
 
-![任务列表（展开状态）](/screenshots/spec-task-list.png)
+![任务列表（展开状态）](/screenshots/spec-task-list.webp)
 _任务列表（展开状态）_
 
-![任务列表（折叠状态）](/screenshots/spec-task-list-collapsed.png)
+![任务列表（折叠状态）](/screenshots/spec-task-list-collapsed.webp)
 _任务列表（折叠状态）_
 
 ### 5.2 后台任务通知 (Task Notification) {#task-notification}
@@ -422,7 +422,7 @@ _任务列表（折叠状态）_
 - **任务摘要**：简洁地展示任务的执行结果，如测试通过情况或代理错误信息。
 - **输出文件链接**：如果有输出文件，会显示文件路径方便用户查看。
 
-![后台任务通知](/screenshots/task-notification.png)
+![后台任务通知](/screenshots/task-notification.webp)
 _后台任务通知_
 
 ### 5.3 后台任务系统 {#mechanism-background-tasks}
@@ -457,10 +457,10 @@ Wave 支持前台和后台两种任务执行模式：
 
 **交互：** 点击遮罩层外部或按 `Esc` 关闭对话框；在详情视图按 `Esc` 先返回列表。底部按钮：「返回列表」（仅详情视图可见）与「关闭」。空列表时显示「暂无后台任务」。
 
-![后台任务管理 - 列表](/screenshots/spec-background-task-list.png)
+![后台任务管理 - 列表](/screenshots/spec-background-task-list.webp)
 _后台任务管理对话框 - 任务列表_
 
-![后台任务管理 - 详情](/screenshots/spec-background-task-detail.png)
+![后台任务管理 - 详情](/screenshots/spec-background-task-detail.webp)
 _后台任务管理对话框 - 任务详情与输出_
 
 ### 5.5 工作流管理对话框（/workflows 命令） {#workflow-manager}
@@ -482,10 +482,10 @@ _后台任务管理对话框 - 任务详情与输出_
 
 **交互：** 点击遮罩层外部或按 `Esc` 关闭对话框；详情视图按 `Esc` 先返回列表。底部按钮：「返回列表」（仅详情视图可见）与「关闭」。空列表时显示「暂无工作流运行」。
 
-![工作流管理 - 列表](/screenshots/spec-workflow-list.png)
+![工作流管理 - 列表](/screenshots/spec-workflow-list.webp)
 _工作流管理对话框 - 运行列表_
 
-![工作流管理 - 详情](/screenshots/spec-workflow-detail.png)
+![工作流管理 - 详情](/screenshots/spec-workflow-detail.webp)
 _工作流管理对话框 - 运行详情与阶段_
 
 ---
@@ -498,7 +498,7 @@ _工作流管理对话框 - 运行详情与阶段_
 
 > 了解更多：详见 [SDK 文档 - 内置 Subagents](/sdk#内置-subagents)
 
-![子代理状态](/screenshots/spec-subagent.png)
+![子代理状态](/screenshots/spec-subagent.webp)
 _子代理状态_
 
 ### 6.2 Skill 技能系统 {#skill-system}
@@ -509,7 +509,7 @@ Skill 是预设的自动化任务模板，用于处理特定的复杂任务（�
 
 **提示：**用户可以通过内置的 `/settings` skill 来管理 Skill，例如输入 `/settings 帮我写个skill，具体做xxx` 即可快速创建自定义 Skill。
 
-![Skill 系统](/screenshots/spec-skill.png)
+![Skill 系统](/screenshots/spec-skill.webp)
 _Skill 系统_
 
 ### 6.3 MCP 协议集成 {#mcp-integration}
@@ -527,10 +527,10 @@ _Skill 系统_
 
 **提示：**用户也可以通过内置的 `/settings` skill 来管理 MCP 配置，例如输入 `/settings 增加mcp：xxx` 即可快速添加新的 MCP 服务。
 
-![MCP 集成](/screenshots/spec-mcp.png)
+![MCP 集成](/screenshots/spec-mcp.webp)
 _MCP 集成_
 
-![MCP 服务器管理](/screenshots/spec-mcp-server-tab.png)
+![MCP 服务器管理](/screenshots/spec-mcp-server-tab.webp)
 _MCP 服务器管理（通过 `/mcp` 命令唤起）_
 
 ---
@@ -549,13 +549,13 @@ Wave 支持将对话回滚到之前的任意用户消息状态。这不仅会删
 - **安全确认**：执行回滚前会弹出应用内二次确认对话框（VS Code、JetBrains 与桌面应用三端样式一致），防止误操作导致数据丢失。
 - **状态同步**：回滚后，任务列表、会话元数据以及输入框内容会自动同步到回滚后的状态。
 
-![用户消息上的回滚按钮](/screenshots/spec-rewind-button.png)
+![用户消息上的回滚按钮](/screenshots/spec-rewind-button.webp)
 _用户消息上的回滚按钮_
 
-![/rewind 检查点列表](/screenshots/spec-rewind-popup.png)
+![/rewind 检查点列表](/screenshots/spec-rewind-popup.webp)
 _通过 `/rewind` 命令打开检查点列表_
 
-![回滚确认对话框](/screenshots/spec-confirm-rewind.png)
+![回滚确认对话框](/screenshots/spec-confirm-rewind.webp)
 _回滚确认对话框_
 
 ### 7.2 会话管理 {#session-management}
@@ -570,14 +570,14 @@ _回滚确认对话框_
 
 > 了解更多：详见 [SDK 文档 - 记忆系统](/sdk#记忆系统)
 
-![标题栏与工具栏](/screenshots/spec-chat-header.png)
+![标题栏与工具栏](/screenshots/spec-chat-header.webp)
 _标题栏与工具栏_
 
 #### 历史对话搜索 {#session-history-search}
 
 历史对话弹窗顶部提供搜索框，可按关键词实时过滤会话列表，命中的关键词会以高亮色标出，当前会话则以高亮背景标识。
 
-![历史对话搜索与关键词高亮](/screenshots/spec-session-search.png)
+![历史对话搜索与关键词高亮](/screenshots/spec-session-search.webp)
 _历史对话搜索与关键词高亮_
 
 #### 更多菜单 {#header-more-menu}
@@ -587,7 +587,7 @@ _历史对话搜索与关键词高亮_
 - **企业控制台**：在系统浏览器中打开企业控制台（即当前服务端链接 `serverUrl`）。
 - **登录 / 退出登录**：根据当前认证状态自动切换——未登录时显示"登录"入口（触发 SSO 登录流程，详见 [第 8.1 节 SSO 认证](#configuration-settings)），已登录时显示"退出登录"，退出后界面恢复为未登录的欢迎页。
 
-![更多菜单](/screenshots/spec-more-menu.png)
+![更多菜单](/screenshots/spec-more-menu.webp)
 _更多菜单：设置 / 企业控制台 / 登录（或退出登录）_
 
 ---
@@ -614,23 +614,23 @@ _更多菜单：设置 / 企业控制台 / 登录（或退出登录）_
 
 - **状态信息（`/status`）**：查看当前 Wave 的运行状态，包括版本号、Session ID 和工作目录。版本号右侧附有"检查更新"按钮，点击后可检测是否有新版本可用。
 
-![状态信息](/screenshots/spec-status-dialog.png)
+![状态信息](/screenshots/spec-status-dialog.webp)
 _状态信息弹窗_
 
 - **插件管理（`/plugin`）**：管理插件的安装、更新、卸载和插件市场（详见 [第 11 章 插件系统](#plugin-system)）。
 - **MCP 服务器（`/mcp`）**：查看和管理 MCP 服务器连接状态（详见 [第 6.3 节 MCP 协议集成](#mcp-integration)）。
 
-![配置设置](/screenshots/spec-configuration.png)
+![配置设置](/screenshots/spec-configuration.webp)
 _配置设置（全局设置选项卡）_
 
-![模型设置](/screenshots/spec-config-model.png)
+![模型设置](/screenshots/spec-config-model.webp)
 _模型设置选项卡_
 
 ### 8.2 语言设置 {#language-settings}
 
 用户可以在常规设置弹窗（通过 `/config` 命令唤起）中选择偏好的语言（中文或英文），AI 代理将根据该设置使用相应的语言进行回复。
 
-![语言设置](/screenshots/language-config-ui.png)
+![语言设置](/screenshots/language-config-ui.webp)
 _语言设置_
 
 ---
@@ -653,17 +653,17 @@ Wave 通过插件系统扩展 AI 能力，用户可以通过 `/plugin` 命令唤
 
 在插件管理弹窗的"探索新插件"选项卡中，用户可以通过顶部的搜索框按关键词过滤插件列表。搜索支持对插件名称和描述进行不区分大小写的匹配。对于尚未在当前环境激活的插件，用户可以选择安装作用域后点击"安装"按钮。已安装但未在当前作用域激活的插件也会在此列出，并带有"已安装"标识。
 
-![探索新插件（支持关键词搜索）](/screenshots/spec-plugin-explore.png)
+![探索新插件（支持关键词搜索）](/screenshots/spec-plugin-explore.webp)
 _探索新插件（支持关键词搜索）_
 
-![关键词过滤效果](/screenshots/plugin-search-filtered.png)
+![关键词过滤效果](/screenshots/plugin-search-filtered.webp)
 _关键词过滤效果_
 
 ### 9.3 已激活插件 {#installed-plugins}
 
 在插件管理弹窗的"已激活插件"选项卡中，用户可以查看当前作用域下所有已激活的插件。用户可以对这些插件进行"更新"或"卸载"操作。每个插件会显示其激活的作用域（User、Project 或 Local）。
 
-![已激活插件管理](/screenshots/spec-plugin-installed.png)
+![已激活插件管理](/screenshots/spec-plugin-installed.webp)
 _已激活插件管理_
 
 ---
