@@ -76,32 +76,60 @@ describe('ConfigStore', () => {
 
   it('pushes new workdir to the front of the recent list and deduplicates', () => {
     const store = new ConfigStore(STORE_PATH);
-    store.addRecentWorkdir('/a');
-    store.addRecentWorkdir('/b');
-    store.addRecentWorkdir('/a');
+    store.addRecentWorkdir({ host: 'local', path: '/a' });
+    store.addRecentWorkdir({ host: 'local', path: '/b' });
+    store.addRecentWorkdir({ host: 'local', path: '/a' });
 
-    expect(store.getRecentWorkdirs()).toEqual(['/a', '/b']);
+    expect(store.getRecentWorkdirs()).toEqual([
+      { host: 'local', path: '/a' },
+      { host: 'local', path: '/b' },
+    ]);
   });
 
   it('caps the recent list at 10 entries', () => {
     const store = new ConfigStore(STORE_PATH);
     for (let i = 0; i < 12; i++) {
-      store.addRecentWorkdir(`/dir-${i}`);
+      store.addRecentWorkdir({ host: 'local', path: `/dir-${i}` });
     }
     const recents = store.getRecentWorkdirs();
     expect(recents).toHaveLength(10);
-    expect(recents[0]).toBe('/dir-11');
-    expect(recents[9]).toBe('/dir-2');
+    expect(recents[0]).toEqual({ host: 'local', path: '/dir-11' });
+    expect(recents[9]).toEqual({ host: 'local', path: '/dir-2' });
+  });
+
+  it('keeps per-host recents separate: the same path on two hosts are distinct entries', () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.addRecentWorkdir({ host: 'local', path: '/repo' });
+    store.addRecentWorkdir({ host: 'devbox', path: '/repo' });
+    store.addRecentWorkdir({ host: 'local', path: '/other' });
+
+    expect(store.getRecentWorkdirs()).toEqual([
+      { host: 'local', path: '/other' },
+      { host: 'devbox', path: '/repo' },
+      { host: 'local', path: '/repo' },
+    ]);
+    expect(store.getRecentWorkdirsForHost('local')).toEqual(['/other', '/repo']);
+    expect(store.getRecentWorkdirsForHost('devbox')).toEqual(['/repo']);
+    expect(store.getRecentWorkdirsForHost('nonexistent')).toEqual([]);
   });
 
   it('removeRecentWorkdir filters the entry out and persists', () => {
     const store = new ConfigStore(STORE_PATH);
-    store.addRecentWorkdir('/a');
-    store.addRecentWorkdir('/b');
-    store.removeRecentWorkdir('/a');
+    store.addRecentWorkdir({ host: 'local', path: '/a' });
+    store.addRecentWorkdir({ host: 'local', path: '/b' });
+    store.removeRecentWorkdir({ host: 'local', path: '/a' });
 
-    expect(store.getRecentWorkdirs()).toEqual(['/b']);
-    expect(new ConfigStore(STORE_PATH).getRecentWorkdirs()).toEqual(['/b']);
+    expect(store.getRecentWorkdirs()).toEqual([{ host: 'local', path: '/b' }]);
+    expect(new ConfigStore(STORE_PATH).getRecentWorkdirs()).toEqual([{ host: 'local', path: '/b' }]);
+  });
+
+  it('removeRecentWorkdir only removes the entry matching (host, path)', () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.addRecentWorkdir({ host: 'local', path: '/repo' });
+    store.addRecentWorkdir({ host: 'devbox', path: '/repo' });
+    store.removeRecentWorkdir({ host: 'devbox', path: '/repo' });
+
+    expect(store.getRecentWorkdirs()).toEqual([{ host: 'local', path: '/repo' }]);
   });
 
   it('drops non-string entries from a corrupted recentWorkdirs array', () => {
@@ -110,7 +138,19 @@ describe('ConfigStore', () => {
       recentWorkdirs: ['/ok', 42, null, '/also-ok'],
     }));
     const store = new ConfigStore(STORE_PATH);
-    expect(store.getRecentWorkdirs()).toEqual(['/ok', '/also-ok']);
+    expect(store.getRecentWorkdirs()).toEqual([
+      { host: 'local', path: '/ok' },
+      { host: 'local', path: '/also-ok' },
+    ]);
+  });
+
+  it('migrates legacy plain-string recents to local-host refs on load', () => {
+    h.files.set(STORE_PATH, JSON.stringify({
+      configuration: {},
+      recentWorkdirs: ['/legacy'],
+    }));
+    const store = new ConfigStore(STORE_PATH);
+    expect(store.getRecentWorkdirs()).toEqual([{ host: 'local', path: '/legacy' }]);
   });
 
   // ── Session index ──────────────────────────────────────────────
@@ -133,7 +173,7 @@ describe('ConfigStore', () => {
     }));
     const store = new ConfigStore(STORE_PATH);
     expect(store.getSessionIndex()).toEqual([
-      { sessionId: 'ok', title: 'T', workdir: '/a', cwd: '/a', createdAt: 1, lastActiveAt: 1 },
+      { sessionId: 'ok', title: 'T', workdir: '/a', cwd: '/a', createdAt: 1, lastActiveAt: 1, host: 'local' },
     ]);
   });
 
@@ -164,8 +204,23 @@ describe('ConfigStore', () => {
     };
     store.upsertSession(entry);
 
-    expect(store.getSessionIndex()).toEqual([entry]);
-    expect(new ConfigStore(STORE_PATH).getSessionIndex()).toEqual([entry]);
+    expect(store.getSessionIndex()).toEqual([{ ...entry, host: 'local' }]);
+    expect(new ConfigStore(STORE_PATH).getSessionIndex()).toEqual([{ ...entry, host: 'local' }]);
+  });
+
+  it('upsertSession keeps an explicit remote host', () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.upsertSession({
+      sessionId: 's1',
+      title: 'Remote session',
+      workdir: '/repo',
+      cwd: '/repo',
+      createdAt: 1000,
+      lastActiveAt: 1000,
+      host: 'devbox',
+    });
+
+    expect(store.getSessionIndex()[0].host).toBe('devbox');
   });
 
   it('upsertSession updates an existing session by sessionId', () => {
@@ -245,7 +300,7 @@ describe('ConfigStore', () => {
     store.upsertSession(entry);
     const removed = store.removeSession('s1');
 
-    expect(removed).toEqual(entry);
+    expect(removed).toEqual({ ...entry, host: 'local' });
     expect(store.getSessionIndex()).toEqual([]);
   });
 

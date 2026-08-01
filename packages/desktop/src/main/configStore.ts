@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
+import { LOCAL_HOST } from './sshHosts';
 
 /**
  * App-level configuration persisted by the desktop host (the VSCE extension
@@ -16,10 +17,22 @@ export interface DesktopConfigData {
   serverUrl?: string;
 }
 
+/**
+ * A recent workdir, tagged with the host it lives on. `host` is the ssh config
+ * host name, or LOCAL_HOST ('local') for this machine. (host, path) is the
+ * identity — the same path on two hosts are distinct entries.
+ */
+export interface WorkdirRef {
+  host: string;
+  path: string;
+}
+
 /** Session index entry — one per desktop-created session (FR-024). */
 export interface SessionIndexEntry {
   sessionId: string;
   title: string;
+  /** Host the session runs on ('local' or an ssh config host name). */
+  host: string;
   /** Grouping key for the sidebar tree (original repo dir for worktree sessions). */
   workdir: string;
   /** Actual working directory (worktree path for worktree sessions). */
@@ -37,7 +50,8 @@ export interface SessionIndexEntry {
 
 interface StoreData {
   configuration: DesktopConfigData;
-  recentWorkdirs: string[];
+  /** Disk form: WorkdirRef, or legacy plain strings migrated to {host:'local', path} on load. */
+  recentWorkdirs: Array<string | WorkdirRef>;
   sessions: SessionIndexEntry[];
 }
 
@@ -58,8 +72,9 @@ export class ConfigStore {
       const parsed = JSON.parse(raw) as Partial<StoreData>;
       return {
         configuration: parsed.configuration ?? {},
+        // Legacy plain-string entries (pre-remote) become local-host refs.
         recentWorkdirs: Array.isArray(parsed.recentWorkdirs)
-          ? parsed.recentWorkdirs.filter((d): d is string => typeof d === 'string')
+          ? parsed.recentWorkdirs.map(normalizeWorkdirRef).filter((d): d is WorkdirRef => d !== null)
           : [],
         sessions: Array.isArray(parsed.sessions)
           ? parsed.sessions
@@ -69,7 +84,8 @@ export class ConfigStore {
               )
               // Entries persisted before createdAt existed fall back to their
               // last activity time, preserving the previously visible order.
-              .map((s) => ({ ...s, createdAt: typeof s.createdAt === 'number' ? s.createdAt : s.lastActiveAt }))
+              // Pre-remote entries carry no host — they were all local.
+              .map((s) => ({ ...s, host: s.host ?? LOCAL_HOST, createdAt: typeof s.createdAt === 'number' ? s.createdAt : s.lastActiveAt }))
           : [],
       };
     } catch {
@@ -116,21 +132,39 @@ export class ConfigStore {
     this.save();
   }
 
-  /** Push a directory to the front of the recent list (MRU, deduped). */
-  addRecentWorkdir(dir: string): void {
+  /**
+   * Push a directory to the front of its host's recent list (MRU, deduped).
+   * The list is per-host: the same path on two hosts are distinct entries.
+   */
+  addRecentWorkdir(ref: WorkdirRef): void {
+    const key = (d: string | WorkdirRef): string => {
+      const w = normalizeWorkdirRef(d);
+      return w ? `${w.host}\u0000${w.path}` : '';
+    };
     this.data.recentWorkdirs = [
-      dir,
-      ...this.data.recentWorkdirs.filter((d) => d !== dir),
+      ref,
+      ...this.data.recentWorkdirs.filter((d) => key(d) !== `${ref.host}\u0000${ref.path}`),
     ].slice(0, MAX_RECENT_WORKDIRS);
     this.save();
   }
 
-  getRecentWorkdirs(): string[] {
-    return [...this.data.recentWorkdirs];
+  getRecentWorkdirs(): WorkdirRef[] {
+    return this.data.recentWorkdirs
+      .map(normalizeWorkdirRef)
+      .filter((d): d is WorkdirRef => d !== null);
   }
 
-  removeRecentWorkdir(dir: string): void {
-    this.data.recentWorkdirs = this.data.recentWorkdirs.filter((d) => d !== dir);
+  /** Paths (MRU) for one host — the picker list shown while that host is selected. */
+  getRecentWorkdirsForHost(host: string): string[] {
+    return this.getRecentWorkdirs().filter((d) => d.host === host).map((d) => d.path);
+  }
+
+  removeRecentWorkdir(ref: WorkdirRef): void {
+    const key = (d: string | WorkdirRef): string => {
+      const w = normalizeWorkdirRef(d);
+      return w ? `${w.host}\u0000${w.path}` : '';
+    };
+    this.data.recentWorkdirs = this.data.recentWorkdirs.filter((d) => key(d) !== `${ref.host}\u0000${ref.path}`);
     this.save();
   }
 
@@ -142,11 +176,13 @@ export class ConfigStore {
 
   /** Register or update a session in the index. */
   upsertSession(entry: SessionIndexEntry): void {
+    // Defensive normalization: any entry without an explicit host is local.
+    const normalized = { ...entry, host: entry.host ?? LOCAL_HOST };
     const idx = this.data.sessions.findIndex((s) => s.sessionId === entry.sessionId);
     if (idx >= 0) {
-      this.data.sessions[idx] = entry;
+      this.data.sessions[idx] = normalized;
     } else {
-      this.data.sessions.push(entry);
+      this.data.sessions.push(normalized);
     }
     this.save();
   }
@@ -168,4 +204,15 @@ export class ConfigStore {
     this.save();
     return removed;
   }
+}
+
+/** Accepts either disk form; returns null for malformed entries. */
+function normalizeWorkdirRef(value: string | WorkdirRef | undefined | null): WorkdirRef | null {
+  if (typeof value === 'string') {
+    return value ? { host: LOCAL_HOST, path: value } : null;
+  }
+  if (typeof value === 'object' && value !== null && typeof value.host === 'string' && typeof value.path === 'string') {
+    return value;
+  }
+  return null;
 }

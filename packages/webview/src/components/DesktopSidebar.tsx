@@ -38,6 +38,11 @@ export interface DesktopSidebarProps {
 const dirName = (workdir: string): string =>
   workdir.split('/').filter(Boolean).pop() ?? workdir;
 
+// A group is identified by (host, workdir) — the same directory may exist on
+// the local machine and on an SSH host, and those are distinct groups (spec
+// docs/specs/ui/desktop-app.md 「SSH 远程主机」scenario 9).
+const groupKey = (group: DesktopSessionGroup): string => `${group.host}:${group.workdir}`;
+
 const isMacPlatform = (): boolean =>
   typeof navigator !== 'undefined' && navigator.platform.toUpperCase().startsWith('MAC');
 
@@ -73,12 +78,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   const [pendingDelete, setPendingDelete] = useState<{ sessionId: string; title: string; description?: string } | null>(null);
 
   const isExpanded = (group: DesktopSessionGroup): boolean =>
-    overrides[group.workdir] ?? true;
+    overrides[groupKey(group)] ?? true;
 
   const toggleGroup = (group: DesktopSessionGroup) => {
     setOverrides((prev) => ({
       ...prev,
-      [group.workdir]: !(prev[group.workdir] ?? true),
+      [groupKey(group)]: !(prev[groupKey(group)] ?? true),
     }));
   };
 
@@ -203,9 +208,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           const expanded = isExpanded(group);
           return (
             <div
-              key={group.workdir}
+              key={groupKey(group)}
               className="desktop-session-group"
-              data-testid={`desktop-session-group-${group.workdir}`}
+              data-testid={`desktop-session-group-${groupKey(group)}`}
             >
               <div
                 className="desktop-session-group-header"
@@ -214,6 +219,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               >
                 <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`}></span>
                 <span className="desktop-session-group-name">{dirName(group.workdir)}</span>
+                {group.host !== 'local' && (
+                  <span className="desktop-session-group-host" title={group.host}>
+                    {group.host}
+                  </span>
+                )}
               </div>
               {expanded &&
                 (group.sessions.length === 0 ? (

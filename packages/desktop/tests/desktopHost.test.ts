@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { BrowserWindow } from 'electron';
+import * as os from 'os';
+import * as path from 'path';
 
 // ---------------------------------------------------------------------------
 // fs mock — ConfigStore persistence + desktopHost's tmpdir/artifact helpers
@@ -189,11 +191,23 @@ vi.mock('../src/main/updateChecker', () => ({
   checkForUpdate: vi.fn(async () => null),
 }));
 
+// remoteCli spawns real `ssh` processes — stub the probes. parseSshConfigHosts
+// stays REAL: it reads ~/.ssh/config through the fs mock, which lets the host
+// tests seed ssh config content per-test.
+vi.mock('../src/main/remoteCli', () => ({
+  resolveRemoteWaveBinary: vi.fn(async (host: string) => ({
+    binaryPath: `/remote/wave-${host}`,
+    nodeVersion: 'v22.0.0',
+  })),
+  remotePathExists: vi.fn(async () => true),
+}));
+
 import { DesktopHost } from '../src/main/desktopHost';
 import { ConfigStore } from '../src/main/configStore';
 import { HOST_CHANNEL } from '../src/main/channels';
 import { shell, nativeTheme } from 'electron';
 import { checkForUpdate } from '../src/main/updateChecker';
+import { resolveRemoteWaveBinary, remotePathExists } from '../src/main/remoteCli';
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -235,7 +249,7 @@ function fireSessionId(agent: ReturnType<typeof lastAgent>, sessionId: string) {
 async function readyHost(winWidth?: number, winHeight?: number) {
   const ctx = createHost(winWidth ?? 1280, winHeight ?? 800);
   // workdir is never persisted — pick it from recents like the real UI flow.
-  ctx.store.addRecentWorkdir('/work/a');
+  ctx.store.addRecentWorkdir({ host: 'local', path: '/work/a' });
   h.existingPaths.add('/work/a');
   await ctx.host.handleWebviewMessage({ command: 'desktopReady' });
   await ctx.host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/a' });
@@ -267,8 +281,8 @@ beforeEach(() => {
 describe('workdir lifecycle', () => {
   it('desktopReady always starts fresh: no workdir restored, recents still listed', async () => {
     const { host, store, sent } = createHost();
-    store.addRecentWorkdir('/work/a');
-    store.addRecentWorkdir('/work/b');
+    store.addRecentWorkdir({ host: 'local', path: '/work/a' });
+    store.addRecentWorkdir({ host: 'local', path: '/work/b' });
 
     await host.handleWebviewMessage({ command: 'desktopReady' });
 
@@ -277,6 +291,8 @@ describe('workdir lifecycle', () => {
     expect(states[0]).toEqual({
       command: 'desktopWorkdirState',
       workdir: undefined,
+      host: 'local',
+      hosts: [],
       recentWorkdirs: ['/work/b', '/work/a'],
     });
   });
@@ -286,17 +302,17 @@ describe('workdir lifecycle', () => {
     await host.handleWebviewMessage({ command: 'desktopReady' });
 
     const states = sent('desktopWorkdirState');
-    expect(states[0]).toMatchObject({ workdir: undefined, recentWorkdirs: [] });
+    expect(states[0]).toMatchObject({ workdir: undefined, host: 'local', hosts: [], recentWorkdirs: [] });
   });
 
   it('desktopRemoveRecentWorkdir removes the entry and reposts state', async () => {
     const { host, store, sent } = createHost();
-    store.addRecentWorkdir('/work/a');
-    store.addRecentWorkdir('/work/b');
+    store.addRecentWorkdir({ host: 'local', path: '/work/a' });
+    store.addRecentWorkdir({ host: 'local', path: '/work/b' });
 
     await host.handleWebviewMessage({ command: 'desktopRemoveRecentWorkdir', path: '/work/a' });
 
-    expect(store.getRecentWorkdirs()).toEqual(['/work/b']);
+    expect(store.getRecentWorkdirs()).toEqual([{ host: 'local', path: '/work/b' }]);
     const states = sent('desktopWorkdirState');
     expect(states[states.length - 1]).toMatchObject({ recentWorkdirs: ['/work/b'] });
   });
@@ -307,7 +323,7 @@ describe('workdir lifecycle', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/gone' });
 
-    expect(store.getRecentWorkdirs()).not.toContain('/gone');
+    expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: '/gone' }]));
     expect(lastAgent()).toBe(agentBefore);
     const sysMsgs = sent('appendMessage').filter((m) =>
       JSON.stringify(m).includes('已从最近列表移除'),
@@ -359,7 +375,7 @@ describe('webviewReady / setInitialState', () => {
     });
 
     const { host, store, sent } = createHost();
-    store.addRecentWorkdir('/work/a');
+    store.addRecentWorkdir({ host: 'local', path: '/work/a' });
     h.existingPaths.add('/work/a');
     await host.handleWebviewMessage({ command: 'desktopReady' });
     await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/a' });
@@ -848,7 +864,7 @@ describe('session tree', () => {
     const { host, store, sent } = createHost();
     // /work/only-recent is in recents but has no sessions -> must NOT appear as a group.
     // /work/only-index has sessions but is not in recents -> still a group.
-    store.addRecentWorkdir('/work/only-recent');
+    store.addRecentWorkdir({ host: 'local', path: '/work/only-recent' });
     store.upsertSession(makeIndexEntry('s1', '/work/a', { createdAt: 1000 }));
     store.upsertSession(makeIndexEntry('s2', '/work/a', { createdAt: 2000 }));
     store.upsertSession(makeIndexEntry('s3', '/work/only-index', { createdAt: 3000 }));
@@ -862,8 +878,9 @@ describe('session tree', () => {
     const tree = sent('desktopSessionTree').at(-1);
     // Groups ordered by latest session createdAt desc; sessions within a group desc.
     expect(tree?.groups).toEqual([
-      { workdir: '/work/only-index', sessions: [expect.objectContaining({ sessionId: 's3' })] },
+      { host: 'local', workdir: '/work/only-index', sessions: [expect.objectContaining({ sessionId: 's3' })] },
       {
+        host: 'local',
         workdir: '/work/a',
         sessions: [expect.objectContaining({ sessionId: 's2' }), expect.objectContaining({ sessionId: 's1' })],
       },
@@ -874,7 +891,7 @@ describe('session tree', () => {
 
   it('shows every session in a group, not a capped subset', async () => {
     const { host, store, sent } = createHost();
-    store.addRecentWorkdir('/work/a');
+    store.addRecentWorkdir({ host: 'local', path: '/work/a' });
     for (let i = 0; i < 7; i++) {
       store.upsertSession(makeIndexEntry(`s${i}`, '/work/a', { createdAt: Date.now() + i }));
     }
@@ -939,7 +956,7 @@ describe('session tree', () => {
 
   it('desktopSelectSession in another directory switches workdir first', async () => {
     const { host, store } = await readyHost();
-    store.addRecentWorkdir('/work/b');
+    store.addRecentWorkdir({ host: 'local', path: '/work/b' });
     h.existingPaths.add('/work/b');
     const before = h.agentInstances.length;
 
@@ -957,7 +974,7 @@ describe('session tree', () => {
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/gone', sessionId: 'sess-z' });
 
     expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-z')).toBe(false);
-    expect(store.getRecentWorkdirs()).not.toContain('/gone');
+    expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: '/gone' }]));
     expect(lastAgent().restoreSession).not.toHaveBeenCalled();
     const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表与会话列表移除'));
     expect(sysMsgs).toHaveLength(1);
@@ -1082,7 +1099,7 @@ describe('session switch shortcut (FR-038)', () => {
   // leads — its session is the latest created overall), then s2, s1.
   async function hostWithTree() {
     const ctx = createHost();
-    ctx.store.addRecentWorkdir('/work/a');
+    ctx.store.addRecentWorkdir({ host: 'local', path: '/work/a' });
     h.existingPaths.add('/work/a');
     h.existingPaths.add('/work/b');
     ctx.store.upsertSession(entry('s1', '/work/a', 1000));
@@ -1146,7 +1163,7 @@ describe('session switch shortcut (FR-038)', () => {
 
   it('is a no-op when the tree holds only the current session', async () => {
     const ctx = createHost();
-    ctx.store.addRecentWorkdir('/work/a');
+    ctx.store.addRecentWorkdir({ host: 'local', path: '/work/a' });
     h.existingPaths.add('/work/a');
     ctx.store.upsertSession(entry('s1', '/work/a', 1000));
     await ctx.host.handleWebviewMessage({ command: 'desktopReady' });
@@ -1176,7 +1193,7 @@ describe('session switch shortcut (FR-038)', () => {
 
   it('drops a stale-directory entry encountered while cycling (same as clicking it)', async () => {
     const ctx = createHost();
-    ctx.store.addRecentWorkdir('/work/a');
+    ctx.store.addRecentWorkdir({ host: 'local', path: '/work/a' });
     h.existingPaths.add('/work/a');
     ctx.store.upsertSession(entry('s1', '/work/a', 1000));
     ctx.store.upsertSession(entry('s2', '/gone', 3000)); // /gone leads the tree
@@ -1252,8 +1269,8 @@ describe('worktree flow', () => {
     }));
     expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ workdir: worktree.path });
     // FR-023: recents record the repo root, never the ephemeral worktree path.
-    expect(store.getRecentWorkdirs()).toContain('/work/a');
-    expect(store.getRecentWorkdirs()).not.toContain(worktree.path);
+    expect(store.getRecentWorkdirs()).toEqual(expect.arrayContaining([{ host: 'local', path: '/work/a' }]));
+    expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: worktree.path }]));
   });
 
   it('desktopCreateWorktree with a first message forwards it after the switch', async () => {
@@ -1444,7 +1461,7 @@ describe('worktree flow', () => {
     const entry = store.getSessionIndex().find((e) => e.sessionId === 'sess-wt');
     expect(entry).toMatchObject({ workdir: worktree.repoRoot, cwd: worktree.path });
     expect(entry?.worktree?.repoRoot).toBe(worktree.repoRoot);
-    expect(store.getRecentWorkdirs()).not.toContain(worktree.path);
+    expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: worktree.path }]));
   });
 
   it('desktopSelectSession with a gone worktree drops the index entry only', async () => {
@@ -1468,7 +1485,7 @@ describe('worktree flow', () => {
 
     expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-wt')).toBe(false);
     // Repo root stays in recents — only the stale index entry is dropped.
-    expect(store.getRecentWorkdirs()).toContain('/work/a');
+    expect(store.getRecentWorkdirs()).toEqual(expect.arrayContaining([{ host: 'local', path: '/work/a' }]));
     expect(lastAgent().restoreSession).not.toHaveBeenCalled();
     const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('worktree 目录不存在'));
     expect(sysMsgs).toHaveLength(1);
@@ -1676,7 +1693,7 @@ describe('multi-session parallel (FR-031)', () => {
   it('switching back to a directory reactivates its live agent instead of spawning', async () => {
     const { host, store, sent } = await readyHost();
     seedActiveSession('sess-1');
-    store.addRecentWorkdir('/work/b');
+    store.addRecentWorkdir({ host: 'local', path: '/work/b' });
     h.existingPaths.add('/work/b');
 
     await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/b' });
@@ -1899,7 +1916,7 @@ describe('split-view panes (FR-032~036)', () => {
     expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-wt');
     expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-wt');
     // The ephemeral worktree path must not leak into recents.
-    expect(store.getRecentWorkdirs()).not.toContain(worktree.path);
+    expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: worktree.path }]));
   });
 
   it('desktopOpenPane with insertionIndex inserts the pane at that position and focuses it', async () => {
@@ -2593,7 +2610,7 @@ describe('input focus on conversation switch', () => {
 
   it('activateAdjacentSession (switch shortcut) focuses the input', async () => {
     const { host, sent, store } = createHost();
-    store.addRecentWorkdir('/work/a');
+    store.addRecentWorkdir({ host: 'local', path: '/work/a' });
     h.existingPaths.add('/work/a');
     store.upsertSession({ sessionId: 's1', title: 'Session s1', workdir: '/work/a', cwd: '/work/a', createdAt: 1000, lastActiveAt: 1000 });
     store.upsertSession({ sessionId: 's2', title: 'Session s2', workdir: '/work/a', cwd: '/work/a', createdAt: 2000, lastActiveAt: 2000 });
@@ -2765,5 +2782,160 @@ describe('native menu actions', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
     expect(fn).toHaveBeenLastCalledWith({ canNewSession: true, canClosePane: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SSH remote hosts (spec: desktop-app.md 「SSH 远程主机」)
+// ---------------------------------------------------------------------------
+
+const sshConfigPath = () => path.join(os.homedir(), '.ssh', 'config');
+const seedSshConfig = (content: string) => h.files.set(sshConfigPath(), content);
+
+/** Give an agent content + fire its sessionId so it registers in the index. */
+function registerAgentInIndex(agent: ReturnType<typeof lastAgent>) {
+  agent.messages = [{ id: 'm1', role: 'user', blocks: [{ type: 'text', content: 'hi' }] }];
+  fireSessionId(agent, agent.sessionId as string);
+}
+
+describe('SSH remote hosts', () => {
+  it('desktopSelectHost with an unknown host is rejected with a system message', async () => {
+    const { host, sent } = await readyHost();
+    const statesBefore = sent('desktopWorkdirState').length;
+
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'unknown' });
+
+    expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('未知主机：unknown'))).toBe(true);
+    // No workdir state re-send — the picker stays put.
+    expect(sent('desktopWorkdirState').length).toBe(statesBefore);
+    expect(vi.mocked(resolveRemoteWaveBinary)).not.toHaveBeenCalled();
+  });
+
+  it('desktopSelectHost switches the picker to a host from ~/.ssh/config and shows its recents', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: 'prod', path: '/remote/repo' });
+
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+
+    // The host's client is established eagerly so auth failures surface early.
+    await vi.waitFor(() => {
+      expect(vi.mocked(resolveRemoteWaveBinary)).toHaveBeenCalledWith('prod');
+    });
+    const state = sent('desktopWorkdirState').at(-1);
+    expect(state).toMatchObject({
+      command: 'desktopWorkdirState',
+      host: 'prod',
+      hosts: ['prod'],
+      recentWorkdirs: ['/remote/repo'],
+    });
+  });
+
+  it('desktopAddHost appends the block, auto-selects the new host and eagerly connects', async () => {
+    const { host, sent } = createHost();
+
+    await host.handleWebviewMessage({
+      command: 'desktopAddHost',
+      connectionString: 'ssh user@newhost -p 2222',
+    });
+
+    const config = h.files.get(sshConfigPath()) as string;
+    expect(config).toContain('\nHost newhost\n    User user\n    Port 2222\n');
+    expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('已添加主机：newhost'))).toBe(true);
+    await vi.waitFor(() => {
+      expect(vi.mocked(resolveRemoteWaveBinary)).toHaveBeenCalledWith('newhost');
+    });
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({
+      command: 'desktopWorkdirState',
+      host: 'newhost',
+      hosts: ['newhost'],
+    });
+  });
+
+  it('desktopAddHost with an unparsable connection string reports the error and keeps the host', async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: 'desktopAddHost',
+      connectionString: 'ssh -i key.pem user@host',
+    });
+
+    expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('无法解析连接串'))).toBe(true);
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ host: 'local' });
+  });
+
+  it('desktopSelectRemotePath validates the directory and activates a remote session', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, store, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: 'desktopSelectRemotePath',
+      host: 'prod',
+      path: '/remote/repo',
+    });
+
+    expect(vi.mocked(remotePathExists)).toHaveBeenCalledWith('prod', '/remote/repo');
+    const agent = lastAgent();
+    expect(agent.initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/remote/repo' }));
+    expect(store.getRecentWorkdirs()).toEqual(expect.arrayContaining([{ host: 'prod', path: '/remote/repo' }]));
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ host: 'prod', recentWorkdirs: ['/remote/repo'] });
+
+    // Session index + tree group are tagged with the remote host.
+    registerAgentInIndex(agent);
+    const index = store.getSessionIndex();
+    expect(index.find((e) => e.cwd === '/remote/repo')?.host).toBe('prod');
+    await vi.waitFor(() => {
+      const tree = sent('desktopSessionTree').at(-1) as { groups?: Array<{ host: string }> };
+      expect(tree?.groups?.some((g) => g.host === 'prod')).toBe(true);
+    });
+  });
+
+  it('desktopSelectRemotePath rejects a directory that does not exist on the host', async () => {
+    seedSshConfig('Host prod\n');
+    const { host, sent } = await readyHost();
+    vi.mocked(remotePathExists).mockResolvedValueOnce(false);
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/gone' });
+
+    expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('远端目录不存在：/gone'))).toBe(true);
+    expect(h.agentInstances.length).toBe(1); // the local ready agent only
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({ host: 'local' });
+  });
+
+  it('local and remote sessions in the same path stay separate agents', async () => {
+    seedSshConfig('Host prod\n');
+    h.existingPaths.add('/repo');
+    const { host, store, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/repo' });
+    const remoteAgent = lastAgent();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/repo', host: 'local' });
+    const localAgent = lastAgent();
+
+    expect(localAgent).not.toBe(remoteAgent);
+    // readyHost's /work/a agent + one per path-host combination.
+    expect(h.agentInstances.length).toBe(3);
+    expect(remoteAgent.destroy).not.toHaveBeenCalled();
+    expect(localAgent.destroy).not.toHaveBeenCalled();
+    expect(store.getRecentWorkdirs()).toEqual(
+      expect.arrayContaining([
+        { host: 'prod', path: '/repo' },
+        { host: 'local', path: '/repo' },
+      ]),
+    );
+
+    registerAgentInIndex(remoteAgent);
+    registerAgentInIndex(localAgent);
+    const index = store.getSessionIndex();
+    expect(index.find((e) => e.cwd === '/repo' && e.host === 'prod')).toBeDefined();
+    expect(index.find((e) => e.cwd === '/repo' && e.host === 'local')).toBeDefined();
+
+    // Activating the same remote path again reuses the remote agent — host
+    // equality is part of the reuse key, and the two never collapse.
+    await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/repo' });
+    expect(h.agentInstances.length).toBe(3);
+    const panes = sent('desktopPanes').at(-1) as { panes: Array<{ sessionId: string; host: string }> };
+    expect(panes.panes[0]).toMatchObject({ sessionId: 'sess-2', host: 'prod' });
   });
 });
