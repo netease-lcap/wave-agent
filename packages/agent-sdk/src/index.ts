@@ -29,6 +29,7 @@ export * from "./utils/tokenCalculation.js";
 export * from "./utils/gitUtils.js";
 export * from "./utils/nameGenerator.js";
 export * from "./utils/worktreeSession.js";
+export * from "./utils/worktreeUtils.js";
 export { loadMergedWaveConfig } from "./services/configurationService.js";
 export * from "./types/index.js";
 

@@ -359,6 +359,91 @@ describe("worktreeUtils", () => {
     });
   });
 
+  describe("validateWorktreeRemovalPath", () => {
+    const worktreePath = "/test/repo/.wave/worktrees/feat";
+
+    it("accepts an existing path inside the repo root", () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isSymbolicLink: () => false,
+      } as unknown as ReturnType<typeof fs.lstatSync>);
+      vi.mocked(fs.realpathSync).mockImplementation((p) => p.toString());
+
+      expect(() =>
+        worktreeUtils.validateWorktreeRemovalPath(worktreePath, "/test/repo"),
+      ).not.toThrow();
+    });
+
+    it("accepts a missing path inside the repo root (already-removed worktree)", () => {
+      vi.mocked(fs.lstatSync).mockImplementation(() => {
+        throw new Error("ENOENT");
+      });
+      vi.mocked(fs.realpathSync).mockImplementation((p) => {
+        const s = p.toString();
+        if (s === worktreePath) {
+          throw new Error("ENOENT");
+        }
+        return s;
+      });
+
+      // Best-effort/idempotent removal: a worktree that is already gone is fine
+      expect(() =>
+        worktreeUtils.validateWorktreeRemovalPath(worktreePath, "/test/repo"),
+      ).not.toThrow();
+    });
+
+    it("rejects a symlink as the final path component", () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isSymbolicLink: () => true,
+      } as unknown as ReturnType<typeof fs.lstatSync>);
+
+      expect(() =>
+        worktreeUtils.validateWorktreeRemovalPath(worktreePath, "/test/repo"),
+      ).toThrow(/symlink/);
+    });
+
+    it("rejects an existing path outside the repo root", () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isSymbolicLink: () => false,
+      } as unknown as ReturnType<typeof fs.lstatSync>);
+      vi.mocked(fs.realpathSync).mockImplementation((p) => p.toString());
+
+      expect(() =>
+        worktreeUtils.validateWorktreeRemovalPath("/etc/passwd", "/test/repo"),
+      ).toThrow(/outside repo root/);
+    });
+
+    it("rejects a missing path whose nearest existing ancestor escapes the repo root", () => {
+      vi.mocked(fs.lstatSync).mockImplementation(() => {
+        throw new Error("ENOENT");
+      });
+      vi.mocked(fs.realpathSync).mockImplementation((p) => {
+        const s = p.toString();
+        if (s === "/etc/evil") {
+          throw new Error("ENOENT");
+        }
+        return s;
+      });
+
+      expect(() =>
+        worktreeUtils.validateWorktreeRemovalPath("/etc/evil", "/test/repo"),
+      ).toThrow(/outside repo root/);
+    });
+
+    it("rejects a path escaping the repo root via ..", () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isSymbolicLink: () => false,
+      } as unknown as ReturnType<typeof fs.lstatSync>);
+      vi.mocked(fs.realpathSync).mockImplementation((p) => p.toString());
+
+      expect(() =>
+        worktreeUtils.validateWorktreeRemovalPath(
+          "/test/repo/../outside",
+          "/test/repo",
+        ),
+      ).toThrow(/outside repo root/);
+    });
+  });
+
   describe("countWorktreeChanges", () => {
     it("returns changed files and commits", () => {
       vi.mocked(execFileSync)

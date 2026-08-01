@@ -40,6 +40,7 @@ import {
   PromptHistoryManager,
   AuthService,
   PluginCore,
+  validateWorktreeRemovalPath,
   type SlashCommand,
 } from "wave-agent-sdk";
 import {
@@ -526,6 +527,28 @@ export class AgentBridge {
     branch: string;
     repoRoot: string;
   }): Promise<{ ok: true }> {
+    // Align with Claude Code v2.1.216+: refuse to remove a worktree whose path
+    // is a symlink or resolves outside the repo root. Already-removed (missing)
+    // paths pass validation so removal stays idempotent.
+    try {
+      validateWorktreeRemovalPath(params.path, params.repoRoot);
+    } catch (e) {
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, (e as Error).message);
+    }
+
+    // Trigger the WorktreeRemove hook (before git removal, non-blocking) using
+    // the session that runs in this worktree, if it is still registered.
+    for (const entry of this.sessions.values()) {
+      if (entry.agent.workingDirectory === params.path) {
+        try {
+          await entry.agent.triggerWorktreeRemoveHook(params.path);
+        } catch (e) {
+          logger.warn("WorktreeRemove hooks execution failed:", e);
+        }
+        break;
+      }
+    }
+
     // removeWorktree is best-effort/idempotent: already-removed worktrees or
     // branches only log, never throw.
     await removeWorktree({

@@ -7,6 +7,11 @@ vi.mock("../src/utils/usageSummary.js");
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
 
+// Mock worktree removal so tests never run real git commands
+vi.mock("../src/utils/worktree.js", () => ({
+  removeWorktree: vi.fn(),
+}));
+
 // Mock process.exit - use a simple mock that doesn't throw
 const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
   // Return undefined to satisfy TypeScript, but the process won't actually exit in tests
@@ -25,6 +30,12 @@ const stderrWriteSpy = vi
 
 import { startPrintCli } from "../src/print-cli.js";
 import { displayUsageSummary } from "../src/utils/usageSummary.js";
+import {
+  hasUncommittedChanges,
+  hasNewCommits,
+  validateWorktreeRemovalPath,
+} from "wave-agent-sdk";
+import { removeWorktree } from "../src/utils/worktree.js";
 
 test("startPrintCli requires a message when not continuing session", async () => {
   await startPrintCli({ message: "" });
@@ -605,6 +616,196 @@ test("startPrintCli waits for pending notifications even when main agent is idle
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("startPrintCli triggers WorktreeRemove hook before destroy and removes clean worktree", async () => {
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    setWorktreeSession: vi.fn(),
+    triggerWorktreeRemoveHook: vi.fn().mockResolvedValue(undefined),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+  vi.mocked(hasUncommittedChanges).mockReturnValue(false);
+  vi.mocked(hasNewCommits).mockReturnValue(false);
+
+  const worktreeSession = {
+    name: "feat",
+    path: "/repo/.wave/worktrees/feat",
+    repoRoot: "/repo",
+    branch: "worktree-feat",
+    isNew: true,
+    hasUncommittedChanges: false,
+    hasNewCommits: false,
+  };
+
+  await startPrintCli({
+    message: "test",
+    worktreeSession,
+    workdir: "/repo/.wave/worktrees/feat",
+    originalCwd: "/repo",
+  });
+
+  const hookOrder =
+    mockAgent.triggerWorktreeRemoveHook.mock.invocationCallOrder[0];
+  const destroyOrder = mockAgent.destroy.mock.invocationCallOrder[0];
+  expect(hookOrder).toBeLessThan(destroyOrder);
+  expect(mockAgent.triggerWorktreeRemoveHook).toHaveBeenCalledWith(
+    "/repo/.wave/worktrees/feat",
+  );
+  expect(removeWorktree).toHaveBeenCalledWith(worktreeSession);
+  expect(mockExit).toHaveBeenCalledWith(0);
+});
+
+test("startPrintCli does not trigger hook or remove dirty worktree", async () => {
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    setWorktreeSession: vi.fn(),
+    triggerWorktreeRemoveHook: vi.fn().mockResolvedValue(undefined),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+  vi.mocked(hasUncommittedChanges).mockReturnValue(true);
+  vi.mocked(hasNewCommits).mockReturnValue(false);
+
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
+  await startPrintCli({
+    message: "test",
+    worktreeSession: {
+      name: "feat",
+      path: "/repo/.wave/worktrees/feat",
+      repoRoot: "/repo",
+      branch: "worktree-feat",
+      isNew: true,
+      hasUncommittedChanges: true,
+      hasNewCommits: false,
+    },
+    workdir: "/repo/.wave/worktrees/feat",
+    originalCwd: "/repo",
+  });
+
+  expect(mockAgent.triggerWorktreeRemoveHook).not.toHaveBeenCalled();
+  expect(removeWorktree).not.toHaveBeenCalled();
+  expect(
+    stdoutSpy.mock.calls.some((call) =>
+      String(call[0]).includes("Keeping it at"),
+    ),
+  ).toBe(true);
+  expect(mockExit).toHaveBeenCalledWith(0);
+
+  stdoutSpy.mockRestore();
+});
+
+test("startPrintCli skips removal when worktree path fails validation", async () => {
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    setWorktreeSession: vi.fn(),
+    triggerWorktreeRemoveHook: vi.fn().mockResolvedValue(undefined),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+  vi.mocked(hasUncommittedChanges).mockReturnValue(false);
+  vi.mocked(hasNewCommits).mockReturnValue(false);
+  vi.mocked(validateWorktreeRemovalPath).mockImplementationOnce(() => {
+    throw new Error(
+      "Refusing to remove worktree outside repo root: /repo/.wave/worktrees/feat",
+    );
+  });
+
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
+  await startPrintCli({
+    message: "test",
+    worktreeSession: {
+      name: "feat",
+      path: "/repo/.wave/worktrees/feat",
+      repoRoot: "/repo",
+      branch: "worktree-feat",
+      isNew: true,
+      hasUncommittedChanges: false,
+      hasNewCommits: false,
+    },
+    workdir: "/repo/.wave/worktrees/feat",
+    originalCwd: "/repo",
+  });
+
+  // Hook still fired (before destroy); only git removal is skipped
+  expect(mockAgent.triggerWorktreeRemoveHook).toHaveBeenCalled();
+  expect(removeWorktree).not.toHaveBeenCalled();
+  expect(
+    stdoutSpy.mock.calls.some((call) =>
+      String(call[0]).includes("Skipping worktree removal"),
+    ),
+  ).toBe(true);
+  expect(mockExit).toHaveBeenCalledWith(0);
+
+  stdoutSpy.mockRestore();
+});
+
+test("startPrintCli triggers WorktreeRemove hook before destroy on sendMessage error", async () => {
+  const mockAgent = {
+    sendMessage: vi.fn().mockRejectedValue(new Error("Send message failed")),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    setWorktreeSession: vi.fn(),
+    triggerWorktreeRemoveHook: vi.fn().mockResolvedValue(undefined),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+  vi.mocked(hasUncommittedChanges).mockReturnValue(false);
+  vi.mocked(hasNewCommits).mockReturnValue(false);
+
+  // Suppress the "Failed to send message:" stderr write from the error path
+  const consoleErrorSpy = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
+  await startPrintCli({
+    message: "test",
+    worktreeSession: {
+      name: "feat",
+      path: "/repo/.wave/worktrees/feat",
+      repoRoot: "/repo",
+      branch: "worktree-feat",
+      isNew: true,
+      hasUncommittedChanges: false,
+      hasNewCommits: false,
+    },
+    workdir: "/repo/.wave/worktrees/feat",
+    originalCwd: "/repo",
+  });
+
+  const hookOrder =
+    mockAgent.triggerWorktreeRemoveHook.mock.invocationCallOrder[0];
+  const destroyOrder = mockAgent.destroy.mock.invocationCallOrder[0];
+  expect(hookOrder).toBeLessThan(destroyOrder);
+  expect(mockAgent.triggerWorktreeRemoveHook).toHaveBeenCalledWith(
+    "/repo/.wave/worktrees/feat",
+  );
+  expect(removeWorktree).toHaveBeenCalledTimes(1);
+  expect(mockExit).toHaveBeenCalledWith(1);
+
+  consoleErrorSpy.mockRestore();
+  stdoutSpy.mockRestore();
 });
 
 afterEach(() => {

@@ -35,6 +35,7 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 | `SubagentStop`     | 阻止停止（子代理继续），向 Wave 显示 stderr                            |
 | `PermissionRequest`| 阻止（拒绝）权限，仅向用户显示 stderr                                  |
 | `WorktreeCreate`   | 仅向用户显示 stderr（非阻止）                                         |
+| `WorktreeRemove`   | 仅向用户显示 stderr（非阻止）                                         |
 | `PreCompact`      | 非阻止；stderr 不显示给用户（静默丢弃），压缩继续                   |
 | `PostCompact`     | 仅向用户显示 stderr（非阻止）                                         |
 

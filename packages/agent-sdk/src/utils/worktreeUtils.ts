@@ -339,6 +339,68 @@ export function removeWorktree(info: WorktreeInfo): void {
 }
 
 /**
+ * Validate that a worktree path is safe to remove before running git removal.
+ * Aligns with Claude Code v2.1.216+ background-session checks:
+ * - rejects a path whose final component is a symlink;
+ * - rejects a path that resolves outside the repo root.
+ *
+ * A path that no longer exists (worktree already removed) is allowed so that
+ * removal stays best-effort/idempotent; its nearest existing ancestor is used
+ * for the containment check. Throws an Error on invalid paths.
+ */
+export function validateWorktreeRemovalPath(
+  worktreePath: string,
+  repoRoot: string,
+): void {
+  const SYMLINK_PREFIX = "Refusing to remove worktree at symlink path:";
+
+  // Reject a symlink as the final path component.
+  try {
+    if (fs.lstatSync(worktreePath).isSymbolicLink()) {
+      throw new Error(`${SYMLINK_PREFIX} ${worktreePath}`);
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.startsWith(SYMLINK_PREFIX)) {
+      throw error;
+    }
+    // lstat failed (path missing) — the containment check below still applies.
+  }
+
+  const resolvedRepoRoot = fs.realpathSync(repoRoot);
+
+  // Resolve the path, following symlinks in existing components. If the path
+  // (or a parent) no longer exists, fall back to the deepest existing ancestor
+  // so the containment check still guards against traversal outside the repo.
+  let resolvedPath: string;
+  let existingAncestor = worktreePath;
+  for (;;) {
+    try {
+      resolvedPath = fs.realpathSync(existingAncestor);
+      break;
+    } catch {
+      const parent = path.dirname(existingAncestor);
+      if (parent === existingAncestor) {
+        throw new Error(`Invalid worktree path for removal: ${worktreePath}`);
+      }
+      existingAncestor = parent;
+    }
+  }
+  if (existingAncestor !== worktreePath) {
+    resolvedPath = path.join(
+      resolvedPath,
+      path.relative(existingAncestor, worktreePath),
+    );
+  }
+
+  const relative = path.relative(resolvedRepoRoot, resolvedPath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(
+      `Refusing to remove worktree outside repo root: ${worktreePath}`,
+    );
+  }
+}
+
+/**
  * Count uncommitted files and new commits in a worktree.
  * Returns null if git commands fail (fail-closed).
  */

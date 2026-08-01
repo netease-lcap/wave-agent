@@ -162,16 +162,8 @@ export const exitWorktreeTool: ToolPlugin = {
       session.originalHeadCommit,
     ) ?? { changedFiles: 0, commits: 0 };
 
-    removeWorktree(worktreeInfo);
-
-    // Clear session state and restore CWD
-    const aiManager = context.aiManager;
-    if (aiManager) {
-      aiManager.setWorktreeSession(null);
-      aiManager.setWorkdir(originalCwd);
-    }
-
-    // Trigger WorktreeRemove hook (non-blocking)
+    // Trigger WorktreeRemove hook (non-blocking) BEFORE git removal so hooks
+    // can still read files inside the worktree to clean up external resources.
     let hookTriggered = false;
     if (context.hookManager) {
       try {
@@ -182,7 +174,7 @@ export const exitWorktreeTool: ToolPlugin = {
             projectDir: originalCwd,
             timestamp: new Date(),
             sessionId: context.sessionId ?? "",
-            transcriptPath: context.messageManager?.getTranscriptPath() ?? "",
+            transcriptPath: context.messageManager?.getTranscriptPath?.() ?? "",
             cwd: originalCwd,
             worktreePath,
             env: Object.fromEntries(
@@ -206,6 +198,15 @@ export const exitWorktreeTool: ToolPlugin = {
         // Non-blocking: log but don't fail the tool
         logger?.warn("WorktreeRemove hooks execution failed:", error);
       }
+    }
+
+    removeWorktree(worktreeInfo);
+
+    // Clear session state and restore CWD
+    const aiManager = context.aiManager;
+    if (aiManager) {
+      aiManager.setWorktreeSession(null);
+      aiManager.setWorkdir(originalCwd);
     }
 
     const discardParts: string[] = [];
