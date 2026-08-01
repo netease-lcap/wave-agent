@@ -74,11 +74,17 @@ export const HelpView: React.FC<HelpViewProps> = ({
     { key: "Ctrl+B", description: "Background current task" },
     { key: "Ctrl+V", description: "Paste image" },
     { key: "Ctrl+J", description: "Newline" },
+    { key: "Ctrl+A", description: "Cursor to line start" },
+    { key: "Ctrl+E", description: "Cursor to line end" },
+    { key: "Ctrl+U", description: "Delete to line start" },
+    { key: "Ctrl+K", description: "Delete to line end" },
+    { key: "Ctrl+W", description: "Delete word before cursor" },
     { key: "Shift+Tab", description: "Cycle permission mode" },
     {
       key: "Esc",
       description: "Interrupt AI or command / Cancel selector / Close help",
     },
+    { key: "Esc ×2", description: "Clear input (idle)" },
   ];
 
   const footerText = [

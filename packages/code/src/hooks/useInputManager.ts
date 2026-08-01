@@ -4,6 +4,7 @@ import {
   inputReducer,
   initialState,
   InputManagerCallbacks,
+  ESC_DOUBLE_PRESS_TIMEOUT_MS,
 } from "../managers/inputReducer.js";
 import {
   searchFiles as searchFilesUtil,
@@ -48,6 +49,7 @@ export const useInputManager = (
     onClearMessages,
     onCompact,
     onGoalCommand,
+    isIdle: isIdleProp,
   } = callbacks;
 
   // Handle debounced file search
@@ -90,6 +92,16 @@ export const useInputManager = (
     }
   }, [state.isPasting, state.pasteBuffer]);
 
+  // Auto-expire the double-Esc clear pending flag after the timeout window
+  // (aligned with Claude Code's useDoublePress timeout-based expiry).
+  useEffect(() => {
+    if (!state.escClearPending) return;
+    const timer = setTimeout(() => {
+      dispatch({ type: "RESET_ESC_CLEAR_PENDING" });
+    }, ESC_DOUBLE_PRESS_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [state.escClearPending]);
+
   // Sync state changes with callbacks
   useEffect(() => {
     onInputTextChange?.(state.inputText);
@@ -126,6 +138,16 @@ export const useInputManager = (
             break;
           case "ABORT_MESSAGE":
             onAbortMessage?.();
+            break;
+          case "SAVE_PROMPT_HISTORY":
+            PromptHistoryManager.addEntry(
+              effect.content,
+              sessionId,
+              effect.longTextMap,
+              workdir,
+            ).catch((err: unknown) => {
+              logger?.error("Failed to save prompt history", err);
+            });
             break;
           case "BACKGROUND_CURRENT_TASK":
             onBackgroundCurrentTask?.();
@@ -501,10 +523,11 @@ export const useInputManager = (
           key: {} as Key,
           hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
           hasQueuedMessages: hasQueuedMessagesProp ?? false,
+          isIdle: isIdleProp ?? false,
         },
       });
     },
-    [onHasSlashCommand, hasQueuedMessagesProp],
+    [onHasSlashCommand, hasQueuedMessagesProp, isIdleProp],
   );
 
   const handleSubmit = useCallback(async () => {
@@ -515,9 +538,10 @@ export const useInputManager = (
         key: { return: true } as Key,
         hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
         hasQueuedMessages: hasQueuedMessagesProp ?? false,
+        isIdle: isIdleProp ?? false,
       },
     });
-  }, [onHasSlashCommand, hasQueuedMessagesProp]);
+  }, [onHasSlashCommand, hasQueuedMessagesProp, isIdleProp]);
 
   const expandLongTextPlaceholders = useCallback(
     (text: string) => {
@@ -539,11 +563,12 @@ export const useInputManager = (
           key,
           hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
           hasQueuedMessages: hasQueuedMessagesProp ?? false,
+          isIdle: isIdleProp ?? false,
         },
       });
       return true;
     },
-    [onHasSlashCommand, hasQueuedMessagesProp],
+    [onHasSlashCommand, hasQueuedMessagesProp, isIdleProp],
   );
 
   return {
@@ -572,6 +597,7 @@ export const useInputManager = (
     permissionMode: state.permissionMode,
     attachedImages: state.attachedImages,
     btwState: state.btwState,
+    escClearPending: state.escClearPending,
     isManagerReady: true,
 
     // Methods

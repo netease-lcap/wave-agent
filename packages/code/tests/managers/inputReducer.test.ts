@@ -49,6 +49,7 @@ describe("inputReducer", () => {
         isLoading: false,
       },
       pendingEffect: null,
+      escClearPending: false,
     });
   });
 
@@ -1006,6 +1007,264 @@ describe("inputReducer", () => {
         },
       });
       expect(result.pendingEffect).toEqual({ type: "BACKGROUND_CURRENT_TASK" });
+    });
+
+    describe("raw DEL (\\x7f) filtering", () => {
+      it("should treat each DEL byte as a backspace instead of paste", () => {
+        const state = {
+          ...initialState,
+          inputText: "abc",
+          cursorPosition: 3,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "\x7f\x7f",
+            key: {} as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("a");
+        expect(result.cursorPosition).toBe(1);
+        expect(result.isPasting).toBe(false);
+      });
+
+      it("should ignore DEL bytes when cursor is at start", () => {
+        const state = {
+          ...initialState,
+          inputText: "abc",
+          cursorPosition: 0,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "\x7f\x7f",
+            key: {} as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("abc");
+        expect(result.cursorPosition).toBe(0);
+      });
+
+      it("should not intercept single DEL delivered via key.delete", () => {
+        const state = {
+          ...initialState,
+          inputText: "abc",
+          cursorPosition: 3,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "",
+            key: { delete: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("ab");
+        expect(result.cursorPosition).toBe(2);
+      });
+
+      it("should apply DEL backspaces to history search query", () => {
+        const state = {
+          ...initialState,
+          showHistorySearch: true,
+          historySearchQuery: "abcd",
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "\x7f\x7f",
+            key: {} as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.historySearchQuery).toBe("ab");
+      });
+    });
+
+    describe("emacs-style line editing keys", () => {
+      const editState = { ...initialState, inputText: "foo bar baz" };
+
+      it("should handle ctrl+a to move cursor to line start", () => {
+        const state = { ...editState, cursorPosition: 7 };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "a",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.cursorPosition).toBe(0);
+        expect(result.inputText).toBe("foo bar baz");
+      });
+
+      it("should handle ctrl+e to move cursor to line end", () => {
+        const state = { ...editState, cursorPosition: 3 };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "e",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.cursorPosition).toBe("foo bar baz".length);
+      });
+
+      it("should handle ctrl+u to delete to line start", () => {
+        const state = { ...editState, cursorPosition: 4 };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "u",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("bar baz");
+        expect(result.cursorPosition).toBe(0);
+        expect(result.historyIndex).toBe(-1);
+      });
+
+      it("should handle ctrl+k to delete to line end", () => {
+        const state = { ...editState, cursorPosition: 7 };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "k",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("foo bar");
+        expect(result.cursorPosition).toBe(7);
+      });
+
+      it("should handle ctrl+w to delete word before cursor", () => {
+        const state = { ...editState, cursorPosition: 11 };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "w",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("foo bar ");
+        expect(result.cursorPosition).toBe(8);
+      });
+
+      it("should not intercept ctrl+u while a selector is open", () => {
+        const state = {
+          ...editState,
+          cursorPosition: 7,
+          showFileSelector: true,
+          atPosition: 4,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "u",
+            key: { ctrl: true } as unknown as Key,
+            hasSlashCommand,
+          },
+        });
+        expect(result.inputText).toBe("foo bar baz");
+        expect(result.showFileSelector).toBe(true);
+      });
+    });
+
+    describe("idle Esc double-press clear", () => {
+      const escapeKey = { escape: true } as unknown as Key;
+
+      it("should abort message when not idle (isIdle false)", () => {
+        const state = { ...initialState, inputText: "hello" };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "",
+            key: escapeKey,
+            hasSlashCommand,
+            isIdle: false,
+          },
+        });
+        expect(result.pendingEffect).toEqual({ type: "ABORT_MESSAGE" });
+        expect(result.inputText).toBe("hello");
+      });
+
+      it("should arm escClearPending on first Esc when idle with input", () => {
+        const state = {
+          ...initialState,
+          inputText: "hello",
+          cursorPosition: 5,
+        };
+        const result = inputReducer(state, {
+          type: "HANDLE_KEY",
+          payload: { input: "", key: escapeKey, hasSlashCommand, isIdle: true },
+        });
+        expect(result.escClearPending).toBe(true);
+        expect(result.inputText).toBe("hello");
+        expect(result.pendingEffect).toBeNull();
+      });
+
+      it("should clear input and save to history on second Esc within window", () => {
+        const armed = {
+          ...initialState,
+          inputText: "hello",
+          cursorPosition: 5,
+          longTextMap: { "[LongText#1]": "long" },
+          escClearPending: true,
+        };
+        const result = inputReducer(armed, {
+          type: "HANDLE_KEY",
+          payload: { input: "", key: escapeKey, hasSlashCommand, isIdle: true },
+        });
+        expect(result.inputText).toBe("");
+        expect(result.cursorPosition).toBe(0);
+        expect(result.escClearPending).toBe(false);
+        expect(result.longTextMap).toEqual({});
+        expect(result.pendingEffect).toEqual({
+          type: "SAVE_PROMPT_HISTORY",
+          content: "hello",
+          longTextMap: { "[LongText#1]": "long" },
+        });
+      });
+
+      it("should be a no-op on Esc when idle and input is empty", () => {
+        const result = inputReducer(initialState, {
+          type: "HANDLE_KEY",
+          payload: { input: "", key: escapeKey, hasSlashCommand, isIdle: true },
+        });
+        expect(result).toBe(initialState);
+        expect(result.escClearPending).toBe(false);
+      });
+
+      it("should clear pending flag when aborting during non-idle Esc", () => {
+        const armed = {
+          ...initialState,
+          inputText: "hello",
+          escClearPending: true,
+        };
+        const result = inputReducer(armed, {
+          type: "HANDLE_KEY",
+          payload: {
+            input: "",
+            key: escapeKey,
+            hasSlashCommand,
+            isIdle: false,
+          },
+        });
+        expect(result.escClearPending).toBe(false);
+        expect(result.pendingEffect).toEqual({ type: "ABORT_MESSAGE" });
+      });
+    });
+
+    it("should handle RESET_ESC_CLEAR_PENDING", () => {
+      const state = { ...initialState, escClearPending: true };
+      const result = inputReducer(state, { type: "RESET_ESC_CLEAR_PENDING" });
+      expect(result.escClearPending).toBe(false);
     });
 
     it("should handle regular character input and activate selectors", () => {

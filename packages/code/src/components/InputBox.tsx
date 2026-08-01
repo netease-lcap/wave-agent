@@ -31,6 +31,8 @@ export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
 export interface InputBoxProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
+  isCompacting?: boolean;
+  isGoalEvaluating?: boolean;
   workdir?: string;
   sendMessage?: (
     message: string,
@@ -54,6 +56,10 @@ export interface InputBoxProps {
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
+  isLoading,
+  isCommandRunning,
+  isCompacting,
+  isGoalEvaluating,
   sendMessage = () => {},
   abortMessage = () => {},
   mcpServers = [],
@@ -91,6 +97,15 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const setInputTextRef = useRef<(text: string) => void>(() => {});
 
   const hasQueuedMessages = (queuedMessages?.length ?? 0) > 0;
+
+  // Idle means no AI work in flight. Esc double-press clear only applies when
+  // idle; while busy, Esc keeps its abort semantics.
+  const isIdle = !(
+    isLoading ||
+    isCommandRunning ||
+    isCompacting ||
+    isGoalEvaluating
+  );
 
   const onRecallQueuedMessage = useCallback(() => {
     const msg = recallQueuedMessage();
@@ -146,6 +161,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setPermissionMode,
     // BTW state
     btwState,
+    // Esc double-press clear pending
+    escClearPending,
     // Main handler
     handleInput,
     // Manager ready state
@@ -166,6 +183,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     workdir: workingDirectory,
     getFullMessageThread,
     hasQueuedMessages,
+    isIdle,
     onRecallQueuedMessage,
   });
 
@@ -342,6 +360,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           showPluginManager ||
           showWorkflowManager || (
             <Box flexDirection="column">
+              {escClearPending && <Text color="gray">再次按 Esc 清空输入</Text>}
               <Box
                 borderStyle="single"
                 borderColor="gray"
