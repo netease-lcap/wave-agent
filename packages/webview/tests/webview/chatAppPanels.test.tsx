@@ -5,6 +5,7 @@ import { DesktopApp } from '../../src/components/DesktopApp';
 import { ChatApp, prunePanelGroupCache } from '../../src/components/ChatApp';
 import { EXIT_PLAN_MODE_TOOL_NAME } from 'wave-agent-sdk';
 import { createMockVscode, sendCommand, renderChatApp, fireInput } from './test-utils';
+import { MockDataGenerator } from '../fixtures/mockData';
 
 vi.mock('../../src/styles/DesktopApp.css', () => ({}));
 
@@ -699,5 +700,200 @@ describe('session-level panel groups', () => {
         pushTree(['s2']);
         pushPanes('s1');
         expect(screen.queryByTestId('diff-pane')).not.toBeInTheDocument();
+    });
+});
+
+/**
+ * Remote preview + SSH port forwarding (spec scenarios 15-18): clicking a
+ * localhost link in a remote session requests an ssh -N -L forward from the
+ * main process, the rewritten reply loads in the preview pane, re-clicking the
+ * same link is a no-op (no duplicate tunnel), failures surface an actionable
+ * error with a retry that re-establishes the forward, and closing the panel /
+ * switching host / unmounting releases the tunnel so no ssh process leaks.
+ */
+describe('remote preview port forwarding', () => {
+    const session = (sessionId: string) => ({
+        sessionId,
+        title: sessionId,
+        lastActiveAt: Date.now(),
+        hasWorktree: false,
+    });
+    const pushRemotePane = () =>
+        sendCommand('desktopPanes', {
+            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'prod' }],
+            focusedPaneId: 'pane-1',
+        });
+    const openLink = () => {
+        sendCommand('updateMessages', {
+            paneId: 'pane-1',
+            messages: [MockDataGenerator.createAssistantMessage('服务在 [这里](http://localhost:5173/app)')],
+        });
+        fireEvent.click(screen.getByText('这里'));
+    };
+    const forwardPosts = (vscode: ReturnType<typeof createMockVscode>) =>
+        vscode.postMessage.mock.calls
+            .filter(([msg]) => msg.command === 'desktopForwardPort')
+            .map(([msg]) => msg);
+    const releasePosts = (vscode: ReturnType<typeof createMockVscode>) =>
+        vscode.postMessage.mock.calls
+            .filter(([msg]) => msg.command === 'desktopReleasePort')
+            .map(([msg]) => msg);
+
+    it('clicking a localhost link in a remote session requests a forward on the pane host', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+
+        // The pane's own host is used (not the local fallback), and the preview
+        // panel opens in its connecting stub while the tunnel comes up.
+        expect(forwardPosts(vscode)).toEqual([
+            { command: 'desktopForwardPort', host: 'prod', url: 'http://localhost:5173/app', requestId: 'fwd-1', paneId: 'pane-1' },
+        ]);
+        expect(screen.getByTestId('preview-pane-empty')).toBeInTheDocument();
+        expect(screen.getByTestId('preview-pane-empty')).toHaveTextContent('点击消息或终端中的 localhost 链接加载预览');
+    });
+
+    it('the forward reply loads the rewritten address in the preview pane', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+
+        const pane = screen.getByTestId('preview-pane');
+        expect(pane.querySelector('webview')?.getAttribute('src')).toBe('http://127.0.0.1:5173/app');
+        expect(screen.queryByTestId('preview-pane-empty')).not.toBeInTheDocument();
+        // The local tunnel is only meaningful on this host — never cached
+        // against the session for later restoration.
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ command: 'desktopPanelState', checked: expect.arrayContaining(['preview']) }),
+        );
+    });
+
+    it('clicking the same link again does not re-establish the forward', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+
+        fireEvent.click(screen.getByText('这里'));
+
+        expect(forwardPosts(vscode)).toHaveLength(1);
+    });
+
+    it('a failed forward shows an actionable error; retry re-acquires and loads', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            error: '转发建立超时：无法连接远端主机 prod',
+        });
+
+        const empty = screen.getByTestId('preview-pane-empty');
+        expect(empty).toHaveTextContent('远程预览加载失败：转发建立超时：无法连接远端主机 prod');
+        fireEvent.click(screen.getByTestId('preview-forward-retry'));
+
+        // Retry is a fresh acquire (new requestId), not a silent reload.
+        expect(forwardPosts(vscode)).toHaveLength(2);
+        expect(forwardPosts(vscode)[1]).toMatchObject({ host: 'prod', requestId: 'fwd-2' });
+
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-2',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+        const pane = screen.getByTestId('preview-pane');
+        expect(pane.querySelector('webview')?.getAttribute('src')).toBe('http://127.0.0.1:5173/app');
+        expect(screen.queryByTestId('preview-pane-empty')).not.toBeInTheDocument();
+    });
+
+    it('closing the preview panel releases the forward (no orphan ssh)', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+
+        fireEvent.click(screen.getByTestId('preview-close'));
+
+        expect(releasePosts(vscode)).toEqual([
+            { command: 'desktopReleasePort', host: 'prod', remotePort: 5173, paneId: 'pane-1' },
+        ]);
+        // Closing must not re-request the tunnel.
+        expect(forwardPosts(vscode)).toHaveLength(1);
+    });
+
+    it('switching host releases the forward and clears the preview', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+        expect(screen.getByTestId('preview-pane')).toBeInTheDocument();
+
+        // Host switch (remote → local): the tunnel is meaningless on the new
+        // host, so it is released and the forwarded URL is dropped.
+        sendCommand('desktopPanes', {
+            panes: [{ paneId: 'pane-1', sessionId: 's1', row: 0, host: 'local' }],
+            focusedPaneId: 'pane-1',
+        });
+
+        expect(releasePosts(vscode)).toEqual([
+            { command: 'desktopReleasePort', host: 'prod', remotePort: 5173, paneId: 'pane-1' },
+        ]);
+        expect(screen.queryByTestId('preview-pane')).not.toBeInTheDocument();
+        expect(screen.getByTestId('preview-pane-empty')).toBeInTheDocument();
+    });
+
+    it('a stale forward reply for a released request is dropped', () => {
+        window.waveHostType = 'desktop';
+        const { vscode } = renderDesktop({ workdir: '/work/a' });
+        sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [session('s1')] }] });
+        pushRemotePane();
+        openLink();
+        // Fail, then retry: the current request is now fwd-2.
+        sendCommand('desktopForwardPortResult', { paneId: 'pane-1', requestId: 'fwd-1', error: '连接失败' });
+        fireEvent.click(screen.getByTestId('preview-forward-retry'));
+        expect(forwardPosts(vscode)[1].requestId).toBe('fwd-2');
+
+        // A late fwd-1 reply (for the superseded attempt) must not load a URL
+        // or resurrect the error behind the retry's back — it is dropped, and
+        // the stub stays in its connecting state awaiting the fwd-2 result.
+        sendCommand('desktopForwardPortResult', {
+            paneId: 'pane-1',
+            requestId: 'fwd-1',
+            url: 'http://127.0.0.1:5173/app',
+            originalUrl: 'http://localhost:5173/app',
+        });
+        expect(screen.queryByTestId('preview-pane')).not.toBeInTheDocument();
+        expect(screen.getByTestId('preview-pane-empty')).toHaveTextContent('点击消息或终端中的 localhost 链接加载预览');
     });
 });
