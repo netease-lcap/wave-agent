@@ -46,6 +46,7 @@ import { LOCAL_HOST, parseSshConfigHosts, addSshHost, buildSshSpawnArgs } from '
 import { resolveRemoteWaveBinary, remotePathExists } from './remoteCli';
 import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
+import { PortForwardManager } from './portForward';
 import { checkForUpdate } from './updateChecker';
 import { HOST_CHANNEL } from './channels';
 import type { PanelKind } from './menu';
@@ -162,6 +163,9 @@ export class DesktopHost {
     onData: (termId, data) => this.postMessage({ command: 'desktopTerminalData', termId, data }),
     onExit: (termId, info) => this.postMessage({ command: 'desktopTerminalExit', termId, ...info }),
   });
+
+  /** SSH tunnels serving remote preview URLs, refcounted per (host, remote port). */
+  private portForwardManager = new PortForwardManager();
 
   /** Focused pane's agent — the default target for unscoped webview commands. */
   private get activeAgent(): StdioAgent | null {
@@ -288,6 +292,7 @@ export class DesktopHost {
   async dispose(): Promise<void> {
     nativeTheme.off('updated', this.onNativeThemeUpdated);
     this.terminalManager.killAll();
+    this.portForwardManager.dispose();
     for (const t of this.paneThrottles.values()) {
       for (const timer of [t.updateTimer, t.streamingContentTimer, t.streamingReasoningTimer]) {
         if (timer) clearTimeout(timer);
@@ -1723,6 +1728,37 @@ export class DesktopHost {
 
       case 'desktopTerminalKill':
         this.terminalManager.kill(msg.termId as string);
+        break;
+
+      // Remote preview: forward a localhost URL over ssh and load the
+      // rewritten loopback address (spec scenario 15-18). The webview sends
+      // the host it computed (effectiveHost); defaults to the pane's host.
+      case 'desktopForwardPort': {
+        const host = (msg.host as string) || this.hostForPane(pid);
+        try {
+          const result = await this.portForwardManager.acquire(host, msg.url as string);
+          this.postMessage({
+            command: 'desktopForwardPortResult',
+            paneId: pid,
+            requestId: msg.requestId,
+            url: result.url,
+            originalUrl: result.originalUrl,
+          });
+        } catch (error) {
+          this.postMessage({
+            command: 'desktopForwardPortResult',
+            paneId: pid,
+            requestId: msg.requestId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        break;
+      }
+
+      case 'desktopReleasePort':
+        // Host is required: the pane may have already switched sessions/hosts
+        // by the time the webview releases the reference.
+        this.portForwardManager.release(msg.host as string, msg.remotePort as number);
         break;
 
       // Pane panel toggle state — drives the 面板 menu checkboxes.

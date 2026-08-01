@@ -191,6 +191,20 @@ vi.mock('../src/main/updateChecker', () => ({
   checkForUpdate: vi.fn(async () => null),
 }));
 
+// PortForwardManager spawns real `ssh -N -L` processes — stub it entirely and
+// assert the wiring (messages in, forwarded results out, releases forwarded).
+vi.mock('../src/main/portForward', () => {
+  class MockPortForwardManager {
+    acquire = vi.fn(async () => ({
+      url: 'http://127.0.0.1:5173/app',
+      originalUrl: 'http://localhost:5173/app',
+    }));
+    release = vi.fn();
+    dispose = vi.fn();
+  }
+  return { PortForwardManager: MockPortForwardManager };
+});
+
 // remoteCli spawns real `ssh` processes — stub the probes. parseSshConfigHosts
 // stays REAL: it reads ~/.ssh/config through the fs mock, which lets the host
 // tests seed ssh config content per-test.
@@ -2937,5 +2951,94 @@ describe('SSH remote hosts', () => {
     expect(h.agentInstances.length).toBe(3);
     const panes = sent('desktopPanes').at(-1) as { panes: Array<{ sessionId: string; host: string }> };
     expect(panes.panes[0]).toMatchObject({ sessionId: 'sess-2', host: 'prod' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Remote preview: SSH port forwarding (spec scenarios 15-18)
+// ---------------------------------------------------------------------------
+
+describe('remote preview port forwarding', () => {
+  type HostWithFwd = DesktopHost & {
+    portForwardManager: {
+      acquire: ReturnType<typeof vi.fn>;
+      release: ReturnType<typeof vi.fn>;
+      dispose: ReturnType<typeof vi.fn>;
+    };
+  };
+
+  it('desktopForwardPort acquires on the pane host and posts the rewritten URL', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+    const fwd = (host as unknown as HostWithFwd).portForwardManager;
+
+    await host.handleWebviewMessage({
+      command: 'desktopForwardPort',
+      host: 'prod',
+      requestId: 'r1',
+      url: 'http://localhost:5173/app',
+    });
+
+    expect(fwd.acquire).toHaveBeenCalledWith('prod', 'http://localhost:5173/app');
+    expect(sent('desktopForwardPortResult')).toEqual([
+      {
+        command: 'desktopForwardPortResult',
+        paneId: 'pane-1',
+        requestId: 'r1',
+        url: 'http://127.0.0.1:5173/app',
+        originalUrl: 'http://localhost:5173/app',
+      },
+    ]);
+  });
+
+  it('desktopForwardPort defaults the host to the pane host when omitted', async () => {
+    const { host, sent } = await readyHost();
+    const fwd = (host as unknown as HostWithFwd).portForwardManager;
+
+    await host.handleWebviewMessage({ command: 'desktopForwardPort', requestId: 'r1', url: 'http://localhost:5173/app' });
+
+    expect(fwd.acquire).toHaveBeenCalledWith('local', 'http://localhost:5173/app');
+    expect(sent('desktopForwardPortResult')).toHaveLength(1);
+  });
+
+  it('desktopForwardPort failure posts the error instead of the URL', async () => {
+    const { host, sent } = createHost();
+    const fwd = (host as unknown as HostWithFwd).portForwardManager;
+    fwd.acquire.mockRejectedValueOnce(new Error('转发建立超时'));
+
+    await host.handleWebviewMessage({
+      command: 'desktopForwardPort',
+      host: 'prod',
+      requestId: 'r2',
+      url: 'http://localhost:5173/app',
+    });
+
+    expect(sent('desktopForwardPortResult')).toEqual([
+      {
+        command: 'desktopForwardPortResult',
+        paneId: 'pane-1',
+        requestId: 'r2',
+        error: '转发建立超时',
+      },
+    ]);
+  });
+
+  it('desktopReleasePort releases the (host, remote port) reference', async () => {
+    const { host } = createHost();
+    const fwd = (host as unknown as HostWithFwd).portForwardManager;
+
+    await host.handleWebviewMessage({ command: 'desktopReleasePort', host: 'prod', remotePort: 5173 });
+
+    expect(fwd.release).toHaveBeenCalledWith('prod', 5173);
+  });
+
+  it('dispose tears down the port forward manager', async () => {
+    const { host } = createHost();
+    const fwd = (host as unknown as HostWithFwd).portForwardManager;
+
+    await host.dispose();
+
+    expect(fwd.dispose).toHaveBeenCalled();
   });
 });
