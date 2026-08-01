@@ -1,6 +1,7 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 // Realistic Chinese dev-task queue messages (varying length; at least one long enough to ellipsize)
 const QUEUE = [
@@ -62,7 +63,7 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         // 2. Collapsed state (default): only the first item is visible
         await expect(webviewPage.getByTestId('queued-item-mq-0')).toBeVisible();
         await expect(webviewPage.getByTestId('queued-item-mq-1')).toHaveCount(0);
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-queue-collapsed.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-queue-collapsed.webp');
 
         // 3. Expanded state: click header to expand, multiple single-line items visible
         await queuePanel.locator('.queued-message-list-header').click();
@@ -77,7 +78,7 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         await expect(sendNowBtn.locator('svg')).toBeVisible();
         await expect(webviewPage.getByTestId('queued-delete-mq-1')).toBeVisible();
 
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-queued-message.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-queued-message.webp');
 
         // 4. Editing state: click a message's edit button -> the read-only inline
         //    chip "编辑队列消息" appears inside the input, and the item is marked editing
@@ -86,6 +87,6 @@ test.describe('Product Specification Screenshots - Message Queuing', () => {
         await expect(editChip).toBeVisible();
         await expect(editChip).toContainText('编辑队列消息');
         await expect(webviewPage.getByTestId('queued-item-mq-1')).toHaveClass(/editing/);
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-queue-editing.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-queue-editing.webp');
     });
 });

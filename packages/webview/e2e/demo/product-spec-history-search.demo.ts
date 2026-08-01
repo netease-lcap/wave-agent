@@ -1,5 +1,6 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Product Spec: History Search', () => {
     test('should capture history search popup screenshot', async ({ webviewPage }) => {
@@ -30,14 +31,10 @@ test.describe('Product Spec: History Search', () => {
         await expect(popup.getByText('正在加载...')).toBeHidden();
 
         // 5. Take screenshot of the whole webview to show the popup in context
-        await webviewPage.screenshot({
-            path: '../../docs/public/screenshots/spec-history-search.png'
-        });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-history-search.webp');
 
         // 6. Take a full screenshot showing the context
-        await webviewPage.screenshot({
-            path: '../../docs/public/screenshots/spec-history-search-context.png'
-        });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-history-search-context.webp');
     });
 
     test('should capture plus menu with history prompt entry', async ({ webviewPage }) => {
@@ -51,8 +48,6 @@ test.describe('Product Spec: History Search', () => {
 
         // The menu opens upward from the "+" button, so capture the input area
         // (toolbar + menu floating above it) rather than the menu container alone.
-        await webviewPage.locator('.input-container').screenshot({
-            path: '../../docs/public/screenshots/spec-plus-menu.png'
-        });
+        await elementScreenshotWebp(webviewPage.locator('.input-container'), '../../docs/public/screenshots/spec-plus-menu.webp');
     });
 });

@@ -1,6 +1,7 @@
 import { test, expect } from "../utils/desktopTestHarness.js";
 import { MessageInjector } from "../utils/messageInjector.js";
 import { MockDataGenerator } from "../fixtures/mockData.js";
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 const DIR_A = "/Users/dev/projects/wave-agent";
 
@@ -58,9 +59,7 @@ test.describe("Desktop split-view panes", () => {
       closeBox!.y + closeBox!.height > toggleBox!.y;
     expect(intersects).toBe(false);
 
-    await webviewPage.screenshot({
-      path: "../../docs/public/screenshots/desktop-split-view.png",
-    });
+    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-split-view.webp");
   });
 
   test("two-row split layout packs overflow into a second row", async ({
@@ -110,8 +109,6 @@ test.describe("Desktop split-view panes", () => {
     await expect(webviewPage.getByTestId("desktop-pane-row-1")).toBeVisible();
     await expect(webviewPage.getByTestId("desktop-row-separator")).toBeVisible();
 
-    await webviewPage.screenshot({
-      path: "../../docs/public/screenshots/desktop-two-row-split.png",
-    });
+    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-two-row-split.webp");
   });
 });

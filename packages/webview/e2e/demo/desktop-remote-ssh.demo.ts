@@ -1,6 +1,7 @@
 import { test, expect } from "../utils/desktopTestHarness.js";
 import { MessageInjector } from "../utils/messageInjector.js";
 import { MockDataGenerator } from "../fixtures/mockData.js";
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 // Remote SSH demo: screenshots for docs/desktop.md 「SSH 远程主机」. Everything
 // is mocked — the desktop host bridge (`desktopWorkdirState` with a remote
@@ -67,9 +68,7 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     await expect(webviewPage.getByTestId("desktop-host-local")).toBeVisible();
     await expect(webviewPage.getByTestId("desktop-host-item")).toHaveCount(2);
     await expect(webviewPage.getByTestId("desktop-host-add-entry")).toBeVisible();
-    await webviewPage.screenshot({
-      path: "../../docs/public/remote-ssh/desktop-ssh-host-selector.png",
-    });
+    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-ssh-host-selector.webp");
   });
 
   test("remote session terminal panel runs a PTY over ssh", async ({ webviewPage }) => {
@@ -103,9 +102,7 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     await expect(webviewPage.getByTestId("terminal-body")).toContainText(
       "root@dev-server:/workspace/demo-repo#"
     );
-    await webviewPage.screenshot({
-      path: "../../docs/public/remote-ssh/desktop-ssh-remote-terminal.png",
-    });
+    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-ssh-remote-terminal.webp");
   });
 
   test("remote session diff panel shows git changes over ssh", async ({ webviewPage }) => {
@@ -158,8 +155,6 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     await expect(webviewPage.getByTestId("diff-pane")).toBeVisible();
     await expect(webviewPage.getByTestId("diff-file-modified")).toHaveCount(2);
     await expect(webviewPage.getByTestId("diff-file-untracked")).toBeVisible();
-    await webviewPage.screenshot({
-      path: "../../docs/public/remote-ssh/desktop-ssh-remote-diff.png",
-    });
+    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-ssh-remote-diff.webp");
   });
 });

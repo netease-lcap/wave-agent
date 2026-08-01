@@ -1,6 +1,7 @@
 import { test, expect } from "../utils/desktopTestHarness.js";
 import { MessageInjector } from "../utils/messageInjector.js";
 import { MockDataGenerator } from "../fixtures/mockData.js";
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 const DIR_A = "/Users/dev/projects/wave-agent";
 
@@ -48,9 +49,7 @@ test.describe("Desktop conversation-level panels", () => {
     await expect(webviewPage.getByTestId("panel-toggle-item-preview")).toBeVisible();
     await expect(webviewPage.getByTestId("panel-toggle-item-diff")).toBeVisible();
     await expect(webviewPage.getByTestId("panel-toggle-item-terminal")).toBeVisible();
-    await webviewPage.screenshot({
-      path: "../../docs/public/screenshots/desktop-panel-toggle.png",
-    });
+    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-panel-toggle.webp");
   });
 
   test("diff pane renders an accordion of git workspace changes", async ({ webviewPage }) => {
@@ -115,9 +114,7 @@ test.describe("Desktop conversation-level panels", () => {
     await expect(webviewPage.getByTestId("diff-file-added")).toBeVisible();
     await expect(webviewPage.getByTestId("diff-file-deleted")).toBeVisible();
     await expect(webviewPage.getByTestId("diff-file-untracked")).toBeVisible();
-    await webviewPage.screenshot({
-      path: "../../docs/public/screenshots/desktop-diff-pane.png",
-    });
+    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-diff-pane.webp");
   });
 
   test("terminal pane mounts an embedded xterm.js terminal", async ({ webviewPage }) => {
@@ -139,8 +136,6 @@ test.describe("Desktop conversation-level panels", () => {
 
     await expect(webviewPage.getByTestId("terminal-pane")).toBeVisible();
     await expect(webviewPage.getByTestId("terminal-restart")).toBeVisible();
-    await webviewPage.screenshot({
-      path: "../../docs/public/screenshots/desktop-terminal-pane.png",
-    });
+    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-terminal-pane.webp");
   });
 });

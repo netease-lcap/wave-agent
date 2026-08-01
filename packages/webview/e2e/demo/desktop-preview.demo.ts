@@ -1,6 +1,7 @@
 import { test, expect } from '../utils/desktopTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 /**
  * Desktop preview pane + element picker screenshots.
@@ -127,7 +128,7 @@ test.describe('Desktop Preview Pane Screenshots', () => {
             body?.insertAdjacentHTML('beforeend', html);
         }, MOCK_PROTOTYPE_HTML);
         await expect(webviewPage.locator('#mock-prototype')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-preview-pane.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-preview-pane.webp');
 
         // ── 2. Picker active: toggle on + hover highlight outline ─────
         await webviewPage.getByTestId('preview-picker-toggle').click();
@@ -139,7 +140,7 @@ test.describe('Desktop Preview Pane Screenshots', () => {
                 chip.style.outlineOffset = '-2px';
             }
         });
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-preview-picker.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-preview-picker.webp');
 
         // ── 3. Comment card pinned to the picked element ──────────────
         await webviewPage.evaluate((html) => {
@@ -160,7 +161,7 @@ test.describe('Desktop Preview Pane Screenshots', () => {
             body.appendChild(card);
         }, mockCardHtml('这里改成主要按钮样式，并加上加载中状态'));
         await expect(webviewPage.locator('#mock-picker-card')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-preview-comment.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-preview-comment.webp');
 
         // ── 4. Submit dismisses the card; the comment lands in the chat ─
         // input (nothing sent to the agent yet) so several can be batched.
@@ -183,6 +184,6 @@ test.describe('Desktop Preview Pane Screenshots', () => {
         });
         // The real MessageInput now carries the formatted comment.
         await expect(webviewPage.getByTestId('message-input')).toContainText('这里改成主要按钮样式');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-preview-comment-input.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-preview-comment-input.webp');
     });
 });

@@ -1,4 +1,5 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Background Task Manager Demo', () => {
     test('should show background task list and detail', async ({ webviewPage }) => {
@@ -60,7 +61,7 @@ test.describe('Background Task Manager Demo', () => {
 
         // Screenshot the list view
         const dialog = webviewPage.getByTestId('background-task-manager');
-        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-background-task-list.png' });
+        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-background-task-list.webp');
 
         // 3. Click the first task to enter detail view
         await dialog.getByText('[bt-1] shell').click();
@@ -90,6 +91,6 @@ test.describe('Background Task Manager Demo', () => {
         await expect(webviewPage.getByText('OUTPUT (last 20 lines)')).toBeVisible();
 
         // Screenshot the detail view
-        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-background-task-detail.png' });
+        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-background-task-detail.webp');
     });
 });

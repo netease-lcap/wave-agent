@@ -1,6 +1,7 @@
 import { test } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { type Message, type SessionMetadata } from 'wave-agent-sdk';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Product Specification Screenshots - Chat Header', () => {
     test('capture redesigned chat header, session search popup and more menu', async ({
@@ -81,18 +82,14 @@ test.describe('Product Specification Screenshots - Chat Header', () => {
 
         // 1. 重新设计后的 Chat Header（标题 + 新建/历史/更多 三个图标）
         await webviewPage.waitForSelector('[data-testid="chat-header"]');
-        await webviewPage
-            .locator('[data-testid="chat-header"]')
-            .screenshot({ path: '../../docs/public/screenshots/spec-chat-header.png' });
+        await elementScreenshotWebp(webviewPage.locator('[data-testid="chat-header"]'), '../../docs/public/screenshots/spec-chat-header.webp');
 
         // 2. 历史会话搜索弹窗（搜索关键词 + 命中高亮）
         await webviewPage.getByTestId('history-btn').click();
         await webviewPage.waitForSelector('[data-testid="session-list-popup"]');
         await webviewPage.fill('.session-list-search', '支付');
         await webviewPage.waitForSelector('.session-list-highlight');
-        await webviewPage.screenshot({
-            path: '../../docs/public/screenshots/spec-session-search.png'
-        });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-session-search.webp');
         await webviewPage.keyboard.press('Escape');
         await webviewPage.waitForSelector('[data-testid="session-list-popup"]', {
             state: 'hidden'
@@ -101,9 +98,7 @@ test.describe('Product Specification Screenshots - Chat Header', () => {
         // 3. 更多菜单（设置 / 企业控制台 / 退出登录）
         await webviewPage.getByTestId('more-btn').click();
         await webviewPage.waitForSelector('[data-testid="more-menu"]');
-        await webviewPage.screenshot({
-            path: '../../docs/public/screenshots/spec-more-menu.png'
-        });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-more-menu.webp');
         await webviewPage.keyboard.press('Escape');
     });
 });

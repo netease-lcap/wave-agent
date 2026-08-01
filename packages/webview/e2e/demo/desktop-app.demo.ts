@@ -1,6 +1,7 @@
 import { test, expect } from '../utils/desktopTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 const DIR_A = '/Users/dev/projects/wave-agent';
 const DIR_B = '/Users/dev/projects/shop-server';
@@ -86,12 +87,15 @@ test.describe('Desktop App Screenshots', () => {
         // Sidebar renders the session tree with all directory groups
         // expanded by default; the input area (including +/slash/permission/
         // send buttons) is disabled until the user picks a directory.
+        // Recents must be EMPTY here: effectiveWorkdir falls back to
+        // recentWorkdirs[0] when state.workdir is unset (ChatApp.tsx), so the
+        // "no workdir" placeholder only renders when there is no recents list.
         // desktopWorkdirState mounts ChatApp; wait for its message listener
         // (webviewReady) before setInitialState, otherwise the payload is lost to
         // the mount race and the empty-messages body renders the LoadingLogo
         // sweep instead of the welcome page.
         await injector.simulateExtensionMessage('desktopWorkdirState', {
-            recentWorkdirs: [DIR_A, DIR_B, DIR_C]
+            recentWorkdirs: []
         });
         await injector.simulateExtensionMessage('desktopSessionTree', { groups: treeGroups });
         await injector.waitForChatAppReady();
@@ -104,7 +108,7 @@ test.describe('Desktop App Screenshots', () => {
         // setInitialState was dispatched before ChatApp's listener attached.
         await expect(webviewPage.locator('.loading-logo')).toHaveCount(0);
         await expect(webviewPage.getByText('欢迎使用 Wave')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-first-launch.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-first-launch.webp');
 
         // ── 2. Session tree: workdir selected, all groups expanded ────
         // The active session shows a green running dot; a session awaiting a
@@ -124,12 +128,12 @@ test.describe('Desktop App Screenshots', () => {
         await expect(webviewPage.getByTestId('desktop-session-item-sess-a2').locator('.codicon-bell')).toBeVisible();
         // Other groups are expanded by default too
         await expect(webviewPage.getByTestId('desktop-session-item-sess-b1')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-session-tree.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-session-tree.webp');
 
         // Collapse a group to show collapse/expand interactivity
         await webviewPage.getByText('shop-server').click();
         await expect(webviewPage.getByTestId('desktop-session-item-sess-b1')).toBeHidden();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-session-tree-collapsed.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-session-tree-collapsed.webp');
         // Re-expand so later screenshots show the default all-expanded state
         await webviewPage.getByText('shop-server').click();
         await expect(webviewPage.getByTestId('desktop-session-item-sess-b1')).toBeVisible();
@@ -137,7 +141,7 @@ test.describe('Desktop App Screenshots', () => {
         // ── 3. Workdir dropdown in the input area ─────────────────────
         await webviewPage.getByTestId('desktop-workdir').click();
         await expect(webviewPage.getByTestId('desktop-workdir-menu')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-workdir-dropdown.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-workdir-dropdown.webp');
         await webviewPage.keyboard.press('Escape');
 
         // ── 4. Core chat interaction (same as IDE plugins) ────────────
@@ -152,7 +156,7 @@ test.describe('Desktop App Screenshots', () => {
         // session (no messages yet) — by design (ChatApp.tsx).
         await expect(webviewPage.locator('.message.user')).toBeVisible();
         await expect(webviewPage.locator('.message.assistant')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-chat.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-chat.webp');
     });
 
     test('worktree-isolated new-session page shows branch selector', async ({ webviewPage }) => {
@@ -182,7 +186,7 @@ test.describe('Desktop App Screenshots', () => {
         await webviewPage.getByTestId('desktop-branch-selector').click();
         await expect(webviewPage.getByTestId('desktop-branch-menu')).toBeVisible();
         await expect(webviewPage.getByTestId('desktop-branch-item')).toHaveCount(3);
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-worktree-controls.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-worktree-controls.webp');
     });
 
     test('sidebar more menu lists settings / enterprise / logout', async ({ webviewPage }) => {
@@ -208,6 +212,6 @@ test.describe('Desktop App Screenshots', () => {
         await expect(webviewPage.getByTestId('more-menu-settings')).toBeVisible();
         await expect(webviewPage.getByTestId('more-menu-enterprise')).toBeVisible();
         await expect(webviewPage.getByTestId('more-menu-logout')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-more-menu.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-more-menu.webp');
     });
 });

@@ -2,6 +2,7 @@ import { test, expect } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { UIStateVerifier } from '../utils/uiStateVerifier.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Product Spec: Rewind', () => {
     test('should capture rewind button screenshot', async ({ webviewPage }) => {
@@ -26,15 +27,12 @@ test.describe('Product Spec: Rewind', () => {
         await rewindBtn.hover();
 
         // Take screenshot of the message list showing the rewind button with tooltip
-        await webviewPage.screenshot({
-            path: '../../docs/public/screenshots/spec-rewind-button.png',
-            clip: await ui.messagesContainer.boundingBox() || undefined
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-rewind-button.webp', {
+            clip: (await ui.messagesContainer.boundingBox()) || undefined
         });
 
         // Take a full screenshot showing the context
-        await webviewPage.screenshot({
-            path: '../../docs/public/screenshots/spec-rewind-context.png'
-        });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-rewind-context.webp');
     });
 
     test('should capture /rewind popup screenshot', async ({ webviewPage }) => {
@@ -83,8 +81,6 @@ test.describe('Product Spec: Rewind', () => {
         await expect(selected).toContainText('测试全部通过了');
 
         // Screenshot the popup
-        await webviewPage.screenshot({
-            path: '../../docs/public/screenshots/spec-rewind-popup.png'
-        });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-rewind-popup.webp');
     });
 });

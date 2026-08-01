@@ -1,4 +1,5 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Language Configuration Demo', () => {
     test('should show language field in configuration dialog', async ({ webviewPage }) => {
@@ -32,12 +33,12 @@ test.describe('Language Configuration Demo', () => {
 
         // Take screenshot of the dialog with language field in view
         const dialog = webviewPage.locator('.configuration-dialog');
-        await dialog.screenshot({ path: '../../docs/public/screenshots/language-config-ui.png' });
+        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/language-config-ui.webp');
 
         // Switch to the model settings tab and capture it
         await webviewPage.getByRole('tab', { name: '模型设置' }).click();
         await expect(webviewPage.locator('#apiKey')).toBeVisible();
         await expect(webviewPage.locator('#fastModel')).toHaveValue('claude-haiku-4-20250514');
-        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-config-model.png' });
+        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-config-model.webp');
     });
 });

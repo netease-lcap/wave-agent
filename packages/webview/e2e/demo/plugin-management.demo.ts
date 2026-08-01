@@ -1,4 +1,5 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Plugin Management Screenshots', () => {
     test('capture plugin management features', async ({ webviewPage }) => {
@@ -76,7 +77,7 @@ test.describe('Plugin Management Screenshots', () => {
         await expect(webviewPage.getByText('Kubernetes Helper')).toBeVisible();
 
         // 截图：探索新插件列表页
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-plugin-explore-list.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-plugin-explore-list.webp');
 
         // 点击一个插件查看详情
         await webviewPage.getByText('Git Workflow').click();
@@ -89,7 +90,7 @@ test.describe('Plugin Management Screenshots', () => {
         await expect(webviewPage.getByText('仅为你在此仓库中安装 (local)')).toBeVisible();
 
         // 截图：插件详情页，显示安装作用域选择
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-plugin-explore.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-plugin-explore.webp');
 
         // 返回列表
         await webviewPage.getByText('返回列表').click();
@@ -106,7 +107,7 @@ test.describe('Plugin Management Screenshots', () => {
         await expect(webviewPage.locator('.uninstall-btn').first()).toBeVisible();
 
         // 截图：已激活插件标签页，显示更新和卸载按钮
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-plugin-installed.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-plugin-installed.webp');
 
         // 4. Marketplaces tab - 展示插件市场管理
         await webviewPage.getByText('插件市场', { exact: true }).click();
@@ -130,7 +131,7 @@ test.describe('Plugin Management Screenshots', () => {
         await expect(webviewPage.getByText('添加', { exact: true })).toBeVisible();
 
         // 截图：插件市场标签页，显示市场列表和管理功能
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-plugin-marketplaces.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-plugin-marketplaces.webp');
 
         // Close the dialog
         await webviewPage.keyboard.press('Escape');

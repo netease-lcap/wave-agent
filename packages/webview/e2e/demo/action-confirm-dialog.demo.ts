@@ -3,6 +3,7 @@ import { test as desktopTest } from '../utils/desktopTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { UIStateVerifier } from '../utils/uiStateVerifier.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 webviewTest.describe('Product Spec: Action Confirm Dialog (Rewind)', () => {
     webviewTest('should capture the rewind confirmation dialog', async ({ webviewPage }) => {
@@ -30,9 +31,7 @@ webviewTest.describe('Product Spec: Action Confirm Dialog (Rewind)', () => {
         await expect(overlay).toContainText('确定要回滚到此消息吗？');
         await expect(overlay).toContainText('这将删除之后的所有消息并撤销相关的文件更改。');
 
-        await webviewPage.screenshot({
-            path: '../../docs/public/screenshots/spec-confirm-rewind.png'
-        });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-confirm-rewind.webp');
     });
 });
 
@@ -81,8 +80,6 @@ desktopTest.describe('Product Spec: Action Confirm Dialog (Delete Session)', () 
         await expect(overlay).toContainText('确定删除会话「帮我修复登录页的样式问题」？');
         await expect(overlay).toContainText('worktree 目录与临时分支将一并删除');
 
-        await webviewPage.screenshot({
-            path: '../../docs/public/screenshots/desktop-confirm-delete.png'
-        });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-confirm-delete.webp');
     });
 });
