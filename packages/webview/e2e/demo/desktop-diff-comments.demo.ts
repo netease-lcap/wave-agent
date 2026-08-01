@@ -1,6 +1,7 @@
 import { test, expect } from '../utils/desktopTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 /**
  * Desktop workspace-diff pane + inline line-comment screenshots.
@@ -103,7 +104,7 @@ test.describe('Desktop Diff Pane Screenshots', () => {
         });
         await expect(webviewPage.getByText('LoginForm.tsx')).toBeVisible();
         await expect(webviewPage.getByText('useAuth.ts')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-diff-pane.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-diff-pane.webp');
 
         // ── 2. Click the "+" comment button on an added line ──────────
         // Line index 5 = `+  const handleSubmit = (e: React.FormEvent) => {`.
@@ -116,11 +117,11 @@ test.describe('Desktop Diff Pane Screenshots', () => {
             .click();
         await expect(webviewPage.getByTestId('diff-comment-box')).toBeVisible();
         await webviewPage.getByTestId('diff-comment-input').fill('表单提交前先做空值校验，空字段直接返回');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-diff-comment.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-diff-comment.webp');
 
         // ── 3. Submit appends the comment to the chat input ──────────
         await webviewPage.getByTestId('diff-comment-submit').click();
         await expect(webviewPage.getByTestId('message-input')).toContainText('表单提交前先做空值校验');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-diff-comment-input.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-diff-comment-input.webp');
     });
 });

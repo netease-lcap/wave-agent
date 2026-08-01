@@ -1,4 +1,5 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Plugin Search UI Demo', () => {
     test('should show search input and filter plugins by keyword', async ({ webviewPage }) => {
@@ -59,7 +60,7 @@ test.describe('Plugin Search UI Demo', () => {
         await expect(searchInput).toHaveAttribute('placeholder', '搜索插件...');
 
         // Screenshot of search input with all plugins
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugin-search-input.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/plugin-search-input.webp');
 
         // 4. Type "git" to filter
         await searchInput.fill('git');
@@ -70,13 +71,13 @@ test.describe('Plugin Search UI Demo', () => {
         await expect(webviewPage.locator('.plugin-name', { hasText: 'database-explorer' })).not.toBeVisible();
         await expect(webviewPage.locator('.plugin-name', { hasText: 'api-docs-generator' })).not.toBeVisible();
 
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugin-search-filtered.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/plugin-search-filtered.webp');
 
         // 5. Type a non-matching query
         await searchInput.fill('zzz-nonexistent');
         await expect(webviewPage.getByText('没有找到匹配的插件')).toBeVisible();
 
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/plugin-search-no-results.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/plugin-search-no-results.webp');
 
         // 6. Clear the search
         await searchInput.fill('');

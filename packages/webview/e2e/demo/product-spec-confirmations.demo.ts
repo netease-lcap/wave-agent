@@ -8,6 +8,7 @@ import {
     EXIT_PLAN_MODE_TOOL_NAME,
     type Message
 } from 'wave-agent-sdk';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Product Specification Screenshots - Confirmations', () => {
     test('capture confirmation features', async ({ webviewPage }) => {
@@ -77,7 +78,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         });
         
         await webviewPage.waitForSelector('.confirmation-dialog');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-ask-user.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-ask-user.webp');
         
         // 关闭确认对话框以便继续其他截图
         await webviewPage.keyboard.press('Escape');
@@ -121,7 +122,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await multiQuestionDialog.waitFor({ state: 'visible' });
         // 选中当前问题的一个选项，展示分页启用态
         await webviewPage.locator('.option-item').first().click();
-        await multiQuestionDialog.screenshot({ path: '../../docs/public/screenshots/spec-ask-user-multi.png' });
+        await elementScreenshotWebp(multiQuestionDialog, '../../docs/public/screenshots/spec-ask-user-multi.webp');
         await webviewPage.keyboard.press('Escape');
         await webviewPage.waitForSelector('.confirmation-dialog', { state: 'hidden' });
 
@@ -150,7 +151,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         // 勾选多个选项，展示多选态
         await webviewPage.locator('.option-item').nth(0).click();
         await webviewPage.locator('.option-item').nth(1).click();
-        await multiSelectDialog.screenshot({ path: '../../docs/public/screenshots/spec-ask-user-multiselect.png' });
+        await elementScreenshotWebp(multiSelectDialog, '../../docs/public/screenshots/spec-ask-user-multiselect.webp');
         await webviewPage.keyboard.press('Escape');
         await webviewPage.waitForSelector('.confirmation-dialog', { state: 'hidden' });
 
@@ -165,7 +166,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
             }
         });
         await webviewPage.waitForSelector('.configuration-dialog');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-configuration.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-configuration.webp');
         await webviewPage.keyboard.press('Escape');
         await webviewPage.waitForSelector('.configuration-dialog', { state: 'hidden' });
 
@@ -180,7 +181,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         await webviewPage.waitForSelector('.permission-mode-select');
         await expect(webviewPage.locator('.permission-mode-select')).toHaveClass(/mode-default/);
         await permissionModeSelect.focus();
-        await inputContainer.screenshot({ path: '../../docs/public/screenshots/spec-permission-mode-default.png' });
+        await elementScreenshotWebp(inputContainer, '../../docs/public/screenshots/spec-permission-mode-default.webp');
 
         // Mode 2: Accept Edits (自动接受修改)
         await injector.simulateExtensionMessage('updatePermissionMode', {
@@ -188,7 +189,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         });
         await expect(webviewPage.locator('.permission-mode-select')).toHaveClass(/mode-acceptEdits/);
         await permissionModeSelect.focus();
-        await inputContainer.screenshot({ path: '../../docs/public/screenshots/spec-permission-mode-accept.png' });
+        await elementScreenshotWebp(inputContainer, '../../docs/public/screenshots/spec-permission-mode-accept.webp');
 
         // Mode 3: Plan Mode (计划模式)
         await injector.simulateExtensionMessage('updatePermissionMode', {
@@ -196,7 +197,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         });
         await expect(webviewPage.locator('.permission-mode-select')).toHaveClass(/mode-plan/);
         await permissionModeSelect.focus();
-        await inputContainer.screenshot({ path: '../../docs/public/screenshots/spec-permission-mode-plan.png' });
+        await elementScreenshotWebp(inputContainer, '../../docs/public/screenshots/spec-permission-mode-plan.webp');
 
         // Reset to default for remaining screenshots
         await injector.simulateExtensionMessage('updatePermissionMode', {
@@ -228,7 +229,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         });
         const planConfirmDialog = webviewPage.locator('.confirmation-dialog');
         await planConfirmDialog.waitFor({ state: 'visible' });
-        await planConfirmDialog.screenshot({ path: '../../docs/public/screenshots/spec-plan-confirm.png' });
+        await elementScreenshotWebp(planConfirmDialog, '../../docs/public/screenshots/spec-plan-confirm.webp');
 
         // 关闭当前确认对话框
         await webviewPage.keyboard.press('Escape');
@@ -244,7 +245,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         });
         const enterPlanDialog = webviewPage.locator('.confirmation-dialog');
         await enterPlanDialog.waitFor({ state: 'visible' });
-        await enterPlanDialog.screenshot({ path: '../../docs/public/screenshots/spec-enter-plan-mode.png' });
+        await elementScreenshotWebp(enterPlanDialog, '../../docs/public/screenshots/spec-enter-plan-mode.webp');
 
         // 关闭当前确认对话框
         await webviewPage.keyboard.press('Escape');
@@ -263,7 +264,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         });
         const editConfirmDialog = webviewPage.locator('.confirmation-dialog');
         await editConfirmDialog.waitFor({ state: 'visible' });
-        await editConfirmDialog.screenshot({ path: '../../docs/public/screenshots/spec-edit-confirm.png' });
+        await elementScreenshotWebp(editConfirmDialog, '../../docs/public/screenshots/spec-edit-confirm.webp');
 
         // 关闭当前确认对话框
         await webviewPage.keyboard.press('Escape');
@@ -283,7 +284,7 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         });
         const mcpConfirmDialog = webviewPage.locator('.confirmation-dialog');
         await mcpConfirmDialog.waitFor({ state: 'visible' });
-        await mcpConfirmDialog.screenshot({ path: '../../docs/public/screenshots/spec-mcp-tool-confirm.png' });
+        await elementScreenshotWebp(mcpConfirmDialog, '../../docs/public/screenshots/spec-mcp-tool-confirm.webp');
 
         // 关闭当前确认对话框
         await webviewPage.keyboard.press('Escape');
@@ -301,6 +302,6 @@ test.describe('Product Specification Screenshots - Confirmations', () => {
         });
         const bashConfirmDialog = webviewPage.locator('.confirmation-dialog');
         await bashConfirmDialog.waitFor({ state: 'visible' });
-        await bashConfirmDialog.screenshot({ path: '../../docs/public/screenshots/spec-bash-confirm.png' });
+        await elementScreenshotWebp(bashConfirmDialog, '../../docs/public/screenshots/spec-bash-confirm.webp');
     });
 });

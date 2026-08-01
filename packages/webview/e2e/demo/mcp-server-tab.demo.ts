@@ -1,4 +1,5 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('MCP Server Dialog Demo', () => {
     test('should show MCP server dialog with configured servers', async ({ webviewPage }) => {
@@ -84,7 +85,7 @@ test.describe('MCP Server Dialog Demo', () => {
         // Verify disconnect button for connected server
         await expect(webviewPage.getByRole('button', { name: '断开' }).first()).toBeVisible();
 
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-mcp-server-tab.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-mcp-server-tab.webp');
     });
 
     test('should show empty state when no MCP servers configured', async ({ webviewPage }) => {
@@ -108,7 +109,7 @@ test.describe('MCP Server Dialog Demo', () => {
         await expect(webviewPage.getByText('未配置 MCP 服务器')).toBeVisible();
         await expect(webviewPage.locator('code', { hasText: '.mcp.json' })).toBeVisible();
 
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-mcp-server-empty.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-mcp-server-empty.webp');
     });
 
     test('should handle connect/disconnect actions', async ({ webviewPage }) => {

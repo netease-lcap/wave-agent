@@ -2,6 +2,7 @@ import { test, expect } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { UIStateVerifier } from '../utils/uiStateVerifier.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Product Specification Screenshots - UI Basic', () => {
     test('capture basic UI features', async ({ webviewPage }) => {
@@ -28,7 +29,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
 
         // 1. Welcome View (logged-in empty state)
         await expect(webviewPage.getByText('Hi~ 欢迎使用 Wave 代码智聊')).toBeVisible();
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-welcome.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-welcome.webp');
 
         // 1.1 Welcome View (unauthenticated state — with login button)
         await injector.simulateExtensionMessage('setInitialState', {
@@ -70,7 +71,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         // Button is horizontally centered within the container
         expect(Math.abs(geometry!.btnCenterDelta)).toBeLessThan(5);
 
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-welcome-login.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-welcome-login.webp');
 
         // Restore logged-in state for subsequent steps
         await injector.simulateExtensionMessage('setInitialState', {
@@ -99,7 +100,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
             }
         });
         await webviewPage.waitForSelector('.context-tag-container[data-is-selection="true"]');
-        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-selection-inline-tag.png' });
+        await elementScreenshotWebp(webviewPage.locator('.input-container'), '../../docs/public/screenshots/spec-selection-inline-tag.webp');
         
         // Clear input for next steps
         await webviewPage.focus('[data-testid="message-input"]');
@@ -108,14 +109,14 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
 
         // 1.4 Input box states (设计稿 2237-5088): 空态 placeholder / 聚焦态红框 / 多行
         await webviewPage.locator('body').click({ position: { x: 5, y: 5 } });
-        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-input-empty.png' });
+        await elementScreenshotWebp(webviewPage.locator('.input-container'), '../../docs/public/screenshots/spec-input-empty.webp');
 
         await webviewPage.focus('[data-testid="message-input"]');
         await webviewPage.keyboard.type('帮我检查当前文件中的权限处理逻辑');
-        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-input-focus.png' });
+        await elementScreenshotWebp(webviewPage.locator('.input-container'), '../../docs/public/screenshots/spec-input-focus.webp');
 
         await webviewPage.keyboard.type('，找出可能遗漏的边界情况，并给出修改建议。同时保留现有接口行为，不要改动公共类型。请帮我检查当前文件中的权限处理逻辑，找出可能遗漏的边界情况，并给出修改建议。');
-        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-input-multiline.png' });
+        await elementScreenshotWebp(webviewPage.locator('.input-container'), '../../docs/public/screenshots/spec-input-multiline.webp');
 
         // Clear input again for next steps
         await webviewPage.focus('[data-testid="message-input"]');
@@ -130,7 +131,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         await injector.updateMessages(basicChat);
         await injector.endStreaming();
         await ui.verifyMessageCount(2); // user + assistant
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-basic-chat.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-basic-chat.webp');
 
         // 3. Slash Commands
         await injector.updateMessages([]);
@@ -163,7 +164,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         });
 
         await webviewPage.waitForSelector('.slash-command-item', { state: 'visible', timeout: 5000 });
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-slash-commands.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-slash-commands.webp');
         await webviewPage.keyboard.press('Escape');
 
         // 4. File Suggestions (@)
@@ -198,7 +199,7 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         });
 
         await webviewPage.waitForSelector('.suggestion-item', { state: 'visible', timeout: 5000 });
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-file-suggestions.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-file-suggestions.webp');
         await webviewPage.keyboard.press('Escape');
         await webviewPage.keyboard.press('Control+A');
         await webviewPage.keyboard.press('Backspace');
@@ -211,12 +212,12 @@ test.describe('Product Specification Screenshots - UI Basic', () => {
         await injector.updateMessages(mermaidChat);
         await injector.endStreaming();
         await webviewPage.waitForSelector('.mermaid-container svg');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-mermaid.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-mermaid.webp');
 
         // 23. Mermaid Fullscreen
         await webviewPage.click('.mermaid-container'); // Click to open fullscreen
         await webviewPage.waitForSelector('.mermaid-fullscreen-modal');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-mermaid-fullscreen.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-mermaid-fullscreen.webp');
         await webviewPage.keyboard.press('Escape');
     });
 });

@@ -1,6 +1,7 @@
 import { test, expect } from '../utils/desktopTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { MockDataGenerator } from '../fixtures/mockData.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 const WORKDIR = '/Users/dev/projects/wave-agent';
 
@@ -80,6 +81,6 @@ test.describe('Desktop message column width', () => {
         expect(geom.columnAlignsInput).toBeTruthy();
         expect(geom.gutterBg).toBe(geom.msgBg);
 
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/desktop-chat-centered.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/desktop-chat-centered.webp');
     });
 });

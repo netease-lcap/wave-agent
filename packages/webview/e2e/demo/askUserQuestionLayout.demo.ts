@@ -1,6 +1,7 @@
 import { test } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { ASK_USER_QUESTION_TOOL_NAME, Message } from 'wave-agent-sdk';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('AskUserQuestion Layout Demo', () => {
   test('capture vertical layout screenshot', async ({ webviewPage }) => {
@@ -54,6 +55,6 @@ test.describe('AskUserQuestion Layout Demo', () => {
     await webviewPage.waitForSelector('.ask-user-result-item');
 
     // Take screenshot
-    await webviewPage.screenshot({ path: '../../docs/public/screenshots/ask-user-question-vertical.png' });
+    await screenshotWebp(webviewPage, '../../docs/public/screenshots/ask-user-question-vertical.webp');
   });
 });

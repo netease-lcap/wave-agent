@@ -1,4 +1,5 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Status Dialog Demo', () => {
     test('should show status dialog with all info fields', async ({ webviewPage }) => {
@@ -56,7 +57,7 @@ test.describe('Status Dialog Demo', () => {
 
         // Take screenshot
         const dialog = webviewPage.getByTestId('status-dialog');
-        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-status-dialog.png' });
+        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-status-dialog.webp');
     });
 
     test('should show status dialog with unauthenticated state', async ({ webviewPage }) => {
@@ -90,6 +91,6 @@ test.describe('Status Dialog Demo', () => {
         await expect(webviewPage.getByTestId('status-dialog')).toBeVisible();
 
         const dialog = webviewPage.getByTestId('status-dialog');
-        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-status-dialog-noauth.png' });
+        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-status-dialog-noauth.webp');
     });
 });

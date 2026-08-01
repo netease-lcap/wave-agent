@@ -1,4 +1,5 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Workflow Manager Demo', () => {
     test('should show workflow run list and detail', async ({ webviewPage }) => {
@@ -81,13 +82,13 @@ test.describe('Workflow Manager Demo', () => {
 
         // Screenshot the list view
         const dialog = webviewPage.getByTestId('workflow-manager');
-        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-workflow-list.png' });
+        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-workflow-list.webp');
 
         // 3. Click the running run to enter detail view
         await dialog.getByText('[run-abc1]').click();
         await expect(webviewPage.getByText('Phases:')).toBeVisible();
 
         // Screenshot the detail view
-        await dialog.screenshot({ path: '../../docs/public/screenshots/spec-workflow-detail.png' });
+        await elementScreenshotWebp(dialog, '../../docs/public/screenshots/spec-workflow-detail.webp');
     });
 });

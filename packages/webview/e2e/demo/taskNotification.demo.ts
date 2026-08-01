@@ -1,6 +1,7 @@
 import { test } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import type { Message } from 'wave-agent-sdk';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Task Notification Demo', () => {
   test('capture task notification screenshots', async ({ webviewPage }) => {
@@ -81,6 +82,6 @@ test.describe('Task Notification Demo', () => {
     await webviewPage.waitForSelector('.task-notification-block');
 
     // Take screenshot
-    await webviewPage.screenshot({ path: '../../docs/public/screenshots/task-notification.png' });
+    await screenshotWebp(webviewPage, '../../docs/public/screenshots/task-notification.webp');
   });
 });

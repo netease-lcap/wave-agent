@@ -8,6 +8,7 @@ import {
     type Message,
     type SessionMetadata
 } from 'wave-agent-sdk';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Product Specification Screenshots - Rich Content', () => {
     test('capture rich content features', async ({ webviewPage }) => {
@@ -108,13 +109,13 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
             return document.querySelectorAll('.context-tag').length >= 3;
         }, { timeout: 5000 });
         
-        await webviewPage.locator('.input-container').screenshot({ path: '../../docs/public/screenshots/spec-inline-mentions.png' });
+        await elementScreenshotWebp(webviewPage.locator('.input-container'), '../../docs/public/screenshots/spec-inline-mentions.webp');
 
         // 13d. Image Preview Modal
         const imageTag = webviewPage.locator('.context-tag.is-image');
         await imageTag.click();
         await webviewPage.waitForSelector('.image-preview-modal', { state: 'visible' });
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-image-preview.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-image-preview.webp');
         
         // Close modal
         await webviewPage.click('.image-preview-close');
@@ -134,7 +135,7 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
                 ]
             }
         ]);
-        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-message-inline-tags.png' });
+        await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-message-inline-tags.webp');
 
         // 14. Session Selector - 使用 SDK 的 SessionMetadata 类型
         const now = Date.now();
@@ -174,7 +175,7 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
         await webviewPage.getByTestId('history-btn').click();
         await webviewPage.waitForSelector('[data-testid="session-list-popup"]');
 
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-sessions.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-sessions.webp');
 
         // 关闭历史对话弹窗
         await webviewPage.keyboard.press('Escape');
@@ -192,7 +193,7 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
             MockDataGenerator.createAssistantMessage('这是一个支付确认页面的设计稿。我可以识别出以下元素：\n\n1. **顶部导航栏** - 包含返回按钮和标题\n2. **金额展示区** - 大号字体显示支付金额\n3. **支付方式选择** - 支持银行卡和电子钱包\n4. **底部确认按钮** - 固定在底部\n\n我将基于这些元素生成对应的 React 组件...')
         ];
         await injector.updateMessages(visionMessages as unknown as Message[]);
-        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-vision.png' });
+        await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-vision.webp');
 
         // 27. Reasoning
         await injector.simulateExtensionMessage('setInitialState', {
@@ -234,6 +235,6 @@ test.describe('Product Specification Screenshots - Rich Content', () => {
             // rotate(90deg) 对应矩阵 matrix(0, 1, -1, 0, 0, 0)
             return t === 'matrix(0, 1, -1, 0, 0, 0)';
         });
-        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-reasoning.png' });
+        await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-reasoning.webp');
     });
 });

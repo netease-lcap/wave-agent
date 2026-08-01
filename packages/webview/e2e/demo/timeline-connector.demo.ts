@@ -1,6 +1,7 @@
 import { test, expect } from '../utils/webviewTestHarness.js';
 import { MessageInjector } from '../utils/messageInjector.js';
 import { Message } from 'wave-agent-sdk';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 /**
  * Timeline connector geometry (设计稿: assistant 时间线竖线跨消息贯穿).

@@ -11,6 +11,7 @@ import {
     AGENT_TOOL_NAME,
     type Message
 } from 'wave-agent-sdk';
+import { screenshotWebp, elementScreenshotWebp } from '../utils/screenshot.js';
 
 test.describe('Product Specification Screenshots - Tools', () => {
     test('capture tool features', async ({ webviewPage }) => {
@@ -57,7 +58,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         const diffUserMessage = MockDataGenerator.createUserMessage('把 PaymentService 里的 SQL 查询改成参数化写法，防止注入', 'msg_user_diff');
         await injector.updateMessages([diffUserMessage, diffMessage]);
         await webviewPage.waitForSelector('.tool-container');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-diff-viewer.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-diff-viewer.webp');
 
         // 7. Task List — pinned above the input area, driven by updateTasks
         const taskTasks = [
@@ -69,7 +70,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         await injector.updateMessages([taskUserMessage]);
         await injector.simulateExtensionMessage('updateTasks', { tasks: taskTasks, isTaskListCollapsed: false });
         await webviewPage.waitForSelector('.task-list-inline');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-task-list.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-task-list.webp');
 
         // 7.1 Task List Collapsed
         await injector.simulateExtensionMessage('updateTasks', { tasks: taskTasks, isTaskListCollapsed: true });
@@ -77,7 +78,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
             const el = document.querySelector('.task-list-chevron');
             return el && !el.classList.contains('expanded');
         });
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-task-list-collapsed.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-task-list-collapsed.webp');
 
         // 8. Subagent Display (Task Explore)
         const subagentMessage: Message = {
@@ -99,7 +100,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         await injector.updateMessages([subagentUserMessage, subagentMessage]);
         
         await webviewPage.waitForSelector('.tool-container');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-subagent.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-subagent.webp');
 
         // 9. Bash Tool - 使用 MockDataGenerator
         const bashMessage: Message = {
@@ -120,7 +121,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         const bashUserMessage = MockDataGenerator.createUserMessage('跑一下测试套件，顺便生成覆盖率报告', 'msg_user_bash');
         await injector.updateMessages([bashUserMessage, bashMessage]);
         await webviewPage.waitForSelector('.bash-command-unified');
-        await webviewPage.screenshot({ path: '../../docs/public/screenshots/spec-bash.png' });
+        await screenshotWebp(webviewPage, '../../docs/public/screenshots/spec-bash.webp');
 
         // 19. Exploration Tools
         const explorationMessages: Message[] = [
@@ -170,7 +171,7 @@ test.describe('Product Specification Screenshots - Tools', () => {
         const explorationUserMessage = MockDataGenerator.createUserMessage('梳理一下 src/services 下的支付服务代码结构和接口定义', 'msg_user_exploration');
         await injector.updateMessages([explorationUserMessage, ...explorationMessages] as unknown as Message[]);
         await webviewPage.waitForSelector('.tool-container');
-        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-exploration.png' });
+        await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-exploration.webp');
 
         // 21. File Operation Tools
         const fileOpMessages: Message[] = [
@@ -221,7 +222,7 @@ export const withOptimisticLock = async <T>(
         const fileOpUserMessage = MockDataGenerator.createUserMessage('新建一个乐观锁中间件，并给 processPayment 补上类型签名', 'msg_user_file_ops');
         await injector.updateMessages([fileOpUserMessage, ...fileOpMessages]);
         await webviewPage.waitForSelector('.write-preview-box');
-        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-file-ops.png' });
+        await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-file-ops.webp');
 
         // 24. LSP
         await injector.simulateExtensionMessage('setInitialState', {
@@ -267,7 +268,7 @@ export const withOptimisticLock = async <T>(
                 }
             ]
         });
-        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-lsp.png' });
+        await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-lsp.webp');
 
         // 25. Skill
         await injector.simulateExtensionMessage('setInitialState', {
@@ -290,7 +291,7 @@ export const withOptimisticLock = async <T>(
                 }
             ]
         });
-        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-skill.png' });
+        await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-skill.webp');
 
         // 26. MCP
         await injector.simulateExtensionMessage('setInitialState', {
@@ -304,7 +305,7 @@ export const withOptimisticLock = async <T>(
                 )
             ]
         });
-        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-mcp.png' });
+        await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-mcp.webp');
 
         // 27. Sticky user message (吸顶) — pin the most recent user message scrolled above the viewport top
         await injector.simulateExtensionMessage('setInitialState', {
@@ -341,6 +342,6 @@ export const withOptimisticLock = async <T>(
             el.scrollTop = el.scrollHeight;
         });
         await webviewPage.waitForSelector('[data-testid="sticky-user-message"]');
-        await webviewPage.locator('.messages-container').screenshot({ path: '../../docs/public/screenshots/spec-sticky-user-message.png' });
+        await elementScreenshotWebp(webviewPage.locator('.messages-container'), '../../docs/public/screenshots/spec-sticky-user-message.webp');
     });
 });
