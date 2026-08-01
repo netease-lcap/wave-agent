@@ -9,6 +9,7 @@ import {
   createWorktree,
   validateWorktreeName,
   generateWorktreeName,
+  performPostCreationSetup,
 } from "../utils/worktreeUtils.js";
 import { getGitMainRepoRoot } from "../utils/gitUtils.js";
 import { ENTER_WORKTREE_TOOL_NAME } from "../constants/tools.js";
@@ -104,6 +105,20 @@ export const enterWorktreeTool: ToolPlugin = {
     // Create the worktree (captures originalHeadCommit internally)
     const baseRef = context.aiManager?.getWorktreeBaseRef?.();
     const worktreeInfo = createWorktree(name, mainRepoRoot, { baseRef });
+
+    // Copy local settings (.wave/settings.local.json) and gitignored project
+    // files (.worktreeinclude, e.g. .env/.mcp.json) into a new worktree —
+    // mirrors the CLI createWorktree path. Best-effort, never fails the tool.
+    if (worktreeInfo.isNew) {
+      try {
+        await performPostCreationSetup(
+          worktreeInfo.path,
+          worktreeInfo.repoRoot,
+        );
+      } catch (error) {
+        logger?.warn("Worktree post-creation setup failed:", error);
+      }
+    }
 
     // Build session state
     const session: WorktreeSession = {

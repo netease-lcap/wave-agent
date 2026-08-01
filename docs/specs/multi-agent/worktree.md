@@ -91,7 +91,7 @@ order: 90
 
 **为什么是这个优先级**：匹配 Claude Code 的 EnterWorktree 工具行为并支持 AI 驱动的工作流。
 
-**独立测试**：在任何目录中启动 Wave 会话，要求 AI"create a worktree"，验证 worktree 被创建且会话的工作目录切换到新的 worktree。
+**独立测试**：在任何目录中启动 Wave 会话，要求 AI"create a worktree"，验证 worktree 被创建、会话的工作目录切换到新的 worktree，且主仓库中的 `.wave/settings.local.json` 与 `.worktreeinclude` 列出的文件被复制到新 worktree。
 
 **验收场景**：
 
@@ -101,6 +101,9 @@ order: 90
 4. **假设**未提供名称，**当** EnterWorktree 被调用时，**则**生成随机名称（例如 `swift-fox-123`）。
 5. **假设**我已经在 worktree 会话中，**当** AI 调用 EnterWorktree 时，**则**工具失败并显示错误，指示我已在 worktree 会话中。
 6. **假设**我不在 git 仓库中，**当** AI 调用 EnterWorktree 时，**则**工具失败并显示错误，指示没有可用的 git 仓库。
+7. **假设**主仓库存在 `.wave/settings.local.json`，**当** EnterWorktree 创建新 worktree 时，**则** `.wave/settings.local.json` 被复制到新 worktree（与 CLI `-w` 路径行为一致）。
+8. **假设**主仓库存在 `.worktreeinclude` 文件且列出了被 gitignore 的项目文件（如 `.env`、`.mcp.json`），**当** EnterWorktree 创建新 worktree 时，**则**这些文件被复制到新 worktree。
+9. **假设**复用了已存在的 worktree 目录，**当** EnterWorktree 执行时，**则**不执行上述文件复制（避免覆盖既有 worktree 中的本地状态）。
 
 ---
 
