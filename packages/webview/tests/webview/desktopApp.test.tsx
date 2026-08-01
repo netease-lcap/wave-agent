@@ -81,13 +81,13 @@ describe('DesktopApp', () => {
         expect(items[0].querySelector('.desktop-workdir-menu-parent')).toHaveTextContent('/home/user');
 
         fireEvent.click(items[0]);
-        expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopSelectRecentWorkdir', path: '/home/user/project-a' });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopSelectRecentWorkdir', path: '/home/user/project-a', host: 'local' });
 
         // Selecting closed the menu — reopen to remove the other entry
         fireEvent.click(screen.getByTestId('desktop-workdir'));
         const removeBtns = screen.getAllByTestId('desktop-workdir-recent-remove');
         fireEvent.click(removeBtns[1]);
-        expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopRemoveRecentWorkdir', path: '/home/user/project-b' });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopRemoveRecentWorkdir', path: '/home/user/project-b', host: 'local' });
         // Remove click must not trigger selection
         expect(vscode.postMessage).not.toHaveBeenCalledWith({ command: 'desktopSelectRecentWorkdir', path: '/home/user/project-b' });
     });
@@ -242,15 +242,17 @@ describe('DesktopApp', () => {
         });
 
         const groupHeader = (workdir: string) =>
-            screen.getByTestId(`desktop-session-group-${workdir}`).querySelector('.desktop-session-group-header') as HTMLElement;
+            screen
+                .getByTestId(`desktop-session-group-local:${workdir}`)
+                .querySelector('.desktop-session-group-header') as HTMLElement;
 
         it('renders one group per recent directory, all groups expanded by default', () => {
             renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a', '/work/b'] });
             sendCommand('desktopSessionTree', {
                 groups: [
-                    { workdir: '/work/a', sessions: [session('s1', 'hello a')] },
-                    { workdir: '/work/b', sessions: [session('s2', 'hello b')] },
+                    { host: 'local', workdir: '/work/a', sessions: [session('s1', 'hello a')] },
+                    { host: 'local', workdir: '/work/b', sessions: [session('s2', 'hello b')] },
                 ],
             });
 
@@ -258,8 +260,8 @@ describe('DesktopApp', () => {
             expect(screen.getByTestId('desktop-session-item-s1')).toBeInTheDocument();
             expect(screen.getByTestId('desktop-session-item-s2')).toBeInTheDocument();
             // Group headers show directory basenames
-            expect(screen.getByTestId('desktop-session-group-/work/a')).toHaveTextContent('a');
-            expect(screen.getByTestId('desktop-session-group-/work/b')).toHaveTextContent('b');
+            expect(screen.getByTestId('desktop-session-group-local:/work/a')).toHaveTextContent('a');
+            expect(screen.getByTestId('desktop-session-group-local:/work/b')).toHaveTextContent('b');
         });
 
         it('renders a worktree session under its repo root group', () => {
@@ -268,7 +270,7 @@ describe('DesktopApp', () => {
             // but the session groups under its repo root (FR-020/FR-023).
             sendCommand('desktopWorkdirState', { workdir: '/work/a/.wave/worktrees/gentle-pike-147', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
-                groups: [{ workdir: '/work/a', sessions: [session('s1', 'worktree chat')] }],
+                groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1', 'worktree chat')] }],
             });
             sendCommand('updateCurrentSession', { session: { id: 's1', sessionType: 'main', workdir: '/work/a/.wave/worktrees/gentle-pike-147', createdAt: '2026-07-20T00:00:00.000Z', lastActiveAt: '2026-07-21T00:00:00.000Z', latestTotalTokens: 0, firstMessage: 'worktree chat' } });
 
@@ -280,8 +282,8 @@ describe('DesktopApp', () => {
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a', '/work/b'] });
             sendCommand('desktopSessionTree', {
                 groups: [
-                    { workdir: '/work/a', sessions: [session('s1', 'hello a')] },
-                    { workdir: '/work/b', sessions: [session('s2', 'hello b')] },
+                    { host: 'local', workdir: '/work/a', sessions: [session('s1', 'hello a')] },
+                    { host: 'local', workdir: '/work/b', sessions: [session('s2', 'hello b')] },
                 ],
             });
 
@@ -302,7 +304,7 @@ describe('DesktopApp', () => {
             const { vscode } = renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
-                groups: [{ workdir: '/work/a', sessions: [session('s1', 'hello a')] }],
+                groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1', 'hello a')] }],
             });
             vscode.postMessage.mockClear();
 
@@ -319,7 +321,7 @@ describe('DesktopApp', () => {
             renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
-                groups: [{ workdir: '/work/a', sessions: [session('s1', 'hello a'), session('s2', 'hello again')] }],
+                groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1', 'hello a'), session('s2', 'hello again')] }],
             });
             sendCommand('updateCurrentSession', { session: { id: 's1', sessionType: 'main', workdir: '/work/a', createdAt: '2026-07-20T00:00:00.000Z', lastActiveAt: '2026-07-21T00:00:00.000Z', latestTotalTokens: 0, firstMessage: 'hello a' } });
             sendCommand('startStreaming', {});
@@ -337,6 +339,7 @@ describe('DesktopApp', () => {
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
                 groups: [{
+                    host: 'local',
                     workdir: '/work/a',
                     sessions: [
                         { ...session('s1', 'waiting one'), waitingConfirmation: true, running: true },
@@ -362,16 +365,16 @@ describe('DesktopApp', () => {
         it('shows 无会话 for an expanded empty group', () => {
             renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
-            sendCommand('desktopSessionTree', { groups: [{ workdir: '/work/a', sessions: [] }] });
+            sendCommand('desktopSessionTree', { groups: [{ host: 'local', workdir: '/work/a', sessions: [] }] });
 
-            expect(screen.getByTestId('desktop-session-group-/work/a')).toHaveTextContent('无会话');
+            expect(screen.getByTestId('desktop-session-group-local:/work/a')).toHaveTextContent('无会话');
         });
 
         it('posts desktopDeleteSession after the user confirms', () => {
             const { vscode } = renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
-                groups: [{ workdir: '/work/a', sessions: [session('s1', 'hello a')] }],
+                groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1', 'hello a')] }],
             });
             vscode.postMessage.mockClear();
 
@@ -396,7 +399,7 @@ describe('DesktopApp', () => {
             const { vscode } = renderDesktopApp();
             sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
             sendCommand('desktopSessionTree', {
-                groups: [{ workdir: '/work/a', sessions: [session('s1', 'hello a')] }],
+                groups: [{ host: 'local', workdir: '/work/a', sessions: [session('s1', 'hello a')] }],
             });
             vscode.postMessage.mockClear();
 
@@ -415,6 +418,7 @@ describe('DesktopApp', () => {
             sendCommand('desktopSessionTree', {
                 groups: [
                     {
+                        host: 'local',
                         workdir: '/work/a',
                         sessions: [
                             { sessionId: 'wt', title: 'wt session', lastActiveAt: Date.now(), hasWorktree: true },

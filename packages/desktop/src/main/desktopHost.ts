@@ -42,6 +42,8 @@ import {
   getCliVersion,
 } from './stdio/binaryResolver';
 import { ConfigStore, type DesktopConfigData, type SessionIndexEntry } from './configStore';
+import { LOCAL_HOST, parseSshConfigHosts, addSshHost, buildSshSpawnArgs } from './sshHosts';
+import { resolveRemoteWaveBinary, remotePathExists } from './remoteCli';
 import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
 import { checkForUpdate } from './updateChecker';
@@ -102,11 +104,24 @@ export class DesktopHost {
   private initPromise: Promise<void> | null = null;
   private cliVersion: string | null = null;
 
-  // agent pool (multi-session parallel): sessionId → live StdioAgent. No
-  // capacity limit — agents live until their session is deleted or the app
+  // Remote (ssh) host infrastructure: host name → its own shared stdio
+  // client. Each remote host runs its own `wave --stdio` over ssh, so sessions
+  // on different hosts never share a process (spec scenario 9).
+  private remoteHosts = new Map<
+    string,
+    { client: StdioClient | null; router: NotificationRouter | null; initPromise: Promise<void> }
+  >();
+
+  // agent pool (multi-session parallel): `${host}\u0000${sessionId}` → live
+  // StdioAgent (composite key keeps sessions from different hosts distinct).
+  // No capacity limit — agents live until their session is deleted or the app
   // exits. Panes bind agents for display; unbound agents keep streaming in
   // background.
   private agents = new Map<string, StdioAgent>();
+  /** Side table: agent → host (local or an ssh config host name). */
+  private agentHosts = new Map<StdioAgent, string>();
+  /** Pending host selected in each pane's new-session workdir picker. */
+  private hostState = new Map<string, string>();
   // Split panes, ordered left→right. Each pane binds at most one agent (none
   // in the new-session state); the focused pane receives sidebar clicks and
   // the 新对话 action. Always at least one pane.
@@ -126,7 +141,7 @@ export class DesktopHost {
   // isCommandRunning/sessionId are derived from the pane's bound agent (its
   // StdioAgent cache); only fields the agent does not cache live here.
   private workflowRuns = new Map<string, SerializableWorkflowRun[]>(); // keyed by paneId
-  private sessionTree: Array<{ workdir: string; sessions: Array<{ sessionId: string; title: string; lastActiveAt: number; hasWorktree: boolean; running: boolean }> }> = [];
+  private sessionTree: Array<{ host: string; workdir: string; sessions: Array<{ sessionId: string; title: string; lastActiveAt: number; hasWorktree: boolean; running: boolean }> }> = [];
   private pendingConfirmations = new Map<string, PendingConfirmation>();
 
   // Throttling state, per pane so concurrently streaming panes update
@@ -162,6 +177,34 @@ export class DesktopHost {
   /** Pane currently showing the given agent, if any. */
   private paneIdForAgent(agent: StdioAgent): string | undefined {
     return this.panes.find((p) => p.agent === agent)?.paneId;
+  }
+
+  /** Composite agent registry key — keeps hosts' sessionId namespaces apart. */
+  private agentKey(host: string, sessionId: string): string {
+    return `${host}\u0000${sessionId}`;
+  }
+
+  /** Host an agent runs on (local or an ssh config host name). */
+  private hostForAgent(agent: StdioAgent | null): string {
+    if (!agent) return LOCAL_HOST;
+    return this.agentHosts.get(agent) ?? LOCAL_HOST;
+  }
+
+  /** Host in effect for a pane: its bound agent's host, else its pending picker host. */
+  private hostForPane(paneId?: string): string {
+    const agent = this.agentForPane(paneId);
+    if (agent) return this.hostForAgent(agent);
+    return this.hostState.get(paneId ?? this.focusedPaneId) ?? LOCAL_HOST;
+  }
+
+  /**
+   * Host in effect for the whole host selector: the focused pane's agent host
+   * (a live session pins the picker to its host), else the focused pane's
+   * pending picker host. Defaults to 本地.
+   */
+  private get currentHost(): string {
+    if (this.activeAgent) return this.hostForAgent(this.activeAgent);
+    return this.hostState.get(this.focusedPaneId) ?? LOCAL_HOST;
   }
 
   private throttleFor(paneId: string): PaneThrottle {
@@ -253,8 +296,14 @@ export class DesktopHost {
     this.paneThrottles.clear();
     await Promise.allSettled([...this.agents.values()].map((agent) => agent.destroy()));
     this.agents.clear();
+    this.agentHosts.clear();
     this.panes = [{ paneId: 'pane-1', agent: null }];
     this.focusedPaneId = 'pane-1';
+    this.hostState.clear();
+    for (const { client } of this.remoteHosts.values()) {
+      client?.dispose();
+    }
+    this.remoteHosts.clear();
     this.client?.dispose();
     this.client = null;
     this.router = null;
@@ -305,10 +354,13 @@ export class DesktopHost {
   }
 
   private sendWorkdirState(): void {
+    const host = this.currentHost;
     this.postMessage({
       command: 'desktopWorkdirState',
       workdir: this.workdir,
-      recentWorkdirs: this.configStore.getRecentWorkdirs(),
+      host,
+      hosts: parseSshConfigHosts(),
+      recentWorkdirs: this.configStore.getRecentWorkdirsForHost(host),
     });
   }
 
@@ -352,9 +404,63 @@ export class DesktopHost {
     return this.initPromise;
   }
 
-  private get utilityClient(): StdioClient {
-    if (!this.client) throw new Error('StdioClient not initialized');
-    return this.client;
+  /** Ensure the shared stdio client for a host exists (local or remote). */
+  private ensureClientFor(host: string): Promise<void> {
+    if (host === LOCAL_HOST) return this.ensureClient();
+    return this.ensureRemoteHostClient(host);
+  }
+
+  /**
+   * Spawn a remote `wave --stdio` over ssh. Resolves the remote binary first
+   * (probing `node -v` / `command -v wave`, auto-installing via npmmirror when
+   * missing), then spawns `ssh <host> <wave> --stdio` as the host's shared
+   * client. Failed init deletes the entry so a later attempt can retry.
+   */
+  private ensureRemoteHostClient(host: string): Promise<void> {
+    const existing = this.remoteHosts.get(host);
+    if (existing) return existing.initPromise;
+
+    const entry: { client: StdioClient | null; router: NotificationRouter | null; initPromise: Promise<void> } = {
+      client: null,
+      router: null,
+      initPromise: Promise.resolve(),
+    };
+    this.remoteHosts.set(host, entry);
+
+    entry.initPromise = (async () => {
+      const { binaryPath } = await resolveRemoteWaveBinary(host);
+      const client = new StdioClient('ssh', buildSshSpawnArgs(host, `${binaryPath} --stdio`));
+      const router = new NotificationRouter(client);
+      router.registerGlobal('authUrl', (params) => {
+        const p = params as { url?: string };
+        if (p?.url) void shell.openExternal(p.url);
+      });
+      router.attach();
+      entry.client = client;
+      entry.router = router;
+    })();
+
+    entry.initPromise.catch(() => {
+      // Allow retry after a failed init.
+      this.remoteHosts.delete(host);
+    });
+    return entry.initPromise;
+  }
+
+  /** Resolve the (client, router) pair for a host, throwing if not initialized. */
+  private clientFor(host: string): { client: StdioClient; router: NotificationRouter } {
+    if (host === LOCAL_HOST) {
+      if (!this.client || !this.router) throw new Error('StdioClient not initialized');
+      return { client: this.client, router: this.router };
+    }
+    const entry = this.remoteHosts.get(host);
+    if (!entry?.client || !entry.router) throw new Error(`StdioClient not initialized for host ${host}`);
+    return { client: entry.client, router: entry.router };
+  }
+
+  /** Utility (non-session-scoped) client for a host — auth, plugins, git RPCs. */
+  private utilityClientFor(host: string): StdioClient {
+    return this.clientFor(host).client;
   }
 
   // ------------------------------------------------------------------
@@ -368,8 +474,8 @@ export class DesktopHost {
    * sessions never cross-talk. Tree/index callbacks run unconditionally
    * because the sidebar is a global view reflecting all sessions.
    */
-  private createAgent(opts: { workdir?: string; worktreeInfo?: WorktreeInfo }): StdioAgent {
-    if (!this.client || !this.router) throw new Error('StdioClient not initialized');
+  private createAgent(opts: { host: string; workdir?: string; worktreeInfo?: WorktreeInfo }): StdioAgent {
+    const { client, router } = this.clientFor(opts.host);
     // The callbacks close over agentRef but only run after the constructor
     // returns, so the const binding is always initialized by call time.
     const paneIdOf = () => this.paneIdForAgent(agentRef);
@@ -507,16 +613,18 @@ export class DesktopHost {
       },
     };
 
-    const agentRef = new StdioAgent(this.client, this.router, callbacks);
+    const agentRef = new StdioAgent(client, router, callbacks);
+    this.agentHosts.set(agentRef, opts.host);
     if (opts.worktreeInfo) this.agentWorktreeInfo.set(agentRef, opts.worktreeInfo);
     return agentRef;
   }
 
   /** Create + initialize a fresh agent and register it in the pool. */
-  private async spawnAgent(opts: { workdir?: string; worktreeInfo?: WorktreeInfo; worktreeName?: string; isNewWorktree?: boolean }): Promise<StdioAgent> {
-    await this.ensureClient();
+  private async spawnAgent(opts: { host?: string; workdir?: string; worktreeInfo?: WorktreeInfo; worktreeName?: string; isNewWorktree?: boolean }): Promise<StdioAgent> {
+    const host = opts.host ?? LOCAL_HOST;
+    await this.ensureClientFor(host);
     const config = this.configStore.getConfiguration();
-    const agent = this.createAgent(opts);
+    const agent = this.createAgent({ ...opts, host });
     await agent.initialize({
       workdir: opts.workdir,
       apiKey: config.apiKey || undefined,
@@ -529,7 +637,7 @@ export class DesktopHost {
       isNewWorktree: opts.isNewWorktree,
     });
     if (agent.sessionId) {
-      this.agents.set(agent.sessionId, agent);
+      this.agents.set(this.agentKey(host, agent.sessionId), agent);
     }
     return agent;
   }
@@ -554,8 +662,8 @@ export class DesktopHost {
    * to pick a reusable session.
    */
   private touchAgentAsRecent(agent: StdioAgent): void {
-    const key = agent.sessionId;
-    if (!key || this.agents.get(key) !== agent) return;
+    const key = this.agentKey(this.hostForAgent(agent), agent.sessionId ?? '');
+    if (!agent.sessionId || this.agents.get(key) !== agent) return;
     this.agents.delete(key);
     this.agents.set(key, agent);
   }
@@ -563,6 +671,7 @@ export class DesktopHost {
   /** Point a pane at an agent: sync workdir context, refresh sidebar, push its state. */
   private async activateAgentInPane(paneId: string, agent: StdioAgent): Promise<void> {
     this.bindAgentToPane(paneId, agent);
+    this.hostState.set(paneId, this.hostForAgent(agent));
     const dir = agent.workingDirectory;
     if (dir && dir !== this.workdir) {
       // this.workdir follows the focused pane's real cwd (used by the file
@@ -586,7 +695,13 @@ export class DesktopHost {
   private pushPanes(): void {
     this.postMessage({
       command: 'desktopPanes',
-      panes: this.panes.map((p) => ({ paneId: p.paneId, sessionId: p.agent?.sessionId, width: p.width, row: p.row ?? 0 })),
+      panes: this.panes.map((p) => ({
+        paneId: p.paneId,
+        sessionId: p.agent?.sessionId,
+        host: p.agent ? this.hostForAgent(p.agent) : (this.hostState.get(p.paneId) ?? LOCAL_HOST),
+        width: p.width,
+        row: p.row ?? 0,
+      })),
       rowHeights: this.topRowHeight != null ? [this.topRowHeight, 1 - this.topRowHeight] : undefined,
       focusedPaneId: this.focusedPaneId,
     });
@@ -611,10 +726,10 @@ export class DesktopHost {
     if (this.focusedPaneId === paneId) return;
     this.focusedPaneId = paneId;
     const dir = this.activeAgent?.workingDirectory;
-    if (dir && dir !== this.workdir) {
-      this.workdir = dir;
-      this.sendWorkdirState();
-    }
+    if (dir) this.workdir = dir;
+    // Always push: switching panes may also switch the pane's host, and the
+    // workdir picker must reflect the newly focused pane's recents.
+    this.sendWorkdirState();
     this.pushPanes();
     this.emitPanelState();
   }
@@ -860,6 +975,7 @@ export class DesktopHost {
     this.panes.splice(idx, 1);
     this.inputDrafts.delete(paneId);
     this.workflowRuns.delete(paneId);
+    this.hostState.delete(paneId);
     // The closed pane's width returns to its row-mates proportionally; an
     // untouched equal-split row (no explicit widths) stays equal-split.
     this.renormalizeRowWidths(closedRow);
@@ -869,10 +985,8 @@ export class DesktopHost {
       const neighbor = this.panes[Math.min(idx, this.panes.length - 1)];
       this.focusedPaneId = neighbor.paneId;
       const dir = neighbor.agent?.workingDirectory;
-      if (dir && dir !== this.workdir) {
-        this.workdir = dir;
-        this.sendWorkdirState();
-      }
+      if (dir) this.workdir = dir;
+      this.sendWorkdirState();
       this.postMessage({ command: 'focusInput', paneId: neighbor.paneId });
       this.emitPanelState();
     }
@@ -884,16 +998,17 @@ export class DesktopHost {
    * possible, otherwise spawn + restore it, then activate in the pane.
    */
   private async bindSessionToPane(paneId: string, workdir: string, sessionId: string): Promise<void> {
-    let agent = this.agents.get(sessionId);
+    const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
+    const host = entry?.host ?? LOCAL_HOST;
+    let agent = this.agents.get(this.agentKey(host, sessionId));
     if (!agent) {
       // Worktree sessions are grouped under the repo root in the sidebar, but
       // their session files live at the worktree path — resolve the real
       // directory the same way handleSelectSession does, otherwise restore
       // looks in the wrong project store and the pane stays a new session.
-      const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
       const targetDir = entry?.worktree ? entry.cwd : workdir;
       try {
-        agent = await this.spawnAgent({ workdir: targetDir, worktreeInfo: entry?.worktree });
+        agent = await this.spawnAgent({ host, workdir: targetDir, worktreeInfo: entry?.worktree });
         await agent.restoreSession(sessionId);
         if (agent.sessionId) {
           this.rekeyAgent(agent, agent.sessionId);
@@ -905,6 +1020,7 @@ export class DesktopHost {
         return;
       }
     }
+    this.hostState.set(paneId, host);
     await this.activateAgentInPane(paneId, agent);
   }
 
@@ -940,16 +1056,18 @@ export class DesktopHost {
     return this.agentForPane(paneId)?.backgroundTasks ?? [];
   }
 
-  /** Re-register an agent under a new sessionId. */
+  /** Re-register an agent under a new sessionId (keys are host-scoped). */
   private rekeyAgent(agent: StdioAgent, newSessionId: string): void {
+    const host = this.hostForAgent(agent);
     let oldKey: string | undefined;
     for (const [key, a] of this.agents) {
       if (a === agent) { oldKey = key; break; }
     }
-    if (oldKey && oldKey !== newSessionId) {
+    const newKey = this.agentKey(host, newSessionId);
+    if (oldKey && oldKey !== newKey) {
       this.agents.delete(oldKey);
     }
-    this.agents.set(newSessionId, agent);
+    this.agents.set(newKey, agent);
   }
 
   /**
@@ -958,17 +1076,21 @@ export class DesktopHost {
    * reused when present (and not already shown in another pane), otherwise a
    * fresh agent is spawned.
    */
-  private async activateWorkdir(opts: { dir: string; forceNew?: boolean; paneId?: string }): Promise<void> {
+  private async activateWorkdir(opts: { host?: string; dir: string; forceNew?: boolean; paneId?: string }): Promise<void> {
     const { dir, forceNew = false } = opts;
+    const host = opts.host ?? LOCAL_HOST;
     const paneId = opts.paneId ?? this.focusedPaneId;
     this.workdir = dir;
-    this.configStore.addRecentWorkdir(dir);
+    this.configStore.addRecentWorkdir({ host, path: dir });
 
     if (!forceNew) {
       // Pool iteration order is recency order (bindAgentToPane re-keys), so
       // the last match is the most recently activated session in this dir.
+      // Only reuse agents running on the same host — a local and a remote
+      // session in the same path are different processes (spec scenario 9).
       let best: StdioAgent | null = null;
       for (const agent of this.agents.values()) {
+        if (this.hostForAgent(agent) !== host) continue;
         if (agent.workingDirectory !== dir) continue;
         // Never steal an agent shown in another pane — one session, one pane.
         if (this.panes.some((p) => p.agent === agent && p.paneId !== paneId)) continue;
@@ -981,7 +1103,7 @@ export class DesktopHost {
     }
 
     try {
-      const agent = await this.spawnAgent({ workdir: dir });
+      const agent = await this.spawnAgent({ host, workdir: dir });
       await this.activateAgentInPane(paneId, agent);
     } catch (error) {
       this.pushSystemMessage(`初始化失败：${error instanceof Error ? error.message : String(error)}`, paneId);
@@ -1067,7 +1189,7 @@ export class DesktopHost {
     const configurationData = this.configStore.getConfiguration();
     let isAuthenticated = false;
     try {
-      const authResult = (await this.utilityClient.request('getAuthStatus')) as { isAuthenticated: boolean; serverUrl: string };
+      const authResult = (await this.utilityClientFor(this.currentHost).request('getAuthStatus')) as { isAuthenticated: boolean; serverUrl: string };
       isAuthenticated = authResult.isAuthenticated;
       if (authResult.serverUrl) {
         this.configStore.setConfiguration({ serverUrl: authResult.serverUrl });
@@ -1147,34 +1269,37 @@ export class DesktopHost {
    */
   private refreshSessionTree(): void {
     const index = this.configStore.getSessionIndex();
-    const byWorkdir = new Map<string, SessionIndexEntry[]>();
+    // Sessions on different hosts never share a group, even at the same path.
+    const byGroup = new Map<string, SessionIndexEntry[]>();
     for (const entry of index) {
-      const list = byWorkdir.get(entry.workdir);
+      const key = `${entry.host}\u0000${entry.workdir}`;
+      const list = byGroup.get(key);
       if (list) {
         list.push(entry);
       } else {
-        byWorkdir.set(entry.workdir, [entry]);
+        byGroup.set(key, [entry]);
       }
     }
-    if (byWorkdir.size === 0) {
+    if (byGroup.size === 0) {
       if (this.sessionTree.length > 0) {
         this.sessionTree = [];
         this.postMessage({ command: 'desktopSessionTree', groups: [] });
       }
       return;
     }
-    const sortedGroups = [...byWorkdir.values()].map((entries) => {
+    const sortedGroups = [...byGroup.values()].map((entries) => {
       const sorted = entries.sort((a, b) => b.createdAt - a.createdAt);
-      return { workdir: sorted[0].workdir, sorted };
+      return { host: sorted[0].host, workdir: sorted[0].workdir, sorted };
     });
     sortedGroups.sort((a, b) => b.sorted[0].createdAt - a.sorted[0].createdAt);
     const agentsWithPendingConfirmation = new Set(
       [...this.pendingConfirmations.values()].map((p) => p.agent),
     );
-    this.sessionTree = sortedGroups.map(({ workdir, sorted }) => ({
+    this.sessionTree = sortedGroups.map(({ host, workdir, sorted }) => ({
+      host,
       workdir,
       sessions: sorted.map((s) => {
-        const agent = this.agents.get(s.sessionId);
+        const agent = this.agents.get(this.agentKey(s.host, s.sessionId));
         return {
           sessionId: s.sessionId,
           title: s.title,
@@ -1200,6 +1325,7 @@ export class DesktopHost {
     // agent's actual working directory (cwd) stays the worktree path (FR-024).
     this.configStore.upsertSession({
       sessionId,
+      host: this.hostForAgent(agent),
       // An established title wins; a re-registration must never wipe it.
       title: title || existing?.title || '',
       workdir: worktreeInfo?.repoRoot ?? cwd,
@@ -1242,13 +1368,15 @@ export class DesktopHost {
   private async handleDeleteSession(sessionId: string): Promise<void> {
     if (!this.configStore) return;
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
-    const target = this.agents.get(sessionId);
+    const host = entry?.host ?? LOCAL_HOST;
+    const target = this.agents.get(this.agentKey(host, sessionId));
     const boundPaneIds = this.panes
       .filter((p) => p.agent !== null && (p.agent === target || p.agent.sessionId === sessionId))
       .map((p) => p.paneId);
 
     if (target) {
-      this.agents.delete(sessionId);
+      this.agents.delete(this.agentKey(host, sessionId));
+      this.agentHosts.delete(target);
       this.agentWorktreeInfo.delete(target);
     }
 
@@ -1289,8 +1417,8 @@ export class DesktopHost {
     this.refreshSessionTree();
 
     if (resetSolePane) {
-      if (entry?.worktree && fs.existsSync(entry.worktree.repoRoot)) {
-        await this.activateWorkdir({ dir: entry.worktree.repoRoot, forceNew: true });
+      if (entry?.worktree && await this.pathExistsOn(host, entry.worktree.repoRoot)) {
+        await this.activateWorkdir({ host, dir: entry.worktree.repoRoot, forceNew: true });
       } else {
         await this.handleNewSession();
       }
@@ -1299,7 +1427,7 @@ export class DesktopHost {
     const worktree = entry?.worktree;
     if (worktree) {
       void destroyPromise.then(() =>
-        this.removeWorktree({
+        this.removeWorktree(host, {
           path: worktree.path,
           branch: worktree.branch,
           repoRoot: worktree.repoRoot,
@@ -1319,7 +1447,9 @@ export class DesktopHost {
     name?: string,
     text?: string,
     images?: Array<{ data: string; mediaType: string }>,
+    host?: string,
   ): Promise<void> {
+    const h = host ?? this.currentHost;
     let result: {
       name: string;
       path: string;
@@ -1329,7 +1459,7 @@ export class DesktopHost {
       isNew: boolean;
     };
     try {
-      result = (await this.utilityClient.request('createWorktree', { workdir, baseBranch, name })) as typeof result;
+      result = (await this.utilityClientFor(h).request('createWorktree', { workdir, baseBranch, name })) as typeof result;
     } catch (error) {
       this.pushSystemMessage(`创建 worktree 失败：${error instanceof Error ? error.message : String(error)}`);
       return;
@@ -1337,6 +1467,7 @@ export class DesktopHost {
     let agent: StdioAgent;
     try {
       agent = await this.spawnAgent({
+        host: h,
         workdir: result.path,
         // Only a genuinely new worktree fires the WorktreeCreate hook during
         // agent initialization (same as `wave -w`).
@@ -1363,18 +1494,19 @@ export class DesktopHost {
    * reply carries paneId so each pane consumes only its own branch list — a
    * sibling pane focusing and re-querying must not overwrite this pane. */
   private async handleListGitBranches(workdir: string, paneId?: string): Promise<void> {
+    const h = this.hostForPane(paneId);
     try {
-      const result = await this.utilityClient.request('listGitBranches', { workdir });
+      const result = await this.utilityClientFor(h).request('listGitBranches', { workdir });
       this.postMessage({ command: 'desktopGitBranches', workdir, paneId, result });
     } catch {
       this.postMessage({ command: 'desktopGitBranches', workdir, paneId, result: null });
     }
   }
 
-  /** Best-effort worktree removal via stdio (FR-053). */
-  private async removeWorktree(params: { path: string; branch: string; repoRoot: string }): Promise<void> {
+  /** Best-effort worktree removal via stdio (FR-053), routed to the entry's host. */
+  private async removeWorktree(host: string, params: { path: string; branch: string; repoRoot: string }): Promise<void> {
     try {
-      await this.utilityClient.request('removeWorktree', params);
+      await this.utilityClientFor(host).request('removeWorktree', params);
     } catch {
       // best-effort — stdio removeWorktree never throws
     }
@@ -1408,12 +1540,24 @@ export class DesktopHost {
         await this.handleSelectWorkdir();
         break;
 
+      case 'desktopSelectHost':
+        await this.handleSelectHost(msg.host as string);
+        break;
+
+      case 'desktopAddHost':
+        await this.handleAddHost(msg.connectionString as string);
+        break;
+
+      case 'desktopSelectRemotePath':
+        await this.handleSelectRemotePath(msg.host as string, msg.path as string);
+        break;
+
       case 'desktopSelectRecentWorkdir':
-        await this.handleSelectRecentWorkdir(msg.path as string);
+        await this.handleSelectRecentWorkdir(msg.path as string, msg.host as string | undefined);
         break;
 
       case 'desktopRemoveRecentWorkdir':
-        this.configStore.removeRecentWorkdir(msg.path as string);
+        this.configStore.removeRecentWorkdir({ host: (msg.host as string) ?? this.currentHost, path: msg.path as string });
         this.sendWorkdirState();
         break;
 
@@ -1524,6 +1668,7 @@ export class DesktopHost {
           msg.name as string | undefined,
           msg.text as string | undefined,
           msg.images as Array<{ data: string; mediaType: string }> | undefined,
+          msg.host as string | undefined,
         );
         break;
 
@@ -1533,18 +1678,33 @@ export class DesktopHost {
 
       // Read-only workspace diff for the diff panel — runs git directly in
       // the main process rather than via the stdio CLI (large output, and
-      // the CLI has no reusable implementation).
+      // the CLI has no reusable implementation). Local-only: remote sessions
+      // have no diff panel (spec scenario 10), so guard defensively.
       case 'desktopGetWorkspaceDiff': {
         const paneAgent = this.agentForPane(pid);
         const cwd = paneAgent?.workingDirectory ?? this.workdir;
-        const result = cwd ? await getWorkspaceDiff(cwd) : ({ kind: 'not-a-repo' } as const);
+        const result =
+          cwd && this.hostForAgent(paneAgent) === LOCAL_HOST
+            ? await getWorkspaceDiff(cwd)
+            : ({ kind: 'not-a-repo' } as const);
         this.postMessage({ command: 'desktopWorkspaceDiff', paneId: pid, result });
         break;
       }
 
       // -- terminal panel ---------------------------------------------------
       case 'desktopTerminalCreate': {
-        const cwd = this.agentForPane(pid)?.workingDirectory ?? this.workdir;
+        const paneAgent = this.agentForPane(pid);
+        if (this.hostForAgent(paneAgent) !== LOCAL_HOST) {
+          // PTYs are local-only — remote sessions have no terminal panel
+          // (spec scenario 10).
+          this.postMessage({
+            command: 'desktopTerminalExit',
+            termId: msg.termId,
+            error: '远程会话不支持终端面板',
+          });
+          break;
+        }
+        const cwd = paneAgent?.workingDirectory ?? this.workdir;
         if (!cwd) {
           this.postMessage({
             command: 'desktopTerminalExit',
@@ -1838,18 +1998,19 @@ export class DesktopHost {
 
   private async handleWebviewReady(): Promise<void> {
     try {
+      const host = this.currentHost;
       if (!this.workdir) {
         // No workdir selected yet — ensure the stdio client (so login/auth
         // still work) but skip agent creation until the user picks a workdir
         // from the sidebar dropdown.
-        await this.ensureClient();
+        await this.ensureClientFor(host);
       } else if (this.panes.every((p) => !p.agent)) {
         // First-time bootstrap only: spawn at the chosen workdir when NO pane
         // holds an agent yet. A repeat webviewReady (e.g. a new pane mounting
         // while another pane still runs a worktree session) must not re-spawn —
         // this.workdir may be a stale worktree path from the focused pane, and
         // the new pane's agent is already being spawned by handleNewSessionInNewPane.
-        const agent = await this.spawnAgent({ workdir: this.workdir });
+        const agent = await this.spawnAgent({ host, workdir: this.workdir });
         this.bindAgentToPane(this.focusedPaneId, agent);
       }
       await this.pushInitialState();
@@ -1870,6 +2031,79 @@ export class DesktopHost {
     }
   }
 
+  /** Check a directory exists on a host — local via fs, remote via `test -d`. */
+  private async pathExistsOn(host: string, dir: string): Promise<boolean> {
+    if (host === LOCAL_HOST) return fs.existsSync(dir);
+    return remotePathExists(host, dir);
+  }
+
+  /**
+   * Pick a host for the focused pane's new-session workdir picker. Only
+   * hosts from ~/.ssh/config (or 本地) are accepted; switching host re-sends
+   * workdir state so the picker shows that host's recents (spec scenario 1).
+   */
+  private async handleSelectHost(host: string): Promise<void> {
+    if (host !== LOCAL_HOST && !parseSshConfigHosts().includes(host)) {
+      this.pushSystemMessage(`未知主机：${host}`);
+      return;
+    }
+    this.hostState.set(this.focusedPaneId, host);
+    // Establish the host's client eagerly so auth/status queries against the
+    // newly selected host don't race the first agent spawn. Fire-and-forget:
+    // failures surface as a system message, the picker updates immediately.
+    this.ensureClientFor(host).catch((error) => {
+      this.pushSystemMessage(
+        `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    this.sendWorkdirState();
+  }
+
+  /**
+   * VSC-style 添加主机…: append a Host block to ~/.ssh/config from an
+   * `ssh user@hostname -p port` connection string, then auto-select the new
+   * host (spec scenario 5 — the picker refreshes and the new host becomes the
+   * current one). The eager client establishment makes auth failures surface
+   * immediately instead of at the first agent spawn.
+   */
+  private async handleAddHost(connectionString: string): Promise<void> {
+    let name: string;
+    try {
+      name = addSshHost(connectionString);
+    } catch (error) {
+      this.pushSystemMessage(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    this.hostState.set(this.focusedPaneId, name);
+    this.ensureClientFor(name).catch((error) => {
+      this.pushSystemMessage(
+        `连接主机 ${name} 失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    this.pushSystemMessage(`已添加主机：${name}`);
+    this.sendWorkdirState();
+  }
+
+  /**
+   * Remote workdir via text input (spec scenario 3): validate with
+   * `test -d` on the host, then activate. The Electron dialog cannot pick
+   * remote directories, so the webview offers an inline path input instead
+   * of 浏览….
+   */
+  private async handleSelectRemotePath(host: string, path: string): Promise<void> {
+    if (host === LOCAL_HOST || !path) return;
+    if (!parseSshConfigHosts().includes(host)) {
+      this.pushSystemMessage(`未知主机：${host}`);
+      return;
+    }
+    if (!(await remotePathExists(host, path))) {
+      this.pushSystemMessage(`远端目录不存在：${path}`);
+      return;
+    }
+    this.hostState.set(this.focusedPaneId, host);
+    await this.activateWorkdir({ host, dir: path });
+  }
+
   private async handleSelectWorkdir(): Promise<void> {
     if (!this.mainWindow) return;
     const result = await dialog.showOpenDialog(this.mainWindow, {
@@ -1877,19 +2111,23 @@ export class DesktopHost {
       properties: ['openDirectory', 'createDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) return;
-    await this.activateWorkdir({ dir: result.filePaths[0] });
+    // The OS dialog only picks local directories — the picker's host is
+    // pinned to 本地 after a browse.
+    this.hostState.set(this.focusedPaneId, LOCAL_HOST);
+    await this.activateWorkdir({ host: LOCAL_HOST, dir: result.filePaths[0] });
   }
 
-  private async handleSelectRecentWorkdir(dir: string): Promise<void> {
-    if (!fs.existsSync(dir)) {
+  private async handleSelectRecentWorkdir(dir: string, host?: string): Promise<void> {
+    const h = host ?? this.hostState.get(this.focusedPaneId) ?? LOCAL_HOST;
+    if (!(await this.pathExistsOn(h, dir))) {
       // Picker-only hygiene: removing a recent dir never touches the
       // index-derived session tree (FR-006), so no refreshSessionTree here.
-      this.configStore.removeRecentWorkdir(dir);
+      this.configStore.removeRecentWorkdir({ host: h, path: dir });
       this.sendWorkdirState();
       this.pushSystemMessage(`目录不存在：${dir}，已从最近列表移除`);
       return;
     }
-    await this.activateWorkdir({ dir });
+    await this.activateWorkdir({ host: h, dir });
   }
 
   /**
@@ -1916,14 +2154,15 @@ export class DesktopHost {
     }
 
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
+    const host = entry?.host ?? LOCAL_HOST;
     const targetDir = entry?.worktree ? entry.cwd : workdir;
-    if (!fs.existsSync(targetDir)) {
+    if (!(await this.pathExistsOn(host, targetDir))) {
       // Directory gone — auto-clear the stale index entry (worktree or not,
       // per FR-020 stale-directory behavior). For non-worktree dirs the entry
       // is also removed from the recent-workdirs picker list.
       this.configStore.removeSession(sessionId);
       if (!entry?.worktree) {
-        this.configStore.removeRecentWorkdir(workdir);
+        this.configStore.removeRecentWorkdir({ host, path: workdir });
         this.sendWorkdirState();
       }
       this.refreshSessionTree();
@@ -1936,8 +2175,9 @@ export class DesktopHost {
       return;
     }
 
-    const live = this.agents.get(sessionId);
+    const live = this.agents.get(this.agentKey(host, sessionId));
     if (live) {
+      this.hostState.set(pid, host);
       await this.activateAgentInPane(pid, live);
       return;
     }
@@ -1946,7 +2186,7 @@ export class DesktopHost {
     // Carry the entry's worktree info so re-registration keeps the session
     // grouped under the repo root (and recents free of the ephemeral path).
     try {
-      const agent = await this.spawnAgent({ workdir: targetDir, worktreeInfo: entry?.worktree });
+      const agent = await this.spawnAgent({ host, workdir: targetDir, worktreeInfo: entry?.worktree });
       // Restore before activating so the view never flashes the fresh agent's
       // empty state (which renders as the new-session directory picker).
       await agent.restoreSession(sessionId);
@@ -2041,11 +2281,13 @@ export class DesktopHost {
     // etc.). See desktop-app.md「会话管理」scenario 8. No fallback to
     // this.workdir — it follows the focused pane and could be a worktree path;
     // if recents is empty the user hasn't picked a dir yet, so this is a no-op.
-    const dir = this.configStore.getRecentWorkdirs()[0];
+    // The host is the pane's pending picker host (spec scenario 1/9).
+    const host = this.hostState.get(pid) ?? LOCAL_HOST;
+    const dir = this.configStore.getRecentWorkdirsForHost(host)[0];
     if (!dir) return;
     if (active && active.messages.length === 0 && !active.isStreaming) return;
     try {
-      const agent = await this.spawnAgent({ workdir: dir });
+      const agent = await this.spawnAgent({ host, workdir: dir });
       // Spawning is slow (agent init) — the user may have selected another
       // session meanwhile; don't clobber their view.
       if (this.agentForPane(pid) !== active) return;
@@ -2064,7 +2306,8 @@ export class DesktopHost {
    * duplicated; placement/overflow follows insertNewPane's rules.
    */
   private async handleNewSessionInNewPane(): Promise<void> {
-    const dir = this.configStore.getRecentWorkdirs()[0];
+    const host = this.hostState.get(this.focusedPaneId) ?? LOCAL_HOST;
+    const dir = this.configStore.getRecentWorkdirsForHost(host)[0];
     if (!dir) return;
     const empty = this.panes.find((p) => {
       const a = p.agent;
@@ -2078,7 +2321,7 @@ export class DesktopHost {
     const paneId = this.insertNewPane();
     if (!paneId) return;
     try {
-      const agent = await this.spawnAgent({ workdir: dir });
+      const agent = await this.spawnAgent({ host, workdir: dir });
       // Spawning is slow (agent init) — the pane may have been closed meanwhile.
       if (!this.panes.some((p) => p.paneId === paneId)) return;
       await this.activateAgentInPane(paneId, agent);
@@ -2193,7 +2436,7 @@ export class DesktopHost {
 
   private async handleGetAuthStatus(): Promise<void> {
     try {
-      const result = (await this.utilityClient.request('getAuthStatus')) as {
+      const result = (await this.utilityClientFor(this.currentHost).request('getAuthStatus')) as {
         isAuthenticated: boolean;
         user: { id: string; email?: string } | undefined;
         serverUrl: string;
@@ -2219,7 +2462,7 @@ export class DesktopHost {
 
   private async handleLogin(): Promise<void> {
     try {
-      const result = (await this.utilityClient.request('login')) as {
+      const result = (await this.utilityClientFor(this.currentHost).request('login')) as {
         user: { id: string; email?: string } | undefined;
       };
       this.postMessage({ command: 'loginResponse', success: true, user: result.user });
@@ -2237,7 +2480,7 @@ export class DesktopHost {
 
   private async handleLogout(): Promise<void> {
     try {
-      await this.utilityClient.request('logout');
+      await this.utilityClientFor(this.currentHost).request('logout');
       this.postMessage({ command: 'logoutResponse', success: true });
       await this.updateAgentConfig(this.configStore.getConfiguration());
     } catch (error) {
@@ -2248,7 +2491,7 @@ export class DesktopHost {
 
   private async handleListPlugins(): Promise<void> {
     try {
-      const result = (await this.utilityClient.request('listPlugins', { workdir: this.workdir })) as { plugins: unknown[] };
+      const result = (await this.utilityClientFor(this.currentHost).request('listPlugins', { workdir: this.workdir })) as { plugins: unknown[] };
       this.postMessage({ command: 'listPluginsResponse', plugins: result.plugins });
     } catch (error) {
       this.pushSystemMessage(`获取插件列表失败: ${error}`);
@@ -2257,7 +2500,7 @@ export class DesktopHost {
 
   private async handlePluginMutation(method: string, params: Record<string, unknown>): Promise<void> {
     try {
-      await this.utilityClient.request(method, { ...params, workdir: this.workdir });
+      await this.utilityClientFor(this.currentHost).request(method, { ...params, workdir: this.workdir });
       await this.handleListPlugins();
       // Recreate agent to apply plugin changes
       await this.updateAgentConfig(this.configStore.getConfiguration());
@@ -2269,7 +2512,7 @@ export class DesktopHost {
   private async handleGetProjectSettings(paneId: string): Promise<void> {
     try {
       const workdir = this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
-      const result = (await this.utilityClient.request('getProjectSettings', { workdir })) as {
+      const result = (await this.utilityClientFor(this.hostForPane(paneId)).request('getProjectSettings', { workdir })) as {
         enabledPlugins: Record<string, boolean>;
       };
       this.postMessage({ command: 'projectSettings', paneId, enabledPlugins: result.enabledPlugins });
@@ -2286,7 +2529,7 @@ export class DesktopHost {
   ): Promise<void> {
     try {
       const workdir = this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
-      const result = (await this.utilityClient.request('setBuiltinPluginEnabled', {
+      const result = (await this.utilityClientFor(this.hostForPane(paneId)).request('setBuiltinPluginEnabled', {
         pluginId,
         enabled,
         scope,
@@ -2300,7 +2543,7 @@ export class DesktopHost {
 
   private async handleListMarketplaces(): Promise<void> {
     try {
-      const marketplaces = await this.utilityClient.request('listMarketplaces', { workdir: this.workdir });
+      const marketplaces = await this.utilityClientFor(this.currentHost).request('listMarketplaces', { workdir: this.workdir });
       this.postMessage({ command: 'listMarketplacesResponse', marketplaces });
     } catch (error) {
       this.pushSystemMessage(`获取市场列表失败: ${error}`);
@@ -2309,7 +2552,7 @@ export class DesktopHost {
 
   private async handleMarketplaceMutation(method: string, params: Record<string, unknown>): Promise<void> {
     try {
-      await this.utilityClient.request(method, { ...params, workdir: this.workdir });
+      await this.utilityClientFor(this.currentHost).request(method, { ...params, workdir: this.workdir });
       await this.handleListMarketplaces();
     } catch (error) {
       this.pushSystemMessage(`市场操作失败: ${error}`);
@@ -2318,7 +2561,7 @@ export class DesktopHost {
 
   private async handleRequestHistory(): Promise<void> {
     try {
-      const result = (await this.utilityClient.request('getPromptHistory')) as { history: unknown[] };
+      const result = (await this.utilityClientFor(this.currentHost).request('getPromptHistory')) as { history: unknown[] };
       this.postMessage({ command: 'historyResponse', history: result.history });
     } catch (error) {
       console.error('[DesktopHost] 获取历史记录失败:', error);
@@ -2328,7 +2571,7 @@ export class DesktopHost {
 
   private async handleSearchHistory(query: string): Promise<void> {
     try {
-      const result = (await this.utilityClient.request('searchPromptHistory', { query })) as { history: unknown[] };
+      const result = (await this.utilityClientFor(this.currentHost).request('searchPromptHistory', { query })) as { history: unknown[] };
       this.postMessage({ command: 'historyResponse', history: result.history });
     } catch (error) {
       console.error('[DesktopHost] 搜索历史记录失败:', error);
@@ -2354,7 +2597,11 @@ export class DesktopHost {
   private async findWorkspaceFiles(filterText: string): Promise<Record<string, string | boolean>[]> {
     if (!this.workdir) return [];
     try {
-      const result = (await this.utilityClient.request('searchFiles', {
+      const host = this.currentHost;
+      // Remote workdirs are POSIX paths; path.join/basename on Windows would mangle them.
+      const join = host === LOCAL_HOST ? path.join.bind(path) : path.posix.join.bind(path.posix);
+      const basename = host === LOCAL_HOST ? path.basename.bind(path) : path.posix.basename.bind(path.posix);
+      const result = (await this.utilityClientFor(host).request('searchFiles', {
         query: filterText || '',
         maxResults: 20,
         workdir: this.workdir,
@@ -2362,9 +2609,9 @@ export class DesktopHost {
 
       const allItems = result.files.map((item) => {
         const relativePath = item.path;
-        const fullPath = path.join(this.workdir!, relativePath);
+        const fullPath = join(this.workdir!, relativePath);
         const normalizedPath = relativePath.endsWith('/') ? relativePath.slice(0, -1) : relativePath;
-        const name = path.basename(normalizedPath);
+        const name = basename(normalizedPath);
         const extensionMatch = name.match(/\.([^.]+)$/);
         const extension = extensionMatch ? extensionMatch[1] : '';
         const isDirectory = item.type === 'directory';

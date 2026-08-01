@@ -4,9 +4,18 @@ import '../styles/DesktopApp.css';
 export interface DesktopWorkdirSelectorProps {
   workdir?: string;
   recentWorkdirs: string[];
+  /**
+   * Current host ('local' or an SSH host name). Remote hosts have no Electron
+   * directory picker — the 浏览… action becomes a 输入路径… text input and the
+   * path is validated with `test -d` on the host (spec scenario 4).
+   */
+  host?: string;
   onSelectWorkdir: () => void;
-  onSelectRecentWorkdir: (path: string) => void;
-  onRemoveRecentWorkdir: (path: string) => void;
+  /** Remote-only: select a workdir by absolute path on `host`. */
+  onSelectRemotePath?: (path: string, host: string) => void;
+  /** `host` scopes the recents lookup to a specific host (defaults to the current one). */
+  onSelectRecentWorkdir: (path: string, host?: string) => void;
+  onRemoveRecentWorkdir: (path: string, host?: string) => void;
 }
 
 /**
@@ -19,12 +28,18 @@ export interface DesktopWorkdirSelectorProps {
 export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   workdir,
   recentWorkdirs,
+  host,
   onSelectWorkdir,
+  onSelectRemotePath,
   onSelectRecentWorkdir,
   onRemoveRecentWorkdir,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [editingPath, setEditingPath] = useState(false);
+  const [pathInput, setPathInput] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
+  const pathInputRef = useRef<HTMLInputElement>(null);
+  const isRemote = host !== undefined && host !== 'local';
 
   // Close the dropdown when clicking outside of it.
   useEffect(() => {
@@ -40,24 +55,44 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
 
   const dirName = workdir
     ? workdir.split(/[\\/]/).filter(Boolean).pop() || workdir
-    : '选择工作目录…';
+    : isRemote
+      ? '选择远程目录…'
+      : '选择工作目录…';
 
   const handleBrowse = useCallback(() => {
     setMenuOpen(false);
     onSelectWorkdir();
   }, [onSelectWorkdir]);
 
-  const handleSelectRecent = useCallback((path: string) => {
+  const openPathInput = useCallback(() => {
+    setEditingPath(true);
+    setPathInput(workdir ?? '');
+    requestAnimationFrame(() => pathInputRef.current?.focus());
+  }, [workdir]);
+
+  const submitPath = useCallback(() => {
+    const p = pathInput.trim();
+    if (!p) return;
     setMenuOpen(false);
-    onSelectRecentWorkdir(path);
-  }, [onSelectRecentWorkdir]);
+    setEditingPath(false);
+    setPathInput('');
+    onSelectRemotePath?.(p, host as string);
+  }, [pathInput, host, onSelectRemotePath]);
+
+  const handleSelectRecent = useCallback(
+    (path: string) => {
+      setMenuOpen(false);
+      onSelectRecentWorkdir(path, host);
+    },
+    [host, onSelectRecentWorkdir],
+  );
 
   const handleRemoveRecent = useCallback(
     (e: React.MouseEvent, path: string) => {
       e.stopPropagation();
-      onRemoveRecentWorkdir(path);
+      onRemoveRecentWorkdir(path, host);
     },
-    [onRemoveRecentWorkdir],
+    [host, onRemoveRecentWorkdir],
   );
 
   return (
@@ -65,7 +100,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       <div
         className="desktop-workdir-trigger"
         onClick={() => setMenuOpen((o) => !o)}
-        title={workdir ?? '选择工作目录…'}
+        title={workdir ?? (isRemote ? '选择远程目录…' : '选择工作目录…')}
         data-testid="desktop-workdir"
         aria-expanded={menuOpen}
         role="button"
@@ -112,15 +147,31 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
             );
           })}
           <div className="desktop-workdir-menu-separator" />
-          <div
-            className="desktop-workdir-menu-item desktop-workdir-menu-browse"
-            role="option"
-            onClick={handleBrowse}
-            data-testid="desktop-workdir-browse"
-          >
-            <span className="codicon codicon-folder-opened"></span>
-            <span>浏览…</span>
-          </div>
+          {isRemote && editingPath ? (
+            <div className="desktop-host-add" data-testid="desktop-workdir-path-input">
+              <input
+                ref={pathInputRef}
+                className="desktop-host-add-input"
+                placeholder="/home/user/project"
+                value={pathInput}
+                onChange={(e) => setPathInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitPath();
+                  else if (e.key === 'Escape') setEditingPath(false);
+                }}
+              />
+            </div>
+          ) : (
+            <div
+              className="desktop-workdir-menu-item"
+              role="option"
+              onClick={isRemote ? openPathInput : handleBrowse}
+              data-testid={isRemote ? 'desktop-workdir-path-entry' : 'desktop-workdir-browse'}
+            >
+              <span className="codicon codicon-folder-opened"></span>
+              <span>{isRemote ? '输入路径…' : '浏览…'}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

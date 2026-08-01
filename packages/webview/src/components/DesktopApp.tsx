@@ -49,6 +49,8 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         setWorkdirState({
           workdir: message.workdir,
           recentWorkdirs: message.recentWorkdirs ?? [],
+          host: message.host ?? 'local',
+          hosts: message.hosts ?? [],
         });
       } else if (message.command === 'desktopSessionTree') {
         sessionTreeRef.current = message.groups ?? [];
@@ -72,12 +74,24 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     vscode.postMessage({ command: 'desktopSelectWorkdir' });
   }, [vscode]);
 
-  const handleSelectRecentWorkdir = useCallback((path: string) => {
-    vscode.postMessage({ command: 'desktopSelectRecentWorkdir', path });
+  const handleSelectRecentWorkdir = useCallback((path: string, host?: string) => {
+    vscode.postMessage({ command: 'desktopSelectRecentWorkdir', path, host });
   }, [vscode]);
 
-  const handleRemoveRecentWorkdir = useCallback((path: string) => {
-    vscode.postMessage({ command: 'desktopRemoveRecentWorkdir', path });
+  const handleRemoveRecentWorkdir = useCallback((path: string, host?: string) => {
+    vscode.postMessage({ command: 'desktopRemoveRecentWorkdir', path, host });
+  }, [vscode]);
+
+  const handleSelectHost = useCallback((host: string) => {
+    vscode.postMessage({ command: 'desktopSelectHost', host });
+  }, [vscode]);
+
+  const handleAddHost = useCallback((connectionString: string) => {
+    vscode.postMessage({ command: 'desktopAddHost', connectionString });
+  }, [vscode]);
+
+  const handleSelectRemotePath = useCallback((path: string, host: string) => {
+    vscode.postMessage({ command: 'desktopSelectRemotePath', path, host });
   }, [vscode]);
 
   const handleSelectSession = useCallback((workdir: string, sessionId: string) => {
@@ -97,18 +111,23 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     return <div className="desktop-loading" data-testid="desktop-loading"></div>;
   }
 
-  const { workdir, recentWorkdirs } = workdirState;
+  const { workdir, recentWorkdirs, host, hosts } = workdirState;
 
   return (
     <ChatApp
       vscode={vscode}
       host={{
         type: 'desktop',
+        host,
+        hosts,
         workdir,
         recentWorkdirs,
         onSelectWorkdir: handleSelectWorkdir,
         onSelectRecentWorkdir: handleSelectRecentWorkdir,
         onRemoveRecentWorkdir: handleRemoveRecentWorkdir,
+        onSelectHost: handleSelectHost,
+        onAddHost: handleAddHost,
+        onSelectRemotePath: handleSelectRemotePath,
         sessionTree,
         onSelectSession: handleSelectSession,
         onDeleteSession: handleDeleteSession,

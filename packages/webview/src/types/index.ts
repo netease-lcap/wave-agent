@@ -159,6 +159,12 @@ export interface DesktopPane {
   paneId: string;
   sessionId?: string;
   /**
+   * Host this pane is bound to ('local' or an SSH host name), pushed via
+   * `desktopPanes`. Drives per-pane remote behavior (panels off, localhost
+   * links to the system browser).
+   */
+  host?: string;
+  /**
    * Width ratio across the pane row (0–1), maintained by the host. Absent
    * means the pane takes an equal share of the row.
    */
@@ -184,11 +190,22 @@ export interface OpenPaneOptions {
 // window.waveHostType === 'desktop' selects the DesktopApp root in index.tsx.
 export interface DesktopHostProps {
   type: 'desktop';
+  /** Current host: 'local' or an SSH host name (the focused pane's host). */
+  host: string;
+  /** All selectable hosts: 'local' + parsed ~/.ssh/config top-level Host names. */
+  hosts: string[];
   workdir?: string;
   recentWorkdirs: string[];
   onSelectWorkdir: () => void;
-  onSelectRecentWorkdir: (path: string) => void;
-  onRemoveRecentWorkdir: (path: string) => void;
+  /** `host` scopes the recents lookup to a specific host (defaults to the current one). */
+  onSelectRecentWorkdir: (path: string, host?: string) => void;
+  onRemoveRecentWorkdir: (path: string, host?: string) => void;
+  /** Switch the focused pane's host (本地 or an SSH host). */
+  onSelectHost: (host: string) => void;
+  /** Add a host from an `ssh user@hostname -p port` connection string (VSC-style). */
+  onAddHost: (connectionString: string) => void;
+  /** Select a remote workdir by absolute path; validated with `test -d` on the host. */
+  onSelectRemotePath: (path: string, host: string) => void;
   /**
    * Sidebar session tree (FR-020): one group per recent directory with all of
    * its sessions. Pushed via the `desktopSessionTree` message.
@@ -223,6 +240,8 @@ export interface DesktopHostProps {
 
 /** One directory group in the desktop sidebar session tree (FR-020). */
 export interface DesktopSessionGroup {
+  /** Host the group's sessions run on ('local' or an SSH host name) — the group key is (host, workdir). */
+  host: string;
   workdir: string;
   sessions: DesktopSessionEntry[];
 }
@@ -253,9 +272,13 @@ export interface ThemeState {
 }
 
 // Pushed by the desktop main process in response to `desktopReady` and after
-// every workdir change (message command: 'desktopWorkdirState').
+// every workdir/host change (message command: 'desktopWorkdirState').
 export interface DesktopWorkdirState {
   workdir?: string;
+  /** Current host ('local' or an SSH host name) — the focused pane's host. */
+  host: string;
+  /** All selectable hosts: 'local' + parsed ~/.ssh/config top-level Host names. */
+  hosts: string[];
   recentWorkdirs: string[];
 }
 

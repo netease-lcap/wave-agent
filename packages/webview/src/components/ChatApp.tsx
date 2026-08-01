@@ -17,6 +17,7 @@ import BackgroundTaskManager from './BackgroundTaskManager';
 import WorkflowManager from './WorkflowManager';
 import WelcomeView from './WelcomeView';
 import LoadingLogo from './LoadingLogo';
+import { DesktopHostSelector } from './DesktopHostSelector';
 import { DesktopSidebar } from './DesktopSidebar';
 import { DesktopShell } from './DesktopShell';
 import { DesktopWorkdirSelector } from './DesktopWorkdirSelector';
@@ -118,6 +119,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // this new pane until the spawn finishes and setInitialState lands.
   const effectiveWorkdir = state.workdir ?? (host?.type === 'desktop' ? (host?.recentWorkdirs?.[0] ?? host?.workdir) : undefined);
   const isDesktop = host?.type === 'desktop';
+  // The pane's effective host ('local' or an SSH host name): a pane-bound
+  // session's host (authoritative `desktopPanes` push) wins; the single-pane
+  // layout reads the host-level current host. Remote sessions run the whole
+  // agent on the remote host, so local-only surfaces — the preview/diff/
+  // terminal panels and preview-pane localhost links — are suppressed for them.
+  const paneHost = paneId ? host?.panes?.find((p) => p.paneId === paneId)?.host : undefined;
+  const effectiveHost = paneHost ?? host?.host ?? 'local';
+  const effectiveHostRef = useRef(effectiveHost);
   const gitBranches = isDesktop ? paneGitBranches : null;
   const effectiveWorkdirRef = useRef(effectiveWorkdir);
   // Desktop only: the panel group follows the session bound to this pane. The
@@ -204,6 +213,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   useEffect(() => {
     effectiveWorkdirRef.current = effectiveWorkdir;
   }, [effectiveWorkdir]);
+
+  useEffect(() => {
+    effectiveHostRef.current = effectiveHost;
+  }, [effectiveHost]);
 
   useEffect(() => {
     checkedPanelsRef.current = checkedPanels;
@@ -1156,8 +1169,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     setPreviewUrl(url);
   }, [tryOpenPanel]);
 
-  // Diff/terminal need a workdir; preview only needs a URL.
-  const panelDisabled: DesktopPanelKind[] = effectiveWorkdir ? [] : ['diff', 'terminal'];
+  // Remote sessions have no preview pane — a remote localhost link refers to
+  // the remote host, so it opens in the system browser (spec scenario 10).
+  const handleOpenExternalPreview = useCallback((url: string) => {
+    vscode.postMessage({ command: 'openExternal', url });
+  }, [vscode]);
+  const openPreviewHandler = effectiveHost !== 'local' ? handleOpenExternalPreview : handleOpenPreview;
+
+  // Diff/terminal need a workdir; preview only needs a URL. Remote sessions get
+  // none of the three (spec scenario 10) — the panels only inspect the local
+  // host, and a remote agent's localhost is unreachable from this machine.
+  const panelDisabled: DesktopPanelKind[] =
+    effectiveHost !== 'local'
+      ? ['preview', 'diff', 'terminal']
+      : effectiveWorkdir
+        ? []
+        : ['diff', 'terminal'];
 
   useEffect(() => {
     panelDisabledRef.current = panelDisabled;
@@ -1252,7 +1279,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         visible={checkedPanels.includes('terminal')}
         sessionId={state.currentSession?.id}
         workdir={effectiveWorkdir}
-        onOpenPreview={handleOpenPreview}
+        onOpenPreview={openPreviewHandler}
         {...common}
       />
     );
@@ -1278,7 +1305,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           vscode={vscode}
           onRewindToMessage={handleRewindToMessage}
           workdir={state.workdir}
-          onOpenPreview={handleOpenPreview}
+          onOpenPreview={openPreviewHandler}
         />
       )}
 
@@ -1324,10 +1351,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
             workdirSelector={
               host?.type === 'desktop' && state.messages.length === 0 ? (
                 <>
+                  <DesktopHostSelector
+                    host={effectiveHost}
+                    hosts={host.hosts}
+                    onSelectHost={host.onSelectHost}
+                    onAddHost={host.onAddHost}
+                  />
                   <DesktopWorkdirSelector
+                    host={effectiveHost}
                     workdir={effectiveWorkdir}
                     recentWorkdirs={host.recentWorkdirs}
                     onSelectWorkdir={host.onSelectWorkdir}
+                    onSelectRemotePath={(path) => host.onSelectRemotePath(path, effectiveHost)}
                     onSelectRecentWorkdir={host.onSelectRecentWorkdir}
                     onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
                   />

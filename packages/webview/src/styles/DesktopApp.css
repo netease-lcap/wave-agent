@@ -122,6 +122,23 @@
     font-weight: 600;
 }
 
+/* SSH host tag on a remote session group's header (spec 「SSH 远程主机」): a
+   small pill distinguishing remote groups from same-named local ones. */
+.desktop-session-group-host {
+    flex-shrink: 0;
+    margin-left: auto;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 400;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+}
+
 .desktop-session-items {
     list-style: none;
     margin: 0;
@@ -361,6 +378,67 @@
     height: 1px;
     margin: 4px 0;
     background: var(--vscode-dropdown-border, rgba(128, 128, 128, 0.3));
+}
+
+/* ---- Host dropdown (SSH 远程主机) ----
+   Same pattern as the workdir dropdown above — relative container, trigger,
+   menu expanding upward. Rendered left of the workdir selector in the
+   input-workdir-row. */
+
+.desktop-host-container {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+}
+
+.desktop-host-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 140px;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+    color: var(--vscode-foreground);
+}
+
+.desktop-host-trigger:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.desktop-host-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.desktop-host-caret {
+    opacity: 0.6;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+/* Inline add-host / remote-path input inside the dropdown menu. */
+.desktop-host-add {
+    padding: 4px 8px;
+}
+
+.desktop-host-add-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 3px 6px;
+    font-size: 12px;
+    font-family: var(--vscode-font-family);
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 4px;
+    outline: none;
+}
+
+.desktop-host-add-input:focus {
+    border-color: var(--vscode-brand-primary, #c1292e);
 }
 
 /* ---- Preview pane: localhost preview + element picker ---- */
