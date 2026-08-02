@@ -84,8 +84,11 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   onAddComment,
 }) => {
   const [state, setState] = useState<DiffState>({ kind: 'loading' });
-  // Collapsed paths survive refreshes; files are expanded by default.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // Mutual-exclusion accordion: at most one file is expanded at a time, so the
+  // DOM holds every file header but only one file's hunks (bounded rendering
+  // for large workspace diffs — data is still loaded once for all files).
+  // The expanded path survives refreshes; defaults to the first file.
+  const [expandedPath, setExpandedPath] = useState<string | null>(null);
   // True while a refresh request is in flight; drives the toolbar spinner.
   const [refreshing, setRefreshing] = useState(false);
   const asideRef = useRef<HTMLElement | null>(null);
@@ -154,6 +157,9 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       const result = msg.result;
       setRefreshing(false);
       setState(result?.kind === 'ok' ? { kind: 'ok', files: result.files } : { kind: 'not-a-repo' });
+      // Default the first file to expanded on the first diff; keep the
+      // currently expanded file across refreshes once the user has chosen one.
+      setExpandedPath((prev) => prev ?? result?.files?.[0]?.path ?? null);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -173,12 +179,8 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   }, [visible, sessionId, workdir, isStreaming, refresh]);
 
   const toggleFile = (path: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
+    // Mutual exclusion: expanding one file collapses every other.
+    setExpandedPath((prev) => (prev === path ? null : path));
   };
 
   const onDragStart = (e: React.MouseEvent) => {
@@ -299,15 +301,15 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     });
 
   const renderFile = (file: WorkspaceDiffFile) => {
-    const isCollapsed = collapsed.has(file.path);
+    const isExpanded = expandedPath === file.path;
     return (
       <div className="diff-file" key={file.path} data-testid={`diff-file-${file.status}`}>
         <button
           className="diff-file-header"
-          aria-expanded={!isCollapsed}
+          aria-expanded={isExpanded}
           onClick={() => toggleFile(file.path)}
         >
-          <i className={`codicon codicon-chevron-${isCollapsed ? 'right' : 'down'}`} />
+          <i className={`codicon codicon-chevron-${isExpanded ? 'down' : 'right'}`} />
           <span className={`diff-file-status diff-file-status-${file.status}`}>
             {STATUS_LABEL[file.status]}
           </span>
@@ -319,7 +321,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
             <span className="diff-file-stats-del">-{file.deletions}</span>
           </span>
         </button>
-        {!isCollapsed && (
+        {isExpanded && (
           <div className="diff-file-body">
             {file.binary ? (
               <div className="diff-line-ellipsis">二进制文件，不显示差异</div>

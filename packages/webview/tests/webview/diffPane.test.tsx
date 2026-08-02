@@ -145,6 +145,60 @@ describe('DiffPane', () => {
         expect(screen.getByText('new1')).toBeInTheDocument();
     });
 
+    describe('mutual-exclusion accordion', () => {
+        it('expands only the first file by default', () => {
+            const { container } = renderPane();
+            sendDiffResult([makeFile(), makeFile({ path: 'src/b.ts' }), makeFile({ path: 'src/c.ts' })]);
+            const headers = container.querySelectorAll('.diff-file-header');
+            expect(headers).toHaveLength(3);
+            expect(headers[0]).toHaveAttribute('aria-expanded', 'true');
+            expect(headers[1]).toHaveAttribute('aria-expanded', 'false');
+            expect(headers[2]).toHaveAttribute('aria-expanded', 'false');
+            // Only the first file's hunks are in the DOM, all headers remain.
+            expect(screen.getByText('new1')).toBeInTheDocument();
+            expect(container.querySelectorAll('.diff-file-body')).toHaveLength(1);
+        });
+
+        it('expanding another file collapses the previously expanded one', () => {
+            const { container } = renderPane();
+            sendDiffResult([makeFile(), makeFile({ path: 'src/b.ts' })]);
+            const headers = container.querySelectorAll('.diff-file-header');
+            fireEvent.click(headers[1]);
+            expect(headers[0]).toHaveAttribute('aria-expanded', 'false');
+            expect(headers[1]).toHaveAttribute('aria-expanded', 'true');
+            expect(container.querySelectorAll('.diff-file-body')).toHaveLength(1);
+        });
+
+        it('clicking the expanded file collapses it', () => {
+            const { container } = renderPane();
+            sendDiffResult([makeFile(), makeFile({ path: 'src/b.ts' })]);
+            const headers = container.querySelectorAll('.diff-file-header');
+            fireEvent.click(headers[0]);
+            expect(headers[0]).toHaveAttribute('aria-expanded', 'false');
+            expect(headers[1]).toHaveAttribute('aria-expanded', 'false');
+            expect(container.querySelectorAll('.diff-file-body')).toHaveLength(0);
+        });
+
+        it('keeps the expanded file across a refresh', () => {
+            const { container } = renderPane();
+            sendDiffResult([makeFile(), makeFile({ path: 'src/b.ts' })]);
+            let headers = container.querySelectorAll('.diff-file-header');
+            fireEvent.click(headers[1]);
+            expect(headers[1]).toHaveAttribute('aria-expanded', 'true');
+            // Refresh arrives with the same paths but new hunks; the expanded
+            // file must stay expanded (not reset to the first file).
+            sendDiffResult([
+                makeFile({ path: 'src/a.ts', hunks: '@@ -1 +1 @@\n-old\n+updated-a' }),
+                makeFile({ path: 'src/b.ts', hunks: '@@ -1 +1 @@\n-old\n+updated-b' }),
+            ]);
+            headers = container.querySelectorAll('.diff-file-header');
+            expect(headers[0]).toHaveAttribute('aria-expanded', 'false');
+            expect(headers[1]).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByText('updated-b')).toBeInTheDocument();
+            expect(screen.queryByText('updated-a')).not.toBeInTheDocument();
+        });
+    });
+
     it('refresh button requests the diff again', () => {
         const { vscode } = renderPane();
         expect(lastDiffRequest(vscode)).toHaveLength(1);
