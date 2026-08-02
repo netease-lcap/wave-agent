@@ -126,9 +126,6 @@ export interface InputState {
   showWorkflowManager: boolean;
   permissionMode: PermissionMode;
   selectorJustUsed: boolean;
-  isPasting: boolean;
-  pasteBuffer: string;
-  initialPasteCursorPosition: number;
   history: PromptEntry[];
   historyIndex: number;
   originalInputText: string;
@@ -166,9 +163,6 @@ export const initialState: InputState = {
   showWorkflowManager: false,
   permissionMode: "default",
   selectorJustUsed: false,
-  isPasting: false,
-  pasteBuffer: "",
-  initialPasteCursorPosition: 0,
   history: [],
   historyIndex: -1,
   originalInputText: "",
@@ -181,6 +175,172 @@ export const initialState: InputState = {
   pendingEffect: null,
   escClearPending: false,
 };
+
+/**
+ * Insert text at the cursor position, folding text longer than 200 chars
+ * into a [LongText#N] placeholder. Shared by the INSERT_TEXT_WITH_PLACEHOLDER
+ * action and multi-char chunk inserts (typed bursts, terminal paste, tmux
+ * send-keys).
+ */
+function insertTextWithPlaceholder(
+  textToInsert: string,
+  state: InputState,
+): InputState {
+  let text = textToInsert;
+  let newLongTextCounter = state.longTextCounter;
+  const newLongTextMap = { ...state.longTextMap };
+
+  if (text.length > 200) {
+    newLongTextCounter += 1;
+    const placeholderLabel = `[LongText#${newLongTextCounter}]`;
+    newLongTextMap[placeholderLabel] = text;
+    text = placeholderLabel;
+  }
+
+  const beforeCursor = state.inputText.substring(0, state.cursorPosition);
+  const afterCursor = state.inputText.substring(state.cursorPosition);
+  const newText = beforeCursor + text + afterCursor;
+  const newCursorPosition = state.cursorPosition + text.length;
+
+  const newState: InputState = {
+    ...state,
+    inputText: newText,
+    cursorPosition: newCursorPosition,
+    longTextCounter: newLongTextCounter,
+    longTextMap: newLongTextMap,
+    historyIndex: -1,
+  };
+
+  // Sync selectors
+  const atPos = getAtSelectorPosition(newText, newCursorPosition);
+  if (atPos !== -1 && !newState.showFileSelector) {
+    newState.showFileSelector = true;
+    newState.atPosition = atPos;
+    newState.isFileSearching = true;
+  }
+
+  const slashPos = getSlashSelectorPosition(newText, newCursorPosition);
+  if (slashPos !== -1 && !newState.showCommandSelector) {
+    newState.showCommandSelector = true;
+    newState.slashPosition = slashPos;
+  }
+
+  if (newState.showFileSelector && newState.atPosition >= 0) {
+    newState.fileSearchQuery = newText.substring(
+      newState.atPosition + 1,
+      newCursorPosition,
+    );
+  } else if (newState.showCommandSelector && newState.slashPosition >= 0) {
+    newState.commandSearchQuery = newText.substring(
+      newState.slashPosition + 1,
+      newCursorPosition,
+    );
+  }
+
+  return newState;
+}
+
+/**
+ * Submit the current input text: extract [Image #N] references, route /btw
+ * and CLI-internal slash commands, otherwise send as a message. Returns null
+ * when there is nothing to submit (empty text, bare /btw).
+ */
+function submitInput(state: InputState): InputState | null {
+  if (!state.inputText.trim()) {
+    return null;
+  }
+  const imageRegex = /\[Image #(\d+)\]/g;
+  const matches = [...state.inputText.matchAll(imageRegex)];
+  const referencedImages = matches
+    .map((match) => {
+      const imageId = parseInt(match[1], 10);
+      return state.attachedImages.find((img) => img.id === imageId);
+    })
+    .filter((img): img is AttachedImage => img !== undefined)
+    .map((img) => ({ path: img.path, mimeType: img.mimeType }));
+
+  const contentWithPlaceholders = state.inputText
+    .replace(imageRegex, "")
+    .trim();
+
+  if (contentWithPlaceholders.startsWith("/btw ")) {
+    const question = contentWithPlaceholders.substring(5).trim();
+    if (!question) {
+      // Bare /btw with no question text — ignore
+      return null;
+    }
+
+    return {
+      ...state,
+      inputText: "",
+      cursorPosition: 0,
+      historyIndex: -1,
+      longTextMap: {},
+      attachedImages: [],
+      btwState: {
+        question,
+        isLoading: true,
+        answer: undefined,
+      },
+      pendingEffect: { type: "ASK_BTW", question },
+    };
+  }
+
+  if (contentWithPlaceholders === "/btw") {
+    // Bare /btw — ignore
+    return null;
+  }
+
+  // Check if the content is a CLI-internal slash command (help, tasks,
+  // etc.) that should be executed locally rather than sent as a message.
+  // Agent slash commands and unknown /commands always go to SEND_MESSAGE.
+  if (contentWithPlaceholders.startsWith("/")) {
+    const spaceIndex = contentWithPlaceholders.indexOf(" ");
+    const commandName =
+      spaceIndex === -1
+        ? contentWithPlaceholders.substring(1)
+        : contentWithPlaceholders.substring(1, spaceIndex);
+
+    const isInternalCommand = AVAILABLE_COMMANDS.some(
+      (cmd) => cmd.id === commandName,
+    );
+    if (isInternalCommand) {
+      const argsText =
+        spaceIndex === -1
+          ? undefined
+          : contentWithPlaceholders.substring(spaceIndex + 1).trim() ||
+            undefined;
+      return {
+        ...state,
+        inputText: "",
+        cursorPosition: 0,
+        historyIndex: -1,
+        longTextMap: {},
+        attachedImages: [],
+        pendingEffect: {
+          type: "EXECUTE_COMMAND",
+          command: commandName,
+          args: argsText,
+        },
+      };
+    }
+  }
+
+  return {
+    ...state,
+    inputText: "",
+    cursorPosition: 0,
+    historyIndex: -1,
+    longTextMap: {},
+    attachedImages: [],
+    pendingEffect: {
+      type: "SEND_MESSAGE",
+      content: contentWithPlaceholders,
+      images: referencedImages.length > 0 ? referencedImages : undefined,
+      longTextMap: state.longTextMap,
+    },
+  };
+}
 
 export type InputAction =
   | { type: "SET_INPUT_TEXT"; payload: string }
@@ -215,13 +375,6 @@ export type InputAction =
   | { type: "INSERT_TEXT_WITH_PLACEHOLDER"; payload: string }
   | { type: "CLEAR_LONG_TEXT_MAP" }
   | { type: "CLEAR_INPUT" }
-  | { type: "START_PASTE"; payload: { buffer: string; cursorPosition: number } }
-  | { type: "APPEND_PASTE_BUFFER"; payload: string }
-  | {
-      type: "APPEND_PASTE_CHUNK";
-      payload: { chunk: string; cursorPosition: number };
-    }
-  | { type: "END_PASTE" }
   | {
       type: "ADD_IMAGE_AND_INSERT_PLACEHOLDER";
       payload: { path: string; mimeType: string };
@@ -445,60 +598,8 @@ export function inputReducer(
       return { ...state, permissionMode: action.payload };
     case "SET_SELECTOR_JUST_USED":
       return { ...state, selectorJustUsed: action.payload };
-    case "INSERT_TEXT_WITH_PLACEHOLDER": {
-      let textToInsert = action.payload;
-      let newLongTextCounter = state.longTextCounter;
-      const newLongTextMap = { ...state.longTextMap };
-
-      if (textToInsert.length > 200) {
-        newLongTextCounter += 1;
-        const placeholderLabel = `[LongText#${newLongTextCounter}]`;
-        newLongTextMap[placeholderLabel] = textToInsert;
-        textToInsert = placeholderLabel;
-      }
-
-      const beforeCursor = state.inputText.substring(0, state.cursorPosition);
-      const afterCursor = state.inputText.substring(state.cursorPosition);
-      const newText = beforeCursor + textToInsert + afterCursor;
-      const newCursorPosition = state.cursorPosition + textToInsert.length;
-
-      const newState: InputState = {
-        ...state,
-        inputText: newText,
-        cursorPosition: newCursorPosition,
-        longTextCounter: newLongTextCounter,
-        longTextMap: newLongTextMap,
-        historyIndex: -1,
-      };
-
-      // Sync selectors
-      const atPos = getAtSelectorPosition(newText, newCursorPosition);
-      if (atPos !== -1 && !newState.showFileSelector) {
-        newState.showFileSelector = true;
-        newState.atPosition = atPos;
-        newState.isFileSearching = true;
-      }
-
-      const slashPos = getSlashSelectorPosition(newText, newCursorPosition);
-      if (slashPos !== -1 && !newState.showCommandSelector) {
-        newState.showCommandSelector = true;
-        newState.slashPosition = slashPos;
-      }
-
-      if (newState.showFileSelector && newState.atPosition >= 0) {
-        newState.fileSearchQuery = newText.substring(
-          newState.atPosition + 1,
-          newCursorPosition,
-        );
-      } else if (newState.showCommandSelector && newState.slashPosition >= 0) {
-        newState.commandSearchQuery = newText.substring(
-          newState.slashPosition + 1,
-          newCursorPosition,
-        );
-      }
-
-      return newState;
-    }
+    case "INSERT_TEXT_WITH_PLACEHOLDER":
+      return insertTextWithPlaceholder(action.payload, state);
     case "CLEAR_LONG_TEXT_MAP":
       return { ...state, longTextMap: {} };
     case "CLEAR_INPUT":
@@ -507,39 +608,6 @@ export function inputReducer(
         inputText: "",
         cursorPosition: 0,
         historyIndex: -1,
-      };
-    case "APPEND_PASTE_CHUNK": {
-      // The reducer determines if this is a new paste or a continuation
-      // by checking if pasteBuffer is already set. This avoids the
-      // handler needing to track isPasting state, which can be stale
-      // when multiple dispatches fire before React state updates.
-      const isNewPaste = !state.pasteBuffer;
-      return {
-        ...state,
-        isPasting: true,
-        pasteBuffer: state.pasteBuffer + action.payload.chunk,
-        initialPasteCursorPosition: isNewPaste
-          ? action.payload.cursorPosition
-          : state.initialPasteCursorPosition,
-      };
-    }
-    case "START_PASTE":
-      return {
-        ...state,
-        isPasting: true,
-        pasteBuffer: action.payload.buffer,
-        initialPasteCursorPosition: action.payload.cursorPosition,
-      };
-    case "APPEND_PASTE_BUFFER":
-      return {
-        ...state,
-        pasteBuffer: state.pasteBuffer + action.payload,
-      };
-    case "END_PASTE":
-      return {
-        ...state,
-        isPasting: false,
-        pasteBuffer: "",
       };
     case "ADD_IMAGE_AND_INSERT_PLACEHOLDER": {
       const newImage: AttachedImage = {
@@ -1166,101 +1234,7 @@ export function inputReducer(
 
       // 6. Return / Submit
       if (key.return) {
-        if (state.inputText.trim()) {
-          const imageRegex = /\[Image #(\d+)\]/g;
-          const matches = [...state.inputText.matchAll(imageRegex)];
-          const referencedImages = matches
-            .map((match) => {
-              const imageId = parseInt(match[1], 10);
-              return state.attachedImages.find((img) => img.id === imageId);
-            })
-            .filter((img): img is AttachedImage => img !== undefined)
-            .map((img) => ({ path: img.path, mimeType: img.mimeType }));
-
-          const contentWithPlaceholders = state.inputText
-            .replace(imageRegex, "")
-            .trim();
-
-          if (contentWithPlaceholders.startsWith("/btw ")) {
-            const question = contentWithPlaceholders.substring(5).trim();
-            if (!question) {
-              // Bare /btw with no question text — ignore
-              return state;
-            }
-
-            return {
-              ...state,
-              inputText: "",
-              cursorPosition: 0,
-              historyIndex: -1,
-              longTextMap: {},
-              attachedImages: [],
-              btwState: {
-                question,
-                isLoading: true,
-                answer: undefined,
-              },
-              pendingEffect: { type: "ASK_BTW", question },
-            };
-          }
-
-          if (contentWithPlaceholders === "/btw") {
-            // Bare /btw — ignore
-            return state;
-          }
-
-          // Check if the content is a CLI-internal slash command (help, tasks,
-          // etc.) that should be executed locally rather than sent as a message.
-          // Agent slash commands and unknown /commands always go to SEND_MESSAGE.
-          if (contentWithPlaceholders.startsWith("/")) {
-            const spaceIndex = contentWithPlaceholders.indexOf(" ");
-            const commandName =
-              spaceIndex === -1
-                ? contentWithPlaceholders.substring(1)
-                : contentWithPlaceholders.substring(1, spaceIndex);
-
-            const isInternalCommand = AVAILABLE_COMMANDS.some(
-              (cmd) => cmd.id === commandName,
-            );
-            if (isInternalCommand) {
-              const argsText =
-                spaceIndex === -1
-                  ? undefined
-                  : contentWithPlaceholders.substring(spaceIndex + 1).trim() ||
-                    undefined;
-              return {
-                ...state,
-                inputText: "",
-                cursorPosition: 0,
-                historyIndex: -1,
-                longTextMap: {},
-                attachedImages: [],
-                pendingEffect: {
-                  type: "EXECUTE_COMMAND",
-                  command: commandName,
-                  args: argsText,
-                },
-              };
-            }
-          }
-
-          return {
-            ...state,
-            inputText: "",
-            cursorPosition: 0,
-            historyIndex: -1,
-            longTextMap: {},
-            attachedImages: [],
-            pendingEffect: {
-              type: "SEND_MESSAGE",
-              content: contentWithPlaceholders,
-              images:
-                referencedImages.length > 0 ? referencedImages : undefined,
-              longTextMap: state.longTextMap,
-            },
-          };
-        }
-        return state;
+        return submitInput(state) ?? state;
       }
 
       // 7. Regular Input
@@ -1276,19 +1250,32 @@ export function inputReducer(
         !("home" in key && key.home) &&
         !("end" in key && key.end)
       ) {
-        const isPasteOperation =
-          input.length > 1 || input.includes("\n") || input.includes("\r");
+        // SSH-coalesced Enter: on slow links, "text" + Enter arrive as one
+        // chunk ("o\r"). ink's parseKeypress only matches a lone \r, so
+        // key.return is false here. Text with exactly one trailing \r is a
+        // coalesced Enter — strip the \r, insert, and submit immediately
+        // (aligned with Claude Code's useTextInput).
+        const isCoalescedEnter =
+          input.length > 1 &&
+          input.endsWith("\r") &&
+          !input.slice(0, -1).includes("\r") &&
+          // Backslash+CR is a stale VS Code Shift+Enter binding, not a
+          // coalesced Enter — keep it as regular input.
+          input[input.length - 2] !== "\\";
 
-        if (isPasteOperation) {
-          const isNewPaste = !state.pasteBuffer;
-          return {
-            ...state,
-            isPasting: true,
-            pasteBuffer: state.pasteBuffer + input,
-            initialPasteCursorPosition: isNewPaste
-              ? state.cursorPosition
-              : state.initialPasteCursorPosition,
-          };
+        if (isCoalescedEnter) {
+          const insertedState = insertTextWithPlaceholder(
+            input.slice(0, -1),
+            state,
+          );
+          return submitInput(insertedState) ?? insertedState;
+        }
+
+        if (input.length > 1) {
+          // Multi-char chunk (typed burst, terminal paste, tmux send-keys):
+          // insert immediately — no debounce or paste buffer. \r → \n
+          // normalizes carriage returns from CRLF terminals.
+          return insertTextWithPlaceholder(input.replace(/\r/g, "\n"), state);
         } else {
           let char = input;
           if (char === "！" && state.cursorPosition === 0) {

@@ -292,17 +292,13 @@ export const handlePasteInput = (
   input: string,
 ): void => {
   const inputString = input;
-  const isPasteOperation =
-    inputString.length > 1 ||
-    inputString.includes("\n") ||
-    inputString.includes("\r");
 
-  if (isPasteOperation) {
-    // Dispatch a single action type; the reducer determines start vs append
-    // by checking pasteBuffer, avoiding stale state issues
+  if (inputString.length > 1) {
+    // Multi-char chunk: insert immediately (\r → \n normalizes CRLF
+    // terminals), matching the reducer's HANDLE_KEY path.
     dispatch({
-      type: "APPEND_PASTE_CHUNK",
-      payload: { chunk: inputString, cursorPosition: state.cursorPosition },
+      type: "INSERT_TEXT_WITH_PLACEHOLDER",
+      payload: inputString.replace(/\r/g, "\n"),
     });
   } else {
     let char = inputString;
