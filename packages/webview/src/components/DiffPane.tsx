@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { VsCodeApi } from '../types';
 import '../styles/DiffViewer.css';
 import '../styles/DiffPane.css';
@@ -46,6 +46,53 @@ export function formatDiffComment(msg: DiffComment): string {
 
 const MIN_WIDTH = 320;
 
+// Windowed-list constants (VS Code multi-diff editor pattern: diff data is
+// loaded once for all files, but the DOM only mounts viewport-visible items —
+// the equivalent of MultiDiffEditorWidgetImpl's virtualized render + ObjectPool
+// releasing the DiffEditorWidget of scrolled-out items).
+const HEADER_HEIGHT = 30; // .diff-file-header estimate, corrected by ResizeObserver
+const BODY_PADDING = 8; // .diff-file-body vertical padding
+const LINE_HEIGHT = 14.4; // 12px font × 1.2 line-height
+const DEFAULT_VIEWPORT = 800; // jsdom has no layout; real height comes from ResizeObserver
+const OVERSCAN_PX = 300; // keep rendering this much above/below the viewport for smooth scrolling
+
+/** Height estimate for an unmeasured file block; exact once ResizeObserver reports. */
+function estimateFileHeight(file: WorkspaceDiffFile, collapsed: boolean): number {
+  if (collapsed) return HEADER_HEIGHT;
+  let lines = file.hunks ? file.hunks.split('\n').length : 0;
+  if (file.binary || !file.hunks) lines += 1; // binary / no-content placeholder line
+  if (file.truncated) lines += 1; // truncation note
+  return HEADER_HEIGHT + BODY_PADDING + lines * LINE_HEIGHT;
+}
+
+/** Windowed list item: mounts its file block at an absolute offset and reports
+ *  the real rendered height via ResizeObserver so the layout stays exact.
+ *  Scrolled-out items unmount — their "widget" is released, like VS Code's
+ *  ObjectPool returning a DiffEditorWidget to the pool. */
+const MeasuredDiffItem: React.FC<{
+  file: WorkspaceDiffFile;
+  top: number;
+  onMeasure: (path: string, height: number) => void;
+  children?: React.ReactNode;
+}> = ({ file, top, onMeasure, children }) => {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height;
+      if (height) onMeasure(file.path, height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [file.path, onMeasure]);
+  return (
+    <div ref={ref} className="diff-file-virtual-item" style={{ top }}>
+      {children}
+    </div>
+  );
+};
+
 export interface DiffPaneProps {
   vscode: VsCodeApi;
   width: number;
@@ -89,6 +136,33 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   // True while a refresh request is in flight; drives the toolbar spinner.
   const [refreshing, setRefreshing] = useState(false);
   const asideRef = useRef<HTMLElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Windowed list state: the scroll offset, the scroll container's viewport
+  // height, and per-file measured heights (keyed by path, surviving refreshes).
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewport, setViewport] = useState(DEFAULT_VIEWPORT);
+  const [measuredHeights, setMeasuredHeights] = useState<ReadonlyMap<string, number>>(new Map());
+
+  const handleMeasure = useCallback((path: string, height: number) => {
+    setMeasuredHeights((prev) => {
+      if (prev.get(path) === height) return prev;
+      const next = new Map(prev);
+      next.set(path, height);
+      return next;
+    });
+  }, []);
+
+  // Track the scroll container's viewport height so the visible window stays exact.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height;
+      if (height) setViewport(height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Inline diff-line comment box (GitHub/GitLab style): hovering a line shows a
   // "+" button; clicking opens a comment box under that line whose contents
@@ -179,6 +253,53 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       else next.add(path);
       return next;
     });
+    // Collapse/expand changes the height drastically; drop any stale measured
+    // height so the estimate (which accounts for the collapsed state) wins
+    // until ResizeObserver re-measures the mounted item.
+    setMeasuredHeights((prev) => {
+      if (!prev.has(path)) return prev;
+      const next = new Map(prev);
+      next.delete(path);
+      return next;
+    });
+  };
+
+  // Layout: absolute offset + height per file. Collapsed files are exactly
+  // header-height; expanded files use the measured height once known.
+  const files = state.kind === 'ok' ? state.files : [];
+  const layout = useMemo(() => {
+    const offsets: number[] = [];
+    const heights: number[] = [];
+    let total = 0;
+    for (const file of files) {
+      offsets.push(total);
+      const height = collapsed.has(file.path)
+        ? HEADER_HEIGHT
+        : measuredHeights.get(file.path) ?? estimateFileHeight(file, collapsed.has(file.path));
+      heights.push(height);
+      total += height;
+    }
+    return { offsets, heights, total };
+  }, [files, collapsed, measuredHeights]);
+
+  // Only items intersecting the viewport (plus overscan) are mounted.
+  const visibleIndices = useMemo(() => {
+    const { offsets, heights, total } = layout;
+    // Clamp so a stale scrollTop from a previous, longer file list (e.g. after
+    // refresh) never blanks the pane until the next scroll event.
+    const effectiveScrollTop = Math.min(scrollTop, Math.max(0, total - viewport));
+    const startY = effectiveScrollTop - OVERSCAN_PX;
+    const endY = effectiveScrollTop + viewport + OVERSCAN_PX;
+    const out: number[] = [];
+    for (let i = 0; i < files.length; i++) {
+      if (offsets[i] + heights[i] < startY || offsets[i] > endY) continue;
+      out.push(i);
+    }
+    return out;
+  }, [layout, files.length, scrollTop, viewport]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
   };
 
   const onDragStart = (e: React.MouseEvent) => {
@@ -362,7 +483,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
             <i className="codicon codicon-close" />
           </button>
         </div>
-        <div className="diff-pane-body">
+        <div className="diff-pane-body" ref={scrollRef} onScroll={handleScroll}>
           {state.kind === 'loading' && <div className="desktop-panel-placeholder">加载中…</div>}
           {state.kind === 'not-a-repo' && (
             <div className="desktop-panel-placeholder">非 git 仓库</div>
@@ -370,7 +491,20 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
           {state.kind === 'ok' && state.files.length === 0 && (
             <div className="desktop-panel-placeholder">无改动</div>
           )}
-          {state.kind === 'ok' && state.files.map(renderFile)}
+          {state.kind === 'ok' && state.files.length > 0 && (
+            <div className="diff-file-virtual-spacer" style={{ height: layout.total }}>
+              {visibleIndices.map((i) => (
+                <MeasuredDiffItem
+                  key={files[i].path}
+                  file={files[i]}
+                  top={layout.offsets[i]}
+                  onMeasure={handleMeasure}
+                >
+                  {renderFile(files[i])}
+                </MeasuredDiffItem>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </aside>

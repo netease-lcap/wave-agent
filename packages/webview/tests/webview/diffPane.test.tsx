@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent, screen, act } from '@testing-library/react';
+import { render, fireEvent, screen, act, within } from '@testing-library/react';
 import React from 'react';
 import { DiffPane, formatDiffComment } from '../../src/components/DiffPane';
 import type { WorkspaceDiffFile } from '../../src/components/DiffPane';
@@ -72,6 +72,20 @@ function sendDiffResult(files: WorkspaceDiffFile[], paneId?: string) {
 
 const lastDiffRequest = (vscode: ReturnType<typeof createMockVscode>) =>
     vscode.postMessage.mock.calls.filter(([msg]) => msg.command === 'desktopGetWorkspaceDiff');
+
+// makeFile's default hunks are 4 lines; the jsdom fallback viewport is 800px,
+// so a single file block (~96px estimated) renders, while hundreds of files
+// stay windowed.
+function makeManyFiles(count: number): WorkspaceDiffFile[] {
+    return Array.from({ length: count }, (_, i) => makeFile({ path: `src/file-${i}.ts` }));
+}
+
+const mountedFileBlocks = () => document.querySelectorAll('.diff-file').length;
+const scrollBodyTo = (scrollTop: number) => {
+    const body = document.querySelector('.diff-pane-body') as HTMLElement;
+    body.scrollTop = scrollTop;
+    fireEvent.scroll(body);
+};
 
 describe('DiffPane', () => {
     it('requests the workspace diff on mount and shows a loading state', () => {
@@ -365,6 +379,67 @@ describe('DiffPane', () => {
             expect(screen.getByTestId('diff-comment-box')).toBeInTheDocument();
             fireEvent.click(screen.getByTestId('diff-comment-add-3'));
             expect(screen.queryAllByTestId('diff-comment-box')).toHaveLength(1);
+        });
+    });
+
+    describe('virtualized rendering', () => {
+        it('mounts only the file blocks intersecting the viewport (bounded DOM)', () => {
+            renderPane();
+            sendDiffResult(makeManyFiles(200));
+            // All 200 files were loaded in one message, but only ~11 blocks fit
+            // the viewport window (+overscan) — the DOM stays small.
+            expect(mountedFileBlocks()).toBeGreaterThan(0);
+            expect(mountedFileBlocks()).toBeLessThan(20);
+            expect(mountedFileBlocks()).toBeLessThan(200);
+        });
+
+        it('scrolling shifts the mounted window: reveals later files, unmounts scrolled-out ones', () => {
+            renderPane();
+            sendDiffResult(makeManyFiles(200));
+            expect(screen.getByText('src/file-0.ts')).toBeInTheDocument();
+            scrollBodyTo(5000);
+            expect(screen.queryByText('src/file-0.ts')).not.toBeInTheDocument();
+            expect(screen.getByText('src/file-55.ts')).toBeInTheDocument();
+            // Scrolling back returns the first window.
+            scrollBodyTo(0);
+            expect(screen.getByText('src/file-0.ts')).toBeInTheDocument();
+            expect(screen.queryByText('src/file-55.ts')).not.toBeInTheDocument();
+        });
+
+        it('collapse/expand still works inside the windowed list', () => {
+            renderPane();
+            sendDiffResult(makeManyFiles(200));
+            // Scope queries to the first mounted block: every block shares the
+            // same hunks ('new1') and line testids.
+            const firstBlock = document.querySelector('.diff-file') as HTMLElement;
+            const header = firstBlock.querySelector('.diff-file-header') as HTMLElement;
+            expect(header).toHaveAttribute('aria-expanded', 'true');
+            fireEvent.click(header);
+            expect(header).toHaveAttribute('aria-expanded', 'false');
+            expect(within(firstBlock).queryByText('new1')).not.toBeInTheDocument();
+            fireEvent.click(header);
+            expect(header).toHaveAttribute('aria-expanded', 'true');
+            expect(within(firstBlock).getByText('new1')).toBeInTheDocument();
+        });
+
+        it('line comments work on a windowed file block', () => {
+            renderPane();
+            sendDiffResult(makeManyFiles(200));
+            const firstBlock = document.querySelector('.diff-file') as HTMLElement;
+            fireEvent.click(within(firstBlock).getByTestId('diff-comment-add-1'));
+            expect(screen.getByTestId('diff-comment-box')).toBeInTheDocument();
+            expect(screen.getByTestId('diff-comment-box').querySelector('.diff-comment-box-tag')).toHaveTextContent('src/file-0.ts');
+        });
+
+        it('does not blank the pane when a refresh shrinks the list while scrolled', () => {
+            renderPane();
+            sendDiffResult(makeManyFiles(200));
+            scrollBodyTo(5000);
+            expect(screen.queryByText('src/file-0.ts')).not.toBeInTheDocument();
+            // New result is a single file: the stale scrollTop must be clamped
+            // so the remaining file still renders without a scroll event.
+            sendDiffResult([makeFile({ path: 'src/only.ts' })]);
+            expect(screen.getByText('src/only.ts')).toBeInTheDocument();
         });
     });
 });
