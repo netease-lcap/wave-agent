@@ -398,6 +398,10 @@ export class MessageHandler {
         try {
             const result = await this.pluginService.setBuiltinPluginEnabled(pluginId, enabled, scope as Scope);
             this.context.postMessage({ command: 'projectSettings', enabledPlugins: result.enabledPlugins }, viewType, windowId);
+
+            // Reload config and recreate agents to apply plugin changes
+            const config = await this.configService.loadConfiguration();
+            this.context.updateAllSessionsConfig(config);
         } catch (error) {
             vscode.window.showErrorMessage('修改项目设置失败: ' + error);
         }

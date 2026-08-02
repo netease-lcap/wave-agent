@@ -263,4 +263,44 @@ describe('MessageHandler MCP handlers', () => {
         expect(compact).toBeDefined();
         expect(compact?.name).toBe('compact');
     });
+
+    // Toggling a project-level builtin plugin (e.g. sdd@builtin) must recreate
+    // agents — same as handleEnablePlugin — so the change takes effect, not just
+    // refresh the projectSettings panel.
+    test('setBuiltinPluginEnabled reloads config and recreates agents on success', async () => {
+        const configService = {
+            loadConfiguration: vi.fn().mockResolvedValue({ serverUrl: '', language: 'Chinese' }),
+            saveConfiguration: vi.fn(),
+        };
+        const pluginService = {
+            setBuiltinPluginEnabled: vi.fn().mockResolvedValue({ enabledPlugins: { 'sdd@builtin': true } }),
+        };
+        const context: MessageHandlerContext = {
+            getChatSession: vi.fn().mockReturnValue(createMockSession()),
+            postMessage: vi.fn(),
+            initializeAgent: vi.fn(),
+            listSessions: vi.fn(),
+            updateAllSessionsConfig: vi.fn(),
+            checkForUpdates: vi.fn(),
+            getVersion: vi.fn().mockReturnValue('1.2.3'),
+        };
+        const handler = new MessageHandler(
+            configService as unknown as ConfigurationService,
+            {} as unknown as FileService,
+            {} as unknown as SessionService,
+            pluginService as unknown as PluginService,
+            {} as unknown as StdioClient,
+            context
+        );
+
+        await handler.handleMessage({ command: 'setBuiltinPluginEnabled', pluginId: 'sdd@builtin', enabled: true, scope: 'project' }, 'tab');
+
+        expect(pluginService.setBuiltinPluginEnabled).toHaveBeenCalledWith('sdd@builtin', true, 'project');
+        expect(configService.loadConfiguration).toHaveBeenCalled();
+        expect(context.updateAllSessionsConfig).toHaveBeenCalledWith({ serverUrl: '', language: 'Chinese' });
+
+        const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as { command: string; enabledPlugins: Record<string, boolean> };
+        expect(posted.command).toBe('projectSettings');
+        expect(posted.enabledPlugins).toEqual({ 'sdd@builtin': true });
+    });
 });
