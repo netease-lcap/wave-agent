@@ -983,6 +983,27 @@ describe("HookManager Coverage", () => {
       );
     });
 
+    it("should pass 'resume' endSource in context when switching sessions", async () => {
+      manager.loadConfiguration({
+        SessionEnd: [
+          { hooks: [{ type: "command" as const, command: "echo cleanup" }] },
+        ],
+      });
+      await manager.executeSessionEndHooks(
+        "resume",
+        "current-session-id",
+        "/path/to/transcript.json",
+      );
+      expect(mockExecuteCommand).toHaveBeenCalledWith(
+        "echo cleanup",
+        expect.objectContaining({
+          event: "SessionEnd",
+          endSource: "resume",
+        }),
+        undefined,
+      );
+    });
+
     it("should return empty array when no hooks configured", async () => {
       const results = await manager.executeSessionEndHooks(
         "exit",

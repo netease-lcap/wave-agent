@@ -139,6 +139,7 @@ export class InteractionService {
   ): Promise<void> {
     const {
       messageManager,
+      hookManager,
       logger,
       subagentManager,
       taskManager,
@@ -159,7 +160,24 @@ export class InteractionService {
       // Continue with restoration even if save fails
     }
 
-    // 3. Load target session
+    // 3. Run SessionEnd hooks for the current session (cleanup before switching)
+    const currentSessionId = messageManager.getSessionId();
+    const currentTranscriptPath = messageManager.getTranscriptPath();
+    if (hookManager) {
+      try {
+        await hookManager.executeSessionEndHooks(
+          "resume",
+          currentSessionId,
+          currentTranscriptPath,
+        );
+      } catch (error) {
+        logger?.warn(
+          `SessionEnd hooks on restore failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // 4. Load target session
     const sessionData = await loadSessionFromJsonl(
       sessionId,
       messageManager.getWorkdir(),
@@ -168,20 +186,43 @@ export class InteractionService {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    // 4. Clean current state
+    // 5. Clean current state
     abortMessage(); // Abort any running operations
     subagentManager.cleanup(); // Clean up active subagents
 
-    // 5. Rebuild usage (in correct order)
+    // 6. Rebuild usage (in correct order)
     messageManager.rebuildUsageFromMessages(sessionData.messages);
 
-    // 6. Initialize session state last
+    // 7. Initialize session state last
     messageManager.initializeFromSession(sessionData);
+
+    // 8. Run SessionStart hooks for the restored session and inject additional
+    //    context as a meta user message (matches Claude Code's resume behavior:
+    //    SessionEnd then SessionStart, hook messages appended to the conversation)
+    if (hookManager) {
+      try {
+        const sessionStartResult = await hookManager.executeSessionStartHooks(
+          "resume",
+          sessionData.id,
+          messageManager.getTranscriptPath(),
+        );
+        if (sessionStartResult.additionalContext) {
+          messageManager.addUserMessage({
+            content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
+            isMeta: true,
+          });
+        }
+      } catch (error) {
+        logger?.warn(
+          `SessionStart hooks on restore failed: ${(error as Error).message}`,
+        );
+      }
+    }
 
     // Update task manager with the root session ID to ensure continuity across compactions
     taskManager.setTaskListId(sessionData.id);
 
-    // 7. Load tasks for the restored session
+    // 9. Load tasks for the restored session
     const tasks = await taskManager.listTasks();
     options.callbacks?.onTasksChange?.(tasks);
   }
