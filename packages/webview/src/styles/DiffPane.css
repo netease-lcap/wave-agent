@@ -6,20 +6,6 @@
     min-height: 0;
 }
 
-/* Windowed diff list: the spacer div provides the total scroll height; only
-   viewport-visible file blocks are mounted, absolutely positioned at their
-   measured offsets (offsets live in inline styles, set per item). */
-.diff-file-virtual-spacer {
-    position: relative;
-    width: 100%;
-}
-
-.diff-file-virtual-item {
-    position: absolute;
-    left: 0;
-    right: 0;
-}
-
 .diff-pane .codicon-modifier-spin {
     animation: spin 1s linear infinite;
 }
