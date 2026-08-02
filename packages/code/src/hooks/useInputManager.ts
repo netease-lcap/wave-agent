@@ -72,26 +72,6 @@ export const useInputManager = (
     }
   }, [state.showFileSelector, state.fileSearchQuery]);
 
-  // Handle paste debouncing
-  useEffect(() => {
-    if (state.isPasting) {
-      const pasteDebounceDelay = parseInt(
-        process.env.PASTE_DEBOUNCE_MS || "30",
-        10,
-      );
-      const timer = setTimeout(() => {
-        const processedInput = state.pasteBuffer.replace(/\r/g, "\n");
-        dispatch({
-          type: "INSERT_TEXT_WITH_PLACEHOLDER",
-          payload: processedInput,
-        });
-        dispatch({ type: "END_PASTE" });
-        dispatch({ type: "RESET_HISTORY_NAVIGATION" });
-      }, pasteDebounceDelay);
-      return () => clearTimeout(timer);
-    }
-  }, [state.isPasting, state.pasteBuffer]);
-
   // Auto-expire the double-Esc clear pending flag after the timeout window
   // (aligned with Claude Code's useDoublePress timeout-based expiry).
   useEffect(() => {

@@ -439,39 +439,40 @@ describe("inputHandlers", () => {
   });
 
   describe("handlePasteInput", () => {
-    it("should dispatch APPEND_PASTE_CHUNK for multi-char input", () => {
+    it("should insert multi-char input immediately", () => {
       const state = { ...initialState, cursorPosition: 0 };
       handlePasteInput(state, dispatch, callbacks, "pasted text");
       expect(dispatch).toHaveBeenCalledWith({
-        type: "APPEND_PASTE_CHUNK",
-        payload: { chunk: "pasted text", cursorPosition: 0 },
+        type: "INSERT_TEXT_WITH_PLACEHOLDER",
+        payload: "pasted text",
       });
     });
 
-    it("should dispatch APPEND_PASTE_CHUNK regardless of isPasting state", () => {
-      const state = { ...initialState, isPasting: true, cursorPosition: 5 };
-      handlePasteInput(state, dispatch, callbacks, "more text");
+    it("should insert long input immediately (reducer folds into LongText)", () => {
+      const state = { ...initialState, cursorPosition: 5 };
+      const longText = "a".repeat(801);
+      handlePasteInput(state, dispatch, callbacks, longText);
       expect(dispatch).toHaveBeenCalledWith({
-        type: "APPEND_PASTE_CHUNK",
-        payload: { chunk: "more text", cursorPosition: 5 },
+        type: "INSERT_TEXT_WITH_PLACEHOLDER",
+        payload: longText,
       });
     });
 
-    it("should handle paste with newline in single-char-like input", () => {
-      const state = { ...initialState, isPasting: false, cursorPosition: 0 };
+    it("should insert multi-line input with newline", () => {
+      const state = { ...initialState, cursorPosition: 0 };
       handlePasteInput(state, dispatch, callbacks, "a\nb");
       expect(dispatch).toHaveBeenCalledWith({
-        type: "APPEND_PASTE_CHUNK",
-        payload: { chunk: "a\nb", cursorPosition: 0 },
+        type: "INSERT_TEXT_WITH_PLACEHOLDER",
+        payload: "a\nb",
       });
     });
 
-    it("should handle paste with carriage return", () => {
-      const state = { ...initialState, isPasting: false, cursorPosition: 0 };
+    it("should convert carriage returns to newlines", () => {
+      const state = { ...initialState, cursorPosition: 0 };
       handlePasteInput(state, dispatch, callbacks, "a\rb");
       expect(dispatch).toHaveBeenCalledWith({
-        type: "APPEND_PASTE_CHUNK",
-        payload: { chunk: "a\rb", cursorPosition: 0 },
+        type: "INSERT_TEXT_WITH_PLACEHOLDER",
+        payload: "a\nb",
       });
     });
 

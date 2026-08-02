@@ -36,9 +36,6 @@ describe("inputReducer", () => {
       showModelSelector: false,
       permissionMode: "default",
       selectorJustUsed: false,
-      isPasting: false,
-      pasteBuffer: "",
-      initialPasteCursorPosition: 0,
       history: [],
       historyIndex: -1,
       originalInputText: "",
@@ -482,82 +479,6 @@ describe("inputReducer", () => {
     const state = inputReducer(stateWithInput, { type: "CLEAR_INPUT" });
     expect(state.inputText).toBe("");
     expect(state.cursorPosition).toBe(0);
-  });
-
-  it("should handle START_PASTE, APPEND_PASTE_BUFFER, END_PASTE", () => {
-    let state = inputReducer(initialState, {
-      type: "START_PASTE",
-      payload: { buffer: "start", cursorPosition: 0 },
-    });
-    expect(state.isPasting).toBe(true);
-    expect(state.pasteBuffer).toBe("start");
-    expect(state.initialPasteCursorPosition).toBe(0);
-
-    state = inputReducer(state, {
-      type: "APPEND_PASTE_BUFFER",
-      payload: " more",
-    });
-    expect(state.pasteBuffer).toBe("start more");
-
-    state = inputReducer(state, { type: "END_PASTE" });
-    expect(state.isPasting).toBe(false);
-    expect(state.pasteBuffer).toBe("");
-  });
-
-  it("should handle APPEND_PASTE_CHUNK as new paste when buffer is empty", () => {
-    const state = inputReducer(initialState, {
-      type: "APPEND_PASTE_CHUNK",
-      payload: { chunk: "first chunk", cursorPosition: 3 },
-    });
-    expect(state.isPasting).toBe(true);
-    expect(state.pasteBuffer).toBe("first chunk");
-    expect(state.initialPasteCursorPosition).toBe(3);
-  });
-
-  it("should handle APPEND_PASTE_CHUNK as append when buffer is already set", () => {
-    let state = inputReducer(initialState, {
-      type: "APPEND_PASTE_CHUNK",
-      payload: { chunk: "first", cursorPosition: 0 },
-    });
-    state = inputReducer(state, {
-      type: "APPEND_PASTE_CHUNK",
-      payload: { chunk: "second", cursorPosition: 0 },
-    });
-    state = inputReducer(state, {
-      type: "APPEND_PASTE_CHUNK",
-      payload: { chunk: "third", cursorPosition: 5 },
-    });
-
-    expect(state.pasteBuffer).toBe("firstsecondthird");
-    expect(state.initialPasteCursorPosition).toBe(0); // preserved from first chunk
-  });
-
-  it("should accumulate paste chunks through rapid sequential dispatches", () => {
-    let state = inputReducer(initialState, {
-      type: "APPEND_PASTE_CHUNK",
-      payload: { chunk: "chunk1", cursorPosition: 0 },
-    });
-    state = inputReducer(state, {
-      type: "APPEND_PASTE_CHUNK",
-      payload: { chunk: "chunk2", cursorPosition: 0 },
-    });
-    state = inputReducer(state, {
-      type: "APPEND_PASTE_CHUNK",
-      payload: { chunk: "chunk3", cursorPosition: 0 },
-    });
-
-    expect(state.pasteBuffer).toBe("chunk1chunk2chunk3");
-    expect(state.isPasting).toBe(true);
-  });
-
-  it("should handle END_PASTE after APPEND_PASTE_CHUNK", () => {
-    let state = inputReducer(initialState, {
-      type: "APPEND_PASTE_CHUNK",
-      payload: { chunk: "pasted text", cursorPosition: 0 },
-    });
-    state = inputReducer(state, { type: "END_PASTE" });
-    expect(state.isPasting).toBe(false);
-    expect(state.pasteBuffer).toBe("");
   });
 
   it("should handle ADD_IMAGE_AND_INSERT_PLACEHOLDER", () => {
@@ -1026,7 +947,6 @@ describe("inputReducer", () => {
         });
         expect(result.inputText).toBe("a");
         expect(result.cursorPosition).toBe(1);
-        expect(result.isPasting).toBe(false);
       });
 
       it("should ignore DEL bytes when cursor is at start", () => {
@@ -1464,7 +1384,7 @@ describe("inputReducer", () => {
       });
     });
 
-    it("should handle paste operation in HANDLE_KEY", () => {
+    it("should insert short multi-char chunk immediately", () => {
       const result = inputReducer(initialState, {
         type: "HANDLE_KEY",
         payload: {
@@ -1473,8 +1393,69 @@ describe("inputReducer", () => {
           hasSlashCommand: () => false,
         },
       });
-      expect(result.isPasting).toBe(true);
-      expect(result.pasteBuffer).toBe("pasted text");
+      expect(result.inputText).toBe("pasted text");
+      expect(result.cursorPosition).toBe("pasted text".length);
+    });
+
+    it("should insert long chunk immediately, folded into LongText placeholder", () => {
+      const longText = "a".repeat(801);
+      const result = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: longText,
+          key: {} as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+      expect(result.inputText).toBe("[LongText#1]");
+      expect(result.longTextMap["[LongText#1]"]).toBe(longText);
+      expect(result.cursorPosition).toBe("[LongText#1]".length);
+    });
+
+    it("should insert chunk with newline immediately", () => {
+      const result = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "line1\nline2",
+          key: {} as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+      expect(result.inputText).toBe("line1\nline2");
+      expect(result.pendingEffect).toBeNull();
+    });
+
+    it("should submit on SSH-coalesced Enter chunk (text + \\r)", () => {
+      const result = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "hello\r",
+          key: {} as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+      expect(result.inputText).toBe("");
+      expect(result.pendingEffect).toEqual({
+        type: "SEND_MESSAGE",
+        content: "hello",
+        images: undefined,
+        longTextMap: {},
+      });
+    });
+
+    it("should not treat backslash + \\r as coalesced Enter", () => {
+      const result = inputReducer(initialState, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "\\\r",
+          key: {} as unknown as Key,
+          hasSlashCommand: () => false,
+        },
+      });
+      // Not a coalesced Enter — falls through to the multi-char insert,
+      // where the trailing \r becomes \n.
+      expect(result.inputText).toBe("\\\n");
+      expect(result.pendingEffect).toBeNull();
     });
 
     it("should handle ！ character at start of input", () => {
