@@ -94,6 +94,32 @@ describe("HookManager - SessionStart hooks", () => {
       expect(result.results).toHaveLength(1);
     });
 
+    it("should execute hooks with 'resume' source", async () => {
+      manager.loadConfiguration({
+        SessionStart: [
+          {
+            hooks: [{ type: "command" as const, command: "echo resume-hook" }],
+          },
+        ],
+      });
+
+      const result = await manager.executeSessionStartHooks(
+        "resume",
+        "restored-session-id",
+        "/test/transcript.md",
+      );
+
+      expect(mockExecuteCommand).toHaveBeenCalledWith(
+        expect.stringContaining("echo resume-hook"),
+        expect.objectContaining({
+          event: "SessionStart",
+          source: "resume",
+        }),
+        undefined,
+      );
+      expect(result.results).toHaveLength(1);
+    });
+
     it("should parse additionalContext from JSON stdout", async () => {
       mockExecuteCommand.mockResolvedValue({
         success: true,

@@ -102,9 +102,9 @@ export class HookConfigurationError extends Error {
   }
 }
 
-export type SessionStartSource = "startup" | "compact" | "clear";
+export type SessionStartSource = "startup" | "resume" | "compact" | "clear";
 
-export type SessionEndSource = "exit" | "stop" | "compact" | "clear";
+export type SessionEndSource = "exit" | "resume" | "stop" | "compact" | "clear";
 
 // Type guards for runtime validation
 export function isValidHookEvent(event: string): event is HookEvent {

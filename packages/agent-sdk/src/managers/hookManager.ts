@@ -13,6 +13,7 @@ import {
   type HookExecutionResult,
   type HookValidationResult,
   type SessionEndSource,
+  type SessionStartSource,
   HookConfigurationError,
   isValidHookEvent,
   isValidHookEventConfig,
@@ -930,7 +931,7 @@ export class HookManager {
    * Collects additionalContext and initialUserMessage from hook stdout.
    */
   async executeSessionStartHooks(
-    source: "startup" | "compact" | "clear",
+    source: SessionStartSource,
     sessionId: string,
     transcriptPath: string,
     agentType?: string,
