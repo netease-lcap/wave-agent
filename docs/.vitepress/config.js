@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { SPEC_GROUPS, SPECS_DIR, specTitle } from './spec-stats.mjs';
+import { SPECS_DIR, specTitle, collectSpecs } from './spec-stats.mjs';
 
 const nav = [
   { text: '首页', link: '/' },
@@ -12,21 +12,18 @@ const nav = [
   { text: '规格说明', link: '/specs/' },
 ];
 
-// specs sidebar: generated from docs/specs/<group>/*.md
-const specsSidebar = SPEC_GROUPS.map(({ dir, text }) => ({
+// specs sidebar: generated from docs/specs/<group>/*.md, ordered the same as
+// the index table (frontmatter `order`, then path) — see spec-stats.mjs
+const specsSidebar = collectSpecs().groups.map(({ dir, text, specs }) => ({
   text,
   collapsed: true,
-  items: fs
-    .readdirSync(path.join(SPECS_DIR, dir))
-    .filter((f) => f.endsWith('.md'))
-    .sort()
-    .map((f) => ({
-      text: specTitle(
-        fs.readFileSync(path.join(SPECS_DIR, dir, f), 'utf-8'),
-        f.replace(/\.md$/, ''),
-      ),
-      link: `/specs/${dir}/${f.replace(/\.md$/, '')}`,
-    })),
+  items: specs.map(({ path: rel }) => ({
+    text: specTitle(
+      fs.readFileSync(path.join(SPECS_DIR, rel), 'utf-8'),
+      rel.replace(/.*\//, '').replace(/\.md$/, ''),
+    ),
+    link: `/specs/${rel.replace(/\.md$/, '')}`,
+  })),
 }));
 
 export default {
