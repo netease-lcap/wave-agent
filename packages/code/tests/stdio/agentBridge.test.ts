@@ -672,6 +672,26 @@ test("listRewindCheckpoints filters to real user messages and flattens content",
     },
     { role: "user", blocks: [{ type: "text", content: "no id" }] },
     { role: "user", id: "u3", blocks: [{ type: "text", content: "second" }] },
+    // 后台通知：role 是 user 但不是用户输入，不能作为回滚点
+    {
+      role: "user",
+      id: "u4",
+      blocks: [
+        {
+          type: "task_notification",
+          taskId: "t1",
+          taskType: "shell",
+          status: "completed",
+          summary: "后台任务完成",
+        },
+      ],
+    },
+    // hook 注入的 user 消息（UserPromptSubmit stdout / PostToolUse 错误等）同样不是用户输入
+    {
+      role: "user",
+      id: "u5",
+      blocks: [{ type: "text", content: "hook 输出", source: "hook" }],
+    },
   ] as unknown as Message[];
   const mockAgent = createMockAgent({
     getFullMessageThread: vi.fn().mockResolvedValue({

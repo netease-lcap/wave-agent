@@ -3,6 +3,7 @@ import { Box, Text, useInput } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { getMessageContent } from "wave-agent-sdk";
 import { rewindSelectorReducer } from "../reducers/rewindSelectorReducer.js";
+import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
 
 export interface RewindCommandProps {
   messages: Message[];
@@ -32,10 +33,11 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
     }
   }, [getFullMessageThread]);
 
-  // Filter user messages as checkpoints, excluding meta messages
+  // Filter user messages as checkpoints, excluding meta messages and
+  // system-generated user-role messages (task notifications, hook injections)
   const checkpoints = messages
     .map((msg, index) => ({ msg, index }))
-    .filter(({ msg }) => msg.role === "user" && !msg.isMeta);
+    .filter(({ msg }) => isUserCheckpointMessage(msg));
 
   const MAX_VISIBLE_ITEMS = 3;
 

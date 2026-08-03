@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render } from "ink-testing-library";
 import { RewindCommand } from "../../src/components/RewindCommand.js";
-import { stripAnsiColors } from "wave-agent-sdk";
+import { stripAnsiColors, MessageSource } from "wave-agent-sdk";
 import type { Message } from "wave-agent-sdk";
 
 describe("RewindCommand Content", () => {
@@ -85,6 +85,52 @@ describe("RewindCommand Content", () => {
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
       expect(output).toContain("!ls -la");
+    });
+  });
+
+  it("should exclude task notifications and hook-injected messages", async () => {
+    const mockMessages: Partial<Message>[] = [
+      {
+        id: "1",
+        role: "user",
+        blocks: [{ type: "text", content: "real input" }],
+      },
+      {
+        id: "2",
+        role: "user",
+        blocks: [
+          {
+            type: "task_notification",
+            taskId: "t1",
+            taskType: "shell",
+            status: "completed",
+            summary: "后台任务完成",
+          },
+        ],
+      },
+      {
+        id: "3",
+        role: "user",
+        blocks: [
+          { type: "text", content: "hook 输出", source: MessageSource.HOOK },
+        ],
+      },
+    ];
+
+    const { lastFrame } = render(
+      <RewindCommand
+        messages={mockMessages as Message[]}
+        onSelect={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    await vi.waitFor(() => {
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).toContain("real input");
+      expect(output).not.toContain("hook 输出");
+      // 后台通知没有文本内容，过滤后不应出现"(No text content)"占位条目
+      expect(output).not.toContain("(No text content)");
     });
   });
 });
