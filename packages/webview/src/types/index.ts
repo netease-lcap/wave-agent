@@ -475,9 +475,6 @@ export interface ChatState {
   // the target session and shows the sweep loading animation over the message
   // + input area while the host connects and replays the transcript.
   isRestoring: boolean;
-  // First connection to a host (desktop): the pane has no agent yet and shows
-  // the same sweep loading animation while the host spawns the fresh agent.
-  isActivating: boolean;
   isCommandRunning: boolean;
   shouldClearInput: boolean;
   sessions: SessionMetadata[];
@@ -668,7 +665,6 @@ export type ChatAction =
       isCommandRunning?: boolean;
       isCompacting?: boolean;
       isRestoring?: boolean;
-      isActivating?: boolean;
       isTaskListCollapsed?: boolean;
       sessions: SessionMetadata[];
       currentSession?: SessionMetadata;

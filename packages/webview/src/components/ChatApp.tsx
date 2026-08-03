@@ -571,7 +571,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               isCommandRunning: message.isCommandRunning,
               isTaskListCollapsed: message.isTaskListCollapsed,
               isRestoring: message.isRestoring,
-              isActivating: message.isActivating,
               sessions: message.sessions,
               currentSession: message.session,
               configurationData: message.configurationData,
@@ -1545,16 +1544,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     );
   };
 
-  const chatBodyContent = state.isRestoring || state.isActivating ? (
+  const chatBodyContent = state.isRestoring ? (
     // Desktop restore in progress: the pane already switched to the target
     // session — show the sweep animation over the message + input area until
     // the host finishes connecting and replaying the transcript (spec 场景 7).
-    // isActivating covers the same window for a fresh agent on a host that has
-    // never been connected to (spec 场景 24): first spawn takes seconds (SSH
-    // connect + remote wave resolve/start), so the overlay announces "正在连接…".
     <div className="chat-restoring-overlay" data-testid="chat-restoring-overlay">
       <LoadingLogo />
-      {state.isActivating && <div className="chat-restoring-label">正在连接…</div>}
     </div>
   ) : (
     <>
