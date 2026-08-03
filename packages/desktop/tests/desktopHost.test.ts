@@ -13,6 +13,9 @@ const h = vi.hoisted(() => ({
   agentInstances: [] as Array<Record<string, unknown>>,
   clientRequests: [] as Array<{ method: string; params: unknown }>,
   authUrlHandler: null as ((params: unknown) => void) | null,
+  // Sequential getAuthStatus results, consumed FIFO by the stdio mock. Empty
+  // means "logged out" — pushInitialState queries once at webview-ready.
+  authStatusResults: [] as boolean[],
   // Per-workdir listSessions results, keyed by directory (FR-020 session tree).
   dirSessions: new Map<string, unknown[]>(),
   // FR-052..054: stdio git method stubs. `worktreeError` makes createWorktree
@@ -75,7 +78,7 @@ vi.mock('../src/main/stdio/stdioClient', () => ({
           return { sessions: h.dirSessions.get(workdir) ?? [] };
         }
         case 'getAuthStatus':
-          return { isAuthenticated: false, serverUrl: '' };
+          return { isAuthenticated: h.authStatusResults.shift() ?? false, serverUrl: '' };
         case 'getPromptHistory':
         case 'searchPromptHistory':
           return { history: [] };
@@ -287,6 +290,7 @@ beforeEach(() => {
   h.existingPaths.clear();
   h.agentInstances.length = 0;
   h.clientRequests.length = 0;
+  h.authStatusResults.length = 0;
   h.authUrlHandler = null;
   h.dirSessions.clear();
   h.worktreeResult = null;
@@ -2886,6 +2890,23 @@ describe('SSH remote hosts', () => {
     expect(panes.panes[0]).toMatchObject({ host: 'prod' });
   });
 
+  it('desktopSelectHost re-queries the auth status on the selected host', async () => {
+    // lastIsAuthenticated is cached at webview-ready against the then-current
+    // host (本地, logged out). Without a re-query on the selected host, the
+    // welcome page keeps showing 登录 even when that host is already logged in.
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, sent } = createHost();
+    h.authStatusResults = [false, true]; // 本地 logged out, prod logged in
+
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+
+    await vi.waitFor(() => {
+      const response = sent('authStatusResponse').at(-1);
+      expect(response).toMatchObject({ isAuthenticated: true });
+    });
+  });
+
   it('desktopSelectHost releases a bound message-less agent so the picker host takes effect', async () => {
     // After 新对话 the pane is bound to a fresh empty agent; its host pins the
     // pane label to 本地 no matter what host is picked. Switching host must
@@ -2918,6 +2939,22 @@ describe('SSH remote hosts', () => {
       command: 'desktopWorkdirState',
       host: 'newhost',
       hosts: ['newhost'],
+    });
+  });
+
+  it('desktopAddHost also re-queries the auth status on the auto-selected host', async () => {
+    const { host, sent } = createHost();
+    h.authStatusResults = [true, true]; // webview-ready 本地 + newhost 都 logged in
+
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+    await host.handleWebviewMessage({
+      command: 'desktopAddHost',
+      connectionString: 'ssh user@newhost -p 2222',
+    });
+
+    await vi.waitFor(() => {
+      const response = sent('authStatusResponse').at(-1);
+      expect(response).toMatchObject({ isAuthenticated: true });
     });
   });
 
