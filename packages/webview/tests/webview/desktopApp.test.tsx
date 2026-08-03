@@ -231,6 +231,49 @@ describe('DesktopApp', () => {
                 expect.objectContaining({ command: 'login' })
             );
         });
+
+        it('labels the login/logout entry with the focused pane\'s host', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            // The focused pane runs on the SSH host 'prod' — the login/logout
+            // entry must name the host it acts on (spec SSO scenario 5).
+            sendCommand('desktopPanes', {
+                panes: [{ paneId: 'pane-0', sessionId: 's1', host: 'prod' }],
+                focusedPaneId: 'pane-0',
+            });
+            sendCommand('authStatusResponse', { isAuthenticated: true });
+
+            openSidebarMoreMenu();
+
+            expect(screen.getByTestId('more-menu-logout')).toHaveTextContent('退出登录（prod）');
+        });
+
+        it('re-labels the login/logout entry when the focused pane switches host', () => {
+            renderDesktopApp();
+            sendCommand('desktopWorkdirState', { workdir: '/work/a', recentWorkdirs: ['/work/a'] });
+            sendCommand('desktopPanes', {
+                panes: [
+                    { paneId: 'pane-0', sessionId: 's1', host: 'local' },
+                    { paneId: 'pane-1', sessionId: 's2', host: 'prod' },
+                ],
+                focusedPaneId: 'pane-0',
+            });
+            sendCommand('authStatusResponse', { isAuthenticated: false });
+
+            openSidebarMoreMenu();
+            expect(screen.getByTestId('more-menu-login')).toHaveTextContent('登录（本地）');
+            fireEvent.keyDown(document, { key: 'Escape' });
+
+            sendCommand('desktopPanes', {
+                panes: [
+                    { paneId: 'pane-0', sessionId: 's1', host: 'local' },
+                    { paneId: 'pane-1', sessionId: 's2', host: 'prod' },
+                ],
+                focusedPaneId: 'pane-1',
+            });
+            openSidebarMoreMenu();
+            expect(screen.getByTestId('more-menu-login')).toHaveTextContent('登录（prod）');
+        });
     });
 
     describe('session tree (FR-020)', () => {

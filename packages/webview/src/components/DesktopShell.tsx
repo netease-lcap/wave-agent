@@ -445,6 +445,9 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   }, [host.rowHeights, vscode]);
 
   const focusedSessionId = panes.find((p) => p.paneId === focusedPaneId)?.sessionId;
+  // Host of the focused pane — labels the more menu's 登录/退出登录 entry so it
+  // names the auth subject it acts on; falls back to the host-level default.
+  const focusedHost = panes.find((p) => p.paneId === focusedPaneId)?.host ?? host.host;
   // Every session shown in a pane is highlighted in the sidebar — the focused
   // one strongly (current), the rest weakly. New-session panes carry no id.
   const visibleSessionIds = panes.map((p) => p.sessionId).filter((id): id is string => id != null);
@@ -469,6 +472,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onLogin={onLogin}
         onLogout={onLogout}
         isAuthenticated={isAuthenticated}
+        hostLabel={focusedHost}
         sessionTree={host.sessionTree}
         currentSessionId={focusedSessionId}
         visibleSessionIds={visibleSessionIds}

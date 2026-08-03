@@ -9,6 +9,13 @@ interface MoreMenuProps {
   onLogout: () => void;
   onClose: () => void;
   isAuthenticated: boolean;
+  /**
+   * Label of the auth subject this menu's 登录/退出登录 entry acts on —
+   * set by the desktop host to the focused pane's host (e.g. 'lyq.u',
+   * '本地'). Absent for hosts without the concept (VSCE/JetBrains), in which
+   * case the entry shows no annotation.
+   */
+  hostLabel?: string;
 }
 
 export const MoreMenu: React.FC<MoreMenuProps> = ({
@@ -17,7 +24,8 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   onLogin,
   onLogout,
   onClose,
-  isAuthenticated
+  isAuthenticated,
+  hostLabel
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -76,11 +84,11 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       </div>
       {isAuthenticated ? (
         <div className="more-menu-item" onClick={handleLogout} data-testid="more-menu-logout">
-          退出登录
+          退出登录{hostLabel ? `（${hostLabel}）` : ''}
         </div>
       ) : (
         <div className="more-menu-item" onClick={handleLogin} data-testid="more-menu-login">
-          登录
+          登录{hostLabel ? `（${hostLabel}）` : ''}
         </div>
       )}
     </div>

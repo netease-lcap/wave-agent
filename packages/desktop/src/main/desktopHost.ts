@@ -741,6 +741,18 @@ export class DesktopHost {
     this.sendWorkdirState();
     this.pushPanes();
     this.emitPanelState();
+    // The newly focused pane may run on a different host — re-query that
+    // host's auth status so the sidebar 更多 menu's 登录/退出登录 entry shows
+    // the new host's state, not the previous pane's cached value (spec SSO
+    // scenario 6). Same pattern as handleSelectHost.
+    const host = this.hostForPane(paneId);
+    this.ensureClientFor(host)
+      .then(() => this.refreshAuthStatus(host))
+      .catch((error) => {
+        this.pushSystemMessage(
+          `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
   }
 
   /**
