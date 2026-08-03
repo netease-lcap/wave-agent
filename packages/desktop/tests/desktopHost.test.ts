@@ -3554,6 +3554,37 @@ describe('SSH remote hosts', () => {
       expect(sent('updateWorkflowRuns').at(-1)?.runs).toEqual([{ runId: 'run-1' }]);
     });
   });
+
+  it('a fresh host with no prior connection shows the connecting overlay while the first spawn is in flight (spec scenario 24)', async () => {
+    // The very first spawn on a never-used host takes seconds (SSH connect +
+    // remote wave resolve/start). Park agent.initialize so the spawn stays in
+    // flight and prove the overlay is up before the agent lands — otherwise
+    // the user stares at an unresponsive new-conversation screen.
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: 'prod', path: '/remote/repo' });
+
+    let resolveInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => { resolveInit = r; });
+
+    const activatePromise = host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/remote/repo', host: 'prod' });
+
+    // The pane raises the connecting overlay immediately.
+    await vi.waitFor(() => {
+      const last = sent('setInitialState').at(-1);
+      expect(last?.isActivating).toBe(true);
+    });
+    expect(remotePathExists).toHaveBeenCalledWith('prod', '/remote/repo');
+
+    resolveInit();
+    await activatePromise;
+
+    // Once the fresh agent binds, the overlay drops and the session is live.
+    await vi.waitFor(() => {
+      expect(sent('setInitialState').at(-1)?.isActivating).toBe(false);
+    });
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/remote/repo' }));
+  });
 });
 
 // ---------------------------------------------------------------------------
