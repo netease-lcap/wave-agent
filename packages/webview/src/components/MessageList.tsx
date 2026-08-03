@@ -32,6 +32,10 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
 
   const prevMessagesLengthRef = useRef(messages.length);
   const prevQueuedLengthRef = useRef(queuedMessages?.length || 0);
+  // True until the first effect run after mount. MessageList only renders once
+  // messages exist (empty state shows LoadingLogo/WelcomeView), so the first run
+  // IS the initial session load and must force-scroll to the bottom.
+  const isFirstEffectRef = useRef(true);
   // True when the user has scrolled up away from the bottom. While set,
   // auto-scroll-to-bottom is suspended so the user can read history undisturbed
   // during streaming. Set by ANY upward scroll (even a few px) — detected by
@@ -150,6 +154,11 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     const container = containerRef.current;
     if (!container) return;
 
+    // Initial load scrolls instantly ('auto') — a smooth animation would compute
+    // its target once and land short while async content (images, webfonts,
+    // mermaid) is still loading. isNewMessage marks appended messages.
+    const isInitialLoad = isFirstEffectRef.current && messages.length > 0;
+    isFirstEffectRef.current = false;
     const isNewMessage = messages.length > prevMessagesLengthRef.current || (queuedMessages?.length || 0) > prevQueuedLengthRef.current;
     prevMessagesLengthRef.current = messages.length;
     prevQueuedLengthRef.current = queuedMessages?.length || 0;
@@ -213,7 +222,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
     // Follow new content: scroll on every messages change (incl. streaming text
     // chunks so streamed text stays visible), gated by userScrolledUp inside
     // scrollToBottom. A brand-new message forces the scroll.
-    scrollToBottom(isStreaming ? 'auto' : 'smooth', isNewMessage);
+    scrollToBottom(isStreaming || isInitialLoad ? 'auto' : 'smooth', isNewMessage || isInitialLoad);
     computeSticky();
 
     return () => {
@@ -221,6 +230,20 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
       container.removeEventListener('scroll', handleScroll);
     };
   }, [messages, queuedMessages, isStreaming, scrollToBottom, computeSticky]);
+
+  // Re-pin to the true bottom after async content finishes loading (image
+  // decode, webfont reflow, mermaid render). 'load' doesn't bubble, so listen in
+  // capture phase; re-pin with 'auto' — a smooth re-pin would miss again.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const repin = () => {
+      if (!userScrolledUpRef.current) doScrollToBottom('auto');
+    };
+    container.addEventListener('load', repin, true);
+    document.fonts?.ready.then(repin);
+    return () => container.removeEventListener('load', repin, true);
+  }, [doScrollToBottom]);
 
   return (
     <div 
