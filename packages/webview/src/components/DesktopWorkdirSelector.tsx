@@ -6,17 +6,35 @@ export interface DesktopWorkdirSelectorProps {
   recentWorkdirs: string[];
   /**
    * Current host ('local' or an SSH host name). Remote hosts have no Electron
-   * directory picker — the 浏览… action becomes a 输入路径… text input and the
-   * path is validated with `test -d` on the host (spec scenario 4).
+   * directory picker — 浏览… opens a remote directory browser panel instead
+   * (spec scenarios 20/21), and the path is validated with `test -d` on the
+   * host before the session starts.
    */
   host?: string;
   onSelectWorkdir: () => void;
   /** Remote-only: select a workdir by absolute path on `host`. */
   onSelectRemotePath?: (path: string, host: string) => void;
+  /**
+   * Remote-only: request the subdirectory list of `path` (requestId-matched
+   * reply arrives as a `desktopRemoteDirList` window message).
+   */
+  onListRemoteDir?: (path: string, requestId: string) => void;
   /** `host` scopes the recents lookup to a specific host (defaults to the current one). */
   onSelectRecentWorkdir: (path: string, host?: string) => void;
   onRemoveRecentWorkdir: (path: string, host?: string) => void;
 }
+
+/** Join a normalized absolute path with a child name. */
+const joinPath = (base: string, child: string): string => `${base.replace(/\/+$/, '')}/${child}`;
+
+/** Parent of a normalized absolute path; '/' has no parent. */
+const parentOf = (p: string): string => {
+  const norm = p.replace(/\/+$/, '');
+  if (!norm || norm === '/') return '/';
+  const idx = norm.lastIndexOf('/');
+  if (idx <= 0) return '/';
+  return norm.slice(0, idx);
+};
 
 /**
  * Workdir dropdown shown at the top-left of the message input (desktop host,
@@ -24,6 +42,13 @@ export interface DesktopWorkdirSelectorProps {
  * MessageInput: a relative container holds the trigger + an absolutely
  * positioned menu. The menu expands UPWARD (bottom:100%) because the input
  * sits at the bottom of the viewport. Clicking outside closes it.
+ *
+ * On a remote host the 浏览… entry opens a VS Code Remote-SSH-style directory
+ * browser: breadcrumbs, a single-level subdirectory list (点击进入子目录,
+ * 「…」上级项) with live keyword filtering + highlighted matches, and a filter
+ * input + 选择此目录 button anchored at the bottom (the browser expands
+ * upward, so the input never moves when the list height changes). The browser
+ * keeps its last visited location across opens (spec scenario 22).
  */
 export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   workdir,
@@ -31,27 +56,35 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   host,
   onSelectWorkdir,
   onSelectRemotePath,
+  onListRemoteDir,
   onSelectRecentWorkdir,
   onRemoveRecentWorkdir,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [editingPath, setEditingPath] = useState(false);
-  const [pathInput, setPathInput] = useState('');
+  const [browsing, setBrowsing] = useState(false);
+  const [currentPath, setCurrentPath] = useState('~');
+  const [filterKeyword, setFilterKeyword] = useState('');
+  const [dirs, setDirs] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const pathInputRef = useRef<HTMLInputElement>(null);
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  const requestIdRef = useRef(0);
+  const lastPathRef = useRef('~');
   const isRemote = host !== undefined && host !== 'local';
 
-  // Close the dropdown when clicking outside of it.
+  // Close the dropdown / browser when clicking outside of it.
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !browsing) return;
     const onMouseDown = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
+        setBrowsing(false);
       }
     };
     document.addEventListener('mousedown', onMouseDown);
     return () => document.removeEventListener('mousedown', onMouseDown);
-  }, [menuOpen]);
+  }, [menuOpen, browsing]);
 
   const dirName = workdir
     ? workdir.split(/[\\/]/).filter(Boolean).pop() || workdir
@@ -59,25 +92,72 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       ? '选择远程目录…'
       : '选择工作目录…';
 
+  const requestList = useCallback(
+    (path: string) => {
+      if (!onListRemoteDir) return;
+      setCurrentPath(path);
+      setLoading(true);
+      setError(null);
+      // Navigating to another directory resets the filter keyword — the
+      // keyword targets the currently listed single-level directory list.
+      setFilterKeyword('');
+      onListRemoteDir(path, String(++requestIdRef.current));
+    },
+    [onListRemoteDir],
+  );
+
+  // Consume requestId-matched replies. Stale replies (panel closed, a newer
+  // request superseded this one) are dropped.
+  useEffect(() => {
+    if (!browsing) return;
+    const onMessage = (e: MessageEvent) => {
+      const message = e.data as any;
+      if (message.command !== 'desktopRemoteDirList') return;
+      if (String(message.requestId) !== String(requestIdRef.current)) return;
+      setLoading(false);
+      if (message.error) {
+        setError(String(message.error));
+        return;
+      }
+      setCurrentPath(message.resolvedPath);
+      setDirs(message.dirs ?? []);
+      lastPathRef.current = message.resolvedPath;
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [browsing]);
+
   const handleBrowse = useCallback(() => {
     setMenuOpen(false);
     onSelectWorkdir();
   }, [onSelectWorkdir]);
 
-  const openPathInput = useCallback(() => {
-    setEditingPath(true);
-    setPathInput(workdir ?? '');
-    requestAnimationFrame(() => pathInputRef.current?.focus());
-  }, [workdir]);
-
-  const submitPath = useCallback(() => {
-    const p = pathInput.trim();
-    if (!p) return;
+  const openBrowser = useCallback(() => {
     setMenuOpen(false);
-    setEditingPath(false);
-    setPathInput('');
+    setBrowsing(true);
+    // Location memory: reopen at the last visited directory (or home on the
+    // first open of a session), spec scenario 22.
+    requestList(lastPathRef.current || '~');
+    requestAnimationFrame(() => filterInputRef.current?.focus());
+  }, [requestList]);
+
+  const selectCurrent = useCallback(() => {
+    if (!currentPath || loading || error) return;
+    setBrowsing(false);
+    onSelectRemotePath?.(currentPath, host as string);
+  }, [currentPath, loading, error, host, onSelectRemotePath]);
+
+  /**
+   * Enter on the filter input. Only an absolute-path-shaped value (`/…` or
+   * `~…`) jumps straight to that path; a bare keyword is just the live filter
+   * and does nothing here (spec scenario 20).
+   */
+  const submitFilterInput = useCallback(() => {
+    const p = filterKeyword.trim();
+    if (!p || !(p.startsWith('/') || p.startsWith('~'))) return;
+    setBrowsing(false);
     onSelectRemotePath?.(p, host as string);
-  }, [pathInput, host, onSelectRemotePath]);
+  }, [filterKeyword, host, onSelectRemotePath]);
 
   const handleSelectRecent = useCallback(
     (path: string) => {
@@ -95,6 +175,38 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
     [host, onRemoveRecentWorkdir],
   );
 
+  // Breadcrumb segments of the current path: ['/', 'home', 'user', 'project'].
+  const crumbs = currentPath.startsWith('/')
+    ? ['/', ...currentPath.split('/').filter(Boolean)]
+    : currentPath.split('/').filter(Boolean);
+
+  // Live filter over the single-level directory list (case-insensitive
+  // substring), spec scenario 20. The keyword also highlights matches.
+  const keyword = filterKeyword.trim().toLowerCase();
+  const filteredDirs = keyword ? dirs.filter((d) => d.toLowerCase().includes(keyword)) : dirs;
+
+  /** Render a dir name with every keyword occurrence wrapped in a <mark>. */
+  const highlightName = (name: string): React.ReactNode => {
+    if (!keyword) return name;
+    const lower = name.toLowerCase();
+    const parts: React.ReactNode[] = [];
+    let pos = 0;
+    let key = 0;
+    let idx = lower.indexOf(keyword, pos);
+    while (idx >= 0) {
+      if (idx > pos) parts.push(name.slice(pos, idx));
+      parts.push(
+        <mark key={key++} className="desktop-remote-browser-mark">
+          {name.slice(idx, idx + keyword.length)}
+        </mark>,
+      );
+      pos = idx + keyword.length;
+      idx = lower.indexOf(keyword, pos);
+    }
+    if (pos < name.length) parts.push(name.slice(pos));
+    return parts;
+  };
+
   return (
     <div className="desktop-workdir-container" ref={menuRef}>
       <div
@@ -109,7 +221,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
         <span className="desktop-workdir-name">{dirName}</span>
         <span className="codicon codicon-chevron-down desktop-workdir-caret"></span>
       </div>
-      {menuOpen && (
+      {menuOpen && !browsing && (
         <div className="desktop-workdir-menu" role="listbox" data-testid="desktop-workdir-menu">
           {recentWorkdirs.length > 0 && (
             <div className="desktop-workdir-menu-label">最近打开</div>
@@ -147,31 +259,98 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
             );
           })}
           <div className="desktop-workdir-menu-separator" />
-          {isRemote && editingPath ? (
-            <div className="desktop-host-add" data-testid="desktop-workdir-path-input">
-              <input
-                ref={pathInputRef}
-                className="desktop-host-add-input"
-                placeholder="/home/user/project"
-                value={pathInput}
-                onChange={(e) => setPathInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitPath();
-                  else if (e.key === 'Escape') setEditingPath(false);
-                }}
-              />
+          <div
+            className="desktop-workdir-menu-item"
+            role="option"
+            onClick={isRemote ? openBrowser : handleBrowse}
+            data-testid="desktop-workdir-browse"
+          >
+            <span className="codicon codicon-folder-opened"></span>
+            <span>{isRemote ? '浏览…' : '浏览…'}</span>
+          </div>
+        </div>
+      )}
+      {browsing && (
+        <div className="desktop-remote-browser" data-testid="desktop-remote-browser">
+          <div className="desktop-remote-browser-crumbs" data-testid="desktop-remote-browser-crumbs">
+            {crumbs.map((seg, i) => {
+              const target = seg === '/' ? '/' : `/${crumbs.slice(1, i + 1).join('/')}`;
+              return (
+                <span
+                  key={`${seg}-${i}`}
+                  className={`desktop-remote-browser-crumb${i === crumbs.length - 1 ? ' active' : ''}`}
+                  onClick={() => requestList(target)}
+                >
+                  {seg}
+                </span>
+              );
+            })}
+          </div>
+          {loading ? (
+            <div className="desktop-remote-browser-status">加载中…</div>
+          ) : error ? (
+            <div className="desktop-remote-browser-status desktop-remote-browser-error" data-testid="desktop-remote-browser-error">
+              <span>{error}</span>
+              <button className="desktop-remote-browser-retry" onClick={() => requestList(currentPath)} data-testid="desktop-remote-browser-retry">
+                重试
+              </button>
             </div>
           ) : (
-            <div
-              className="desktop-workdir-menu-item"
-              role="option"
-              onClick={isRemote ? openPathInput : handleBrowse}
-              data-testid={isRemote ? 'desktop-workdir-path-entry' : 'desktop-workdir-browse'}
-            >
-              <span className="codicon codicon-folder-opened"></span>
-              <span>{isRemote ? '输入路径…' : '浏览…'}</span>
+            <div className="desktop-remote-browser-list" role="listbox">
+              {currentPath !== '/' && (
+                <div
+                  className="desktop-remote-browser-item"
+                  role="option"
+                  onClick={() => requestList(parentOf(currentPath))}
+                  data-testid="desktop-remote-browser-parent"
+                >
+                  <span className="codicon codicon-arrow-up"></span>
+                  <span>…</span>
+                </div>
+              )}
+              {filteredDirs.length === 0 ? (
+                <div className="desktop-remote-browser-status" data-testid="desktop-remote-browser-empty">
+                  {keyword ? '没有匹配的目录' : '该目录下没有子目录'}
+                </div>
+              ) : (
+                filteredDirs.map((d) => (
+                  <div
+                    key={d}
+                    className="desktop-remote-browser-item"
+                    role="option"
+                    onClick={() => requestList(joinPath(currentPath, d))}
+                    title={d}
+                    data-testid="desktop-remote-browser-item"
+                  >
+                    <span className="codicon codicon-folder"></span>
+                    <span className="desktop-remote-browser-item-name">{highlightName(d)}</span>
+                  </div>
+                ))
+              )}
             </div>
           )}
+          <div className="desktop-remote-browser-footer">
+            <input
+              ref={filterInputRef}
+              className="desktop-host-add-input"
+              placeholder="输入关键词筛选目录，或输入完整路径回车"
+              value={filterKeyword}
+              onChange={(e) => setFilterKeyword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitFilterInput();
+                else if (e.key === 'Escape') setBrowsing(false);
+              }}
+              data-testid="desktop-remote-browser-input"
+            />
+            <button
+              className="desktop-remote-browser-select"
+              onClick={selectCurrent}
+              disabled={!currentPath || loading || !!error}
+              data-testid="desktop-remote-browser-select"
+            >
+              选择此目录
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -106,6 +106,232 @@ describe('DesktopApp', () => {
         expect(screen.queryByTestId('desktop-workdir')).not.toBeInTheDocument();
     });
 
+    describe('remote directory browser (spec scenarios 20-22)', () => {
+        /** Open the workdir dropdown on a remote host and click 浏览…. */
+        const openRemoteBrowser = () => {
+            fireEvent.click(screen.getByTestId('desktop-workdir'));
+            fireEvent.click(screen.getByTestId('desktop-workdir-browse'));
+        };
+
+        it('opens the browser on a remote host and lists the home directory', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+
+            expect(screen.getByTestId('desktop-remote-browser')).toBeInTheDocument();
+            // First open starts at the home directory ('~').
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListRemoteDir', host: 'prod', path: '~', requestId: '1' }),
+            );
+
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs'] });
+
+            // Breadcrumbs: root, home, alice (active).
+            const crumbs = screen.getByTestId('desktop-remote-browser-crumbs');
+            expect(within(crumbs).getByText('/')).toBeInTheDocument();
+            expect(within(crumbs).getByText('home')).toBeInTheDocument();
+            expect(within(crumbs).getByText('alice')).toHaveClass('active');
+            // Directory entries only.
+            const items = screen.getAllByTestId('desktop-remote-browser-item');
+            expect(items.map((i) => i.textContent)).toEqual(['code', 'docs']);
+            // Non-root directories show the … parent entry.
+            expect(screen.getByTestId('desktop-remote-browser-parent')).toBeInTheDocument();
+
+            // At the filesystem root the parent entry disappears.
+            fireEvent.click(within(crumbs).getByText('/'));
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '2', resolvedPath: '/', dirs: ['home'] });
+            expect(screen.queryByTestId('desktop-remote-browser-parent')).not.toBeInTheDocument();
+            expect(screen.getAllByTestId('desktop-remote-browser-item').map((i) => i.textContent)).toEqual(['home']);
+        });
+
+        it('navigates into a subdirectory and shows the parent … entry', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs'] });
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByText('code'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListRemoteDir', host: 'prod', path: '/home/alice/code', requestId: '2' }),
+            );
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '2', resolvedPath: '/home/alice/code', dirs: ['app'] });
+            expect(screen.getByText('app')).toBeInTheDocument();
+
+            // Non-root: the … entry navigates to the parent directory.
+            fireEvent.click(screen.getByTestId('desktop-remote-browser-parent'));
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListRemoteDir', path: '/home/alice', requestId: '3' }),
+            );
+        });
+
+        it('jumps to a breadcrumb level on click', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code'] });
+            fireEvent.click(screen.getByText('code'));
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '2', resolvedPath: '/home/alice/code', dirs: ['app'] });
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(within(screen.getByTestId('desktop-remote-browser-crumbs')).getByText('home'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListRemoteDir', path: '/home', requestId: '3' }),
+            );
+        });
+
+        it('shows a retryable error and disables selection when listing fails', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', error: '读取远端目录失败：目录不存在或不可读' });
+
+            expect(screen.getByTestId('desktop-remote-browser-error')).toHaveTextContent('读取远端目录失败');
+            expect(screen.getByTestId('desktop-remote-browser-select')).toBeDisabled();
+            expect(screen.queryByTestId('desktop-remote-browser-item')).not.toBeInTheDocument();
+
+            // Retry re-requests the same path (new requestId).
+            vscode.postMessage.mockClear();
+            fireEvent.click(screen.getByTestId('desktop-remote-browser-retry'));
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListRemoteDir', host: 'prod', path: '~', requestId: '2' }),
+            );
+
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '2', resolvedPath: '/home/alice', dirs: ['code'] });
+            expect(screen.getByTestId('desktop-remote-browser-select')).toBeEnabled();
+        });
+
+        it('选择此目录 posts desktopSelectRemotePath with the browsed path', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code'] });
+            vscode.postMessage.mockClear();
+
+            fireEvent.click(screen.getByTestId('desktop-remote-browser-select'));
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopSelectRemotePath', path: '/home/alice', host: 'prod' });
+            // Panel closes after selection.
+            expect(screen.queryByTestId('desktop-remote-browser')).not.toBeInTheDocument();
+        });
+
+        it('submits a typed path with Enter, bypassing the listing', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            fireEvent.change(screen.getByTestId('desktop-remote-browser-input'), { target: { value: '/remote/new' } });
+            fireEvent.keyDown(screen.getByTestId('desktop-remote-browser-input'), { key: 'Enter' });
+
+            expect(vscode.postMessage).toHaveBeenCalledWith({ command: 'desktopSelectRemotePath', path: '/remote/new', host: 'prod' });
+        });
+
+        it('filters subdirectories by keyword and hides non-matching entries', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs', 'docx'] });
+
+            fireEvent.change(screen.getByTestId('desktop-remote-browser-input'), { target: { value: 'doc' } });
+
+            expect(screen.getAllByTestId('desktop-remote-browser-item').map((i) => i.textContent)).toEqual(['docs', 'docx']);
+        });
+
+        it('highlights every keyword occurrence in matching entries', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs', 'docx'] });
+
+            fireEvent.change(screen.getByTestId('desktop-remote-browser-input'), { target: { value: 'oc' } });
+
+            const marks = document.querySelectorAll('.desktop-remote-browser-mark');
+            expect(marks.length).toBeGreaterThan(0);
+            for (const mark of marks) {
+                expect(mark.textContent).toBe('oc');
+            }
+            // Non-matching entries are hidden: code does not contain 'oc'.
+            expect(screen.getAllByTestId('desktop-remote-browser-item').map((i) => i.textContent)).toEqual(['docs', 'docx']);
+        });
+
+        it('shows a no-match hint when the keyword filters everything out', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs'] });
+
+            fireEvent.change(screen.getByTestId('desktop-remote-browser-input'), { target: { value: 'zzz' } });
+
+            expect(screen.getByTestId('desktop-remote-browser-empty')).toHaveTextContent('没有匹配的目录');
+            expect(screen.queryByTestId('desktop-remote-browser-item')).not.toBeInTheDocument();
+        });
+
+        it('does not submit a bare keyword with Enter — only absolute paths', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+
+            openRemoteBrowser();
+            fireEvent.change(screen.getByTestId('desktop-remote-browser-input'), { target: { value: 'docs' } });
+            fireEvent.keyDown(screen.getByTestId('desktop-remote-browser-input'), { key: 'Enter' });
+
+            expect(vscode.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ command: 'desktopSelectRemotePath' }));
+        });
+
+        it('clears the filter keyword when navigating into a subdirectory', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs'] });
+
+            fireEvent.change(screen.getByTestId('desktop-remote-browser-input'), { target: { value: 'doc' } });
+            // 'docs' is the only filtered entry; click it to navigate in.
+            fireEvent.click(screen.getAllByTestId('desktop-remote-browser-item')[0]);
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '2', resolvedPath: '/home/alice/docs', dirs: ['api', 'old'] });
+
+            // The keyword targets the single-level list: navigation resets it.
+            expect(screen.getAllByTestId('desktop-remote-browser-item').map((i) => i.textContent)).toEqual(['api', 'old']);
+            expect((screen.getByTestId('desktop-remote-browser-input') as HTMLInputElement).value).toBe('');
+        });
+
+        it('remembers the last visited directory across opens', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code'] });
+            fireEvent.click(screen.getByText('code'));
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '2', resolvedPath: '/home/alice/code', dirs: ['app'] });
+
+            // Close with Escape, reopen via 浏览… — location memory restores.
+            fireEvent.keyDown(screen.getByTestId('desktop-remote-browser-input'), { key: 'Escape' });
+            expect(screen.queryByTestId('desktop-remote-browser')).not.toBeInTheDocument();
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListRemoteDir', host: 'prod', path: '/home/alice/code', requestId: '3' }),
+            );
+        });
+    });
+
     it('should render ChatApp with sidebar and hidden header session buttons when workdir is set', () => {
         const { vscode } = renderDesktopApp();
 

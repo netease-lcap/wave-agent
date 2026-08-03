@@ -43,7 +43,7 @@ import {
 } from './stdio/binaryResolver';
 import { ConfigStore, type DesktopConfigData, type SessionIndexEntry } from './configStore';
 import { LOCAL_HOST, parseSshConfigHosts, addSshHost, buildSshSpawnArgs, withRemoteLoginShell } from './sshHosts';
-import { resolveRemoteWaveBinary, remotePathExists } from './remoteCli';
+import { resolveRemoteWaveBinary, remotePathExists, listRemoteDirs } from './remoteCli';
 import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
 import { PortForwardManager } from './portForward';
@@ -1579,6 +1579,10 @@ export class DesktopHost {
         await this.handleSelectRemotePath(msg.host as string, msg.path as string);
         break;
 
+      case 'desktopListRemoteDir':
+        await this.handleListRemoteDir(msg.host as string, msg.path as string, msg.requestId as string);
+        break;
+
       case 'desktopSelectRecentWorkdir':
         await this.handleSelectRecentWorkdir(msg.path as string, msg.host as string | undefined);
         break;
@@ -2193,9 +2197,8 @@ export class DesktopHost {
 
   /**
    * Remote workdir via text input (spec scenario 3): validate with
-   * `test -d` on the host, then activate. The Electron dialog cannot pick
-   * remote directories, so the webview offers an inline path input instead
-   * of 浏览….
+   * `test -d` on the host, then activate. Shared by the picker's typed-path
+   * input and the browser panel's 选择此目录 button.
    */
   private async handleSelectRemotePath(host: string, path: string): Promise<void> {
     if (host === LOCAL_HOST || !path) return;
@@ -2209,6 +2212,28 @@ export class DesktopHost {
     }
     this.hostState.set(this.focusedPaneId, host);
     await this.activateWorkdir({ host, dir: path });
+  }
+
+  /**
+   * Remote directory browser (spec scenarios 20/21): list the subdirectories
+   * of a remote path and reply with a requestId-matched `desktopRemoteDirList`
+   * message. Errors (missing dir, ssh failure) are returned in the reply so
+   * the panel can show a retryable error instead of silently entering the
+   * session.
+   */
+  private async handleListRemoteDir(host: string, path: string, requestId: string): Promise<void> {
+    if (host === LOCAL_HOST || !path || !requestId) return;
+    try {
+      const { resolvedPath, dirs } = await listRemoteDirs(host, path);
+      this.postMessage({ command: 'desktopRemoteDirList', host, requestId, resolvedPath, dirs });
+    } catch (error) {
+      this.postMessage({
+        command: 'desktopRemoteDirList',
+        host,
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async handleSelectWorkdir(): Promise<void> {
