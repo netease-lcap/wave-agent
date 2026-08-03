@@ -2872,6 +2872,34 @@ describe('SSH remote hosts', () => {
     });
   });
 
+  it('desktopSelectHost re-pushes the pane layout so the webview host label refreshes', async () => {
+    // The webview derives a pane's host from the authoritative `desktopPanes`
+    // push, not from desktopWorkdirState — a stale pane layout keeps the host
+    // selector on 本地 no matter what host was selected (regression: clicking
+    // an SSH host in a new conversation appeared to do nothing).
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, sent } = createHost();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+
+    const panes = sent('desktopPanes').at(-1) as { panes: Array<{ host: string }> };
+    expect(panes.panes[0]).toMatchObject({ host: 'prod' });
+  });
+
+  it('desktopSelectHost releases a bound message-less agent so the picker host takes effect', async () => {
+    // After 新对话 the pane is bound to a fresh empty agent; its host pins the
+    // pane label to 本地 no matter what host is picked. Switching host must
+    // release it (regression: with an existing local conversation, clicking an
+    // SSH host in the new-session picker appeared to do nothing).
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+
+    const panes = sent('desktopPanes').at(-1) as { panes: Array<{ host: string }> };
+    expect(panes.panes[0]).toMatchObject({ host: 'prod' });
+  });
+
   it('desktopAddHost appends the block, auto-selects the new host and eagerly connects', async () => {
     const { host, sent } = createHost();
 
