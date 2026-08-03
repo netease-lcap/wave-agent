@@ -43,7 +43,14 @@ import {
 } from './stdio/binaryResolver';
 import { ConfigStore, type DesktopConfigData, type SessionIndexEntry } from './configStore';
 import { LOCAL_HOST, parseSshConfigHosts, addSshHost, buildSshSpawnArgs, withRemoteLoginShell } from './sshHosts';
-import { resolveRemoteWaveBinary, remotePathExists, listRemoteDirs } from './remoteCli';
+import {
+  resolveRemoteWaveBinary,
+  remotePathExists,
+  listRemoteDirs,
+  readRemoteFile,
+  REMOTE_FILE_MAX_LINES,
+  REMOTE_FILE_MAX_BYTES,
+} from './remoteCli';
 import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
 import { PortForwardManager } from './portForward';
@@ -2111,12 +2118,23 @@ export class DesktopHost {
         await this.handleUploadFilesToArtifacts(msg.files as Array<{ name: string; data: ArrayBuffer }>);
         break;
 
-      // -- file / external link handling (FR-008) -----------------------------------------
+      // -- file panel: paths clicked in messages open here, not the OS ----------
       case 'openFile':
-        await this.handleOpenPath(msg.path as string);
+        await this.handleFilePanelOpen(
+          pid,
+          msg.path as string,
+          msg.startLine as number | undefined,
+          msg.endLine as number | undefined,
+        );
         break;
 
       case 'previewImage':
+        // Remote images render inline in the panel as base64; local ones too.
+        await this.handleFilePanelOpen(pid, msg.path as string);
+        break;
+
+      // Local sessions only: leave the panel and open in the OS default app.
+      case 'desktopOpenFileExternal':
         await this.handleOpenPath(msg.path as string);
         break;
 
@@ -2995,6 +3013,110 @@ export class DesktopHost {
     } catch (error) {
       this.pushSystemMessage(`打开文件失败: ${error}`);
     }
+  }
+
+  /** Image extensions the file panel can inline (local host; remote keys off mime). */
+  private readonly FILE_PANEL_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']);
+
+  /**
+   * Read a file for the file panel and push desktopFileContent to its pane.
+   * Local files are read straight from disk; remote ones over ssh (base64 for
+   * images, NUL-detected text otherwise). Failures land in fileView.error and
+   * render inside the panel — no chat system message (spec scenarios 14/16).
+   */
+  private async handleFilePanelOpen(
+    paneId: string,
+    filePath: string,
+    startLine?: number,
+    endLine?: number,
+  ): Promise<void> {
+    if (!filePath) return;
+    const host = this.hostForPane(paneId);
+    try {
+      const fileView =
+        host === LOCAL_HOST
+          ? await this.readLocalFileForPanel(filePath)
+          : await this.readRemoteFileForPanel(host, filePath);
+      this.postMessage({
+        command: 'desktopFileContent',
+        paneId,
+        fileView: { ...fileView, startLine, endLine },
+      });
+    } catch (error) {
+      this.postMessage({
+        command: 'desktopFileContent',
+        paneId,
+        fileView: {
+          path: filePath,
+          host,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  /** Local read: image → base64; text → first 2MB / 2000 lines, NUL-detected. */
+  private async readLocalFileForPanel(filePath: string): Promise<Record<string, unknown>> {
+    const stat = await fs.promises.stat(filePath).catch(() => null);
+    if (!stat) throw new Error(`文件不存在：${filePath}`);
+    if (stat.isDirectory()) throw new Error('无法在面板中显示目录');
+
+    const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
+    if (this.FILE_PANEL_IMAGE_EXTS.has(ext)) {
+      const data = await fs.promises.readFile(filePath);
+      return { path: filePath, host: LOCAL_HOST, imageBase64: data.toString('base64') };
+    }
+
+    // +1 byte probes whether the file exceeds the cap without a second stat.
+    const readLen = REMOTE_FILE_MAX_BYTES + 1;
+    const buf = Buffer.alloc(readLen);
+    const handle = await fs.promises.open(filePath, 'r');
+    let bytesRead: number;
+    try {
+      ({ bytesRead } = await handle.read(buf, 0, readLen, 0));
+    } finally {
+      await handle.close();
+    }
+    if (buf.subarray(0, Math.min(bytesRead, 8192)).includes(0)) {
+      return { path: filePath, host: LOCAL_HOST, error: '二进制文件无法在面板中显示' };
+    }
+    const rawContent = buf
+      .subarray(0, Math.min(bytesRead, REMOTE_FILE_MAX_BYTES))
+      .toString('utf8');
+    const allLines = rawContent.split('\n');
+    const tooManyLines = allLines.length > REMOTE_FILE_MAX_LINES;
+    return {
+      path: filePath,
+      host: LOCAL_HOST,
+      content: tooManyLines ? allLines.slice(0, REMOTE_FILE_MAX_LINES).join('\n') : rawContent,
+      truncated: bytesRead > REMOTE_FILE_MAX_BYTES || tooManyLines,
+      // Total line count is exact only when the whole file was read (≤ cap).
+      totalLines:
+        bytesRead <= REMOTE_FILE_MAX_BYTES
+          ? allLines.length - (rawContent.endsWith('\n') ? 1 : 0)
+          : undefined,
+    };
+  }
+
+  /** Remote read via ssh; results mirror the local shape (base64 for images). */
+  private async readRemoteFileForPanel(
+    host: string,
+    filePath: string,
+  ): Promise<Record<string, unknown>> {
+    const result = await readRemoteFile(host, filePath);
+    if (result.type === 'image') {
+      return { path: filePath, host, imageBase64: result.imageBase64 };
+    }
+    if (result.type === 'binary') {
+      return { path: filePath, host, error: '二进制文件无法在面板中显示' };
+    }
+    return {
+      path: filePath,
+      host,
+      content: Buffer.from(result.contentBase64 ?? '', 'base64').toString('utf8'),
+      truncated: result.truncated,
+      totalLines: result.totalLines,
+    };
   }
 
   private async handleDownloadMermaid(content: string, format: 'svg' | 'png'): Promise<void> {

@@ -162,3 +162,81 @@ export async function listRemoteDirs(host: string, dir: string): Promise<RemoteD
     throw new Error(`读取远端目录失败：${describeError(error)}`);
   }
 }
+
+/** Cap for the file panel's remote read: first N lines / bytes are enough. */
+export const REMOTE_FILE_MAX_LINES = 2000;
+export const REMOTE_FILE_MAX_BYTES = 2 * 1024 * 1024;
+
+export interface RemoteFileReadResult {
+  type: 'text' | 'image' | 'binary';
+  /** Lowercased mime of the remote file (e.g. text/plain, image/png). */
+  mime: string;
+  /** Full-file line count (text only; may be undefined when unreadable). */
+  totalLines?: number;
+  /** True when the payload was truncated to REMOTE_FILE_MAX_* (text only). */
+  truncated?: boolean;
+  /** base64-encoded text content (text only). */
+  contentBase64?: string;
+  /** base64-encoded image bytes (image only). */
+  imageBase64?: string;
+}
+
+/**
+ * Read a remote file for the file panel (spec: docs/specs/ui/desktop-app.md 「文
+ * 件面板」 scenarios 1-3/14/15). A single ssh invocation reports the mime via
+ * `file -b -I`, inlines images as base64, NUL-detects binaries on the first
+ * 8KB, and truncates text to REMOTE_FILE_MAX_BYTES/REMOTE_FILE_MAX_LINES.
+ * Output is a fixed-position header (V1 line, type=, mime=, total=,
+ * truncated=) followed by one base64 payload line — parsed by position, not by
+ * key=value heuristics, because base64 payloads can start with letters.
+ * Exit codes: 3 = missing, 4 = unreadable (messages go to stderr).
+ */
+export async function readRemoteFile(host: string, remotePath: string): Promise<RemoteFileReadResult> {
+  const command =
+    `p=${shellQuote(remotePath)}; ` +
+    `case "$p" in '~') p="$HOME";; '~/'*) p="$HOME` +
+    "${p#'~'}" +
+    `";; esac; ` +
+    `test -f "$p" || { echo '文件不存在' >&2; exit 3; }; ` +
+    `test -r "$p" || { echo '文件不可读' >&2; exit 4; }; ` +
+    `mime=$(file -b -I "$p" 2>/dev/null | head -1 | tr -d ' \\r\\n'); mime=\${mime%%;*}; mime=$(printf '%s' "$mime" | tr 'A-Z' 'a-z'); ` +
+    `case "$mime" in image/*) printf 'WAVE_REMOTE_FILE_V1\\ntype=image\\nmime=%s\\ntotal=-\\ntruncated=-\\n%s\\n' "$mime" "$(base64 "$p" | tr -d '\\n')"; exit 0;; esac; ` +
+    `prefix=$(head -c 8192 "$p" | wc -c | tr -d ' '); ` +
+    `nul=$(head -c 8192 "$p" | LC_ALL=C tr -d '\\000' | wc -c | tr -d ' '); ` +
+    `if [ "$nul" -lt "$prefix" ]; then printf 'WAVE_REMOTE_FILE_V1\\ntype=binary\\nmime=%s\\ntotal=-\\ntruncated=-\\n\\n' "$mime"; exit 0; fi; ` +
+    `total=$(awk 'END { print NR }' "$p" | tr -d ' '); ` +
+    `content=$(head -c ${REMOTE_FILE_MAX_BYTES} "$p" | head -n ${REMOTE_FILE_MAX_LINES}); ` +
+    `outbytes=$(printf '%s' "$content" | wc -c | tr -d ' '); ` +
+    `if [ "$outbytes" -ge ${REMOTE_FILE_MAX_BYTES} ] || [ "$total" -gt ${REMOTE_FILE_MAX_LINES} ]; then truncated=1; else truncated=0; fi; ` +
+    `printf 'WAVE_REMOTE_FILE_V1\\ntype=text\\nmime=%s\\ntotal=%s\\ntruncated=%s\\n%s\\n' "$mime" "$total" "$truncated" "$(printf '%s' "$content" | base64 | tr -d '\\n')"`;
+  try {
+    // maxBuffer must cover base64(payload) ≈ 1.37 × file size + headers.
+    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, command), {
+      timeout: PROBE_TIMEOUT_MS,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const lines = stdout.split('\n');
+    if (lines[0] !== 'WAVE_REMOTE_FILE_V1') {
+      throw new Error('远端返回了无法识别的响应');
+    }
+    const type = lines[1].replace(/^type=/, '') as RemoteFileReadResult['type'];
+    const mime = lines[2].replace(/^mime=/, '');
+    const totalLines = Number(lines[3].replace(/^total=/, ''));
+    const truncated = lines[4] === 'truncated=1';
+    const payload = lines.slice(5).join('\n').replace(/\s+$/, '');
+    if (type === 'image') return { type, mime, imageBase64: payload };
+    if (type === 'binary') return { type, mime };
+    return {
+      type,
+      mime,
+      totalLines: Number.isFinite(totalLines) ? totalLines : undefined,
+      truncated,
+      contentBase64: payload,
+    };
+  } catch (error) {
+    const e = error as { code?: number };
+    if (e.code === 3) throw new Error(`远端文件不存在：${remotePath}`);
+    if (e.code === 4) throw new Error(`远端文件不可读：${remotePath}`);
+    throw new Error(`读取远端文件失败：${describeError(error)}`);
+  }
+}

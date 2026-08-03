@@ -27,7 +27,7 @@
 
 import { Menu, type Input, type MenuItemConstructorOptions, type WebContents } from 'electron';
 
-export type PanelKind = 'preview' | 'diff' | 'terminal';
+export type PanelKind = 'preview' | 'diff' | 'terminal' | 'file';
 
 export interface DesktopMenuActions {
   nextSession: () => void;
@@ -162,6 +162,13 @@ export function buildApplicationMenuTemplate(
           accelerator: 'Ctrl+`',
           registerAccelerator: false,
           click: () => actions.togglePanel('terminal'),
+        },
+        {
+          label: '文件',
+          type: 'checkbox',
+          checked: panelChecked.includes('file'),
+          // No shortcut: the panel opens by clicking a file path in a message.
+          click: () => actions.togglePanel('file'),
         },
       ],
     },
