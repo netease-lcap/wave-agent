@@ -10,6 +10,8 @@ import * as path from 'path';
 const h = vi.hoisted(() => ({
   files: new Map<string, string | Buffer>(),
   existingPaths: new Set<string>(),
+  // Paths that exist but are directories (file panel local reads).
+  dirPaths: new Set<string>(),
   agentInstances: [] as Array<Record<string, unknown>>,
   clientRequests: [] as Array<{ method: string; params: unknown }>,
   authUrlHandler: null as ((params: unknown) => void) | null,
@@ -58,6 +60,34 @@ vi.mock('fs', () => ({
     writeFile: vi.fn(async (p: string, data: string | Buffer) => {
       h.files.set(p, data);
     }),
+    readFile: vi.fn(async (p: string) => {
+      const data = h.files.get(p);
+      if (data === undefined) {
+        const err = new Error(`ENOENT: no such file or directory, open '${p}'`) as NodeJS.ErrnoException;
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return data;
+    }),
+    stat: vi.fn(async (p: string) => {
+      if (!h.existingPaths.has(p) && !h.files.has(p)) {
+        const err = new Error(`ENOENT: no such file or directory, stat '${p}'`) as NodeJS.ErrnoException;
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return { isDirectory: () => h.dirPaths.has(p) } as unknown as Awaited<ReturnType<typeof import('fs').promises.stat>>;
+    }),
+    open: vi.fn(async (p: string) => ({
+      read: vi.fn(async (buf: Buffer, offset: number, length: number, position: number) => {
+        const data = h.files.get(p);
+        if (data === undefined) return { bytesRead: 0 };
+        const content = Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8');
+        const slice = content.subarray(position, position + length);
+        slice.copy(buf, offset);
+        return { bytesRead: slice.length };
+      }),
+      close: vi.fn(async () => undefined),
+    })),
   },
 }));
 
@@ -208,17 +238,26 @@ vi.mock('../src/main/portForward', () => {
   return { PortForwardManager: MockPortForwardManager };
 });
 
-// remoteCli spawns real `ssh` processes — stub the probes. parseSshConfigHosts
-// stays REAL: it reads ~/.ssh/config through the fs mock, which lets the host
-// tests seed ssh config content per-test.
-vi.mock('../src/main/remoteCli', () => ({
-  resolveRemoteWaveBinary: vi.fn(async (host: string) => ({
-    binaryPath: `/remote/wave-${host}`,
-    nodeVersion: 'v22.0.0',
-  })),
-  remotePathExists: vi.fn(async () => true),
-  listRemoteDirs: vi.fn(async () => ({ resolvedPath: '/remote/repo', dirs: ['a', 'b'] })),
-}));
+// remoteCli spawns real `ssh` processes — stub the probes, keep the exported
+// constants real so file-panel truncation tests assert against true limits.
+vi.mock('../src/main/remoteCli', async () => {
+  const actual = await vi.importActual<typeof import('../src/main/remoteCli')>('../src/main/remoteCli');
+  return {
+    ...actual,
+    resolveRemoteWaveBinary: vi.fn(async (host: string) => ({
+      binaryPath: `/remote/wave-${host}`,
+      nodeVersion: 'v22.0.0',
+    })),
+    remotePathExists: vi.fn(async () => true),
+    listRemoteDirs: vi.fn(async () => ({ resolvedPath: '/remote/repo', dirs: ['a', 'b'] })),
+    readRemoteFile: vi.fn(async () => ({
+      type: 'text',
+      mime: 'text/plain',
+      contentBase64: Buffer.from('remote content').toString('base64'),
+      truncated: false,
+    })),
+  };
+});
 
 // withRemoteLoginShell probes the remote login shell via a real `echo $SHELL`
 // ssh round trip — stub it to keep host tests offline. Everything else in
@@ -236,7 +275,14 @@ import { ConfigStore } from '../src/main/configStore';
 import { HOST_CHANNEL } from '../src/main/channels';
 import { shell, nativeTheme } from 'electron';
 import { checkForUpdate } from '../src/main/updateChecker';
-import { resolveRemoteWaveBinary, remotePathExists, listRemoteDirs } from '../src/main/remoteCli';
+import {
+  resolveRemoteWaveBinary,
+  remotePathExists,
+  listRemoteDirs,
+  readRemoteFile,
+  REMOTE_FILE_MAX_LINES,
+  REMOTE_FILE_MAX_BYTES,
+} from '../src/main/remoteCli';
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -289,6 +335,7 @@ async function readyHost(winWidth?: number, winHeight?: number) {
 beforeEach(() => {
   h.files.clear();
   h.existingPaths.clear();
+  h.dirPaths.clear();
   h.agentInstances.length = 0;
   h.clientRequests.length = 0;
   h.authStatusResults.length = 0;
@@ -3502,5 +3549,185 @@ describe('remote preview port forwarding', () => {
     await host.dispose();
 
     expect(fwd.dispose).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// file panel (spec 文件面板 scenarios: local/remote reads, truncation, images)
+// ---------------------------------------------------------------------------
+
+describe('file panel', () => {
+  function seedLocalFile(p: string, content: string | Buffer) {
+    h.files.set(p, content);
+    h.existingPaths.add(p);
+  }
+
+  it('openFile reads a local text file and pushes desktopFileContent', async () => {
+    const { host, sent } = await readyHost();
+    seedLocalFile('/work/a/src.ts', 'const x = 1;\nconst y = 2;\n');
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/work/a/src.ts', startLine: 2, endLine: 2 });
+
+    expect(sent('desktopFileContent')).toEqual([
+      {
+        command: 'desktopFileContent',
+        paneId: 'pane-1',
+        fileView: {
+          path: '/work/a/src.ts',
+          host: 'local',
+          content: 'const x = 1;\nconst y = 2;\n',
+          truncated: false,
+          totalLines: 2,
+          startLine: 2,
+          endLine: 2,
+        },
+      },
+    ]);
+  });
+
+  it('openFile truncates text files past the line cap and still reports the total', async () => {
+    const { host, sent } = await readyHost();
+    const content = `${'a\n'.repeat(REMOTE_FILE_MAX_LINES)}b`; // 2001 lines
+    seedLocalFile('/work/a/big.log', content);
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/work/a/big.log' });
+
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({
+      truncated: true,
+      totalLines: REMOTE_FILE_MAX_LINES + 1,
+    });
+    expect(fv.content).toBe(`a\n`.repeat(REMOTE_FILE_MAX_LINES - 1) + 'a');
+  });
+
+  it('openFile truncates files past the byte cap without a line count', async () => {
+    const { host, sent } = await readyHost();
+    seedLocalFile('/work/a/huge.txt', 'x'.repeat(REMOTE_FILE_MAX_BYTES + 5));
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/work/a/huge.txt' });
+
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({ truncated: true });
+    expect(fv.totalLines).toBeUndefined();
+    expect((fv.content as string).length).toBe(REMOTE_FILE_MAX_BYTES);
+  });
+
+  it('openFile inlines a local image as base64', async () => {
+    const { host, sent } = await readyHost();
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    seedLocalFile('/work/a/icon.png', png);
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/work/a/icon.png' });
+
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({ path: '/work/a/icon.png', host: 'local', imageBase64: png.toString('base64') });
+  });
+
+  it('openFile reports NUL-containing files as binary without a system message', async () => {
+    const { host, sent } = await readyHost();
+    seedLocalFile('/work/a/font.bin', 'abc\x00def');
+    const msgsBefore = sent('appendMessage').length;
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/work/a/font.bin' });
+
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({ path: '/work/a/font.bin', host: 'local', error: '二进制文件无法在面板中显示' });
+    expect(sent('appendMessage').length).toBe(msgsBefore);
+  });
+
+  it('openFile pushes a panel error for a missing file (no system message)', async () => {
+    const { host, sent } = await readyHost();
+    const msgsBefore = sent('appendMessage').length;
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/work/a/nope.ts' });
+
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({ path: '/work/a/nope.ts', host: 'local', error: '文件不存在：/work/a/nope.ts' });
+    expect(sent('appendMessage').length).toBe(msgsBefore);
+  });
+
+  it('openFile rejects directories with a panel error', async () => {
+    const { host, sent } = await readyHost();
+    h.existingPaths.add('/work/a/subdir');
+    h.dirPaths.add('/work/a/subdir');
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/work/a/subdir' });
+
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({ error: '无法在面板中显示目录' });
+  });
+
+  it('previewImage routes an image through the file panel', async () => {
+    const { host, sent } = await readyHost();
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    seedLocalFile('/work/a/logo.png', png);
+
+    await host.handleWebviewMessage({ command: 'previewImage', path: '/work/a/logo.png' });
+
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({ path: '/work/a/logo.png', imageBase64: png.toString('base64') });
+  });
+
+  it('openFile on a remote pane reads via ssh and maps the result', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/remote/src.ts', startLine: 5, endLine: 10 });
+
+    expect(vi.mocked(readRemoteFile)).toHaveBeenCalledWith('prod', '/remote/src.ts');
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({
+      path: '/remote/src.ts',
+      host: 'prod',
+      content: 'remote content',
+      startLine: 5,
+      endLine: 10,
+    });
+  });
+
+  it('openFile on a remote pane maps an image result to base64', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+    vi.mocked(readRemoteFile).mockResolvedValueOnce({
+      type: 'image',
+      mime: 'image/png',
+      imageBase64: 'aGVsbG8=',
+    });
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/remote/pic.png' });
+
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({ path: '/remote/pic.png', host: 'prod', imageBase64: 'aGVsbG8=' });
+  });
+
+  it('openFile on a remote pane maps ssh read failures to a panel error', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+    vi.mocked(readRemoteFile).mockRejectedValueOnce(new Error('远端文件不存在：/remote/nope.ts'));
+
+    await host.handleWebviewMessage({ command: 'openFile', path: '/remote/nope.ts' });
+
+    const fv = (sent('desktopFileContent').at(-1) as { fileView: Record<string, unknown> }).fileView;
+    expect(fv).toMatchObject({ path: '/remote/nope.ts', host: 'prod', error: '远端文件不存在：/remote/nope.ts' });
+  });
+
+  it('desktopOpenFileExternal opens the path in the OS default app', async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'desktopOpenFileExternal', path: '/work/a/src.ts' });
+
+    expect(shell.openPath).toHaveBeenCalledWith('/work/a/src.ts');
+  });
+
+  it('desktopOpenFileExternal reports open failures as a system message', async () => {
+    const { host, sent } = await readyHost();
+    vi.mocked(shell.openPath).mockResolvedValueOnce('no app registered');
+
+    await host.handleWebviewMessage({ command: 'desktopOpenFileExternal', path: '/work/a/src.ts' });
+
+    expect(sent('appendMessage').some((m) => JSON.stringify(m).includes('打开文件失败: no app registered'))).toBe(true);
   });
 });

@@ -8,7 +8,15 @@ vi.mock('child_process', () => ({
   execFile: h.execFile,
 }));
 
-import { resolveRemoteWaveBinary, remotePathExists, listRemoteDirs, REMOTE_NODE_MIN_MAJOR } from '../src/main/remoteCli';
+import {
+  resolveRemoteWaveBinary,
+  remotePathExists,
+  listRemoteDirs,
+  readRemoteFile,
+  REMOTE_FILE_MAX_LINES,
+  REMOTE_FILE_MAX_BYTES,
+  REMOTE_NODE_MIN_MAJOR,
+} from '../src/main/remoteCli';
 import { resetRemoteShellCache, shellQuote } from '../src/main/sshHosts';
 
 type StubResult = { stdout?: string; error?: Error };
@@ -201,5 +209,83 @@ describe('listRemoteDirs', () => {
   it('throws a user-facing error when the ssh connection fails', async () => {
     stubExec([LOGIN_SHELL, { error: CONNECT_FAIL }]);
     await expect(listRemoteDirs('prod', '/repo')).rejects.toThrow('读取远端目录失败：ssh: connect to host failed');
+  });
+});
+
+describe('readRemoteFile', () => {
+  const base64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
+
+  it('parses a text payload with headers, total lines and truncation flag', async () => {
+    const content = 'line1\nline2\nline3\n';
+    stubExec([LOGIN_SHELL, { stdout: `WAVE_REMOTE_FILE_V1\ntype=text\nmime=text/plain\ntotal=3\ntruncated=0\n${base64(content)}\n` }]);
+    const result = await readRemoteFile('prod', '/home/user/readme.md');
+    expect(result).toEqual({
+      type: 'text',
+      mime: 'text/plain',
+      totalLines: 3,
+      truncated: false,
+      contentBase64: base64(content),
+    });
+    expect(Buffer.from(result.contentBase64 ?? '', 'base64').toString('utf8')).toBe(content);
+  });
+
+  it('marks the payload truncated when the header says so', async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: `WAVE_REMOTE_FILE_V1\ntype=text\nmime=text/plain\ntotal=5000\ntruncated=1\n${base64('head\n')}\n` },
+    ]);
+    const result = await readRemoteFile('prod', '/home/user/huge.log');
+    expect(result.truncated).toBe(true);
+    expect(result.totalLines).toBe(5000);
+  });
+
+  it('returns base64 image bytes for image mimes', async () => {
+    stubExec([LOGIN_SHELL, { stdout: `WAVE_REMOTE_FILE_V1\ntype=image\nmime=image/png\ntotal=-\ntruncated=-\naGVsbG8=\n` }]);
+    const result = await readRemoteFile('prod', '/home/user/pic.png');
+    expect(result).toEqual({ type: 'image', mime: 'image/png', imageBase64: 'aGVsbG8=' });
+  });
+
+  it('returns binary with no payload', async () => {
+    stubExec([LOGIN_SHELL, { stdout: 'WAVE_REMOTE_FILE_V1\ntype=binary\nmime=application/octet-stream\ntotal=-\ntruncated=-\n\n' }]);
+    const result = await readRemoteFile('prod', '/home/user/app.bin');
+    expect(result).toEqual({ type: 'binary', mime: 'application/octet-stream' });
+  });
+
+  it('throws 文件不存在 on exit code 3', async () => {
+    const err = new Error('文件不存在') as Error & { code?: number };
+    err.code = 3;
+    stubExec([LOGIN_SHELL, { error: err }]);
+    await expect(readRemoteFile('prod', '/gone/file.ts')).rejects.toThrow('远端文件不存在：/gone/file.ts');
+  });
+
+  it('throws 文件不可读 on exit code 4', async () => {
+    const err = new Error('文件不可读') as Error & { code?: number };
+    err.code = 4;
+    stubExec([LOGIN_SHELL, { error: err }]);
+    await expect(readRemoteFile('prod', '/secret/file.ts')).rejects.toThrow('远端文件不可读：/secret/file.ts');
+  });
+
+  it('throws a user-facing error when the ssh connection fails', async () => {
+    stubExec([LOGIN_SHELL, { error: CONNECT_FAIL }]);
+    await expect(readRemoteFile('prod', '/x/y.ts')).rejects.toThrow('读取远端文件失败：ssh: connect to host failed');
+  });
+
+  it('rejects an unrecognized response', async () => {
+    stubExec([LOGIN_SHELL, { stdout: 'ls: cannot access /x: No such file\n' }]);
+    await expect(readRemoteFile('prod', '/x/y.ts')).rejects.toThrow('远端返回了无法识别的响应');
+  });
+
+  it('builds the read command with ~ expansion, size caps and the V1 header', async () => {
+    stubExec([LOGIN_SHELL, { stdout: `WAVE_REMOTE_FILE_V1\ntype=text\nmime=text/plain\ntotal=1\ntruncated=0\n${base64('a\n')}\n` }]);
+    await readRemoteFile('prod', '~/notes/a.md');
+    const args = h.execFile.mock.calls[1][1] as string[];
+    const cmd = args[args.length - 1] as string;
+    expect(cmd).toContain('~/notes/a.md');
+    expect(cmd).toContain('WAVE_REMOTE_FILE_V1');
+    // `${p#'~'}` survives as a plain shell parameter expansion (its quotes are
+    // escaped by the outer shellQuote wrapper) — template interpolation would
+    // have failed at compile time instead.
+    expect(cmd).toContain('${p#');
+    expect(cmd).toContain(`head -c ${REMOTE_FILE_MAX_BYTES} "$p" | head -n ${REMOTE_FILE_MAX_LINES}`);
   });
 });
