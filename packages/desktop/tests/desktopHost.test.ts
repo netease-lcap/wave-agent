@@ -478,10 +478,15 @@ describe('agent notifications', () => {
 
     await host.handleWebviewMessage({ command: 'restoreSession', sessionId: 'sess-x' });
 
-    const states = sent('setInitialState');
-    expect(states.at(-1)?.messages).toEqual([
-      { id: 'restored-u1', role: 'user', blocks: [{ type: 'text', content: '历史会话的第一条消息' }] },
-    ]);
+    // Restore is optimistic: the pane switches immediately (isRestoring) while
+    // the agent spawns + replays in the background — the restored list lands on
+    // the final setInitialState, not the first one.
+    await vi.waitFor(() => {
+      const states = sent('setInitialState');
+      expect(states.at(-1)?.messages).toEqual([
+        { id: 'restored-u1', role: 'user', blocks: [{ type: 'text', content: '历史会话的第一条消息' }] },
+      ]);
+    });
     expect(sent('updateMessages')).toHaveLength(0);
   });
 
@@ -556,11 +561,14 @@ describe('agent notifications', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'hist-1' });
 
-    const tree = sent('desktopSessionTree').at(-1);
-    const sessions = ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; title: string }> }>) ?? []).flatMap(
-      (g) => g.sessions,
-    );
-    expect(sessions.find((s) => s.sessionId === 'hist-1')?.title).toBe('历史会话的第一条消息');
+    // The title backfill happens after the background restore completes.
+    await vi.waitFor(() => {
+      const tree = sent('desktopSessionTree').at(-1);
+      const sessions = ((tree?.groups as Array<{ sessions: Array<{ sessionId: string; title: string }> }>) ?? []).flatMap(
+        (g) => g.sessions,
+      );
+      expect(sessions.find((s) => s.sessionId === 'hist-1')?.title).toBe('历史会话的第一条消息');
+    });
   });
 
   it('onSessionIdChange posts updateCurrentSession (session id is never persisted)', async () => {
@@ -813,8 +821,10 @@ describe('misc commands', () => {
 
     await host.handleWebviewMessage({ command: 'restoreSession', sessionId: 'sess-x' });
 
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-x');
+    // Restore runs in the background now — the agent spawn + restoreSession
+    // land after the handler returns.
     await vi.waitFor(() => {
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-x');
       expect(sent('desktopSessionTree').length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -979,8 +989,11 @@ describe('session tree', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-x' });
 
-    expect(h.agentInstances).toHaveLength(before + 1);
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-x');
+    // Spawn + restore run behind the sweep overlay — both resolve in the background.
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-x');
+    });
   });
 
   it('desktopSelectSession in another directory switches workdir first', async () => {
@@ -991,9 +1004,11 @@ describe('session tree', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/b', sessionId: 'sess-y' });
 
-    expect(h.agentInstances).toHaveLength(before + 1);
-    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/b' }));
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-y');
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+      expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/b' }));
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-y');
+    });
   });
 
   it('desktopSelectSession with a gone directory drops the index entry and the recent', async () => {
@@ -1002,11 +1017,14 @@ describe('session tree', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/gone', sessionId: 'sess-z' });
 
-    expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-z')).toBe(false);
-    expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: '/gone' }]));
-    expect(lastAgent().restoreSession).not.toHaveBeenCalled();
-    const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表与会话列表移除'));
-    expect(sysMsgs).toHaveLength(1);
+    // The probe + cleanup run in the background behind the optimistic switch.
+    await vi.waitFor(() => {
+      expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-z')).toBe(false);
+      expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: '/gone' }]));
+      expect(lastAgent().restoreSession).not.toHaveBeenCalled();
+      const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('已从最近列表与会话列表移除'));
+      expect(sysMsgs).toHaveLength(1);
+    });
   });
 
   it('refreshes the tree when a turn ends (touchSessionInIndex)', async () => {
@@ -1102,10 +1120,138 @@ describe('session tree', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'hist-1' });
 
+    // Optimistic switch: the very first setInitialState already targets the
+    // selected session and raises the sweep overlay — no interim empty state.
     const states = sent('setInitialState');
-    expect(states).toHaveLength(1);
+    expect(states[0]?.isRestoring).toBe(true);
     expect(states[0]?.session).toMatchObject({ id: 'hist-1' });
-    expect(states[0]?.messages).toHaveLength(1);
+    expect(states[0]?.messages).toHaveLength(0);
+
+    // Restore completes in the background: overlay drops, transcript lands.
+    await vi.waitFor(() => {
+      const last = sent('setInitialState').at(-1);
+      expect(last?.isRestoring).toBe(false);
+      expect(last?.session).toMatchObject({ id: 'hist-1' });
+      expect(last?.messages).toHaveLength(1);
+    });
+  });
+
+  it('selecting another session while a restore is in flight supersedes it and discards the stale agent', async () => {
+    const { host, sent } = await readyHost();
+    const before = h.agentInstances.length;
+
+    // Real stdio startup takes seconds — gate initialize so both restores stay
+    // in flight until the second selection has landed.
+    let resolveInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => { resolveInit = r; });
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-A' });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    const staleAgent = lastAgent();
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-B' });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 2);
+    });
+    const winningAgent = lastAgent();
+
+    resolveInit();
+
+    // The superseded restore aborts at the token check and its freshly spawned
+    // agent is destroyed, while the winning restore lands in the pane.
+    await vi.waitFor(() => {
+      expect(staleAgent.destroy).toHaveBeenCalled();
+      expect(sent('setInitialState').at(-1)).toMatchObject({ isRestoring: false, session: { id: 'sess-B' } });
+    });
+    expect(staleAgent.restoreSession).not.toHaveBeenCalled();
+    expect(winningAgent.destroy).not.toHaveBeenCalled();
+    expect(winningAgent.restoreSession).toHaveBeenCalledWith('sess-B');
+  });
+
+  it('a failed restore drops the overlay, keeps the previous agent, and pushes a system message', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = lastAgent(); // sess-1 bound to the sole pane
+    const before = h.agentInstances.length;
+
+    let resolveInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => { resolveInit = r; });
+    const selectPromise = host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-bad' });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    // Parked at initialize — restoreSession hasn't run yet; make it fail.
+    const restoreAgent = lastAgent();
+    restoreAgent.restoreSession.mockRejectedValueOnce(new Error('boom'));
+
+    resolveInit();
+    await selectPromise;
+
+    // The overlay clears and the previous session's state falls back.
+    await vi.waitFor(() => {
+      const last = sent('setInitialState').at(-1);
+      expect(last?.isRestoring).toBe(false);
+      expect(last?.session).toMatchObject({ id: 'sess-1' });
+    });
+    expect(restoreAgent.destroy).toHaveBeenCalled();
+    expect(agent1.destroy).not.toHaveBeenCalled();
+    expect(agent1.restoreSession).not.toHaveBeenCalled();
+    const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('恢复会话失败'));
+    expect(sysMsgs).toHaveLength(1);
+  });
+
+  it('a slow remote directory probe does not delay the pane switch (spec: 动画先于连接建立)', async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(makeIndexEntry('rem-1', '/work/remote', { host: 'ssh.example' }));
+    send.mockClear();
+
+    // remotePathExists is a fresh `ssh test -d` process (no connection reuse),
+    // so a slow remote hop must not gate the "selected" feedback: park the
+    // probe unresolved and prove the optimistic switch happens first.
+    let resolveProbe!: (value: boolean) => void;
+    vi.mocked(remotePathExists).mockImplementationOnce(
+      () => new Promise<boolean>((resolve) => { resolveProbe = resolve; }),
+    );
+
+    const selectPromise = host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/remote', sessionId: 'rem-1' });
+
+    // The pane switches and the sweep overlay raises while the probe is still
+    // in flight.
+    await vi.waitFor(() => {
+      const first = sent('setInitialState')[0];
+      expect(first?.isRestoring).toBe(true);
+      expect(first?.session).toMatchObject({ id: 'rem-1' });
+    });
+    expect(remotePathExists).toHaveBeenCalled();
+
+    resolveProbe(true);
+    await selectPromise;
+    await vi.waitFor(() => {
+      const last = sent('setInitialState').at(-1);
+      expect(last?.isRestoring).toBe(false);
+      expect(last?.session).toMatchObject({ id: 'rem-1' });
+      expect(last?.messages).toHaveLength(1);
+    });
+  });
+
+  it('a vanished remote directory is cleaned up in the background after the switch', async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(makeIndexEntry('gone-1', '/work/remote', { host: 'ssh.example' }));
+    send.mockClear();
+    vi.mocked(remotePathExists).mockResolvedValueOnce(false);
+
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/remote', sessionId: 'gone-1' });
+
+    // The optimistic overlay still raises; once the probe reports the directory
+    // is gone, the restore is cancelled, the stale index entry removed, and a
+    // system message explains — all behind the switch, never in front of it.
+    await vi.waitFor(() => {
+      const states = sent('setInitialState');
+      expect(states.some((s) => s?.isRestoring === true)).toBe(true);
+      expect(store.getSessionIndex().some((e) => e.sessionId === 'gone-1')).toBe(false);
+      const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('目录不存在'));
+      expect(sysMsgs).toHaveLength(1);
+      expect(states.at(-1)?.isRestoring).toBe(false);
+    });
   });
 });
 
@@ -1142,45 +1288,70 @@ describe('session switch shortcut (FR-038)', () => {
   it('cycles through the flattened tree across directories and wraps around', async () => {
     const { host, sent } = await hostWithTree();
 
+    // Restores are optimistic (fire-and-forget) — wait for each one to fully
+    // land (overlay dropped, session active) before the next press, otherwise
+    // the token guard supersedes the in-flight restore by design.
+    const waitActive = async (sessionId: string) => {
+      await vi.waitFor(() => {
+        const last = sent('setInitialState').at(-1);
+        expect(last?.isRestoring).toBe(false);
+        expect(last?.session).toMatchObject({ id: sessionId });
+      });
+    };
+
     // No current session: next lands on the first entry (s3, leading group).
     await host.activateAdjacentSession(1);
+    await waitActive('s3');
     expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/b' }));
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s3');
 
     // s3 → s2: the cycle crosses directory groups (back to /work/a).
     await host.activateAdjacentSession(1);
+    await waitActive('s2');
     expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/a' }));
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s2');
 
     // s2 → s1.
     await host.activateAdjacentSession(1);
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s1');
+    await waitActive('s1');
 
     // s1 is the last entry: next wraps to s3, whose agent is still live —
     // activated in place, no new spawn and no restore.
     const before = h.agentInstances.length;
     await host.activateAdjacentSession(1);
-    expect(h.agentInstances).toHaveLength(before);
-    expect(sent('setInitialState').at(-1)?.session).toMatchObject({ id: 's3' });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before);
+      expect(sent('setInitialState').at(-1)?.session).toMatchObject({ id: 's3' });
+    });
 
     // s3 is the first entry: prev wraps to the last entry (s1, also live).
     await host.activateAdjacentSession(-1);
-    expect(h.agentInstances).toHaveLength(before);
-    expect(sent('setInitialState').at(-1)?.session).toMatchObject({ id: 's1' });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before);
+      expect(sent('setInitialState').at(-1)?.session).toMatchObject({ id: 's1' });
+    });
   });
 
   it('drops the frozen cycle order when the session changes outside the cycle', async () => {
-    const { host } = await hostWithTree();
+    const { host, sent } = await hostWithTree();
     await host.activateAdjacentSession(1); // s3, snapshot frozen at [s3, s2, s1]
+    await vi.waitFor(() => {
+      expect(sent('setInitialState').at(-1)?.isRestoring).toBe(false);
+      expect(sent('setInitialState').at(-1)?.session).toMatchObject({ id: 's3' });
+    });
 
     // Clicking s2 (outside the cycle) drops the frozen snapshot — the next
     // press re-derives from the (creation-ordered, stable) tree.
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 's2' });
+    await vi.waitFor(() => {
+      expect(sent('setInitialState').at(-1)?.isRestoring).toBe(false);
+      expect(sent('setInitialState').at(-1)?.session).toMatchObject({ id: 's2' });
+    });
 
     // The stale snapshot would cycle onto the already-current s2 (a no-op);
     // the fresh order [s3, s2, s1] starts after s2 and lands on s1 instead.
     await host.activateAdjacentSession(1);
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s1');
+    await vi.waitFor(() => {
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith('s1');
+    });
   });
 
   it('is a no-op on an empty tree', async () => {
@@ -1199,7 +1370,12 @@ describe('session switch shortcut (FR-038)', () => {
     await ctx.host.handleWebviewMessage({ command: 'webviewReady' });
 
     await ctx.host.activateAdjacentSession(1); // activates s1
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s1');
+    // Settle first: until the restore lands, the pane still shows the fresh
+    // agent (sessionId sess-1) and a press would restart the restore.
+    await vi.waitFor(() => {
+      expect(ctx.sent('setInitialState').at(-1)?.isRestoring).toBe(false);
+      expect(ctx.sent('setInitialState').at(-1)?.session).toMatchObject({ id: 's1' });
+    });
     const before = h.agentInstances.length;
     const restores = lastAgent().restoreSession.mock.calls.length;
 
@@ -1217,7 +1393,9 @@ describe('session switch shortcut (FR-038)', () => {
     await host.handleWebviewMessage({ command: 'webviewReady' });
 
     await host.activateAdjacentSession(1);
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('s9');
+    await vi.waitFor(() => {
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith('s9');
+    });
   });
 
   it('drops a stale-directory entry encountered while cycling (same as clicking it)', async () => {
@@ -1477,8 +1655,10 @@ describe('worktree flow', () => {
     });
 
     expect(h.agentInstances).toHaveLength(before + 1);
-    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-wt');
+    await vi.waitFor(() => {
+      expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-wt');
+    });
   });
 
   it('restoring a worktree session keeps it grouped under the repo root', async () => {
@@ -1528,12 +1708,15 @@ describe('worktree flow', () => {
       sessionId: 'sess-wt',
     });
 
-    expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-wt')).toBe(false);
-    // Repo root stays in recents — only the stale index entry is dropped.
-    expect(store.getRecentWorkdirs()).toEqual(expect.arrayContaining([{ host: 'local', path: '/work/a' }]));
-    expect(lastAgent().restoreSession).not.toHaveBeenCalled();
-    const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('worktree 目录不存在'));
-    expect(sysMsgs).toHaveLength(1);
+    // The probe + cleanup run in the background behind the optimistic switch.
+    await vi.waitFor(() => {
+      expect(store.getSessionIndex().some((e) => e.sessionId === 'sess-wt')).toBe(false);
+      // Repo root stays in recents — only the stale index entry is dropped.
+      expect(store.getRecentWorkdirs()).toEqual(expect.arrayContaining([{ host: 'local', path: '/work/a' }]));
+      expect(lastAgent().restoreSession).not.toHaveBeenCalled();
+      const sysMsgs = sent('appendMessage').filter((m) => JSON.stringify(m).includes('worktree 目录不存在'));
+      expect(sysMsgs).toHaveLength(1);
+    });
   });
 
   it('desktopDeleteSession on a worktree session requests removeWorktree', async () => {
@@ -1916,18 +2099,19 @@ describe('split-view panes (FR-032~036)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-old' });
 
-    // A new agent was spawned + restored for the dropped session.
-    expect(h.agentInstances).toHaveLength(before + 1);
-    const dropped = lastAgent();
-    expect(dropped.restoreSession).toHaveBeenCalledWith('sess-old');
-
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes).toHaveLength(2);
-    expect(layout.panes[1].sessionId).toBe('sess-old');
-    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    // A new agent was spawned + restored for the dropped session. The restore
+    // runs behind the sweep overlay, so settle it before asserting.
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-old');
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes).toHaveLength(2);
+      expect(layout.panes[1].sessionId).toBe('sess-old');
+      expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    });
     // The restored pane received its initial state, tagged with its paneId.
     const init = sent('setInitialState').at(-1);
-    expect(init?.paneId).toBe(layout.panes[1].paneId);
+    expect(init?.paneId).toBe(panePushes(sent).at(-1)!.panes[1].paneId);
   });
 
   it('desktopOpenPane on a worktree session spawns the agent at entry.cwd, not the repo root', async () => {
@@ -1954,12 +2138,14 @@ describe('split-view panes (FR-032~036)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: worktree.repoRoot, sessionId: 'sess-wt' });
 
-    expect(h.agentInstances).toHaveLength(before + 1);
     // Spawning at the repo root makes restoreSession look in the wrong project
     // store — it throws and the pane stays a new session.
-    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-wt');
-    expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-wt');
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+      expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: worktree.path }));
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith('sess-wt');
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-wt');
+    });
     // The ephemeral worktree path must not leak into recents.
     expect(store.getRecentWorkdirs()).not.toEqual(expect.arrayContaining([{ host: 'local', path: worktree.path }]));
   });
@@ -1971,9 +2157,12 @@ describe('split-view panes (FR-032~036)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3', insertionIndex: 1 });
 
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => p.sessionId)).toEqual(['sess-1', 'sess-3', 'sess-2']);
-    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    // The newest restore (sess-3) settles last and owns the focus.
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => p.sessionId)).toEqual(['sess-1', 'sess-3', 'sess-2']);
+      expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    });
   });
 
   it('desktopOpenPane clamps an out-of-range insertionIndex and appends on a non-number', async () => {
@@ -1981,16 +2170,25 @@ describe('split-view panes (FR-032~036)', () => {
     seedActiveSession('sess-1');
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', insertionIndex: 99 });
-    expect(panePushes(sent).at(-1)!.panes.map((p) => p.sessionId)).toEqual(['sess-1', 'sess-2']);
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)!.panes.map((p) => p.sessionId)).toEqual(['sess-1', 'sess-2']);
+    });
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3', insertionIndex: 'bogus' });
-    expect(panePushes(sent).at(-1)!.panes.map((p) => p.sessionId)).toEqual(['sess-1', 'sess-2', 'sess-3']);
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)!.panes.map((p) => p.sessionId)).toEqual(['sess-1', 'sess-2', 'sess-3']);
+    });
   });
 
   it('desktopOpenPane for an already-visible session focuses its pane instead of duplicating', async () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    // The first open must finish binding sess-2 to its pane, otherwise the
+    // second open would not see it as visible and would spawn a duplicate.
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     const before = h.agentInstances.length;
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
@@ -2003,6 +2201,11 @@ describe('split-view panes (FR-032~036)', () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    // Settle the restore first — its activation would otherwise re-focus the
+    // restored pane after the explicit focus below.
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     const panes = panePushes(sent).at(-1)!.panes;
 
     await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: panes[0].paneId });
@@ -2023,6 +2226,12 @@ describe('split-view panes (FR-032~036)', () => {
     const { host, sent } = await readyHost();
     const agent1 = seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    // Settle the restore before closing: an in-flight restore is discarded
+    // (its agent destroyed) on close — the "agent survives" contract applies
+    // to pane-bound agents only.
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     const agent2 = lastAgent();
     const focusedPane = panePushes(sent).at(-1)!.focusedPaneId;
 
@@ -2052,8 +2261,13 @@ describe('split-view panes (FR-032~036)', () => {
   it('a pane-bound agent survives any number of later sessions', async () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
-    // Pin sess-2 in a second pane (pane-1 keeps sess-1).
+    // Pin sess-2 in a second pane (pane-1 keeps sess-1). Settle the restore
+    // first: while it is in flight its bindAgentToPane steals focus, which
+    // would redirect the newSession loop below into pane-1.
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     const paneAgent = lastAgent();
     const firstPane = panePushes(sent).at(-1)!.panes[0];
 
@@ -2067,15 +2281,22 @@ describe('split-view panes (FR-032~036)', () => {
 
     // No eviction: the sess-2 pane is untouched and its agent stays alive.
     expect(paneAgent.destroy).not.toHaveBeenCalled();
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes).toHaveLength(2);
-    expect(layout.panes[1].sessionId).toBe('sess-2');
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes).toHaveLength(2);
+      expect(layout.panes[1].sessionId).toBe('sess-2');
+    });
   });
 
   it('desktopDeleteSession closes the focused pane showing it instead of resetting to a fresh session', async () => {
     const { host, sent } = await readyHost();
     const agent1 = seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    // The delete resolves the target + bound pane through the registered
+    // session, so the restore must have re-keyed the agent first.
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     const agent2 = lastAgent();
     const spawned = h.agentInstances.length;
     // pane-2 (sess-2) is focused after the drop.
@@ -2096,6 +2317,9 @@ describe('split-view panes (FR-032~036)', () => {
     const { host, sent } = await readyHost();
     const agent1 = seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     const agent2 = lastAgent();
     // Focus pane-1 so sess-2 lives in a background pane.
     const firstPane = panePushes(sent).at(-1)!.panes[0];
@@ -2171,13 +2395,15 @@ describe('pane rows (two-row layout)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
 
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
-      ['sess-1', 0],
-      ['sess-2', 1],
-    ]);
-    expect(layout.rowHeights).toEqual([0.5, 0.5]);
-    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+        ['sess-1', 0],
+        ['sess-2', 1],
+      ]);
+      expect(layout.rowHeights).toEqual([0.5, 0.5]);
+      expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    });
   });
 
   it('desktopOpenPane with newRow: above pushes existing panes into the bottom row', async () => {
@@ -2186,12 +2412,14 @@ describe('pane rows (two-row layout)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'above' });
 
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
-      ['sess-2', 0],
-      ['sess-1', 1],
-    ]);
-    expect(layout.rowHeights).toEqual([0.5, 0.5]);
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+        ['sess-2', 0],
+        ['sess-1', 1],
+      ]);
+      expect(layout.rowHeights).toEqual([0.5, 0.5]);
+    });
   });
 
   it('desktopOpenPane with newRow refuses the split when the window is too short', async () => {
@@ -2216,13 +2444,15 @@ describe('pane rows (two-row layout)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
 
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
-      ['sess-1', 0],
-      ['sess-2', 1],
-    ]);
-    expect(layout.rowHeights).toEqual([0.5, 0.5]);
-    expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+        ['sess-1', 0],
+        ['sess-2', 1],
+      ]);
+      expect(layout.rowHeights).toEqual([0.5, 0.5]);
+      expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
+    });
   });
 
   it('desktopOpenPane without a target row overflows into the other row when the focused row is full', async () => {
@@ -2238,18 +2468,20 @@ describe('pane rows (two-row layout)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-4' });
 
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
-      ['sess-1', 0],
-      ['sess-2', 0],
-      ['sess-3', 1],
-      ['sess-4', 1],
-    ]);
-    // Row 0 keeps its ratios; row 1 splits evenly.
-    expect(layout.panes[0].width).toBeCloseTo(0.5);
-    expect(layout.panes[1].width).toBeCloseTo(0.5);
-    expect(layout.panes[2].width).toBeCloseTo(0.5);
-    expect(layout.panes[3].width).toBeCloseTo(0.5);
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+        ['sess-1', 0],
+        ['sess-2', 0],
+        ['sess-3', 1],
+        ['sess-4', 1],
+      ]);
+      // Row 0 keeps its ratios; row 1 splits evenly.
+      expect(layout.panes[0].width).toBeCloseTo(0.5);
+      expect(layout.panes[1].width).toBeCloseTo(0.5);
+      expect(layout.panes[2].width).toBeCloseTo(0.5);
+      expect(layout.panes[3].width).toBeCloseTo(0.5);
+    });
   });
 
   it('desktopOpenPane without a target row refuses with a hint when the full single row cannot split', async () => {
@@ -2288,11 +2520,13 @@ describe('pane rows (two-row layout)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', row: 0 });
 
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
-      ['sess-1', 0],
-      ['sess-2', 0],
-    ]);
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+        ['sess-1', 0],
+        ['sess-2', 0],
+      ]);
+    });
     expect(lastSystemMessage(sent)).toBeUndefined();
   });
 
@@ -2304,13 +2538,15 @@ describe('pane rows (two-row layout)', () => {
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3', newRow: 'above' });
 
     // Rows already exist, so "above" just means row 0 — no second split.
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
-      ['sess-1', 0],
-      ['sess-3', 0],
-      ['sess-2', 1],
-    ]);
-    expect(layout.rowHeights).toEqual([0.5, 0.5]);
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+        ['sess-1', 0],
+        ['sess-3', 0],
+        ['sess-2', 1],
+      ]);
+      expect(layout.rowHeights).toEqual([0.5, 0.5]);
+    });
   });
 
   it('desktopOpenPane with row inserts the pane into the given row and rebalances only that row', async () => {
@@ -2320,16 +2556,18 @@ describe('pane rows (two-row layout)', () => {
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3', row: 1 });
 
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
-      ['sess-1', 0],
-      ['sess-2', 1],
-      ['sess-3', 1],
-    ]);
-    // Row 0 keeps its untouched width; row 1 splits evenly.
-    expect(layout.panes[0].width).toBeUndefined();
-    expect(layout.panes[1].width).toBeCloseTo(0.5);
-    expect(layout.panes[2].width).toBeCloseTo(0.5);
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+        ['sess-1', 0],
+        ['sess-2', 1],
+        ['sess-3', 1],
+      ]);
+      // Row 0 keeps its untouched width; row 1 splits evenly.
+      expect(layout.panes[0].width).toBeUndefined();
+      expect(layout.panes[1].width).toBeCloseTo(0.5);
+      expect(layout.panes[2].width).toBeCloseTo(0.5);
+    });
   });
 
   it('desktopMovePane with newRow moves the pane alone into a fresh row', async () => {
@@ -2369,20 +2607,26 @@ describe('pane rows (two-row layout)', () => {
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2', newRow: 'below' });
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3' });
     // Layout: row0 [sess-1], row1 [sess-2, sess-3].
-    const sess3Pane = panePushes(sent).at(-1)!.panes.find((p) => p.sessionId === 'sess-3')!;
+    const sess3Pane = await vi.waitFor(() => {
+      const pane = panePushes(sent).at(-1)!.panes.find((p) => p.sessionId === 'sess-3');
+      if (!pane) throw new Error('sess-3 pane not bound yet');
+      return pane;
+    });
 
     await host.handleWebviewMessage({ command: 'desktopMovePane', paneId: sess3Pane.paneId, toRow: 0, toIndex: 0 });
 
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
-      ['sess-3', 0],
-      ['sess-1', 0],
-      ['sess-2', 1],
-    ]);
-    expect(layout.panes[0].width).toBeCloseTo(0.5);
-    expect(layout.panes[1].width).toBeCloseTo(0.5);
-    // The abandoned row re-expands to full width.
-    expect(layout.panes[2].width).toBeCloseTo(1);
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => [p.sessionId, p.row])).toEqual([
+        ['sess-3', 0],
+        ['sess-1', 0],
+        ['sess-2', 1],
+      ]);
+      expect(layout.panes[0].width).toBeCloseTo(0.5);
+      expect(layout.panes[1].width).toBeCloseTo(0.5);
+      // The abandoned row re-expands to full width.
+      expect(layout.panes[2].width).toBeCloseTo(1);
+    });
   });
 
   it('desktopMovePane with toIndex alone reorders within its own row', async () => {
@@ -2390,14 +2634,20 @@ describe('pane rows (two-row layout)', () => {
     seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-3' });
-    const sess3Pane = panePushes(sent).at(-1)!.panes.find((p) => p.sessionId === 'sess-3')!;
+    const sess3Pane = await vi.waitFor(() => {
+      const pane = panePushes(sent).at(-1)!.panes.find((p) => p.sessionId === 'sess-3');
+      if (!pane) throw new Error('sess-3 pane not bound yet');
+      return pane;
+    });
 
     await host.handleWebviewMessage({ command: 'desktopMovePane', paneId: sess3Pane.paneId, toIndex: 0 });
 
-    const layout = panePushes(sent).at(-1)!;
-    expect(layout.panes.map((p) => p.sessionId)).toEqual(['sess-3', 'sess-1', 'sess-2']);
-    expect(layout.panes.every((p) => p.row === 0)).toBe(true);
-    expect(layout.rowHeights).toBeUndefined();
+    await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes.map((p) => p.sessionId)).toEqual(['sess-3', 'sess-1', 'sess-2']);
+      expect(layout.panes.every((p) => p.row === 0)).toBe(true);
+      expect(layout.rowHeights).toBeUndefined();
+    });
   });
 
   it('desktopResizePanes applies widths only to the addressed row', async () => {
@@ -2647,10 +2897,12 @@ describe('input focus on conversation switch', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'hist-1' });
 
-    expect(lastAgent().restoreSession).toHaveBeenCalledWith('hist-1');
-    const focus = sent('focusInput');
-    expect(focus.length).toBeGreaterThan(before);
-    expect(focus.at(-1)).toMatchObject({ paneId });
+    await vi.waitFor(() => {
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith('hist-1');
+      const focus = sent('focusInput');
+      expect(focus.length).toBeGreaterThan(before);
+      expect(focus.at(-1)).toMatchObject({ paneId });
+    });
   });
 
   it('activateAdjacentSession (switch shortcut) focuses the input', async () => {
@@ -2665,15 +2917,22 @@ describe('input focus on conversation switch', () => {
 
     await host.activateAdjacentSession(1);
 
-    const focus = sent('focusInput');
-    expect(focus.length).toBeGreaterThan(before);
-    expect(focus.at(-1)).toMatchObject({ paneId: panePushes(sent).at(-1)!.focusedPaneId });
+    await vi.waitFor(() => {
+      const focus = sent('focusInput');
+      expect(focus.length).toBeGreaterThan(before);
+      expect(focus.at(-1)).toMatchObject({ paneId: panePushes(sent).at(-1)!.focusedPaneId });
+    });
   });
 
   it('selecting a session already visible in another pane focuses that pane input', async () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    // Settle the restore — its activation would otherwise re-focus pane-2
+    // after the select below focuses pane-1.
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     // pane-2 (sess-2) is focused; sess-1 stays visible in pane-1.
     const firstPane = panePushes(sent).at(-1)!.panes[0];
 
@@ -2687,6 +2946,9 @@ describe('input focus on conversation switch', () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     const firstPane = panePushes(sent).at(-1)!.panes[0];
 
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-1' });
@@ -2710,6 +2972,11 @@ describe('input focus on conversation switch', () => {
     const { host, sent } = await readyHost();
     seedActiveSession('sess-1');
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
+    // The restore's activation ends with a focusInput — settle it first so the
+    // baseline count below is stable.
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     const firstPane = panePushes(sent).at(-1)!.panes[0];
     const before = sent('focusInput').length;
 
@@ -2771,6 +3038,11 @@ describe('native menu actions', () => {
     const left = lastAgent();
     await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-2' });
     expect(panePushes(sent).at(-1)!.panes).toHaveLength(2);
+    // Settle the restore before closing: an in-flight restore is discarded on
+    // close, while a pane-bound agent survives (asserted below).
+    await vi.waitFor(() => {
+      expect(panePushes(sent).at(-1)?.panes[1].sessionId).toBe('sess-2');
+    });
     const right = lastAgent();
 
     await host.closeFocusedPane();
