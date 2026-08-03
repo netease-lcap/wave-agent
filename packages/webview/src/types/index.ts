@@ -298,6 +298,8 @@ export interface MessageListProps {
   workdir?: string;
   /** Desktop host only: open a localhost URL in the preview pane. */
   onOpenPreview?: (url: string) => void;
+  /** Desktop host only: open a file in the file panel instead of the OS. */
+  onOpenFile?: (path: string, startLine?: number, endLine?: number) => void;
 }
 
 export interface MessageProps {
@@ -308,6 +310,8 @@ export interface MessageProps {
   workdir?: string;
   /** Desktop host only: open a localhost URL in the preview pane. */
   onOpenPreview?: (url: string) => void;
+  /** Desktop host only: open a file in the file panel instead of the OS. */
+  onOpenFile?: (path: string, startLine?: number, endLine?: number) => void;
 }
 
 // Image attachment types (uses base64 data directly)
@@ -370,7 +374,35 @@ export interface FileSuggestionDropdownProps {
 }
 
 /** Desktop conversation-level side panels. VSCE/JetBrains hosts never render these. */
-export type DesktopPanelKind = 'preview' | 'diff' | 'terminal';
+export type DesktopPanelKind = 'preview' | 'diff' | 'terminal' | 'file';
+
+/**
+ * State of the desktop file panel (one per conversation): which file is open,
+ * its content, and read status. The host pushes a snapshot after every
+ * openFile request via the `desktopFileContent` message; `loading` is set
+ * locally when the panel opens and cleared/overwritten when the reply lands.
+ */
+export interface FileViewState {
+  /** Absolute path of the file being viewed. */
+  path: string;
+  /** 'local' or the SSH host name the file lives on. */
+  host: string;
+  /** True while the host is reading the file (nothing loaded yet). */
+  loading?: boolean;
+  /** User-facing error when the file could not be read (no content). */
+  error?: string;
+  /** File content, present for text/markdown files. */
+  content?: string;
+  /** Lines to jump to (1-based) — from read tool offset/limit or a selection. */
+  startLine?: number;
+  endLine?: number;
+  /** Text read was truncated (line or byte cap). */
+  truncated?: boolean;
+  /** Total line count on disk, for the truncated hint. */
+  totalLines?: number;
+  /** Base64 data URL for remote images, inlined in the panel. */
+  imageBase64?: string;
+}
 
 /** Header panel-toggle control: which panels are checked + toggle callback. */
 export interface PanelToggleProps {

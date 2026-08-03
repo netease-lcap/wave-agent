@@ -26,7 +26,7 @@ function countTimelineBlocks(message: MessageType): number {
   return count;
 }
 
-export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, isStreaming, isCompacting, vscode, onRewindToMessage, workdir, onOpenPreview }, ref) {
+export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavior) => void }, MessageListProps>(function MessageList({ messages, queuedMessages, isStreaming, isCompacting, vscode, onRewindToMessage, workdir, onOpenPreview, onOpenFile }, ref) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -260,6 +260,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
               onRewindToMessage={onRewindToMessage}
               workdir={workdir}
               onOpenPreview={onOpenPreview}
+              onOpenFile={onOpenFile}
             />
           );
         };
@@ -296,7 +297,7 @@ export const MessageList = forwardRef<{ scrollToBottom: (behavior?: ScrollBehavi
         flushGroup();
 
         return rendered;
-      }, [messages, vscode, onRewindToMessage, workdir, onOpenPreview])}
+      }, [messages, vscode, onRewindToMessage, workdir, onOpenPreview, onOpenFile])}
       
       {/* Compaction hint: blinking cursor + label pinned to the end of the
           message list, independent of isStreaming (auto-compaction runs between

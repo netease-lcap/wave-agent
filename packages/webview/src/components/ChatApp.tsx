@@ -25,18 +25,20 @@ import { DesktopWorktreeControls } from './DesktopWorktreeControls';
 import { PreviewPane } from './PreviewPane';
 import { DiffPane } from './DiffPane';
 import { TerminalPane, prefetchTerminalLib } from './TerminalPane';
+import { FilePane } from './FilePane';
 import type {
   ChatAppProps,
   ConfigurationData,
   ConfirmationDecision,
   DesktopPanelKind,
+  FileViewState,
   ToolBlockUpdateCallbackParams,
 } from '../types';
 import { chatReducer, initialState } from '../reducers/chatReducer';
 import '../styles/ChatApp.css';
 
 /** Desktop conversation-level panels: fixed left→right order regardless of check order. */
-const PANEL_ORDER: DesktopPanelKind[] = ['preview', 'diff', 'terminal'];
+const PANEL_ORDER: DesktopPanelKind[] = ['preview', 'diff', 'terminal', 'file'];
 const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 320;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
@@ -120,6 +122,8 @@ interface PanelGroupState {
   rows: Record<DesktopPanelKind, PanelRow>;
   rowHeight: number | null;
   previewUrl: string | null;
+  /** File panel state (which file is open + content); null = never opened. */
+  fileView: FileViewState | null;
 }
 
 /**
@@ -206,11 +210,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   // in PreviewPane would otherwise early-return and skip the forced reload a
   // retry after a guest load failure needs. Remounting restarts the webview.
   const [previewEpoch, setPreviewEpoch] = useState(0);
+  // Desktop only: the file panel's open file + content (null = never opened).
+  // Set locally to a loading stub when a path is clicked, then filled by the
+  // host's desktopFileContent reply (routed by paneId).
+  const [fileView, setFileView] = useState<FileViewState | null>(
+    () => (groupKey ? panelGroupCache.get(groupKey)?.fileView : undefined) ?? null,
+  );
   // The pane's current remote port forward (see RemoteForwardRef above).
   const remoteForwardRef = useRef<RemoteForwardRef | null>(null);
   const forwardSeqRef = useRef(0);
   const previewUrlRef = useRef(previewUrl);
   const prevHostRef = useRef(effectiveHost);
+  const fileViewRef = useRef<FileViewState | null>(fileView);
   // Desktop only: conversation-level panel group (checked = visible; mounted =
   // rendered but possibly hidden, so panel content survives unchecking). When
   // this session's group was cached (session revisited, or the pane moved
@@ -227,6 +238,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         preview: PANEL_DEFAULT_WIDTH,
         diff: PANEL_DEFAULT_WIDTH,
         terminal: PANEL_DEFAULT_WIDTH,
+        file: PANEL_DEFAULT_WIDTH,
       },
   );
   // Panel row assignment: 1 = right of the message area (default), 2 = second
@@ -237,6 +249,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         preview: 1,
         diff: 1,
         terminal: 1,
+        file: 1,
       },
   );
   // Pixel height of the panel second row; null until a row is first created.
@@ -291,6 +304,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
   }, [previewUrl]);
 
   useEffect(() => {
+    fileViewRef.current = fileView;
+  }, [fileView]);
+
+  useEffect(() => {
     checkedPanelsRef.current = checkedPanels;
   }, [checkedPanels]);
 
@@ -322,8 +339,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       // caching it would restore a dead address after a remount. Local URLs
       // survive so the restored pane reloads the same dev server.
       previewUrl: remoteForwardRef.current ? null : previewUrl,
+      fileView,
     });
-  }, [groupKey, checkedPanels, mountedPanels, panelWidths, panelRows, panelRowHeight, previewUrl]);
+  }, [groupKey, checkedPanels, mountedPanels, panelWidths, panelRows, panelRowHeight, previewUrl, fileView]);
 
   // Session switch: swap in the incoming session's remembered panel group
   // (empty when it has none — panels never leak across sessions). Only the
@@ -356,9 +374,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
       preview: PANEL_DEFAULT_WIDTH,
       diff: PANEL_DEFAULT_WIDTH,
       terminal: PANEL_DEFAULT_WIDTH,
+      file: PANEL_DEFAULT_WIDTH,
     });
-    setPanelRows(group?.rows ?? { preview: 1, diff: 1, terminal: 1 });
+    setPanelRows(group?.rows ?? { preview: 1, diff: 1, terminal: 1, file: 1 });
     setPanelRowHeight(group?.rowHeight ?? null);
+    setFileView(group?.fileView ?? null);
   }, [paneId, groupKey]);
 
   useEffect(() => {
@@ -457,6 +477,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               if (message.url === previewUrlRef.current) setPreviewEpoch((e) => e + 1);
             }
           }
+          break;
+        case 'desktopFileContent':
+          // File panel content reply (file panel spec scenario 1/2). Routed by
+          // paneId so a sibling pane's reply never overwrites this pane's view.
+          if (!forThisPane(message)) break;
+          setFileView(message.fileView as FileViewState);
           break;
         case 'updateQueue':
           if (!forThisPane(message)) break;
@@ -1132,6 +1158,43 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     togglePanelRef.current = handleTogglePanel;
   }, [handleTogglePanel]);
 
+  // Desktop file panel (spec: 文件面板): a file path clicked in a message or
+  // terminal opens here instead of the OS. Show the panel immediately with a
+  // loading stub; the host reads the file (local fs or over ssh) and replies
+  // with desktopFileContent to fill it in. The host is captured per-pane so a
+  // split-view sibling's click never resolves against this pane's host.
+  // IDE hosts (VSCE/JetBrains) keep the plain openFile RPC that opens the file
+  // in the IDE — only the desktop host intercepts the click for the panel.
+  const handleOpenFile = useCallback(
+    (path: string, startLine?: number, endLine?: number) => {
+      if (!path) return;
+      if (!isDesktop) {
+        vscode.postMessage({ command: 'openFile', path, startLine, endLine });
+        return;
+      }
+      if (!tryOpenPanel('file')) return;
+      // Re-clicking the file already shown re-reads it (soft refresh: keep the
+      // old content until the host reply lands, matching the diff pane).
+      setFileView((prev) =>
+        prev && prev.path === path
+          ? { ...prev, loading: true, startLine, endLine }
+          : { path, host: effectiveHost, loading: true, startLine, endLine },
+      );
+      postToHost({ command: 'openFile', path, host: effectiveHost, startLine, endLine });
+    },
+    [isDesktop, tryOpenPanel, effectiveHost, postToHost, vscode],
+  );
+
+  // Local sessions only: leave the panel and open the file in the OS default
+  // app (remote hosts have no local file — the button is hidden).
+  const handleOpenFileExternal = useCallback(
+    (path: string) => {
+      if (!isDesktop || !path) return;
+      postToHost({ command: 'desktopOpenFileExternal', path });
+    },
+    [isDesktop, postToHost],
+  );
+
   // Authoritative clamp at drag time: keep the panel within [320, container -
   // other checked panels in the same row - (row 1 only) conversation minimum].
   const handlePanelWidthChange = useCallback((kind: DesktopPanelKind, width: number) => {
@@ -1458,6 +1521,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
         />
       );
     }
+    if (kind === 'file') {
+      return (
+        <FilePane
+          fileView={fileView}
+          onOpenExternal={handleOpenFileExternal}
+          workdir={effectiveWorkdir}
+          {...common}
+        />
+      );
+    }
     return (
       <TerminalPane
         vscode={vscode}
@@ -1499,6 +1572,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onRewindToMessage={handleRewindToMessage}
           workdir={state.workdir}
           onOpenPreview={openPreviewHandler}
+          onOpenFile={handleOpenFile}
         />
       )}
 

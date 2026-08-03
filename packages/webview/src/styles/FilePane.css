@@ -1,0 +1,197 @@
+/* Desktop file panel: title bar (host + relative path + actions), line-numbered
+   code view with horizontal scrolling, markdown rendering and inline images. */
+
+.file-pane-body {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+}
+
+.file-pane-body .desktop-panel-placeholder {
+    flex: 1;
+    min-height: 100%;
+    gap: 8px;
+}
+
+.file-pane-placeholder-icon {
+    font-size: 22px;
+}
+
+.file-pane-host {
+    flex-shrink: 0;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--vscode-badge-background, rgba(90, 93, 94, 0.31));
+    color: var(--vscode-badge-foreground, #fff);
+}
+
+.file-pane-host--local {
+    background: var(--vscode-badge-background, rgba(90, 93, 94, 0.31));
+}
+
+.file-pane-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+/* Code view: one row per line; the gutter is sticky so long lines scroll
+   horizontally under it. The whole body is the scroll container. */
+.file-pane-code {
+    flex: 1;
+    min-width: max-content;
+    padding-bottom: 12px;
+}
+
+.file-pane-line {
+    display: flex;
+    align-items: flex-start;
+    min-height: 20px;
+    line-height: 20px;
+    font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Courier New', monospace);
+    font-size: 12px;
+    white-space: pre;
+}
+
+.file-pane-line--active {
+    background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.35));
+}
+
+.file-pane-line-no {
+    position: sticky;
+    left: 0;
+    flex-shrink: 0;
+    min-width: 52px;
+    padding: 0 10px 0 8px;
+    text-align: right;
+    color: var(--vscode-editorLineNumber-foreground, #858585);
+    background: var(--vscode-sideBar-background, var(--vscode-panel-background));
+    user-select: none;
+}
+
+.file-pane-line--active .file-pane-line-no {
+    background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.35));
+}
+
+.file-pane-line-code {
+    padding-right: 24px;
+}
+
+.file-pane-truncated-hint {
+    flex: 1;
+    min-width: max-content;
+    padding: 8px 16px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground, #999);
+    background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.2));
+}
+
+/* Markdown files reuse the message markdown look, padded for the panel. */
+.file-pane-markdown {
+    padding: 12px 16px;
+}
+
+.file-pane-markdown pre {
+    max-width: 100%;
+    overflow: auto;
+}
+
+/* Image files (remote previewImage) render inline, sized to the panel. */
+.file-pane-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    padding: 12px 16px;
+    box-sizing: border-box;
+}
+
+.file-pane-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: auto;
+    padding: 24px 16px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground, #999);
+}
+
+.file-pane-status-icon {
+    font-size: 18px;
+    color: var(--vscode-errorForeground, #f14c4c);
+}
+
+/* Syntax-highlight palette (GitHub Dark / VS Code Dark+ style hues) driven by
+   --vscode semantic colors where available, static fallbacks otherwise. */
+.file-pane .hljs-comment,
+.file-pane .hljs-quote {
+    color: var(--vscode-descriptionForeground, #6a9955);
+    font-style: italic;
+}
+
+.file-pane .hljs-keyword,
+.file-pane .hljs-selector-tag,
+.file-pane .hljs-literal,
+.file-pane .hljs-type,
+.file-pane .hljs-section,
+.file-pane .hljs-meta {
+    color: #569cd6;
+}
+
+.file-pane .hljs-string,
+.file-pane .hljs-regexp,
+.file-pane .hljs-addition {
+    color: #ce9178;
+}
+
+.file-pane .hljs-number,
+.file-pane .hljs-symbol,
+.file-pane .hljs-bullet {
+    color: #b5cea8;
+}
+
+.file-pane .hljs-title,
+.file-pane .hljs-title.function_,
+.file-pane .hljs-function .hljs-title {
+    color: #dcdcaa;
+}
+
+.file-pane .hljs-attr,
+.file-pane .hljs-attribute,
+.file-pane .hljs-variable,
+.file-pane .hljs-template-variable,
+.file-pane .hljs-name {
+    color: #9cdcfe;
+}
+
+.file-pane .hljs-built_in,
+.file-pane .hljs-builtin-name {
+    color: #4ec9b0;
+}
+
+.file-pane .hljs-tag,
+.file-pane .hljs-selector-id,
+.file-pane .hljs-selector-class,
+.file-pane .hljs-selector-attr,
+.file-pane .hljs-selector-pseudo {
+    color: #d7ba7d;
+}
+
+.file-pane .hljs-deletion {
+    color: #f14c4c;
+}
+
+.file-pane .hljs-emphasis {
+    font-style: italic;
+}
+
+.file-pane .hljs-strong {
+    font-weight: bold;
+}
