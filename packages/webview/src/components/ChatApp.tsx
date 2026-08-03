@@ -1781,6 +1781,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
           onLogin={handleLogin}
           onLogout={handleLogout}
           isAuthenticated={state.isAuthenticated}
+          hostLabel={effectiveHost}
           sessionTree={host.sessionTree}
           currentSessionId={state.currentSession?.id}
           onSelectSession={host.onSelectSession}

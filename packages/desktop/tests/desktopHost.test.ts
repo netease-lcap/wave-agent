@@ -2907,6 +2907,49 @@ describe('SSH remote hosts', () => {
     });
   });
 
+  it('desktopFocusPane re-queries the auth status on the newly focused pane\'s host', async () => {
+    // The more-menu login/logout entry targets the focused pane's host, and the
+    // cached auth state belongs to the previously focused pane — so switching
+    // panes must re-query the newly focused pane's host instead of reusing the
+    // stale cache (spec scenario 6).
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: 'local', path: '/work/a' });
+    store.upsertSession({
+      sessionId: 'sess-remote',
+      title: 'remote',
+      host: 'prod',
+      workdir: '/work/a',
+      cwd: '/work/a',
+      createdAt: 1,
+      lastActiveAt: 1,
+    });
+    h.existingPaths.add('/work/a');
+    // FIFO: webview-ready 本地 (logged out) → focus 本地 pane (logged out) →
+    // focus prod pane (logged in).
+    h.authStatusResults = [false, false, true];
+
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/a' });
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+    await host.handleWebviewMessage({ command: 'desktopOpenPane', workdir: '/work/a', sessionId: 'sess-remote' });
+    const panes = (sent('desktopPanes').at(-1) as { panes: Array<{ paneId: string; host: string }> }).panes;
+    expect(panes[1]).toMatchObject({ host: 'prod' });
+
+    // desktopOpenPane already focused the remote pane. Switch back to 本地 and
+    // then to prod again — each focus must re-query the newly focused pane's
+    // host rather than reusing the state cached at webview-ready.
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: panes[0].paneId });
+    await host.handleWebviewMessage({ command: 'desktopFocusPane', paneId: panes[1].paneId });
+
+    const authQueries = h.clientRequests.filter((r) => r.method === 'getAuthStatus');
+    expect(authQueries.length).toBeGreaterThanOrEqual(3);
+    await vi.waitFor(() => {
+      const response = sent('authStatusResponse').at(-1);
+      expect(response).toMatchObject({ isAuthenticated: true });
+    });
+  });
+
   it('desktopSelectHost releases a bound message-less agent so the picker host takes effect', async () => {
     // After 新对话 the pane is bound to a fresh empty agent; its host pins the
     // pane label to 本地 no matter what host is picked. Switching host must

@@ -22,6 +22,11 @@ export interface DesktopSidebarProps {
   onLogin: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
+  /**
+   * Host the focused pane runs on ('local' or an SSH host name). Labels the
+   * more menu's 登录/退出登录 entry so it names the auth subject it acts on.
+   */
+  hostLabel?: string;
   /** Session tree groups, one per recent directory (FR-020). */
   sessionTree: DesktopSessionGroup[];
   /** Active session id — gets the running dot while streaming. */
@@ -62,6 +67,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onLogin,
   onLogout,
   isAuthenticated,
+  hostLabel,
   sessionTree,
   currentSessionId,
   visibleSessionIds,
@@ -180,6 +186,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           onLogin={onLogin}
           onLogout={onLogout}
           isAuthenticated={isAuthenticated}
+          hostLabel={hostLabel === 'local' ? '本地' : hostLabel}
           onClose={() => setShowMoreMenu(false)}
         />
       )}
