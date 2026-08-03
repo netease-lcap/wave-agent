@@ -1,10 +1,25 @@
-/* Desktop file panel: title bar (host + relative path + actions), line-numbered
+/* Desktop file panel: title bar, host + path location row, line-numbered
    code view with horizontal scrolling, markdown rendering and inline images. */
 
 .file-pane-body {
     display: flex;
     flex-direction: column;
     overflow: auto;
+}
+
+/* Host badge + relative path, sticky so the location stays visible while the
+   code scrolls under it (same background as the line-number gutter). */
+.file-pane-location {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    background: var(--vscode-sideBar-background, var(--vscode-panel-background));
+    z-index: 1;
 }
 
 .file-pane-body .desktop-panel-placeholder {
