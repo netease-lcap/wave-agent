@@ -2948,21 +2948,25 @@ export class DesktopHost {
   }
 
   private async findWorkspaceFiles(filterText: string): Promise<Record<string, string | boolean>[]> {
-    if (!this.workdir) return [];
+    const host = this.currentHost;
+    // Before any agent activation (fresh launch) this.workdir is unset while
+    // the webview already treats recents[0] as the effective workdir — mirror
+    // that fallback so @file suggestions work before a directory is picked.
+    const workdir = this.workdir ?? this.configStore.getRecentWorkdirsForHost(host)[0];
+    if (!workdir) return [];
     try {
-      const host = this.currentHost;
       // Remote workdirs are POSIX paths; path.join/basename on Windows would mangle them.
       const join = host === LOCAL_HOST ? path.join.bind(path) : path.posix.join.bind(path.posix);
       const basename = host === LOCAL_HOST ? path.basename.bind(path) : path.posix.basename.bind(path.posix);
       const result = (await this.utilityClientFor(host).request('searchFiles', {
         query: filterText || '',
         maxResults: 20,
-        workdir: this.workdir,
+        workdir,
       })) as { files: Array<{ path: string; type: string }> };
 
       const allItems = result.files.map((item) => {
         const relativePath = item.path;
-        const fullPath = join(this.workdir!, relativePath);
+        const fullPath = join(workdir, relativePath);
         const normalizedPath = relativePath.endsWith('/') ? relativePath.slice(0, -1) : relativePath;
         const name = basename(normalizedPath);
         const extensionMatch = name.match(/\.([^.]+)$/);
