@@ -75,6 +75,8 @@
   border: 1px solid var(--vscode-panel-border);
   white-space: pre-wrap;
   word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .confirmation-mcp-params {
