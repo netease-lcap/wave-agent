@@ -144,6 +144,16 @@ export class DesktopHost {
   private workflowRuns = new Map<string, SerializableWorkflowRun[]>(); // keyed by paneId
   private sessionTree: Array<{ host: string; workdir: string; sessions: Array<{ sessionId: string; title: string; lastActiveAt: number; hasWorktree: boolean; running: boolean }> }> = [];
   private pendingConfirmations = new Map<string, PendingConfirmation>();
+  /**
+   * Optimistic session restores in flight (spec「历史会话即时进入与恢复加载动画」):
+   * keyed by paneId, holding the target session + a monotonic token. While an
+   * entry exists the pane's webview already shows the target session (header +
+   * sidebar highlight) behind the sweep loading overlay; the old agent stays
+   * bound underneath until the restore finishes. A newer selection/activation/
+   * close bumps the token, which the in-flight restore detects and aborts.
+   */
+  private pendingRestores = new Map<string, { sessionId: string; workdir: string; token: number }>();
+  private restoreToken = 0;
 
   // Throttling state, per pane so concurrently streaming panes update
   // independently (same cadence as vsce ChatSession).
@@ -679,6 +689,9 @@ export class DesktopHost {
 
   /** Point a pane at an agent: sync workdir context, refresh sidebar, push its state. */
   private async activateAgentInPane(paneId: string, agent: StdioAgent): Promise<void> {
+    // Any fresh activation supersedes an in-flight restore for this pane — the
+    // restore's token check later discards its half-spawned agent.
+    this.pendingRestores.delete(paneId);
     this.bindAgentToPane(paneId, agent);
     this.hostState.set(paneId, this.hostForAgent(agent));
     const dir = agent.workingDirectory;
@@ -997,6 +1010,9 @@ export class DesktopHost {
     this.inputDrafts.delete(paneId);
     this.workflowRuns.delete(paneId);
     this.hostState.delete(paneId);
+    // An in-flight restore for the closed pane is dead — its token check
+    // discards the half-spawned agent.
+    this.pendingRestores.delete(paneId);
     // The closed pane's width returns to its row-mates proportionally; an
     // untouched equal-split row (no explicit widths) stays equal-split.
     this.renormalizeRowWidths(closedRow);
@@ -1016,33 +1032,111 @@ export class DesktopHost {
 
   /**
    * Bind an existing session to a pane: reuse a live agent from the pool when
-   * possible, otherwise spawn + restore it, then activate in the pane.
+   * possible, otherwise start an optimistic restore (the pane switches to the
+   * target behind the sweep overlay while the agent spawns + replays).
    */
   private async bindSessionToPane(paneId: string, workdir: string, sessionId: string): Promise<void> {
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
     const host = entry?.host ?? LOCAL_HOST;
-    let agent = this.agents.get(this.agentKey(host, sessionId));
-    if (!agent) {
-      // Worktree sessions are grouped under the repo root in the sidebar, but
-      // their session files live at the worktree path — resolve the real
-      // directory the same way handleSelectSession does, otherwise restore
-      // looks in the wrong project store and the pane stays a new session.
-      const targetDir = entry?.worktree ? entry.cwd : workdir;
-      try {
-        agent = await this.spawnAgent({ host, workdir: targetDir, worktreeInfo: entry?.worktree });
-        await agent.restoreSession(sessionId);
-        if (agent.sessionId) {
-          this.rekeyAgent(agent, agent.sessionId);
-        }
-      } catch (error) {
-        // The pane stays open (empty) so the layout is stable.
-        this.pushSystemMessage(`恢复会话失败：${error instanceof Error ? error.message : String(error)}`, paneId);
-        this.pushPanes();
+    const agent = this.agents.get(this.agentKey(host, sessionId));
+    if (agent) {
+      this.hostState.set(paneId, host);
+      await this.activateAgentInPane(paneId, agent);
+      return;
+    }
+    // Worktree sessions are grouped under the repo root in the sidebar, but
+    // their session files live at the worktree path — resolve the real
+    // directory the same way handleSelectSession does, otherwise restore
+    // looks in the wrong project store and the pane stays a new session.
+    const targetDir = entry?.worktree ? entry.cwd : workdir;
+    this.startPaneRestore(paneId, { sessionId, workdir: targetDir, host });
+    void this.runPaneRestore(paneId, { sessionId, workdir: targetDir, host, entry });
+  }
+
+  /**
+   * Mark a pane as "restoring a session": the webview immediately switches to
+   * the target session (header + sidebar highlight + sweep overlay) while the
+   * old agent stays bound underneath. pushPaneSessionState reads this entry to
+   * override the session + set isRestoring. Returns the restore token, which
+   * runPaneRestore uses to detect superseding actions.
+   */
+  private startPaneRestore(paneId: string, opts: { sessionId: string; workdir: string; host: string }): void {
+    this.pendingRestores.set(paneId, { sessionId: opts.sessionId, workdir: opts.workdir, token: ++this.restoreToken });
+    this.hostState.set(paneId, opts.host);
+    // Refresh the pane's host label immediately — the pane is switching to the
+    // target host while the restore (possibly a slow SSH connect) runs behind
+    // the sweep overlay.
+    this.pushPanes();
+    void this.pushPaneSessionState(paneId);
+  }
+
+  /**
+   * Background half of startPaneRestore: connect the host, spawn + restore the
+   * agent, then activate it in the pane. Every step re-checks the restore
+   * token — a newer selection, activation or pane close supersedes this
+   * restore, in which case the freshly spawned agent is discarded.
+   */
+  private async runPaneRestore(
+    paneId: string,
+    opts: { sessionId: string; workdir: string; host: string; entry?: SessionIndexEntry },
+  ): Promise<void> {
+    const token = this.pendingRestores.get(paneId)?.token;
+    let agent: StdioAgent | undefined;
+    try {
+      agent = await this.spawnAgent({ host: opts.host, workdir: opts.workdir, worktreeInfo: opts.entry?.worktree });
+      if (this.pendingRestores.get(paneId)?.token !== token) {
+        await this.discardAgent(agent);
         return;
       }
+      await agent.restoreSession(opts.sessionId);
+      if (this.pendingRestores.get(paneId)?.token !== token) {
+        await this.discardAgent(agent);
+        return;
+      }
+      this.rekeyAgent(agent, opts.sessionId);
+      // activateAgentInPane clears the pending entry — the pane is now live.
+      await this.activateAgentInPane(paneId, agent);
+      this.ensureSessionRegistered(agent);
+      this.touchSessionInIndex(agent);
+      this.refreshSessionTree();
+    } catch (error) {
+      console.error('[DesktopHost] 恢复会话失败:', error);
+      // Only the latest restore clears the overlay; superseded restores
+      // already cleaned up via their token checks.
+      if (this.pendingRestores.get(paneId)?.token === token) {
+        this.pendingRestores.delete(paneId);
+        // A failed restore leaves the previous agent bound (or nothing for a
+        // fresh pane) — push that state so the overlay disappears. An agent
+        // that never made it into a pane is destroyed.
+        if (agent && this.paneIdForAgent(agent) !== paneId) {
+          void this.discardAgent(agent);
+        }
+        await this.pushPaneSessionState(paneId);
+        this.pushSystemMessage(`恢复会话失败: ${error instanceof Error ? error.message : String(error)}`, paneId);
+      }
     }
-    this.hostState.set(paneId, host);
-    await this.activateAgentInPane(paneId, agent);
+  }
+
+  /**
+   * Remove a spawned-but-unbound agent from the pool and destroy it. The
+   * shared stdio client survives (other sessions may still use it); the
+   * router entry dies with the agent.
+   */
+  private async discardAgent(agent: StdioAgent): Promise<void> {
+    const host = this.hostForAgent(agent);
+    for (const [key, a] of this.agents) {
+      if (a === agent) this.agents.delete(key);
+    }
+    this.agentHosts.delete(agent);
+    this.agentWorktreeInfo.delete(agent);
+    if (agent.sessionId) {
+      try {
+        this.clientFor(host).router.unregister(agent.sessionId);
+      } catch {
+        // Client may already be gone; best-effort
+      }
+    }
+    await agent.destroy().catch(() => { /* best-effort */ });
   }
 
   /** Lazily-created per-pane throttle state. */
@@ -1231,49 +1325,67 @@ export class DesktopHost {
   private async pushPaneSessionState(paneId: string): Promise<void> {
     const configurationData = this.configStore.getConfiguration();
     const agent = this.agentForPane(paneId);
-    const pendingConfirmations = Array.from(this.pendingConfirmations.entries())
-      .filter(([, pending]) => pending.agent === agent)
-      .map(([confirmationId, pending]) => ({
-        confirmationId,
-        toolName: pending.toolName,
-        confirmationType: pending.confirmationType,
-        toolInput: pending.toolInput,
-        suggestedPrefix: pending.suggestedPrefix,
-      }));
-
     if (agent) {
       const runs = await agent.getWorkflowRuns().catch(() => this.workflowRuns.get(paneId) ?? []);
       this.workflowRuns.set(paneId, runs);
     }
+    // The pane binding may have changed while getWorkflowRuns was in flight (a
+    // restore completed / a new session selected). Re-read everything at send
+    // time so the pushed message is self-consistent; the pending entry is also
+    // resolved here so a stale overlay can never clobber a completed restore.
+    const current = this.agentForPane(paneId);
+    const pending = this.pendingRestores.get(paneId);
+    const pendingConfirmations = Array.from(this.pendingConfirmations.entries())
+      .filter(([, p]) => p.agent === current)
+      .map(([confirmationId, p]) => ({
+        confirmationId,
+        toolName: p.toolName,
+        confirmationType: p.confirmationType,
+        toolInput: p.toolInput,
+        suggestedPrefix: p.suggestedPrefix,
+      }));
 
     this.postMessage({
       command: 'setInitialState',
       paneId,
-      messages: this.messagesForPane(paneId),
-      tasks: this.tasksForPane(paneId),
-      backgroundTasks: this.backgroundTasksForPane(paneId),
+      messages: current?.messages ?? [],
+      tasks: current?.tasks ?? [],
+      backgroundTasks: current?.backgroundTasks ?? [],
       workflowRuns: this.workflowRuns.get(paneId) ?? [],
       inputContent: this.inputDrafts.get(paneId) ?? '',
-      isStreaming: agent?.isStreaming ?? false,
-      isCommandRunning: agent?.isCommandRunning ?? false,
-      isCompacting: agent?.isCompacting ?? false,
-      session: agent?.sessionId ? {
-        id: agent.sessionId,
+      isStreaming: current?.isStreaming ?? false,
+      isCommandRunning: current?.isCommandRunning ?? false,
+      isCompacting: current?.isCompacting ?? false,
+      // While a restore is pending the pane already shows the target session,
+      // so the session override comes from the pending target, not the
+      // still-bound old agent (which only feeds the overlay's underlying view).
+      isRestoring: !!pending,
+      session: pending ? {
+        id: pending.sessionId,
         sessionType: 'main',
-        workdir: agent.workingDirectory,
+        workdir: pending.workdir,
         lastActiveAt: new Date(),
-        latestTotalTokens: agent.latestTotalTokens,
+        latestTotalTokens: 0,
+        // The restored transcript isn't loaded yet — backfill the header title
+        // from the session index like the post-restore push does.
+        firstMessage: this.configStore.getSessionIndex().find((e) => e.sessionId === pending.sessionId)?.title || undefined,
+      } : current?.sessionId ? {
+        id: current.sessionId,
+        sessionType: 'main',
+        workdir: current.workingDirectory,
+        lastActiveAt: new Date(),
+        latestTotalTokens: current.latestTotalTokens,
         // Backfill the header title from the session index: after compaction
         // the pushed messages start at the compact boundary, so the webview
         // can no longer derive the first user message itself.
-        firstMessage: this.configStore.getSessionIndex().find((e) => e.sessionId === agent.sessionId)?.title || undefined,
+        firstMessage: this.configStore.getSessionIndex().find((e) => e.sessionId === current.sessionId)?.title || undefined,
       } : undefined,
       configurationData,
       pendingConfirmations,
-      permissionMode: agent?.getPermissionMode(),
-      queuedMessages: agent?.queuedMessages ?? [],
+      permissionMode: current?.getPermissionMode(),
+      queuedMessages: current?.queuedMessages ?? [],
       isAuthenticated: this.lastIsAuthenticated,
-      workdir: agent?.workingDirectory,
+      workdir: current?.workingDirectory,
       theme: { effective: this.getCurrentEffectiveTheme() },
     });
   }
@@ -1441,7 +1553,7 @@ export class DesktopHost {
       if (entry?.worktree && await this.pathExistsOn(host, entry.worktree.repoRoot)) {
         await this.activateWorkdir({ host, dir: entry.worktree.repoRoot, forceNew: true });
       } else {
-        await this.handleNewSession();
+        await this.handleNewSession(undefined, true);
       }
     }
 
@@ -2276,6 +2388,9 @@ export class DesktopHost {
     const pane = this.panes.find((p) => p.paneId === pid);
     if (!pane) return;
     if (pane.agent?.sessionId === sessionId) return; // already shown in this pane
+    // An older restore for this pane is still heading to the same session —
+    // clicking again must not restart the SSH connect + transcript replay.
+    if (this.pendingRestores.get(pid)?.sessionId === sessionId) return;
 
     // One session, one pane — refocus where it's already visible.
     const otherPane = this.panes.find((p) => p.agent?.sessionId === sessionId);
@@ -2288,25 +2403,10 @@ export class DesktopHost {
     const entry = this.configStore.getSessionIndex().find((e) => e.sessionId === sessionId);
     const host = entry?.host ?? LOCAL_HOST;
     const targetDir = entry?.worktree ? entry.cwd : workdir;
-    if (!(await this.pathExistsOn(host, targetDir))) {
-      // Directory gone — auto-clear the stale index entry (worktree or not,
-      // per FR-020 stale-directory behavior). For non-worktree dirs the entry
-      // is also removed from the recent-workdirs picker list.
-      this.configStore.removeSession(sessionId);
-      if (!entry?.worktree) {
-        this.configStore.removeRecentWorkdir({ host, path: workdir });
-        this.sendWorkdirState();
-      }
-      this.refreshSessionTree();
-      this.pushSystemMessage(
-        entry?.worktree
-          ? `worktree 目录不存在：${targetDir}，已从会话列表移除`
-          : `目录不存在：${workdir}，已从最近列表与会话列表移除`,
-        pid,
-      );
-      return;
-    }
 
+    // A live agent activates with zero network round trips — checked before
+    // the optimistic switch, so clicking a session that is already running
+    // (e.g. streaming in a background pane) never waits for an SSH probe.
     const live = this.agents.get(this.agentKey(host, sessionId));
     if (live) {
       this.hostState.set(pid, host);
@@ -2314,23 +2414,56 @@ export class DesktopHost {
       return;
     }
 
-    // Historical session: spawn a fresh agent in its directory, then restore.
+    // Historical session: switch the pane to the target immediately behind the
+    // sweep overlay, then spawn + restore in the background — the SSH connect
+    // and transcript replay can take seconds on a remote host. The token guard
+    // aborts the restore if the user picks/activates something else first.
     // Carry the entry's worktree info so re-registration keeps the session
     // grouped under the repo root (and recents free of the ephemeral path).
-    try {
-      const agent = await this.spawnAgent({ host, workdir: targetDir, worktreeInfo: entry?.worktree });
-      // Restore before activating so the view never flashes the fresh agent's
-      // empty state (which renders as the new-session directory picker).
-      await agent.restoreSession(sessionId);
-      this.rekeyAgent(agent, sessionId);
-      await this.activateAgentInPane(pid, agent);
-      this.ensureSessionRegistered(agent);
-      this.touchSessionInIndex(agent);
-      this.refreshSessionTree();
-    } catch (error) {
-      console.error('[DesktopHost] 恢复会话失败:', error);
-      this.pushSystemMessage(`恢复会话失败: ${error}`, pid);
-    }
+    this.startPaneRestore(pid, { sessionId, workdir: targetDir, host });
+
+    void (async () => {
+      // The directory probe is a remote `ssh test -d` (fresh process, no
+      // connection reuse) — it must run behind the overlay, not in front of
+      // the pane switch, or the user waits for the SSH hop before the
+      // "selected" feedback (desktop-app.md「历史会话即时进入」scenario 2).
+      if (!(await this.pathExistsOn(host, targetDir))) {
+        // Directory gone — cancel the still-in-flight restore so the overlay
+        // drops and the previous agent falls back, then auto-clear the stale
+        // index entry (worktree or not, per FR-020 stale-directory behavior).
+        // For non-worktree dirs the entry is also removed from the
+        // recent-workdirs picker list.
+        if (this.pendingRestores.get(pid)?.sessionId === sessionId) {
+          this.pendingRestores.delete(pid);
+          await this.pushPaneSessionState(pid);
+        }
+        this.configStore.removeSession(sessionId);
+        if (!entry?.worktree) {
+          this.configStore.removeRecentWorkdir({ host, path: workdir });
+          this.sendWorkdirState();
+        }
+        this.refreshSessionTree();
+        this.pushSystemMessage(
+          entry?.worktree
+            ? `worktree 目录不存在：${targetDir}，已从会话列表移除`
+            : `目录不存在：${workdir}，已从最近列表与会话列表移除`,
+          pid,
+        );
+        return;
+      }
+
+      // A restore from another pane may have rekeyed this session into the
+      // pool while the probe was in flight — activate it rather than spawn a
+      // duplicate agent.
+      const nowLive = this.agents.get(this.agentKey(host, sessionId));
+      if (nowLive) {
+        this.hostState.set(pid, host);
+        await this.activateAgentInPane(pid, nowLive);
+        return;
+      }
+
+      await this.runPaneRestore(pid, { sessionId, workdir: targetDir, host, entry });
+    })();
   }
 
   /**
@@ -2404,8 +2537,12 @@ export class DesktopHost {
    * New session in a pane (FR-031/032): spawn a fresh agent and bind it to the
    * pane WITHOUT aborting, clearing or destroying the previous one — background
    * sessions keep generating. No-op when the pane's session is already empty.
+   * `backOffOnRestore` is set by the delete-session flow: its automatic
+   * replacement must yield to a historical session the user selected while the
+   * delete was in flight (the pane's agent is still null during the restore,
+   * so the generic stale-guard below cannot see the selection).
    */
-  private async handleNewSession(paneId?: string): Promise<void> {
+  private async handleNewSession(paneId?: string, backOffOnRestore = false): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
     const active = this.agentForPane(pid);
     // New session cwd = the most recently user-selected repo root (recents),
@@ -2423,6 +2560,13 @@ export class DesktopHost {
       // Spawning is slow (agent init) — the user may have selected another
       // session meanwhile; don't clobber their view.
       if (this.agentForPane(pid) !== active) return;
+      if (backOffOnRestore && this.pendingRestores.has(pid)) {
+        // The user selected a historical session while the delete was in
+        // flight — its restore owns this pane. Destroy the just-spawned
+        // agent so it doesn't linger orphaned in the pool.
+        await this.discardAgent(agent);
+        return;
+      }
       await this.activateAgentInPane(pid, agent);
     } catch (error) {
       console.error('[DesktopHost] 新建会话失败:', error);
