@@ -212,12 +212,6 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
     return parts;
   };
 
-  // Reset the selection when the filtered list shrinks below the selected
-  // index (e.g. the filter keyword changed).
-  useEffect(() => {
-    setSelectedIndex((i) => (i >= filteredDirs.length ? -1 : i));
-  }, [filteredDirs.length]);
-
   // Keep the highlighted item in view while moving with the keyboard.
   useEffect(() => {
     const el = selectedItemRef.current;
@@ -225,6 +219,16 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       el.scrollIntoView({ block: 'nearest' });
     }
   }, [selectedIndex]);
+
+  /** Filter the single-level list by the typed keyword (case-insensitive
+   *  substring). Filtering auto-selects the first match so Enter can go
+   *  straight into it without an extra ArrowDown (spec scenario 20). */
+  const handleFilterChange = (value: string) => {
+    setFilterKeyword(value);
+    const next = value.trim().toLowerCase();
+    const matches = next ? dirs.filter((d) => d.toLowerCase().includes(next)) : dirs;
+    setSelectedIndex(matches.length > 0 ? 0 : -1);
+  };
 
   return (
     <div className="desktop-workdir-container" ref={menuRef}>
@@ -356,7 +360,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
               className="desktop-host-add-input"
               placeholder="输入关键词筛选目录，或输入完整路径回车"
               value={filterKeyword}
-              onChange={(e) => setFilterKeyword(e.target.value)}
+              onChange={(e) => handleFilterChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'ArrowDown') {
                   e.preventDefault();

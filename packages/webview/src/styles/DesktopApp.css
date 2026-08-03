@@ -573,9 +573,11 @@
 }
 
 .desktop-remote-browser-mark {
-    background: var(--vscode-brand-primary, #c1292e);
-    color: var(--vscode-dropdown-background);
+    background-color: var(--vscode-editor-findMatchHighlightBackground);
+    color: var(--vscode-editor-findMatchHighlightForeground);
+    font-weight: bold;
     border-radius: 2px;
+    padding: 0 1px;
     font-style: normal;
 }
 

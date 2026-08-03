@@ -157,4 +157,38 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     await expect(webviewPage.getByTestId("diff-file-untracked")).toBeVisible();
     await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-ssh-remote-diff.webp");
   });
+
+  test("remote directory browser filters with a keyword and auto-selects", async ({ webviewPage }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    // New-session state on a remote host with no workdir yet: the workdir
+    // selector shows 「选择远程目录…」 and 浏览… opens the VS Code-style
+    // directory browser (list comes from the mocked host reply).
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      recentWorkdirs: [REMOTE_WORKDIR],
+      host: REMOTE_HOST,
+      hosts: REMOTE_HOSTS,
+    });
+    await injector.waitForChatAppReady();
+
+    await webviewPage.getByTestId("desktop-workdir").click();
+    await webviewPage.getByTestId("desktop-workdir-browse").click();
+    await expect(webviewPage.getByTestId("desktop-remote-browser")).toBeVisible();
+
+    await injector.simulateExtensionMessage("desktopRemoteDirList", {
+      host: REMOTE_HOST,
+      requestId: "1",
+      resolvedPath: "/home/dev",
+      dirs: ["app", "deploy", "docs", "logs", "scripts", "tests"],
+    });
+    await expect(webviewPage.getByTestId("desktop-remote-browser-item")).toHaveCount(6);
+
+    // Typing a keyword filters the single-level list and highlights matches;
+    // the first match is auto-selected so Enter goes straight in.
+    await webviewPage.getByTestId("desktop-remote-browser-input").fill("d");
+    const items = webviewPage.getByTestId("desktop-remote-browser-item");
+    await expect(items).toHaveCount(2);
+    await expect(items.first()).toHaveClass(/selected/);
+    await screenshotWebp(webviewPage, "../../docs/public/screenshots/desktop-remote-dir-browser.webp");
+  });
 });

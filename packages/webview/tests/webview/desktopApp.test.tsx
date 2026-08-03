@@ -365,7 +365,7 @@ describe('DesktopApp', () => {
             );
         });
 
-        it('keeps the keyboard selection within the filtered list', () => {
+        it('auto-selects the first filtered match and enters it with Enter', () => {
             const { vscode } = renderDesktopApp();
             sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
             vscode.postMessage.mockClear();
@@ -373,14 +373,12 @@ describe('DesktopApp', () => {
             openRemoteBrowser();
             sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs', 'notes'] });
 
-            // Filter to ['docs'] — ArrowDown must select it even though it is
-            // the third entry of the unfiltered list.
+            // Filter to ['docs'] — typing the keyword selects the first match
+            // immediately, no ArrowDown needed.
             const input = screen.getByTestId('desktop-remote-browser-input');
             fireEvent.change(input, { target: { value: 'doc' } });
             const items = screen.getAllByTestId('desktop-remote-browser-item');
             expect(items.map((i) => i.textContent)).toEqual(['docs']);
-
-            fireEvent.keyDown(input, { key: 'ArrowDown' });
             expect(items[0]).toHaveClass('selected');
 
             // Enter enters the filtered highlight, not an unfiltered entry.
@@ -389,6 +387,31 @@ describe('DesktopApp', () => {
             expect(vscode.postMessage).toHaveBeenCalledWith(
                 expect.objectContaining({ command: 'desktopListRemoteDir', host: 'prod', path: '/home/alice/docs', requestId: '2' }),
             );
+        });
+
+        it('re-selects the first match as the keyword changes, and clears when no match', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs', 'notes'] });
+            const input = screen.getByTestId('desktop-remote-browser-input');
+
+            // Move the highlight away, then retype a keyword — the first match
+            // is selected again.
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[1]).toHaveClass('selected');
+            fireEvent.change(input, { target: { value: 'no' } });
+            const items = screen.getAllByTestId('desktop-remote-browser-item');
+            expect(items.map((i) => i.textContent)).toEqual(['notes']);
+            expect(items[0]).toHaveClass('selected');
+
+            // No matches → nothing selected.
+            fireEvent.change(input, { target: { value: 'zzz' } });
+            expect(screen.getByTestId('desktop-remote-browser-empty')).toHaveTextContent('没有匹配的目录');
+            expect(screen.queryAllByTestId('desktop-remote-browser-item')).toHaveLength(0);
         });
 
         it('clears the selection after navigating and on filter changes', () => {
