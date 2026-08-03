@@ -514,6 +514,11 @@
     background: var(--vscode-list-hoverBackground);
 }
 
+.desktop-remote-browser-item.selected {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
 .desktop-remote-browser-item-name {
     overflow: hidden;
     text-overflow: ellipsis;

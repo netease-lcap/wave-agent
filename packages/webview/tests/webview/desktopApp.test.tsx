@@ -330,6 +330,92 @@ describe('DesktopApp', () => {
                 expect.objectContaining({ command: 'desktopListRemoteDir', host: 'prod', path: '/home/alice/code', requestId: '3' }),
             );
         });
+
+        it('moves the selection with ArrowDown/ArrowUp and enters the highlighted dir with Enter', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs', 'notes'] });
+            const input = screen.getByTestId('desktop-remote-browser-input');
+
+            // No selection initially.
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[0]).not.toHaveClass('selected');
+
+            // ArrowDown highlights the first item; ArrowDown again the second.
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[0]).toHaveClass('selected');
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[1]).toHaveClass('selected');
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[0]).not.toHaveClass('selected');
+
+            // ArrowUp moves back; at the top it clears the selection.
+            fireEvent.keyDown(input, { key: 'ArrowUp' });
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[0]).toHaveClass('selected');
+            fireEvent.keyDown(input, { key: 'ArrowUp' });
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[0]).not.toHaveClass('selected');
+
+            // ArrowDown + Enter navigates into the highlighted subdirectory.
+            vscode.postMessage.mockClear();
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            fireEvent.keyDown(input, { key: 'Enter' });
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListRemoteDir', host: 'prod', path: '/home/alice/code', requestId: '2' }),
+            );
+        });
+
+        it('keeps the keyboard selection within the filtered list', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs', 'notes'] });
+
+            // Filter to ['docs'] — ArrowDown must select it even though it is
+            // the third entry of the unfiltered list.
+            const input = screen.getByTestId('desktop-remote-browser-input');
+            fireEvent.change(input, { target: { value: 'doc' } });
+            const items = screen.getAllByTestId('desktop-remote-browser-item');
+            expect(items.map((i) => i.textContent)).toEqual(['docs']);
+
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            expect(items[0]).toHaveClass('selected');
+
+            // Enter enters the filtered highlight, not an unfiltered entry.
+            vscode.postMessage.mockClear();
+            fireEvent.keyDown(input, { key: 'Enter' });
+            expect(vscode.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ command: 'desktopListRemoteDir', host: 'prod', path: '/home/alice/docs', requestId: '2' }),
+            );
+        });
+
+        it('clears the selection after navigating and on filter changes', () => {
+            const { vscode } = renderDesktopApp();
+            sendCommand('desktopWorkdirState', { host: 'prod', recentWorkdirs: [] });
+            vscode.postMessage.mockClear();
+
+            openRemoteBrowser();
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '1', resolvedPath: '/home/alice', dirs: ['code', 'docs', 'notes'] });
+            const input = screen.getByTestId('desktop-remote-browser-input');
+
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[0]).toHaveClass('selected');
+
+            // Navigating into the selected directory resets the highlight.
+            fireEvent.keyDown(input, { key: 'Enter' });
+            sendCommand('desktopRemoteDirList', { host: 'prod', requestId: '2', resolvedPath: '/home/alice/code', dirs: ['app'] });
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[0]).not.toHaveClass('selected');
+
+            // Re-selecting then narrowing the filter to no matches clears the
+            // highlight (selection index out of filtered range).
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            expect(screen.getAllByTestId('desktop-remote-browser-item')[0]).toHaveClass('selected');
+            fireEvent.change(input, { target: { value: 'zzz' } });
+            expect(screen.queryAllByTestId('desktop-remote-browser-item')).toHaveLength(0);
+            expect(screen.getByTestId('desktop-remote-browser-empty')).toHaveTextContent('没有匹配的目录');
+        });
     });
 
     it('should render ChatApp with sidebar and hidden header session buttons when workdir is set', () => {
