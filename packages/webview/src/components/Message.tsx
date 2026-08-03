@@ -103,6 +103,20 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
 
 export const Message: React.FC<MessageProps> = React.memo((props) => {
   const { message, isQueued = false, onRewindToMessage, workdir } = props;
+
+  // Desktop routes file opens to its file panel (the host resolves the path,
+  // pushing content back); IDE hosts keep the plain openFile RPC. The message
+  // chain reaches here via onOpenFile so the outbound message carries the
+  // originating paneId (postToHost in ChatApp) — a direct vscode.postMessage
+  // from a split-view pane would broadcast without it and misroute.
+  const openFile = (path: string, startLine?: number, endLine?: number) => {
+    if (props.onOpenFile) {
+      props.onOpenFile(path, startLine, endLine);
+    } else {
+      props.vscode.postMessage({ command: 'openFile', path, startLine, endLine });
+    }
+  };
+
   const getMessageClassName = () => {
     const classes = ['message'];
     
@@ -338,7 +352,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       }
       const openEditFile = () => {
         if (editFilePath) {
-          props.vscode.postMessage({ command: 'openFile', path: editFilePath });
+          openFile(editFilePath);
         }
       };
       return (
@@ -375,14 +389,9 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
       }
       const openReadFile = () => {
         if (filePath) {
-          props.vscode.postMessage({
-            command: 'openFile',
-            path: filePath,
-            // offset/limit describe the read slice (1-based); jump to it so the
-            // editor lands on the same lines the tool actually read.
-            startLine: offset,
-            endLine: offset && limit ? offset + limit - 1 : undefined
-          });
+          // offset/limit describe the read slice (1-based); jump to it so the
+          // panel lands on the same lines the tool actually read.
+          openFile(filePath, offset, offset && limit ? offset + limit - 1 : undefined);
         }
       };
       return (
@@ -624,10 +633,7 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
                       if (part.imageData) {
                         handleImagePreview(part.imageData, part.path || 'image');
                       } else {
-                        props.vscode.postMessage({
-                          command: 'openFile',
-                          path: part.path
-                        });
+                        openFile(part.path || '');
                       }
                     } : undefined;
 
@@ -649,12 +655,11 @@ export const Message: React.FC<MessageProps> = React.memo((props) => {
                         name={displayName}
                         path={filePath}
                         onClick={() => {
-                          props.vscode.postMessage({
-                            command: 'openFile',
-                            path: filePath,
-                            startLine: part.startLine ? parseInt(part.startLine) : undefined,
-                            endLine: part.endLine ? parseInt(part.endLine) : undefined
-                          });
+                          openFile(
+                            filePath,
+                            part.startLine ? parseInt(part.startLine) : undefined,
+                            part.endLine ? parseInt(part.endLine) : undefined
+                          );
                         }}
                       />
                     );
