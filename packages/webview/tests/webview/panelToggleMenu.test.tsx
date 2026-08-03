@@ -4,9 +4,9 @@ import React from 'react';
 import { PanelToggleMenu } from '../../src/components/PanelToggleMenu';
 
 function renderMenu(overrides?: {
-    checked?: Array<'preview' | 'diff' | 'terminal'>;
-    disabled?: Array<'preview' | 'diff' | 'terminal'>;
-    onToggle?: (kind: 'preview' | 'diff' | 'terminal') => void;
+    checked?: Array<'preview' | 'diff' | 'terminal' | 'file'>;
+    disabled?: Array<'preview' | 'diff' | 'terminal' | 'file'>;
+    onToggle?: (kind: 'preview' | 'diff' | 'terminal' | 'file') => void;
     onClose?: () => void;
 }) {
     const onToggle = overrides?.onToggle ?? vi.fn();
@@ -23,11 +23,17 @@ function renderMenu(overrides?: {
 }
 
 describe('PanelToggleMenu', () => {
-    it('renders the three panel items with labels and shortcuts', () => {
+    it('renders the four panel items with labels and shortcuts', () => {
         renderMenu();
         expect(screen.getByTestId('panel-toggle-item-preview')).toHaveTextContent('预览');
         expect(screen.getByTestId('panel-toggle-item-diff')).toHaveTextContent('差异');
         expect(screen.getByTestId('panel-toggle-item-terminal')).toHaveTextContent('终端');
+        const fileItem = screen.getByTestId('panel-toggle-item-file');
+        expect(fileItem).toHaveTextContent('文件');
+        // Shortcut follows the platform: ⇧⌘F on macOS, Ctrl+Shift+F elsewhere.
+        const fileShortcut = fileItem.querySelector('.panel-toggle-menu-shortcut');
+        expect(fileShortcut).not.toBeNull();
+        expect(['⇧⌘F', 'Ctrl+Shift+F']).toContain(fileShortcut!.textContent);
     });
 
     it('reflects checked state via aria-checked and the check icon', () => {

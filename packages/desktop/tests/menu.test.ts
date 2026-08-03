@@ -4,6 +4,7 @@ import { Menu } from 'electron';
 import {
   buildApplicationMenuTemplate,
   installApplicationMenu,
+  matchPanelToggleInput,
   matchSessionSwitchInput,
   updateMenuState,
 } from '../src/main/menu';
@@ -69,6 +70,47 @@ describe('matchSessionSwitchInput', () => {
     expect(
       matchSessionSwitchInput(keyEvent({ code: 'BracketRight', meta: true, shift: true, control: true }), true),
     ).toBeNull();
+  });
+});
+
+describe('matchPanelToggleInput', () => {
+  it('maps Shift+Cmd+P/D/F to preview/diff/file on macOS, matching on code', () => {
+    expect(matchPanelToggleInput(keyEvent({ key: 'P', code: 'KeyP', meta: true, shift: true }), true)).toBe('preview');
+    expect(matchPanelToggleInput(keyEvent({ key: 'D', code: 'KeyD', meta: true, shift: true }), true)).toBe('diff');
+    expect(matchPanelToggleInput(keyEvent({ key: 'F', code: 'KeyF', meta: true, shift: true }), true)).toBe('file');
+  });
+
+  it('maps Ctrl+Shift+P/D/F to preview/diff/file on Windows/Linux', () => {
+    expect(matchPanelToggleInput(keyEvent({ key: 'P', code: 'KeyP', control: true, shift: true }), false)).toBe('preview');
+    expect(matchPanelToggleInput(keyEvent({ key: 'D', code: 'KeyD', control: true, shift: true }), false)).toBe('diff');
+    expect(matchPanelToggleInput(keyEvent({ key: 'F', code: 'KeyF', control: true, shift: true }), false)).toBe('file');
+  });
+
+  it('maps Ctrl+` to terminal on every platform', () => {
+    expect(matchPanelToggleInput(keyEvent({ key: '`', code: 'Backquote', control: true }), true)).toBe('terminal');
+    expect(matchPanelToggleInput(keyEvent({ key: '`', code: 'Backquote', control: true }), false)).toBe('terminal');
+  });
+
+  it('accepts rawKeyDown for non-text presses', () => {
+    expect(matchPanelToggleInput(keyEvent({ type: 'rawKeyDown', code: 'KeyF', meta: true, shift: true }), true)).toBe('file');
+  });
+
+  it('ignores keyUp/char events', () => {
+    expect(matchPanelToggleInput(keyEvent({ type: 'keyUp', code: 'KeyF', meta: true, shift: true }), true)).toBeNull();
+    expect(matchPanelToggleInput(keyEvent({ type: 'char', code: 'KeyF', meta: true, shift: true }), true)).toBeNull();
+  });
+
+  it('rejects the letter combos without Shift, on the wrong platform, or with extra modifiers', () => {
+    // Without Shift: Cmd+F / Cmd+P are not panel toggles.
+    expect(matchPanelToggleInput(keyEvent({ code: 'KeyF', meta: true }), true)).toBeNull();
+    // macOS: Cmd+Shift+F on the wrong primary (control) must not toggle.
+    expect(matchPanelToggleInput(keyEvent({ code: 'KeyF', control: true, shift: true }), true)).toBeNull();
+    // Windows/Linux: Meta(Win)+Shift+F must not toggle.
+    expect(matchPanelToggleInput(keyEvent({ code: 'KeyF', meta: true, shift: true }), false)).toBeNull();
+    // Ctrl+Alt+Shift+F (OS-level) must be left alone.
+    expect(matchPanelToggleInput(keyEvent({ code: 'KeyF', control: true, shift: true, alt: true }), false)).toBeNull();
+    // Non-panel keys (e.g. KeyA) return null.
+    expect(matchPanelToggleInput(keyEvent({ code: 'KeyA', meta: true, shift: true }), true)).toBeNull();
   });
 });
 
@@ -147,17 +189,52 @@ describe('buildApplicationMenuTemplate', () => {
     expect(fileMenu).toMatchObject({ submenu: [{ role: 'close', accelerator: '' }] });
   });
 
+  function panelMenuItems(isMac: boolean): MenuItemConstructorOptions[] {
+    const template = buildApplicationMenuTemplate(actions, isMac);
+    const panelMenu = template.find((item) => item.label === '面板');
+    expect(panelMenu).toBeDefined();
+    return panelMenu?.submenu as MenuItemConstructorOptions[];
+  }
+
+  function panelItemByLabel(isMac: boolean, label: string): MenuItemConstructorOptions {
+    const item = panelMenuItems(isMac).find((i) => i.label === label);
+    expect(item).toBeDefined();
+    return item as MenuItemConstructorOptions;
+  }
+
+  it('shows the panel toggles with informational accelerators (registerAccelerator: false)', () => {
+    // macOS: Shift+Cmd+P / Shift+Cmd+D / Shift+Cmd+F; terminal is Ctrl+`.
+    expect(panelItemByLabel(true, '预览')).toMatchObject({ accelerator: 'Shift+Cmd+P', registerAccelerator: false });
+    expect(panelItemByLabel(true, '差异')).toMatchObject({ accelerator: 'Shift+Cmd+D', registerAccelerator: false });
+    expect(panelItemByLabel(true, '文件')).toMatchObject({ accelerator: 'Shift+Cmd+F', registerAccelerator: false });
+    expect(panelItemByLabel(true, '终端')).toMatchObject({ accelerator: 'Ctrl+`', registerAccelerator: false });
+    // Windows/Linux: Ctrl+Shift+P / Ctrl+Shift+D / Ctrl+Shift+F; terminal still Ctrl+`.
+    expect(panelItemByLabel(false, '预览')).toMatchObject({ accelerator: 'Ctrl+Shift+P', registerAccelerator: false });
+    expect(panelItemByLabel(false, '差异')).toMatchObject({ accelerator: 'Ctrl+Shift+D', registerAccelerator: false });
+    expect(panelItemByLabel(false, '文件')).toMatchObject({ accelerator: 'Ctrl+Shift+F', registerAccelerator: false });
+    expect(panelItemByLabel(false, '终端')).toMatchObject({ accelerator: 'Ctrl+`', registerAccelerator: false });
+  });
+
   it('menu item clicks take the same code path as the keys', () => {
     itemByLabel(false, '下一个会话').click?.({} as never, {} as never, {} as never);
     itemByLabel(false, '上一个会话').click?.({} as never, {} as never, {} as never);
     itemByLabel(false, '新对话').click?.({} as never, {} as never, {} as never);
     itemByLabel(false, '并排新对话').click?.({} as never, {} as never, {} as never);
     itemByLabel(false, '关闭分屏').click?.({} as never, {} as never, {} as never);
+    panelItemByLabel(false, '预览').click?.({} as never, {} as never, {} as never);
+    panelItemByLabel(false, '差异').click?.({} as never, {} as never, {} as never);
+    panelItemByLabel(false, '终端').click?.({} as never, {} as never, {} as never);
+    panelItemByLabel(false, '文件').click?.({} as never, {} as never, {} as never);
     expect(actions.nextSession).toHaveBeenCalledTimes(1);
     expect(actions.prevSession).toHaveBeenCalledTimes(1);
     expect(actions.newSession).toHaveBeenCalledTimes(1);
     expect(actions.newSessionInPane).toHaveBeenCalledTimes(1);
     expect(actions.closePane).toHaveBeenCalledTimes(1);
+    expect(actions.togglePanel).toHaveBeenCalledTimes(4);
+    expect(actions.togglePanel).toHaveBeenNthCalledWith(1, 'preview');
+    expect(actions.togglePanel).toHaveBeenNthCalledWith(2, 'diff');
+    expect(actions.togglePanel).toHaveBeenNthCalledWith(3, 'terminal');
+    expect(actions.togglePanel).toHaveBeenNthCalledWith(4, 'file');
   });
 });
 
