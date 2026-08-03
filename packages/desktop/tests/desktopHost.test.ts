@@ -394,6 +394,18 @@ describe('workdir lifecycle', () => {
     expect(states[states.length - 1]).toMatchObject({ recentWorkdirs: ['/work/b'] });
   });
 
+  it('switching workdir destroys the empty agent it replaces instead of leaking it in the pool', async () => {
+    const { host } = await readyHost();
+    const replaced = lastAgent(); // the fresh empty agent bound to the pane
+    h.existingPaths.add('/work/b');
+
+    await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/work/b' });
+
+    expect(lastAgent()).not.toBe(replaced);
+    expect(lastAgent().initialize).toHaveBeenCalledWith(expect.objectContaining({ workdir: '/work/b' }));
+    expect(replaced.destroy).toHaveBeenCalledTimes(1);
+  });
+
   it('desktopSelectRecentWorkdir drops a stale path and keeps the current agent', async () => {
     const { host, sent, store } = await readyHost();
     const agentBefore = lastAgent();
@@ -816,6 +828,32 @@ describe('misc commands', () => {
     expect(oldAgent.clearMessages).not.toHaveBeenCalled();
     expect(oldAgent.destroy).not.toHaveBeenCalled();
     expect(oldAgent.abortMessage).not.toHaveBeenCalled();
+  });
+
+  it('newSession destroys the spawned agent when another session claims the pane mid-spawn', async () => {
+    const { host, sent } = await readyHost();
+    const active = lastAgent();
+    active.messages = [{ id: 'm1' }]; // the active session is non-empty, so newSession spawns
+    let resolveInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => { resolveInit = r; });
+
+    const spawnPromise = host.handleWebviewMessage({ command: 'newSession' });
+    await vi.waitFor(() => { expect(h.agentInstances).toHaveLength(2); });
+    const spawned = lastAgent();
+
+    // Mid-spawn the user picks a historical session whose restore lands first
+    // and rebinds the pane. The original spawn then has no pane to bind to —
+    // it must be destroyed instead of orphaned in the agent pool.
+    h.initializeGate = null;
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-other' });
+    await vi.waitFor(() => {
+      expect(sent('setInitialState').at(-1)).toMatchObject({ isRestoring: false, session: { id: 'sess-other' } });
+    });
+
+    resolveInit();
+    await spawnPromise;
+
+    expect(spawned.destroy).toHaveBeenCalledTimes(1);
   });
 
   it('newSession on an empty active session is a no-op', async () => {
@@ -1501,6 +1539,19 @@ describe('worktree flow', () => {
 
     const msg = sent('desktopGitBranches').at(-1);
     expect(msg).toMatchObject({ workdir: '/work/a', result: null });
+  });
+
+  it('desktopCreateWorktree destroys the empty agent it replaces instead of leaking it in the pool', async () => {
+    const { host } = await readyHost();
+    const replaced = lastAgent(); // the fresh empty agent bound to the pane
+    expect(replaced.messages).toHaveLength(0);
+    h.worktreeResult = worktree;
+    h.existingPaths.add(worktree.path);
+
+    await host.handleWebviewMessage({ command: 'desktopCreateWorktree', workdir: '/work/a' });
+
+    expect(lastAgent()).not.toBe(replaced);
+    expect(replaced.destroy).toHaveBeenCalledTimes(1);
   });
 
   it('desktopListGitBranches arriving before the stdio client is ready waits for init instead of replying null', async () => {
@@ -2295,6 +2346,48 @@ describe('split-view panes (FR-032~036)', () => {
     expect(layout.focusedPaneId).toBe(layout.panes[0].paneId);
     expect(agent1.destroy).not.toHaveBeenCalled();
     expect(agent2.destroy).not.toHaveBeenCalled();
+  });
+
+  it('desktopClosePane destroys a message-less agent on the closed pane', async () => {
+    const { host, sent } = await readyHost();
+    const agent1 = seedActiveSession('sess-1'); // pane-1 keeps a real conversation
+    await host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+    const layout = panePushes(sent).at(-1)!;
+    expect(layout.panes).toHaveLength(2);
+    const spawned = lastAgent(); // the fresh empty agent bound to pane-2
+
+    await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: layout.panes[1].paneId });
+
+    const after = panePushes(sent).at(-1)!;
+    expect(after.panes).toHaveLength(1);
+    expect(spawned.destroy).toHaveBeenCalledTimes(1);
+    expect(agent1.destroy).not.toHaveBeenCalled();
+  });
+
+  it('desktopNewSessionInPane destroys the spawned agent when its pane is closed mid-spawn', async () => {
+    const { host, sent } = await readyHost();
+    seedActiveSession('sess-1');
+    let resolveInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => { resolveInit = r; });
+
+    const spawnPromise = host.handleWebviewMessage({ command: 'desktopNewSessionInPane' });
+    const newPaneId = await vi.waitFor(() => {
+      const layout = panePushes(sent).at(-1)!;
+      expect(layout.panes).toHaveLength(2);
+      return layout.panes[1].paneId;
+    });
+    await vi.waitFor(() => { expect(h.agentInstances).toHaveLength(2); });
+    const spawned = lastAgent();
+
+    // Mid-spawn the user closes the new pane. When initialize finishes, the
+    // agent has no pane to bind to — it must be destroyed, not orphaned.
+    h.initializeGate = null;
+    await host.handleWebviewMessage({ command: 'desktopClosePane', paneId: newPaneId });
+
+    resolveInit();
+    await spawnPromise;
+
+    expect(spawned.destroy).toHaveBeenCalledTimes(1);
   });
 
   it('desktopClosePane on the last remaining pane is a no-op', async () => {
@@ -3313,6 +3406,16 @@ describe('SSH remote hosts', () => {
     expect(panes.panes[0]).toMatchObject({ host: 'prod' });
   });
 
+  it('desktopSelectHost destroys the message-less agent it releases from the pane', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host } = await readyHost();
+    const released = lastAgent(); // the fresh empty agent bound to the pane
+
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+
+    expect(released.destroy).toHaveBeenCalledTimes(1);
+  });
+
   it('desktopAddHost appends the block, auto-selects the new host and eagerly connects', async () => {
     const { host, sent } = createHost();
 
@@ -3407,6 +3510,7 @@ describe('SSH remote hosts', () => {
 
     await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/repo' });
     const remoteAgent = lastAgent();
+    remoteAgent.messages = [{ id: 'm1' }]; // the user chatted in the remote session, so it must survive
 
     await host.handleWebviewMessage({ command: 'desktopSelectRecentWorkdir', path: '/repo', host: 'local' });
     const localAgent = lastAgent();

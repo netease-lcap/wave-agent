@@ -668,6 +668,15 @@ export class DesktopHost {
     return agent;
   }
 
+  /**
+   * A message-less, non-streaming agent is new-session scaffolding: no session
+   * index entry, so the sidebar can never bring it back. Such agents must be
+   * destroyed when their pane releases them, or the pool accumulates orphans.
+   */
+  private isBlankAgent(agent: StdioAgent): boolean {
+    return agent.messages.length === 0 && !agent.isStreaming;
+  }
+
   /** Bind an agent to a pane (replacing whatever it showed) and focus the pane. */
   private bindAgentToPane(paneId: string, agent: StdioAgent | null): void {
     const pane = this.panes.find((p) => p.paneId === paneId);
@@ -681,10 +690,16 @@ export class DesktopHost {
       // the incoming session never flashes a stale list.
       this.workflowRuns.delete(paneId);
     }
+    const outgoing = pane.agent;
     this.clearThrottleState(paneId);
     pane.agent = agent;
     this.focusedPaneId = paneId;
     if (agent) this.touchAgentAsRecent(agent);
+    // Replacing or releasing a blank agent (worktree/workdir/host switch)
+    // would otherwise leak it in the pool until the app quits.
+    if (outgoing && outgoing !== agent && this.isBlankAgent(outgoing)) {
+      void this.discardAgent(outgoing);
+    }
   }
 
   /**
@@ -1017,6 +1032,7 @@ export class DesktopHost {
     if (idx === -1) return;
     this.terminalManager.killForPane(paneId);
     this.clearThrottleState(paneId);
+    const closedAgent = this.panes[idx].agent;
     const closedRow = this.panes[idx].row ?? 0;
     this.panes.splice(idx, 1);
     this.inputDrafts.delete(paneId);
@@ -1025,6 +1041,11 @@ export class DesktopHost {
     // An in-flight restore for the closed pane is dead — its token check
     // discards the half-spawned agent.
     this.pendingRestores.delete(paneId);
+    // A blank agent has no session to keep running in the background — destroy
+    // it instead of leaving it orphaned in the pool.
+    if (closedAgent && this.isBlankAgent(closedAgent)) {
+      void this.discardAgent(closedAgent);
+    }
     // The closed pane's width returns to its row-mates proportionally; an
     // untouched equal-split row (no explicit widths) stays equal-split.
     this.renormalizeRowWidths(closedRow);
@@ -2604,8 +2625,12 @@ export class DesktopHost {
     try {
       const agent = await this.spawnAgent({ host, workdir: dir });
       // Spawning is slow (agent init) — the user may have selected another
-      // session meanwhile; don't clobber their view.
-      if (this.agentForPane(pid) !== active) return;
+      // session meanwhile; don't clobber their view, and destroy the
+      // just-spawned agent so it doesn't linger orphaned in the pool.
+      if (this.agentForPane(pid) !== active) {
+        await this.discardAgent(agent);
+        return;
+      }
       if (backOffOnRestore && this.pendingRestores.has(pid)) {
         // The user selected a historical session while the delete was in
         // flight — its restore owns this pane. Destroy the just-spawned
@@ -2645,7 +2670,11 @@ export class DesktopHost {
     try {
       const agent = await this.spawnAgent({ host, workdir: dir });
       // Spawning is slow (agent init) — the pane may have been closed meanwhile.
-      if (!this.panes.some((p) => p.paneId === paneId)) return;
+      // Destroy the just-spawned agent so it doesn't linger orphaned in the pool.
+      if (!this.panes.some((p) => p.paneId === paneId)) {
+        await this.discardAgent(agent);
+        return;
+      }
       await this.activateAgentInPane(paneId, agent);
     } catch (error) {
       console.error('[DesktopHost] 新建分屏会话失败:', error);
