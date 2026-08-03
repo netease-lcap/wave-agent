@@ -186,7 +186,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           onLogin={onLogin}
           onLogout={onLogout}
           isAuthenticated={isAuthenticated}
-          hostLabel={hostLabel === 'local' ? '本地' : hostLabel}
+          // Only remote hosts get annotated — the local host is the default
+          // subject, so its 登录/退出登录 entry stays unlabeled.
+          hostLabel={hostLabel === 'local' ? undefined : hostLabel}
           onClose={() => setShowMoreMenu(false)}
         />
       )}

@@ -261,7 +261,8 @@ describe('DesktopApp', () => {
             sendCommand('authStatusResponse', { isAuthenticated: false });
 
             openSidebarMoreMenu();
-            expect(screen.getByTestId('more-menu-login')).toHaveTextContent('登录（本地）');
+            // The local host is the default subject — no annotation.
+            expect(screen.getByTestId('more-menu-login').textContent).toBe('登录');
             fireEvent.keyDown(document, { key: 'Escape' });
 
             sendCommand('desktopPanes', {
