@@ -11,6 +11,7 @@ export const initialState: ChatState = {
   editingQueuedId: null,
   isStreaming: false,
   isCompacting: false,
+  isRestoring: false,
   isCommandRunning: false,
   shouldClearInput: false,
   sessions: [],
@@ -183,6 +184,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // hint; the host pushes the activated session's own state (or omits
         // it, meaning "not compacting").
         isCompacting: action.payload.isCompacting ?? false,
+        // Same for the desktop restore overlay: each host push carries the
+        // current restore state, defaulting to "not restoring".
+        isRestoring: action.payload.isRestoring ?? false,
         sessions: action.payload.sessions || state.sessions || [],
         // Re-pin from the same-snapshot messages: hosts re-push the session
         // object without firstMessage on pane/webview re-init.

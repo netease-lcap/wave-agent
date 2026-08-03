@@ -433,6 +433,10 @@ export interface ChatState {
   // Compaction in progress — shows the "正在压缩对话…" hint after the blinking
   // cursor at the end of the message list.
   isCompacting: boolean;
+  // Session restore in progress (desktop): the pane switched optimistically to
+  // the target session and shows the sweep loading animation over the message
+  // + input area while the host connects and replays the transcript.
+  isRestoring: boolean;
   isCommandRunning: boolean;
   shouldClearInput: boolean;
   sessions: SessionMetadata[];
@@ -622,6 +626,7 @@ export type ChatAction =
       isStreaming: boolean;
       isCommandRunning?: boolean;
       isCompacting?: boolean;
+      isRestoring?: boolean;
       isTaskListCollapsed?: boolean;
       sessions: SessionMetadata[];
       currentSession?: SessionMetadata;

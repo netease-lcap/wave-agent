@@ -853,6 +853,57 @@ describe('chatReducer', () => {
 
       expect(state.isCompacting).toBe(true);
     });
+
+    it('SET_INITIAL_STATE raises isRestoring when the host pushes a still-restoring session', () => {
+      // The desktop host switches the pane to the selected historical session
+      // immediately and keeps the sweep overlay up until the restore lands.
+      const state = chatReducer(
+        { ...initialState, isRestoring: false },
+        {
+          type: 'SET_INITIAL_STATE',
+          payload: {
+            messages: [],
+            sessions: [],
+            configurationData: {} as any,
+            pendingConfirmations: [],
+            isStreaming: false,
+            isRestoring: true,
+          },
+        },
+      );
+
+      expect(state.isRestoring).toBe(true);
+    });
+
+    it('SET_INITIAL_STATE clears a stale isRestoring when absent (restore finished)', () => {
+      // The host raises the overlay on selection, then drops it once the
+      // restore lands — a push without the flag must not keep the overlay.
+      let state = chatReducer(initialState, {
+        type: 'SET_INITIAL_STATE',
+        payload: {
+          messages: [],
+          sessions: [],
+          configurationData: {} as any,
+          pendingConfirmations: [],
+          isStreaming: false,
+          isRestoring: true,
+        },
+      });
+      expect(state.isRestoring).toBe(true);
+
+      state = chatReducer(state, {
+        type: 'SET_INITIAL_STATE',
+        payload: {
+          messages: [],
+          sessions: [],
+          configurationData: {} as any,
+          pendingConfirmations: [],
+          isStreaming: false,
+        },
+      });
+
+      expect(state.isRestoring).toBe(false);
+    });
   });
 
   describe('theme state', () => {
