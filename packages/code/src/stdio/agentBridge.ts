@@ -51,6 +51,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { createWorktree, removeWorktree } from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
+import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
 
 export type NotificationEmitter = (
   method: string,
@@ -707,7 +708,7 @@ export class AgentBridge {
     const entry = this.requireSession(sessionId);
     const { messages } = await entry.agent.getFullMessageThread();
     const checkpoints = messages
-      .filter((m) => m.role === "user" && !m.isMeta && m.id)
+      .filter((m) => isUserCheckpointMessage(m) && m.id)
       .map((m) => ({
         id: m.id as string,
         content: getMessageContent(m).replace(/\s+/g, " ").trim(),
