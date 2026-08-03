@@ -423,6 +423,29 @@ describe('workdir lifecycle', () => {
 });
 
 // ---------------------------------------------------------------------------
+// file suggestions (@file) — workdir resolution
+// ---------------------------------------------------------------------------
+
+describe('file suggestions', () => {
+  it('falls back to the most recent workdir before any agent activates (fresh launch)', async () => {
+    // Fresh launch: recents list a directory (the webview picker shows it as
+    // the default workdir) but no agent has been spawned yet, so host-side
+    // this.workdir is unset. @file suggestions must still search that default
+    // directory instead of returning an empty list.
+    const { host, store } = createHost();
+    store.addRecentWorkdir({ host: 'local', path: '/work/a' });
+    h.existingPaths.add('/work/a');
+    await host.handleWebviewMessage({ command: 'desktopReady' });
+    await host.handleWebviewMessage({ command: 'webviewReady' });
+
+    await host.handleWebviewMessage({ command: 'requestFileSuggestions', filterText: 'app', requestId: 'r1' });
+
+    const search = h.clientRequests.find((r) => r.method === 'searchFiles');
+    expect(search?.params).toMatchObject({ workdir: '/work/a', query: 'app', maxResults: 20 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // initial state
 // ---------------------------------------------------------------------------
 
