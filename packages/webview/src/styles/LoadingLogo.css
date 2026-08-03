@@ -10,6 +10,15 @@
   min-height: 0;
 }
 
+/* Desktop session-restore overlay: covers the whole message + input area while
+   the host connects and replays the transcript. Flex child of the chat body,
+   so it claims the same height the message list + input would occupy. */
+.chat-restoring-overlay {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
 .loading-logo {
   position: relative;
   width: 48px;

@@ -544,6 +544,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
               isStreaming: message.isStreaming,
               isCommandRunning: message.isCommandRunning,
               isTaskListCollapsed: message.isTaskListCollapsed,
+              isRestoring: message.isRestoring,
               sessions: message.sessions,
               currentSession: message.session,
               configurationData: message.configurationData,
@@ -1470,7 +1471,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
     );
   };
 
-  const chatBodyContent = (
+  const chatBodyContent = state.isRestoring ? (
+    // Desktop restore in progress: the pane already switched to the target
+    // session — show the sweep animation over the message + input area until
+    // the host finishes connecting and replaying the transcript (spec 场景 7).
+    <div className="chat-restoring-overlay" data-testid="chat-restoring-overlay">
+      <LoadingLogo />
+    </div>
+  ) : (
     <>
       {showWelcomeReady ? (
         <WelcomeView
