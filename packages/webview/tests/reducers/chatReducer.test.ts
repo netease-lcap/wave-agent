@@ -904,55 +904,6 @@ describe('chatReducer', () => {
 
       expect(state.isRestoring).toBe(false);
     });
-
-    it('SET_INITIAL_STATE raises isActivating while a fresh agent is mid-spawn', () => {
-      // The desktop host raises the overlay on a first connection to a host —
-      // the pane has no agent yet, only the connecting flag rides the push.
-      const state = chatReducer(
-        { ...initialState, isActivating: false },
-        {
-          type: 'SET_INITIAL_STATE',
-          payload: {
-            messages: [],
-            sessions: [],
-            configurationData: {} as any,
-            pendingConfirmations: [],
-            isStreaming: false,
-            isActivating: true,
-          },
-        },
-      );
-
-      expect(state.isActivating).toBe(true);
-    });
-
-    it('SET_INITIAL_STATE clears a stale isActivating when absent (spawn finished)', () => {
-      let state = chatReducer(initialState, {
-        type: 'SET_INITIAL_STATE',
-        payload: {
-          messages: [],
-          sessions: [],
-          configurationData: {} as any,
-          pendingConfirmations: [],
-          isStreaming: false,
-          isActivating: true,
-        },
-      });
-      expect(state.isActivating).toBe(true);
-
-      state = chatReducer(state, {
-        type: 'SET_INITIAL_STATE',
-        payload: {
-          messages: [],
-          sessions: [],
-          configurationData: {} as any,
-          pendingConfirmations: [],
-          isStreaming: false,
-        },
-      });
-
-      expect(state.isActivating).toBe(false);
-    });
   });
 
   describe('theme state', () => {

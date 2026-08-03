@@ -162,17 +162,6 @@ export class DesktopHost {
   private pendingRestores = new Map<string, { sessionId: string; workdir: string; token: number }>();
   private restoreToken = 0;
 
-  /**
-   * Panes whose fresh agent is still mid-spawn (first connection to a host
-   * takes seconds: SSH connect + remote wave resolve/start). While an entry
-   * exists the webview shows the connecting overlay instead of a dead-feeling
-   * pause; activation/close clears it. Unlike pendingRestores there is no
-   * target session to show — the pane has no agent yet, so only the flag rides
-   * the state push.
-   */
-  private pendingActivations = new Map<string, number>();
-  private activationToken = 0;
-
   // Throttling state, per pane so concurrently streaming panes update
   // independently (same cadence as vsce ChatSession).
   private paneThrottles = new Map<string, PaneThrottle>();
@@ -715,7 +704,6 @@ export class DesktopHost {
     // Any fresh activation supersedes an in-flight restore for this pane — the
     // restore's token check later discards its half-spawned agent.
     this.pendingRestores.delete(paneId);
-    this.pendingActivations.delete(paneId);
     this.bindAgentToPane(paneId, agent);
     this.hostState.set(paneId, this.hostForAgent(agent));
     const dir = agent.workingDirectory;
@@ -1037,7 +1025,6 @@ export class DesktopHost {
     // An in-flight restore for the closed pane is dead — its token check
     // discards the half-spawned agent.
     this.pendingRestores.delete(paneId);
-    this.pendingActivations.delete(paneId);
     // The closed pane's width returns to its row-mates proportionally; an
     // untouched equal-split row (no explicit widths) stays equal-split.
     this.renormalizeRowWidths(closedRow);
@@ -1242,16 +1229,10 @@ export class DesktopHost {
       }
     }
 
-    // First spawn on this (host, dir) — a fresh host's very first connection
-    // takes seconds, so raise the connecting overlay before the await.
-    this.pendingActivations.set(paneId, ++this.activationToken);
-    void this.pushPaneSessionState(paneId);
     try {
       const agent = await this.spawnAgent({ host, workdir: dir });
       await this.activateAgentInPane(paneId, agent);
     } catch (error) {
-      this.pendingActivations.delete(paneId);
-      await this.pushPaneSessionState(paneId);
       this.pushSystemMessage(`初始化失败：${error instanceof Error ? error.message : String(error)}`, paneId);
     }
   }
@@ -1394,10 +1375,6 @@ export class DesktopHost {
       // so the session override comes from the pending target, not the
       // still-bound old agent (which only feeds the overlay's underlying view).
       isRestoring: !!pending,
-      // A pending activation covers the window where a fresh agent is still
-      // mid-spawn — the pane has nothing to show yet, so the overlay carries
-      // the "connecting" feedback (spec scenario 24).
-      isActivating: this.pendingActivations.has(paneId),
       session: pending ? {
         id: pending.sessionId,
         sessionType: 'main',
