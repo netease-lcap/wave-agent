@@ -2074,6 +2074,34 @@ export class DesktopHost {
   }
 
   /**
+   * Re-query the auth status on `host` and push it to the webview. Called when
+   * the picker switches to a host: lastIsAuthenticated is cached at
+   * webview-ready against the then-current host, so without this the welcome
+   * page keeps showing the previous host's 登录 button.
+   */
+  private async refreshAuthStatus(host: string): Promise<void> {
+    try {
+      const authResult = (await this.utilityClientFor(host).request('getAuthStatus')) as {
+        isAuthenticated: boolean;
+        user?: { id: string; email?: string };
+        serverUrl: string;
+      };
+      if (authResult.serverUrl) {
+        this.configStore.setConfiguration({ serverUrl: authResult.serverUrl });
+      }
+      this.lastIsAuthenticated = authResult.isAuthenticated;
+      this.postMessage({
+        command: 'authStatusResponse',
+        isAuthenticated: authResult.isAuthenticated,
+        user: authResult.user,
+        serverUrl: authResult.serverUrl,
+      });
+    } catch (error) {
+      console.error(`[DesktopHost] Failed to get auth status for host ${host}:`, error);
+    }
+  }
+
+  /**
    * Pick a host for the focused pane's new-session workdir picker. Only
    * hosts from ~/.ssh/config (or 本地) are accepted; switching host re-sends
    * workdir state so the picker shows that host's recents (spec scenario 1).
@@ -2095,14 +2123,18 @@ export class DesktopHost {
       this.pushPaneSessionState(pid);
     }
     this.hostState.set(pid, host);
-    // Establish the host's client eagerly so auth/status queries against the
-    // newly selected host don't race the first agent spawn. Fire-and-forget:
-    // failures surface as a system message, the picker updates immediately.
-    this.ensureClientFor(host).catch((error) => {
-      this.pushSystemMessage(
-        `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
-      );
-    });
+    // Establish the host's client eagerly, then re-query the auth status on
+    // that host — the state cached at webview-ready belongs to the previous
+    // host, so without the re-query the welcome page keeps showing the old
+    // host's 登录 button. Failures surface as a system message, the picker
+    // updates immediately.
+    this.ensureClientFor(host)
+      .then(() => this.refreshAuthStatus(host))
+      .catch((error) => {
+        this.pushSystemMessage(
+          `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
     this.sendWorkdirState();
     // The webview's host label reads the pane-bound host from desktopPanes —
     // without a re-push the selector stays on the previous host.
@@ -2133,11 +2165,13 @@ export class DesktopHost {
       this.pushPaneSessionState(pid);
     }
     this.hostState.set(pid, name);
-    this.ensureClientFor(name).catch((error) => {
-      this.pushSystemMessage(
-        `连接主机 ${name} 失败：${error instanceof Error ? error.message : String(error)}`,
-      );
-    });
+    this.ensureClientFor(name)
+      .then(() => this.refreshAuthStatus(name))
+      .catch((error) => {
+        this.pushSystemMessage(
+          `连接主机 ${name} 失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
     this.pushSystemMessage(`已添加主机：${name}`);
     this.sendWorkdirState();
     // Same as handleSelectHost: the pane layout must carry the new host or the
