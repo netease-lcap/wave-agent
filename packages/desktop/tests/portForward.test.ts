@@ -4,6 +4,8 @@ import { SSH_BASE_OPTIONS, LOCAL_HOST } from '../src/main/sshHosts';
 
 const h = vi.hoisted(() => ({
   spawn: vi.fn(),
+  /** sshHosts imports execFile for its login-shell probe — unused here. */
+  execFile: vi.fn(),
   /** per-port probe result for the ready check (absent = connect succeeds) */
   connectResults: new Map<number, boolean>(),
   /** per-port bind result for canBind (absent = bind succeeds) */
@@ -36,7 +38,7 @@ class FakeServer extends EventEmitter {
   }
 }
 
-vi.mock('child_process', () => ({ spawn: h.spawn }));
+vi.mock('child_process', () => ({ spawn: h.spawn, execFile: h.execFile }));
 
 vi.mock('net', () => ({
   connect: (opts: { port: number }) => {

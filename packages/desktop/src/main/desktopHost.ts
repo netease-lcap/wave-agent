@@ -42,7 +42,7 @@ import {
   getCliVersion,
 } from './stdio/binaryResolver';
 import { ConfigStore, type DesktopConfigData, type SessionIndexEntry } from './configStore';
-import { LOCAL_HOST, parseSshConfigHosts, addSshHost, buildSshSpawnArgs } from './sshHosts';
+import { LOCAL_HOST, parseSshConfigHosts, addSshHost, buildSshSpawnArgs, withRemoteLoginShell } from './sshHosts';
 import { resolveRemoteWaveBinary, remotePathExists } from './remoteCli';
 import { getWorkspaceDiff } from './gitDiff';
 import { TerminalManager } from './terminal';
@@ -434,7 +434,11 @@ export class DesktopHost {
 
     entry.initPromise = (async () => {
       const { binaryPath } = await resolveRemoteWaveBinary(host);
-      const client = new StdioClient('ssh', buildSshSpawnArgs(host, `${binaryPath} --stdio`));
+      // Run the remote wave under the user's login shell — its npm bin shim
+      // (`#!/usr/bin/env node`) needs node on PATH, which nvm-style installs
+      // only provide in interactive rc files.
+      const remoteRun = await withRemoteLoginShell(host, `${binaryPath} --stdio`);
+      const client = new StdioClient('ssh', buildSshSpawnArgs(host, remoteRun));
       const router = new NotificationRouter(client);
       router.registerGlobal('authUrl', (params) => {
         const p = params as { url?: string };
