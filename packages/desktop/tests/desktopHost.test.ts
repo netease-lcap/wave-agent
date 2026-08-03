@@ -637,11 +637,14 @@ describe('agent notifications', () => {
 
   it('onBackgroundTasksChange posts tasks and refreshes workflow runs', async () => {
     const { sent } = await readyHost();
+    const runsBefore = sent('updateWorkflowRuns').length;
     lastAgent().callbacks.onBackgroundTasksChange([{ task_id: 't1' }]);
 
     expect(sent('updateBackgroundTasks')[0]).toMatchObject({ tasks: [{ task_id: 't1' }] });
+    // A fresh refresh lands after the background-task change (session pushes
+    // also refresh in the background, so assert a new one, not a total count).
     await vi.waitFor(() => {
-      expect(sent('updateWorkflowRuns')).toHaveLength(1);
+      expect(sent('updateWorkflowRuns').length).toBeGreaterThan(runsBefore);
     });
   });
 
@@ -3486,6 +3489,70 @@ describe('SSH remote hosts', () => {
 
     expect(vi.mocked(listRemoteDirs)).not.toHaveBeenCalled();
     expect(sent('desktopRemoteDirList')).toEqual([]);
+  });
+
+  it('a live remote session switch does not wait for the workflow-runs RPC', async () => {
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    h.existingPaths.add('/remote/repo');
+    const { host, store, send, sent } = await readyHost();
+
+    // Start a remote session — a live agent in the pool, bound to the pane.
+    await host.handleWebviewMessage({ command: 'desktopSelectRemotePath', host: 'prod', path: '/remote/repo' });
+    const remoteAgent = lastAgent();
+    registerAgentInIndex(remoteAgent); // pool + index, keyed by host prod
+    const remoteSessionId = remoteAgent.sessionId as string;
+
+    // Park the remote session in the background (a closed pane also keeps its
+    // agent running): activate a local historical session so the pane binds to
+    // a different agent while the remote one stays live in the pool.
+    store.upsertSession({
+      sessionId: 'sess-local',
+      title: 'Local history',
+      workdir: '/work/a',
+      cwd: '/work/a',
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+    });
+    await host.handleWebviewMessage({ command: 'desktopSelectSession', workdir: '/work/a', sessionId: 'sess-local' });
+    // Wait for the restore to fully settle — startPaneRestore pushes an
+    // optimistic overlay (isRestoring: true) before the local agent binds, and
+    // selecting the remote session while the pane is still bound to it would
+    // early-return as "already shown".
+    await vi.waitFor(() => {
+      expect(sent('setInitialState').at(-1)).toMatchObject({ session: { id: 'sess-local' }, isRestoring: false });
+    });
+    expect(lastAgent()).not.toBe(remoteAgent);
+
+    send.mockClear();
+
+    // A congested SSH hop (the streaming session floods the connection with
+    // notification lines) makes the workflow-runs round trip slow — it must
+    // not delay the title + message switch to the live session.
+    let resolveRuns!: (runs: unknown[]) => void;
+    remoteAgent.getWorkflowRuns.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveRuns = resolve; }),
+    );
+
+    const selectPromise = host.handleWebviewMessage({
+      command: 'desktopSelectSession',
+      workdir: '/remote/repo',
+      sessionId: remoteSessionId,
+    });
+
+    // The switch lands immediately from cached state; the fresh workflow runs
+    // refresh in the background and arrive afterwards.
+    await vi.waitFor(() => {
+      const first = sent('setInitialState')[0];
+      expect(first?.session).toMatchObject({ id: remoteSessionId });
+      expect(first?.messages).toHaveLength(1);
+    });
+    expect(remoteAgent.getWorkflowRuns).toHaveBeenCalled();
+
+    resolveRuns([{ runId: 'run-1' }]);
+    await selectPromise;
+    await vi.waitFor(() => {
+      expect(sent('updateWorkflowRuns').at(-1)?.runs).toEqual([{ runId: 'run-1' }]);
+    });
   });
 });
 

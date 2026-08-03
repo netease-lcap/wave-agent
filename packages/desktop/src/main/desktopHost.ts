@@ -675,7 +675,12 @@ export class DesktopHost {
     // Panel groups follow the session, so the outgoing session's PTY dies with
     // the switch — the webview respawns one when the incoming session's group
     // has the terminal checked. A same-agent rebind keeps it alive.
-    if (pane.agent !== agent) this.terminalManager.killForPane(paneId);
+    if (pane.agent !== agent) {
+      this.terminalManager.killForPane(paneId);
+      // The cached workflow runs belong to the outgoing session — drop them so
+      // the incoming session never flashes a stale list.
+      this.workflowRuns.delete(paneId);
+    }
     this.clearThrottleState(paneId);
     pane.agent = agent;
     this.focusedPaneId = paneId;
@@ -1332,14 +1337,17 @@ export class DesktopHost {
   private async pushPaneSessionState(paneId: string): Promise<void> {
     const configurationData = this.configStore.getConfiguration();
     const agent = this.agentForPane(paneId);
+    // Workflow runs refresh in the background — a live remote session's RPC
+    // round trip (SSH hop) must not delay the session switch. The cache shows
+    // immediately; refreshWorkflowRuns supersedes it when the response lands.
     if (agent) {
-      const runs = await agent.getWorkflowRuns().catch(() => this.workflowRuns.get(paneId) ?? []);
-      this.workflowRuns.set(paneId, runs);
+      void this.refreshWorkflowRuns(paneId).catch(() => {});
     }
-    // The pane binding may have changed while getWorkflowRuns was in flight (a
-    // restore completed / a new session selected). Re-read everything at send
-    // time so the pushed message is self-consistent; the pending entry is also
-    // resolved here so a stale overlay can never clobber a completed restore.
+    // The pane binding may have changed while a workflow-runs refresh was in
+    // flight (a restore completed / a new session selected). Re-read everything
+    // at send time so the pushed message is self-consistent; the pending entry
+    // is also resolved here so a stale overlay can never clobber a completed
+    // restore.
     const current = this.agentForPane(paneId);
     const pending = this.pendingRestores.get(paneId);
     const pendingConfirmations = Array.from(this.pendingConfirmations.entries())
@@ -1662,6 +1670,9 @@ export class DesktopHost {
     const agent = this.agentForPane(paneId);
     if (!agent) return;
     const runs = await agent.getWorkflowRuns();
+    // The pane may have switched to another session while the RPC was in
+    // flight — never write a stale session's runs into the new one.
+    if (this.agentForPane(paneId) !== agent) return;
     this.workflowRuns.set(paneId, runs);
     this.postMessage({ command: 'updateWorkflowRuns', paneId, runs });
   }
