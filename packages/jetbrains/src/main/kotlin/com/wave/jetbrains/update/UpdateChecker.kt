@@ -352,7 +352,10 @@ object UpdateChecker {
             WriteAction.run<Exception> {
                 val descriptor = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))
                     ?: throw UpdateCheckException("Wave plugin descriptor not found")
-                val oldPath = (descriptor as? IdeaPluginDescriptorImpl)?.path
+                // Use getPluginPath() (method call) instead of the internal `path` field:
+                // the field was removed in newer platform versions (2026.1+), which breaks
+                // the compiled `getfield` with NoSuchFieldError; the accessor survives.
+                val oldPath = (descriptor as? IdeaPluginDescriptorImpl)?.pluginPath
                     ?: throw UpdateCheckException("Cannot resolve plugin install path")
                 PluginInstaller.installAfterRestart(
                     descriptor,
