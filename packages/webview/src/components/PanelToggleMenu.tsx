@@ -13,7 +13,7 @@ const PANEL_ITEMS: Array<{ kind: DesktopPanelKind; label: string; shortcut: stri
   { kind: 'preview', label: '预览', shortcut: isMac ? '⇧⌘P' : 'Ctrl+Shift+P' },
   { kind: 'diff', label: '差异', shortcut: isMac ? '⇧⌘D' : 'Ctrl+Shift+D' },
   { kind: 'terminal', label: '终端', shortcut: isMac ? '⌃`' : 'Ctrl+`' },
-  { kind: 'file', label: '文件', shortcut: '' },
+  { kind: 'file', label: '文件', shortcut: isMac ? '⇧⌘F' : 'Ctrl+Shift+F' },
 ];
 
 /**

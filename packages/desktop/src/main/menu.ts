@@ -67,8 +67,9 @@ export function matchSessionSwitchInput(input: Input, isMac: boolean): SwitchDir
 
 /**
  * Map a before-input-event Input to a panel kind, or null when unrelated.
- * macOS: Shift+Cmd+P (preview) / Shift+Cmd+D (diff); Windows/Linux:
- * Ctrl+Shift+P / Ctrl+Shift+D; terminal is Ctrl+` on every platform.
+ * macOS: Shift+Cmd+P (preview) / Shift+Cmd+D (diff) / Shift+Cmd+F (file);
+ * Windows/Linux: Ctrl+Shift+P / Ctrl+Shift+D / Ctrl+Shift+F; terminal is
+ * Ctrl+` on every platform.
  * Letters match on `code` because Shift uppercases them in `key`.
  */
 export function matchPanelToggleInput(input: Input, isMac: boolean): PanelKind | null {
@@ -81,6 +82,7 @@ export function matchPanelToggleInput(input: Input, isMac: boolean): PanelKind |
   if (primary && input.shift && !secondary && !input.alt) {
     if (input.code === 'KeyP') return 'preview';
     if (input.code === 'KeyD') return 'diff';
+    if (input.code === 'KeyF') return 'file';
   }
   return null;
 }
@@ -167,7 +169,8 @@ export function buildApplicationMenuTemplate(
           label: '文件',
           type: 'checkbox',
           checked: panelChecked.includes('file'),
-          // No shortcut: the panel opens by clicking a file path in a message.
+          accelerator: isMac ? 'Shift+Cmd+F' : 'Ctrl+Shift+F',
+          registerAccelerator: false,
           click: () => actions.togglePanel('file'),
         },
       ],
