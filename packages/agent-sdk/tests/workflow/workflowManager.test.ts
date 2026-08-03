@@ -456,8 +456,11 @@ describe("WorkflowManager", () => {
       const run = await progressManager.createRun(script);
       await progressManager.startRun(run.runId);
 
-      // Let the event loop turn so scan agents start and emit agent_started.
-      await new Promise((r) => setTimeout(r, 20));
+      // Wait until the scan agents have started (agent_started events
+      // propagate asynchronously; polling beats a fixed sleep on slow CI).
+      await vi.waitFor(() => {
+        expect(progressManager.getRun(run.runId)!.totalAgents).toBe(2);
+      });
 
       // --- MID-RUN snapshot: scan agents started, not yet completed ---
       const midRun = progressManager.getRun(run.runId)!;
@@ -470,9 +473,15 @@ describe("WorkflowManager", () => {
       // notifyTasksChange fired for the phase/agent_started events.
       expect(notifyTasksChange).toHaveBeenCalled();
 
-      // Release scan agents -> they complete and Synthesize starts.
+      // Release scan agents -> they complete and Synthesize starts. Wait
+      // until the synth agent has started and scan tokens are counted.
       resolveScan();
-      await new Promise((r) => setTimeout(r, 20));
+      await vi.waitFor(() => {
+        const r = progressManager.getRun(run.runId)!;
+        expect(r.totalAgents).toBe(3);
+        expect(r.totalTokens).toBe(2468); // 2 scan agents * 1234 tokens
+        expect(r.phases[1].agentCount).toBe(1); // synth agent started
+      });
 
       // --- After scan completes, before synth completes ---
       const afterScan = progressManager.getRun(run.runId)!;
