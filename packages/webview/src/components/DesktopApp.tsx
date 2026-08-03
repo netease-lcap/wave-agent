@@ -94,6 +94,10 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     vscode.postMessage({ command: 'desktopSelectRemotePath', path, host });
   }, [vscode]);
 
+  const handleListRemoteDir = useCallback((path: string, host: string, requestId: string) => {
+    vscode.postMessage({ command: 'desktopListRemoteDir', path, host, requestId });
+  }, [vscode]);
+
   const handleSelectSession = useCallback((workdir: string, sessionId: string) => {
     vscode.postMessage({ command: 'desktopSelectSession', workdir, sessionId });
   }, [vscode]);
@@ -128,6 +132,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         onSelectHost: handleSelectHost,
         onAddHost: handleAddHost,
         onSelectRemotePath: handleSelectRemotePath,
+        onListRemoteDir: handleListRemoteDir,
         sessionTree,
         onSelectSession: handleSelectSession,
         onDeleteSession: handleDeleteSession,

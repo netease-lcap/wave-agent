@@ -207,6 +207,12 @@ export interface DesktopHostProps {
   /** Select a remote workdir by absolute path; validated with `test -d` on the host. */
   onSelectRemotePath: (path: string, host: string) => void;
   /**
+   * List the subdirectories of a remote path (remote directory browser,
+   * spec scenario 20). The host replies with a requestId-matched
+   * `desktopRemoteDirList` message.
+   */
+  onListRemoteDir: (path: string, host: string, requestId: string) => void;
+  /**
    * Sidebar session tree (FR-020): one group per recent directory with all of
    * its sessions. Pushed via the `desktopSessionTree` message.
    */

@@ -1548,6 +1548,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({ vscode, host, paneId }) => {
                     recentWorkdirs={host.recentWorkdirs}
                     onSelectWorkdir={host.onSelectWorkdir}
                     onSelectRemotePath={(path) => host.onSelectRemotePath(path, effectiveHost)}
+                    onListRemoteDir={(path, requestId) => host.onListRemoteDir(path, effectiveHost, requestId)}
                     onSelectRecentWorkdir={host.onSelectRecentWorkdir}
                     onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
                   />

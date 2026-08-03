@@ -121,3 +121,44 @@ export async function remotePathExists(host: string, remotePath: string): Promis
     return false;
   }
 }
+
+export interface RemoteDirListResult {
+  /** Normalized absolute path (home expanded, relative components resolved). */
+  resolvedPath: string;
+  /** Subdirectory names of resolvedPath, sorted by name. */
+  dirs: string[];
+}
+
+/**
+ * List the subdirectories of a remote directory (remote directory browser,
+ * spec scenarios 20/21). Runs over ssh under the host's login shell: `~` is
+ * expanded by the shell, `cd` normalizes the path (with `pwd` printed as the
+ * first output line), and `find -type d` yields directory entries only.
+ * Throws with a user-facing message when the path is missing/unreadable (cd
+ * fails) or the ssh connection fails.
+ */
+export async function listRemoteDirs(host: string, dir: string): Promise<RemoteDirListResult> {
+  // `~`-prefix handling is shell parameter expansion, so `${p#'~'}` must stay
+  // in a plain string literal (a template literal would parse it as JS).
+  const command =
+    `p=${shellQuote(dir)}; ` +
+    `case "$p" in '~') p="$HOME";; '~/'*) p="$HOME` +
+    "${p#'~'}" +
+    `";; esac; ` +
+    `cd "$p" 2>/dev/null || { echo '目录不存在或不可读' >&2; exit 3; }; ` +
+    `pwd; find "$p" -maxdepth 1 -mindepth 1 -type d -exec basename {} \\;`;
+  try {
+    const { stdout } = await execFileAsync('ssh', await remoteCommand(host, command), {
+      timeout: PROBE_TIMEOUT_MS,
+    });
+    const lines = stdout.split('\n').filter((line) => line.length > 0);
+    const resolvedPath = lines[0] ?? dir;
+    const dirs = lines
+      .slice(1)
+      .filter((name) => name !== '.' && name !== '..')
+      .sort((a, b) => a.localeCompare(b));
+    return { resolvedPath, dirs };
+  } catch (error) {
+    throw new Error(`读取远端目录失败：${describeError(error)}`);
+  }
+}

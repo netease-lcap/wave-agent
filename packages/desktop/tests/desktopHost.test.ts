@@ -217,6 +217,7 @@ vi.mock('../src/main/remoteCli', () => ({
     nodeVersion: 'v22.0.0',
   })),
   remotePathExists: vi.fn(async () => true),
+  listRemoteDirs: vi.fn(async () => ({ resolvedPath: '/remote/repo', dirs: ['a', 'b'] })),
 }));
 
 // withRemoteLoginShell probes the remote login shell via a real `echo $SHELL`
@@ -235,7 +236,7 @@ import { ConfigStore } from '../src/main/configStore';
 import { HOST_CHANNEL } from '../src/main/channels';
 import { shell, nativeTheme } from 'electron';
 import { checkForUpdate } from '../src/main/updateChecker';
-import { resolveRemoteWaveBinary, remotePathExists } from '../src/main/remoteCli';
+import { resolveRemoteWaveBinary, remotePathExists, listRemoteDirs } from '../src/main/remoteCli';
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -3086,6 +3087,60 @@ describe('SSH remote hosts', () => {
     expect(h.agentInstances.length).toBe(3);
     const panes = sent('desktopPanes').at(-1) as { panes: Array<{ sessionId: string; host: string }> };
     expect(panes.panes[0]).toMatchObject({ sessionId: 'sess-2', host: 'prod' });
+  });
+
+  it('desktopListRemoteDir replies with the resolved path and subdirectory list', async () => {
+    seedSshConfig('Host prod\n');
+    const { host, sent } = await readyHost();
+    vi.mocked(listRemoteDirs).mockResolvedValueOnce({ resolvedPath: '/remote/repo/src', dirs: ['app', 'lib'] });
+
+    await host.handleWebviewMessage({
+      command: 'desktopListRemoteDir',
+      host: 'prod',
+      path: '/remote/repo/src',
+      requestId: 'r9',
+    });
+
+    expect(vi.mocked(listRemoteDirs)).toHaveBeenCalledWith('prod', '/remote/repo/src');
+    expect(sent('desktopRemoteDirList')).toEqual([
+      { command: 'desktopRemoteDirList', host: 'prod', requestId: 'r9', resolvedPath: '/remote/repo/src', dirs: ['app', 'lib'] },
+    ]);
+  });
+
+  it('desktopListRemoteDir returns a retryable error in the reply on failure', async () => {
+    seedSshConfig('Host prod\n');
+    const { host, sent } = await readyHost();
+    vi.mocked(listRemoteDirs).mockRejectedValueOnce(new Error('读取远端目录失败：目录不存在或不可读'));
+
+    await host.handleWebviewMessage({
+      command: 'desktopListRemoteDir',
+      host: 'prod',
+      path: '/gone',
+      requestId: 'r10',
+    });
+
+    expect(sent('desktopRemoteDirList')).toEqual([
+      {
+        command: 'desktopRemoteDirList',
+        host: 'prod',
+        requestId: 'r10',
+        error: '读取远端目录失败：目录不存在或不可读',
+      },
+    ]);
+    // No session side effects — the browser stays put for a retry.
+    expect(h.agentInstances.length).toBe(1);
+  });
+
+  it('desktopListRemoteDir ignores local-host, empty-path and empty-requestId messages', async () => {
+    seedSshConfig('Host prod\n');
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: 'desktopListRemoteDir', host: 'local', path: '/x', requestId: 'r1' });
+    await host.handleWebviewMessage({ command: 'desktopListRemoteDir', host: 'prod', path: '', requestId: 'r2' });
+    await host.handleWebviewMessage({ command: 'desktopListRemoteDir', host: 'prod', path: '/x', requestId: '' });
+
+    expect(vi.mocked(listRemoteDirs)).not.toHaveBeenCalled();
+    expect(sent('desktopRemoteDirList')).toEqual([]);
   });
 });
 

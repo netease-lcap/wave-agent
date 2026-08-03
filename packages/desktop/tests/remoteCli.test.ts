@@ -8,7 +8,7 @@ vi.mock('child_process', () => ({
   execFile: h.execFile,
 }));
 
-import { resolveRemoteWaveBinary, remotePathExists, REMOTE_NODE_MIN_MAJOR } from '../src/main/remoteCli';
+import { resolveRemoteWaveBinary, remotePathExists, listRemoteDirs, REMOTE_NODE_MIN_MAJOR } from '../src/main/remoteCli';
 import { resetRemoteShellCache, shellQuote } from '../src/main/sshHosts';
 
 type StubResult = { stdout?: string; error?: Error };
@@ -149,5 +149,57 @@ describe('remotePathExists', () => {
     expect(args[args.length - 1]).toBe(
       `/bin/bash -lic ${shellQuote(`test -d ${shellQuote("path with 'quotes'")}`)}`,
     );
+  });
+});
+
+describe('listRemoteDirs', () => {
+  it('parses the first stdout line as the resolved path and the rest as sorted dirs', async () => {
+    stubExec([LOGIN_SHELL, { stdout: '/home/user/repo\nb-dir\nA-dir\nsub\n' }]);
+    const result = await listRemoteDirs('prod', '/home/user/repo');
+    expect(result).toEqual({ resolvedPath: '/home/user/repo', dirs: ['A-dir', 'b-dir', 'sub'] });
+  });
+
+  it('normalizes ~ and relative components via cd + pwd', async () => {
+    stubExec([LOGIN_SHELL, { stdout: '/home/alice\nproj\n' }]);
+    const result = await listRemoteDirs('prod', '~/code/..');
+    expect(result).toEqual({ resolvedPath: '/home/alice', dirs: ['proj'] });
+  });
+
+  it('returns an empty dir list for an empty directory', async () => {
+    stubExec([LOGIN_SHELL, { stdout: '/empty\n' }]);
+    const result = await listRemoteDirs('prod', '/empty');
+    expect(result).toEqual({ resolvedPath: '/empty', dirs: [] });
+  });
+
+  it('drops . and .. entries from the listing', async () => {
+    stubExec([LOGIN_SHELL, { stdout: '/repo\n.\n..\nreal\n' }]);
+    const result = await listRemoteDirs('prod', '/repo');
+    expect(result.dirs).toEqual(['real']);
+  });
+
+  it('assembles the ~-expansion command with shell-quoted literals', async () => {
+    stubExec([LOGIN_SHELL, { stdout: '/home/alice\n' }]);
+    await listRemoteDirs('prod', '~/work');
+    const args = h.execFile.mock.calls[1][1] as string[];
+    // `${p#'~'}` is shell parameter expansion — it must be a plain string
+    // literal in the expected command, not template interpolation.
+    const expected =
+      `p=${shellQuote('~/work')}; ` +
+      `case "$p" in '~') p="$HOME";; '~/'*) p="$HOME` +
+      "${p#'~'}" +
+      `";; esac; ` +
+      `cd "$p" 2>/dev/null || { echo '目录不存在或不可读' >&2; exit 3; }; ` +
+      `pwd; find "$p" -maxdepth 1 -mindepth 1 -type d -exec basename {} \\;`;
+    expect(args[args.length - 1]).toBe(`/bin/bash -lic ${shellQuote(expected)}`);
+  });
+
+  it('throws a user-facing error when cd fails (missing or unreadable directory)', async () => {
+    stubExec([LOGIN_SHELL, { error: new Error('目录不存在或不可读') }]);
+    await expect(listRemoteDirs('prod', '/gone')).rejects.toThrow('读取远端目录失败：目录不存在或不可读');
+  });
+
+  it('throws a user-facing error when the ssh connection fails', async () => {
+    stubExec([LOGIN_SHELL, { error: CONNECT_FAIL }]);
+    await expect(listRemoteDirs('prod', '/repo')).rejects.toThrow('读取远端目录失败：ssh: connect to host failed');
   });
 });
