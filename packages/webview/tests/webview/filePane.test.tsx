@@ -62,6 +62,25 @@ describe('FilePane', () => {
         expect(screen.queryByTestId('file-open-external')).not.toBeInTheDocument();
     });
 
+    it('keeps the 文件 title and right-aligned close button in the empty state', () => {
+        renderPane({ fileView: null });
+        const toolbar = screen.getByTestId('file-pane').querySelector('.preview-pane-toolbar');
+        expect(toolbar?.querySelector('.preview-pane-url')?.textContent).toBe('文件');
+        const close = screen.getByTestId('file-close');
+        expect(close.compareDocumentPosition(toolbar!.querySelector('.preview-pane-url') as Node)).toBe(
+            Node.DOCUMENT_POSITION_PRECEDING,
+        );
+        expect(screen.queryByText(/本地|^prod$/, { selector: '.file-pane-host' })).not.toBeInTheDocument();
+    });
+
+    it('shows the host badge and path inside the body location row', () => {
+        const { container } = renderPane({ workdir: '/work/a' });
+        const location = container.querySelector('.file-pane-location');
+        expect(location?.querySelector('.file-pane-host')?.textContent).toBe('本地');
+        expect(location?.querySelector('.file-pane-path')?.textContent).toBe('src/app.ts');
+        expect(screen.getByText('文件')).toBeInTheDocument();
+    });
+
     it('shows the error state instead of content', () => {
         renderPane({ fileView: { path: '/work/a/nope.ts', host: 'local', error: '文件不存在：/work/a/nope.ts' } });
         expect(screen.getByText('文件不存在：/work/a/nope.ts')).toBeInTheDocument();

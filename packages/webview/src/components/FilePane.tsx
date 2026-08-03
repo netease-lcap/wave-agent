@@ -258,17 +258,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div className="preview-pane-drag-handle" onMouseDown={onDragStart} />
       <div className="preview-pane-inner">
         <div className="preview-pane-toolbar">
-          {fileView && (
-            <>
-              <span className={`file-pane-host${isLocal ? ' file-pane-host--local' : ''}`}>
-                {isLocal ? '本地' : fileView.host}
-              </span>
-              <span className="preview-pane-url file-pane-path" title={fileView.path}>
-                {relativePath || fileView.path}
-              </span>
-            </>
-          )}
-          <span className="preview-pane-spacer" />
+          <span className="preview-pane-url">文件</span>
           {fileView && isLocal && onOpenExternal && (
             <button
               className="preview-pane-button"
@@ -299,6 +289,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </button>
         </div>
         <div className="preview-pane-body file-pane-body" ref={scrollRef}>
+          {fileView && (
+            <div className="file-pane-location">
+              <span className={`file-pane-host${isLocal ? ' file-pane-host--local' : ''}`}>
+                {isLocal ? '本地' : fileView.host}
+              </span>
+              <span className="file-pane-path" title={fileView.path}>
+                {relativePath || fileView.path}
+              </span>
+            </div>
+          )}
           {!fileView && (
             <div className="desktop-panel-placeholder">
               <i className="codicon codicon-file file-pane-placeholder-icon" />
