@@ -3149,6 +3149,32 @@ describe('SSH remote hosts', () => {
     });
   });
 
+  it("desktopSelectHost clears the stale workdir so the picker defaults to the new host's first recent", async () => {
+    // After 新对话 on 本地 the webview's state.workdir holds /work/a. Switching
+    // host must not leave that stale local path selected — the picker has to
+    // fall back to the new host's first recent directory instead (spec
+    // scenario 23). Regression: effectiveWorkdir = state.workdir ?? recents[0]
+    // resolved to the old host's directory.
+    seedSshConfig('Host prod\n  HostName 10.0.0.1\n');
+    const { host, store, sent } = await readyHost(); // activates local /work/a
+    store.addRecentWorkdir({ host: 'prod', path: '/remote/repo' });
+
+    await host.handleWebviewMessage({ command: 'desktopSelectHost', host: 'prod' });
+
+    // The host no longer reports the local path as the current workdir, so the
+    // webview falls back to prod's recents[0].
+    expect(sent('desktopWorkdirState').at(-1)).toMatchObject({
+      host: 'prod',
+      workdir: undefined,
+      recentWorkdirs: ['/remote/repo'],
+    });
+    // ...and it explicitly clears the webview's stale state.workdir for this
+    // pane; otherwise the `state.workdir ?? recents[0]` fallback keeps /work/a.
+    const clear = sent('updateWorkdir').at(-1);
+    expect(clear).toMatchObject({ workdir: undefined });
+    expect(clear?.paneId).toBe('pane-1');
+  });
+
   it('desktopSelectHost re-pushes the pane layout so the webview host label refreshes', async () => {
     // The webview derives a pane's host from the authoritative `desktopPanes`
     // push, not from desktopWorkdirState — a stale pane layout keeps the host

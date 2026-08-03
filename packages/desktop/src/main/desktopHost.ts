@@ -2251,6 +2251,16 @@ export class DesktopHost {
       this.pushPaneSessionState(pid);
     }
     this.hostState.set(pid, host);
+    // The picker's default workdir is the new host's first recent directory
+    // (desktop-app.md scenario 23). A released or never-bound pane still holds
+    // the previous host's directory in both the host-side current workdir and
+    // the webview's state.workdir — clear both so the picker falls back to the
+    // new host's recents[0] instead of showing a stale path from another host.
+    // A bound agent (real session) pins the pane to its own host, so skip.
+    if (!this.agentForPane(pid)) {
+      this.workdir = undefined;
+      this.postMessage({ command: 'updateWorkdir', paneId: pid, workdir: undefined });
+    }
     // Establish the host's client eagerly, then re-query the auth status on
     // that host — the state cached at webview-ready belongs to the previous
     // host, so without the re-query the welcome page keeps showing the old
@@ -2293,6 +2303,13 @@ export class DesktopHost {
       this.pushPaneSessionState(pid);
     }
     this.hostState.set(pid, name);
+    // Same as handleSelectHost: with no bound agent the pane is still the
+    // new-session picker, so clear the previous host's workdir from both the
+    // host-side state and the webview (desktop-app.md scenario 23).
+    if (!this.agentForPane(pid)) {
+      this.workdir = undefined;
+      this.postMessage({ command: 'updateWorkdir', paneId: pid, workdir: undefined });
+    }
     this.ensureClientFor(name)
       .then(() => this.refreshAuthStatus(name))
       .catch((error) => {
