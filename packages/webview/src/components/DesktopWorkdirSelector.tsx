@@ -67,8 +67,11 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   const [dirs, setDirs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Keyboard selection index into the filtered list; -1 = nothing selected.
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const menuRef = useRef<HTMLDivElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
+  const selectedItemRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
   const lastPathRef = useRef('~');
   const isRemote = host !== undefined && host !== 'local';
@@ -101,6 +104,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       // Navigating to another directory resets the filter keyword — the
       // keyword targets the currently listed single-level directory list.
       setFilterKeyword('');
+      setSelectedIndex(-1);
       onListRemoteDir(path, String(++requestIdRef.current));
     },
     [onListRemoteDir],
@@ -148,9 +152,10 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   }, [currentPath, loading, error, host, onSelectRemotePath]);
 
   /**
-   * Enter on the filter input. Only an absolute-path-shaped value (`/…` or
-   * `~…`) jumps straight to that path; a bare keyword is just the live filter
-   * and does nothing here (spec scenario 20).
+   * Enter-without-selection on the filter input. Only an absolute-path-shaped
+   * value (`/…` or `~…`) jumps straight to that path; a bare keyword is just
+   * the live filter and does nothing here (spec scenario 20). With a keyboard
+   * selection active, Enter enters that subdirectory instead (see onKeyDown).
    */
   const submitFilterInput = useCallback(() => {
     const p = filterKeyword.trim();
@@ -206,6 +211,20 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
     if (pos < name.length) parts.push(name.slice(pos));
     return parts;
   };
+
+  // Reset the selection when the filtered list shrinks below the selected
+  // index (e.g. the filter keyword changed).
+  useEffect(() => {
+    setSelectedIndex((i) => (i >= filteredDirs.length ? -1 : i));
+  }, [filteredDirs.length]);
+
+  // Keep the highlighted item in view while moving with the keyboard.
+  useEffect(() => {
+    const el = selectedItemRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  }, [selectedIndex]);
 
   return (
     <div className="desktop-workdir-container" ref={menuRef}>
@@ -313,11 +332,13 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                   {keyword ? '没有匹配的目录' : '该目录下没有子目录'}
                 </div>
               ) : (
-                filteredDirs.map((d) => (
+                filteredDirs.map((d, i) => (
                   <div
                     key={d}
-                    className="desktop-remote-browser-item"
+                    ref={i === selectedIndex ? selectedItemRef : undefined}
+                    className={`desktop-remote-browser-item${i === selectedIndex ? ' selected' : ''}`}
                     role="option"
+                    aria-selected={i === selectedIndex}
                     onClick={() => requestList(joinPath(currentPath, d))}
                     title={d}
                     data-testid="desktop-remote-browser-item"
@@ -337,8 +358,24 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
               value={filterKeyword}
               onChange={(e) => setFilterKeyword(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') submitFilterInput();
-                else if (e.key === 'Escape') setBrowsing(false);
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setSelectedIndex((i) => (i >= filteredDirs.length - 1 ? i : i + 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setSelectedIndex((i) => (i <= 0 ? -1 : i - 1));
+                } else if (e.key === 'Enter') {
+                  // Enter enters the highlighted subdirectory first; without
+                  // a selection it falls back to the absolute-path jump
+                  // (spec scenario 20).
+                  if (selectedIndex >= 0 && filteredDirs[selectedIndex]) {
+                    requestList(joinPath(currentPath, filteredDirs[selectedIndex]));
+                  } else {
+                    submitFilterInput();
+                  }
+                } else if (e.key === 'Escape') {
+                  setBrowsing(false);
+                }
               }}
               data-testid="desktop-remote-browser-input"
             />
